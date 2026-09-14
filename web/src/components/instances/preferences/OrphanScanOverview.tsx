@@ -98,7 +98,14 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
         )}
         {run.status === "completed" && run.filesFound > 0 && (
           <span>
-            {t("preferences.orphanScanOverview.deletedStats", { deleted: run.filesDeleted, size: formatBytes(run.bytesReclaimed) })}
+            {t("preferences.orphanScanOverview.deletedStats", {
+              deleted: [
+                // A dirs-only run drops the files fragment; a run that deleted nothing keeps "0 files".
+                ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
+                ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
+              ].join(t("preferences.orphanScanOverview.deletedSeparator")),
+              size: formatBytes(run.bytesReclaimed),
+            })}
           </span>
         )}
         {run.startedAt && (
@@ -280,7 +287,7 @@ function InstanceOrphanScanItem({
               )}
               {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
                 <Badge variant="outline" className="text-xs">
-                  {t("preferences.orphanScanOverview.filesSummary", {
+                  {t("preferences.orphanScanOverview.itemsSummary", {
                     count: latestRun.filesFound,
                     size: formatBytes(latestRun.bytesReclaimed || 0),
                   })}
@@ -405,7 +412,7 @@ function InstanceOrphanScanItem({
                 <Files className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">
-                    {t("preferences.orphanScanOverview.orphanFilesFound", { count: latestRun.filesFound })}
+                    {t("preferences.orphanScanOverview.orphanItemsFound", { count: latestRun.filesFound })}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {t("preferences.orphanScanOverview.totalSize", { size: formatBytes(latestRun.bytesReclaimed || 0) })}
