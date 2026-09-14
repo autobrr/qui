@@ -5,6 +5,10 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,4 +47,35 @@ func TestGetAppPreferencesReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
 	prefs, err := c.GetAppPreferences(ctx)
 	require.Error(t, err)
 	require.Nil(t, prefs)
+}
+
+func TestCachedPreferencesPreserveCompatibilityFields(t *testing.T) {
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/app/preferences" {
+			http.NotFound(w, r)
+			return
+		}
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"mail_notification_encryption_type":"SMTPS","torrent_files_backup_enabled":true,"torrent_files_backup_dir":"backup","export_dir":"legacy","mail_notification_ssl_enabled":true}`))
+	}))
+	defer srv.Close()
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL})}
+	prefs, err := client.GetAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "SMTPS", prefs.MailNotificationEncryptionType)
+	require.True(t, prefs.TorrentFilesBackupEnabled)
+	prefs.TorrentFilesBackupDir = "changed"
+
+	cached, err := client.GetAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "backup", cached.TorrentFilesBackupDir)
+	require.Equal(t, int64(1), hits.Load())
+	raw, err := client.cachedAppPreferencesJSON()
+	require.NoError(t, err)
+	var decoded qbt.AppPreferences
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Equal(t, *cached, decoded)
+	require.Equal(t, "legacy", decoded.ExportDir)
+	require.True(t, decoded.MailNotificationSslEnabled)
 }
