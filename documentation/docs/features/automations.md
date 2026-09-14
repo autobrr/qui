@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
-title: Automations
+title: qBittorrent automation rules
+sidebar_label: Automations
 description: Rule-based automation for torrent management.
 ---
 
