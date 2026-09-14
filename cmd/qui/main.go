@@ -522,6 +522,9 @@ func (app *Application) runServer() {
 	case cfg.Config.AuthDisabled != cfg.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
+	if cfg.Config.IsAuthDisabled() && len(cfg.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
+	}
 
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")

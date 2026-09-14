@@ -46,6 +46,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). qui normalizes the value at startup and adds missing leading and trailing slashes. |
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. An empty list disables CORS. Origins must match `http(s)://host[:port]`. qui rejects wildcards and normalizes default ports. Restart required. |
+| `allowedHosts` | `QUI__ALLOWED_HOSTS` | string[] | empty list | Restricts the received HTTP Host. Accepts exact hostnames, IP addresses, and leading `*.` subdomain wildcards. Restart required. See [Allowed Hosts](#allowed-hosts). |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. The value cannot be empty. Use at least 32 characters on a new install. Leave the value alone on an install that already stores credentials. On the first start after upgrading, qui re-encrypts stored credentials under a key derived from this secret. A credential that does not decrypt is left as it is. qui warns about it on every start until you enter it again. The re-encryption is one way, so an older qui cannot read the new values. After rolling back, enter the credentials again or restore a database backup taken before the upgrade. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. qui applies changes immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty, qui logs to stdout. qui resolves relative paths against the config directory. qui applies changes immediately. |
@@ -125,6 +126,52 @@ If you use private trackers, running qui without authentication creates severe r
 :::
 
 If you set `QUI__AUTH_DISABLED` without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui logs a warning and keeps authentication enabled.
+
+## Allowed Hosts
+
+`allowedHosts` restricts the hostnames and IP addresses that requests can use to reach qui.
+An unset or empty list permits all hosts, including when authentication is disabled.
+To enable the restriction, set a TOML string array or a comma-separated environment value:
+
+```toml
+allowedHosts = ["qui.example.com", "localhost", "::1", "*.home.example.com"]
+```
+
+```bash
+QUI__ALLOWED_HOSTS=qui.example.com,localhost,::1,*.home.example.com
+```
+
+qui checks the `Host` that it receives and ignores `X-Forwarded-Host`.
+Caddy and Traefik pass the original `Host`, so list the public name of qui.
+By default, nginx sends the address of the upstream instead. Set `proxy_set_header Host $host;` to pass the original name.
+If a reverse proxy rewrites `Host`, list the rewritten name.
+The proxy must then reject unwanted public hostnames itself, because qui only sees the rewritten name.
+
+Matching rules:
+
+- DNS names ignore case and one final dot. International names and their punycode forms match.
+- qui compares IP addresses by value, so `::1` and `[::1]` match the same address.
+- Request ports do not affect matching. Do not include ports in the configured list.
+- `*.example.com` matches `qui.example.com` and `a.qui.example.com`. It does not match `example.com` or `badexample.com`.
+- Schemes, paths, CIDR ranges, other wildcard forms, and empty entries are invalid. Invalid configuration prevents startup.
+
+The restriction covers all requests on the main HTTP listener, including authenticated requests, static files, and the qBittorrent proxy.
+With a configured list, a missing, invalid, or unlisted Host returns HTTP 400.
+Your own browser and API requests must also use a listed hostname or address.
+qui always adds `localhost`, `127.0.0.1`, `::1`, and the hostname of the machine to a configured list, so local access keeps working.
+qui logs the full list at startup.
+When authentication is disabled and the list is empty, qui logs a warning at startup.
+
+Health `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list when the immediate connection peer is a loopback address.
+This includes external health requests forwarded by a local reverse proxy.
+To restrict health endpoints to local probes, block external health requests at the proxy.
+Forwarded IP headers do not affect this exemption. The Docker health probe continues to work.
+
+qui reads the list once at startup. Restart qui after each change to `allowedHosts`.
+The list works together with authentication and the IP allowlist.
+It blocks DNS rebinding, an attack where a hostname of the attacker points at the address of qui.
+That hostname is not on the list, so qui rejects the request.
+It does not block requests that use a listed hostname.
 
 ## CORS
 
