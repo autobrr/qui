@@ -1,6 +1,7 @@
 ---
 sidebar_position: 17
-title: RSS
+title: qBittorrent RSS feeds and auto-download rules
+sidebar_label: RSS
 description: Manage qBittorrent RSS feeds and auto-download rules.
 ---
 

@@ -961,7 +961,7 @@
       "maxItemsTooltip": "Limite de sécurité sur le nombre d'entrées, fichiers et dossiers confondus, qu'une analyse conserve pour l'aperçu et la suppression. Les fichiers passent avant les dossiers : une analyse qui atteint la limite garde les fichiers.",
       "perRun": "par exécution",
       "previewSort": "Tri de l'Aperçu",
-      "previewSortTooltip": "Contrôle comment l'aperçu est ordonné.",
+      "previewSortTooltip": "Contrôle comment l'aperçu est ordonné. La limite Éléments max est appliquée après ce tri.",
       "sizeLargestFirst": "Taille (du plus grand au plus petit)",
       "directorySizeThenSize": "Dossier, puis taille",
       "autoCleanup": "Nettoyage automatique",
