@@ -30,6 +30,7 @@ var (
 	ErrSSHHostKeyNotPinned     = errors.New("ssh host key is not pinned")
 	ErrSSHEndpointChanged      = errors.New("ssh endpoint changed while pinning the host key")
 	ErrSSHHostKeyAlreadyPinned = errors.New("ssh host key is already pinned")
+	ErrSSHKeyNotConfigured     = errors.New("ssh private key is not configured")
 )
 
 func sshKeyAAD(instanceID int) []byte {
@@ -133,9 +134,6 @@ func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int)
 // exactly the silent re-pin the mismatch flow exists to prevent, so replacing
 // one has to be asked for by name rather than fallen into.
 func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
-	if err := validateMarshaledHostKey(marshaledKey); err != nil {
-		return err
-	}
 	host, err := normalizeSSHHost(host)
 	if err != nil {
 		return err
@@ -169,10 +167,18 @@ func validateMarshaledHostKey(marshaledKey []byte) error {
 	return nil
 }
 
-// setHostKeyPinFor is a compare-and-set on the endpoint the AAD was built from:
-// an interleaved credential update would otherwise leave a pin that can never
-// decrypt again, with nothing pointing at why.
+// setHostKeyPinFor is the only write that stores a pin (the credential update
+// only ever clears one), so the wire-format check lives here rather than at a
+// caller. The UPDATE is a compare-and-set on the endpoint the AAD was built
+// from: an interleaved credential update would otherwise leave a pin that can
+// never decrypt again, with nothing pointing at why. A zero-row result is
+// classified rather than assumed to be an endpoint change, since the WHERE
+// also refuses an already-pinned row.
 func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
+	if err := validateMarshaledHostKey(marshaledKey); err != nil {
+		return err
+	}
+
 	encrypted, err := s.cipher.Encrypt(string(marshaledKey), hostKeyPinAAD(instanceID, host, port))
 	if err != nil {
 		return fmt.Errorf("encrypt host key pin: %w", err)
@@ -183,14 +189,27 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 		SET ssh_host_key_encrypted = ?
 		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted = ''
 	`
-	return s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, instanceID, host, port)
+	err = s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, instanceID, host, port)
+	if !errors.Is(err, ErrSSHEndpointChanged) {
+		return err
+	}
+
+	instance, getErr := s.Get(ctx, instanceID)
+	switch {
+	case getErr != nil:
+		return getErr
+	case instance.SSHHostKeyEncrypted != "":
+		return ErrSSHHostKeyAlreadyPinned
+	}
+	return ErrSSHEndpointChanged
 }
 
-// GetDecryptedSSHKey returns the private key for an instance, or "" when no
-// key is configured.
+// GetDecryptedSSHKey returns the private key for an instance, or
+// ErrSSHKeyNotConfigured when the instance has none: an empty key is not a
+// credential, and returning one would let a dial try an empty-key auth.
 func (s *InstanceStore) GetDecryptedSSHKey(instance *Instance) (string, error) {
 	if instance.SSHKeyEncrypted == "" {
-		return "", nil
+		return "", ErrSSHKeyNotConfigured
 	}
 
 	return s.cipher.Decrypt(instance.SSHKeyEncrypted, sshKeyAAD(instance.ID))

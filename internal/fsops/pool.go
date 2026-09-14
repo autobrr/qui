@@ -46,7 +46,7 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 
-	mode := models.HasFilesystemAccess(instance)
+	mode := models.FilesystemAccessMode(instance)
 	switch mode {
 	case models.FilesystemModeLocal:
 		return p.local, nil

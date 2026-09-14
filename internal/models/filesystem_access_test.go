@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHasFilesystemAccess(t *testing.T) {
+func TestFilesystemAccessMode(t *testing.T) {
 	t.Parallel()
 
 	remote := func() *Instance {
@@ -46,7 +46,7 @@ func TestHasFilesystemAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, HasFilesystemAccess(tt.inst))
+			assert.Equal(t, tt.want, FilesystemAccessMode(tt.inst))
 		})
 	}
 }

@@ -12,15 +12,15 @@ const (
 	FilesystemModeRemote FilesystemMode = "remote"
 )
 
-// HasFilesystemAccess resolves how qui reaches the instance's torrent data.
-// Local takes precedence over remote. Remote requires a confirmed host-key pin:
-// an SSH host with credentials but no pin is a connection the user has not
-// trusted yet, and no filesystem operation may run over it.
+// FilesystemAccessMode: local takes precedence over remote, and remote requires
+// a confirmed host-key pin — an SSH host with credentials but no pin is a
+// connection the user has not trusted yet, and no filesystem operation may run
+// over it.
 //
 // This routes, it does not authorize. A row whose pin has been tampered with
 // still reads as remote here; the connection layer is what must treat
 // GetHostKeyPin's error as fatal.
-func HasFilesystemAccess(inst *Instance) FilesystemMode {
+func FilesystemAccessMode(inst *Instance) FilesystemMode {
 	if inst.HasLocalFilesystemAccess {
 		return FilesystemModeLocal
 	}

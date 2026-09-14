@@ -272,10 +272,12 @@ its algorithm under the same AEAD (AAD: instance id + field + host +
 port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
-capabilities. `HasFilesystemAccess` resolves to local | remote | none.
+capabilities. `FilesystemAccessMode` resolves to local | remote | none.
 This is the slimmed scope for #1917, which also carries the credential
-store that owns these columns: the AEAD write and read path, and setting
-or clearing the pin. Columns without the code that owns them cannot be
+store that owns these columns: the AEAD write and read path, and a pin
+the store sets once, drops when the host or port changes, and keeps when
+the credentials are cleared. Replacing a live pin lands with the mismatch
+flow in a later PR. Columns without the code that owns them cannot be
 tested end to end, and the AAD binding is only real once something
 applies it. Note that the AAD carries the instance id, so credentials can
 only be encrypted after the row exists — the endpoints below all operate

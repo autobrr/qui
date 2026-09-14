@@ -5,18 +5,15 @@ package database
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/pem"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
 const (
@@ -43,18 +40,14 @@ func TestInstanceSSHStatementsSQLite(t *testing.T) {
 func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Querier) {
 	t.Helper()
 
-	encryptionKey := make([]byte, 32)
-	for i := range encryptionKey {
-		encryptionKey[i] = byte(i)
-	}
-	store, err := models.NewInstanceStore(db, encryptionKey)
+	store, err := models.NewInstanceStore(db, sshtest.EncryptionKey())
 	require.NoError(t, err)
 
 	instance, err := store.Create(ctx, "ssh-lifecycle", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	hostKey := sshTestHostKey(t)
-	privateKey := sshTestPrivateKey(t)
+	hostKey := sshtest.HostKey()
+	privateKey := sshtest.PrivateKey("")
 
 	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, sshTestHost, sshTestPort, sshTestUser, privateKey))
 	require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, hostKey))
@@ -75,7 +68,7 @@ func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Q
 	})
 
 	t.Run("re-pinning a live endpoint is refused", func(t *testing.T) {
-		require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, sshTestHostKey(t)), models.ErrSSHHostKeyAlreadyPinned)
+		require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, sshtest.HostKey()), models.ErrSSHHostKeyAlreadyPinned)
 
 		pin, err := store.GetHostKeyPin(reload(t))
 		require.NoError(t, err)
@@ -107,26 +100,4 @@ func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Q
 		_, err := store.GetHostKeyPin(reload(t))
 		require.ErrorIs(t, err, models.ErrSSHHostKeyNotPinned)
 	})
-}
-
-func sshTestHostKey(t *testing.T) []byte {
-	t.Helper()
-
-	pub, _, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	sshPub, err := ssh.NewPublicKey(pub)
-	require.NoError(t, err)
-
-	return sshPub.Marshal()
-}
-
-func sshTestPrivateKey(t *testing.T) string {
-	t.Helper()
-
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	block, err := ssh.MarshalPrivateKey(priv, "")
-	require.NoError(t, err)
-
-	return string(pem.EncodeToMemory(block))
 }

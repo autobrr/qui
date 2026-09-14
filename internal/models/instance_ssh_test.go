@@ -5,17 +5,15 @@ package models
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
-	"encoding/pem"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/ssh"
+
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
 const (
@@ -24,47 +22,11 @@ const (
 	testSSHKeyPort = 22
 )
 
-// Real key material: the store validates both the private key and the wire
-// format of the pin, so placeholder strings would only prove the fixtures
-// parse each other.
 var (
-	testSSHKey            = generateTestPrivateKey("")
-	testSSHKeyPassphrased = generateTestPrivateKey("hunter2")
-	testHostKey           = generateTestHostKey()
+	testSSHKey            = sshtest.PrivateKey("")
+	testSSHKeyPassphrased = sshtest.PrivateKey("hunter2")
+	testHostKey           = sshtest.HostKey()
 )
-
-func generateTestPrivateKey(passphrase string) string {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		panic(err)
-	}
-
-	var block *pem.Block
-	if passphrase == "" {
-		block, err = ssh.MarshalPrivateKey(priv, "")
-	} else {
-		block, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(passphrase))
-	}
-	if err != nil {
-		panic(err)
-	}
-
-	return string(pem.EncodeToMemory(block))
-}
-
-func generateTestHostKey() []byte {
-	pub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		panic(err)
-	}
-
-	sshPub, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		panic(err)
-	}
-
-	return sshPub.Marshal()
-}
 
 func newSSHTestStore(t *testing.T) (*InstanceStore, context.Context) {
 	t.Helper()
@@ -75,13 +37,8 @@ func newSSHTestStore(t *testing.T) (*InstanceStore, context.Context) {
 	require.NoError(t, err)
 	t.Cleanup(func() { sqlDB.Close() })
 
-	encryptionKey := make([]byte, 32)
-	for i := range encryptionKey {
-		encryptionKey[i] = byte(i)
-	}
-
 	db := newMockQuerier(sqlDB)
-	store, err := NewInstanceStore(db, encryptionKey)
+	store, err := NewInstanceStore(db, sshtest.EncryptionKey())
 	require.NoError(t, err)
 
 	_, err = db.ExecContext(ctx, testInstanceSchema)
@@ -129,7 +86,7 @@ func TestSSHCredentialsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, testHostKey, pin)
 
-	assert.Equal(t, FilesystemModeRemote, HasFilesystemAccess(stored))
+	assert.Equal(t, FilesystemModeRemote, FilesystemAccessMode(stored))
 }
 
 func TestGetHostKeyPinUnpinned(t *testing.T) {
@@ -145,7 +102,7 @@ func TestGetHostKeyPinUnpinned(t *testing.T) {
 	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned)
 
 	// Credentials without a confirmed pin are not a usable remote.
-	assert.Equal(t, FilesystemModeNone, HasFilesystemAccess(stored))
+	assert.Equal(t, FilesystemModeNone, FilesystemAccessMode(stored))
 }
 
 func TestTamperedCiphertextFailsClosed(t *testing.T) {
@@ -210,7 +167,7 @@ func TestCredentialsDoNotTransplantBetweenInstances(t *testing.T) {
 	target := newSSHTestInstance(t, store, "target")
 
 	configureSSH(t, store, source.ID)
-	require.NoError(t, store.SetSSHCredentials(ctx, target.ID, testSSHHost, testSSHKeyPort, testSSHUser, generateTestPrivateKey("")))
+	require.NoError(t, store.SetSSHCredentials(ctx, target.ID, testSSHHost, testSSHKeyPort, testSSHUser, sshtest.PrivateKey("")))
 
 	storedSource, err := store.Get(ctx, source.ID)
 	require.NoError(t, err)
@@ -298,7 +255,7 @@ func TestClearSSHCredentialsKeepsPin(t *testing.T) {
 	assert.Equal(t, testSSHHost, stored.SSHHost)
 
 	key, err := store.GetDecryptedSSHKey(stored)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrSSHKeyNotConfigured)
 	assert.Empty(t, key)
 
 	pin, err := store.GetHostKeyPin(stored)
@@ -422,11 +379,9 @@ func TestSSHUpdatesRequireAnExistingInstance(t *testing.T) {
 	require.ErrorIs(t, store.ClearSSHCredentials(ctx, 404), ErrInstanceNotFound)
 }
 
-func TestSetHostKeyPinRequiresHostAndKey(t *testing.T) {
+func TestSetHostKeyPinRequiresHost(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
-
-	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, nil), "an empty host key is not a pin")
 
 	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey), "cannot pin a host that is not configured")
 }
@@ -476,7 +431,7 @@ func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	instance := newSSHTestInstance(t, store, "remote")
 	configureSSH(t, store, instance.ID)
 
-	otherKey := generateTestHostKey()
+	otherKey := sshtest.HostKey()
 	require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, otherKey), ErrSSHHostKeyAlreadyPinned)
 
 	stored, err := store.Get(ctx, instance.ID)
@@ -486,12 +441,27 @@ func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	assert.Equal(t, testHostKey, pin, "the confirmed pin must be the one still on the row")
 }
 
+// The compare-and-set also refuses an already-pinned row, so the loser of a
+// race against another pin must be told the row is already pinned rather than
+// handed an endpoint change that never happened.
+func TestSetHostKeyPinForReportsAlreadyPinned(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	// The endpoint still matches, so only the pin column can refuse this.
+	err := store.setHostKeyPinFor(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
+	require.ErrorIs(t, err, ErrSSHHostKeyAlreadyPinned)
+}
+
 // A pin is worthless if the column can hold anything but SSH wire format: host
 // key verification parses the algorithm back out of this value.
 func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
 	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
+
+	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, nil), "an empty host key is not a pin")
 
 	displayForm := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexample")
 	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, displayForm), "authorized_keys display form is not a marshaled key")
