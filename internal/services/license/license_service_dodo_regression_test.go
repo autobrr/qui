@@ -106,6 +106,57 @@ func TestValidateAndStoreLicense_DodoInvalidReturnsNotActive(t *testing.T) {
 	require.ErrorIs(t, err, ErrLicenseNotActive)
 }
 
+func TestValidateAndStoreLicense_BackfillsInstanceIDFromValidate(t *testing.T) {
+	ctx := t.Context()
+
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
+
+	repo := database.NewLicenseRepo(db)
+
+	now := time.Now()
+	license := &models.ProductLicense{
+		LicenseKey:     "LIC-TEST",
+		ProductName:    ProductNamePremium,
+		Status:         models.LicenseStatusActive,
+		ActivatedAt:    now.Add(-time.Hour),
+		LastValidated:  now.Add(-2 * time.Hour),
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "",
+		Username:       "tester",
+		CreatedAt:      now.Add(-time.Hour),
+		UpdatedAt:      now.Add(-time.Hour),
+	}
+	require.NoError(t, repo.StoreLicense(ctx, license))
+
+	dodoClient := dodo.NewClient(
+		dodo.WithBaseURL("http://dodo.test"),
+		dodo.WithHTTPClient(&http.Client{
+			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.Path {
+				case "/licenses/validate":
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`{"valid":true,"instance_id":"inst_123"}`)),
+						Header:     make(http.Header),
+					}, nil
+				default:
+					t.Fatalf("unexpected dodo path %q", req.URL.Path)
+					return nil, nil
+				}
+			}),
+		}),
+	)
+
+	service := NewLicenseService(repo, dodoClient, t.TempDir())
+
+	_, err := service.ValidateAndStoreLicense(ctx, license.LicenseKey, "tester")
+	require.NoError(t, err)
+
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	require.Equal(t, "inst_123", stored.DodoInstanceID)
+}
+
 func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T) {
 	ctx := t.Context()
 

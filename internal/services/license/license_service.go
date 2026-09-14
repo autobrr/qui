@@ -4,6 +4,7 @@
 package license
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"time"
@@ -172,16 +173,11 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 		log.Error().Err(err).Msg("Failed to update license validation time")
 	}
 
-	instanceID := license.DodoInstanceID
-	if instanceID == "" {
-		instanceID = validationResp.InstanceID
-	}
-
-	if license.Provider != models.LicenseProviderDodo || instanceID != license.DodoInstanceID {
+	instanceID := cmp.Or(license.DodoInstanceID, validationResp.InstanceID)
+	if instanceID != license.DodoInstanceID {
 		if err := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); err != nil {
 			log.Error().Err(err).Msg("Failed to update license provider")
 		} else {
-			license.Provider = models.LicenseProviderDodo
 			license.DodoInstanceID = instanceID
 		}
 	}
@@ -191,11 +187,6 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 
 func (s *Service) ensureDodoActivation(ctx context.Context, license *models.ProductLicense, fingerprint string) error {
 	if license.DodoInstanceID != "" {
-		if license.Provider != models.LicenseProviderDodo {
-			if err := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, license.DodoInstanceID); err != nil {
-				log.Error().Err(err).Msg("Failed to update license provider")
-			}
-		}
 		return nil
 	}
 
