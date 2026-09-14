@@ -1032,6 +1032,12 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 		}
 	}
 
+	// The fallbacks above follow qBittorrent's currently working tracker,
+	// which flips between runs for torrents with several announce hosts.
+	if domain := announceDomain(data); domain != "" {
+		trackerDomain = domain
+	}
+
 	if blobRelPath == nil && s.cacheDir != "" {
 		sum := sha256.Sum256(data)
 		hash := hex.EncodeToString(sum[:])
