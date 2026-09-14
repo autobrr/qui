@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
-title: Introduction
+title: Web UI for qBittorrent
+sidebar_label: Introduction
 description: Fast, modern interface for qBittorrent with cross-seeding, automations, and backups.
 ---
 
