@@ -1,6 +1,7 @@
 ---
 sidebar_position: 4
-title: Reannounce
+title: Reannounce stalled qBittorrent torrents
+sidebar_label: Reannounce
 description: Automatically fix stalled torrents by reannouncing to trackers.
 ---
 

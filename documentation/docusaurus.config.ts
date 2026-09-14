@@ -40,11 +40,14 @@ const minimalDarkTheme: PrismTheme = {
 
 const config: Config = {
   title: "qui",
-  tagline: "Modern web interface for qBittorrent",
+  tagline:
+    "A fast web UI for qBittorrent. Manage one or many instances with cross-seed, automations, and backups in a single binary.",
   favicon: "img/favicon.png",
 
   url: "https://getqui.com",
   baseUrl: "/",
+  // Netlify serves /docs/x as /docs/x/ (301). Match it so canonical, og:url, and sitemap URLs resolve without a redirect.
+  trailingSlash: true,
 
   organizationName: "autobrr",
   projectName: "qui",
@@ -99,6 +102,9 @@ const config: Config = {
           routeBasePath: "docs",
         },
         blog: false,
+        sitemap: {
+          ignorePatterns: ["/search/"],
+        },
         theme: {
           customCss: "./src/css/custom.css",
         },

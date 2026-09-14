@@ -1,6 +1,7 @@
 ---
 sidebar_position: 5
-title: Orphan Scan
+title: Orphan scan for qBittorrent download folders
+sidebar_label: Orphan Scan
 description: Find and remove files not associated with any torrent.
 ---
 
