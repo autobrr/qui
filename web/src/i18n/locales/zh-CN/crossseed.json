@@ -418,7 +418,8 @@
     },
     "phases": {
       "check": "检查",
-      "apply": "应用"
+      "apply": "应用",
+      "resume": "恢复"
     }
   },
   "cancelDialog": {

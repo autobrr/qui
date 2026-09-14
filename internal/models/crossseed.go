@@ -1818,6 +1818,25 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	return nil
 }
 
+// TouchFeedItem advances last_seen_at to seenAt's UTC day so PruneFeedItems
+// keeps an item that is still in the feed. Unlike an ON CONFLICT upsert, a
+// plain UPDATE whose WHERE fails takes no row lock, so same-day polls write no
+// WAL.
+func (s *CrossSeedStore) TouchFeedItem(ctx context.Context, guid string, indexerID int, seenAt time.Time) error {
+	day := seenAt.UTC().Truncate(24 * time.Hour)
+	query := `
+		UPDATE cross_seed_feed_items
+		SET last_seen_at = ?
+		WHERE guid = ? AND indexer_id = ? AND last_seen_at < ?
+	`
+
+	if _, err := s.db.ExecContext(ctx, query, day, guid, indexerID, day); err != nil {
+		return fmt.Errorf("touch feed item: %w", err)
+	}
+
+	return nil
+}
+
 // PruneFeedItems removes processed feed items older than the provided cutoff.
 func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time) (int64, error) {
 	query := `
