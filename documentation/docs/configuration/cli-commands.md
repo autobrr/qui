@@ -163,7 +163,8 @@ Notes:
 Offline SQLite to Postgres migration:
 
 ```bash
-# 0) Stop qui first (no writes during migration)
+# 0) Start the new qui version on SQLite once, then stop it (no writes during migration)
+#    The start applies the SQLite migrations, so the copy carries their data changes.
 #    (example) docker compose stop qui
 
 # 1) Create the target Postgres database first (required)
@@ -192,7 +193,7 @@ cp /path/to/qui.db /path/to/qui.db.bak
 
 Notes:
 
-- Stop qui before you run the migration.
+- Start the qui version you migrate with on the SQLite database once, then stop it. The migrator reads SQLite as is and does not apply migrations to it. A migration that deletes or rewrites rows only takes effect in Postgres when it already ran on the source.
 - Create the target Postgres database before you run the migration.
 - Set exactly one of `--dry-run` or `--apply`.
 - The command copies all runtime tables except migration history.
