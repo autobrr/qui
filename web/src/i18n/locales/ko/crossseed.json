@@ -418,7 +418,8 @@
     },
     "phases": {
       "check": "확인",
-      "apply": "적용"
+      "apply": "적용",
+      "resume": "재개"
     }
   },
   "cancelDialog": {
