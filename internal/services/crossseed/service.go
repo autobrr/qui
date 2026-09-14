@@ -3816,7 +3816,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.TotalFeedItems++
 
 		if alreadyHandled && lastStatus == models.CrossSeedFeedItemStatusProcessed {
-			s.markFeedItem(ctx, result, lastStatus, run.ID, nil)
+			s.markFeedItem(ctx, result, lastStatus, lastStatus, run.ID, nil)
 			continue
 		}
 
@@ -3829,7 +3829,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		}
 
 		processed++
-		s.markFeedItem(ctx, result, status, run.ID, infoHash)
+		s.markFeedItem(ctx, result, lastStatus, status, run.ID, infoHash)
 	}
 
 	completed := time.Now().UTC()
@@ -4218,8 +4218,19 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	return itemStatus, infoHash, invokeErr
 }
 
-func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, status models.CrossSeedFeedItemStatus, runID int64, infoHash *string) {
+// markFeedItem records a feed item's status. previous is the stored status,
+// or pending when the item has no row. Skipped and failed items are retried
+// on every poll, so an unchanged outcome only refreshes last_seen_at: the
+// full upsert would rewrite and lock every feed row on every poll.
+func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, previous, status models.CrossSeedFeedItemStatus, runID int64, infoHash *string) {
 	if s.automationStore == nil {
+		return
+	}
+
+	if status == previous && infoHash == nil {
+		if err := s.automationStore.TouchFeedItem(ctx, result.GUID, result.IndexerID, time.Now()); err != nil {
+			log.Debug().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to refresh cross-seed feed item last seen")
+		}
 		return
 	}
 
