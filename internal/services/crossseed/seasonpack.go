@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -551,6 +552,13 @@ func seasonPackDemoter(prep *seasonPackPrep, planBuild *seasonPackPlanBuild, tor
 		var unlinkFailure string
 		for i, name := range mismatched {
 			file := planBuild.linkedFiles[name]
+			// The link creator skips a link another torrent made first and leaves
+			// it out of created; unlinking it breaks that torrent, and a resume
+			// would download into the shared file, so the pack stays paused.
+			if !slices.Contains(planBuild.created.Files, file.target) {
+				unlinkFailure = fmt.Sprintf("Demoted %s to pending; linked file %s belongs to another torrent, left paused to protect it", strings.Join(mismatched[:i], ", "), name)
+				break
+			}
 			if err := planBuild.backend.Remove(ctx, file.target, fsops.RemoveOptions{}); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				unlinkFailure = fmt.Sprintf("Demoted %s to pending; linked file %s could not be unlinked (%v), left paused to protect the source", strings.Join(mismatched[:i], ", "), name, err)
 				break

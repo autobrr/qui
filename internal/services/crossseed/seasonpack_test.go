@@ -2917,6 +2917,7 @@ func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
 		threshold     float64
 		skipBoundary  bool
 		breakE03      bool // replace the E03 link with a non-empty directory so its unlink fails
+		shareE02      bool // link E02 before the apply, as another pack that made it first would
 		wantRefusal   string
 		wantThreshold float64
 	}{
@@ -2924,6 +2925,7 @@ func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
 		{name: "coverage below the threshold stays paused", threshold: 0.75, skipBoundary: true, wantRefusal: "Demoted Cool.Show.S01.1080p.WEB.x264-GRP/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review"},
 		{name: "unsafe boundary with the toggle on stays paused", threshold: 0.5, wantRefusal: "unsafe piece boundary with pending files"},
 		{name: "an unlink failure after a demotion still recounts the linked episodes", threshold: 0.5, skipBoundary: true, breakE03: true, wantRefusal: "could not be unlinked"},
+		{name: "a link another torrent made first is not unlinked", threshold: 0.5, skipBoundary: true, shareE02: true, wantRefusal: "belongs to another torrent"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2958,6 +2960,13 @@ func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
 			}
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
+			mismatched := packName + "/" + packFile(2)
+			link := filepath.Join(baseDir, packName, packFile(2))
+			if tt.shareE02 {
+				require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o700))
+				require.NoError(t, os.Link(filepath.Join(sourceDir, packFile(2)), link))
+			}
+
 			resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 				TorrentName: packName,
 				TorrentData: base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents)),
@@ -2967,9 +2976,6 @@ func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
 			require.True(t, resp.Applied, "%+v", resp)
 			pending := <-svc.recheckResumeChan
 			require.NotNil(t, pending.demote)
-
-			mismatched := packName + "/" + packFile(2)
-			link := filepath.Join(baseDir, packName, packFile(2))
 			require.FileExists(t, link)
 			demote := []string{mismatched}
 			if tt.breakE03 {
@@ -2980,6 +2986,13 @@ func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
 			}
 			threshold, linked, refusal := pending.demote(t.Context(), demote)
 
+			if tt.shareE02 {
+				require.FileExists(t, link, "the other torrent keeps its link")
+				require.Contains(t, pending.linkedPaths, mismatched)
+				require.Equal(t, 3, pending.blockedRun.MatchedEpisodes)
+				require.Contains(t, refusal, tt.wantRefusal)
+				return
+			}
 			require.NoFileExists(t, link, "the failed link leaves the pack folder")
 			source, readErr := os.ReadFile(filepath.Join(sourceDir, packFile(2)))
 			require.NoError(t, readErr)
