@@ -208,6 +208,10 @@
       "hours": "ore",
       "days": "giorni",
       "seconds": "secondi"
+    },
+    "capabilityReasons": {
+      "trackerHealth": "Richiede qBittorrent 5.1+",
+      "localFilesystemAccess": "Richiede l'accesso al filesystem locale"
     }
   }
 }

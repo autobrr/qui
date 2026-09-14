@@ -200,6 +200,10 @@
       "days": "dní",
       "seconds": "sekund"
     },
+    "capabilityReasons": {
+      "trackerHealth": "Vyžaduje qBittorrent 5.1+",
+      "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému"
+    },
     "selectTrackerStatus": "Vybrat stav",
     "trackerStatuses": {
       "not_contacted": "Nekontaktováno",
