@@ -3235,10 +3235,6 @@ paths:
                       type: string
                     status:
                       type: string
-                    provider:
-                      type: string
-                      enum:
-                        - dodo
                     createdAt:
                       type: string
                       format: date-time

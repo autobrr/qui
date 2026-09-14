@@ -4,12 +4,11 @@
 package license
 
 import (
-	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/database"
@@ -20,6 +19,11 @@ import (
 const (
 	offlineGracePeriod = 7 * 24 * time.Hour
 	ProductNamePremium = "premium-access"
+)
+
+var (
+	ErrDodoClientNotConfigured = errors.New("dodo client not configured")
+	ErrLicenseNotActive        = errors.New("license is not active")
 )
 
 // Service handles license operations
@@ -89,7 +93,7 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 		Name:       fingerprint,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to activate license")
+		return nil, fmt.Errorf("failed to activate license: %w", err)
 	}
 
 	instanceID := activateResp.InstanceID
@@ -173,12 +177,11 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 		log.Error().Err(err).Msg("Failed to update license validation time")
 	}
 
-	instanceID := cmp.Or(license.DodoInstanceID, validationResp.InstanceID)
-	if instanceID != license.DodoInstanceID {
-		if err := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); err != nil {
+	if license.DodoInstanceID == "" && validationResp.InstanceID != "" {
+		if err := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, validationResp.InstanceID); err != nil {
 			log.Error().Err(err).Msg("Failed to update license provider")
 		} else {
-			license.DodoInstanceID = instanceID
+			license.DodoInstanceID = validationResp.InstanceID
 		}
 	}
 
