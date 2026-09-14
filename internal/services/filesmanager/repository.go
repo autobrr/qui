@@ -4,6 +4,7 @@
 package filesmanager
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -214,9 +215,15 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		}
 	}
 
+	// Postgres row-locks each conflicting row; concurrent callers must lock in one order or they deadlock.
+	slices.SortFunc(allRows, func(a, b fileRow) int {
+		return cmp.Or(cmp.Compare(a.instanceID, b.instanceID), cmp.Compare(a.hashID, b.hashID), cmp.Compare(a.fileIndex, b.fileIndex))
+	})
+
 	// Most torrents are complete and seeding, so most rows arrive unchanged (discussion
 	// #2374). The upsert guard alone would skip them too, but Postgres still locks every
 	// conflicting row, and each lock writes WAL plus a hint-bit full-page image.
+	// The filter keeps the sorted lock order.
 	allRows, err = dropUnchangedRows(ctx, tx, allRows, allIDs[:len(hashOrder)])
 	if err != nil {
 		return fmt.Errorf("failed to read cached files: %w", err)
@@ -495,6 +502,15 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 		return fmt.Errorf("UpsertSyncInfoBatch: failed to intern torrent_hashes: %w", err)
 	}
 
+	// Lock rows in one order across concurrent callers, as in UpsertFiles.
+	order := make([]int, len(infos))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortFunc(order, func(a, b int) int {
+		return cmp.Or(cmp.Compare(infos[a].InstanceID, infos[b].InstanceID), cmp.Compare(hashIDs[a], hashIDs[b]))
+	})
+
 	// Batch size for sync info inserts (5 placeholders per row, keep under SQLite's 999 limit)
 	const syncBatchSize = 150
 
@@ -516,10 +532,7 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	args := make([]any, 0, syncBatchSize*5)
 
 	// Batch insert sync infos
-	for i := 0; i < len(infos); i += syncBatchSize {
-		end := min(i+syncBatchSize, len(infos))
-		batch := infos[i:end]
-
+	for batch := range slices.Chunk(order, syncBatchSize) {
 		// Reset args for this batch
 		args = args[:0]
 		var query string
@@ -530,11 +543,11 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, len(batch))
 		}
 
-		for j, info := range batch {
-			hashID := hashIDs[i+j]
+		for _, idx := range batch {
+			info := infos[idx]
 			args = append(args,
 				info.InstanceID,
-				hashID,
+				hashIDs[idx],
 				info.LastSyncedAt,
 				info.TorrentProgress,
 				info.FileCount,

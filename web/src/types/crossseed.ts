@@ -464,7 +464,7 @@ export interface CrossSeedSearchStatus {
 export interface SeasonPackRun {
   id: number
   torrentName: string
-  phase: "check" | "apply"
+  phase: "check" | "apply" | "resume"
   status: "ready" | "skipped" | "applied" | "failed"
   reason: string
   message: string

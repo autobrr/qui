@@ -91,6 +91,6 @@ it("shows a partial-scan warning before allowing manual deletion", () => {
   const warning = getByRole("alert")
   expect(warning.textContent).toContain("preferences.orphanScanOverview.statusPartial")
   expect(warning.textContent).toContain(runQuery.data.errorMessage)
-  fireEvent.click(getByRole("button", { name: "preferences.orphanScanPreview.deleteFiles" }))
+  fireEvent.click(getByRole("button", { name: "preferences.orphanScanPreview.deleteItems" }))
   expect(confirmMutation.mutate).toHaveBeenCalledWith(1, expect.any(Object))
 })
