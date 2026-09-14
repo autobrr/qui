@@ -15,6 +15,13 @@
       /* Anti-FOUC: Apply theme immediately before render */
       (function() {
         try {
+          // Spreadsheet disguise: the static icon is the qui logo, so blank it until useDynamicFavicon draws the sheet grid.
+          var cachedTheme = JSON.parse(localStorage.getItem('theme-cache') || 'null');
+          if (cachedTheme && (cachedTheme.id === 'spreadsheet' || cachedTheme.id === 'spreadsheet-classic')) {
+            document.querySelector('link[data-dynamic-favicon="svg"]').href = 'data:,';
+          }
+        } catch (e) {}
+        try {
           // Check if current theme is lightOnly (e.g., Napster)
           var isLightOnly = localStorage.getItem('theme-light-only') === 'true';
 
