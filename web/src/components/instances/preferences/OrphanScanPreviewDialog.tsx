@@ -68,8 +68,8 @@ export function OrphanScanPreviewDialog({
   }, [runQuery.data])
 
   const run = runQuery.data
-  const totalFiles = run?.filesFound ?? 0
-  const hasMore = files.length < totalFiles
+  const totalItems = run?.filesFound ?? 0
+  const hasMore = files.length < totalItems
 
   const totalSize = useMemo(() => {
     if (!run) return 0
@@ -104,7 +104,7 @@ export function OrphanScanPreviewDialog({
   ]
 
   const handleExport = async () => {
-    if (!run || totalFiles === 0) return
+    if (!run || totalItems === 0) return
 
     setIsExporting(true)
     try {
@@ -112,7 +112,7 @@ export function OrphanScanPreviewDialog({
       const allItems: OrphanScanFile[] = []
       let exportOffset = 0
 
-      while (allItems.length < totalFiles) {
+      while (allItems.length < totalItems) {
         const result = await api.getOrphanScanRun(instanceId, runId, {
           limit: pageSize,
           offset: exportOffset,
@@ -123,8 +123,8 @@ export function OrphanScanPreviewDialog({
       }
 
       const csv = toCsv(allItems, csvColumns)
-      downloadBlob(csv, `orphan_files_${runId}.csv`)
-      toast.success(t("preferences.orphanScanPreview.toast.exportedFiles", { count: allItems.length }))
+      downloadBlob(csv, `orphan_scan_${runId}.csv`)
+      toast.success(t("preferences.orphanScanPreview.toast.exportedItems", { count: allItems.length }))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("preferences.orphanScanPreview.toast.exportFailed"))
     } finally {
@@ -144,7 +144,7 @@ export function OrphanScanPreviewDialog({
 
         {run && (
           <div className="text-sm text-muted-foreground">
-            {t("preferences.orphanScanPreview.filesCount", { count: run.filesFound, size: formatBytes(totalSize) })}
+            {t("preferences.orphanScanPreview.itemsCount", { count: run.filesFound, size: formatBytes(totalSize) })}
             {run.truncated && t("preferences.orphanScanPreview.truncated")}
           </div>
         )}
@@ -175,7 +175,7 @@ export function OrphanScanPreviewDialog({
                         {f.isAbandonedDir && (
                           <Folder
                             className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                            aria-label={t("preferences.orphanScanPreview.emptyDirectory")}
+                            aria-label={t("preferences.orphanScanPreview.directory")}
                           />
                         )}
                         <PathCell path={f.filePath} />
@@ -210,7 +210,7 @@ export function OrphanScanPreviewDialog({
                 {!runQuery.isLoading && files.length === 0 && (
                   <tr>
                     <td colSpan={4} className="p-6 text-center text-muted-foreground">
-                      {t("preferences.orphanScanPreview.noFiles")}
+                      {t("preferences.orphanScanPreview.noItems")}
                     </td>
                   </tr>
                 )}
@@ -219,7 +219,7 @@ export function OrphanScanPreviewDialog({
           </div>
           {hasMore && (
             <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-              <span>{t("preferences.orphanScanPreview.showing", { shown: files.length, total: totalFiles })}</span>
+              <span>{t("preferences.orphanScanPreview.showing", { shown: files.length, total: totalItems })}</span>
               <Button
                 size="sm"
                 variant="secondary"
@@ -235,7 +235,7 @@ export function OrphanScanPreviewDialog({
 
         <DialogFooter className="mt-4 sm:justify-between">
           <div>
-            {totalFiles > 0 && (
+            {totalItems > 0 && (
               <Button
                 type="button"
                 variant="outline"
@@ -266,7 +266,7 @@ export function OrphanScanPreviewDialog({
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
               )}
-              {t("preferences.orphanScanPreview.deleteFiles")}
+              {t("preferences.orphanScanPreview.deleteItems")}
             </Button>
           </div>
         </DialogFooter>
