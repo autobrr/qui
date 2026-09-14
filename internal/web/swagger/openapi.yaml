@@ -8901,7 +8901,7 @@ components:
           enum: ["size_desc", "directory_size_desc"]
         maxFilesPerRun:
           type: integer
-          description: Maximum orphan files to record per run (prevents DB bloat)
+          description: Maximum orphan entries, files and directories together, to record per run (prevents DB bloat)
         scanDefaultSavePath:
           type: boolean
           description: Also scan qBittorrent's default save path, even when no torrent points into it
@@ -8968,13 +8968,13 @@ components:
           description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
         filesFound:
           type: integer
-          description: Number of orphan files found
+          description: Number of orphan entries found, files and abandoned directories together
         filesDeleted:
           type: integer
           description: Number of files deleted (after confirmation)
         foldersDeleted:
           type: integer
-          description: Number of empty folders deleted
+          description: Number of abandoned directories deleted
         bytesReclaimed:
           type: integer
           format: int64
