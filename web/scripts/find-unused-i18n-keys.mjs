@@ -2,6 +2,8 @@ import fs from "node:fs"
 import path from "node:path"
 import ts from "typescript"
 
+import { walkFiles } from "./find-hardcoded-i18n-literals.mjs"
+
 const webRoot = path.resolve(import.meta.dirname, "..")
 const srcRoot = path.join(webRoot, "src")
 const englishLocaleRoot = path.join(srcRoot, "i18n", "locales", "en")
@@ -50,26 +52,29 @@ export function collectLocaleKeys(namespaceBundles) {
 }
 
 /**
- * Pulls every key reference a source file can contribute, in three flavours:
+ * Pulls every key reference a source file can contribute, in two flavours:
  *
  * - `literals`: whole key paths written out. Matching whole paths (never substrings)
  *   is what keeps `detailsPanel.banPeer` dead while `detailsPanel.banPeerPermanent`
  *   is live, and what keeps the three separate `shareLimit.*` subtrees apart.
  * - `prefixes`: the static head of a template like `dateTime.units.${unit}`, which
  *   reaches every leaf below it. Without this the whole block reads as dead.
- * - `suffixes`: the static tail of a template whose prefix is a variable, as in
- *   `` `${s}.dryRun` ``. The subtree is unknowable, so the leaf name alone counts.
+ *
+ * A template that starts with a variable, as in `` `${s}.dryRun` ``, counts only when the
+ * variable is a string `const` in scope. Its value stands in for the head; a further
+ * interpolation after it is filled from the string literals of the enclosing function,
+ * which is where `` `${s}.${outcome ? "executed" : "failed"}` `` and lookup maps keep them.
  *
  * Literals are collected from anywhere in the file, not just inside `t(...)`: keys
  * travel through `labelKey` fields and `<Trans i18nKey>` attributes as often as they
  * are passed directly. Literals and prefixes keep a `namespace:` qualifier when the
- * source writes one.
+ * source writes one. Test files are not scanned, so a key a test names but the UI
+ * does not still reads as dead.
  */
 export function collectKeyReferencesFromSource(source, fileName) {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true)
   const literals = new Set()
   const prefixes = new Set()
-  const suffixes = new Set()
 
   function addLiteral(value) {
     if (keyPathPattern.test(value)) {
@@ -91,15 +96,27 @@ export function collectKeyReferencesFromSource(source, fileName) {
     }
   }
 
-  function addSuffix(spanText) {
-    if (!spanText.startsWith(".")) {
+  function addVariableHeadTemplate(node) {
+    const [firstSpan, ...otherSpans] = node.templateSpans
+    const headValue = ts.isIdentifier(firstSpan.expression) && resolveStringConst(firstSpan.expression)
+    if (!headValue) {
       return
     }
 
-    const suffix = spanText.slice(1)
-    if (suffix && keyPathPattern.test(suffix)) {
-      suffixes.add(suffix)
+    const staticHead = headValue + firstSpan.literal.text
+    if (otherSpans.length === 0) {
+      addLiteral(staticHead)
+      return
     }
+
+    if (otherSpans.length === 1 && staticHead.endsWith(".") && otherSpans[0].literal.text === "") {
+      for (const segment of segmentLiteralsInEnclosingFunction(node)) {
+        addLiteral(staticHead + segment)
+      }
+      return
+    }
+
+    addPrefix(staticHead)
   }
 
   function visit(node) {
@@ -109,8 +126,7 @@ export function collectKeyReferencesFromSource(source, fileName) {
       if (node.head.text) {
         addPrefix(node.head.text)
       } else {
-        // `${variable}.leafName` — only the trailing segment is knowable.
-        addSuffix(node.templateSpans[0].literal.text)
+        addVariableHeadTemplate(node)
       }
     }
 
@@ -119,7 +135,44 @@ export function collectKeyReferencesFromSource(source, fileName) {
 
   visit(sourceFile)
 
-  return { literals, prefixes, suffixes }
+  return { literals, prefixes }
+}
+
+// Nearest `const name = "..."` visible from the identifier, by lexical block.
+function resolveStringConst(identifier) {
+  for (let scope = identifier.parent; scope; scope = scope.parent) {
+    for (const statement of scope.statements ?? []) {
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) {
+        continue
+      }
+
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.name.text === identifier.text) {
+          return declaration.initializer && ts.isStringLiteralLike(declaration.initializer) ? declaration.initializer.text : null
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function segmentLiteralsInEnclosingFunction(node) {
+  let scope = node.parent
+  while (scope && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope)) {
+    scope = scope.parent
+  }
+
+  const segments = new Set()
+  function collect(child) {
+    if (ts.isStringLiteralLike(child) && /^[A-Za-z0-9_$-]+$/.test(child.text)) {
+      segments.add(child.text)
+    }
+    ts.forEachChild(child, collect)
+  }
+  collect(scope)
+
+  return segments
 }
 
 // Keys that were already dead when this checker landed. The checker is a ratchet: this
@@ -128,6 +181,7 @@ export function collectKeyReferencesFromSource(source, fileName) {
 const knownUnusedKeys = new Set([
   "automations:queryBuilder.durationUnits.seconds",
   "common:actions.toggle",
+  "common:themeToggle.custom",
   "crossseed:dirScan.directoryDialog.categoryLabel",
   "crossseed:dirScan.directoryDialog.categoryPlaceholder",
   "crossseed:dirScan.directoryDialog.matchModeLabel",
@@ -189,14 +243,8 @@ const knownUnusedKeys = new Set([
   "instances:preferences.workflows.title",
   "instances:preferences.workflows.trackerDerivedTag",
   "instances:preferences.workflows.upload",
-  "instances:preferences.workflowsOverview.executed",
   "instances:preferences.workflowsOverview.hashCopied",
   "instances:preferences.workflowsOverview.noInstancesTitle",
-  "instances:preferences.workflowsOverview.removed",
-  "instances:preferences.workflowsOverview.summary.deleteLabelCondition",
-  "instances:preferences.workflowsOverview.summary.deleteLabelRatio",
-  "instances:preferences.workflowsOverview.summary.deleteLabelSeeding",
-  "instances:preferences.workflowsOverview.summary.deleteLabelUnregistered",
   "rss:feeds.addFeed",
   "rss:feeds.addFolder",
   "search:results.noInfoUrlAvailable",
@@ -223,6 +271,9 @@ const knownUnusedKeys = new Set([
   "torrents:detailsPanel.toast.fileRenameFailed",
   "torrents:detailsPanel.toast.folderRenameFailed",
   "torrents:fileTree.toggle",
+  "torrents:filterSidebar.customExpression",
+  "torrents:filterSidebar.hiddenMatchSearch",
+  "torrents:filterSidebar.showHidden",
   "torrents:generalTab.connections",
   "torrents:generalTab.downSpeed",
   "torrents:generalTab.eta",
@@ -250,12 +301,6 @@ function isReachable(namespace, key, references) {
     }
   }
 
-  for (const suffix of references.suffixes) {
-    if (key === suffix || key.endsWith(`.${suffix}`)) {
-      return true
-    }
-  }
-
   return false
 }
 
@@ -267,38 +312,14 @@ export function findUnusedKeys(localeKeys, references) {
 }
 
 export function mergeReferences(referenceSets) {
-  const merged = { literals: new Set(), prefixes: new Set(), suffixes: new Set() }
+  const merged = { literals: new Set(), prefixes: new Set() }
 
   for (const references of referenceSets) {
     for (const literal of references.literals) merged.literals.add(literal)
     for (const prefix of references.prefixes) merged.prefixes.add(prefix)
-    for (const suffix of references.suffixes) merged.suffixes.add(suffix)
   }
 
   return merged
-}
-
-function walkSourceFiles(dir) {
-  const files = []
-
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "dist" || entry.name === "locales") {
-      continue
-    }
-
-    const fullPath = path.join(dir, entry.name)
-
-    if (entry.isDirectory()) {
-      files.push(...walkSourceFiles(fullPath))
-      continue
-    }
-
-    if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry.name)) {
-      files.push(fullPath)
-    }
-  }
-
-  return files
 }
 
 function loadEnglishBundles() {
@@ -319,7 +340,7 @@ function loadEnglishBundles() {
 if (process.argv[1] === import.meta.filename) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(
-    walkSourceFiles(srcRoot).map((file) => collectKeyReferencesFromSource(
+    walkFiles(srcRoot).map((file) => collectKeyReferencesFromSource(
       fs.readFileSync(file, "utf8"),
       path.relative(webRoot, file)
     ))
@@ -327,15 +348,6 @@ if (process.argv[1] === import.meta.filename) {
 
   const unusedKeys = findUnusedKeys(localeKeys, references)
   const newlyUnusedKeys = unusedKeys.filter((key) => !knownUnusedKeys.has(key))
-  const drainedKeys = [...knownUnusedKeys].filter((key) => !unusedKeys.includes(key)).sort()
-
-  if (drainedKeys.length > 0) {
-    console.log(`${drainedKeys.length} allowlisted key(s) are no longer unused; drop them from knownUnusedKeys:\n`)
-    for (const key of drainedKeys) {
-      console.log(`- ${key}`)
-    }
-    console.log("")
-  }
 
   if (newlyUnusedKeys.length > 0) {
     console.error(`Locale keys with no reachable reference in src (${newlyUnusedKeys.length}):\n`)

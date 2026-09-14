@@ -78,7 +78,7 @@ test("a template literal prefix reaches every leaf below it", () => {
   assert.deepEqual(unusedKeysFor(bundles, [source]), [])
 })
 
-test("a template whose prefix is a variable falls back to matching the trailing segment", () => {
+test("a template that starts with a string const resolves the const as its head", () => {
   const bundles = {
     instances: {
       preferences: {
@@ -88,12 +88,59 @@ test("a template whose prefix is a variable falls back to matching the trailing 
   }
 
   const source = `
-    const s = "preferences.workflowsOverview.summary"
-    i18n.t(\`\${s}.dryRun\`, { ns })
+    function summary() {
+      const s = "preferences.workflowsOverview.summary"
+      return i18n.t(\`\${s}.dryRun\`, { ns })
+    }
   `
 
   assert.deepEqual(unusedKeysFor(bundles, [source]), [
     "instances:preferences.workflowsOverview.summary.stale",
+  ])
+})
+
+test("a second interpolation after a const head is filled from the enclosing function's literals", () => {
+  const bundles = {
+    instances: {
+      preferences: {
+        workflowsOverview: {
+          executed: "Executed",
+          failed: "Failed",
+          hashCopied: "Copied",
+          summary: { deleteLabelRatio: "ratio", deleteLabelCondition: "condition" },
+        },
+      },
+    },
+  }
+
+  const sources = [`
+    function badge(event) {
+      const s = "preferences.workflowsOverview"
+      return i18n.t(\`\${s}.\${event.outcome === "success" ? "executed" : "failed"}\`, { ns })
+    }
+
+    function label(action) {
+      const s = "preferences.workflowsOverview.summary"
+      const labelKeys = { deleted_ratio: "deleteLabelRatio" }
+      return i18n.t(\`\${s}.\${labelKeys[action] ?? "deleteLabelCondition"}\`, { ns })
+    }
+  `]
+
+  assert.deepEqual(unusedKeysFor(bundles, sources), [
+    "instances:preferences.workflowsOverview.hashCopied",
+  ])
+})
+
+test("a template that starts with an unresolvable variable keeps nothing alive", () => {
+  const bundles = {
+    common: { zzzDeadBlock: { torrent: "Torrent", iso: "ISO" } },
+  }
+
+  const source = "const fileName = `${baseName}.torrent`; const image = `${hash}.iso`"
+
+  assert.deepEqual(unusedKeysFor(bundles, [source]), [
+    "common:zzzDeadBlock.iso",
+    "common:zzzDeadBlock.torrent",
   ])
 })
 
