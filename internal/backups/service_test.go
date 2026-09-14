@@ -1409,6 +1409,56 @@ func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Two runs share one item row for an unchanged torrent, so deleting the older
+// run must keep that blob, while a blob only the older run's state used goes.
+func TestDeleteRunCleansBlobsOfSharedItemRows(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-ranges")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blob := func(name string) (string, string) {
+		rel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", name))
+		abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte("blob"), 0o600))
+		return rel, abs
+	}
+	unchangedRel, unchangedAbs := blob("unchanged.torrent")
+	oldRel, oldAbs := blob("old.torrent")
+	newRel, newAbs := blob("new.torrent")
+
+	now := time.Unix(0, 0).UTC()
+	newRun := func() int64 {
+		run := &models.BackupRun{InstanceID: instanceID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess,
+			RequestedBy: "tester", RequestedAt: now, CompletedAt: &now}
+		require.NoError(t, store.CreateRun(ctx, run))
+		return run.ID
+	}
+	older, newer := newRun(), newRun()
+	require.NoError(t, store.InsertItems(ctx, older, []models.BackupItem{
+		{TorrentHash: "hash-unchanged", Name: "Unchanged", SizeBytes: 1, TorrentBlobPath: &unchangedRel},
+		{TorrentHash: "hash-changed", Name: "Changed", SizeBytes: 1, TorrentBlobPath: &oldRel},
+	}))
+	require.NoError(t, store.InsertItems(ctx, newer, []models.BackupItem{
+		{TorrentHash: "hash-unchanged", Name: "Unchanged", SizeBytes: 1, TorrentBlobPath: &unchangedRel},
+		{TorrentHash: "hash-changed", Name: "Changed", SizeBytes: 1, TorrentBlobPath: &newRel},
+	}))
+
+	require.NoError(t, svc.DeleteRun(ctx, older))
+
+	require.FileExists(t, unchangedAbs)
+	require.FileExists(t, newAbs)
+	require.NoFileExists(t, oldAbs)
+	items, err := store.ListItems(ctx, newer)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+}
+
 func TestCleanupOrphanedBlobs(t *testing.T) {
 	t.Parallel()
 
