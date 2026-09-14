@@ -22,6 +22,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
+
+	"github.com/autobrr/qui/internal/buildinfo"
 )
 
 // sharedTransport enables connection pooling across clients.
@@ -236,7 +238,7 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 		return nil, 0, fmt.Errorf("create request for %s: %w", endpoint, err)
 	}
 	req.Header.Set("Authorization", c.apiKey)
-	req.Header.Set("User-Agent", "qui/1.0 (gazellemusic)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
