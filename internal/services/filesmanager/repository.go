@@ -224,7 +224,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	// #2374). The upsert guard alone would skip them too, but Postgres still locks every
 	// conflicting row, and each lock writes WAL plus a hint-bit full-page image.
 	// The filter keeps the sorted lock order.
-	allRows, err = dropUnchangedRows(ctx, tx, allRows, allIDs[:len(hashOrder)])
+	allRows, err = dropUnchangedRows(ctx, tx, allRows)
 	if err != nil {
 		return fmt.Errorf("failed to read cached files: %w", err)
 	}
@@ -312,54 +312,69 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 }
 
 // dropUnchangedRows returns the rows that are new or differ from the stored row.
-func dropUnchangedRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow, hashIDs []int64) ([]fileRow, error) {
-	type fileKey struct {
+func dropUnchangedRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow) ([]fileRow, error) {
+	type torrentKey struct {
 		instanceID int
 		hashID     int64
-		fileIndex  int
 	}
+	type fileKey struct {
+		torrentKey
+		fileIndex int
+	}
+
+	// A hash cached on several instances has rows for each; read only the synced instance's.
+	hashIDsByInstance := make(map[int][]int64)
+	seen := make(map[torrentKey]struct{})
+	for _, row := range rows {
+		key := torrentKey{row.instanceID, row.hashID}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			hashIDsByInstance[row.instanceID] = append(hashIDsByInstance[row.instanceID], row.hashID)
+		}
+	}
+
 	stored := make(map[fileKey]fileRow, len(rows))
+	for instanceID, hashIDs := range hashIDsByInstance {
+		for batch := range slices.Chunk(hashIDs, maxBatchItems) {
+			args := make([]any, 0, len(batch)+1)
+			args = append(args, instanceID)
+			for _, id := range batch {
+				args = append(args, id)
+			}
+			query := fmt.Sprintf(`
+				SELECT torrent_hash_id, file_index, name_id, size, progress, priority,
+				       is_seed, piece_range_start, piece_range_end, availability
+				FROM torrent_files_cache
+				WHERE instance_id = ? AND torrent_hash_id IN (%s)
+			`, buildPlaceholders(len(batch)))
 
-	for batch := range slices.Chunk(hashIDs, maxBatchItems) {
-		args := make([]any, len(batch))
-		for i, id := range batch {
-			args[i] = id
-		}
-		query := fmt.Sprintf(`
-			SELECT instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
-			       is_seed, piece_range_start, piece_range_end, availability
-			FROM torrent_files_cache
-			WHERE torrent_hash_id IN (%s)
-		`, buildPlaceholders(len(batch)))
-
-		dbRows, err := tx.QueryContext(ctx, query, args...)
-		if err != nil {
-			return nil, err
-		}
-		for dbRows.Next() {
-			var (
-				row    fileRow
-				isSeed sql.NullInt64
-			)
-			if err := dbRows.Scan(&row.instanceID, &row.hashID, &row.fileIndex, &row.nameID, &row.size, &row.progress,
-				&row.priority, &isSeed, &row.pieceRangeStart, &row.pieceRangeEnd, &row.availability); err != nil {
-				dbRows.Close()
+			dbRows, err := tx.QueryContext(ctx, query, args...)
+			if err != nil {
 				return nil, err
 			}
-			row.isSeed = encodeNullableBoolAsInt(decodeNullableBoolFromInt(isSeed))
-			stored[fileKey{row.instanceID, row.hashID, row.fileIndex}] = row
-		}
-		if err := dbRows.Close(); err != nil {
-			return nil, err
-		}
-		if err := dbRows.Err(); err != nil {
-			return nil, err
+			for dbRows.Next() {
+				row := fileRow{instanceID: instanceID}
+				var isSeed sql.NullInt64
+				if err := dbRows.Scan(&row.hashID, &row.fileIndex, &row.nameID, &row.size, &row.progress,
+					&row.priority, &isSeed, &row.pieceRangeStart, &row.pieceRangeEnd, &row.availability); err != nil {
+					dbRows.Close()
+					return nil, err
+				}
+				row.isSeed = encodeNullableBoolAsInt(decodeNullableBoolFromInt(isSeed))
+				stored[fileKey{torrentKey{instanceID, row.hashID}, row.fileIndex}] = row
+			}
+			if err := dbRows.Close(); err != nil {
+				return nil, err
+			}
+			if err := dbRows.Err(); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	changed := rows[:0]
 	for _, row := range rows {
-		if old, ok := stored[fileKey{row.instanceID, row.hashID, row.fileIndex}]; !ok || old != row {
+		if old, ok := stored[fileKey{torrentKey{row.instanceID, row.hashID}, row.fileIndex}]; !ok || old != row {
 			changed = append(changed, row)
 		}
 	}

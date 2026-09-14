@@ -41,6 +41,7 @@ func runFilesmanagerTests(t *testing.T, open testDBOpener) {
 		{"UpsertFilesGuardIsNullSafe", testUpsertFilesGuardIsNullSafe},
 		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
 		{"UpsertFilesUnchangedRowsTakeNoRowLocks", testUpsertFilesUnchangedRowsTakeNoRowLocks},
+		{"UpsertFilesComparesWithinInstance", testUpsertFilesComparesWithinInstance},
 		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
 		{"CacheFilesBatchConcurrentOverlap", testCacheFilesBatchConcurrentOverlap},
 		{"UpsertSyncInfoBatchConcurrentOverlap", testUpsertSyncInfoBatchConcurrentOverlap},
@@ -301,6 +302,37 @@ func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener)
 		var locked int
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE xmax::text <> '0'`).Scan(&locked))
 		require.Zero(t, locked, "an unchanged sync should not lock any row")
+	})
+}
+
+// Cross-seeded torrents share a hash across instances. Each instance's rows must be
+// compared only against that instance's stored rows.
+func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		var nameID, hostID, usernameID int64
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-name").Scan(&nameID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-host").Scan(&hostID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-username").Scan(&usernameID))
+		_, err := db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 2, nameID, hostID, usernameID, "enc")
+		require.NoError(t, err)
+
+		first := baseFile()
+		second := baseFile()
+		second.InstanceID = 2
+		second.Progress = 0.5
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first, second}))
+		markCachedAt(ctx, t, db)
+
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.Equal(t, 2, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
+
+		first.Progress = 0.5
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the first instance's row should have been written")
 	})
 }
 
