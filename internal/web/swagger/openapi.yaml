@@ -1164,6 +1164,146 @@ paths:
         '503':
           description: Connection failed
 
+  /api/instances/{instanceID}/ssh-credentials:
+    put:
+      tags:
+        - Instances
+      summary: Set SSH credentials
+      description: |
+        Store the SSH endpoint and private key qui dials to reach this instance's
+        files. Changing the host or port drops any confirmed host-key pin. The
+        private key is write-only and never appears in a response.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - host
+                - port
+                - username
+                - privateKey
+              properties:
+                host:
+                  type: string
+                  description: Bare hostname or IP literal, without scheme, port or credentials.
+                port:
+                  type: integer
+                  description: SSH port, 1-65535.
+                username:
+                  type: string
+                privateKey:
+                  type: string
+                  description: PEM-encoded private key without a passphrase. Write-only.
+      responses:
+        '200':
+          description: Credentials stored
+        '400':
+          description: Invalid instance ID, request body, endpoint or key
+        '404':
+          description: Instance not found
+    delete:
+      tags:
+        - Instances
+      summary: Clear SSH credentials
+      description: Remove the stored SSH username and private key. The host-key pin is kept, since it belongs to the host rather than to the credentials.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '204':
+          description: Credentials cleared
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to clear SSH credentials
+
+  /api/instances/{instanceID}/ssh-test:
+    post:
+      tags:
+        - Instances
+      summary: Test the SSH connection
+      description: |
+        Dial the instance's SSH endpoint and report the host key it presented, how
+        that key relates to the stored pin, and what the host can do. A host that
+        cannot be reached is reported as a `200` with status `error`, not as a
+        failed request.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Dial result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHTestResponse'
+        '400':
+          description: Invalid instance ID, or no SSH credentials configured
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceID}/ssh-host-key:
+    post:
+      tags:
+        - Instances
+      summary: Confirm the SSH host key
+      description: |
+        Pin the host key the user confirmed on an instance that has none. The
+        server re-dials and refuses to pin unless the host presents this exact
+        key. An instance that is already pinned is refused; use the replace
+        endpoint instead.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHHostKeyRequest'
+      responses:
+        '204':
+          description: Host key pinned
+        '400':
+          description: Invalid instance ID, request body or host key, or no SSH credentials configured
+        '404':
+          description: Instance not found
+        '409':
+          description: The host presented a different key, the instance is already pinned, or its endpoint changed
+        '502':
+          description: The host could not be reached
+
+  /api/instances/{instanceID}/ssh-host-key/replace:
+    post:
+      tags:
+        - Instances
+      summary: Replace the SSH host key pin
+      description: |
+        Overwrite an existing pin after the user has seen a mismatch and decided
+        the host was legitimately re-keyed. The server re-dials and refuses unless
+        the host presents this exact key. An instance with nothing pinned is
+        refused.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHHostKeyRequest'
+      responses:
+        '204':
+          description: Host key pin replaced
+        '400':
+          description: Invalid instance ID, request body or host key, or no SSH credentials configured
+        '404':
+          description: Instance not found
+        '409':
+          description: The host presented a different key, the instance is not pinned, or its endpoint changed
+        '502':
+          description: The host could not be reached
+
   /api/instances/{instanceID}/app-info:
     get:
       tags:
@@ -6749,7 +6889,82 @@ components:
         sortOrder:
           type: integer
           description: Display order preference for the instance.
+        sshHost:
+          type: string
+          description: Host qui dials over SSH to reach this instance's files. Absent when no SSH endpoint is configured.
+        sshPort:
+          type: integer
+          description: SSH port for the configured endpoint.
+        sshUsername:
+          type: string
+          description: SSH user for the configured endpoint. Empty once the credentials are cleared.
+        sshHostKeyPinned:
+          type: boolean
+          description: True when a host key has been confirmed for the SSH endpoint. No response ever carries the key material itself.
+        filesystemMode:
+          type: string
+          enum: [none, local, remote]
+          description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
 
+
+    SSHHostKeyRequest:
+      type: object
+      required:
+        - hostKey
+      properties:
+        hostKey:
+          type: string
+          format: byte
+          description: The host public key the user confirmed, base64 over SSH wire format — the `hostKey` a preceding SSH test reported, echoed back unchanged.
+
+    SSHTestResponse:
+      type: object
+      description: The outcome of dialing an instance's SSH endpoint.
+      properties:
+        status:
+          type: string
+          enum: [unpinned, pinned, mismatch, error]
+          description: |
+            `unpinned` is first contact, `pinned` means the host presented the
+            confirmed key, `mismatch` means it presented another one, and `error`
+            means the host could not be reached at all.
+        hostKey:
+          type: string
+          format: byte
+          description: The presented host public key, base64 over SSH wire format. Echo this back to confirm it.
+        fingerprint:
+          type: string
+          description: SHA-256 fingerprint of the presented key, in the form ssh-keyscan and ssh-keygen print.
+        keyType:
+          type: string
+          description: Algorithm of the presented key, e.g. `ssh-ed25519`.
+        pinnedFingerprint:
+          type: string
+          description: SHA-256 fingerprint of the stored pin. Present on a mismatch only.
+        pinnedKeyType:
+          type: string
+          description: Algorithm of the stored pin. Present on a mismatch only.
+        capabilities:
+          type: object
+          description: What the host lets qui do, probed read-only. Absent on a mismatch or an error, where no session is opened.
+          properties:
+            sftp:
+              type: boolean
+            statvfs:
+              type: boolean
+            hardlink:
+              type: boolean
+            limits:
+              type: boolean
+            exec:
+              type: boolean
+              description: Whether the key may run commands at all, as opposed to being restricted to sftp.
+            gnuUserland:
+              type: boolean
+              description: Whether the host's find and stat are the GNU builds.
+        error:
+          type: string
+          description: Why the dial failed. Present with status `error` only.
 
     InstanceError:
       type: object
