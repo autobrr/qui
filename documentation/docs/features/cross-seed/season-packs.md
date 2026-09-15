@@ -1,7 +1,8 @@
 ---
 sidebar_position: 7
-title: Season Packs
-description: Assemble season packs from individual episodes, through autobrr webhooks or automatic cross-seed assembly.
+title: Cross-seed season packs from episodes
+sidebar_label: Season Packs
+description: Assemble a season pack torrent from episodes you already seed, from autobrr announces or automatic cross-seed searches.
 ---
 
 # Season Packs

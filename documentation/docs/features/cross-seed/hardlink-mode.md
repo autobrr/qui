@@ -1,7 +1,8 @@
 ---
 sidebar_position: 3
-title: Hardlink Mode
-description: Cross-seed with hardlinks or reflinks instead of file renaming.
+title: Cross-seed with hardlinks or reflinks
+sidebar_label: Hardlink Mode
+description: "Cross-seed without renaming files: qui builds a hardlink or reflink tree that matches the incoming torrent layout."
 ---
 
 import LocalFilesystemDocker from "../../_partials/_local-filesystem-docker.mdx";

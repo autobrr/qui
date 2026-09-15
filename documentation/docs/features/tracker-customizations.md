@@ -1,7 +1,8 @@
 ---
 sidebar_position: 10
-title: Tracker Customizations
-description: Give trackers friendly display names and merge multiple announce domains into one entry.
+title: Tracker display names
+sidebar_label: Tracker Customizations
+description: Give trackers friendly display names and merge several announce domains into one tracker entry.
 ---
 
 # Tracker customizations

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 8
-title: Troubleshooting
-description: Fix common cross-seed problems.
+title: Cross-seed troubleshooting
+sidebar_label: Troubleshooting
+description: Why a cross-seed was not added, why rechecks happen, and how to fix missing files, rate limits, and hardlink failures.
 ---
 
 # Cross-Seed Troubleshooting

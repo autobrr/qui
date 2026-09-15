@@ -1,7 +1,8 @@
 ---
 sidebar_position: 4
-title: Windows
-description: Install and run qui on Windows as a background service.
+title: Run qui on Windows
+sidebar_label: Windows
+description: Install qui on Windows and run it in the background as a scheduled task.
 ---
 
 # Windows installation
