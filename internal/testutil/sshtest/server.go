@@ -62,10 +62,17 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
 		PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) {
+			return &ssh.Permissions{}, nil
+		},
+		// Counted here rather than in PublicKeyCallback: that callback must stay
+		// stateless (gosec G408), and the log hook sees every attempt anyway.
+		AuthLogCallback: func(_ ssh.ConnMetadata, method string, _ error) {
+			if method != "publickey" {
+				return
+			}
 			server.mu.Lock()
 			server.auths++
 			server.mu.Unlock()
-			return &ssh.Permissions{}, nil
 		},
 	}
 	config.AddHostKey(hostKey)
