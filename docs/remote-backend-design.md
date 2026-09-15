@@ -227,7 +227,8 @@ backend domain end to end.
   humans only.
 - A host-key change after pinning fails closed: no automatic re-pin. A
   pin that fails to decrypt is never "unpinned": `ssh-test` reports it as
-  `pin_unreadable` with the presented key and no probe, nothing runs over
+  `pin_unreadable` with the presented key (when the host answers) and no
+  probe, nothing runs over
   that connection, and the way out is the replace route with its heavier
   confirmation, the same door a mismatch uses (an endpoint change drops the
   pin as it always does, and takes first contact). An empty
@@ -277,7 +278,7 @@ Half of the old design's schema survives: SSH columns on `instances` —
 host, port, user, the AEAD-encrypted private key (AAD: instance id +
 field), and the pinned host key stored as the marshaled public key plus
 its algorithm under the same AEAD (AAD: instance id + field + host +
-port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
+port). Not a fingerprint column: the `HostKeyAlgorithms` preference and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
 capabilities. `FilesystemAccessMode` resolves to local | remote | none.

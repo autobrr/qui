@@ -227,6 +227,27 @@ func TestUnreadablePinIsReportedAndReplaceable(t *testing.T) {
 	assert.Equal(t, string(sshpool.StatusPinned), f.sshTest().Status)
 }
 
+func TestUnreadablePinOnUnreachableHostHasNoKey(t *testing.T) {
+	f := newSSHFixture(t, "ssh-unreadable-pin-unreachable")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	// Corrupt the pin and move the instance to a dead port in one raw update,
+	// bypassing the store's endpoint-change rule that would drop the pin.
+	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ?, ssh_port = 1 WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
+	require.NoError(t, err)
+
+	result := f.sshTest()
+	assert.Equal(t, string(sshpool.StatusPinUnreadable), result.Status)
+	assert.Empty(t, result.Fingerprint, "no host answered, so there is no key to show")
+	assert.Empty(t, result.HostKey)
+
+	// Clearing the credentials keeps the pin; the missing key is what the
+	// user has to fix first.
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPost, "/ssh-test", "").Code)
+}
+
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
 	f := newSSHFixture(t, "ssh-replace-other-key")
 	f.putCredentials()

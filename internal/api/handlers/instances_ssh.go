@@ -128,11 +128,12 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	response := SSHTestResponse{
-		Status:      string(report.Status),
-		HostKey:     base64.StdEncoding.EncodeToString(report.HostKey.Marshal()),
-		Fingerprint: ssh.FingerprintSHA256(report.HostKey),
-		KeyType:     report.HostKey.Type(),
+	response := SSHTestResponse{Status: string(report.Status)}
+	// An unreadable pin on a host that does not answer has no key to show.
+	if report.HostKey != nil {
+		response.HostKey = base64.StdEncoding.EncodeToString(report.HostKey.Marshal())
+		response.Fingerprint = ssh.FingerprintSHA256(report.HostKey)
+		response.KeyType = report.HostKey.Type()
 	}
 	if report.PinnedKey != nil {
 		response.PinnedFingerprint = ssh.FingerprintSHA256(report.PinnedKey)
