@@ -43,6 +43,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -360,7 +361,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
+	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore))
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -568,6 +569,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
 					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
+
+					// SSH credentials and host-key pinning for remote filesystem access
+					r.Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
+					r.Delete("/ssh-credentials", instancesHandler.DeleteSSHCredentials)
+					r.Post("/ssh-test", instancesHandler.TestSSHConnection)
+					r.Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
+					r.Post("/ssh-host-key/replace", instancesHandler.ReplaceSSHHostKey)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
