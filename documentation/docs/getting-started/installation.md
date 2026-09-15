@@ -2,7 +2,7 @@
 sidebar_position: 1
 title: Install qui
 sidebar_label: Installation
-description: Install qui on Linux with one command, or download the binary for Linux, macOS, Windows, and Docker.
+description: Install qui on Linux with one command, download the binary for Linux, macOS, or Windows, or run the Docker image.
 ---
 
 # Installation

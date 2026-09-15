@@ -2,7 +2,7 @@
 sidebar_position: 2
 title: Supported qBittorrent versions
 sidebar_label: Compatibility
-description: qBittorrent versions qui supports, from 4.3.9 up, and the features that need a newer qBittorrent build.
+description: Supported qBittorrent versions (4.3.9 and newer) and the features that require a newer build.
 ---
 
 # qBittorrent version compatibility
