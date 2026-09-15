@@ -259,3 +259,25 @@ func TestPinnedRSAHostKeyMatches(t *testing.T) {
 	assert.Equal(t, StatusPinned, report.Status)
 	assert.Equal(t, ssh.KeyAlgoRSA, report.HostKey.Type())
 }
+
+// Nothing bounds an exec once the handshake is done: dialTimeout covers the
+// TCP connect and the handshake only, and a session runs until the remote says
+// it is finished. So a cancelled request must not start another command.
+func TestProbeStopsAtCancellation(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error { return matchKey(key, server.HostKey) }
+
+	client, err := dialerFor(nil).dial(t.Context(), instanceAt(t, server.Addr), callback, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	capabilities := probe(ctx, client)
+	assert.True(t, capabilities.Exec)
+	assert.False(t, capabilities.GNUUserland, "the version probe must not run for a cancelled request")
+	assert.Equal(t, 2, server.Channels(), "sftp probe plus one exec: no further session on a cancelled request")
+}
