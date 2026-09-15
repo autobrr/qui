@@ -320,6 +320,15 @@ func TestUnreadablePinOutranksUnreachableHost(t *testing.T) {
 	assert.Nil(t, report.HostKey)
 }
 
+func TestMissingCredentialsOutrankUnreadablePin(t *testing.T) {
+	t.Parallel()
+
+	dialer := NewDialer(fakeCreds{keyErr: models.ErrSSHKeyNotConfigured, pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	_, err := dialer.Test(t.Context(), instanceAt(t, "127.0.0.1:1"))
+	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured, "nothing to dial with is a request error, not a tampering report")
+}
+
 // testWithin runs Test in the background, so a dialer that lets a stalled host
 // outlive its own timeout fails here instead of hanging the package until the
 // go test deadline. The context deliberately carries no deadline of its own:

@@ -6938,7 +6938,8 @@ components:
             `unpinned` is first contact, `pinned` means the host presented the
             confirmed key, `mismatch` means it presented another one,
             `pin_unreadable` means the stored pin cannot be decrypted (the
-            presented key is shown so it can be replaced; nothing is probed),
+            presented key is shown, when the host answers, so it can be
+            replaced; nothing is probed),
             and `error` means the host could not be reached at all.
         hostKey:
           type: string

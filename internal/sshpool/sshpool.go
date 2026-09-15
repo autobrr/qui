@@ -129,9 +129,11 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
 		}
-		if unreadable {
+		if unreadable && !errors.Is(err, models.ErrSSHKeyNotConfigured) {
 			// Tampering outranks an unreachable host: a corrupt pin and a host
 			// that does not answer is what a redirected instance looks like.
+			// Missing credentials still come first: there is nothing to dial
+			// with, and the caller answers that as a request error.
 			return &Report{Status: StatusPinUnreadable}, nil
 		}
 		return nil, err
