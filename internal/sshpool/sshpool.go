@@ -15,6 +15,7 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -22,9 +23,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// dialTimeout bounds both the TCP connect and the SSH handshake. A user is
-// waiting on the response, so it is short enough to fail the page rather than
-// the request.
+// dialTimeout bounds the TCP connect, and then the whole life of the
+// connection: the handshake and the probe that follows it. A user is waiting on
+// the response, so it is short enough to fail the page rather than hold the
+// request open on a host that answers the connect and then stalls.
 const dialTimeout = 15 * time.Second
 
 // credentialSource is the part of the instance store the dialer needs.
@@ -105,9 +107,14 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 	}
 
 	var presented ssh.PublicKey
+	var first sync.Once
 	var algorithms []string
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
-		presented = key
+		// x/crypto runs this on every key exchange, and a server may start a
+		// rekey at any time — including while the probe is using the
+		// connection, from a goroutine this one does not synchronise with. Only
+		// the first key is kept: it is the one the report is about.
+		first.Do(func() { presented = key })
 		if pinned == nil {
 			return nil
 		}
@@ -206,12 +213,17 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 
+	// ssh.ClientConfig.Timeout would buy nothing here: x/crypto reads it only
+	// in ssh.Dial, which this code does not use. One deadline on the socket
+	// bounds the handshake and then everything the caller runs over the
+	// connection, which is sound only because these connections are one-shot.
+	_ = conn.SetDeadline(time.Now().Add(d.timeout))
+
 	config := &ssh.ClientConfig{
 		User:              inst.SSHUsername,
 		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback:   callback,
 		HostKeyAlgorithms: algorithms,
-		Timeout:           d.timeout,
 	}
 
 	type dialResult struct {

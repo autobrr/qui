@@ -61,15 +61,18 @@ func run(client *ssh.Client, command string) (string, error) {
 	}
 	defer session.Close()
 
-	out := &cappedBuffer{}
-	session.Stdout = out
-	session.Stderr = out
+	// x/crypto copies each stream in its own goroutine, so the two streams need
+	// a buffer each. Run waits for both copies before it returns, which is what
+	// orders these reads.
+	var stdout, stderr cappedBuffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
 
 	if err := session.Run(command); err != nil {
 		return "", err
 	}
 
-	return out.buf.String(), nil
+	return stdout.buf.String() + stderr.buf.String(), nil
 }
 
 // cappedBuffer keeps the first outputLimit bytes and reports every write as

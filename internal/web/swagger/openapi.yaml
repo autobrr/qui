@@ -1205,6 +1205,8 @@ paths:
           description: Invalid instance ID, request body, endpoint or key
         '404':
           description: Instance not found
+        '500':
+          description: Failed to store SSH credentials
     delete:
       tags:
         - Instances

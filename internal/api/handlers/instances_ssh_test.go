@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/sshpool"
@@ -33,10 +34,10 @@ import (
 type sshFixture struct {
 	t         *testing.T
 	router    chi.Router
+	db        *database.DB
 	store     *models.InstanceStore
 	instance  *models.Instance
 	server    *sshtest.Server
-	hostKey   ssh.PublicKey
 	clientKey string
 }
 
@@ -64,16 +65,13 @@ func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode) *sshFixture
 	router.Post("/api/instances/{instanceID}/ssh-host-key", handler.ConfirmSSHHostKey)
 	router.Post("/api/instances/{instanceID}/ssh-host-key/replace", handler.ReplaceSSHHostKey)
 
-	signer := sshtest.NewSigner()
-	server := sshtest.NewServer(t, signer, exec)
-
 	return &sshFixture{
 		t:         t,
 		router:    router,
+		db:        db,
 		store:     store,
 		instance:  instance,
-		server:    server,
-		hostKey:   signer.PublicKey(),
+		server:    sshtest.NewServer(t, sshtest.NewSigner(), exec),
 		clientKey: sshtest.PrivateKey(""),
 	}
 }
@@ -137,9 +135,9 @@ func TestSSHTestReportsFirstContact(t *testing.T) {
 
 	body := f.sshTest()
 	assert.Equal(t, string(sshpool.StatusUnpinned), body.Status)
-	assert.Equal(t, ssh.FingerprintSHA256(f.hostKey), body.Fingerprint)
-	assert.Equal(t, base64.StdEncoding.EncodeToString(f.hostKey.Marshal()), body.HostKey)
-	assert.Equal(t, f.hostKey.Type(), body.KeyType)
+	assert.Equal(t, ssh.FingerprintSHA256(f.server.HostKey), body.Fingerprint)
+	assert.Equal(t, base64.StdEncoding.EncodeToString(f.server.HostKey.Marshal()), body.HostKey)
+	assert.Equal(t, f.server.HostKey.Type(), body.KeyType)
 	assert.Empty(t, body.PinnedFingerprint)
 	require.NotNil(t, body.Capabilities)
 	assert.True(t, body.Capabilities.SFTP)
@@ -158,7 +156,7 @@ func TestConfirmHostKeyPinsIt(t *testing.T) {
 
 	body := f.sshTest()
 	assert.Equal(t, string(sshpool.StatusPinned), body.Status)
-	assert.Equal(t, ssh.FingerprintSHA256(f.hostKey), body.Fingerprint)
+	assert.Equal(t, ssh.FingerprintSHA256(f.server.HostKey), body.Fingerprint)
 	require.NotNil(t, body.Capabilities)
 	assert.True(t, body.Capabilities.SFTP)
 }
@@ -167,9 +165,9 @@ func TestConfirmHostKeyTwiceConflicts(t *testing.T) {
 	f := newSSHFixture(t, "ssh-confirm-twice", sshtest.ExecGNU)
 	f.putCredentials()
 
-	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	second := f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey))
+	second := f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey))
 	assert.Equal(t, http.StatusConflict, second.Code, "re-pinning must be asked for by name, not fallen into")
 }
 
@@ -177,7 +175,7 @@ func TestReplaceHostKeyWithoutPinConflicts(t *testing.T) {
 	f := newSSHFixture(t, "ssh-replace-unpinned", sshtest.ExecGNU)
 	f.putCredentials()
 
-	response := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.hostKey))
+	response := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
 	assert.Equal(t, http.StatusConflict, response.Code, "a replacement the user never compared is a silent TOFU")
 }
 
@@ -193,15 +191,15 @@ func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
 
 	mismatch := f.sshTest()
 	assert.Equal(t, string(sshpool.StatusMismatch), mismatch.Status)
-	assert.Equal(t, ssh.FingerprintSHA256(f.hostKey), mismatch.Fingerprint)
+	assert.Equal(t, ssh.FingerprintSHA256(f.server.HostKey), mismatch.Fingerprint)
 	assert.Equal(t, ssh.FingerprintSHA256(stale), mismatch.PinnedFingerprint)
 	assert.Equal(t, stale.Type(), mismatch.PinnedKeyType)
 	assert.Nil(t, mismatch.Capabilities, "a refused host key opens no session to probe")
 
 	// Confirming the mismatched key through the first-pin route must not work.
-	assert.Equal(t, http.StatusConflict, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey)).Code)
+	assert.Equal(t, http.StatusConflict, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.hostKey))
+	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
 	require.Equal(t, http.StatusNoContent, replace.Code, replace.Body.String())
 
 	assert.Equal(t, string(sshpool.StatusPinned), f.sshTest().Status)
@@ -210,7 +208,7 @@ func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
 	f := newSSHFixture(t, "ssh-replace-other-key", sshtest.ExecGNU)
 	f.putCredentials()
-	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
 	other := sshtest.NewSigner().PublicKey()
 	response := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(other))
@@ -228,7 +226,7 @@ func TestPinRejectsMalformedHostKey(t *testing.T) {
 func TestDeleteCredentialsKeepsThePin(t *testing.T) {
 	f := newSSHFixture(t, "ssh-delete-credentials", sshtest.ExecGNU)
 	f.putCredentials()
-	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 
@@ -283,10 +281,22 @@ func TestUpdateCredentialsRejectsBadInput(t *testing.T) {
 	}
 }
 
+// A cipher or database fault is not the submitter's fault, and its message is
+// not theirs to read either.
+func TestUpdateCredentialsReportsStoreFailureAsServerError(t *testing.T) {
+	f := newSSHFixture(t, "ssh-credentials-store-failure", sshtest.ExecGNU)
+	require.NoError(t, f.db.Close())
+
+	body := fmt.Sprintf(`{"host":"127.0.0.1","port":22,"username":"qui","privateKey":%q}`, f.clientKey)
+	response := f.do(http.MethodPut, "/ssh-credentials", body)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.NotContains(t, response.Body.String(), "sql", "a driver error is not a user-facing message")
+}
+
 func TestInstanceResponseCarriesSSHFieldsWithoutKeyMaterial(t *testing.T) {
 	f := newSSHFixture(t, "ssh-instance-response", sshtest.ExecGNU)
 	f.putCredentials()
-	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.hostKey)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
 	host, port := f.endpointOf()
 	listed := f.listInstance()

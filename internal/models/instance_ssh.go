@@ -31,6 +31,10 @@ var (
 	ErrSSHEndpointChanged      = errors.New("ssh endpoint changed while pinning the host key")
 	ErrSSHHostKeyAlreadyPinned = errors.New("ssh host key is already pinned")
 	ErrSSHKeyNotConfigured     = errors.New("ssh private key is not configured")
+	// ErrInvalidSSHCredentials marks what the submitter can fix, so a caller can
+	// tell it apart from the cipher and database faults SetSSHCredentials also
+	// returns and which are nobody's to act on.
+	ErrInvalidSSHCredentials = errors.New("invalid ssh credentials")
 )
 
 func sshKeyAAD(instanceID int) []byte {
@@ -51,29 +55,9 @@ func hostKeyPinAAD(instanceID int, host string, port int) []byte {
 // Changing the host or port drops any existing pin: the pin was confirmed for
 // one endpoint, and the new one has never been seen before.
 func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, host string, port int, username, privateKey string) error {
-	host, err := normalizeSSHHost(host)
+	host, username, err := validateSSHCredentials(host, port, username, privateKey)
 	if err != nil {
-		return err
-	}
-	username = strings.TrimSpace(username)
-
-	switch {
-	case port < 1 || port > 65535:
-		return fmt.Errorf("ssh port %d out of range", port)
-	case username == "":
-		return errors.New("ssh username is required")
-	case privateKey == "":
-		return errors.New("ssh private key is required")
-	}
-
-	// Reject at write time what the dial would only discover later: passphrase
-	// protected keys are not supported, and an unparseable key is never going
-	// to authenticate.
-	if _, err := ssh.ParseRawPrivateKey([]byte(privateKey)); err != nil {
-		if _, ok := errors.AsType[*ssh.PassphraseMissingError](err); ok {
-			return errors.New("passphrase-protected ssh keys are not supported: provide a key without a passphrase")
-		}
-		return fmt.Errorf("parse ssh private key: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidSSHCredentials, err)
 	}
 
 	encryptedKey, err := s.cipher.Encrypt(privateKey, sshKeyAAD(instanceID))
@@ -88,6 +72,37 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 		WHERE id = ?
 	`
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, instanceID)
+}
+
+// validateSSHCredentials returns the stored form of the endpoint, or the reason
+// the submission is unusable.
+func validateSSHCredentials(host string, port int, username, privateKey string) (string, string, error) {
+	host, err := normalizeSSHHost(host)
+	if err != nil {
+		return "", "", err
+	}
+	username = strings.TrimSpace(username)
+
+	switch {
+	case port < 1 || port > 65535:
+		return "", "", fmt.Errorf("ssh port %d out of range", port)
+	case username == "":
+		return "", "", errors.New("ssh username is required")
+	case privateKey == "":
+		return "", "", errors.New("ssh private key is required")
+	}
+
+	// Reject at write time what the dial would only discover later: passphrase
+	// protected keys are not supported, and an unparseable key is never going
+	// to authenticate.
+	if _, err := ssh.ParseRawPrivateKey([]byte(privateKey)); err != nil {
+		if _, ok := errors.AsType[*ssh.PassphraseMissingError](err); ok {
+			return "", "", errors.New("passphrase-protected ssh keys are not supported: provide a key without a passphrase")
+		}
+		return "", "", fmt.Errorf("parse ssh private key: %w", err)
+	}
+
+	return host, username, nil
 }
 
 // normalizeSSHHost returns the one stored form of a host so that a cosmetic
