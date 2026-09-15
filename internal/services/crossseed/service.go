@@ -7200,6 +7200,14 @@ func (s *Service) recordResumeRun(req *pendingResume, status, reason, message st
 	}
 }
 
+// recordDemotedDrop names the demoted files in the history when the worker drops the entry without a confirmed resume.
+func (s *Service) recordDemotedDrop(req *pendingResume, why string) {
+	if len(req.demoted) == 0 {
+		return
+	}
+	s.recordResumeRun(req, "failed", "linked_file_demoted", fmt.Sprintf("Demoted %s to pending after a failed recheck; %s, left paused for review", strings.Join(req.demoted, ", "), why))
+}
+
 func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {
 	if req.resumeAttempts >= maxRecheckResumeAttempts {
 		log.Warn().
@@ -7210,6 +7218,7 @@ func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pending
 			Str("state", string(state)).
 			Int("attempts", req.resumeAttempts).
 			Msg("Recheck resume attempts exhausted, torrent left for manual review")
+		s.recordDemotedDrop(req, "the pack did not resume")
 		return false
 	}
 
@@ -7228,7 +7237,8 @@ func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pending
 			Int("attempt", req.resumeAttempts).
 			Int("maxAttempts", maxRecheckResumeAttempts).
 			Msg("Failed to resume torrent after recheck")
-		return req.resumeAttempts < maxRecheckResumeAttempts
+		// The next poll trips the exhausted guard above, which records the drop.
+		return true
 	}
 
 	req.awaitingResumeConfirmation = true
@@ -7326,6 +7336,7 @@ func (s *Service) recheckResumeWorker() {
 						Str("hash", req.hash).
 						Dur("elapsed", time.Since(req.addedAt)).
 						Msg(message)
+					s.recordDemotedDrop(req, "the recheck timed out")
 					delete(pending, key)
 					continue
 				}

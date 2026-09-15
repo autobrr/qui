@@ -1703,6 +1703,30 @@ func TestProcessPendingRecheckResumeDemotesMismatchedLinkedFiles(t *testing.T) {
 		require.Contains(t, store.runs[0].Message, e02)
 	})
 
+	t.Run("a demotion whose resume never takes records the failed outcome", func(t *testing.T) {
+		t.Parallel()
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0, 1)}, pieceStates: pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)}
+		store := &stubSeasonPackRunStore{}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context(), seasonPackRunStore: store}
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", threshold: 0.5, linkedPaths: linked(e01, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demoted:    []string{e02},
+		}
+		settled := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+
+		// The clean recheck resumes, but the torrent stays stopped on every poll.
+		for range maxRecheckResumeAttempts {
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+		}
+		require.False(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+		require.Equal(t, []string{"resume:hash1", "resume:hash1", "resume:hash1"}, sync.bulkActions)
+		require.Len(t, store.runs, 1)
+		require.Equal(t, "failed", store.runs[0].Status)
+		require.Equal(t, "linked_file_demoted", store.runs[0].Reason)
+		require.Contains(t, store.runs[0].Message, e02)
+	})
+
 	t.Run("a shortfall below the threshold still finds the failed links", func(t *testing.T) {
 		t.Parallel()
 		// A whole wrong episode: E02 at 0 keeps progress under the threshold.

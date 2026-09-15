@@ -358,7 +358,7 @@ Look for log messages that contain the torrent name and these phrases:
 - `torrent added paused; recheck queued`: qui added the pack and queued automatic resume.
 - `Recheck completed below threshold, torrent left paused for manual review`: The recheck reported fewer bytes than qui linked, indicating bad links.
 - `season pack: demoted linked file to a pending file after a failed recheck`: A hardlinked episode failed its recheck. qui removed its link and rechecks the pack again. See [Demoted episodes](#demoted-episodes).
-- `Demoted <name> to pending; ... left paused for review`: qui removed the link, but the remaining episodes fall below the coverage threshold, the new pending file has an unsafe piece boundary, or the new recheck could not start. Review the torrent before you resume it.
+- `Demoted <name> to pending; ... left paused for review`: qui removed the link, but the remaining episodes fall below the coverage threshold, the new pending file has an unsafe piece boundary, the new recheck could not start, or the pack did not resume after it. Review the torrent before you resume it.
 - `Demoted <name> to pending; linked file <name> belongs to another torrent, left paused to protect it`: The link was made by an earlier pack with the same name, so qui did not remove it. Removing it would break that pack, and a resume would download into the shared file. Review both torrents before you resume.
 - `Linked file <name> does not match the torrent, left paused to protect the source`: A hardlinked file failed its recheck and could not be demoted. qui did not resume the torrent, because the download would change that local file. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
