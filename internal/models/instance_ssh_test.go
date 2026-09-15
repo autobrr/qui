@@ -296,7 +296,8 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Error(t, store.SetSSHCredentials(ctx, instance.ID, tt.host, tt.port, tt.username, tt.key))
+			err := store.SetSSHCredentials(ctx, instance.ID, tt.host, tt.port, tt.username, tt.key)
+			require.ErrorIs(t, err, ErrInvalidSSHCredentials, "a submission the user can fix must say so")
 
 			stored, err := store.Get(ctx, instance.ID)
 			require.NoError(t, err)
@@ -398,7 +399,7 @@ func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 
 		// Nothing but the endpoint terms can refuse this write, so the CAS is
 		// what is under test rather than the already-pinned guard.
-		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey, false)
 		require.ErrorIs(t, err, ErrSSHEndpointChanged)
 
 		stored, err := store.Get(ctx, instance.ID)
@@ -412,7 +413,7 @@ func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 		instance := newSSHTestInstance(t, store, "remote")
 		configureSSH(t, store, instance.ID)
 
-		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey, false)
 		require.Error(t, err)
 
 		stored, err := store.Get(ctx, instance.ID)
@@ -450,8 +451,60 @@ func TestSetHostKeyPinForReportsAlreadyPinned(t *testing.T) {
 	configureSSH(t, store, instance.ID)
 
 	// The endpoint still matches, so only the pin column can refuse this.
-	err := store.setHostKeyPinFor(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
+	err := store.setHostKeyPinFor(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey(), false)
 	require.ErrorIs(t, err, ErrSSHHostKeyAlreadyPinned)
+}
+
+func TestReplaceHostKeyPin(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	rotatedKey := sshtest.HostKey()
+	require.NoError(t, store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, rotatedKey))
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	pin, err := store.GetHostKeyPin(stored)
+	require.NoError(t, err)
+	assert.Equal(t, rotatedKey, pin)
+	assert.NotEqual(t, testHostKey, pin)
+}
+
+// A replacement the user never compared against an existing pin is trust on
+// first use wearing the mismatch flow's clothes, so an unpinned instance is
+// refused rather than pinned.
+func TestReplaceHostKeyPinRequiresAPin(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
+
+	require.ErrorIs(t, store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey), ErrSSHHostKeyNotPinned)
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	_, err = store.GetHostKeyPin(stored)
+	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned, "a refused replace must not pin anything")
+}
+
+// The replacement is bound to the endpoint the user confirmed it against, so a
+// replace naming an endpoint the row no longer has is refused with the pin
+// intact. A stale host is passed directly because moving the row with
+// SetSSHCredentials clears the pin, which would reach the unpinned check
+// instead of the endpoint one under test.
+func TestReplaceHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	err := store.ReplaceHostKeyPin(ctx, instance.ID, "stale.example.com", testSSHKeyPort, sshtest.HostKey())
+	require.ErrorIs(t, err, ErrSSHEndpointChanged)
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	pin, err := store.GetHostKeyPin(stored)
+	require.NoError(t, err)
+	assert.Equal(t, testHostKey, pin, "the confirmed pin must survive a refused replace")
 }
 
 // A pin is worthless if the column can hold anything but SSH wire format: host
