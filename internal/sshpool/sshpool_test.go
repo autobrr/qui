@@ -246,18 +246,44 @@ func TestMissingCredentials(t *testing.T) {
 	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured)
 }
 
+// An RSA host key is offered under the SHA-2 signature names, so pinning one
+// has to accept those; ssh-rsa stays in the list for a host that offers
+// nothing else, which x/crypto's own client default also still accepts.
 func TestPinnedRSAHostKeyMatches(t *testing.T) {
 	t.Parallel()
 
-	hostKey := sshtest.NewRSASigner()
-	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	for name, signing := range map[string][]string{
+		"any":          nil,
+		"sha-2 only":   {ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256},
+		"ssh-rsa only": {ssh.KeyAlgoRSA},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	// An RSA host key is offered under the SHA-2 signature names, so pinning it
-	// has to accept those as well as ssh-rsa.
-	report, err := dialerFor(hostKey.PublicKey().Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+			hostKey := rsaSignerFor(t, signing)
+			server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+
+			report, err := dialerFor(hostKey.PublicKey().Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+			require.NoError(t, err)
+			assert.Equal(t, StatusPinned, report.Status)
+			assert.Equal(t, ssh.KeyAlgoRSA, report.HostKey.Type())
+		})
+	}
+}
+
+// rsaSignerFor returns an RSA host key the server may sign with only under the
+// given algorithms, nil meaning all of them.
+func rsaSignerFor(t *testing.T, algorithms []string) ssh.Signer {
+	t.Helper()
+
+	signer := sshtest.NewRSASigner()
+	if algorithms == nil {
+		return signer
+	}
+
+	restricted, err := ssh.NewSignerWithAlgorithms(signer.(ssh.AlgorithmSigner), algorithms)
 	require.NoError(t, err)
-	assert.Equal(t, StatusPinned, report.Status)
-	assert.Equal(t, ssh.KeyAlgoRSA, report.HostKey.Type())
+	return restricted
 }
 
 // Nothing bounds an exec once the handshake is done: dialTimeout covers the
