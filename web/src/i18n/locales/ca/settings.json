@@ -444,9 +444,7 @@
       "managementTitle": "Gestió de llicències",
       "managementDescription": "Gestiona la llicència dels temes i l'accés premium",
       "providers": {
-        "dodoPortal": "Portal de Dodo",
-        "polarPortal": "Portal de Polar",
-        "legacyPolarPortal": "Portal antic de Polar"
+        "dodoPortal": "Portal de Dodo"
       },
       "status": {
         "unlockTitle": "Desbloqueja els temes premium",
@@ -479,8 +477,6 @@
         "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa, o gestiona les activacions mitjançant",
-        "polarSuffix": ".",
         "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa ara mateix."
       },
       "actions": {
