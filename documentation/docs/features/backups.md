@@ -7,7 +7,7 @@ description: Schedule and restore qBittorrent instance backups.
 
 # Backups and restore
 
-qui creates scheduled and manual snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories with their save paths, and cached `.torrent` blobs. You can restore the torrents, categories, and tags from a snapshot at any time.
+qui creates scheduled and manual snapshots of a [qBittorrent instance](./instance-settings.md). Each snapshot includes the torrent archive, tags, categories with their save paths, and cached `.torrent` blobs. You can restore the torrents, categories, and tags from a snapshot at any time.
 
 If you manage multiple instances, the Backups page provides **Save changes to all instances**. This action copies the current backup schedule and settings to every compatible instance in one step.
 
@@ -17,7 +17,7 @@ A snapshot does not store upload totals, ratio, or seed time. It also does not s
 
 ## Backup storage
 
-qui writes backup snapshots to `<dataDir>/backups` by default. If you want to store snapshots in a different location, set `backupDir` in `config.toml` or set the `QUI__BACKUP_DIR` environment variable. A backup on the same drive as the live database does not protect against drive failure. Point `backupDir` to separate storage, such as a redundant array or a network share.
+qui writes backup snapshots to `<dataDir>/backups` by default. If you want to store snapshots in a different location, set `backupDir` in [`config.toml`](../configuration/reference.md) or set the `QUI__BACKUP_DIR` [environment variable](../configuration/environment.md). A backup on the same drive as the live database does not protect against drive failure. Point `backupDir` to separate storage, such as a redundant array or a network share.
 
 If you change `backupDir` on an existing install, stop qui and move the contents of `<dataDir>/backups` into the new directory. If you do not move the files, you cannot restore old backup runs and their downloads remain incomplete.
 

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 6
-title: autobrr Integration
-description: Send autobrr announces to the qui cross-seed webhook.
+title: Cross-seed autobrr announces with qui
+sidebar_label: autobrr Integration
+description: Point autobrr at the qui webhook so every announce is checked for a cross-seed match in real time.
 ---
 
 # autobrr Integration
