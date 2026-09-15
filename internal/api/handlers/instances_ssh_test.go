@@ -41,7 +41,7 @@ type sshFixture struct {
 	clientKey string
 }
 
-func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode) *sshFixture {
+func newSSHFixture(t *testing.T, name string) *sshFixture {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, name)
@@ -71,7 +71,7 @@ func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode) *sshFixture
 		db:        db,
 		store:     store,
 		instance:  instance,
-		server:    sshtest.NewServer(t, sshtest.NewSigner(), exec),
+		server:    sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU),
 		clientKey: sshtest.PrivateKey(""),
 	}
 }
@@ -101,7 +101,7 @@ func (f *sshFixture) putCredentials() {
 	require.NoError(f.t, err)
 
 	response := f.do(http.MethodPut, "/ssh-credentials", string(body))
-	require.Equal(f.t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(f.t, http.StatusNoContent, response.Code, response.Body.String())
 }
 
 func (f *sshFixture) sshTest() SSHTestResponse {
@@ -121,7 +121,7 @@ func hostKeyBody(key ssh.PublicKey) string {
 
 // endpointOf returns the host and port the fixture's credentials point at, for
 // the tests that write a pin through the store directly.
-func (f *sshFixture) endpointOf() (string, int) {
+func (f *sshFixture) endpoint() (string, int) {
 	f.t.Helper()
 
 	stored, err := f.store.Get(f.t.Context(), f.instance.ID)
@@ -130,7 +130,7 @@ func (f *sshFixture) endpointOf() (string, int) {
 }
 
 func TestSSHTestReportsFirstContact(t *testing.T) {
-	f := newSSHFixture(t, "ssh-first-contact", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-first-contact")
 	f.putCredentials()
 
 	body := f.sshTest()
@@ -146,7 +146,7 @@ func TestSSHTestReportsFirstContact(t *testing.T) {
 }
 
 func TestConfirmHostKeyPinsIt(t *testing.T) {
-	f := newSSHFixture(t, "ssh-confirm-pins", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-confirm-pins")
 	f.putCredentials()
 
 	// Echo back exactly what the test reported, the way the UI will.
@@ -162,7 +162,7 @@ func TestConfirmHostKeyPinsIt(t *testing.T) {
 }
 
 func TestConfirmHostKeyTwiceConflicts(t *testing.T) {
-	f := newSSHFixture(t, "ssh-confirm-twice", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-confirm-twice")
 	f.putCredentials()
 
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
@@ -172,7 +172,7 @@ func TestConfirmHostKeyTwiceConflicts(t *testing.T) {
 }
 
 func TestReplaceHostKeyWithoutPinConflicts(t *testing.T) {
-	f := newSSHFixture(t, "ssh-replace-unpinned", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-replace-unpinned")
 	f.putCredentials()
 
 	response := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
@@ -180,13 +180,13 @@ func TestReplaceHostKeyWithoutPinConflicts(t *testing.T) {
 }
 
 func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
-	f := newSSHFixture(t, "ssh-rotated-key", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-rotated-key")
 	f.putCredentials()
 
 	// The state a re-keyed host leaves behind: the pin holds the old key while
 	// the host presents a new one.
 	stale := sshtest.NewSigner().PublicKey()
-	host, port := f.endpointOf()
+	host, port := f.endpoint()
 	require.NoError(t, f.store.SetHostKeyPin(t.Context(), f.instance.ID, host, port, stale.Marshal()))
 
 	mismatch := f.sshTest()
@@ -205,8 +205,30 @@ func TestRotatedHostKeyMismatchesThenReplaces(t *testing.T) {
 	assert.Equal(t, string(sshpool.StatusPinned), f.sshTest().Status)
 }
 
+func TestUnreadablePinIsReportedAndReplaceable(t *testing.T) {
+	f := newSSHFixture(t, "ssh-unreadable-pin")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	// A database writer corrupts the pin ciphertext.
+	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ? WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
+	require.NoError(t, err)
+
+	unreadable := f.sshTest()
+	assert.Equal(t, string(sshpool.StatusPinUnreadable), unreadable.Status)
+	assert.Equal(t, ssh.FingerprintSHA256(f.server.HostKey), unreadable.Fingerprint)
+	assert.Nil(t, unreadable.Capabilities, "an unverifiable pin opens no session to probe")
+
+	// The first-pin route still refuses: the column is not empty.
+	assert.Equal(t, http.StatusConflict, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	replace := f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey))
+	require.Equal(t, http.StatusNoContent, replace.Code, replace.Body.String())
+	assert.Equal(t, string(sshpool.StatusPinned), f.sshTest().Status)
+}
+
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
-	f := newSSHFixture(t, "ssh-replace-other-key", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-replace-other-key")
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
@@ -216,7 +238,7 @@ func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
 }
 
 func TestPinRejectsMalformedHostKey(t *testing.T) {
-	f := newSSHFixture(t, "ssh-pin-malformed", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-pin-malformed")
 	f.putCredentials()
 
 	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPost, "/ssh-host-key", `{"hostKey":"not base64!"}`).Code)
@@ -224,7 +246,7 @@ func TestPinRejectsMalformedHostKey(t *testing.T) {
 }
 
 func TestDeleteCredentialsKeepsThePin(t *testing.T) {
-	f := newSSHFixture(t, "ssh-delete-credentials", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-delete-credentials")
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
@@ -238,20 +260,20 @@ func TestDeleteCredentialsKeepsThePin(t *testing.T) {
 }
 
 func TestSSHTestWithoutCredentials(t *testing.T) {
-	f := newSSHFixture(t, "ssh-test-no-credentials", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-test-no-credentials")
 
 	response := f.do(http.MethodPost, "/ssh-test", "")
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 func TestSSHTestReportsUnreachableHostAsResult(t *testing.T) {
-	f := newSSHFixture(t, "ssh-test-unreachable", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-test-unreachable")
 	f.putCredentials()
 
 	// Point the instance at a port nothing listens on.
 	body, err := json.Marshal(SSHCredentialsRequest{Host: "127.0.0.1", Port: 1, Username: "qui", PrivateKey: f.clientKey})
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
 
 	result := f.sshTest()
 	assert.Equal(t, "error", result.Status)
@@ -260,7 +282,7 @@ func TestSSHTestReportsUnreachableHostAsResult(t *testing.T) {
 }
 
 func TestUpdateCredentialsRejectsBadInput(t *testing.T) {
-	f := newSSHFixture(t, "ssh-credentials-validation", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-credentials-validation")
 
 	tests := []struct {
 		name string
@@ -284,7 +306,7 @@ func TestUpdateCredentialsRejectsBadInput(t *testing.T) {
 // A cipher or database fault is not the submitter's fault, and its message is
 // not theirs to read either.
 func TestUpdateCredentialsReportsStoreFailureAsServerError(t *testing.T) {
-	f := newSSHFixture(t, "ssh-credentials-store-failure", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-credentials-store-failure")
 	require.NoError(t, f.db.Close())
 
 	body := fmt.Sprintf(`{"host":"127.0.0.1","port":22,"username":"qui","privateKey":%q}`, f.clientKey)
@@ -294,11 +316,11 @@ func TestUpdateCredentialsReportsStoreFailureAsServerError(t *testing.T) {
 }
 
 func TestInstanceResponseCarriesSSHFieldsWithoutKeyMaterial(t *testing.T) {
-	f := newSSHFixture(t, "ssh-instance-response", sshtest.ExecGNU)
+	f := newSSHFixture(t, "ssh-instance-response")
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
 
-	host, port := f.endpointOf()
+	host, port := f.endpoint()
 	listed := f.listInstance()
 	assert.Equal(t, host, listed.SSHHost)
 	assert.Equal(t, port, listed.SSHPort)

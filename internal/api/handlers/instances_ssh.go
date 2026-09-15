@@ -87,7 +87,7 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, struct{}{})
+	RespondJSON(w, http.StatusNoContent, nil)
 }
 
 // DeleteSSHCredentials forgets the key but keeps the pin: the pin belongs to
@@ -117,7 +117,7 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 // same shape TestConnection uses: the browser is showing a result, not
 // recovering from a failed request.
 func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request) {
-	instance, ok := h.sshInstance(w, r)
+	instance, ok := h.loadSSHInstance(w, r)
 	if !ok {
 		return
 	}
@@ -168,7 +168,7 @@ func (h *InstancesHandler) ReplaceSSHHostKey(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, replace bool) {
-	instance, ok := h.sshInstance(w, r)
+	instance, ok := h.loadSSHInstance(w, r)
 	if !ok {
 		return
 	}
@@ -230,7 +230,7 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 
 // sshInstance loads the instance for a dialing endpoint, answering the request
 // itself on every failure.
-func (h *InstancesHandler) sshInstance(w http.ResponseWriter, r *http.Request) (*models.Instance, bool) {
+func (h *InstancesHandler) loadSSHInstance(w http.ResponseWriter, r *http.Request) (*models.Instance, bool) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")

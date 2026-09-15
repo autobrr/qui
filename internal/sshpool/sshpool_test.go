@@ -129,15 +129,19 @@ func TestMismatchOnHostKeyTypeChange(t *testing.T) {
 	assert.Zero(t, server.Channels())
 }
 
-func TestUnreadablePinNeverDials(t *testing.T) {
+func TestUnreadablePinShowsKeyAndOpensNoSession(t *testing.T) {
 	t.Parallel()
 
-	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 	dialer := NewDialer(fakeCreds{key: testClientKey, pinErr: errors.New("decrypt host key pin: message authentication failed")})
 
-	_, err := dialer.Test(t.Context(), instanceAt(t, server.Addr))
-	require.Error(t, err, "a pin that will not decrypt must never degrade to first contact")
-	assert.Zero(t, server.Accepts())
+	report, err := dialer.Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	assert.Equal(t, StatusPinUnreadable, report.Status, "a pin that will not decrypt must never degrade to first contact")
+	assert.Equal(t, hostKey.PublicKey().Marshal(), report.HostKey.Marshal())
+	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Channels(), "nothing runs over a connection whose pin cannot be checked")
 }
 
 func TestConfirmAcceptsPresentedKey(t *testing.T) {
