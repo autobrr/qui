@@ -43,7 +43,7 @@ Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
+English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`, `ca`.
 
 ## i18n Commands
 
@@ -60,6 +60,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:ko`
 - `pnpm check:i18n:uk`
 - `pnpm check:i18n:pt-br`
+- `pnpm check:i18n:ca`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 

@@ -442,9 +442,7 @@
       "managementTitle": "授權管理",
       "managementDescription": "管理您的主題授權和進階存取權限",
       "providers": {
-        "dodoPortal": "Dodo 門戶",
-        "polarPortal": "Polar 門戶",
-        "legacyPolarPortal": "舊版 Polar 門戶"
+        "dodoPortal": "Dodo 門戶"
       },
       "status": {
         "unlockTitle": "解鎖進階主題",
@@ -477,8 +475,6 @@
         "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
       },
       "invalid": {
-        "polarPrefix": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺已啟用的裝置上停用，或透過",
-        "polarSuffix": "管理啟用。",
         "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺目前已啟用的裝置上停用。"
       },
       "actions": {
