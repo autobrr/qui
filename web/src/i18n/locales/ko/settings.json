@@ -442,9 +442,7 @@
       "managementTitle": "라이선스 관리",
       "managementDescription": "테마 라이선스 및 프리미엄 접근을 관리합니다",
       "providers": {
-        "dodoPortal": "Dodo 포털",
-        "polarPortal": "Polar 포털",
-        "legacyPolarPortal": "레거시 Polar 포털"
+        "dodoPortal": "Dodo 포털"
       },
       "status": {
         "unlockTitle": "프리미엄 테마 잠금 해제",
@@ -477,8 +475,6 @@
         "productStatusAndAdded": "{{productName}} • 상태: {{status}} • 추가됨 {{date}}"
       },
       "invalid": {
-        "polarPrefix": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 활성화된 다른 컴퓨터에서 비활성화하거나 다음을 통해 활성화를 관리하세요:",
-        "polarSuffix": ".",
         "dodo": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 현재 활성화된 다른 컴퓨터에서 비활성화하세요."
       },
       "actions": {

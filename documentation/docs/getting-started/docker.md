@@ -1,7 +1,8 @@
 ---
 sidebar_position: 3
-title: Docker
-description: Run qui in Docker with compose or standalone.
+title: Run qui in Docker
+sidebar_label: Docker
+description: Run qui with Docker Compose or docker run, with the volumes and environment variables it needs.
 ---
 
 import CodeBlock from '@theme/CodeBlock';

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 2
-title: Compatibility
-description: Supported qBittorrent versions and known version quirks.
+title: Supported qBittorrent versions
+sidebar_label: Compatibility
+description: Supported qBittorrent versions (4.3.9 and newer) and the features that require a newer build.
 ---
 
 # qBittorrent version compatibility
@@ -48,7 +49,7 @@ A request can carry only one normal `Authorization` value. You cannot combine qB
 
 ### Create Torrent button is not visible
 
-qui shows the **Create Torrent** button after it connects to qBittorrent **5.0.0** (Web API 2.11.2) or newer and detects torrent creation support. If the button is missing, open the instance settings, test the connection, and refresh the qui web UI. Upgrade qBittorrent if it is older than 5.0.0. On the all-instances view, qui shows the button for each instance where it detected support.
+qui shows the **Create Torrent** button after it connects to qBittorrent **5.0.0** (Web API 2.11.2) or newer and detects torrent creation support. If the button is missing, open the [instance settings](../features/instance-settings.md), test the connection, and refresh the qui web UI. Upgrade qBittorrent if it is older than 5.0.0. On the all-instances view, qui shows the button for each instance where it detected support.
 
 ### Hybrid and v2 torrent formats are unavailable
 
