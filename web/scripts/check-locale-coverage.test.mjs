@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url"
 const checker = new URL("./check-locale-coverage.mjs", import.meta.url)
 const namespaces = fs.readdirSync(new URL("../src/i18n/locales/en/", import.meta.url))
 
-for (const locale of ["fr", "de", "it", "ko", "pt-BR"]) {
+for (const locale of ["fr", "de", "it", "ko", "pt-BR", "ca"]) {
   test(`${locale} coverage preserves errors and exceptions`, (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "qui-locale-coverage-"))
     t.after(() => fs.rmSync(root, { recursive: true, force: true }))
