@@ -77,16 +77,16 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 // validateSSHCredentials returns the stored form of the endpoint, or the reason
 // the submission is unusable.
 func validateSSHCredentials(host string, port int, username, privateKey string) (normalizedHost, trimmedUsername string, err error) {
-	host, err = normalizeSSHHost(host)
+	normalizedHost, err = normalizeSSHHost(host)
 	if err != nil {
 		return "", "", err
 	}
-	username = strings.TrimSpace(username)
+	trimmedUsername = strings.TrimSpace(username)
 
 	switch {
 	case port < 1 || port > 65535:
 		return "", "", fmt.Errorf("ssh port %d out of range", port)
-	case username == "":
+	case trimmedUsername == "":
 		return "", "", errors.New("ssh username is required")
 	case privateKey == "":
 		return "", "", errors.New("ssh private key is required")
@@ -102,7 +102,7 @@ func validateSSHCredentials(host string, port int, username, privateKey string) 
 		return "", "", fmt.Errorf("parse ssh private key: %w", err)
 	}
 
-	return host, username, nil
+	return normalizedHost, trimmedUsername, nil
 }
 
 // normalizeSSHHost returns the one stored form of a host so that a cosmetic
