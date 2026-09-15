@@ -446,9 +446,7 @@
       "managementTitle": "Správa licencí",
       "managementDescription": "Spravujte svou licenci motivu a přístup k premium motivům",
       "providers": {
-        "dodoPortal": "Dodo portál",
-        "polarPortal": "Polar portál",
-        "legacyPolarPortal": "Starší Polar portál"
+        "dodoPortal": "Dodo portál"
       },
       "status": {
         "unlockTitle": "Odemknout premium motivy",
@@ -481,8 +479,6 @@
         "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, deaktivujte ji na jiném stroji, na kterém je aktivní, nebo spravujte aktivace přes",
-        "polarSuffix": ".",
         "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, deaktivujte ji na jiném stroji, na kterém je aktuálně aktivní."
       },
       "actions": {

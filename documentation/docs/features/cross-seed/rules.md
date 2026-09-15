@@ -1,7 +1,8 @@
 ---
 sidebar_position: 2
-title: Rules
-description: Rules that decide which cross-seed candidates qui adds.
+title: Cross-seed matching rules
+sidebar_label: Rules
+description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, season pack threshold, category naming, source tags, and auto-start limits."
 ---
 
 # Cross-Seed Rules

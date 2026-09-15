@@ -60,7 +60,14 @@ func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
-	ctx, testDSN := openPostgresTestSchema(t)
+	_, testDSN := openPostgresTestSchema(t)
+
+	// This test runs both migration chains plus a data copy, and under -race on
+	// a shared CI runner the SQLite chain alone has crossed the 30s default
+	// since this package gained a second migrated-SQLite test running beside it.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Cleanup(cancel)
+
 	sqlitePath := filepath.Join(t.TempDir(), "fixture.db")
 	sqliteDB, err := New(sqlitePath)
 	require.NoError(t, err)
@@ -172,6 +179,8 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 		t.Skip("QUI_TEST_POSTGRES_DSN not set")
 	}
 
+	// One migration chain on a shared CI runner. A test that does more than
+	// that brings its own context.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 

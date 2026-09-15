@@ -2140,7 +2140,6 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
-    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")

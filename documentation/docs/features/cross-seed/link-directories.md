@@ -1,7 +1,8 @@
 ---
 sidebar_position: 5
-title: Link Directories
-description: How qui lays out hardlink/reflink trees on disk.
+title: Cross-seed link directories
+sidebar_label: Link Directories
+description: How qui lays out hardlink and reflink trees on disk, and how to choose the link directory for each instance.
 ---
 
 # Link Directories

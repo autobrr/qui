@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
-title: Cross-Seed
+title: Cross-seed for qBittorrent
+sidebar_label: Cross-Seed
 description: Automatically cross-seed torrents across trackers.
 ---
 

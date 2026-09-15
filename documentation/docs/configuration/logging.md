@@ -1,7 +1,8 @@
 ---
 sidebar_position: 6
-title: Logging
-description: Log levels, rotation, the live log viewer, and log exclusions.
+title: qui logging
+sidebar_label: Logging
+description: Set the log level, rotate log files, watch the live log viewer, and mute noisy messages in the live log viewer.
 ---
 
 # Logging
