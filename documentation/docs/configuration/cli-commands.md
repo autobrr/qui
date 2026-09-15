@@ -165,7 +165,9 @@ Offline SQLite to Postgres migration:
 ```bash
 # 0) Start the new qui version on SQLite once, then stop it (no writes during migration)
 #    The start applies the SQLite migrations, so the copy carries their data changes.
-#    (example) docker compose stop qui
+#    (example) docker compose up -d qui
+#              (wait until the web UI answers)
+#              docker compose stop qui
 
 # 1) Create the target Postgres database first (required)
 #    (example) createdb -h localhost -p 5432 -U user qui
