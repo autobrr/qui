@@ -119,7 +119,7 @@ func hostKeyBody(key ssh.PublicKey) string {
 	return fmt.Sprintf(`{"hostKey":%q}`, base64.StdEncoding.EncodeToString(key.Marshal()))
 }
 
-// endpointOf returns the host and port the fixture's credentials point at, for
+// endpoint returns the host and port the fixture's credentials point at, for
 // the tests that write a pin through the store directly.
 func (f *sshFixture) endpoint() (string, int) {
 	f.t.Helper()
