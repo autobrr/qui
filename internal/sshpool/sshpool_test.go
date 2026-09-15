@@ -286,9 +286,8 @@ func rsaSignerFor(t *testing.T, algorithms []string) ssh.Signer {
 	return restricted
 }
 
-// Nothing bounds an exec once the handshake is done: dialTimeout covers the
-// TCP connect and the handshake only, and a session runs until the remote says
-// it is finished. So a cancelled request must not start another command.
+// The connection's deadline stops a stalled exec eventually, but a request the
+// user has already abandoned must not start another command at all.
 func TestProbeStopsAtCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -306,4 +305,66 @@ func TestProbeStopsAtCancellation(t *testing.T) {
 	assert.True(t, capabilities.Exec)
 	assert.False(t, capabilities.GNUUserland, "the version probe must not run for a cancelled request")
 	assert.Equal(t, 2, server.Channels(), "sftp probe plus one exec: no further session on a cancelled request")
+}
+
+// testWithin runs Test in the background, so a dialer that lets a stalled host
+// outlive its own timeout fails here instead of hanging the package until the
+// go test deadline. The context deliberately carries no deadline of its own:
+// neither does the request context in production.
+func testWithin(t *testing.T, dialer *Dialer, inst *models.Instance, limit time.Duration) (*Report, error) {
+	t.Helper()
+
+	type outcome struct {
+		report *Report
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		report, err := dialer.Test(context.WithoutCancel(t.Context()), inst)
+		done <- outcome{report, err}
+	}()
+
+	select {
+	case result := <-done:
+		return result.report, result.err
+	case <-time.After(limit):
+		t.Fatalf("Test did not return within %s", limit)
+		return nil, nil
+	}
+}
+
+// dialerWithTimeout is the dialer the timeout tests use: the same one, wound
+// down from 15s so a stalled host is waited out in test time.
+func dialerWithTimeout(timeout time.Duration) *Dialer {
+	dialer := dialerFor(nil)
+	dialer.timeout = timeout
+	return dialer
+}
+
+// A host that completes the TCP connect and then says nothing must not hold the
+// request open: ssh.ClientConfig.Timeout does not bound the handshake, only the
+// connection's deadline does.
+func TestTimeoutBoundsHandshake(t *testing.T) {
+	t.Parallel()
+
+	addr := sshtest.NewHangingListener(t)
+
+	start := time.Now()
+	_, err := testWithin(t, dialerWithTimeout(200*time.Millisecond), instanceAt(t, addr), 10*time.Second)
+	require.Error(t, err, "a stalled handshake must fail rather than wait for the caller to give up")
+	assert.Less(t, time.Since(start), 5*time.Second)
+}
+
+// Same for the probe: the session channel opens, and then the host never
+// answers the command.
+func TestTimeoutBoundsProbe(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
+
+	report, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, server.Addr), 10*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, report.Capabilities)
+	assert.True(t, report.Capabilities.SFTP, "the sftp probe answers before the exec stalls")
+	assert.False(t, report.Capabilities.Exec, "a command the host never answers is not a capability")
 }

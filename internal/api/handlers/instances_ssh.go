@@ -73,13 +73,17 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 	}
 
 	if err := h.instanceStore.SetSSHCredentials(r.Context(), instanceID, req.Host, req.Port, req.Username, req.PrivateKey); err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
+		switch {
+		case errors.Is(err, models.ErrInstanceNotFound):
 			RespondError(w, http.StatusNotFound, "Instance not found")
-			return
+		case errors.Is(err, models.ErrInvalidSSHCredentials):
+			// A property of the submitted endpoint or key, so the store's own
+			// message is what the user needs to fix.
+			RespondError(w, http.StatusBadRequest, err.Error())
+		default:
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to store SSH credentials")
+			RespondError(w, http.StatusInternalServerError, "Failed to store SSH credentials")
 		}
-		// Everything the store rejects here is a property of the submitted
-		// endpoint or key, so its own message is what the user needs to fix.
-		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -225,17 +229,11 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 }
 
 // sshInstance loads the instance for a dialing endpoint, answering the request
-// itself on every failure. The nil dialer is reachable only from tests that
-// construct the handler without one.
+// itself on every failure.
 func (h *InstancesHandler) sshInstance(w http.ResponseWriter, r *http.Request) (*models.Instance, bool) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return nil, false
-	}
-
-	if h.sshDialer == nil {
-		RespondError(w, http.StatusInternalServerError, "SSH support is not available")
 		return nil, false
 	}
 

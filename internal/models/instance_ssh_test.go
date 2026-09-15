@@ -296,7 +296,8 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Error(t, store.SetSSHCredentials(ctx, instance.ID, tt.host, tt.port, tt.username, tt.key))
+			err := store.SetSSHCredentials(ctx, instance.ID, tt.host, tt.port, tt.username, tt.key)
+			require.ErrorIs(t, err, ErrInvalidSSHCredentials, "a submission the user can fix must say so")
 
 			stored, err := store.Get(ctx, instance.ID)
 			require.NoError(t, err)

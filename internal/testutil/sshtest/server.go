@@ -18,7 +18,7 @@ import (
 )
 
 // ExecMode selects what the test server's exec channel does, so a test can
-// stand up the three servers the capability probe has to tell apart.
+// stand up the servers the capability probe has to tell apart.
 type ExecMode int
 
 const (
@@ -29,6 +29,9 @@ const (
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
+	// ExecHang accepts the command and never answers it, the way a wedged or
+	// tarpitting host does. Only the client's own deadline ends the session.
+	ExecHang
 )
 
 const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
@@ -70,21 +73,17 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	server := &Server{Addr: listener.Addr().String(), HostKey: hostKey.PublicKey(), exec: exec}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				return
 			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				server.serve(conn, config)
-			}()
+			})
 		}
-	}()
+	})
 
 	t.Cleanup(func() {
 		_ = listener.Close()
@@ -126,6 +125,11 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	var sessions sync.WaitGroup
 	defer sessions.Wait()
 
+	// Closed before the sessions are waited on, which is what lets an ExecHang
+	// session stop hanging once the client has gone.
+	stalled := make(chan struct{})
+	defer close(stalled)
+
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only session channels")
@@ -141,15 +145,13 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 			return
 		}
 
-		sessions.Add(1)
-		go func() {
-			defer sessions.Done()
-			s.handleSession(channel, requests)
-		}()
+		sessions.Go(func() {
+			s.handleSession(channel, requests, stalled)
+		})
 	}
 }
 
-func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {
+func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request, stalled <-chan struct{}) {
 	defer func() { _ = channel.Close() }()
 
 	for req := range requests {
@@ -170,6 +172,10 @@ func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request
 				continue
 			}
 			_ = req.Reply(true, nil)
+			if s.exec == ExecHang {
+				<-stalled
+				return
+			}
 			s.sendExitStatus(channel, s.runCommand(channel, payload.Value))
 			return
 
@@ -190,9 +196,12 @@ func (s *Server) serveSFTP(channel ssh.Channel) {
 
 func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 	if s.exec == ExecSFTPOnly {
-		_, _ = io.WriteString(channel, "This service allows sftp connections only.\n")
+		_, _ = io.WriteString(channel.Stderr(), "This service allows sftp connections only.\n")
 		return 1
 	}
+	// A real login writes shell and motd noise to stderr while the command
+	// writes its own output to stdout, so both streams are busy at once.
+	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
 	if strings.Contains(command, "--version") && s.exec == ExecGNU {
 		_, _ = io.WriteString(channel, versionBannerGNU)
 	} else if strings.Contains(command, "--version") {
@@ -216,9 +225,7 @@ func NewHangingListener(t testing.TB) string {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var conns []net.Conn
 		defer func() {
 			for _, conn := range conns {
@@ -232,7 +239,7 @@ func NewHangingListener(t testing.TB) string {
 			}
 			conns = append(conns, conn)
 		}
-	}()
+	})
 
 	t.Cleanup(func() {
 		_ = listener.Close()
