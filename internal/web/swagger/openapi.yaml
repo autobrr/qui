@@ -1199,7 +1199,7 @@ paths:
                   type: string
                   description: PEM-encoded private key without a passphrase. Write-only.
       responses:
-        '200':
+        '204':
           description: Credentials stored
         '400':
           description: Invalid instance ID, request body, endpoint or key
@@ -1217,6 +1217,8 @@ paths:
       responses:
         '204':
           description: Credentials cleared
+        '400':
+          description: Invalid instance ID
         '404':
           description: Instance not found
         '500':
@@ -6925,11 +6927,13 @@ components:
       properties:
         status:
           type: string
-          enum: [unpinned, pinned, mismatch, error]
+          enum: [unpinned, pinned, mismatch, pin_unreadable, error]
           description: |
             `unpinned` is first contact, `pinned` means the host presented the
-            confirmed key, `mismatch` means it presented another one, and `error`
-            means the host could not be reached at all.
+            confirmed key, `mismatch` means it presented another one,
+            `pin_unreadable` means the stored pin cannot be decrypted (the
+            presented key is shown so it can be replaced; nothing is probed),
+            and `error` means the host could not be reached at all.
         hostKey:
           type: string
           format: byte
@@ -6948,7 +6952,7 @@ components:
           description: Algorithm of the stored pin. Present on a mismatch only.
         capabilities:
           type: object
-          description: What the host lets qui do, probed read-only. Absent on a mismatch or an error, where no session is opened.
+          description: What the host lets qui do, probed read-only. Absent on a mismatch, an unreadable pin, or an error, where no session is opened.
           properties:
             sftp:
               type: boolean

@@ -218,11 +218,18 @@ backend domain end to end.
   it matches a preconfigured fingerprint). No connection is trusted for
   real operations before that. `InsecureIgnoreHostKey` is forbidden.
 - What gets pinned is the marshaled public key and its algorithm, not a
-  display string; later connects constrain `HostKeyAlgorithms` to the
-  pinned type, so a key-type change is a mismatch, never a negotiation
-  accident. Fingerprints render as `SHA256:` for humans only.
+  display string; later connects put the pinned key's algorithms first in
+  `HostKeyAlgorithms` (a multi-key host offers the key the client prefers,
+  so a still-valid pin is never mismatched by accident) and leave the rest
+  allowed, so a host that changed key type reports as a mismatch the user
+  can act on rather than a failed negotiation. Verification is always the
+  byte comparison against the pin. Fingerprints render as `SHA256:` for
+  humans only.
 - A host-key change after pinning fails closed: no automatic re-pin. A
-  pin that fails to decrypt is a hard error, never "unpinned". An empty
+  pin that fails to decrypt is never "unpinned": `ssh-test` reports it as
+  `pin_unreadable` with the presented key and no probe, nothing runs over
+  that connection, and the only way out is the replace route with its
+  heavier confirmation, the same door a mismatch uses. An empty
   pin column is unpinned and takes the first-contact flow: there is no
   separate "was pinned" state, so a database writer who clears the column
   is not detected. What that buys them is a first-contact confirmation the

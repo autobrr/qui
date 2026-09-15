@@ -53,6 +53,10 @@ const (
 	StatusUnpinned Status = "unpinned"
 	StatusPinned   Status = "pinned"
 	StatusMismatch Status = "mismatch"
+	// StatusPinUnreadable: the stored pin does not decrypt. The presented key
+	// is reported so the user can replace the pin through the same heavy
+	// confirmation a mismatch gets; nothing is trusted and nothing is probed.
+	StatusPinUnreadable Status = "pin_unreadable"
 )
 
 // Report is the outcome of Test. A mismatch is a result, not a failure: the
@@ -76,7 +80,8 @@ type Capabilities struct {
 }
 
 // MismatchError reports that the host presented a key other than the expected
-// one. It carries fingerprints only; the raw keys stay in the struct fields.
+// one. Error prints fingerprints only, so the message is safe to log; the
+// fields carry the keys for callers that need them.
 type MismatchError struct {
 	Presented ssh.PublicKey
 	Pinned    ssh.PublicKey
@@ -92,12 +97,7 @@ func (e *MismatchError) Error() string {
 // and — unless the key mismatched — what the server can do.
 func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, error) {
 	pin, err := d.creds.GetHostKeyPin(inst)
-	if err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned) {
-		// A pin that will not decrypt is tampering, not first contact.
-		// Degrading to trust-on-first-use here is exactly the re-pin the
-		// mismatch flow exists to refuse.
-		return nil, fmt.Errorf("read host key pin: %w", err)
-	}
+	unreadable := err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned)
 
 	var pinned ssh.PublicKey
 	if err == nil {
@@ -132,6 +132,14 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		return nil, err
 	}
 	defer client.Close()
+
+	// A pin that will not decrypt is tampering, not first contact: the key is
+	// shown so the user can replace the pin deliberately, but nothing runs over
+	// the connection. Degrading to trust-on-first-use here is exactly the
+	// re-pin the mismatch flow exists to refuse.
+	if unreadable {
+		return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
+	}
 
 	status := StatusUnpinned
 	if pinned != nil {

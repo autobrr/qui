@@ -76,8 +76,8 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 
 // validateSSHCredentials returns the stored form of the endpoint, or the reason
 // the submission is unusable.
-func validateSSHCredentials(host string, port int, username, privateKey string) (string, string, error) {
-	host, err := normalizeSSHHost(host)
+func validateSSHCredentials(host string, port int, username, privateKey string) (normalizedHost, trimmedUsername string, err error) {
+	host, err = normalizeSSHHost(host)
 	if err != nil {
 		return "", "", err
 	}
