@@ -1089,11 +1089,25 @@ func (s *TorznabIndexerStore) GetLatencyStats(ctx context.Context, indexerID int
 
 	stats := make([]TorznabIndexerLatencyStats, 0)
 	for rows.Next() {
-		var s TorznabIndexerLatencyStats
-		if err := rows.Scan(&s.IndexerID, &s.OperationType, &s.TotalRequests, &s.SuccessfulRequests, &s.AvgLatencyMs, &s.MinLatencyMs, &s.MaxLatencyMs, &s.SuccessRatePct, &s.LastMeasuredAt); err != nil {
+		var stat TorznabIndexerLatencyStats
+		var lastMeasuredAt sql.NullString
+		if err := rows.Scan(
+			&stat.IndexerID,
+			&stat.OperationType,
+			&stat.TotalRequests,
+			&stat.SuccessfulRequests,
+			&stat.AvgLatencyMs,
+			&stat.MinLatencyMs,
+			&stat.MaxLatencyMs,
+			&stat.SuccessRatePct,
+			&lastMeasuredAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan latency stats: %w", err)
 		}
-		stats = append(stats, s)
+		if parsed := parseCacheTimestamp(lastMeasuredAt); parsed != nil {
+			stat.LastMeasuredAt = *parsed
+		}
+		stats = append(stats, stat)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -1113,6 +1127,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 
 	var health TorznabIndexerHealth
 	var enabled int
+	var lastMeasuredAt sql.NullString
 	err := s.db.QueryRowContext(ctx, query, indexerID).Scan(
 		&health.IndexerID,
 		&health.IndexerName,
@@ -1123,7 +1138,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 		&health.AvgLatencyMs,
 		&health.SuccessRatePct,
 		&health.RequestsLast7d,
-		&health.LastMeasuredAt,
+		&lastMeasuredAt,
 	)
 	health.Enabled = SQLiteIntToBool(enabled)
 
@@ -1133,6 +1148,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 		}
 		return nil, fmt.Errorf("failed to get health: %w", err)
 	}
+	health.LastMeasuredAt = parseCacheTimestamp(lastMeasuredAt)
 
 	return &health, nil
 }
@@ -1155,10 +1171,23 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 	for rows.Next() {
 		var health TorznabIndexerHealth
 		var enabled int
-		if err := rows.Scan(&health.IndexerID, &health.IndexerName, &enabled, &health.LastTestStatus, &health.ErrorsLast24h, &health.UnresolvedErrors, &health.AvgLatencyMs, &health.SuccessRatePct, &health.RequestsLast7d, &health.LastMeasuredAt); err != nil {
+		var lastMeasuredAt sql.NullString
+		if err := rows.Scan(
+			&health.IndexerID,
+			&health.IndexerName,
+			&enabled,
+			&health.LastTestStatus,
+			&health.ErrorsLast24h,
+			&health.UnresolvedErrors,
+			&health.AvgLatencyMs,
+			&health.SuccessRatePct,
+			&health.RequestsLast7d,
+			&lastMeasuredAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan health: %w", err)
 		}
 		health.Enabled = SQLiteIntToBool(enabled)
+		health.LastMeasuredAt = parseCacheTimestamp(lastMeasuredAt)
 		healthList = append(healthList, health)
 	}
 
