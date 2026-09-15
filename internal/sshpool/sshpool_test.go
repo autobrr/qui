@@ -141,6 +141,7 @@ func TestUnreadablePinShowsKeyAndOpensNoSession(t *testing.T) {
 	assert.Equal(t, StatusPinUnreadable, report.Status, "a pin that will not decrypt must never degrade to first contact")
 	assert.Equal(t, hostKey.PublicKey().Marshal(), report.HostKey.Marshal())
 	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Auths(), "the handshake stops before authenticating to a host whose pin cannot be checked")
 	assert.Zero(t, server.Channels(), "nothing runs over a connection whose pin cannot be checked")
 }
 
@@ -314,7 +315,7 @@ func TestUnreadablePinOutranksUnreachableHost(t *testing.T) {
 
 	dialer := NewDialer(fakeCreds{key: testClientKey, pinErr: errors.New("decrypt host key pin: message authentication failed")})
 
-	report, err := dialer.Test(t.Context(), instanceAt(t, "127.0.0.1:1"))
+	report, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
 	require.NoError(t, err)
 	assert.Equal(t, StatusPinUnreadable, report.Status)
 	assert.Nil(t, report.HostKey)
@@ -325,7 +326,7 @@ func TestMissingCredentialsOutrankUnreadablePin(t *testing.T) {
 
 	dialer := NewDialer(fakeCreds{keyErr: models.ErrSSHKeyNotConfigured, pinErr: errors.New("decrypt host key pin: message authentication failed")})
 
-	_, err := dialer.Test(t.Context(), instanceAt(t, "127.0.0.1:1"))
+	_, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
 	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured, "nothing to dial with is a request error, not a tampering report")
 }
 

@@ -79,6 +79,11 @@ type Capabilities struct {
 	GNUUserland bool
 }
 
+// errPinUnreadable aborts the handshake once the presented key is recorded: a
+// pin that will not decrypt is tampering, not first contact, and nothing —
+// not even authentication — runs against a host we cannot check.
+var errPinUnreadable = errors.New("stored host key pin is unreadable")
+
 // MismatchError reports that the host presented a key other than the expected
 // one. Error prints fingerprints only, so the message is safe to log; the
 // fields carry the keys for callers that need them.
@@ -115,7 +120,10 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		// connection, from a goroutine this one does not synchronise with. Only
 		// the first key is kept: it is the one the report is about.
 		first.Do(func() { presented = key })
-		if pinned == nil {
+		switch {
+		case unreadable:
+			return errPinUnreadable
+		case pinned == nil:
 			return nil
 		}
 		return matchKey(key, pinned)
@@ -129,6 +137,11 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
 		}
+		if errors.Is(err, errPinUnreadable) {
+			// The key is shown so the user can replace the pin deliberately;
+			// the handshake was aborted before authentication.
+			return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
+		}
 		if unreadable && !errors.Is(err, models.ErrSSHKeyNotConfigured) {
 			// Tampering outranks an unreachable host: a corrupt pin and a host
 			// that does not answer is what a redirected instance looks like.
@@ -139,14 +152,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		return nil, err
 	}
 	defer client.Close()
-
-	// A pin that will not decrypt is tampering, not first contact: the key is
-	// shown so the user can replace the pin deliberately, but nothing runs over
-	// the connection. Degrading to trust-on-first-use here is exactly the
-	// re-pin the mismatch flow exists to refuse.
-	if unreadable {
-		return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
-	}
 
 	status := StatusUnpinned
 	if pinned != nil {
@@ -175,7 +180,10 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 		return err
 	}
 
-	return client.Close()
+	// The key was verified during the handshake; a failed teardown is not a
+	// failed confirmation.
+	_ = client.Close()
+	return nil
 }
 
 func matchKey(presented, expected ssh.PublicKey) error {

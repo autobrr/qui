@@ -47,6 +47,7 @@ type Server struct {
 	exec ExecMode
 
 	mu       sync.Mutex
+	auths    int
 	accepts  int
 	channels int
 }
@@ -56,10 +57,14 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey()}
 	config := &ssh.ServerConfig{
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
 		PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) {
+			server.mu.Lock()
+			server.auths++
+			server.mu.Unlock()
 			return &ssh.Permissions{}, nil
 		},
 	}
@@ -70,7 +75,7 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 		t.Fatalf("listen: %v", err)
 	}
 
-	server := &Server{Addr: listener.Addr().String(), HostKey: hostKey.PublicKey(), exec: exec}
+	server.Addr = listener.Addr().String()
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -91,6 +96,15 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	})
 
 	return server
+}
+
+// Auths returns the number of public-key authentication attempts, which is
+// how a test proves a rejected host key stopped the client before it
+// authenticated.
+func (s *Server) Auths() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.auths
 }
 
 // Accepts returns the number of completed SSH handshakes.
@@ -212,6 +226,21 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+}
+
+// DeadAddr returns a 127.0.0.1 address that was listening a moment ago and is
+// closed now, so a dial to it is refused rather than left to whatever the host
+// happens to run on a fixed port.
+func DeadAddr(t testing.TB) string {
+	t.Helper()
+
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	_ = listener.Close()
+	return addr
 }
 
 // NewHangingListener accepts TCP connections and never speaks SSH, so a dial

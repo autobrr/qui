@@ -92,11 +92,7 @@ func (f *sshFixture) do(method, path, body string) *httptest.ResponseRecorder {
 func (f *sshFixture) putCredentials() {
 	f.t.Helper()
 
-	host, portText, err := net.SplitHostPort(f.server.Addr)
-	require.NoError(f.t, err)
-	port, err := strconv.Atoi(portText)
-	require.NoError(f.t, err)
-
+	host, port := splitAddr(f.t, f.server.Addr)
 	body, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "qui", PrivateKey: f.clientKey})
 	require.NoError(f.t, err)
 
@@ -117,6 +113,18 @@ func (f *sshFixture) sshTest() SSHTestResponse {
 
 func hostKeyBody(key ssh.PublicKey) string {
 	return fmt.Sprintf(`{"hostKey":%q}`, base64.StdEncoding.EncodeToString(key.Marshal()))
+}
+
+// splitAddr turns a host:port string into the host and numeric port the
+// credentials request wants.
+func splitAddr(t *testing.T, addr string) (string, int) {
+	t.Helper()
+
+	host, portText, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	return host, port
 }
 
 // endpoint returns the host and port the fixture's credentials point at, for
@@ -234,7 +242,8 @@ func TestUnreadablePinOnUnreachableHostHasNoKey(t *testing.T) {
 
 	// Corrupt the pin and move the instance to a dead port in one raw update,
 	// bypassing the store's endpoint-change rule that would drop the pin.
-	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ?, ssh_port = 1 WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
+	_, deadPort := splitAddr(t, sshtest.DeadAddr(t))
+	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ?, ssh_port = ? WHERE id = ?", "qui2:not-a-ciphertext", deadPort, f.instance.ID)
 	require.NoError(t, err)
 
 	result := f.sshTest()
@@ -292,7 +301,8 @@ func TestSSHTestReportsUnreachableHostAsResult(t *testing.T) {
 	f.putCredentials()
 
 	// Point the instance at a port nothing listens on.
-	body, err := json.Marshal(SSHCredentialsRequest{Host: "127.0.0.1", Port: 1, Username: "qui", PrivateKey: f.clientKey})
+	deadHost, deadPort := splitAddr(t, sshtest.DeadAddr(t))
+	body, err := json.Marshal(SSHCredentialsRequest{Host: deadHost, Port: deadPort, Username: "qui", PrivateKey: f.clientKey})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
 
