@@ -444,9 +444,7 @@
       "managementTitle": "License Management",
       "managementDescription": "Manage your theme license and premium access",
       "providers": {
-        "dodoPortal": "Dodo portal",
-        "polarPortal": "Polar portal",
-        "legacyPolarPortal": "Legacy Polar portal"
+        "dodoPortal": "Dodo portal"
       },
       "status": {
         "unlockTitle": "Unlock Premium Themes",
@@ -479,8 +477,6 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}"
       },
       "invalid": {
-        "polarPrefix": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via",
-        "polarSuffix": ".",
         "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active."
       },
       "actions": {

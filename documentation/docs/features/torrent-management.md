@@ -1,7 +1,8 @@
 ---
 sidebar_position: 14
-title: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo.
+title: Manage torrents in qui
+sidebar_label: Torrent Management
+description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management

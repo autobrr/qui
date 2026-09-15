@@ -1,12 +1,13 @@
 ---
 sidebar_position: 9
-title: OPS/RED (Gazelle)
-description: Cross-seed between Orpheus and Redacted with their Gazelle JSON APIs, with or without Torznab.
+title: Cross-seed between OPS and RED
+sidebar_label: OPS/RED (Gazelle)
+description: Cross-seed music between Orpheus and Redacted with their Gazelle JSON APIs, with or without Torznab.
 ---
 
 # OPS/RED (Gazelle)
 
-qui cross-seeds between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
+qui cross-seeds between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs. For the general flow, start with the [cross-seed overview](./overview.md).
 
 :::tip TL;DR
 - For the best OPS/RED cross-seed coverage, enable Gazelle and set **both** API keys.
@@ -75,7 +76,7 @@ If the target tracker is down or returns an error, qui treats the torrent as **n
 
 ## Configuration
 
-UI: **Cross-Seed > Rules > Gazelle (OPS/RED)**
+UI: **Cross-Seed > [Rules](./rules.md) > Gazelle (OPS/RED)**
 
 - Enable Gazelle matching
 - Set one or both API keys

@@ -1,6 +1,7 @@
 ---
 sidebar_position: 13
-title: Client Migration
+title: Migrate from Deluge, rTorrent, or Transmission to qBittorrent
+sidebar_label: Client Migration
 description: Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent.
 ---
 
