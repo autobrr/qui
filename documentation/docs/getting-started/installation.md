@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: Installation
-description: Install qui on Linux with a single command.
+title: Install qui
+sidebar_label: Installation
+description: Install qui on Linux with one command, or download the binary for Linux, macOS, Windows, and Docker.
 ---
 
 # Installation
@@ -25,7 +26,7 @@ If the command fails with a permission error, run it again with `sudo`. If you d
 
 ## Manual download
 
-Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases). Windows users should follow the [Windows guide](./windows.md).
+Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases). Windows users should follow the [Windows guide](./windows.md). For containers, see the [Docker guide](./docker.md), and for shared seedboxes, the [seedbox installers](./seedbox-installers.md).
 
 On Linux or macOS, extract the archive:
 
@@ -48,7 +49,7 @@ chmod +x qui
 ./qui serve
 ```
 
-The web interface is available at http://localhost:7476.
+The web interface is available at http://localhost:7476. To change the port or other settings, see [environment variables](../configuration/environment.md).
 
 ## Updating
 

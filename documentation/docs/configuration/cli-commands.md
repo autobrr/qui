@@ -1,7 +1,8 @@
 ---
 sidebar_position: 5
-title: CLI Commands
-description: CLI commands for users, updates, migration, and the database.
+title: qui CLI commands
+sidebar_label: CLI Commands
+description: "qui command-line reference: start the server, create users, change passwords, update, migrate torrents, and manage the database."
 ---
 
 # CLI Commands

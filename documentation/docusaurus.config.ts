@@ -100,10 +100,12 @@ const config: Config = {
           sidebarPath: "./sidebars.ts",
           editUrl: "https://github.com/autobrr/qui/tree/main/documentation/",
           routeBasePath: "docs",
+          showLastUpdateTime: true,
         },
         blog: false,
         sitemap: {
           ignorePatterns: ["/search/"],
+          lastmod: "date",
         },
         theme: {
           customCss: "./src/css/custom.css",
