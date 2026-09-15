@@ -31,6 +31,7 @@ require (
 	github.com/moistari/rls v0.6.0
 	github.com/nicholas-fedor/shoutrrr v0.17.0
 	github.com/pkg/errors v0.9.1
+	github.com/pkg/sftp v1.13.11
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.35.1
@@ -74,6 +75,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
