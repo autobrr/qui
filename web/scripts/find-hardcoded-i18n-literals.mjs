@@ -389,7 +389,7 @@ function shouldScanFile(relativePath) {
   return true
 }
 
-function walkFiles(rootDir) {
+export function walkFiles(rootDir) {
   const files = []
 
   function visit(dirPath) {

@@ -1065,10 +1065,6 @@
       "label": "Pairs",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "Bannir le Pair",
-      "description": "Êtes-vous sûr de vouloir bannir {{address}} ?"
-    },
     "banPeerPermanent": {
       "title": "Bannir le Pair de façon permanente",
       "description": "Êtes-vous sûr de vouloir bannir définitivement ce pair ? Cette action est irréversible.",
