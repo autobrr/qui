@@ -66,7 +66,7 @@ type Report struct {
 	Status       Status
 	HostKey      ssh.PublicKey
 	PinnedKey    ssh.PublicKey // mismatch only
-	Capabilities *Capabilities // nil on mismatch: no session is opened
+	Capabilities *Capabilities // nil on mismatch and pin_unreadable: no session is opened
 }
 
 // Capabilities is what the server lets us do, probed read-only.
@@ -129,6 +129,11 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
 		}
+		if unreadable {
+			// Tampering outranks an unreachable host: a corrupt pin and a host
+			// that does not answer is what a redirected instance looks like.
+			return &Report{Status: StatusPinUnreadable}, nil
+		}
 		return nil, err
 	}
 	defer client.Close()
@@ -165,9 +170,6 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 
 	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(expected))
 	if err != nil {
-		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
-			return mismatch
-		}
 		return err
 	}
 

@@ -1247,6 +1247,8 @@ paths:
           description: Invalid instance ID, or no SSH credentials configured
         '404':
           description: Instance not found
+        '500':
+          description: Failed to load the instance
 
   /api/instances/{instanceID}/ssh-host-key:
     post:
@@ -1277,6 +1279,8 @@ paths:
           description: The host presented a different key, the instance is already pinned, or its endpoint changed
         '502':
           description: The host could not be reached
+        '500':
+          description: Failed to load the instance or store the pin
 
   /api/instances/{instanceID}/ssh-host-key/replace:
     post:
@@ -1307,6 +1311,8 @@ paths:
           description: The host presented a different key, the instance is not pinned, or its endpoint changed
         '502':
           description: The host could not be reached
+        '500':
+          description: Failed to load the instance or store the pin
 
   /api/instances/{instanceID}/app-info:
     get:

@@ -228,8 +228,9 @@ backend domain end to end.
 - A host-key change after pinning fails closed: no automatic re-pin. A
   pin that fails to decrypt is never "unpinned": `ssh-test` reports it as
   `pin_unreadable` with the presented key and no probe, nothing runs over
-  that connection, and the only way out is the replace route with its
-  heavier confirmation, the same door a mismatch uses. An empty
+  that connection, and the way out is the replace route with its heavier
+  confirmation, the same door a mismatch uses (an endpoint change drops the
+  pin as it always does, and takes first contact). An empty
   pin column is unpinned and takes the first-contact flow: there is no
   separate "was pinned" state, so a database writer who clears the column
   is not detected. What that buys them is a first-contact confirmation the
@@ -293,9 +294,19 @@ need insert-then-update in one transaction.
 
 ## API
 
-- `POST /instances/{id}/ssh-test` — dial with provided credentials, return
-  host-key fingerprint for TOFU confirmation plus the capability report.
-- `DELETE /instances/{id}/ssh-credentials`.
+- `PUT /instances/{id}/ssh-credentials` — store host, port, username and
+  private key; a host or port change drops the pin.
+- `DELETE /instances/{id}/ssh-credentials` — clear the credentials, keep
+  the pin.
+- `POST /instances/{id}/ssh-test` — dial with the stored credentials and
+  report the presented host key, its relation to the pin (`unpinned`,
+  `pinned`, `mismatch`, `pin_unreadable`, `error`) and, when the key is
+  trusted or unpinned, the capability report.
+- `POST /instances/{id}/ssh-host-key` — re-dial, require the host to
+  present exactly the echoed key, pin it; 409 when already pinned.
+- `POST /instances/{id}/ssh-host-key/replace` — the same over an existing
+  pin, reached only from the mismatch or unreadable-pin screen; 409 when
+  unpinned.
 - No deploy/redeploy/helper endpoints.
 
 ## Frontend
