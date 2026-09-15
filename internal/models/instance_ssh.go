@@ -150,7 +150,20 @@ func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, host 
 		return ErrSSHHostKeyAlreadyPinned
 	}
 
-	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey)
+	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey, false)
+}
+
+// ReplaceHostKeyPin overwrites the pin after the user confirmed a mismatch. It
+// is the mirror of SetHostKeyPin: an instance with nothing pinned is refused
+// with ErrSSHHostKeyNotPinned, since a replacement the user never compared
+// against an existing pin is just a silent TOFU by another name.
+func (s *InstanceStore) ReplaceHostKeyPin(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
+	host, err := normalizeSSHHost(host)
+	if err != nil {
+		return err
+	}
+
+	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey, true)
 }
 
 // validateMarshaledHostKey enforces that the column only ever holds SSH wire
@@ -171,10 +184,11 @@ func validateMarshaledHostKey(marshaledKey []byte) error {
 // only ever clears one), so the wire-format check lives here rather than at a
 // caller. The UPDATE is a compare-and-set on the endpoint the AAD was built
 // from: an interleaved credential update would otherwise leave a pin that can
-// never decrypt again, with nothing pointing at why. A zero-row result is
-// classified rather than assumed to be an endpoint change, since the WHERE
-// also refuses an already-pinned row.
-func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
+// never decrypt again, with nothing pointing at why. replace flips which pin
+// state the compare-and-set accepts, first pin or confirmed replacement, so a
+// zero-row result is classified rather than assumed to be an endpoint change:
+// the WHERE also refuses a row in the wrong pin state.
+func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte, replace bool) error {
 	if err := validateMarshaledHostKey(marshaledKey); err != nil {
 		return err
 	}
@@ -184,11 +198,17 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 		return fmt.Errorf("encrypt host key pin: %w", err)
 	}
 
+	// The predicate is a local literal, never an argument, so the statement
+	// stays fully parameterised.
+	pinnedTerm := "= ''"
+	if replace {
+		pinnedTerm = "<> ''"
+	}
 	query := `
 		UPDATE instances
 		SET ssh_host_key_encrypted = ?
-		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted = ''
-	`
+		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted ` + pinnedTerm
+
 	err = s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, instanceID, host, port)
 	if !errors.Is(err, ErrSSHEndpointChanged) {
 		return err
@@ -198,7 +218,9 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 	switch {
 	case getErr != nil:
 		return getErr
-	case instance.SSHHostKeyEncrypted != "":
+	case replace && instance.SSHHostKeyEncrypted == "":
+		return ErrSSHHostKeyNotPinned
+	case !replace && instance.SSHHostKeyEncrypted != "":
 		return ErrSSHHostKeyAlreadyPinned
 	}
 	return ErrSSHEndpointChanged
