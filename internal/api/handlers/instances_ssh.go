@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 
@@ -60,9 +58,8 @@ type SSHCapabilities struct {
 
 // UpdateSSHCredentials stores the SSH endpoint and private key for an instance.
 func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
@@ -93,9 +90,8 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 // DeleteSSHCredentials forgets the key but keeps the pin: the pin belongs to
 // the host, not to whoever last authenticated against it.
 func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
@@ -189,6 +185,17 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
+	// Answer from the row before dialing; the store's compare-and-set still
+	// guards the race.
+	switch pinned := instance.SSHHostKeyEncrypted != ""; {
+	case pinned && !replace:
+		RespondError(w, http.StatusConflict, models.ErrSSHHostKeyAlreadyPinned.Error())
+		return
+	case !pinned && replace:
+		RespondError(w, http.StatusConflict, models.ErrSSHHostKeyNotPinned.Error())
+		return
+	}
+
 	// Re-dial rather than trust the echoed key: pinning what the host presents
 	// right now is the trust-on-first-use the confirmation step exists to
 	// replace, and it is also what makes the flow stateless between requests.
@@ -228,12 +235,11 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// sshInstance loads the instance for a dialing endpoint, answering the request
-// itself on every failure.
+// loadSSHInstance loads the instance for a dialing endpoint, answering the
+// request itself on every failure.
 func (h *InstancesHandler) loadSSHInstance(w http.ResponseWriter, r *http.Request) (*models.Instance, bool) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return nil, false
 	}
 

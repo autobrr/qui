@@ -26,6 +26,12 @@ const outputLimit = 8 << 10
 func probe(ctx context.Context, client *ssh.Client) *Capabilities {
 	capabilities := &Capabilities{}
 
+	// The sftp init and each command block inside x/crypto with no ctx of
+	// their own. The connection is one-shot, so closing it is the cancel: every
+	// blocked call returns and its flag stays false.
+	stop := context.AfterFunc(ctx, func() { _ = client.Close() })
+	defer stop()
+
 	if sftpClient, err := sftp.NewClient(client); err == nil {
 		capabilities.SFTP = true
 		_, capabilities.Statvfs = sftpClient.HasExtension("statvfs@openssh.com")
