@@ -32,6 +32,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Numbering scheme**: How a TV release names its episode: seasoned (`S04E15`) or absolute (`- 81`, no season). A pair of releases that use the same scheme compare episode numbers directly. _Avoid_: anime numbering, episode format.
 - **Episode map**: The Sonarr-sourced triple (season, episode, absolute) for one release name. It lets one seasoned and one absolute release count as the same episode. Exists only when Sonarr names exactly one episode and that episode has an absolute number; otherwise there is no map and the pair falls back to size evidence. _Avoid_: Sonarr mapping, episode translation, absolute lookup.
 
+## Cross-seed link tree
+
+- **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
+- **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
+
 ## Disc reports
 
 - **Disc**: A Blu-ray as one unit: the folder that holds `BDMV`, or one `.iso`. The unit a BDInfo scan reads. One torrent can hold several Discs. _Avoid_: Blu-ray folder, disc torrent.

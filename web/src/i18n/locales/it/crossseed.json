@@ -424,7 +424,8 @@
     },
     "phases": {
       "check": "Verifica",
-      "apply": "Applicazione"
+      "apply": "Applicazione",
+      "resume": "Ripresa"
     }
   },
   "cancelDialog": {

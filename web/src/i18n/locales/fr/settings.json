@@ -444,9 +444,7 @@
       "managementTitle": "Gestion de Licence",
       "managementDescription": "Gérez votre licence et l'accès premium",
       "providers": {
-        "dodoPortal": "Portail Dodo",
-        "polarPortal": "Portail Polar",
-        "legacyPolarPortal": "Ancien portail Polar"
+        "dodoPortal": "Portail Dodo"
       },
       "status": {
         "unlockTitle": "Débloquer les Thèmes Premium",
@@ -479,8 +477,6 @@
         "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Cette licence n'est pas active sur cette machine. Cliquez sur ré-activer. Si vous atteignez la limite d'activation, désactivez-la sur l'autre machine ou gérez vos activations via",
-        "polarSuffix": ".",
         "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, désactivez-la d'abord sur la machine actuellement active."
       },
       "actions": {

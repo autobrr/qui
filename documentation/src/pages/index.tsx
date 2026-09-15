@@ -1,4 +1,5 @@
 import Link from "@docusaurus/Link";
+import Head from "@docusaurus/Head";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 import { useRef, useState, type ReactNode } from "react";
@@ -50,7 +51,9 @@ function ScreenshotSection() {
   return (
     <section className={styles.screenshot}>
       <img
-        src="/img/qui-hero.png"
+        src="/img/qui-hero.webp"
+        width={2400}
+        height={1440}
         alt="The qui torrent table with sidebar filters, categories, and live stats"
         className={styles.screenshotImage}
       />
@@ -249,7 +252,26 @@ function CommunitySection() {
 export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
   return (
-    <Layout title={siteConfig.title} description={siteConfig.tagline}>
+    <Layout title="Fast web UI for qBittorrent" description={siteConfig.tagline}>
+      <Head>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "qui",
+            applicationCategory: "UtilitiesApplication",
+            operatingSystem: "Linux, Windows, macOS, Docker",
+            description: siteConfig.tagline,
+            url: siteConfig.url,
+            downloadUrl: "https://github.com/autobrr/qui/releases",
+            softwareHelp: `${siteConfig.url}/docs/intro/`,
+            license: "https://www.gnu.org/licenses/gpl-2.0.html",
+            offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+            author: { "@type": "Organization", name: "autobrr", url: "https://github.com/autobrr" },
+            sameAs: ["https://github.com/autobrr/qui", "https://discord.autobrr.com/qui"],
+          })}
+        </script>
+      </Head>
       <main className={styles.main}>
         <HeroSection />
         <ScreenshotSection />

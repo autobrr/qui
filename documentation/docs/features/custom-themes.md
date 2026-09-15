@@ -1,7 +1,8 @@
 ---
 sidebar_position: 12
-title: Custom Themes
-description: Sideload your own theme CSS files from a directory on disk (premium).
+title: Custom themes for qui
+sidebar_label: Custom Themes
+description: Sideload your own CSS theme from a directory on disk with a premium license, with a design token reference and a Refresh button that loads edited files without a restart.
 ---
 
 # Custom themes

@@ -27,7 +27,7 @@ func ensureStringPoolValue(t *testing.T, db *database.DB, value string) int64 {
 	t.Helper()
 
 	ctx := context.Background()
-	_, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
+	_, err := db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT DO NOTHING", value)
 	require.NoError(t, err)
 
 	var id int64
@@ -44,16 +44,15 @@ func insertTestTorznabIndexer(t *testing.T, db *database.DB, name, baseURL strin
 	baseURLID := ensureStringPoolValue(t, db, baseURL)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, `
+	var indexerID int
+	err := db.QueryRowContext(ctx, `
 		INSERT INTO torznab_indexers (name_id, base_url_id, api_key_encrypted, backend)
 		VALUES (?, ?, ?, ?)
-	`, nameID, baseURLID, "encrypted-key", "jackett")
+		RETURNING id
+	`, nameID, baseURLID, "encrypted-key", "jackett").Scan(&indexerID)
 	require.NoError(t, err)
 
-	indexerID, err := result.LastInsertId()
-	require.NoError(t, err)
-
-	return int(indexerID)
+	return indexerID
 }
 
 func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
@@ -410,6 +409,98 @@ func TestCrossSeedStore_MarkFeedItemTruncatesLastSeenToDayPrecision(t *testing.T
 
 	third := readLastSeen()
 	assert.True(t, third.After(second), "expected next-day poll to advance last_seen_at, got %v vs %v", third, second)
+}
+
+func TestCrossSeedStore_TouchFeedItemSQLite(t *testing.T) {
+	runTouchFeedItemTests(t, testdb.NewMigratedSQLite)
+}
+
+func TestCrossSeedStore_TouchFeedItemPostgresIntegration(t *testing.T) {
+	runTouchFeedItemTests(t, testdb.NewMigratedPostgres)
+}
+
+func runTouchFeedItemTests(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+
+	base := time.Date(2026, 8, 27, 3, 15, 0, 0, time.UTC)
+	day := base.Truncate(24 * time.Hour)
+
+	tests := []struct {
+		name         string
+		storedSeen   time.Time
+		legacy       bool // stored untruncated, as MarkFeedItem wrote it before #2456
+		touchAt      time.Time
+		wantSeen     time.Time
+		wantRewrites bool
+	}{
+		{name: "same day leaves the row untouched", storedSeen: base, touchAt: base.Add(6 * time.Hour), wantSeen: day},
+		{name: "next day advances last_seen_at", storedSeen: base, touchAt: base.Add(24 * time.Hour), wantSeen: day.Add(24 * time.Hour), wantRewrites: true},
+		{name: "earlier day never moves last_seen_at back", storedSeen: base, touchAt: base.Add(-24 * time.Hour), wantSeen: day},
+		{name: "legacy timestamp from earlier today is left alone", storedSeen: base, legacy: true, touchAt: base.Add(6 * time.Hour), wantSeen: base},
+		{name: "legacy timestamp from yesterday is refreshed", storedSeen: base.Add(-24 * time.Hour), legacy: true, touchAt: base, wantSeen: day, wantRewrites: true},
+		{name: "item seen 31 days ago is refreshed past the prune cutoff", storedSeen: base.Add(-31 * 24 * time.Hour), touchAt: base, wantSeen: day, wantRewrites: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newDB(t, "touch-feed-item")
+			store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+			require.NoError(t, err)
+			ctx := t.Context()
+			postgres := db.Dialect() == string(database.DialectPostgres)
+
+			indexerID := insertTestTorznabIndexer(t, db, "Test Indexer", "https://example.com")
+			guid := "touch-guid"
+			require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
+				GUID:       guid,
+				IndexerID:  indexerID,
+				Title:      "Example",
+				LastStatus: models.CrossSeedFeedItemStatusProcessed,
+				LastSeenAt: tt.storedSeen,
+			}))
+			if tt.legacy {
+				_, err := db.ExecContext(ctx, "UPDATE cross_seed_feed_items SET last_seen_at = ? WHERE guid = ?", tt.storedSeen, guid)
+				require.NoError(t, err)
+			}
+
+			// Postgres writes a new row version, and a new xmin, even for an
+			// update that rewrites identical values. SQLite has no row version,
+			// so a trigger counts updates instead.
+			if !postgres {
+				for _, stmt := range []string{
+					"CREATE TABLE touch_writes (n INTEGER NOT NULL)",
+					"INSERT INTO touch_writes VALUES (0)",
+					"CREATE TRIGGER touch_writes_count AFTER UPDATE ON cross_seed_feed_items BEGIN UPDATE touch_writes SET n = n + 1; END",
+				} {
+					_, err := db.ExecContext(ctx, stmt)
+					require.NoError(t, err)
+				}
+			}
+			rowVersion := func() string {
+				var version string
+				query := "SELECT n FROM touch_writes"
+				if postgres {
+					query = "SELECT xmin::text FROM cross_seed_feed_items"
+				}
+				require.NoError(t, db.QueryRowContext(ctx, query).Scan(&version))
+				return version
+			}
+			versionBefore := rowVersion()
+
+			require.NoError(t, store.TouchFeedItem(ctx, guid, indexerID, tt.touchAt))
+
+			var seen time.Time
+			require.NoError(t, db.QueryRowContext(ctx, "SELECT last_seen_at FROM cross_seed_feed_items WHERE guid = ?", guid).Scan(&seen))
+			assert.True(t, seen.Equal(tt.wantSeen), "last_seen_at = %v, want %v", seen, tt.wantSeen)
+			assert.Equal(t, tt.wantRewrites, rowVersion() != versionBefore, "row rewritten")
+
+			// The same cutoff the automation run passes after the poll.
+			cutoff := tt.touchAt.UTC().Truncate(24 * time.Hour).Add(-30 * 24 * time.Hour)
+			removed, err := store.PruneFeedItems(ctx, cutoff)
+			require.NoError(t, err)
+			assert.Zero(t, removed, "prune removed an item that is still in the feed")
+		})
+	}
 }
 
 // A rule stored before a rule could carry several categories decodes with none.

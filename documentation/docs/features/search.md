@@ -1,7 +1,8 @@
 ---
 sidebar_position: 16
-title: Search
-description: Search your Torznab indexers and send results to a qBittorrent instance.
+title: Search Torznab indexers from qui
+sidebar_label: Search
+description: Search all your Torznab indexers in one table and send results straight to a qBittorrent instance.
 ---
 
 # Search

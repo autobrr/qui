@@ -5,12 +5,16 @@ package filesmanager
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -37,7 +41,12 @@ func runFilesmanagerTests(t *testing.T, open testDBOpener) {
 		{"UpsertFilesWritesChangedRows", testUpsertFilesWritesChangedRows},
 		{"UpsertFilesGuardIsNullSafe", testUpsertFilesGuardIsNullSafe},
 		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
+		{"UpsertFilesUnchangedRowsTakeNoRowLocks", testUpsertFilesUnchangedRowsTakeNoRowLocks},
+		{"UpsertFilesComparesWithinInstance", testUpsertFilesComparesWithinInstance},
+		{"UpsertFileRowsGuardSkipsRowsAlreadyStored", testUpsertFileRowsGuardSkipsRowsAlreadyStored},
 		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
+		{"CacheFilesBatchConcurrentOverlap", testCacheFilesBatchConcurrentOverlap},
+		{"UpsertSyncInfoBatchConcurrentOverlap", testUpsertSyncInfoBatchConcurrentOverlap},
 	}
 
 	for _, tt := range tests {
@@ -270,4 +279,188 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 
 		require.Equal(t, total-3, countAtSentinel(ctx, t, db), "only the three changed rows should have been written")
 	})
+}
+
+// A guarded ON CONFLICT DO UPDATE on Postgres locks every conflicting row even when
+// the guard skips it, and each lock writes WAL. A tuple lock leaves its xid in xmax.
+func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		if db.Dialect() != "postgres" {
+			t.Skip("row locks that write WAL are a Postgres cost")
+		}
+		repo := NewRepository(db)
+
+		files := make([]CachedFile, fileBatchSize*2+5)
+		for i := range files {
+			f := baseFile()
+			f.FileIndex = i
+			files[i] = f
+		}
+		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertFiles(ctx, files))
+
+		var stored int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache`).Scan(&stored))
+		require.Equal(t, len(files), stored)
+
+		var locked int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE xmax::text <> '0'`).Scan(&locked))
+		require.Zero(t, locked, "an unchanged sync should not lock any row")
+	})
+}
+
+// dropUnchangedRows reads before the upsert, so a concurrent writer can store the
+// same values in between. The SQL guard must still skip those rows.
+func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		unchanged := baseFile()
+		changed := baseFile()
+		changed.FileIndex = 1
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{unchanged, changed}))
+		markCachedAt(ctx, t, db)
+
+		tx, err := db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback() }()
+		ids, err := dbinterface.InternStrings(ctx, tx, unchanged.TorrentHash, unchanged.Name)
+		require.NoError(t, err)
+
+		row := fileRow{
+			instanceID:      unchanged.InstanceID,
+			hashID:          ids[0],
+			nameID:          ids[1],
+			size:            unchanged.Size,
+			progress:        unchanged.Progress,
+			priority:        unchanged.Priority,
+			isSeed:          encodeNullableBoolAsInt(unchanged.IsSeed),
+			pieceRangeStart: unchanged.PieceRangeStart,
+			pieceRangeEnd:   unchanged.PieceRangeEnd,
+			availability:    unchanged.Availability,
+		}
+		moved := row
+		moved.fileIndex = 1
+		moved.progress = 0.5
+		require.NoError(t, upsertFileRows(ctx, tx, []fileRow{row, moved}))
+		require.NoError(t, tx.Commit())
+
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the changed row should have been written")
+	})
+}
+
+// Cross-seeded torrents share a hash across instances. Each instance's rows must be
+// compared only against that instance's stored rows.
+func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		var nameID, hostID, usernameID int64
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-name").Scan(&nameID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-host").Scan(&hostID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-username").Scan(&usernameID))
+		_, err := db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 2, nameID, hostID, usernameID, "enc")
+		require.NoError(t, err)
+
+		first := baseFile()
+		second := baseFile()
+		second.InstanceID = 2
+		second.Progress = 0.5
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first, second}))
+		markCachedAt(ctx, t, db)
+
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.Equal(t, 2, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
+
+		first.Progress = 0.5
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the first instance's row should have been written")
+	})
+}
+
+// Cross-seed, automations and the UI can cache the same torrents at once. On
+// Postgres, writers that lock the same rows in different orders deadlock
+// (SQLSTATE 40P01), so every overlapping call must succeed.
+func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		svc := NewService(db)
+
+		const (
+			workers  = 4
+			rounds   = 5
+			torrents = 20
+			perTorr  = 20
+		)
+
+		// Alternate availability so every call rewrites rows and takes their locks.
+		batches := [2]map[string]qbt.TorrentFiles{}
+		for v := range batches {
+			batches[v] = make(map[string]qbt.TorrentFiles, torrents)
+			for h := range torrents {
+				files := make(qbt.TorrentFiles, perTorr)
+				for i := range files {
+					files[i] = qbt.TorrentFile{
+						Index:        i,
+						Name:         fmt.Sprintf("overlap-%d/file-%d.mkv", h, i),
+						Size:         int64(i + 1),
+						Progress:     1,
+						Availability: float32(v + 1),
+					}
+				}
+				batches[v][fmt.Sprintf("overlap-hash-%d", h)] = files
+			}
+		}
+
+		require.NoError(t, runOverlapping(ctx, workers, rounds, func(ctx context.Context, w, r int) error {
+			return svc.CacheFilesBatch(ctx, 1, batches[(w+r)%2])
+		}))
+	})
+}
+
+// In CacheFilesBatch the file upsert dominates, so overlapping sync-info writes
+// are rare there; call the repository directly to overlap them every time.
+func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		hashes := make(map[string]struct{}, 20)
+		for h := range 20 {
+			hashes[fmt.Sprintf("overlap-hash-%d", h)] = struct{}{}
+		}
+
+		require.NoError(t, runOverlapping(ctx, 4, 10, func(ctx context.Context, _, _ int) error {
+			// Built from a map like CacheFilesBatch does, so each call has its own order.
+			infos := make([]SyncInfo, 0, len(hashes))
+			for h := range hashes {
+				infos = append(infos, SyncInfo{InstanceID: 1, TorrentHash: h, LastSyncedAt: time.Now(), FileCount: 1})
+			}
+			return repo.UpsertSyncInfoBatch(ctx, infos)
+		}))
+	})
+}
+
+// runOverlapping runs call from several workers at once and returns the first error.
+func runOverlapping(ctx context.Context, workers, rounds int, call func(ctx context.Context, worker, round int) error) error {
+	g, gctx := errgroup.WithContext(ctx)
+	for w := range workers {
+		g.Go(func() error {
+			for r := range rounds {
+				if err := call(gctx, w, r); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	return g.Wait()
 }

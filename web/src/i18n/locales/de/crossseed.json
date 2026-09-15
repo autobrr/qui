@@ -425,7 +425,8 @@
     },
     "phases": {
       "check": "Prüfen",
-      "apply": "Anwenden"
+      "apply": "Anwenden",
+      "resume": "Fortsetzen"
     }
   },
   "cancelDialog": {

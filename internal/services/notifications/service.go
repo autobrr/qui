@@ -389,7 +389,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		lines := []string{
 			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
 			formatLine("Files deleted", strconv.Itoa(event.OrphanScanFilesDeleted)),
-			formatLine("Folders deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
+			formatLine("Directories deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
 		}
 		if event.OrphanScanPartial {
 			lines = append(lines, formatLine("Orphans found", strconv.Itoa(event.OrphanScanFilesFound)))
