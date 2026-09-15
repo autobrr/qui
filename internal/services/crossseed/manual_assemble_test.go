@@ -110,14 +110,30 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			require.Equal(t, "chosen", sm.addCalls[0].options["category"])
 			require.Equal(t, "chosen", sm.addCalls[0].options["tags"])
 			require.Equal(t, "recheck", sm.bulkCalls[0].action)
-			require.InDelta(t, 256.0/640.0*seasonPackResumeSlack, (<-svc.recheckResumeChan).threshold, 0.00001)
+			pending := <-svc.recheckResumeChan
+			require.InDelta(t, 256.0/640.0*seasonPackResumeSlack, pending.threshold, 0.00001)
 			require.Len(t, runs.runs, 1)
 			require.Equal(t, 2, runs.runs[0].MatchedEpisodes)
 			require.InDelta(t, 0.5, runs.runs[0].Coverage, 0.00001)
 			require.Equal(t, mode, runs.runs[0].LinkMode)
-			linked, err := os.ReadFile(filepath.Join(preview.Destination, packName, "Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"))
+			linkPath := filepath.Join(preview.Destination, packName, "Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv")
+			linked, err := os.ReadFile(linkPath)
 			require.NoError(t, err)
 			require.Equal(t, contents["Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"], linked)
+
+			// The manual path reaches the same queue site, so a failed recheck
+			// demotes the episode too; manual applies have no coverage floor.
+			if mode == "reflink" {
+				require.Nil(t, pending.demote)
+				return
+			}
+			threshold, _, refusal := pending.demote(t.Context(), []string{packName + "/Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"})
+			require.Empty(t, refusal)
+			require.InDelta(t, 64.0/640.0*seasonPackResumeSlack, threshold, 0.00001)
+			require.NoFileExists(t, linkPath)
+			source, err := os.ReadFile(torrents[2].ContentPath)
+			require.NoError(t, err)
+			require.Equal(t, contents["Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"], source)
 		})
 	}
 }

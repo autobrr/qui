@@ -520,25 +520,46 @@ type pendingResume struct {
 	// linkedPaths holds the torrent paths qui hardlinked before the add; nil for
 	// reflink and regular adds. A linked file that rechecks below 100% blocks the
 	// resume unless every failed piece straddles a pending file: downloading it
-	// would write into the source through the shared inode. Paths, not indexes:
-	// qBittorrent drops pad files from its file list and renumbers.
+	// would write into the source through the shared inode. A season pack entry
+	// demotes such a file instead (see demote). Paths, not indexes: qBittorrent
+	// drops pad files from its file list and renumbers.
 	linkedPaths map[string]struct{}
-	// blockedLinkedFile names the linked file that tripped the gate on the last
-	// evaluation, with its missing bytes.
-	blockedLinkedFile  string
+	// blockedLinkedFiles names the linked files that tripped the gate on the last
+	// evaluation, with their missing bytes.
+	blockedLinkedFiles []string
 	blockedLinkedBytes int64
+	// blockedMsg overrides the gate message when a demotion could not resume.
+	blockedMsg string
 	// blockedRun is the season pack history row to append when the gate blocks,
 	// since the apply row was written before the recheck ran. nil for cross-seed
 	// adds, whose result already went back to the caller.
 	blockedRun *models.SeasonPackRun
+	// demote is set by the season pack apply in hardlink mode; nil entries stay
+	// paused for review when the gate blocks.
+	demote demoteFunc
+	// demoted lists the linked files earlier passes unlinked; the resume
+	// confirmation records them on the season pack history.
+	demoted []string
 }
 
-// leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
+// demoteFunc turns the linked files that tripped the hardlink gate into pending
+// files and returns the resume threshold and linked set for the next recheck. A
+// non-empty refusal leaves the torrent paused with that message.
+type demoteFunc func(ctx context.Context, mismatched []string) (threshold float64, linked map[string]struct{}, refusal string)
+
+// leftPausedMsg names the linked files that tripped the hardlink gate, else fallback.
 func (req *pendingResume) leftPausedMsg(fallback string) string {
-	if req.blockedLinkedFile == "" {
+	if req.blockedMsg != "" {
+		return req.blockedMsg
+	}
+	if len(req.blockedLinkedFiles) == 0 {
 		return fallback
 	}
-	return fmt.Sprintf("Linked file %s does not match the torrent, left paused to protect the source", req.blockedLinkedFile)
+	noun, verb := "file", "does"
+	if len(req.blockedLinkedFiles) > 1 {
+		noun, verb = "files", "do"
+	}
+	return fmt.Sprintf("Linked %s %s %s not match the torrent, left paused to protect the source", noun, strings.Join(req.blockedLinkedFiles, ", "), verb)
 }
 
 type cachedTorrentSearchResults struct {
@@ -6519,13 +6540,14 @@ func recheckResumeKey(instanceID int, hash string) string {
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
 // verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
-func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}, blockedRun *models.SeasonPackRun) error {
+func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}, blockedRun *models.SeasonPackRun, demote demoteFunc) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:  instanceID,
 		hash:        hash,
 		threshold:   threshold,
 		linkedPaths: linkedPaths,
 		blockedRun:  blockedRun,
+		demote:      demote,
 	})
 }
 
@@ -6611,8 +6633,14 @@ func pendingResumeBudgetForLog(req *pendingResume) int64 {
 // sidecar files. Hardlink entries then pass the linked-file gate.
 func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
 	req.forgivenessEvalFailed = false
-	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
+	req.blockedLinkedFiles, req.blockedLinkedBytes = nil, 0
 	if !s.thresholdOrBudgetSatisfied(instanceID, req, torrent) {
+		// A whole wrong episode drops progress below the threshold before the
+		// gate runs; a demotable entry still finds the failed links behind the
+		// shortfall so the worker can unlink them.
+		if req.demote != nil && req.linkedPaths != nil {
+			s.hardlinkResumeAllowed(instanceID, req)
+		}
 		return false
 	}
 	if req.linkedPaths == nil || torrent.AmountLeft <= 0 {
@@ -6632,7 +6660,8 @@ type pieceStateReader interface {
 var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
 
 // hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
-// that no pending file shares. Fetch failures keep the entry for a retry.
+// that no pending file shares; the caller then demotes or leaves the torrent
+// paused. Fetch failures keep the entry for a retry.
 // Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
 func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
@@ -6656,19 +6685,19 @@ func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool
 		return false
 	}
 
-	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
-	if name == "" {
+	names, missing := mismatchedLinkedFiles(files, pieces, req.linkedPaths)
+	if len(names) == 0 {
 		return true
 	}
-	req.blockedLinkedFile = name
+	req.blockedLinkedFiles = names
 	req.blockedLinkedBytes = missing
 	return false
 }
 
-// mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
-// be explained by a piece it shares with a pending file, with its missing bytes.
+// mismatchedLinkedFiles returns every linked file whose failed pieces cannot all
+// be explained by a piece it shares with a pending file, with their missing bytes.
 // A piece range past the end of the piece list counts as mismatched.
-func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) (string, int64) {
+func mismatchedLinkedFiles(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) ([]string, int64) {
 	// Only a pending file's first and last piece can reach into a neighbour.
 	// An empty file occupies no piece: qBittorrent reports it as [start, start-1].
 	shared := make([]bool, len(pieces))
@@ -6682,21 +6711,24 @@ func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linke
 			}
 		}
 	}
+	var names []string
+	var missing int64
 	for _, file := range files {
 		if _, ok := linked[file.Name]; !ok || file.Progress >= 1 {
 			continue
 		}
-		missing := int64((1 - float64(file.Progress)) * float64(file.Size))
-		if len(file.PieceRange) < 2 || file.PieceRange[1] >= len(pieces) {
-			return file.Name, missing
-		}
-		for p := file.PieceRange[0]; p <= file.PieceRange[1]; p++ {
-			if pieces[p] != qbt.PieceStateAlreadyDownloaded && !shared[p] {
-				return file.Name, missing
+		mismatched := len(file.PieceRange) < 2 || file.PieceRange[1] >= len(pieces)
+		if !mismatched {
+			for p := file.PieceRange[0]; p <= file.PieceRange[1] && !mismatched; p++ {
+				mismatched = pieces[p] != qbt.PieceStateAlreadyDownloaded && !shared[p]
 			}
 		}
+		if mismatched {
+			names = append(names, file.Name)
+			missing += int64((1 - float64(file.Progress)) * float64(file.Size))
+		}
 	}
-	return "", 0
+	return names, missing
 }
 
 // thresholdOrBudgetSatisfied applies the threshold or budget rule alone.
@@ -6979,6 +7011,9 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Str("state", string(state)).
 				Int("attempts", req.resumeAttempts).
 				Msg("Confirmed torrent resumed after recheck")
+			if len(req.demoted) > 0 {
+				s.recordResumeRun(req, "applied", "linked_file_demoted", fmt.Sprintf("Demoted %s to pending after a failed recheck; resumed, qBittorrent downloads them fresh", strings.Join(req.demoted, ", ")))
+			}
 			return false
 		}
 
@@ -6993,6 +7028,9 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				// of dropping the entry on a transient qBittorrent error.
 				return true
 			}
+			if s.demoteBlockedLinkedFiles(instanceID, hash, req) {
+				return true
+			}
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
@@ -7001,7 +7039,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Int64("amountLeft", torrent.AmountLeft).
 				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 				Str("state", string(state)).
-				Str("linkedFile", req.blockedLinkedFile).
+				Strs("linkedFiles", req.blockedLinkedFiles).
 				Int64("linkedMissingBytes", req.blockedLinkedBytes).
 				Msg(req.leftPausedMsg("Recheck resume stopped below threshold, torrent left paused for manual review"))
 			s.recordBlockedResume(req)
@@ -7052,6 +7090,12 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
 			return true
 		}
+		// A re-armed entry meets its lower threshold on the stale pre-recheck
+		// snapshot; without a checking state, wait out the fast-recheck window
+		// so the resume never runs ahead of the recheck it queued.
+		if !req.sawChecking && len(req.demoted) > 0 && time.Since(req.addedAt) < recheckFastCompleteMinElapsed {
+			return true
+		}
 		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
 	}
 
@@ -7061,14 +7105,17 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// If recheck completed (not checking) with some progress but the outcome does not
-	// allow resuming, the torrent won't improve - remove it from queue.
-	// Note: We can't do this for 0% progress since we can't distinguish
-	// "queued for recheck" from "recheck completed with 0 matches".
-	if !isChecking && progress > 0 && !satisfied() {
+	// If recheck completed (not checking) but the outcome does not allow resuming,
+	// the torrent won't improve - remove it from queue. At 0% progress only an
+	// observed checking state proves the recheck ran; otherwise "queued for
+	// recheck" and "recheck completed with 0 matches" look the same.
+	if !isChecking && (progress > 0 || req.sawChecking) && !satisfied() {
 		if req.forgivenessEvalFailed {
 			// Could not load the file list - retry on the next poll instead of
 			// dropping the entry on a transient qBittorrent error.
+			return true
+		}
+		if s.demoteBlockedLinkedFiles(instanceID, hash, req) {
 			return true
 		}
 		log.Warn().
@@ -7078,7 +7125,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			Float64("threshold", req.threshold).
 			Int64("amountLeft", torrent.AmountLeft).
 			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-			Str("linkedFile", req.blockedLinkedFile).
+			Strs("linkedFiles", req.blockedLinkedFiles).
 			Int64("linkedMissingBytes", req.blockedLinkedBytes).
 			Msg(req.leftPausedMsg("Recheck completed below threshold, torrent left paused for manual review"))
 		s.recordBlockedResume(req)
@@ -7090,18 +7137,75 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
-// recordBlockedResume appends the hardlink gate verdict to the season pack history.
-func (s *Service) recordBlockedResume(req *pendingResume) {
-	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
-		return
+// demoteBlockedLinkedFiles turns the linked files that tripped the gate into
+// pending files through the entry's demote hook and rechecks the torrent. It
+// reports whether the entry keeps waiting; false leaves the torrent paused for
+// review with the hook's message. Each pass unlinks at least one file, so the
+// loop ends with a clean recheck or a refusal.
+func (s *Service) demoteBlockedLinkedFiles(instanceID int, hash string, req *pendingResume) bool {
+	if req.demote == nil || len(req.blockedLinkedFiles) == 0 {
+		return false
 	}
-	run := req.blockedRun
-	run.Status, run.Reason, run.Message = "failed", "linked_file_mismatch", req.leftPausedMsg("")
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 	defer cancel()
-	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {
-		log.Warn().Err(err).Str("hash", req.hash).Msg("failed to record blocked season pack resume")
+	demoted := strings.Join(req.blockedLinkedFiles, ", ")
+	threshold, linked, refusal := req.demote(ctx, req.blockedLinkedFiles)
+	if refusal != "" {
+		req.blockedMsg = refusal
+		return false
 	}
+	if err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "recheck"); err != nil {
+		req.blockedMsg = fmt.Sprintf("Demoted %s to pending; the recheck failed (%v), left paused for review", demoted, err)
+		return false
+	}
+	log.Info().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Str("linkedFiles", demoted).
+		Float64("threshold", threshold).
+		Msg("Demoted mismatched linked files to pending files, rechecking")
+	// Fresh entry: the recheck starts over, so every poll counter restarts too.
+	*req = pendingResume{
+		instanceID:  instanceID,
+		hash:        hash,
+		threshold:   threshold,
+		linkedPaths: linked,
+		blockedRun:  req.blockedRun,
+		demote:      req.demote,
+		demoted:     append(req.demoted, req.blockedLinkedFiles...),
+		addedAt:     time.Now(),
+	}
+	return true
+}
+
+// recordBlockedResume appends the hardlink gate verdict to the season pack history.
+func (s *Service) recordBlockedResume(req *pendingResume) {
+	if len(req.blockedLinkedFiles) == 0 {
+		return
+	}
+	s.recordResumeRun(req, "failed", "linked_file_mismatch", req.leftPausedMsg(""))
+}
+
+// recordResumeRun appends a copy of the entry's season pack row with the given outcome.
+func (s *Service) recordResumeRun(req *pendingResume, status, reason, message string) {
+	if req.blockedRun == nil || s.seasonPackRunStore == nil {
+		return
+	}
+	run := *req.blockedRun
+	run.Status, run.Reason, run.Message = status, reason, message
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	defer cancel()
+	if _, err := s.seasonPackRunStore.Create(ctx, &run); err != nil {
+		log.Warn().Err(err).Str("hash", req.hash).Msg("failed to record season pack resume outcome")
+	}
+}
+
+// recordDemotedDrop names the demoted files in the history when the worker drops the entry without a confirmed resume.
+func (s *Service) recordDemotedDrop(req *pendingResume, why string) {
+	if len(req.demoted) == 0 {
+		return
+	}
+	s.recordResumeRun(req, "failed", "linked_file_demoted", fmt.Sprintf("Demoted %s to pending after a failed recheck; %s, left paused for review", strings.Join(req.demoted, ", "), why))
 }
 
 func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {
@@ -7114,6 +7218,7 @@ func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pending
 			Str("state", string(state)).
 			Int("attempts", req.resumeAttempts).
 			Msg("Recheck resume attempts exhausted, torrent left for manual review")
+		s.recordDemotedDrop(req, "the pack did not resume")
 		return false
 	}
 
@@ -7132,7 +7237,8 @@ func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pending
 			Int("attempt", req.resumeAttempts).
 			Int("maxAttempts", maxRecheckResumeAttempts).
 			Msg("Failed to resume torrent after recheck")
-		return req.resumeAttempts < maxRecheckResumeAttempts
+		// The next poll trips the exhausted guard above, which records the drop.
+		return true
 	}
 
 	req.awaitingResumeConfirmation = true
@@ -7230,6 +7336,7 @@ func (s *Service) recheckResumeWorker() {
 						Str("hash", req.hash).
 						Dur("elapsed", time.Since(req.addedAt)).
 						Msg(message)
+					s.recordDemotedDrop(req, "the recheck timed out")
 					delete(pending, key)
 					continue
 				}
