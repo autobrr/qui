@@ -27,7 +27,7 @@ func TestBackupItemRangesMigrationSQLite(t *testing.T) {
 	// 010 rebuilds referenced tables and only runs with foreign keys off.
 	_, err = conn.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF")
 	require.NoError(t, err)
-	checkBackupItemRangesMigration(t.Context(), t, conn, migrationsFS, "migrations", "099_backup_item_ranges.sql")
+	checkBackupItemRangesMigration(t.Context(), t, conn, migrationsFS, "migrations", "101_backup_item_ranges.sql")
 }
 
 func TestBackupItemRangesMigrationPostgresIntegration(t *testing.T) {
@@ -38,7 +38,7 @@ func TestBackupItemRangesMigrationPostgresIntegration(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkBackupItemRangesMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations", "100_backup_item_ranges.sql")
+	checkBackupItemRangesMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations", "102_backup_item_ranges.sql")
 }
 
 // A migrated run must list exactly the items it listed before, and each
