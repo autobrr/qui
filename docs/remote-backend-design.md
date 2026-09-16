@@ -270,7 +270,11 @@ One pool keyed by instance. Each instance gets one `x/crypto/ssh`
 connection with one sftp client on it, dialed lazily on the first
 operation. A keepalive goes out every 30s and
 the host has 15s to answer it; a silent host is closed, and the next
-caller redials. A failed dial is memoised so a job touching hundreds of
+caller redials. A dead sftp channel on a live transport is treated the
+same way as a dropped connection: the entry is cleared and the next caller
+redials. Opening the sftp subsystem is bounded by the dial timeout, so a
+host that accepts the handshake and then stalls the subsystem request
+fails the call instead of wedging the instance. A failed dial is memoised so a job touching hundreds of
 paths pays for one attempt: the retry delay starts at 5s, doubles to
 60s, and carries ±20% jitter so instances that went down together do not
 come back in lockstep.
@@ -394,7 +398,10 @@ scratch directories and a temporarily added, uniquely tagged
      and the credential endpoints.
    - 3b (#2723): the persistent connection pool and the SFTP backend's
      read methods. Writes refuse with `fsops.ErrUnsupported`.
-   - 3c: writes, the exec tier and the batch methods.
+   - 3c (#2724): path dialect on the backend and the callsite sweep.
+   - 3d (#2725): SFTP write operations.
+   - 3e (#2726): exec tier and batch methods; extends the pool to hand out
+     the ssh client for exec sessions.
 4. Frontend.
 5. Feature rollout per service, degraded-mode UX.
 
