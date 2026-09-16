@@ -266,9 +266,22 @@ backend domain end to end.
 
 ## Connection Pool
 
-One pool keyed by instance: lazy dial, reconnect backoff 5s→60s with ±20%
-jitter, every operation ctx-cancellable. The sftp client and exec sessions
-share the one `x/crypto/ssh` connection. Concurrency comes from sftp
+One pool keyed by instance. Each instance gets one `x/crypto/ssh`
+connection with one sftp client on it, dialed lazily on the first
+operation. A keepalive goes out every 30s and
+the host has 15s to answer it; a silent host is closed, and the next
+caller redials. A failed dial is memoised so a job touching hundreds of
+paths pays for one attempt: the retry delay starts at 5s, doubles to
+60s, and carries ±20% jitter so instances that went down together do not
+come back in lockstep.
+
+A host-key mismatch and an unreadable or missing pin are not retried at
+all — waiting does not make a wrong key right. That refusal is keyed on
+the stored pin ciphertext and lives only in memory: replacing the pin, or
+changing the host or port, changes the ciphertext and clears it. Nothing
+about it is persisted.
+
+Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
 lifecycle to manage.
 
@@ -376,8 +389,12 @@ scratch directories and a temporarily added, uniquely tagged
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
-3. Remote backend: pool + SFTP implementation + capability probe (re-adds
-   batch methods), API endpoints, OpenAPI.
+3. Remote backend, in slices:
+   - 3a (#2722): one-shot dialing, host-key pinning, the capability probe
+     and the credential endpoints.
+   - 3b (#2723): the persistent connection pool and the SFTP backend's
+     read methods. Writes refuse with `fsops.ErrUnsupported`.
+   - 3c: writes, the exec tier and the batch methods.
 4. Frontend.
 5. Feature rollout per service, degraded-mode UX.
 

@@ -583,7 +583,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 			return settings, nil
 		},
 	}
-	service.SetBackendPool(fsops.NewPool(mockInstances, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(mockInstances, local.NewBackend(), nil))
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,

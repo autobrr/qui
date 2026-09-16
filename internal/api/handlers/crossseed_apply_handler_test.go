@@ -238,7 +238,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 
 	instanceStore := &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
 	svc := &crossseed.Service{}
-	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend(), nil))
 	setServiceField(t, svc, "instanceStore", instanceStore)
 	setServiceField(t, svc, "syncManager", syncManager)
 	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())

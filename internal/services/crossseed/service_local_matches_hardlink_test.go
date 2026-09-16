@@ -59,7 +59,7 @@ func hardlinkTestService(files map[string]qbt.TorrentFiles) *Service {
 		instances: map[int]*models.Instance{
 			1: {ID: 1, HasLocalFilesystemAccess: true},
 		},
-	}, local.NewBackend()))
+	}, local.NewBackend(), nil))
 	return svc
 }
 
@@ -283,7 +283,7 @@ func TestGetSourceFileIDs_BackendResolutionFailure_RecordedForStrictMode(t *test
 	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	svc := hardlinkTestService(map[string]qbt.TorrentFiles{normalizeHash(hlSourceHash): files})
 	// An empty store cannot resolve instance 1.
-	svc.SetBackendPool(fsops.NewPool(&mockInstanceStore{instances: map[int]*models.Instance{}}, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(&mockInstanceStore{instances: map[int]*models.Instance{}}, local.NewBackend(), nil))
 
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 
@@ -333,7 +333,7 @@ func TestLocalLinkedMatchType_SourceBackendReresolveFailure_RecordedForStrictMod
 		failAfter: 2, // source (getSourceFileIDs) and candidate succeed; the source re-resolve fails
 		err:       backendErr,
 	}
-	svc.SetBackendPool(fsops.NewPool(store, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(store, local.NewBackend(), nil))
 	svc.filesShareAllocation = func(string, string) (bool, error) { return false, nil }
 
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
@@ -377,7 +377,7 @@ func TestFindLocalMatches_BackendFailure_FailsStrictMode(t *testing.T) {
 	}
 	// The pool's store fails every resolution, so the very first backend lookup
 	// (getSourceFileIDs) records the error.
-	svc.SetBackendPool(fsops.NewPool(&countingInstanceStore{err: backendErr}, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(&countingInstanceStore{err: backendErr}, local.NewBackend(), nil))
 
 	response, err := svc.FindLocalMatches(context.Background(), 1, source.Hash, true)
 

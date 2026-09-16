@@ -41,7 +41,7 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend(), nil))
 	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
@@ -124,7 +124,7 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend(), nil))
 	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}

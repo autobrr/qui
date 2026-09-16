@@ -781,7 +781,7 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 	return &hardlinkIndexRig{
 		service: &Service{
 			syncManager: syncManager,
-			backendPool: fsops.NewPool(instanceStore, backend),
+			backendPool: fsops.NewPool(instanceStore, backend, nil),
 		},
 		instanceID: instance.ID,
 		db:         db,
