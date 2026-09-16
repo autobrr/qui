@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: Configuration Reference
-description: All config.toml options and their defaults.
+title: qui config.toml reference
+sidebar_label: Configuration Reference
+description: Every config.toml option qui reads, with its default, its environment variable, and what it controls.
 ---
 
 # Configuration Reference
@@ -46,7 +47,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). qui normalizes the value at startup and adds missing leading and trailing slashes. |
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. An empty list disables CORS. Origins must match `http(s)://host[:port]`. qui rejects wildcards and normalizes default ports. Restart required. |
-| `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. |
+| `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. The value cannot be empty. Use at least 32 characters on a new install. Leave the value alone on an install that already stores credentials. On the first start after upgrading, qui re-encrypts stored credentials under a key derived from this secret. A credential that does not decrypt is left as it is. qui warns about it on every start until you enter it again. The re-encryption is one way, so an older qui cannot read the new values. After rolling back, enter the credentials again or restore a database backup taken before the upgrade. |
 | `sessionCookieSecure` | `QUI__SESSION_COOKIE_SECURE` | bool | `false` | Sends the browser session cookie only over HTTPS. Enable it when you serve qui through an HTTPS reverse proxy. An HTTPS `oidcRedirectUrl` enables it automatically. When enabled, login over plain HTTP does not work. See [Sessions](#sessions). Restart required. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. qui applies changes immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty, qui logs to stdout. qui resolves relative paths against the config directory. qui applies changes immediately. |

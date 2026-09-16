@@ -140,7 +140,7 @@ Run all non-integration tests:
 go test -v ./...
 ```
 
-Run all backend tests with a temporary Postgres server:
+Run Postgres integration tests with a temporary server:
 
 ```shell
 make test-postgres
@@ -148,6 +148,7 @@ make test-postgres
 
 This command downloads and caches Postgres 17 on first use, then stops the server after the tests finish.
 Each Postgres test keeps its isolated schema. CI runs this command on Linux.
+Use `PostgresIntegration` in the names of tests that need a Postgres server so this command selects them.
 Set `QUI_TEST_POSTGRES_DSN` to use an existing test database instead.
 To select tests, pass Go test arguments to `go run ./internal/testutil/postgres`.
 

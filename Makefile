@@ -24,8 +24,8 @@ BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
-# Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
+# Go build flags
+LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
 .PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
@@ -37,7 +37,7 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
 	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
@@ -111,7 +111,7 @@ test:
 	@echo "Running tests..."
 	go test -race -v ./...
 
-# Run all backend tests with a temporary Postgres server.
+# Run Postgres integration tests with a temporary server.
 test-postgres:
 	go run ./internal/testutil/postgres
 
@@ -251,7 +251,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test           - Run all Go tests with race detection"
-	@echo "  make test-postgres  - Run all Go tests with a temporary Postgres server"
+	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo ""

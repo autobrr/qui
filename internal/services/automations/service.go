@@ -1906,10 +1906,6 @@ func (s *Service) blockedDeleteCandidates(
 	pendingByHash map[string]pendingDeletion,
 	ruleByID map[int]*models.Automation,
 ) map[string]string {
-	if hardlinkIndex == nil {
-		return nil
-	}
-
 	var candidates []string
 	for _, hashes := range deleteHashesByMode {
 		for _, hash := range hashes {

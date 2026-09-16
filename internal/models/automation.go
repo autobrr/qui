@@ -786,6 +786,22 @@ func (f ConditionField) IsNumeric() bool {
 	}
 }
 
+// WrapsBetween reports whether a BETWEEN range on this field wraps when the
+// minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
+// hour means the night that crosses midnight. A wrapped range stops before its
+// maximum, see matchesBetween. SYSTEM_DAY and SYSTEM_YEAR do not wrap: a month
+// boundary depends on the month length, and years do not cycle.
+//
+//nolint:exhaustive // Only cyclic clock fields belong here.
+func (f ConditionField) WrapsBetween() bool {
+	switch f {
+	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
+		return true
+	default:
+		return false
+	}
+}
+
 //nolint:exhaustive // Only sortable string fields belong here.
 func (f ConditionField) IsString() bool {
 	switch f {
@@ -961,7 +977,7 @@ type TagAction struct {
 // CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
 	Enabled           bool   `json:"enabled"`
-	Category          string `json:"category"`                    // Target category name
+	Category          string `json:"category"`                    // Empty clears the category
 	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
 	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent

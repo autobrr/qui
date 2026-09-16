@@ -20,28 +20,15 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
-func TestOpenPostgres(t *testing.T) {
+func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := openPostgresTestDB(t)
-
-	if got := db.Dialect(); got != string(DialectPostgres) {
-		t.Fatalf("unexpected dialect: %s", got)
-	}
+	require.Equal(t, string(DialectPostgres), db.Dialect())
 
 	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count); err != nil {
-		t.Fatalf("query migrations table: %v", err)
-	}
-	if count == 0 {
-		t.Fatalf("expected at least one postgres migration row, got %d", count)
-	}
-}
-
-func TestCleanupUnusedStringsPostgres(t *testing.T) {
-	t.Parallel()
-
-	db, ctx := openPostgresTestDB(t)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count))
+	require.Positive(t, count)
 
 	// Through the DB wrapper, not db.Conn(): the raw handle skips the ?-to-$n
 	// rebinding, so every placeholder below would reach Postgres verbatim.
@@ -70,10 +57,17 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	require.Zero(t, deletedAgain)
 }
 
-func TestMigratedSQLiteFilesmanagerCleanupPostgres(t *testing.T) {
+func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
-	ctx, testDSN := openPostgresTestSchema(t)
+	_, testDSN := openPostgresTestSchema(t)
+
+	// This test runs both migration chains plus a data copy, and under -race on
+	// a shared CI runner the SQLite chain alone has crossed the 30s default
+	// since this package gained a second migrated-SQLite test running beside it.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Cleanup(cancel)
+
 	sqlitePath := filepath.Join(t.TempDir(), "fixture.db")
 	sqliteDB, err := New(sqlitePath)
 	require.NoError(t, err)
@@ -185,6 +179,8 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 		t.Skip("QUI_TEST_POSTGRES_DSN not set")
 	}
 
+	// One migration chain on a shared CI runner. A test that does more than
+	// that brings its own context.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
@@ -217,13 +213,13 @@ func dsnWithSearchPath(t *testing.T, dsn string, schema string) string {
 	return parsed.String()
 }
 
-// TestPostgresImportForeignKeysIgnoreOtherSchemas pins both catalog queries to
+// TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration pins both catalog queries to
 // the active schema. A foreign key referencing another schema's same-named
 // table used to survive: regclass text output qualifies only what search_path
 // cannot reach, and stripping that qualifier turned the reference into a local
 // one. That invents an import dependency (here a cycle, which fails the order)
 // and hands the row filter a parent table that is not the one being referenced.
-func TestPostgresImportForeignKeysIgnoreOtherSchemas(t *testing.T) {
+func TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	ctx, testDSN := openPostgresTestSchema(t)

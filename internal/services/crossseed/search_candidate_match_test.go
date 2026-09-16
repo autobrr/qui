@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
@@ -1303,7 +1303,7 @@ func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {
 func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	service := &Service{
 		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 	}
 	const (
 		sourceName    = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
@@ -1717,7 +1717,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 			{Hash: sourceHash, Name: "Source"},
 			{Hash: "existing", Name: "Existing"},
 		}, nil),
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
@@ -1801,7 +1801,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
 			{Hash: sourceHash, Name: "Source"},
 		}, nil),
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloads.Add(1)
 			return []byte("torrent"), nil
@@ -2429,7 +2429,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		Size:     candidateSize,
 		Progress: 1,
 	}
-	filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
 		ContentCompleted:      false,
@@ -2461,7 +2461,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		arrService:          arrLookup,
 		asyncFilteringCache: filterCache,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 	}
 

@@ -308,14 +308,14 @@ func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	seeded.Counts = counts
 	seeded.AppPreferences = prefs
 	first := g.buildInitPayload(opts, seeded, &StreamMeta{})
-	require.Same(t, seeded, first.Data)
+	require.Equal(t, seeded, first.Data)
 	require.Equal(t, &StreamVersion{Major: 7, Minor: 1}, first.Version)
 
 	// This candidate was built later but does not represent the group's baseline.
 	joinerCandidate := singleResp(tv("a", "not-the-baseline"))
 	joinerCandidate.Counts = &qbittorrent.TorrentCounts{Total: 9}
 	joiner := g.buildInitPayload(opts, joinerCandidate, &StreamMeta{})
-	require.Same(t, seeded, joiner.Data)
+	require.Same(t, first.Data, joiner.Data)
 	require.Equal(t, first.Version, joiner.Version)
 
 	// Even an aggregate-only frame advances Minor. Its retained full snapshot keeps

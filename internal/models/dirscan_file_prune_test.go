@@ -35,7 +35,7 @@ func TestDirScanStorePruneMissingFilesSQLite(t *testing.T) {
 	runDirScanPruneTests(t, testdb.NewMigratedSQLite(t, "dirscan-prune"))
 }
 
-func TestDirScanStorePruneMissingFilesPostgres(t *testing.T) {
+func TestDirScanStorePruneMissingFilesPostgresIntegration(t *testing.T) {
 	runDirScanPruneTests(t, testdb.NewMigratedPostgres(t, "dirscan-prune"))
 }
 

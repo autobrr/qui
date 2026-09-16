@@ -48,7 +48,7 @@
     "globPattern": "Glob pattern...",
     "smartSearchTitle": "Smart Search Features:",
     "smartSearchGlob": "Glob patterns:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Fuzzy matching:",
     "smartSearchFuzzyExample": "\"breaking bad\" finds \"Breaking.Bad\"",
     "smartSearchDots": "Handles dots, underscores, and brackets",

@@ -1495,7 +1495,7 @@
       "title": "Search Torrents",
       "description": "Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.",
       "placeholder": "Search torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
     "shareLimit": {
@@ -1526,6 +1526,10 @@
     "descending": "descending",
     "sortDirection": "Sort {{direction}}",
     "toggleColumns": "Toggle columns",
+    "stretchMode": "Stretch the Name column to fill the table",
+    "scrollMode": "Set the Name column width yourself and scroll sideways",
+    "stretchInactive": "Paused because the visible columns already fill the table",
+    "reorderColumn": "Drag to reorder {{column}}",
     "tableAriaLabel": "Torrents table"
   },
   "sort": {

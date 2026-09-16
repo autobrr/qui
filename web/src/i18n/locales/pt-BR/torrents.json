@@ -1495,7 +1495,7 @@
       "title": "Pesquisar Torrents",
       "description": "Pesquise por nome, categoria ou tags. Suporta padrões glob (ex: *.mkv).",
       "placeholder": "Pesquisar torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
     },
     "shareLimit": {
@@ -1526,6 +1526,10 @@
     "descending": "decrescente",
     "sortDirection": "Ordenar de forma {{direction}}",
     "toggleColumns": "Alternar colunas",
+    "stretchMode": "Esticar a coluna Nome para preencher a tabela",
+    "scrollMode": "Definir a largura da coluna Nome manualmente e rolar para o lado",
+    "stretchInactive": "Pausado porque as colunas visíveis já preenchem a tabela",
+    "reorderColumn": "Arraste para reordenar {{column}}",
     "tableAriaLabel": "Tabela de torrents"
   },
   "sort": {

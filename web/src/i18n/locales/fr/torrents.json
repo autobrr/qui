@@ -1495,7 +1495,7 @@
       "title": "Rechercher des torrents",
       "description": "Recherche par nom, catégorie, ou tags. Supporte les modèles globaux comme *.mkv ou *1080p*.",
       "placeholder": "Chercher des torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Recherche automatique pendant la frappe"
     },
     "shareLimit": {
@@ -1526,6 +1526,10 @@
     "descending": "décroissant",
     "sortDirection": "Tri {{direction}}",
     "toggleColumns": "Basculer les colonnes",
+    "stretchMode": "Étirer la colonne Nom pour remplir le tableau",
+    "scrollMode": "Définir vous-même la largeur de la colonne Nom et faire défiler latéralement",
+    "stretchInactive": "En pause, car les colonnes visibles remplissent déjà le tableau",
+    "reorderColumn": "Glisser pour réordonner {{column}}",
     "tableAriaLabel": "Tableau des torrents"
   },
   "sort": {

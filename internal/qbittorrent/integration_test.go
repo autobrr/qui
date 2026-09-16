@@ -1070,6 +1070,17 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 	})
 
+	t.Run("filterTorrentsByGlob episode example skips season packs", func(t *testing.T) {
+		// The search help offers this pattern; ? would also hit a season-only name.
+		results := sm.filterTorrentsByGlob([]qbt.Torrent{
+			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
+			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
+		}, "*S[0-9][0-9]E[0-9][0-9]*")
+
+		assert.Len(t, results, 1)
+		assert.Equal(t, "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP", results[0].Name)
+	})
+
 	t.Run("normalizeForSearch works correctly", func(t *testing.T) {
 		testCases := []struct {
 			input    string

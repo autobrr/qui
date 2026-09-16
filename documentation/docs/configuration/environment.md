@@ -1,7 +1,8 @@
 ---
 sidebar_position: 2
-title: Environment Variables
-description: Configure qui with environment variables.
+title: Configure qui with environment variables
+sidebar_label: Environment Variables
+description: Every QUI__ environment variable, what it overrides in config.toml, and how to use it in Docker.
 ---
 
 # Environment Variables

@@ -65,6 +65,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// complete snapshot represented by this frame before retaining it for joiners.
 	// Explicit JSON null remains non-nil and therefore still clears preferences.
 	snapshot := *resp
+	detachSnapshotRows(&snapshot)
 	if g.baselineSnapshot != nil {
 		if snapshot.AppPreferences == nil {
 			snapshot.AppPreferences = g.baselineSnapshot.AppPreferences
@@ -174,7 +175,9 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 
 	g.baselineFP = fp
 	g.baselineOrder = order
-	g.baselineSnapshot = resp
+	snapshot := *resp
+	detachSnapshotRows(&snapshot)
+	g.baselineSnapshot = &snapshot
 	g.version.Minor++
 
 	return &StreamPayload{
@@ -182,6 +185,33 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 		Data:    g.baselineSnapshot,
 		Meta:    meta,
 		Version: new(g.version),
+	}
+}
+
+// Page rows can point into a full library allocation. Retain only the page.
+func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
+	snapshot.Torrents = slices.Clone(snapshot.Torrents)
+	snapshot.CrossInstanceTorrents = slices.Clone(snapshot.CrossInstanceTorrents)
+	torrents := make([]qbt.Torrent, len(snapshot.Torrents)+len(snapshot.CrossInstanceTorrents))
+	for i := range snapshot.Torrents {
+		if row := &snapshot.Torrents[i]; row.Torrent != nil {
+			torrents[i] = *row.Torrent
+			row.Torrent = &torrents[i]
+		}
+	}
+	views := make([]qbittorrent.TorrentView, len(snapshot.CrossInstanceTorrents))
+	for i := range snapshot.CrossInstanceTorrents {
+		row := &snapshot.CrossInstanceTorrents[i]
+		if row.TorrentView == nil {
+			continue
+		}
+		views[i] = *row.TorrentView
+		if row.Torrent != nil {
+			idx := len(snapshot.Torrents) + i
+			torrents[idx] = *row.Torrent
+			views[i].Torrent = &torrents[idx]
+		}
+		row.TorrentView = &views[i]
 	}
 }
 

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 3
-title: Hardlink Mode
-description: Cross-seed with hardlinks or reflinks instead of file renaming.
+title: Cross-seed with hardlinks or reflinks
+sidebar_label: Hardlink Mode
+description: "Cross-seed without renaming files: qui builds a hardlink or reflink tree that matches the incoming torrent layout."
 ---
 
 import LocalFilesystemDocker from "../../_partials/_local-filesystem-docker.mdx";
@@ -77,6 +78,18 @@ By default, hardlink-added torrents start seeding immediately because `skip_chec
 When hardlink or reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
 
 When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [Rules](./rules.md#max-auto-start-download)).
+
+### Linked files that fail a recheck
+
+A **linked file** is a file in the added torrent that qui hardlinked from local data before the add. A **pending file** is a file that was absent at add time, which qBittorrent downloads after the resume.
+
+A hardlink shares its data with the source file. If qBittorrent downloads into a linked file, the torrent that already seeds that file gets the new data too. To protect the source, qui checks the recheck result before every automatic resume in hardlink mode. This covers cross-seeds with extra files and season packs. If a linked file is below 100% and one of its failed pieces lies outside every pending file, qui leaves the torrent paused. The season pack history on the Cross-seed page and the log name the file: `Linked file <name> does not match the torrent, left paused to protect the source`.
+
+A piece that spans a linked file and a pending file always fails the recheck, because the pending part is absent. qui allows that piece, so a pack with such pieces stays eligible for the normal resume rules. The **Piece boundary safety check** setting decides before the add whether such pieces are accepted at all.
+
+Reflink mode does not use this check. A reflink clone is copy-on-write, so a download into the clone never reaches the source.
+
+To seed the torrent after this message, remove the torrent and its link tree, and download the torrent normally. Do not resume it as it is. A resume downloads into the linked file and changes the local file.
 
 If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume.
 

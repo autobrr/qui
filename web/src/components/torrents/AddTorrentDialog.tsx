@@ -42,7 +42,7 @@ import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
 import { cn } from "@/lib/utils"
-import type { AddTorrentResponse, Torrent } from "@/types"
+import type { AddTorrentResponse, AppPreferences, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
@@ -95,6 +95,18 @@ async function parseTorrentFile(file: File): Promise<string | null> {
     return hash.toLowerCase()
   } catch {
     return null
+  }
+}
+
+// Option defaults the instance dictates. Kept in one place because the dialog seeds
+// them twice: once as form defaults, and again when preferences arrive after a cold mount.
+function preferenceDefaults(preferences: AppPreferences | undefined) {
+  return {
+    autoTMM: preferences?.auto_tmm_enabled ?? true,
+    savePath: preferences?.save_path || "",
+    contentLayout: preferences?.torrent_content_layout || "",
+    tempPathEnabled: preferences?.temp_path_enabled ?? false,
+    tempPath: preferences?.temp_path || "",
   }
 }
 
@@ -605,8 +617,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       category: "",
       tags: [] as string[],
       startPaused: startPausedEnabled,
-      autoTMM: preferences?.auto_tmm_enabled ?? true,
-      savePath: preferences?.save_path || "",
+      ...preferenceDefaults(preferences),
       skipHashCheck: false,
       sequentialDownload: false,
       firstLastPiecePrio: false,
@@ -614,10 +625,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       limitDownloadSpeed: 0,
       limitRatio: 0,
       limitSeedTime: 0,
-      contentLayout: preferences?.torrent_content_layout || "",
       rename: "",
-      tempPathEnabled: preferences?.temp_path_enabled ?? false,
-      tempPath: preferences?.temp_path || "",
       indexerId: undefined as number | undefined,
     },
     onSubmit: async ({ value }) => {
@@ -626,6 +634,26 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
+
+  // The dialog can mount before instance metadata resolves (magnet handler route),
+  // where defaultValues fall back to the hardcoded values. Seed the preference-derived
+  // fields again when preferences land, skipping anything the user already changed.
+  const seededInstanceRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!preferences || seededInstanceRef.current === instanceId) return
+    seededInstanceRef.current = instanceId
+
+    const defaults = preferenceDefaults(preferences)
+    // Seeding is not a user edit, so leave the field meta pristine.
+    const pristine = (field: keyof typeof defaults) => !form.getFieldMeta(field)?.isDirty
+    const opts = { dontUpdateMeta: true }
+
+    if (pristine("autoTMM")) form.setFieldValue("autoTMM", defaults.autoTMM, opts)
+    if (pristine("savePath")) form.setFieldValue("savePath", defaults.savePath, opts)
+    if (pristine("contentLayout")) form.setFieldValue("contentLayout", defaults.contentLayout, opts)
+    if (pristine("tempPathEnabled")) form.setFieldValue("tempPathEnabled", defaults.tempPathEnabled, opts)
+    if (pristine("tempPath")) form.setFieldValue("tempPath", defaults.tempPath, opts)
+  }, [form, instanceId, preferences])
 
   const setSavePath = useCallback((path: string) => {
     form.setFieldValue("savePath", path)

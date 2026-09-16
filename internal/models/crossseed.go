@@ -5,15 +5,10 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 	"time"
@@ -378,57 +373,40 @@ type CrossSeedFeedItem struct {
 // CrossSeedStore persists automation settings, runs, and feed items.
 type CrossSeedStore struct {
 	db dbinterface.Querier
-	// Used to encrypt/decrypt Gazelle API keys stored in cross_seed_settings.
-	encryptionKey []byte
+	// Seals the API keys stored in cross_seed_settings.
+	cipher *CredentialCipher
 }
 
 // NewCrossSeedStore constructs a new automation store.
-func NewCrossSeedStore(db dbinterface.Querier, encryptionKey []byte) (*CrossSeedStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+func NewCrossSeedStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*CrossSeedStore, error) {
+	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
+	if err != nil {
+		return nil, err
 	}
-	return &CrossSeedStore{db: db, encryptionKey: encryptionKey}, nil
+
+	return &CrossSeedStore{db: db, cipher: credentialCipher}, nil
 }
 
 func (s *CrossSeedStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return s.cipher.Encrypt(plaintext, nil)
 }
 
 func (s *CrossSeedStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-	return string(plaintext), nil
+	return s.cipher.Decrypt(ciphertext, nil)
+}
+
+// RewriteLegacyCredentials re-encrypts stored cross-seed credentials that still
+// carry the pre-HKDF format and reports how many rows it rewrote.
+func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
+	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
+		table: "cross_seed_settings",
+		columns: []string{
+			"season_pack_tvdb_api_key_encrypted",
+			"season_pack_tvdb_pin_encrypted",
+			"redacted_api_key_encrypted",
+			"orpheus_api_key_encrypted",
+		},
+	})
 }
 
 func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
@@ -1835,6 +1813,25 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	)
 	if err != nil {
 		return fmt.Errorf("mark feed item: %w", err)
+	}
+
+	return nil
+}
+
+// TouchFeedItem advances last_seen_at to seenAt's UTC day so PruneFeedItems
+// keeps an item that is still in the feed. Unlike an ON CONFLICT upsert, a
+// plain UPDATE whose WHERE fails takes no row lock, so same-day polls write no
+// WAL.
+func (s *CrossSeedStore) TouchFeedItem(ctx context.Context, guid string, indexerID int, seenAt time.Time) error {
+	day := seenAt.UTC().Truncate(24 * time.Hour)
+	query := `
+		UPDATE cross_seed_feed_items
+		SET last_seen_at = ?
+		WHERE guid = ? AND indexer_id = ? AND last_seen_at < ?
+	`
+
+	if _, err := s.db.ExecContext(ctx, query, day, guid, indexerID, day); err != nil {
+		return fmt.Errorf("touch feed item: %w", err)
 	}
 
 	return nil

@@ -4,6 +4,16 @@
  */
 
 import type { TFunction } from "i18next";
+import type { ConditionField } from "@/types";
+
+// Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
+// past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
+export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([
+  "SYSTEM_HOUR",
+  "SYSTEM_MINUTE",
+  "SYSTEM_DAY_OF_WEEK",
+  "SYSTEM_MONTH",
+]);
 
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {

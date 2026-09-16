@@ -1,7 +1,8 @@
 ---
 sidebar_position: 4
-title: Directory Scanner
-description: Scan local directories and automatically cross-seed completed downloads.
+title: Cross-seed from a directory scan
+sidebar_label: Directory Scanner
+description: Scan local folders for content already on disk and cross-seed it to your trackers, without a torrent in qBittorrent.
 ---
 
 # Directory Scanner

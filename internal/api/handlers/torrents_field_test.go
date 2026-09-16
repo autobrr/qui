@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -394,7 +394,7 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 	setUnexportedField(t, client, "isHealthy", true)
 	setUnexportedField(t, client, "lastHealthCheck", time.Now())
 	setUnexportedField(t, client, "syncManager", syncManager)
-	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New(ttlcache.Options[string, *quiqbt.OptimisticTorrentUpdate]{}))
+	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New[string, *quiqbt.OptimisticTorrentUpdate]())
 
 	return client
 }

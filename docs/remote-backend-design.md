@@ -205,6 +205,13 @@ backend domain end to end.
   Mechanically this stays the product's one crypto pattern — the same
   AES-GCM/`sessionSecret` helpers the existing credential stores use,
   with an AAD argument those stores simply haven't passed before.
+- Key derivation: `GetEncryptionKey` now derives the key from the whole
+  `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521). New
+  writes carry a `qui2:` prefix, so the stored format is decidable.
+  Rows written under the truncated key stay readable through
+  `GetLegacyEncryptionKey`, and each store rewrites its own on first
+  start. A row that does not decrypt is left alone and warns on every
+  start until the credential is entered again.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
@@ -214,9 +221,18 @@ backend domain end to end.
   display string; later connects constrain `HostKeyAlgorithms` to the
   pinned type, so a key-type change is a mismatch, never a negotiation
   accident. Fingerprints render as `SHA256:` for humans only.
-- A host-key change after pinning fails closed: no automatic re-pin, and
-  no fallback to TOFU if the stored pin is missing or unreadable. The
-  mismatch surfaces both fingerprints and both key types behind a
+- A host-key change after pinning fails closed: no automatic re-pin. A
+  pin that fails to decrypt is a hard error, never "unpinned". An empty
+  pin column is unpinned and takes the first-contact flow: there is no
+  separate "was pinned" state, so a database writer who clears the column
+  is not detected. What that buys them is a first-contact confirmation the
+  user sees in place of the mismatch flow, not a silent re-pin; the AAD
+  binding above still refuses the transplant and redirect edits. Writing
+  the pin is one-shot:
+  `SetHostKeyPin` refuses an instance that is already pinned, so
+  replacing a live pin is a separate, named operation on the
+  confirmed-mismatch path. The mismatch surfaces both fingerprints and
+  both key types behind a
   confirmation deliberately heavier than first contact, one that names
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
@@ -256,10 +272,12 @@ its algorithm under the same AEAD (AAD: instance id + field + host +
 port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
-capabilities. `HasFilesystemAccess` resolves to local | remote | none.
+capabilities. `FilesystemAccessMode` resolves to local | remote | none.
 This is the slimmed scope for #1917, which also carries the credential
-store that owns these columns: the AEAD write and read path, and setting
-or clearing the pin. Columns without the code that owns them cannot be
+store that owns these columns: the AEAD write and read path, and a pin
+the store sets once, drops when the host or port changes, and keeps when
+the credentials are cleared. Replacing a live pin lands with the mismatch
+flow in a later PR. Columns without the code that owns them cannot be
 tested end to end, and the AAD binding is only real once something
 applies it. Note that the AAD carries the instance id, so credentials can
 only be encrypted after the row exists — the endpoints below all operate
@@ -295,6 +313,43 @@ exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
 FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
 every other remote path.
+
+## Field Validation
+
+The tier model above was checked against a commercial shared seedbox
+(Debian 11, OpenSSH 8.4p1) on 2026-08-23, before the remote backend
+implementation existed. The probe was read-only apart from two self-cleaned
+scratch directories and a temporarily added, uniquely tagged
+`authorized_keys` line.
+
+- `statvfs@openssh.com` and `hardlink@openssh.com` both work over the sftp
+  subsystem. `df` returned filesystem numbers and `ln` created a real
+  hardlink. The sftp attribute set has no link-count field, and the only
+  place the server exposes one is the free-form `ls -l` longname, which
+  the protocol tells clients not to parse and `pkg/sftp` discards, so link
+  identity only ever arrives through the exec tier (the `find -printf`
+  sweep below).
+  `limits@openssh.com` is absent (it arrived in OpenSSH 8.6), so the
+  backend must tolerate that extension missing.
+- A `command="internal-sftp",restrict` key behaves exactly as the Security
+  section specifies: sftp works, exec is refused with "This service allows
+  sftp connections only." The recommended template holds as written.
+- The exec tier finds full GNU userland (findutils 4.8, coreutils 8.32), so
+  `find -printf` identity sweeps work without the BSD degradation path.
+- Hardlinks across directories keep consistent inode, device and nlink, and
+  `find -printf '%D %i %n'` reports them, so the exec-tier identity design
+  holds on the real filesystem.
+- Reflink is unsupported (XFS without reflink). Providers mostly do not
+  enable it on shared hosts, and where it exists it is a dedicated-host
+  option on request, so the design expectation is: probe it, assume off,
+  hardlink mode is the real path there.
+- Latency is the load-bearing number: about 740 ms per sftp readdir round
+  trip from a home connection, and 2.1 to 3.5 s per cold connect, auth and
+  exec.
+  A 500-directory walk is roughly six minutes serial over sftp against one
+  `find` exec round trip, which is why the batch methods, the exec tier and
+  the pooled persistent connection are all necessary rather than
+  optimizations.
 
 ## Rollout
 

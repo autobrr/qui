@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
-title: Automations
+title: qBittorrent automation rules
+sidebar_label: Automations
 description: Rule-based automation for torrent management.
 ---
 
@@ -89,6 +90,12 @@ When qui evaluates a rule, these fields use qui's current system time. Use them 
 | System Day | Current day of month (`1-31`) |
 | System Month | Current month (`1-12`) |
 | System Year | Current year |
+
+##### Ranges that wrap
+
+On System Hour, System Minute, System Day of Week and System Month, a **between** range whose minimum is above its maximum wraps past the end of the field. For example, System Hour between `20` and `6` is true from 20:00 through 05:59, and false from 06:00 through 19:59. The minimum is included and the maximum is not, so set the maximum to the hour the window must stop.
+
+System Day and System Year do not wrap. A month boundary depends on the length of the month, and years only go up. On every other numeric field, a minimum above the maximum matches nothing.
 
 #### Progress fields
 
@@ -245,6 +252,8 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 
 **Numeric:** `=`, `!=`, `>`, `>=`, `<`, `<=`, between
 
+A **between** range includes both ends. The one exception is a range that wraps on a clock field, described in [Ranges that wrap](#ranges-that-wrap).
+
 **Boolean:** is, is not
 
 **State:** is, is not
@@ -252,7 +261,7 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 **Cross-Category (Name field only):**
 
 - `EXISTS_IN`: exact name match in the target category
-- `CONTAINS_IN`: partial or normalized name match in the target category
+- `CONTAINS_IN`: partial name match in the target category. The comparison is case-insensitive and accent-insensitive, and treats `.`, `_` and `-` as spaces, so "Amélie.2001" matches "Amelie 2001".
 
 ### Regex support
 
@@ -599,7 +608,7 @@ Quick troubleshooting:
 
 ### Category
 
-Move torrents to a different category.
+Move torrents to a different category. Select **Uncategorized** to remove their category.
 
 Options:
 
@@ -797,6 +806,10 @@ With AND/OR groups and the "is not" operator, you can express every combination 
 #### Unknown scope and safety behavior
 
 If path validation or file inspection fails for **any remaining** file, the torrent receives no scope entry. Causes include invalid paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
+
+The NOT toggle cannot turn unknown data into a match, including through nested condition groups. This also applies to `HARDLINK_SCOPE_CROSS` and `HAS_MISSING_FILES`. Negation still inverts comparisons against known values.
+
+Before deletion, qui reads the files again for rules that use hardlink data. If scope is unknown or changes, qui holds the deletion, even if another branch of an OR group matches.
 
 To diagnose this issue, enable debug logging and check for the "hardlink index built" log message, which reports an `inaccessible` count.
 

@@ -35,7 +35,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -53,11 +52,6 @@ import (
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
-)
-
-var (
-	// PolarOrgID Publisher credentials - set during build via ldflags
-	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
@@ -111,7 +105,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
 		app.runServer()
 	}
 
@@ -471,18 +465,14 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
-
-	// Publisher credentials - set during build via ldflags
-	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
 }
 
-func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
 	return &Application{
-		configDir:  configDir,
-		dataDir:    dataDir,
-		logPath:    logPath,
-		pprofFlag:  pprofFlag,
-		polarOrgID: polarOrgID,
+		configDir: configDir,
+		dataDir:   dataDir,
+		logPath:   logPath,
+		pprofFlag: pprofFlag,
 	}
 }
 
@@ -548,14 +538,6 @@ func (app *Application) runServer() {
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
-	// init polar client
-	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
-	if app.polarOrgID != "" {
-		log.Trace().Msg("Initializing Polar client for license validation")
-	} else {
-		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-	}
-
 	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
 	if dodoEnv == "" {
 		dodoEnv = os.Getenv("DODO_ENVIRONMENT")
@@ -578,7 +560,9 @@ func (app *Application) runServer() {
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
-	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
+	encryptionKey := cfg.GetEncryptionKey()
+	legacyEncryptionKey := models.WithLegacyEncryptionKey(cfg.GetLegacyEncryptionKey())
+	instanceStore, err := models.NewInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
@@ -599,7 +583,7 @@ func (app *Application) runServer() {
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
-	arrInstanceStore, err := models.NewArrInstanceStore(db, cfg.GetEncryptionKey())
+	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize ARR instance store")
 	}
@@ -608,7 +592,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -638,7 +622,7 @@ func (app *Application) runServer() {
 	)
 
 	// Initialize Torznab indexer store
-	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
@@ -699,10 +683,20 @@ func (app *Application) runServer() {
 	jackettService.SetActivityPublisher(activityHub)
 
 	// Initialize cross-seed automation store and service
-	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
+	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
 	}
+
+	// Runs once the four credential stores exist rather than next to each one.
+	// Placement is free: consumers built earlier decrypt either format through
+	// the legacy key, and nothing before this point writes a credential column.
+	rewriteLegacyCredentials(context.Background(), []legacyCredentialStore{
+		{table: "instances", store: instanceStore},
+		{table: "arr_instances", store: arrInstanceStore},
+		{table: "torznab_indexers", store: torznabIndexerStore},
+		{table: "cross_seed_settings", store: crossSeedStore},
+	})
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
@@ -1029,4 +1023,35 @@ func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID
 		hashes[i] = torrents[i].Hash
 	}
 	return hashes, nil
+}
+
+// legacyCredentialRewriter is implemented by every store that seals credentials
+// with the key derived from sessionSecret.
+type legacyCredentialRewriter interface {
+	RewriteLegacyCredentials(ctx context.Context) (int, error)
+}
+
+type legacyCredentialStore struct {
+	table string
+	store legacyCredentialRewriter
+}
+
+// rewriteLegacyCredentials moves stored credentials to the versioned ciphertext
+// format. A failure leaves readable legacy rows behind, so it logs the rows that
+// did commit and lets startup continue.
+func rewriteLegacyCredentials(ctx context.Context, stores []legacyCredentialStore) {
+	for _, s := range stores {
+		rewritten, err := s.store.RewriteLegacyCredentials(ctx)
+		if err != nil {
+			event := log.Error().Err(err).Str("table", s.table)
+			if rewritten > 0 {
+				event = event.Int("rows", rewritten)
+			}
+			event.Msg("Failed to re-encrypt legacy credentials")
+			continue
+		}
+		if rewritten > 0 {
+			log.Info().Str("table", s.table).Int("rows", rewritten).Msg("Re-encrypted legacy credentials under the derived key")
+		}
+	}
 }

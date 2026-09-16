@@ -1,7 +1,8 @@
 ---
 sidebar_position: 4
-title: Windows
-description: Install and run qui on Windows as a background service.
+title: Run qui on Windows
+sidebar_label: Windows
+description: Install qui on Windows and run it in the background as a scheduled task.
 ---
 
 # Windows installation
@@ -59,6 +60,7 @@ In the Properties dialog:
 - Under **General**, select **Run whether user is logged on or not**.
 - Enter your Windows password when Windows prompts for it.
 - If you encounter permission issues, check **Run with highest privileges**.
+- Under **Settings**, clear **Stop the task if it runs longer than**. Windows sets this to 3 days by default and stops qui when the limit is reached.
 
 Click **OK** to save.
 

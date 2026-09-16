@@ -173,7 +173,7 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 			continue
 		}
 
-		fileRelease := s.releaseCache.Parse(file.Name)
+		fileRelease := s.parseFileRelease(file.Name)
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
 			if fileRelease.Episode > 0 {

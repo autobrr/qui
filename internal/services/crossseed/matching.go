@@ -117,6 +117,12 @@ func (s *Service) parseReleaseName(name string) *rls.Release {
 	return s.releaseCache.Parse(name)
 }
 
+// parseFileRelease removes RAR volume suffixes so .s01 does not become season 1.
+// Torrent titles use parseReleaseName because a trailing .S01 can name a season.
+func (s *Service) parseFileRelease(name string) *rls.Release {
+	return s.parseReleaseName(rarVolumeSuffix.ReplaceAllString(name, ""))
+}
+
 // String serializes the releaseKey into a stable string for caching purposes.
 func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
@@ -824,7 +830,7 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
 		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
-			fileRelease := s.parseReleaseName(cf.Name)
+			fileRelease := s.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
 			key := makeReleaseKey(enrichedRelease)
@@ -996,7 +1002,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 			})
 			totalSourceSize += sf.Size
 
-			fileRelease := s.parseReleaseName(sf.Name)
+			fileRelease := s.parseFileRelease(sf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
@@ -1016,7 +1022,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 			})
 			totalCandidateSize += cf.Size
 
-			fileRelease := s.parseReleaseName(cf.Name)
+			fileRelease := s.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
@@ -1242,7 +1248,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			})
 			totalSourceSize += sf.Size
 
-			fileRelease := s.parseReleaseName(sf.Name)
+			fileRelease := s.parseFileRelease(sf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
@@ -1263,7 +1269,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			})
 			totalCandidateSize += cf.Size
 
-			fileRelease := s.parseReleaseName(cf.Name)
+			fileRelease := s.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {

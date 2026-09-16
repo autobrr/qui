@@ -64,7 +64,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/rs/zerolog/log"
 	"modernc.org/sqlite"
 
@@ -476,20 +476,21 @@ func (t *Tx) promoteStatementsToCache() {
 			return
 		}
 
-		// Double-check it's not already cached (race condition protection)
 		if _, found := stmts.Get(boundQuery); found {
 			t.db.stmtMu.RUnlock()
 			continue
 		}
 
-		// Prepare and cache the statement
 		stmt, err := conn.PrepareContext(ctx, boundQuery)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
 			continue // silently skip - caching is best-effort
 		}
 
-		stmts.Set(boundQuery, stmt, ttlcache.DefaultTTL)
+		// Lost the race to another preparer: close ours, keep the cached one.
+		if _, loaded := stmts.GetOrSet(boundQuery, stmt, ttlcache.DefaultTTL); loaded {
+			_ = stmt.Close()
+		}
 		t.db.stmtMu.RUnlock()
 	}
 }
@@ -588,6 +589,15 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
+func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
+	return ttlcache.New[string, *sql.Stmt](
+		ttlcache.SetDefaultTTL(5*time.Minute),
+		ttlcache.SetDeallocationFunc(func(_ string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			_ = s.Close()
+		}),
+	)
+}
+
 // New opens the SQLite database at databasePath, creating the parent directory
 // and applying any pending migrations. The returned DB routes writes through a
 // single serialized connection and reads through a read-only pool.
@@ -660,28 +670,11 @@ func New(databasePath string) (*DB, error) {
 		return nil, err
 	}
 
-	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
-	writerStmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
-		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-			if s != nil {
-				_ = s.Close()
-			}
-		})
-	readerStmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
-		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-			if s != nil {
-				_ = s.Close()
-			}
-		})
-
-	writerStmtsCache := ttlcache.New(writerStmtOpts)
-	readerStmtsCache := ttlcache.New(readerStmtOpts)
-
 	db := &DB{
 		writerConn:      writerConn,
 		readerPool:      readerPool,
-		writerStmts:     writerStmtsCache,
-		readerStmts:     readerStmtsCache,
+		writerStmts:     newStmtCache(),
+		readerStmts:     newStmtCache(),
 		dialect:         DialectSQLite,
 		serializeWrites: true,
 	}
@@ -780,19 +773,17 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 
 	// Slow path: prepare new statement
-	// Note: Multiple goroutines might prepare the same query simultaneously,
-	// but this is acceptable since:
-	// 1. It's rare (only on cache miss/eviction)
-	// 2. The extra statements will be garbage collected
-	// 3. TTL cache will eventually converge to one statement per query
 	s, err := conn.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache the statement - if another goroutine already cached it,
-	// that's fine, this one will be closed by the deallocation function
-	stmts.Set(query, s, ttlcache.DefaultTTL)
+	// Concurrent misses race to cache the same query; the loser closes its
+	// own never-used statement so the driver does not leak it.
+	if existing, loaded := stmts.GetOrSet(query, s, ttlcache.DefaultTTL); loaded {
+		_ = s.Close()
+		s = existing
+	}
 
 	if tx != nil {
 		// Return transaction-specific statement
@@ -1298,18 +1289,12 @@ func (db *DB) Close() error {
 
 		db.stmtMu.Lock()
 
-		// Close statement caches (will close all prepared statements)
-		// Track closed caches to avoid double-closing the same cache instance
-		closedCaches := make(map[*ttlcache.Cache[string, *sql.Stmt]]bool)
-
-		if db.writerStmts != nil && !closedCaches[db.writerStmts] {
+		if db.writerStmts != nil {
 			db.writerStmts.Close()
-			closedCaches[db.writerStmts] = true
 			db.writerStmts = nil
 		}
-		if db.readerStmts != nil && !closedCaches[db.readerStmts] {
+		if db.readerStmts != nil {
 			db.readerStmts.Close()
-			closedCaches[db.readerStmts] = true
 			db.readerStmts = nil
 		}
 

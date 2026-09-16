@@ -38,6 +38,34 @@ func TestClassifyTorrentLayout(t *testing.T) {
 			expect: LayoutArchives,
 		},
 		{
+			name: "rar volume after r99",
+			files: qbt.TorrentFiles{
+				{Name: "Release.s01", Size: 2 << 30},
+			},
+			expect: LayoutArchives,
+		},
+		{
+			name: "rar volume after s99",
+			files: qbt.TorrentFiles{
+				{Name: "Release.t00", Size: 2 << 30},
+			},
+			expect: LayoutArchives,
+		},
+		{
+			name: "uppercase rar volume",
+			files: qbt.TorrentFiles{
+				{Name: "Release.S01", Size: 2 << 30},
+			},
+			expect: LayoutArchives,
+		},
+		{
+			name: "last numbered rar volume",
+			files: qbt.TorrentFiles{
+				{Name: "Release.z99", Size: 2 << 30},
+			},
+			expect: LayoutArchives,
+		},
+		{
 			name: "gz archive",
 			files: qbt.TorrentFiles{
 				{Name: "Archive.tar.gz", Size: 1 << 30},

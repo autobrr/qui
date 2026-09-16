@@ -2220,7 +2220,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     } else if (imported > 0 && skipped > 0) {
       toast.success(t("trackerBreakdown.toasts.importedAndSkipped", { imported, skipped }))
     } else if (imported > 0) {
-      toast.success(t(imported !== 1 ? "trackerBreakdown.toasts.importedCount_plural" : "trackerBreakdown.toasts.importedCount", { count: imported }))
+      toast.success(t("trackerBreakdown.toasts.importedCount", { count: imported }))
     } else {
       toast.info(t("trackerBreakdown.toasts.noCustomizationsImported"))
     }
@@ -2967,7 +2967,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                           <div className="text-sm text-muted-foreground">
                             {newEntries.length > 0 && <span>{t("trackerBreakdown.importDialog.newCount", { count: newEntries.length })}</span>}
                             {newEntries.length > 0 && (conflicts.length > 0 || identicalEntries.length > 0) && <span>, </span>}
-                            {conflicts.length > 0 && <span className="text-yellow-600">{t(conflicts.length !== 1 ? "trackerBreakdown.importDialog.conflictCount_plural" : "trackerBreakdown.importDialog.conflictCount", { count: conflicts.length })}</span>}
+                            {conflicts.length > 0 && <span className="text-yellow-600">{t("trackerBreakdown.importDialog.conflictCount", { count: conflicts.length })}</span>}
                             {conflicts.length > 0 && identicalEntries.length > 0 && <span>, </span>}
                             {identicalEntries.length > 0 && <span className="text-muted-foreground">{t("trackerBreakdown.importDialog.unchangedCount", { count: identicalEntries.length })}</span>}
                           </div>

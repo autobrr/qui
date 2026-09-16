@@ -18,7 +18,7 @@ func TestDiscScanStoreSQLite(t *testing.T) {
 	runDiscScanStoreTests(t, testdb.NewMigratedSQLite(t, "disc-scan"))
 }
 
-func TestDiscScanStorePostgres(t *testing.T) {
+func TestDiscScanStorePostgresIntegration(t *testing.T) {
 	runDiscScanStoreTests(t, testdb.NewMigratedPostgres(t, "disc-scan"))
 }
 

@@ -493,8 +493,15 @@ func hardlinkScope(hasInside, hasOutside bool) string {
 // hardlinkIndexTTL for changes nothing reports, which is harmless for tagging and not
 // harmless for deleting.
 func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, index *HardlinkIndex, torrentByHash map[string]qbt.Torrent, hashes []string) map[string]string {
-	if index == nil || len(hashes) == 0 {
+	if len(hashes) == 0 {
 		return nil
+	}
+	if index == nil {
+		blocked := make(map[string]string, len(hashes))
+		for _, hash := range hashes {
+			blocked[hash] = "hardlink scope unknown"
+		}
+		return blocked
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
@@ -524,8 +531,10 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 	for _, hash := range hashes {
 		expected, known := index.ScopeByHash[hash]
 		if !known {
-			// The rule already treated this torrent's scope as unknown, so there is no
-			// hardlink answer to invalidate.
+			if blocked == nil {
+				blocked = make(map[string]string)
+			}
+			blocked[hash] = "hardlink scope unknown"
 			continue
 		}
 

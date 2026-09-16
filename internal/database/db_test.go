@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -226,6 +227,11 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "hardlink_dir_preset", Type: "TEXT"},
 		{Name: "use_reflinks", Type: "BOOLEAN"},
 		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
+		{Name: "ssh_host", Type: "TEXT"},
+		{Name: "ssh_port", Type: "INTEGER"},
+		{Name: "ssh_username", Type: "TEXT"},
+		{Name: "ssh_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -237,9 +243,6 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "last_validated", Type: "DATETIME"},
 		{Name: "provider", Type: "TEXT"},
 		{Name: "dodo_instance_id", Type: "TEXT"},
-		{Name: "polar_customer_id", Type: "TEXT"},
-		{Name: "polar_product_id", Type: "TEXT"},
-		{Name: "polar_activation_id", Type: "TEXT"},
 		{Name: "username", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
@@ -939,4 +942,31 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 
 	// Commit the write transaction
 	require.NoError(t, txWrite.Commit())
+}
+
+// Concurrent misses on one query must converge on a single cached statement;
+// the losers close theirs instead of leaking a driver-side prepared statement.
+func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	const query = "SELECT 1"
+
+	stmts := make([]*sql.Stmt, 32)
+	errs := make([]error, len(stmts))
+	var wg sync.WaitGroup
+	for i := range stmts {
+		wg.Go(func() {
+			stmts[i], errs[i] = db.getStmt(ctx, query, nil)
+		})
+	}
+	wg.Wait()
+
+	cached, found := db.readerStmts.Get(query)
+	require.True(t, found)
+	for i, s := range stmts {
+		require.NoError(t, errs[i])
+		require.Same(t, cached, s)
+		var n int
+		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
+	}
 }

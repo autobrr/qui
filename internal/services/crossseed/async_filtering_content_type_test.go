@@ -16,7 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -82,7 +82,7 @@ func TestSearchIgnoresCachedFilteringStateForDifferentContentType(t *testing.T) 
 			}
 			settings := models.DefaultCrossSeedAutomationSettings()
 
-			filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+			filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 			filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 				CapabilitiesCompleted: true,
 				ContentCompleted:      true,
@@ -108,7 +108,7 @@ func TestSearchIgnoresCachedFilteringStateForDifferentContentType(t *testing.T) 
 				}),
 				asyncFilteringCache: filterCache,
 				releaseCache:        NewReleaseCache(),
-				searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+				searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 				stringNormalizer:    stringutils.NewDefaultNormalizer(),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return settings, nil
@@ -137,7 +137,7 @@ func TestFinishedWorkerCannotRestoreReplacedCacheEntry(t *testing.T) {
 	key := asyncFilteringCacheKey(instanceID, hash)
 
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 
 	stateA := &AsyncIndexerFilteringState{
@@ -190,7 +190,7 @@ func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
 		FilteredIndexers:      []int{7},
 		contentType:           "audiobook",
 	}
-	cache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	cache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	cache.Set(asyncFilteringCacheKey(instanceID, hash), staleState, ttlcache.DefaultTTL)
 
 	svc := &Service{
@@ -232,7 +232,7 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 			FilteredIndexers:      []int{7},
 			contentType:           cachedType,
 		}
-		cache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+		cache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 		cache.Set(asyncFilteringCacheKey(instanceID, hash), cachedState, ttlcache.DefaultTTL)
 		return &Service{
 			instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},

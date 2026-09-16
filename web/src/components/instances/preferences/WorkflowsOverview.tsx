@@ -1902,7 +1902,7 @@ function RulePreview({
         {rule.conditions?.category?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
             <Folder className="h-3 w-3" />
-            {rule.conditions.category.category}
+            {rule.conditions.category.category || t("preferences.workflowDialog.uncategorized")}
           </Badge>
         )}
         {rule.conditions?.move?.enabled && (

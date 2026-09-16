@@ -1,12 +1,21 @@
 ---
 sidebar_position: 1
-title: Introduction
+title: Web UI for qBittorrent
+sidebar_label: Introduction
 description: Fast, modern interface for qBittorrent with cross-seeding, automations, and backups.
 ---
 
 # qui
 
-qui is a web interface for qBittorrent. It manages multiple qBittorrent instances from one application.
+qui is a web interface for qBittorrent. It runs as one binary and connects to one or more qBittorrent instances over the Web API.
+
+Most people run qui with one qBittorrent instance. Multi-instance support is optional. If you have a seedbox and a home server, qui manages both from one page.
+
+## Where to run qui
+
+qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
+
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
 
 ## Features
 
@@ -29,7 +38,7 @@ qui is a web interface for qBittorrent. It manages multiple qBittorrent instance
 - **Magnet Links**: Register qui as your browser's handler for magnet links from **Settings → Security**
 - **Reverse Proxy**: [Transparent qBittorrent proxy](./features/reverse-proxy.md) for external apps like autobrr, Sonarr, and Radarr, without credential sharing
 - **Incognito Mode**: [Disguise torrents as Linux ISOs](./features/incognito.md) for screen sharing and screenshots
-- **Multi-Language**: Interface available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese and Traditional Chinese with automatic browser-language detection
+- **Multi-Language**: Interface available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan with automatic browser-language detection
 
 ## Browser extensions
 
@@ -42,7 +51,7 @@ To register qui as your browser handler for magnet links, open **Settings → Se
 
 ## Languages
 
-qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese. The interface detects your browser language on first load and remembers your choice after that.
+qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan. The interface detects your browser language on first load and remembers your choice after that.
 
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 

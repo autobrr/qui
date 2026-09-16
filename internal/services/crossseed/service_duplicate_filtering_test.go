@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -385,7 +385,7 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 				duplicateHash: existing,
 			},
 		},
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -441,7 +441,7 @@ func TestFilterSearchResultsByLateContentFilterMissingOrIncompleteStateLeavesRes
 		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 	}
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 
 	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
@@ -472,7 +472,7 @@ func TestFilterSearchResultsByLateContentFilterCompletedStateNoExcludedResultInd
 		{Indexer: "Indexer Two", IndexerID: 2, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 	}
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -494,7 +494,7 @@ func TestFilterSearchResultsByLateContentFilterCompletedStateWithNoResultsReturn
 	const instanceID = 1
 	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -542,7 +542,7 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+			filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 			cacheKey := asyncFilteringCacheKey(instanceID, sourceHash)
 			filterCache.Set(cacheKey, &AsyncIndexerFilteringState{
 				CapabilitiesCompleted: true,
@@ -627,7 +627,7 @@ func TestFilterSearchResultsByLateContentFilterDropsExcludedIndexers(t *testing.
 		{Indexer: "Indexer Three", IndexerID: 3, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 	}
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -662,7 +662,7 @@ func TestFilterSearchResultsByLateContentFilterNearMissRegression(t *testing.T) 
 		{Indexer: "AllowedIndexer", IndexerID: 34, Title: releaseTitle},
 	}
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -709,7 +709,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 			},
 		},
 		syncManager:       sync,
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
@@ -774,8 +774,8 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 			},
 		},
 		syncManager:         sync,
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
@@ -852,8 +852,8 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 			},
 		},
 		syncManager:         sync,
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
@@ -913,7 +913,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 	var downloadCalled atomic.Bool
 	var invokerCalled atomic.Bool
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
@@ -984,7 +984,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 	var downloadCalled atomic.Bool
 	var invokerCalled atomic.Bool
 	svc := &Service{
-		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
@@ -1044,7 +1044,7 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 	var downloadCalled atomic.Bool
 	svc := &Service{
 		syncManager:       sync,
-		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil

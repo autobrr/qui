@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/moistari/rls"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -40,8 +40,8 @@ type Parser struct {
 
 // NewParser returns a parser with the provided TTL for cached entries.
 func NewParser(ttl time.Duration) *Parser {
-	cache := ttlcache.New(ttlcache.Options[string, *rls.Release]{}.
-		SetDefaultTTL(ttl))
+	cache := ttlcache.New[string, *rls.Release](
+		ttlcache.SetDefaultTTL(ttl))
 	return &Parser{
 		cache:         cache,
 		keyNormalizer: stringutils.NewNormalizer(ttl, strings.TrimSpace),

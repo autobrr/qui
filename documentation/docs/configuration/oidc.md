@@ -1,7 +1,8 @@
 ---
 sidebar_position: 4
-title: OIDC
-description: Single sign-on with an OpenID Connect provider.
+title: OpenID Connect single sign-on for qui
+sidebar_label: OIDC
+description: Log in to qui with any OpenID Connect provider, with setup steps and the required redirect URL.
 ---
 
 # OpenID Connect (OIDC)

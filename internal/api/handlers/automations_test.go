@@ -18,6 +18,27 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
+func TestAutomationValidatePayload_Category(t *testing.T) {
+	for _, category := range []string{"", "archive"} {
+		t.Run("target="+category, func(t *testing.T) {
+			handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+			payload := &AutomationPayload{
+				Name:           "Category rule",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Category: &models.CategoryAction{Enabled: true, Category: category},
+				},
+			}
+
+			status, message, err := handler.validatePayload(t.Context(), 1, payload)
+			require.NoError(t, err)
+			require.Zero(t, status)
+			require.Empty(t, message)
+			require.Equal(t, category, payload.Conditions.Category.Category)
+		})
+	}
+}
+
 func TestAutomationDryRunNow(t *testing.T) {
 	newRequest := func(body string) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/api/instances/1/automations/dry-run", strings.NewReader(body))
