@@ -442,9 +442,7 @@
       "managementTitle": "许可证管理",
       "managementDescription": "管理您的主题许可证和高级访问权限",
       "providers": {
-        "dodoPortal": "Dodo 门户",
-        "polarPortal": "Polar 门户",
-        "legacyPolarPortal": "旧版 Polar 门户"
+        "dodoPortal": "Dodo 门户"
       },
       "status": {
         "unlockTitle": "解锁高级主题",
@@ -477,8 +475,6 @@
         "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
       },
       "invalid": {
-        "polarPrefix": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台已激活的设备上停用，或通过",
-        "polarSuffix": "管理激活。",
         "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台当前已激活的设备上停用。"
       },
       "actions": {

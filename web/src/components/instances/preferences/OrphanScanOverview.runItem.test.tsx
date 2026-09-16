@@ -15,8 +15,10 @@ vi.mock("react-i18next", async (importOriginal) => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, opts?: Record<string, unknown>) =>
-        opts && "total" in opts ? `${key}:${String(opts.total)}` : key,
+      t: (key: string, opts?: Record<string, unknown>) => {
+        const value = opts?.total ?? opts?.count ?? opts?.deleted
+        return value === undefined ? key : `${key}:${String(value)}`
+      },
     }),
   }
 })
@@ -76,6 +78,18 @@ describe("OrphanScanRunItem", () => {
     expect(container.textContent).not.toContain("preferences.orphanScanOverview.statusClean")
     fireEvent.click(container.querySelector("button")!)
     expect(container.textContent).toContain(warning)
+  })
+
+  it.each([
+    { filesDeleted: 9, foldersDeleted: 3, want: ["deletedFiles:9", "deletedDirs:3"], omit: [] },
+    { filesDeleted: 9, foldersDeleted: 0, want: ["deletedFiles:9"], omit: ["deletedDirs"] },
+    { filesDeleted: 0, foldersDeleted: 3, want: ["deletedDirs:3"], omit: ["deletedFiles"] },
+    { filesDeleted: 0, foldersDeleted: 0, want: ["deletedFiles:0"], omit: ["deletedDirs"] },
+  ])("names $filesDeleted files and $foldersDeleted directories in the deleted stats", ({ filesDeleted, foldersDeleted, want, omit }) => {
+    const { container } = render(<OrphanScanRunItem run={makeRun({ filesFound: 12, filesDeleted, foldersDeleted })} />)
+
+    for (const fragment of want) expect(container.textContent).toContain(`preferences.orphanScanOverview.${fragment}`)
+    for (const fragment of omit) expect(container.textContent).not.toContain(`preferences.orphanScanOverview.${fragment}`)
   })
 
   it("keeps a failed run failed when its scan was partial", () => {

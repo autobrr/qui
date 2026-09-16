@@ -444,9 +444,7 @@
       "managementTitle": "Lizenzverwaltung",
       "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
       "providers": {
-        "dodoPortal": "Dodo-Portal",
-        "polarPortal": "Polar-Portal",
-        "legacyPolarPortal": "Altes Polar-Portal"
+        "dodoPortal": "Dodo-Portal"
       },
       "status": {
         "unlockTitle": "Premium-Designs freischalten",
@@ -479,8 +477,6 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktiv ist, oder verwalte die Aktivierungen über",
-        "polarSuffix": ".",
         "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktuell aktiv ist."
       },
       "actions": {

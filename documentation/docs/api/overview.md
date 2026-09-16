@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: API
-description: Authenticate against the qui API with API keys.
+title: qui REST API and API keys
+sidebar_label: API
+description: Authenticate against the qui REST API with API keys, and browse every endpoint in the built-in Swagger UI.
 ---
 
 # API overview

@@ -1,12 +1,13 @@
 ---
 sidebar_position: 14
-title: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, torrent creation, export, MediaInfo, and BDInfo.
+title: Manage torrents in qui
+sidebar_label: Torrent Management
+description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management
 
-qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
 
 ## Tags and categories
 
@@ -24,6 +25,10 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 ### Subcategories
 
 qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
+
+## Exclude a filter
+
+Click a status, category, tag, or tracker in the filter sidebar to show only the torrents that match it. Ctrl+click the same item (Cmd+click on macOS) to exclude it instead. The list then shows the torrents that do not match. On a touch screen, press and hold the item for the same result. Click it again to clear the exclusion.
 
 ## Clear filters
 
@@ -66,6 +71,14 @@ A view stores the sidebar filter selection only. It does not include search text
 | Escape | Closes the details panel and clears the selection |
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
+
+## Table columns
+
+**Toggle columns** in the table toolbar shows or hides columns. Drag the handle next to a column in that menu to change its position, or drag a column header directly.
+
+Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
+
+Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
 
 ## Torrent creator
 

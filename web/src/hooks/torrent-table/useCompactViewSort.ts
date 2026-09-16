@@ -5,6 +5,7 @@
 
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "@/components/torrents/torrentSortOptions"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { columnLabel } from "@/lib/torrent-table/column-label"
 import type { ColumnOrderState, ColumnVisibilityState } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef } from "react"
 import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
@@ -74,31 +75,9 @@ export function useCompactViewSort({
     }
 
     const columns = tableRef.current.getAllLeafColumns()
-    const directColumn = columns.find(column => column.id === activeSortField)
-    if (directColumn) {
-      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof directColumn.columnDef.header === "string") {
-        return directColumn.columnDef.header
-      }
-      return directColumn.id
-    }
-
-    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
-    if (backendColumn) {
-      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof backendColumn.columnDef.header === "string") {
-        return backendColumn.columnDef.header
-      }
-      return backendColumn.id
-    }
-
-    return activeSortField
+    const column = columns.find(column => column.id === activeSortField)
+      ?? columns.find(column => getBackendSortField(column.id) === activeSortField)
+    return column ? columnLabel(column) : activeSortField
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compactSortOptions, activeSortField, columnVisibility, columnOrder])
 

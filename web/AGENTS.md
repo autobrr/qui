@@ -43,7 +43,7 @@ Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
+English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`, `ca`.
 
 ## i18n Commands
 
@@ -59,6 +59,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:ko`
 - `pnpm check:i18n:uk`
 - `pnpm check:i18n:pt-br`
+- `pnpm check:i18n:ca`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 
@@ -78,7 +79,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
-- English plurals use `_one`/`_other`; Chinese needs `_other`. Legacy `_plural` keys are manually dispatched and must exist in all locales.
+- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` also needs `_few` (2-4) and `uk` needs `_few` and `_many`, or i18next renders the raw key at those counts. The pre-v4 `_plural` suffix no longer resolves — never add one.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
 

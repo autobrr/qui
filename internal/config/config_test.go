@@ -6,9 +6,11 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -525,6 +527,141 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 			assert.Equal(t, expectedHost, cfg.Config.Host)
 			assert.Equal(t, expectedPort, cfg.Config.Port)
 			assert.Equal(t, filepath.Clean(expectedDBPath), filepath.Clean(cfg.GetDatabasePath()))
+		})
+	}
+}
+
+func TestNewWithConfigDirWritesDefaultWhenMissing(t *testing.T) {
+	tests := []struct {
+		name string
+		// prepare returns the --config-dir value and the config file New should end up using.
+		prepare     func(t *testing.T, tmpDir string) (inputPath, configPath string)
+		wantErr     string
+		wantPort    int
+		wantCreated bool
+		// needsPermissionDenial skips where file modes are not enforced: Windows, or running as root.
+		needsPermissionDenial bool
+	}{
+		{
+			name: "relative_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				t.Chdir(tmpDir)
+				return "relconf", filepath.Join("relconf", "config.toml")
+			},
+			wantPort:    7476,
+			wantCreated: true,
+		},
+		{
+			name: "empty_existing_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				return tmpDir, filepath.Join(tmpDir, "config.toml")
+			},
+			wantPort:    7476,
+			wantCreated: true,
+		},
+		{
+			name: "missing_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				dir := filepath.Join(tmpDir, "missing", "qui")
+				return dir, filepath.Join(dir, "config.toml")
+			},
+			wantPort:    7476,
+			wantCreated: true,
+		},
+		{
+			name: "missing_toml_file",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				configPath := filepath.Join(tmpDir, "custom.toml")
+				return configPath, configPath
+			},
+			wantPort:    7476,
+			wantCreated: true,
+		},
+		{
+			name: "existing_valid_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				return tmpDir, configPath
+			},
+			wantPort: 8080,
+		},
+		{
+			name: "malformed_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte("port = = 1\n"), 0o600))
+				return tmpDir, configPath
+			},
+			wantErr: "failed to read config",
+		},
+		{
+			name: "unreadable_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				require.NoError(t, os.Chmod(configPath, 0o000))
+				return tmpDir, configPath
+			},
+			wantErr:               "failed to read config",
+			needsPermissionDenial: true,
+		},
+		{
+			name: "unwritable_empty_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string) {
+				dir := filepath.Join(tmpDir, "readonly")
+				require.NoError(t, os.Mkdir(dir, 0o500))
+				t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+				return dir, filepath.Join(dir, "config.toml")
+			},
+			wantErr:               "failed to create config file",
+			needsPermissionDenial: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.needsPermissionDenial && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
+				t.Skip("file permissions are not enforced for this user")
+			}
+			var logs strings.Builder
+			previous := log.Logger
+			log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: &logs, NoColor: true})
+			t.Cleanup(func() { log.Logger = previous })
+
+			inputPath, configPath := tt.prepare(t, t.TempDir())
+			before, beforeErr := os.Lstat(configPath)
+
+			cfg, err := New(inputPath)
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				after, afterErr := os.Lstat(configPath)
+				if beforeErr != nil {
+					assert.ErrorIs(t, afterErr, fs.ErrNotExist, "a failed load must not write a config")
+					return
+				}
+				require.NoError(t, afterErr)
+				assert.Equal(t, before.Size(), after.Size(), "a failed load must not overwrite the config")
+				assert.Equal(t, before.ModTime(), after.ModTime(), "a failed load must not overwrite the config")
+				return
+			}
+			require.NoError(t, err)
+
+			written, err := os.ReadFile(configPath)
+			require.NoError(t, err)
+			if tt.wantCreated {
+				assert.Contains(t, string(written), "Auto-generated on first run")
+				absConfigPath, absErr := filepath.Abs(configPath)
+				require.NoError(t, absErr)
+				assert.Contains(t, logs.String(), "Created default config file: "+absConfigPath,
+					"the log must name the absolute path so a mistyped --config-dir is visible")
+			} else {
+				assert.Equal(t, before.Size(), int64(len(written)))
+				assert.NotContains(t, logs.String(), "Created default config file")
+			}
+			assert.Equal(t, tt.wantPort, cfg.Config.Port)
+			assert.Equal(t, filepath.Join(filepath.Dir(configPath), "qui.db"), cfg.GetDatabasePath())
 		})
 	}
 }

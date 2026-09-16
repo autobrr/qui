@@ -103,6 +103,13 @@ vi.mock("@tanstack/react-virtual", () => {
   }
 })
 
+// The grid measures its width through ResizeObserver, which jsdom lacks.
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
+
 // Network boundary: any api.* call resolves to undefined (real hooks degrade
 // gracefully via their ?? fallbacks).
 vi.mock("@/lib/api", () => ({

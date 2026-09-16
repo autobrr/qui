@@ -31,13 +31,6 @@
       "performance": "Partagé"
     }
   },
-  "speedLimits": {
-    "title": "Limites de vitesse",
-    "download": "Téléchargement",
-    "upload": "Envoi",
-    "current": "Actuelle : {{speed}}",
-    "unlimited": "Illimité"
-  },
   "instanceCard": {
     "loadingStats": "Chargement des statistiques...",
     "failedToLoadStats": "Échec du chargement des statistiques",
@@ -186,8 +179,8 @@
       "invalidDomains": "Entrée invalide : domains doit être un tableau non vide",
       "invalidJson": "JSON Invalide",
       "newCount": "{{count}} nouveau(x)",
-      "conflictCount": "{{count}} conflit",
-      "conflictCount_plural": "{{count}} conflits",
+      "conflictCount_one": "{{count}} conflit",
+      "conflictCount_other": "{{count}} conflits",
       "unchangedCount": "{{count}} inchangé(s)",
       "resolveConflicts": "Résoudre les conflits",
       "conflictsWith": "En conflit avec : {{name}}",
@@ -206,8 +199,8 @@
       "deleteFailed": "Échec de la suppression de la personnalisation du tracker",
       "failedToImport": "Échec de l'importation : {{names}}",
       "importedAndSkipped": "Importés {{imported}}, ignorés {{skipped}}",
-      "importedCount": "{{count}} personnalisation importée",
-      "importedCount_plural": "{{count}} personnalisations importées",
+      "importedCount_one": "{{count}} personnalisation importée",
+      "importedCount_other": "{{count}} personnalisations importées",
       "noCustomizationsImported": "Aucune personnalisation importée"
     }
   },

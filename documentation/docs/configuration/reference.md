@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: Configuration Reference
-description: All config.toml options and their defaults.
+title: qui config.toml reference
+sidebar_label: Configuration Reference
+description: Every config.toml option qui reads, with its default, its environment variable, and what it controls.
 ---
 
 # Configuration Reference

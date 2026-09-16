@@ -35,7 +35,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -53,11 +52,6 @@ import (
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
-)
-
-var (
-	// PolarOrgID Publisher credentials - set during build via ldflags
-	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
@@ -111,7 +105,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
 		app.runServer()
 	}
 
@@ -471,18 +465,14 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
-
-	// Publisher credentials - set during build via ldflags
-	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
 }
 
-func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
 	return &Application{
-		configDir:  configDir,
-		dataDir:    dataDir,
-		logPath:    logPath,
-		pprofFlag:  pprofFlag,
-		polarOrgID: polarOrgID,
+		configDir: configDir,
+		dataDir:   dataDir,
+		logPath:   logPath,
+		pprofFlag: pprofFlag,
 	}
 }
 
@@ -551,14 +541,6 @@ func (app *Application) runServer() {
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
-	// init polar client
-	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
-	if app.polarOrgID != "" {
-		log.Trace().Msg("Initializing Polar client for license validation")
-	} else {
-		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-	}
-
 	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
 	if dodoEnv == "" {
 		dodoEnv = os.Getenv("DODO_ENVIRONMENT")
@@ -613,7 +595,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)

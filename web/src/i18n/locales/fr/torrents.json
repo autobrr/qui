@@ -1526,6 +1526,10 @@
     "descending": "décroissant",
     "sortDirection": "Tri {{direction}}",
     "toggleColumns": "Basculer les colonnes",
+    "stretchMode": "Étirer la colonne Nom pour remplir le tableau",
+    "scrollMode": "Définir vous-même la largeur de la colonne Nom et faire défiler latéralement",
+    "stretchInactive": "En pause, car les colonnes visibles remplissent déjà le tableau",
+    "reorderColumn": "Glisser pour réordonner {{column}}",
     "tableAriaLabel": "Tableau des torrents"
   },
   "sort": {

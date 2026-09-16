@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -181,7 +182,8 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
+		// With SetConfigFile, viper reports a missing file as a plain fs error, never ConfigFileNotFoundError.
+		if !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
@@ -738,6 +740,10 @@ sessionSecret = "{{ .sessionSecret }}"
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
+	// Absolute, so a mistyped --config-dir that lands on a fresh config is easy to spot.
+	if absPath, absErr := filepath.Abs(path); absErr == nil {
+		path = absPath
+	}
 	log.Info().Msgf("Created default config file: %s", path)
 	return nil
 }
