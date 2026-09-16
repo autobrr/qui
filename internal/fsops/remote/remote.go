@@ -141,9 +141,9 @@ func walk(ctx context.Context, client *sftp.Client, ch chan<- fsops.WalkEntry, d
 		// An unreadable directory is one entry with Err and the walk goes on,
 		// as it does locally: a scan must not die on one denied subtree.
 		return send(ctx, ch, fsops.WalkEntry{
-			LstatInfo: fsops.LstatInfo{FileInfo: fsops.FileInfo{Path: dir, IsDir: true}},
-			RelPath:   rel,
-			Err:       pathError("readdir", dir, err),
+			Path: dir, IsDir: true,
+			RelPath: rel,
+			Err:     pathError("readdir", dir, err),
 		})
 	}
 
@@ -358,8 +358,8 @@ func lstatInfo(fi os.FileInfo, p string) *fsops.LstatInfo {
 
 func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {
 	entry := fsops.WalkEntry{
-		LstatInfo: fsops.LstatInfo{FileInfo: fileInfo(fi, p)},
-		RelPath:   rel,
+		FileInfo: fileInfo(fi, p),
+		RelPath:  rel,
 	}
 	if wantFileID && fi.Mode().IsRegular() {
 		entry.FileIDErr = errNoIdentity
