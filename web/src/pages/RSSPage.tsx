@@ -2142,7 +2142,7 @@ interface EditRuleDialogProps {
   tags: string[]
 }
 
-function EditRuleDialog({
+export function EditRuleDialog({
   instanceId,
   open,
   onOpenChange,

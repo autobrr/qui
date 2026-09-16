@@ -228,6 +228,11 @@ export interface AppPreferences {
   dont_count_slow_torrents: boolean
   export_dir: string
   export_dir_fin: string
+  remove_torrent_file_backup?: boolean
+  torrent_files_backup_enabled?: boolean
+  torrent_files_backup_dir?: string
+  torrent_files_finished_backup_dir_enabled?: boolean
+  torrent_files_finished_backup_dir?: string
   idn_support_enabled: boolean
   locale: string
   performance_warning: boolean
@@ -263,6 +268,7 @@ export interface AppPreferences {
   mail_notification_sender: string
   mail_notification_smtp: string
   mail_notification_ssl_enabled: boolean
+  mail_notification_encryption_type?: string
   mail_notification_username: string
 
   // Scan directories (structured as empty object in go-qbittorrent)
