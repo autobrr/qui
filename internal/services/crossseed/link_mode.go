@@ -20,6 +20,22 @@ import (
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
+// linkModeResult represents the outcome of hardlink or reflink mode processing.
+type linkModeResult struct {
+	// Used indicates whether link mode was used for this cross-seed.
+	Used bool
+	// Success indicates the link mode completed successfully.
+	Success bool
+	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
+	// but the regular add must only auto-resume after a full 100% recheck.
+	RequiresFullRecheck bool
+	// FallbackToRegular indicates link mode explicitly fell through to regular mode.
+	FallbackToRegular bool
+	// Result is the final InstanceCrossSeedResult when link mode is used.
+	// Only valid when Used is true.
+	Result InstanceCrossSeedResult
+}
+
 // linkMode lists everything that differs between hardlink and reflink mode.
 // processLinkMode is the one body behind both; see docs/adr/0006.
 type linkMode struct {
@@ -87,6 +103,9 @@ func (s *Service) processReflinkMode(
 	props *qbt.TorrentProperties,
 	baseCategory, crossCategory string,
 ) linkModeResult {
+	// A reflink clone is copy-on-write, so qBittorrent can repair bytes in the
+	// clone without touching the source. That is why reflink mode skips the
+	// linked-file resume gate and never falls back to regular mode on a create error.
 	return s.processLinkMode(ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 		matchedTorrent, matchType, sourceFiles, candidateFiles, props, baseCategory, crossCategory,
 		linkMode{
