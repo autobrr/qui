@@ -13,7 +13,7 @@ const { requestedPaths } = vi.hoisted(() => ({ requestedPaths: [] as string[] })
 vi.mock("./useDirectoryContent", async () => {
   const actual = await vi.importActual<typeof import("./useDirectoryContent")>("./useDirectoryContent")
   const listings: Record<string, { dirs: string[]; files: string[] }> = {
-    "/data/": { dirs: ["/data/alpha", "/data/alps"], files: ["/data/album.flac"] },
+    "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/beta"], files: ["/data/album.flac"] },
     "/data/alpha/": { dirs: ["/data/alpha/one"], files: [] },
     "C:\\data\\": { dirs: ["C:\\data\\alpha", "C:\\data\\alps"], files: ["C:\\data\\album.flac"] },
     "C:\\data\\alpha\\": { dirs: ["C:\\data\\alpha\\one"], files: [] },
@@ -106,6 +106,12 @@ describe("usePathAutocomplete file entries", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
     act(() => result.current.handleInputChange("/data/al"))
     expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps"])
+  })
+
+  it("filters on the last segment, not on the parent path", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
+    act(() => result.current.handleInputChange("/data/a"))
+    expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps", "/data/album.flac"])
   })
 
   it("lists files after the directories when includeFiles is set", () => {

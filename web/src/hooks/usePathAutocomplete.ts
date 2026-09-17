@@ -67,7 +67,7 @@ export function usePathAutocomplete(
   const suggestions = useMemo(() => {
     const entries = includeFiles ? [...directoryEntries, ...fileEntries] : directoryEntries;
     if (!filterTerm) return entries;
-    return entries.filter((e) => e.toLowerCase().includes(filterTerm));
+    return entries.filter((e) => e.slice(lastSeparatorIndex(e) + 1).toLowerCase().includes(filterTerm));
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
   // Update highlighted index when suggestions change
