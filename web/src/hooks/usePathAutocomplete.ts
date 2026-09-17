@@ -5,7 +5,10 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { useDirectoryContent } from "./useDirectoryContent";
+import { pathSeparator, useDirectoryContent } from "./useDirectoryContent";
+
+const endsWithSeparator = (path: string) => /[\\/]$/.test(path);
+const lastSeparatorIndex = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
 
 type UsePathAutocompleteOptions = {
   /** Also list files; a selected file closes the dropdown instead of descending into it. */
@@ -25,18 +28,18 @@ export function usePathAutocomplete(
   const listRef = useRef<HTMLDivElement | null>(null);
   const skipHighlightResetRef = useRef(false);
 
+  // Both separators are handled on every host: a Windows qBittorrent returns backslash paths.
   const getParentPath = useCallback((path: string) => {
     if (!path || path.trim() === "/") return "/";
-    if (path.endsWith("/")) return path;
-    const lastSlash = path.lastIndexOf("/");
-    if (lastSlash === -1) return "/";
-    return lastSlash === 0 ? "/" : path.slice(0, lastSlash + 1);
+    if (endsWithSeparator(path)) return path;
+    const lastSeparator = lastSeparatorIndex(path);
+    if (lastSeparator === -1) return "/";
+    return lastSeparator === 0 ? "/" : path.slice(0, lastSeparator + 1);
   }, []);
 
   const getFilterTerm = useCallback((path: string) => {
-    if (!path || path.endsWith("/")) return "";
-    const lastSlash = path.lastIndexOf("/");
-    return path.slice(lastSlash + 1);
+    if (!path || endsWithSeparator(path)) return "";
+    return path.slice(lastSeparatorIndex(path) + 1);
   }, []);
 
   const parentPath = useMemo(
@@ -84,8 +87,7 @@ export function usePathAutocomplete(
   const selectSuggestion = useCallback(
     (entry: string) => {
       const isFile = fileEntries.includes(entry);
-      const separator = entry.includes("\\") || /^[a-zA-Z]:/.test(entry) ? "\\" : "/";
-      const path = isFile || entry.endsWith("/") || entry.endsWith("\\") ? entry : entry + separator;
+      const path = isFile || endsWithSeparator(entry) ? entry : entry + pathSeparator(entry);
       setInputValue(path);
       onSuggestionSelect(path);
       setDismissed(isFile);
@@ -177,7 +179,7 @@ export function usePathAutocomplete(
     !dismissed &&
     suggestions.length > 0 &&
     !(suggestions.length === 1 && suggestions[0] === inputValue) &&
-    !(inputValue.endsWith("/") && suggestions.some((s) => s === inputValue));
+    !(endsWithSeparator(inputValue) && suggestions.some((s) => s === inputValue));
 
   // Dismiss on any pointer interaction outside the input and the list. Blur
   // cannot do this because the suggestion buttons prevent it. A pointerdown on

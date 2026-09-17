@@ -8,12 +8,29 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { usePathAutocomplete } from "./usePathAutocomplete"
 
-vi.mock("./useDirectoryContent", () => {
-  const dirs = { data: ["/data/alpha", "/data/alps"] }
-  const files = { data: ["/data/album.flac"] }
+const { requestedPaths } = vi.hoisted(() => ({ requestedPaths: [] as string[] }))
+
+vi.mock("./useDirectoryContent", async () => {
+  const actual = await vi.importActual<typeof import("./useDirectoryContent")>("./useDirectoryContent")
+  const listings: Record<string, { dirs: string[]; files: string[] }> = {
+    "/data/": { dirs: ["/data/alpha", "/data/alps"], files: ["/data/album.flac"] },
+    "/data/alpha/": { dirs: ["/data/alpha/one"], files: [] },
+    "C:\\data\\": { dirs: ["C:\\data\\alpha", "C:\\data\\alps"], files: ["C:\\data\\album.flac"] },
+    "C:\\data\\alpha\\": { dirs: ["C:\\data\\alpha\\one"], files: [] },
+  }
+  const results = new Map<string, { data: string[] }>()
   return {
-    useDirectoryContent: (_id: number, _path: string, options: { mode?: string }) =>
-      options.mode === "files" ? files : dirs,
+    pathSeparator: actual.pathSeparator,
+    useDirectoryContent: (_id: number, path: string, options: { mode?: string }) => {
+      const key = `${options.mode ?? "dirs"}:${path}`
+      if (path) requestedPaths.push(path)
+      let result = results.get(key)
+      if (!result) {
+        result = { data: listings[path]?.[options.mode === "files" ? "files" : "dirs"] ?? [] }
+        results.set(key, result)
+      }
+      return result
+    },
   }
 })
 
@@ -82,6 +99,7 @@ describe("usePathAutocomplete file entries", () => {
   afterEach(() => {
     cleanup()
     document.body.replaceChildren()
+    requestedPaths.length = 0
   })
 
   it("lists directories only by default", () => {
@@ -115,6 +133,36 @@ describe("usePathAutocomplete file entries", () => {
     act(() => result.current.handleSelect("/data/album.flac"))
     expect(onSelect).toHaveBeenCalledWith("/data/album.flac")
     expect(result.current.inputValue).toBe("/data/album.flac")
+    expect(result.current.showSuggestions).toBe(false)
+  })
+})
+
+describe("usePathAutocomplete Windows paths", () => {
+  afterEach(() => {
+    cleanup()
+    document.body.replaceChildren()
+    requestedPaths.length = 0
+  })
+
+  it("asks for the backslash parent and filters on the last segment", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
+    act(() => result.current.handleInputChange("C:\\data\\alp"))
+    expect(requestedPaths).toContain("C:\\data\\")
+    expect(requestedPaths).not.toContain("/")
+    expect(result.current.suggestions).toEqual(["C:\\data\\alpha", "C:\\data\\alps"])
+  })
+
+  it("selecting a directory appends a backslash, selecting a file does not", () => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles: true }))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("C:\\data\\al"))
+    act(() => result.current.handleSelect("C:\\data\\alpha"))
+    expect(onSelect).toHaveBeenLastCalledWith("C:\\data\\alpha\\")
+    expect(result.current.showSuggestions).toBe(true)
+    act(() => result.current.handleInputChange("C:\\data\\al"))
+    act(() => result.current.handleSelect("C:\\data\\album.flac"))
+    expect(onSelect).toHaveBeenLastCalledWith("C:\\data\\album.flac")
     expect(result.current.showSuggestions).toBe(false)
   })
 })
