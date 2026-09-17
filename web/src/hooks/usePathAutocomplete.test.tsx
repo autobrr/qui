@@ -13,7 +13,7 @@ const { requestedPaths } = vi.hoisted(() => ({ requestedPaths: [] as string[] })
 vi.mock("./useDirectoryContent", async () => {
   const actual = await vi.importActual<typeof import("./useDirectoryContent")>("./useDirectoryContent")
   const listings: Record<string, { dirs: string[]; files: string[] }> = {
-    "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/beta"], files: ["/data/album.flac"] },
+    "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/logs"], files: ["/data/album.flac"] },
     "/data/alpha/": { dirs: ["/data/alpha/one"], files: [] },
     "C:\\data\\": { dirs: ["C:\\data\\alpha", "C:\\data\\alps"], files: ["C:\\data\\album.flac"] },
     "C:\\data\\alpha\\": { dirs: ["C:\\data\\alpha\\one"], files: [] },
