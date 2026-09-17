@@ -14712,18 +14712,18 @@ func parseTorrentDetailsURL(rawURL string) string {
 	return ""
 }
 
-// hardlinkModeResult represents the outcome of hardlink mode processing.
-type hardlinkModeResult struct {
-	// Used indicates whether hardlink mode was used for this cross-seed.
+// linkModeResult represents the outcome of hardlink or reflink mode processing.
+type linkModeResult struct {
+	// Used indicates whether link mode was used for this cross-seed.
 	Used bool
-	// Success indicates the hardlink mode completed successfully.
+	// Success indicates the link mode completed successfully.
 	Success bool
 	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
 	// but the regular add must only auto-resume after a full 100% recheck.
 	RequiresFullRecheck bool
-	// FallbackToRegular indicates hardlink mode explicitly fell through to regular mode.
+	// FallbackToRegular indicates link mode explicitly fell through to regular mode.
 	FallbackToRegular bool
-	// Result is the final InstanceCrossSeedResult when hardlink mode is used.
+	// Result is the final InstanceCrossSeedResult when link mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
 }
@@ -14825,7 +14825,7 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 // This creates a hardlinked file tree matching the incoming torrent's layout,
 // eliminating the need for reuse+rename alignment.
 //
-// Returns hardlinkModeResult with Used=false if hardlink mode is not applicable
+// Returns linkModeResult with Used=false if hardlink mode is not applicable
 // (disabled, instance lacks local access, filesystem mismatch, etc).
 // Returns Used=true with the final result when hardlink mode is attempted.
 func (s *Service) processHardlinkMode(
@@ -14841,12 +14841,12 @@ func (s *Service) processHardlinkMode(
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
 	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
-) hardlinkModeResult {
-	notUsed := hardlinkModeResult{Used: false}
+) linkModeResult {
+	notUsed := linkModeResult{Used: false}
 
 	// Helper to create error result when hardlink mode is enabled but fails
-	hardlinkError := func(message string) hardlinkModeResult {
-		return hardlinkModeResult{
+	hardlinkError := func(message string) linkModeResult {
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -14877,23 +14877,23 @@ func (s *Service) processHardlinkMode(
 	fallbackEnabled := instance.FallbackToRegularMode
 
 	// Helper to handle errors based on fallback setting
-	handleError := func(message string) hardlinkModeResult {
+	handleError := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Hardlink mode failed, falling back to regular mode")
-			return hardlinkModeResult{FallbackToRegular: true}
+			return linkModeResult{FallbackToRegular: true}
 		}
 		return hardlinkError(message)
 	}
-	handleFullRecheckFallback := func(message string) hardlinkModeResult {
+	handleFullRecheckFallback := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Hardlink mode filesystem fallback requires full regular-mode recheck")
-			return hardlinkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
+			return linkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
 		}
 		return hardlinkError(message)
 	}
@@ -14908,7 +14908,7 @@ func (s *Service) processHardlinkMode(
 	// Early guard: if SkipRecheck is enabled and we have extras, or the match must
 	// be verified first, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
-		return hardlinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -14961,7 +14961,7 @@ func (s *Service) processHardlinkMode(
 			Int("linkedFiles", len(candidateTorrentFilesToLink)).
 			Int("totalFiles", len(sourceFiles)).
 			Msg("[CROSSSEED] Hardlink mode: skipping below-threshold match before add")
-		return hardlinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -15118,7 +15118,7 @@ func (s *Service) processHardlinkMode(
 	}
 
 	if req.SkipRecheck && addPolicy.DiscLayout {
-		return hardlinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -15305,7 +15305,7 @@ func (s *Service) processHardlinkMode(
 		status = partialPoolRegistrationErrorStatus
 	}
 
-	return hardlinkModeResult{
+	return linkModeResult{
 		Used:    true,
 		Success: success,
 		Result: InstanceCrossSeedResult{
@@ -15524,22 +15524,6 @@ func hasDotDotSegment(p string) bool {
 	return false
 }
 
-// reflinkModeResult represents the outcome of reflink mode processing.
-type reflinkModeResult struct {
-	// Used indicates whether reflink mode was used for this cross-seed.
-	Used bool
-	// Success indicates the reflink mode completed successfully.
-	Success bool
-	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
-	// but the regular add must only auto-resume after a full 100% recheck.
-	RequiresFullRecheck bool
-	// FallbackToRegular indicates reflink mode explicitly fell through to regular mode.
-	FallbackToRegular bool
-	// Result is the final InstanceCrossSeedResult when reflink mode is used.
-	// Only valid when Used is true.
-	Result InstanceCrossSeedResult
-}
-
 func shouldWarnForReflinkCreateError(err error) bool {
 	if !errors.Is(err, reflinktree.ErrReflinkUnsupported) {
 		return false
@@ -15582,7 +15566,7 @@ func (s *Service) materializeReflink(ctx context.Context, backend fsops.Backend,
 // This creates a reflink tree matching the incoming torrent's layout, allowing safe
 // modification of cloned files without affecting originals.
 //
-// Returns reflinkModeResult with Used=false if reflink mode is not applicable
+// Returns linkModeResult with Used=false if reflink mode is not applicable
 // (disabled, instance lacks local access, filesystem doesn't support reflinks, etc).
 // Returns Used=true with the final result when reflink mode is attempted.
 //
@@ -15605,12 +15589,12 @@ func (s *Service) processReflinkMode(
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
 	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
-) reflinkModeResult {
-	notUsed := reflinkModeResult{Used: false}
+) linkModeResult {
+	notUsed := linkModeResult{Used: false}
 
 	// Helper to create error result when reflink mode is enabled but fails
-	reflinkError := func(message string) reflinkModeResult {
-		return reflinkModeResult{
+	reflinkError := func(message string) linkModeResult {
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -15640,27 +15624,27 @@ func (s *Service) processReflinkMode(
 	fallbackEnabled := instance.FallbackToRegularMode
 
 	// Helper to handle errors based on fallback setting
-	handleError := func(message string) reflinkModeResult {
+	handleError := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Reflink mode failed, falling back to regular mode")
-			return reflinkModeResult{FallbackToRegular: true}
+			return linkModeResult{FallbackToRegular: true}
 		}
 		return reflinkError(message)
 	}
-	handleFullRecheckFallback := func(message string) reflinkModeResult {
+	handleFullRecheckFallback := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Reflink mode filesystem fallback requires full regular-mode recheck")
-			return reflinkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
+			return linkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
 		}
 		return reflinkError(message)
 	}
-	handleMaterializationError := func(message string) reflinkModeResult {
+	handleMaterializationError := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Warn().
 				Int("instanceID", candidate.InstanceID).
@@ -15680,7 +15664,7 @@ func (s *Service) processReflinkMode(
 	// Early guard: if SkipRecheck is enabled and we have extras, or the match must
 	// be verified first, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
-		return reflinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -15733,7 +15717,7 @@ func (s *Service) processReflinkMode(
 			Int("clonedFiles", len(candidateTorrentFilesToClone)).
 			Int("totalFiles", len(sourceFiles)).
 			Msg("[CROSSSEED] Reflink mode: skipping below-threshold match before add")
-		return reflinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -15901,7 +15885,7 @@ func (s *Service) processReflinkMode(
 	}
 
 	if req.SkipRecheck && addPolicy.DiscLayout {
-		return reflinkModeResult{
+		return linkModeResult{
 			Used:    true,
 			Success: false,
 			Result: InstanceCrossSeedResult{
@@ -16094,7 +16078,7 @@ func (s *Service) processReflinkMode(
 		status = partialPoolRegistrationErrorStatus
 	}
 
-	return reflinkModeResult{
+	return linkModeResult{
 		Used:    true,
 		Success: success,
 		Result: InstanceCrossSeedResult{
