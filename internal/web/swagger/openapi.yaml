@@ -1245,6 +1245,14 @@ paths:
             type: string
           description: The directory path to list contents from
         - in: query
+          name: mode
+          required: false
+          schema:
+            type: string
+            enum: [all, dirs, files]
+            default: dirs
+          description: Which entries to list
+        - in: query
           name: withMetadata
           required: false
           schema:
@@ -1262,7 +1270,7 @@ paths:
                   type: string
                 description: List of file and folder paths in the directory
         '400':
-          description: Invalid instance ID or directory path
+          description: Invalid instance ID, directory path, or mode
         '500':
           description: Failed to get directory contents
 

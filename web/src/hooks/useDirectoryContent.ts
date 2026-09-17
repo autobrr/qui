@@ -10,6 +10,7 @@ import { api } from "@/lib/api"
 type UseDirectoryContentOptions = {
   enabled?: boolean
   staleTimeMs?: number
+  mode?: "dirs" | "files"
 }
 
 export function useDirectoryContent(
@@ -17,7 +18,7 @@ export function useDirectoryContent(
   dirPath: string,
   options: UseDirectoryContentOptions = {}
 ) {
-  const { enabled = true, staleTimeMs = 30000 } = options
+  const { enabled = true, staleTimeMs = 30000, mode = "dirs" } = options
 
   // Normalize the path for consistent cache keys
   let normalizedPath = ""
@@ -27,8 +28,8 @@ export function useDirectoryContent(
   }
 
   return useQuery<string[]>({
-    queryKey: ["directory-content", instanceId, normalizedPath],
-    queryFn: ({ signal }) => api.getDirectoryContent(instanceId, normalizedPath, signal),
+    queryKey: ["directory-content", instanceId, normalizedPath, mode],
+    queryFn: ({ signal }) => api.getDirectoryContent(instanceId, normalizedPath, mode, signal),
     staleTime: staleTimeMs,
     enabled: Boolean(enabled && instanceId && normalizedPath),
   })

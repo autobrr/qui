@@ -9,8 +9,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { usePathAutocomplete } from "./usePathAutocomplete"
 
 vi.mock("./useDirectoryContent", () => {
-  const directory = { data: ["/data/alpha", "/data/alps"] }
-  return { useDirectoryContent: () => directory }
+  const dirs = { data: ["/data/alpha", "/data/alps"] }
+  const files = { data: ["/data/album.flac"] }
+  return {
+    useDirectoryContent: (_id: number, _path: string, options: { mode?: string }) =>
+      options.mode === "files" ? files : dirs,
+  }
 })
 
 function mountRefs(result: { current: ReturnType<typeof usePathAutocomplete> }) {
@@ -71,5 +75,46 @@ describe("usePathAutocomplete outside dismissal", () => {
 
     act(() => result.current.handleInputChange("/data/alp"))
     expect(result.current.showSuggestions).toBe(true)
+  })
+})
+
+describe("usePathAutocomplete file entries", () => {
+  afterEach(() => {
+    cleanup()
+    document.body.replaceChildren()
+  })
+
+  it("lists directories only by default", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
+    act(() => result.current.handleInputChange("/data/al"))
+    expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps"])
+  })
+
+  it("lists files after the directories when includeFiles is set", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
+    act(() => result.current.handleInputChange("/data/al"))
+    expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps", "/data/album.flac"])
+  })
+
+  it("selecting a directory appends a separator and keeps the list open", () => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles: true }))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/al"))
+    act(() => result.current.handleSelect("/data/alpha"))
+    expect(onSelect).toHaveBeenCalledWith("/data/alpha/")
+    expect(result.current.inputValue).toBe("/data/alpha/")
+    expect(result.current.showSuggestions).toBe(true)
+  })
+
+  it("selecting a file keeps the path as is and closes the list", () => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles: true }))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/data/al"))
+    act(() => result.current.handleSelect("/data/album.flac"))
+    expect(onSelect).toHaveBeenCalledWith("/data/album.flac")
+    expect(result.current.inputValue).toBe("/data/album.flac")
+    expect(result.current.showSuggestions).toBe(false)
   })
 })

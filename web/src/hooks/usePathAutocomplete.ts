@@ -7,9 +7,15 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 
 import { useDirectoryContent } from "./useDirectoryContent";
 
+type UsePathAutocompleteOptions = {
+  /** Also list files; a selected file closes the dropdown instead of descending into it. */
+  includeFiles?: boolean;
+};
+
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
-  instanceId: number
+  instanceId: number,
+  { includeFiles = false }: UsePathAutocompleteOptions = {}
 ) {
   const [inputValue, setInputValue] = useState("");
   const deferredInput = useDeferredValue(inputValue);
@@ -47,12 +53,19 @@ export function usePathAutocomplete(
     enabled: Boolean(deferredInput?.trim()),
     staleTimeMs: 30000,
   });
+  // Second query instead of mode=all with metadata: it works on qBittorrent 5.0
+  // and returns full paths, while withMetadata needs 5.2 and returns basenames.
+  const { data: fileEntries = [] } = useDirectoryContent(instanceId, parentPath, {
+    enabled: includeFiles && Boolean(deferredInput?.trim()),
+    staleTimeMs: 30000,
+    mode: "files",
+  });
 
   const suggestions = useMemo(() => {
-    if (!directoryEntries.length) return [];
-    if (!filterTerm) return directoryEntries;
-    return directoryEntries.filter((e) => e.toLowerCase().includes(filterTerm));
-  }, [directoryEntries, filterTerm]);
+    const entries = includeFiles ? [...directoryEntries, ...fileEntries] : directoryEntries;
+    if (!filterTerm) return entries;
+    return entries.filter((e) => e.toLowerCase().includes(filterTerm));
+  }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
   // Update highlighted index when suggestions change
   useEffect(() => {
@@ -67,18 +80,19 @@ export function usePathAutocomplete(
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
   }, [suggestions, dismissed]);
 
-  /** Selects a directory entry, appends a trailing slash, and keeps the dropdown open for subdirectory navigation. */
+  /** Selects an entry. A directory gets a trailing separator and keeps the dropdown open for the next level; a file closes it. */
   const selectSuggestion = useCallback(
     (entry: string) => {
+      const isFile = fileEntries.includes(entry);
       const separator = entry.includes("\\") || /^[a-zA-Z]:/.test(entry) ? "\\" : "/";
-      const pathWithSeparator = (entry.endsWith("/") || entry.endsWith("\\")) ? entry : entry + separator;
-      setInputValue(pathWithSeparator);
-      onSuggestionSelect(pathWithSeparator);
-      setDismissed(false);
+      const path = isFile || entry.endsWith("/") || entry.endsWith("\\") ? entry : entry + separator;
+      setInputValue(path);
+      onSuggestionSelect(path);
+      setDismissed(isFile);
       setHighlightedIndex(-1);
       inputRef.current?.focus();
     },
-    [onSuggestionSelect]
+    [onSuggestionSelect, fileEntries]
   );
 
   const handleKeyDown = useCallback(
