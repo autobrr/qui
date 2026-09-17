@@ -43,9 +43,6 @@ type linkMode struct {
 	// or the tree creation fails. Reflink mode refuses regular fallback there so
 	// the add never lands inside the matched torrent's path.
 	regularFallbackOnCreateError bool
-	// belowThresholdNote appends the manual-review note to the status message of
-	// a partial add.
-	belowThresholdNote bool
 }
 
 func (s *Service) processHardlinkMode(
@@ -99,7 +96,6 @@ func (s *Service) processReflinkMode(
 			poolMode:                      models.CrossSeedPartialPoolModeReflink,
 			poolReplaceable:               true,
 			recoverMissingFilesWithResume: true,
-			belowThresholdNote:            true,
 		})
 }
 
@@ -184,8 +180,7 @@ func (s *Service) processLinkMode(
 	mode linkMode,
 ) linkModeResult {
 	notUsed := linkModeResult{Used: false}
-	label := strings.ToUpper(mode.name[:1]) + mode.name[1:]
-	logPrefix := "[CROSSSEED] " + label + " mode: "
+	logPrefix := "[CROSSSEED] " + mode.name + " mode: "
 
 	// Helper to create error result when link mode is enabled but fails
 	linkError := func(message string) linkModeResult {
@@ -225,7 +220,7 @@ func (s *Service) processLinkMode(
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
-				Msg("[CROSSSEED] " + label + " mode failed, falling back to regular mode")
+				Msg(logPrefix + "failed, falling back to regular mode")
 			return linkModeResult{FallbackToRegular: true}
 		}
 		return linkError(message)
@@ -235,7 +230,7 @@ func (s *Service) processLinkMode(
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
-				Msg("[CROSSSEED] " + label + " mode filesystem fallback requires full regular-mode recheck")
+				Msg(logPrefix + "filesystem fallback requires full regular-mode recheck")
 			return linkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
 		}
 		return linkError(message)
@@ -245,7 +240,7 @@ func (s *Service) processLinkMode(
 			log.Warn().
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
-				Msg("[CROSSSEED] " + label + " materialization failed; regular fallback disabled to avoid adding into the matched torrent path")
+				Msg(logPrefix + "materialization failed; regular fallback disabled to avoid adding into the matched torrent path")
 		}
 		return linkError(message)
 	}
@@ -283,8 +278,8 @@ func (s *Service) processLinkMode(
 	if instance.HardlinkBaseDir == "" {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
-			Msg("[CROSSSEED] " + label + " mode enabled but base directory is empty")
-		return handleError(label + " mode enabled but base directory is not configured")
+			Msg(logPrefix + "enabled but base directory is empty")
+		return handleError(mode.name + " mode enabled but base directory is not configured")
 	}
 
 	// Verify instance has local filesystem access (required for links)
@@ -292,7 +287,7 @@ func (s *Service) processLinkMode(
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
-			Msg("[CROSSSEED] " + label + " mode enabled but instance lacks local filesystem access")
+			Msg(logPrefix + "enabled but instance lacks local filesystem access")
 		return handleError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
 	}
 
@@ -436,8 +431,8 @@ func (s *Service) processLinkMode(
 		log.Warn().
 			Str("reason", unsupportedErr.reason).
 			Str("baseDir", selectedBaseDir).
-			Msg(logPrefix + "filesystem does not support " + mode.name + "s")
-		return handleFullRecheckFallback(label + " not supported: " + unsupportedErr.reason)
+			Msg(logPrefix + "filesystem does not support " + mode.name)
+		return handleFullRecheckFallback(mode.name + " not supported: " + unsupportedErr.reason)
 	}
 	if err != nil {
 		logEvent := log.Error()
@@ -449,7 +444,7 @@ func (s *Service) processLinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
-			Msg(logPrefix + "failed to create " + mode.name + " tree, aborting")
+			Msg(logPrefix + "failed to create link tree, aborting")
 		return handleCreateError(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
 	}
 
@@ -458,7 +453,7 @@ func (s *Service) processLinkMode(
 		Str("torrentName", torrentName).
 		Str("destDir", destDir).
 		Int("fileCount", len(plan.Files)).
-		Msg(logPrefix + "created " + mode.name + " tree")
+		Msg(logPrefix + "created link tree")
 
 	if pooledCompletion && poolDescriptorErr == nil && mode.poolReplaceable {
 		poolReplaceablePaths = partialPoolReplaceableTargets(plan.RootDir, poolDescriptors)
@@ -554,7 +549,7 @@ func (s *Service) processLinkMode(
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
-				Msg(logPrefix + "failed to rollback " + mode.name + " tree")
+				Msg(logPrefix + "failed to rollback link tree")
 		}
 		log.Error().
 			Err(err).
@@ -679,7 +674,7 @@ func (s *Service) processLinkMode(
 	}
 
 	// Add note about low completion behavior
-	if mode.belowThresholdNote && hasExtras {
+	if hasExtras {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
 
