@@ -5,7 +5,7 @@ date: 2026-09-17
 
 # Link modes are one body with a linkMode value
 
-Hardlink mode and reflink mode share one `processLinkMode` body in `internal/services/crossseed/link_mode.go`. Every difference between the two modes is a field on the `linkMode` struct, and each mode lists its fields in one literal. The create-error split stays: when the plan build or the link tree creation fails, hardlink mode falls back to regular mode and reflink mode refuses regular fallback. Both were written in #1912. The split is a kept decision, not drift. Issue #2746.
+Hardlink mode and reflink mode share one `processLinkMode` body in `internal/services/crossseed/link_mode.go`. Every difference between the two modes is a field on the `linkMode` struct, and each mode lists its fields in one literal. The create-error split stays: when the plan build or the link tree creation fails, hardlink mode falls back to regular mode (with a full recheck after a creation failure) and reflink mode refuses regular fallback in both cases. Both were written in #1912. The split is a kept decision, not drift. Issue #2746.
 
 ## Considered options
 

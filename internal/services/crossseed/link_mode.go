@@ -44,7 +44,9 @@ type linkMode struct {
 	// materialize creates the link tree. Reflink mode probes filesystem support
 	// first and returns *linkUnsupportedError when the probe fails.
 	materialize func(ctx context.Context, backend fsops.Backend, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	poolMode    string
+	// poolMode is the persisted partial-pool mode value, kept apart from name so
+	// a display rename never changes a stored row.
+	poolMode string
 	// poolReplaceable registers the cloned targets as replaceable in the partial
 	// pool. A hardlink cannot be replaced in place without touching the source.
 	poolReplaceable bool
@@ -199,39 +201,37 @@ func (s *Service) processLinkMode(
 	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
 	mode linkMode,
 ) linkModeResult {
-	notUsed := linkModeResult{Used: false}
 	logPrefix := "[CROSSSEED] " + mode.name + " mode: "
 
-	// Helper to create error result when link mode is enabled but fails
-	linkError := func(message string) linkModeResult {
+	// failure is a Used=true result that stops the dispatcher from trying regular mode.
+	failure := func(status, message string) linkModeResult {
 		return linkModeResult{
-			Used:    true,
-			Success: false,
+			Used: true,
 			Result: InstanceCrossSeedResult{
 				InstanceID:   candidate.InstanceID,
 				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       mode.name + "_error",
+				Status:       status,
 				Message:      message,
 			},
 		}
 	}
+	linkError := func(message string) linkModeResult { return failure(mode.name+"_error", message) }
 
 	// Get instance to check link settings (per-instance)
 	instance, err := s.instanceStore.Get(ctx, candidate.InstanceID)
 	if err != nil || instance == nil {
 		// If we can't get the instance, we can't check if the mode is enabled.
-		// This is not a link error, just return notUsed
-		return notUsed
+		// This is not a link error, just return linkModeResult{}
+		return linkModeResult{}
 	}
 
-	// Check if the mode is disabled for this instance - only case where we return notUsed
+	// Check if the mode is disabled for this instance - only case where we return linkModeResult{}
 	if !mode.enabled(instance) {
-		return notUsed
+		return linkModeResult{}
 	}
 
 	// From here on, link mode is ENABLED
-	// Check if fallback is enabled - if so, errors return notUsed instead of <mode>_error
+	// Check if fallback is enabled - if so, errors return linkModeResult{} instead of <mode>_error
 	fallbackEnabled := instance.FallbackToRegularMode
 
 	// Helper to handle errors based on fallback setting
@@ -264,11 +264,9 @@ func (s *Service) processLinkMode(
 		}
 		return linkError(message)
 	}
-	handlePlanError := handleMaterializationError
-	handleCreateError := handleMaterializationError
+	handlePlanError, handleCreateError := handleMaterializationError, handleMaterializationError
 	if mode.regularFallbackOnCreateError {
-		handlePlanError = handleError
-		handleCreateError = handleFullRecheckFallback
+		handlePlanError, handleCreateError = handleError, handleFullRecheckFallback
 	}
 
 	// Build LINKABLE source files list. The selector keeps rename-friendly
@@ -281,17 +279,7 @@ func (s *Service) processLinkMode(
 	// Early guard: if SkipRecheck is enabled and we have extras, or the match must
 	// be verified first, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
-		return linkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "skipped_recheck",
-				Message:      skippedRecheckMessage,
-			},
-		}
+		return failure("skipped_recheck", skippedRecheckMessage)
 	}
 
 	// Validate base directory is configured (reflink mode reuses the hardlink base dir)
@@ -336,17 +324,7 @@ func (s *Service) processLinkMode(
 			Int("linkedFiles", linkedFiles).
 			Int("totalFiles", totalFiles).
 			Msg(logPrefix + "skipping below-threshold match before add")
-		return linkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "below_threshold",
-				Message:      message,
-			},
-		}
+		return failure("below_threshold", message)
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
@@ -510,17 +488,7 @@ func (s *Service) processLinkMode(
 	}
 
 	if req.SkipRecheck && addPolicy.DiscLayout {
-		return linkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "skipped_recheck",
-				Message:      skippedRecheckMessage,
-			},
-		}
+		return failure("skipped_recheck", skippedRecheckMessage)
 	}
 
 	// Handle skip_checking and pause behavior based on extras:
@@ -689,13 +657,12 @@ func (s *Service) processLinkMode(
 			}
 		}
 	}
-	if poolRegistrationErr != nil {
-		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
-	}
-
 	// Add note about low completion behavior
 	if hasExtras {
 		statusMsg += " (below threshold = remains paused for manual review)"
+	}
+	if poolRegistrationErr != nil {
+		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
 	}
 
 	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
