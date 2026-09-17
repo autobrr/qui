@@ -125,11 +125,12 @@ func shouldWarnForReflinkCreateError(err error) bool {
 	}
 
 	type multiUnwrapper interface {
+		error
 		Unwrap() []error
 	}
 
-	var joined multiUnwrapper
-	return !errors.As(err, &joined)
+	_, joined := errors.AsType[multiUnwrapper](err)
+	return !joined
 }
 
 type linkUnsupportedError struct {
