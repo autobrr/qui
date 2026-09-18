@@ -9333,9 +9333,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	sourceSizeForSearch := searchSourceSize(sourceTorrent)
 	usable := s.searchUsablePredicate(searchSource, sourceSizeForSearch, arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
-	gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
+	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
+		gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
+	}
+	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
-	searchResp, coveredIndexerIDs, err := s.searchGatherer(usable).gather(ctx, waitCtx, gatherIn)
+	searchResp, coveredIndexerIDs, err := gatherer.gather(ctx, waitCtx, gatherIn)
 	if err != nil {
 		return torznabFailed(err)
 	}

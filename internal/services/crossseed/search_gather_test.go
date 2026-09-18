@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,6 +18,7 @@ import (
 type fakeReply struct {
 	results []jackett.SearchResult
 	covered []int
+	partial bool
 	err     error
 }
 
@@ -52,10 +52,10 @@ func TestGatherSearchResults(t *testing.T) {
 		idCap         []int
 		replies       map[string]fakeReply
 		cancelParent  bool
-		waitExpired   bool
 		wantRequests  []wantRequest
 		wantCovered   []int
 		wantTitles    []string
+		wantPartial   bool
 		wantErr       error
 		wantErrText   string
 	}{
@@ -154,7 +154,7 @@ func TestGatherSearchResults(t *testing.T) {
 			replies: map[string]fakeReply{
 				replyKey("Law and Order", 2020, []int{1}): {covered: []int{1}},
 				replyKey("Law and Order", 0, []int{1}):    {covered: []int{1}},
-				replyKey("Law & Order", 0, []int{1}):      {results: []jackett.SearchResult{hit(1, match)}, covered: []int{1}},
+				replyKey("Law & Order", 0, []int{1}):      {results: []jackett.SearchResult{hit(1, match)}, covered: []int{1}, partial: true},
 			},
 			wantRequests: []wantRequest{
 				{query: "Law and Order", year: 2020, indexerIDs: []int{1}},
@@ -163,6 +163,8 @@ func TestGatherSearchResults(t *testing.T) {
 			},
 			wantCovered: []int{1},
 			wantTitles:  []string{match},
+			// A partial retry pass makes the whole search partial.
+			wantPartial: true,
 		},
 		{
 			name:         "primary error comes back as is",
@@ -172,10 +174,9 @@ func TestGatherSearchResults(t *testing.T) {
 			wantErr:      errPass,
 		},
 		{
-			name:         "primary error after the wait deadline reads as a timeout",
+			name:         "primary deadline error reads as a timeout",
 			req:          jackett.TorznabSearchRequest{Query: "Show", IndexerIDs: []int{1}},
 			replies:      map[string]fakeReply{replyKey("Show", 0, []int{1}): {err: context.DeadlineExceeded}},
-			waitExpired:  true,
 			wantRequests: []wantRequest{{query: "Show", indexerIDs: []int{1}}},
 			wantErrText:  "search timed out",
 		},
@@ -192,7 +193,7 @@ func TestGatherSearchResults(t *testing.T) {
 					if reply.err != nil {
 						return nil, reply.err
 					}
-					return &jackett.SearchResponse{Results: reply.results, CoveredIndexerIDs: reply.covered}, nil
+					return &jackett.SearchResponse{Results: reply.results, CoveredIndexerIDs: reply.covered, Partial: reply.partial}, nil
 				},
 				idCapIndexers: func(context.Context, *jackett.TorznabSearchRequest) []int { return tt.idCap },
 				usable:        func(r jackett.SearchResult) bool { return r.Title == match },
@@ -203,15 +204,8 @@ func TestGatherSearchResults(t *testing.T) {
 			if tt.cancelParent {
 				cancel()
 			}
-			waitCtx := t.Context()
-			if tt.waitExpired {
-				expired, cancelWait := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
-				defer cancelWait()
-				waitCtx = expired
-			}
-
 			req := tt.req
-			resp, covered, err := g.gather(ctx, waitCtx, gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle})
+			resp, covered, err := g.gather(ctx, t.Context(), gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle})
 
 			require.Len(t, got, len(tt.wantRequests))
 			for i, want := range tt.wantRequests {
@@ -243,6 +237,7 @@ func TestGatherSearchResults(t *testing.T) {
 				titles = append(titles, r.Title)
 			}
 			require.Equal(t, tt.wantTitles, titles)
+			require.Equal(t, tt.wantPartial, resp.Partial)
 		})
 	}
 }

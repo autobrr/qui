@@ -23,14 +23,6 @@ type searchGatherer struct {
 	usable        func(jackett.SearchResult) bool
 }
 
-func (s *Service) searchGatherer(usable func(jackett.SearchResult) bool) searchGatherer {
-	return searchGatherer{
-		search:        s.searchOnce,
-		idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps,
-		usable:        usable,
-	}
-}
-
 type gatherInput struct {
 	req           *jackett.TorznabSearchRequest
 	tagSourcedIDs bool
@@ -47,7 +39,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	req := in.req
 	resp, err := g.search(waitCtx, req)
 	if err != nil {
-		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.New("search timed out")
 		}
 		return nil, nil, err
@@ -66,7 +58,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// the first fallback to drop. This pass stays gated on the whole search:
 	// dropping the year fires on nearly every movie and has low per-indexer
 	// value, unlike the targeted passes below.
-	if req.Year > 0 && !hasUsableSearchResult(results, g.usable) {
+	if req.Year > 0 && !slices.ContainsFunc(results, g.usable) {
 		log.Debug().
 			Str("torrentName", in.torrentName).
 			Int("year", req.Year).
@@ -96,11 +88,13 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		}
 	}
 
-	// retry re-queries only the targeted indexers with query, as an internal
-	// continuation of the primary search: no history row of its own, IDs
-	// cleared so the title reaches ID-capable indexers, and the year the
-	// latest pass actually used. Outcome reporting keys on indexer ID under
-	// the primary job. A failed pass drops its targets from the covered set.
+	// retry is a per-indexer retry: it re-queries only targets with query, as
+	// an internal continuation of the primary search. No history row of its
+	// own, IDs cleared so the title reaches ID-capable indexers, and the year
+	// the latest pass actually used. SkipCachePersist stays unset so repeated
+	// passes reuse the Torznab result cache instead of re-hitting indexers.
+	// Outcome reporting keys on indexer ID under the primary job. A failed
+	// pass drops its targets from the covered set.
 	retry := func(pass string, targets []int, query string) error {
 		if len(targets) == 0 {
 			return nil
@@ -110,13 +104,15 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 			Str("pass", pass).
 			Str("query", query).
 			Ints("indexerIDs", targets).
-			Msg("[CROSSSEED-SEARCH] Nothing usable from primary pass; retrying targeted indexers")
+			Msg("[CROSSSEED-SEARCH] Nothing usable from primary pass; running per-indexer retry")
 
 		retryReq := *req
 		clearSearchRequestIDs(&retryReq)
 		retryReq.Query = query
 		retryReq.IndexerIDs = targets
-		retryReq.Year = effectiveSearchYear(req.Year, yearlessRetryRan)
+		if yearlessRetryRan {
+			retryReq.Year = 0
+		}
 		retryReq.SkipHistory = true
 		retryResp, retryErr := g.search(waitCtx, &retryReq)
 		if retryErr != nil {
@@ -128,7 +124,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 				Str("torrentName", in.torrentName).
 				Str("pass", pass).
 				Ints("indexerIDs", targets).
-				Msg("[CROSSSEED-SEARCH] Retry pass failed; continuing with primary results")
+				Msg("[CROSSSEED-SEARCH] Per-indexer retry failed; continuing with primary results")
 			covered = subtractInts(covered, targets)
 			return nil
 		}
@@ -142,8 +138,9 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 				Str("pass", pass).
 				Int("results", len(retryResp.Results)).
 				Ints("indexerIDs", targets).
-				Msg("[CROSSSEED-SEARCH] Retry pass returned additional candidates")
-			results, resp.Partial = mergeAltConnectorResults(resp.Partial, results, retryResp)
+				Msg("[CROSSSEED-SEARCH] Per-indexer retry returned additional candidates")
+			results = append(results, retryResp.Results...)
+			resp.Partial = resp.Partial || retryResp.Partial
 		}
 		return nil
 	}
@@ -188,25 +185,6 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	return resp, covered, nil
 }
 
-// effectiveSearchYear returns the year actually used by the latest search pass: 0
-// once the yearless retry has run, otherwise the originally requested year. The
-// targeted passes use this so they do not re-apply a year the primary search
-// already proved ineffective.
-func effectiveSearchYear(requestedYear int, yearlessRetryRan bool) int {
-	if yearlessRetryRan {
-		return 0
-	}
-	return requestedYear
-}
-
-// mergeAltConnectorResults appends a retry pass's results to the primary
-// results and returns the combined partial flag, so an incomplete retry pass
-// is never reported as a complete search. Callers invoke it only when alt
-// carries results.
-func mergeAltConnectorResults(primaryPartial bool, primaryResults []jackett.SearchResult, alt *jackett.SearchResponse) ([]jackett.SearchResult, bool) {
-	return append(primaryResults, alt.Results...), primaryPartial || alt.Partial
-}
-
 // indexersWithoutResults returns the requested indexer IDs that produced no
 // results, preserving request order.
 func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) []int {
@@ -229,7 +207,7 @@ func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) 
 // indexersWithoutUsableResults returns the requested indexer IDs that produced
 // no USABLE candidate. Unlike indexersWithoutResults (which counts any raw
 // hit), an indexer whose hits were all rejected by release/size filtering is
-// still re-queried by the targeted retry passes, so a candidate it carries
+// still re-queried by the per-indexer retry passes, so a candidate it carries
 // under another title, spelling, or ID can surface instead of being
 // permanently suppressed.
 func indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, usable func(jackett.SearchResult) bool) []int {
@@ -240,14 +218,6 @@ func indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchRe
 		}
 	}
 	return indexersWithoutResults(requestedIDs, kept)
-}
-
-// hasUsableSearchResult reports whether any result would survive release and
-// size filtering. The retry ladder gates on this rather than on the raw result
-// count: hits that were all rejected leave the search just as empty as no hits
-// at all, so the retry that could still find the match has to run.
-func hasUsableSearchResult(results []jackett.SearchResult, usable func(jackett.SearchResult) bool) bool {
-	return slices.ContainsFunc(results, usable)
 }
 
 // clearSearchRequestIDs strips the external-ID parameters from a retry
