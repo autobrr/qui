@@ -9619,7 +9619,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// candidates (the match loop dedupes by GUID/download URL). Skipped for
 	// arr-ID searches, which do not rely on title text; a tag-sourced ID
 	// primary keeps its title passes (see the alternate-title pass above).
-	if !opts.DisableTorznab && (!searchReq.OmitQueryForIDs || tagSourcedIDs) {
+	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
 			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
