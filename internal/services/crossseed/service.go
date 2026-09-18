@@ -8725,14 +8725,6 @@ func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize,
 	}).Accepted
 }
 
-func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) []int {
-	return indexersWithoutUsableResults(requestedIDs, results, s.searchUsablePredicate(source, sourceSize, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes))
-}
-
-func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
-	return hasUsableSearchResult(results, s.searchUsablePredicate(source, sourceSize, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes))
-}
-
 // searchUsablePredicate closes the per-search matching arguments over
 // searchResultUsable so the gatherer decides retries without seeing them.
 func (s *Service) searchUsablePredicate(source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) func(jackett.SearchResult) bool {

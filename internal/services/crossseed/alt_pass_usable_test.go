@@ -137,12 +137,8 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Indexer 1 returned a raw hit (so the old logic omitted it), but it is junk;
 	// indexer 3 returned nothing. Both must be re-queried; only indexer 2 is done.
-	got := s.indexersWithoutUsableResults(
-		[]int{1, 2, 3}, results,
-		namedRelease{release: &source, rawName: sourceName},
-		size, nil, nil, 5, false,
-	)
-	require.Equal(t, []int{1, 3}, got)
+	usable := s.searchUsablePredicate(namedRelease{release: &source, rawName: sourceName}, size, nil, nil, 5, false)
+	require.Equal(t, []int{1, 3}, indexersWithoutUsableResults([]int{1, 2, 3}, results, usable))
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
@@ -162,7 +158,7 @@ func TestHasUsableSearchResult(t *testing.T) {
 		size       = int64(4_000_000_000)
 	)
 	source := rls.ParseString(sourceName)
-	sourceView := namedRelease{release: &source, rawName: sourceName}
+	usable := service.searchUsablePredicate(namedRelease{release: &source, rawName: sourceName}, size, nil, nil, 5, false)
 
 	match := jackett.SearchResult{Title: sourceName, Size: size}
 	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
@@ -181,7 +177,7 @@ func TestHasUsableSearchResult(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, nil, 5, false))
+			require.Equal(t, tt.want, hasUsableSearchResult(tt.results, usable))
 		})
 	}
 }
