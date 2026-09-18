@@ -47,6 +47,9 @@ func runBackupItemRangeTests(t *testing.T, open func(t *testing.T) *database.DB)
 	t.Run("item writers wait for each other on postgres", func(t *testing.T) {
 		checkItemWritersSerialize(t, open(t))
 	})
+	t.Run("deleting a run whose items are committing leaves no uncovered rows", func(t *testing.T) {
+		checkDeleteDuringCommit(t, open(t))
+	})
 }
 
 type backupFixture struct {
@@ -456,4 +459,61 @@ func checkItemWritersSerialize(t *testing.T, db *database.DB) {
 		require.NoError(t, holder.Rollback())
 		require.NoError(t, <-done, name)
 	}
+}
+
+// checkDeleteDuringCommit deletes a run while its items wait to commit behind
+// the instance lock. Cleanup must read the run's snapshot after that commit,
+// or the committed rows outlive their run.
+func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
+	if db.Dialect() != string(database.DialectPostgres) {
+		t.Skip("SQLite serializes all writes on one connection")
+	}
+	f := newBackupFixture(t, db)
+	inst := f.instance("delete-during-commit")
+	rng := rand.New(rand.NewPCG(8, 9))
+	kept := make([]models.BackupItem, 20)
+	for i := range kept {
+		kept[i] = randomItem(rng, i)
+	}
+	older := f.run(inst)
+	require.NoError(t, f.store.InsertItems(f.ctx, older, kept))
+
+	changed := slices.Clone(kept)
+	for i := range 5 {
+		changed[i].Tags = new(fmt.Sprintf("changed-%d", i))
+	}
+	committing := f.run(inst)
+
+	holder, err := db.BeginTx(f.ctx, nil)
+	require.NoError(t, err)
+	_, err = holder.ExecContext(f.ctx, "SELECT pg_advisory_xact_lock(CAST(? AS INTEGER), CAST(? AS INTEGER))", models.BackupItemsLockClass, inst)
+	require.NoError(t, err)
+
+	insertDone := make(chan error, 1)
+	go func() { insertDone <- f.store.InsertItems(f.ctx, committing, changed) }()
+	time.Sleep(300 * time.Millisecond) // InsertItems queues on the lock first
+	cleanupDone := make(chan error, 1)
+	go func() { cleanupDone <- f.store.CleanupRun(f.ctx, committing) }()
+	time.Sleep(300 * time.Millisecond) // cleanup queues behind it
+	require.NoError(t, holder.Rollback())
+	require.NoError(t, <-insertDone)
+	require.NoError(t, <-cleanupDone)
+
+	var uncovered int
+	require.NoError(t, db.QueryRowContext(f.ctx, `
+		SELECT COUNT(*) FROM instance_backup_items i
+		WHERE NOT EXISTS (
+			SELECT 1 FROM instance_backup_runs r
+			WHERE r.instance_id = i.instance_id AND r.items_seq >= i.from_seq
+			  AND (i.to_seq IS NULL OR r.items_seq < i.to_seq))
+	`).Scan(&uncovered))
+	require.Zero(t, uncovered, "item rows left with no run covering them")
+
+	got, err := f.store.ListItems(f.ctx, older)
+	require.NoError(t, err)
+	gotItems := make([]models.BackupItem, len(got))
+	for i, item := range got {
+		gotItems[i] = *item
+	}
+	require.Equal(t, sortedKeys(kept), sortedKeys(gotItems))
 }

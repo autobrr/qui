@@ -1886,6 +1886,32 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 		args[i] = id
 	}
 
+	lockRows, err := tx.QueryContext(ctx, "SELECT DISTINCT instance_id FROM instance_backup_runs WHERE id IN "+buildInPlaceholders(len(runIDs))+" ORDER BY instance_id", args...)
+	if err != nil {
+		return err
+	}
+	var instanceIDs []int
+	for lockRows.Next() {
+		var id int
+		if err := lockRows.Scan(&id); err != nil {
+			lockRows.Close()
+			return err
+		}
+		instanceIDs = append(instanceIDs, id)
+	}
+	lockRows.Close()
+	if err := lockRows.Err(); err != nil {
+		return err
+	}
+	// Ascending lock order keeps concurrent cleanups of several instances from deadlocking.
+	for _, instanceID := range instanceIDs {
+		if err := s.lockInstanceItems(ctx, tx, instanceID); err != nil {
+			return err
+		}
+	}
+
+	// Read snapshot bounds only under the lock: a run whose items were still
+	// committing has its items_seq by now, so its rows are not left behind.
 	type deletedSnapshots struct {
 		instanceID     int
 		minSeq, maxSeq sql.NullInt64
@@ -1895,7 +1921,6 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 		FROM instance_backup_runs
 		WHERE id IN `+buildInPlaceholders(len(runIDs))+`
 		GROUP BY instance_id
-		ORDER BY instance_id
 	`, args...)
 	if err != nil {
 		return err
@@ -1912,13 +1937,6 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
-	}
-
-	// Ascending lock order keeps concurrent cleanups of several instances from deadlocking.
-	for _, d := range deleted {
-		if err := s.lockInstanceItems(ctx, tx, d.instanceID); err != nil {
-			return err
-		}
 	}
 
 	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id IN "+buildInPlaceholders(len(runIDs)), args...)
