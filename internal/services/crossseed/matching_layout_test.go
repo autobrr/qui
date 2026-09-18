@@ -31,13 +31,13 @@ func TestGetMatchType_EnforcesLayoutCompatibility(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
 	archiveFiles := qbt.TorrentFiles{{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}}
 
-	match := svc.matcher().getMatchType(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles)
+	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles, 0).MatchType
 	require.Empty(t, match, "mkv torrent should not match rar-only candidate")
 
-	archiveMatch := svc.matcher().getMatchType(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles)
+	archiveMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles, 0).MatchType
 	require.NotEmpty(t, archiveMatch, "identical archive layouts should match")
 
-	fileMatch := svc.matcher().getMatchType(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles)
+	fileMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles, 0).MatchType
 	require.Equal(t, "exact", fileMatch, "identical file layouts should be exact matches")
 }
 
@@ -103,8 +103,8 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t
 	}
 
 	singleRelease := svc.releaseCache.Parse("Minimal.Payload")
-	singleMatch := svc.matcher().getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"])
-	folderMatch := svc.matcher().getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"])
+	singleMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"], 0).MatchType
+	folderMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], 0).MatchType
 	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
 	require.Equal(t, "size", singleMatch)
 
@@ -483,6 +483,6 @@ func TestGetMatchType_FileNameFallback(t *testing.T) {
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
 
-	match := svc.matcher().getMatchType(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles)
+	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles, 0).MatchType
 	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
 }

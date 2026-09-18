@@ -221,7 +221,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)
 
 				// If metadata matches, also verify file matching works
-				matchType := svc.getMatchType(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles)
+				matchType := svc.getMatchTypeWithReason(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles, 0).MatchType
 				require.NotEmpty(t, matchType, "%s: should produce a match type", tt.description)
 			} else {
 				require.False(t, metadataMatch, "%s: metadata should NOT match", tt.description)
