@@ -8697,46 +8697,6 @@ func subtitleTitleQuery(release *rls.Release) string {
 	return release.Title + " " + subtitle
 }
 
-// effectiveSearchYear returns the year actually used by the latest search pass: 0
-// once the yearless retry has run, otherwise the originally requested year. The
-// alternate connector pass uses this so it does not re-apply a year the primary
-// search already proved ineffective.
-func effectiveSearchYear(requestedYear int, yearlessRetryRan bool) int {
-	if yearlessRetryRan {
-		return 0
-	}
-	return requestedYear
-}
-
-// mergeAltConnectorResults appends the alternate connector pass's results to the
-// primary results and returns the combined partial flag, so an incomplete
-// alternate pass is never reported as a complete search. Callers invoke it only
-// when alt carries results.
-func mergeAltConnectorResults(primaryPartial bool, primaryResults []jackett.SearchResult, alt *jackett.SearchResponse) ([]jackett.SearchResult, bool) {
-	return append(primaryResults, alt.Results...), primaryPartial || alt.Partial
-}
-
-// indexersWithoutResults returns the requested indexer IDs that produced no
-// results in the primary pass, preserving request order. The alternate connector
-// pass re-queries only these so the extra round-trip stays minimal; an indexer
-// that returned at least one candidate is omitted.
-func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) []int {
-	if len(requestedIDs) == 0 {
-		return nil
-	}
-	responded := make(map[int]struct{}, len(results))
-	for _, r := range results {
-		responded[r.IndexerID] = struct{}{}
-	}
-	var missing []int
-	for _, id := range requestedIDs {
-		if _, seen := responded[id]; !seen {
-			missing = append(missing, id)
-		}
-	}
-	return missing
-}
-
 // searchSourceSize returns the source-side size for the search size band.
 // Torznab advertises the full release size, so the comparison must use the
 // torrent's full size: Size only counts wanted files, which misreports every
@@ -8765,81 +8725,20 @@ func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize,
 	}).Accepted
 }
 
-// indexersWithoutUsableResults returns the requested indexer IDs whose primary
-// pass produced no USABLE candidate. Unlike indexersWithoutResults (which counts
-// any raw hit), an indexer whose hits were all rejected by release/size
-// filtering is still re-queried by the targeted retry passes, so a candidate
-// it carries under another title, spelling, or ID can surface instead of
-// being permanently suppressed.
 func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) []int {
-	usable := make([]jackett.SearchResult, 0, len(results))
-	for _, r := range results {
-		candidate := s.parseReleaseName(r.Title)
-		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
-			usable = append(usable, r)
-		}
-	}
-	return indexersWithoutResults(requestedIDs, usable)
+	return indexersWithoutUsableResults(requestedIDs, results, s.searchUsablePredicate(source, sourceSize, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes))
 }
 
-// hasUsableSearchResult reports whether any result would survive release and
-// size filtering. The retry ladder gates on this rather than on the raw result
-// count: hits that were all rejected leave the search just as empty as no hits
-// at all, so the retry that could still find the match has to run.
 func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
-	for _, result := range results {
-		candidate := s.parseReleaseName(result.Title)
-		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: result.Title}, sourceSize, result.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
-			return true
-		}
-	}
-	return false
+	return hasUsableSearchResult(results, s.searchUsablePredicate(source, sourceSize, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes))
 }
 
-// clearSearchRequestIDs strips the external-ID parameters from a retry
-// request copied off an ID-driven primary, so its title query reaches every
-// indexer instead of being dropped for the ID-capable ones.
-func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
-	req.IMDbID = ""
-	req.TVDbID = ""
-	req.TMDbID = 0
-	req.TVMazeID = 0
-	req.EpisodeMap = nil
-	req.OmitQueryForIDs = false
-}
-
-// searchOnce runs a single Torznab search to completion and returns its response.
-// It is used for follow-up passes (e.g. the alternate connector-spelling query)
-// that need their own result set rather than the primary search's.
-func (s *Service) searchOnce(ctx context.Context, req *jackett.TorznabSearchRequest) (*jackett.SearchResponse, error) {
-	respCh := make(chan *jackett.SearchResponse, 1)
-	errCh := make(chan error, 1)
-	var once sync.Once
-	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		once.Do(func() {
-			if err != nil {
-				select {
-				case errCh <- err:
-				case <-ctx.Done():
-				}
-				return
-			}
-			select {
-			case respCh <- resp:
-			case <-ctx.Done():
-			}
-		})
-	}
-	if err := s.jackettService.Search(ctx, req); err != nil {
-		return nil, err
-	}
-	select {
-	case resp := <-respCh:
-		return resp, nil
-	case err := <-errCh:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
+// searchUsablePredicate closes the per-search matching arguments over
+// searchResultUsable so the gatherer decides retries without seeing them.
+func (s *Service) searchUsablePredicate(source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) func(jackett.SearchResult) bool {
+	return func(r jackett.SearchResult) bool {
+		candidate := s.parseReleaseName(r.Title)
+		return s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes)
 	}
 }
 
@@ -9404,11 +9303,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		logEvent.Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
 	}
 
-	var searchResp *jackett.SearchResponse
-	respCh := make(chan *jackett.SearchResponse, 1)
-	errCh := make(chan error, 1)
-	var onAllCompleteOnce sync.Once
-
 	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer waitCancel()
 
@@ -9444,223 +9338,19 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	traceIndexerErrs := &searchIndexerErrors{}
 	searchReq.OnComplete = traceIndexerErrs.record
 
-	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		onAllCompleteOnce.Do(func() {
-			if err != nil {
-				select {
-				case errCh <- err:
-				case <-waitCtx.Done():
-				}
-			} else {
-				select {
-				case respCh <- resp:
-				case <-waitCtx.Done():
-				}
-			}
-		})
-	}
-	err = s.jackettService.Search(waitCtx, searchReq)
+	sourceSizeForSearch := searchSourceSize(sourceTorrent)
+	usable := s.searchUsablePredicate(searchSource, sourceSizeForSearch, arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
+	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
+	gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
 	remoteRequestsMade = true
+	searchResp, coveredIndexerIDs, err := s.searchGatherer(usable).gather(ctx, waitCtx, gatherIn)
 	if err != nil {
 		return torznabFailed(err)
-	}
-
-	select {
-	case searchResp = <-respCh:
-		// continue
-	case err := <-errCh:
-		return torznabFailed(err)
-	case <-waitCtx.Done():
-		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
-			return torznabFailed(errors.New("search timed out"))
-		}
-		return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(waitCtx.Err())
 	}
 
 	searchResults := searchResp.Results
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
-
-	// An indexer only counts as covered when it answered every pass of this
-	// search: a pass it missed is exactly the query that might have matched,
-	// so it must stay eligible for the next run.
-	coveredIndexerIDs := searchResp.CoveredIndexerIDs
-
-	yearlessRetryRan := false
-
-	// Retry without year when the first pass turned up nothing usable, whether
-	// it returned no hits at all or only hits that release and size filtering
-	// rejected. The year is the narrowest primary-query constraint, so it is
-	// the first fallback to drop. This pass stays gated on the whole search:
-	// dropping the year fires on nearly every movie and has low per-indexer
-	// value, unlike the targeted passes below.
-	if !s.hasUsableSearchResult(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes) && searchReq.Year > 0 {
-		log.Debug().
-			Str("torrentName", sourceTorrent.Name).
-			Int("year", searchReq.Year).
-			Msg("[CROSSSEED-SEARCH] Zero results with year filter; retrying without year")
-
-		retryReq := *searchReq
-		retryReq.Year = 0
-		retryResp, retryErr := s.searchOnce(waitCtx, &retryReq)
-		if retryErr != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
-			}
-			log.Debug().
-				Err(retryErr).
-				Str("torrentName", sourceTorrent.Name).
-				Msg("[CROSSSEED-SEARCH] Yearless retry failed; continuing with primary results")
-			searchResp.Partial = true
-			coveredIndexerIDs = nil
-		} else if retryResp != nil {
-			primaryPartial := searchResp.Partial
-			searchResults = append(searchResults, retryResp.Results...)
-			searchResp = retryResp
-			searchResp.Partial = primaryPartial || retryResp.Partial
-			coveredIndexerIDs = intersectInts(coveredIndexerIDs, retryResp.CoveredIndexerIDs)
-			yearlessRetryRan = true
-		}
-	}
-
-	// Title rescue for the tag-sourced ID primary: indexers that searched by
-	// ID never saw the title query, so a wrong or unrecognized muxer tag would
-	// end their search with nothing and no rescue. Re-query only those still
-	// holding nothing usable with the plain title. Indexers without ID caps
-	// already searched by title in the primary pass and are covered by the
-	// passes below.
-	if tagSourcedIDs {
-		idCapIndexerIDs := s.jackettService.IndexerIDsWithIDSearchCaps(waitCtx, searchReq)
-		rescueIndexerIDs := intersectInts(idCapIndexerIDs, s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes))
-		if len(rescueIndexerIDs) > 0 {
-			log.Debug().
-				Str("torrentName", sourceTorrent.Name).
-				Str("query", searchReq.Query).
-				Ints("rescueIndexerIDs", rescueIndexerIDs).
-				Msg("[CROSSSEED-SEARCH] Nothing usable from tag-sourced ID query; retrying with title")
-
-			rescueReq := *searchReq
-			clearSearchRequestIDs(&rescueReq)
-			rescueReq.IndexerIDs = rescueIndexerIDs
-			rescueReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
-			// Internal continuation of the primary search: skip history
-			// recording like the alternate-title pass below.
-			rescueReq.SkipHistory = true
-			if rescueResp, rescueErr := s.searchOnce(waitCtx, &rescueReq); rescueErr != nil {
-				if ctxErr := ctx.Err(); ctxErr != nil {
-					return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
-				}
-				log.Debug().
-					Err(rescueErr).
-					Str("torrentName", sourceTorrent.Name).
-					Ints("rescueIndexerIDs", rescueIndexerIDs).
-					Msg("[CROSSSEED-SEARCH] Title rescue after ID primary failed; continuing with primary results")
-				coveredIndexerIDs = subtractInts(coveredIndexerIDs, rescueIndexerIDs)
-			} else if rescueResp != nil {
-				coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, rescueIndexerIDs, rescueResp.CoveredIndexerIDs)
-				if len(rescueResp.Results) > 0 {
-					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, rescueResp)
-				}
-			}
-		}
-	}
-
-	// Alternate-title retry: a tracker can index the same content under a
-	// different title (localized, romanized, or an *arr scene alias). Re-query
-	// the indexers that still hold nothing usable with the first distinct
-	// alternate title; an indexer that already produced a usable candidate is
-	// left alone, because cross-seed success is per tracker, not per search.
-	// Skipped for arr-ID searches, which do not rely on title text; a
-	// tag-sourced ID primary keeps its title passes because the IDs came from
-	// the file, not a resolver, and the retry request drops them.
-	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		if altTitle, ok := AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
-			altTitleIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
-			if len(altTitleIndexerIDs) > 0 {
-				log.Debug().
-					Str("torrentName", sourceTorrent.Name).
-					Str("query", searchReq.Query).
-					Str("altTitleQuery", altTitle).
-					Ints("altTitleIndexerIDs", altTitleIndexerIDs).
-					Msg("[CROSSSEED-SEARCH] Nothing usable for primary title; retrying with alternate title")
-
-				altTitleReq := *searchReq
-				clearSearchRequestIDs(&altTitleReq)
-				altTitleReq.Query = altTitle
-				altTitleReq.IndexerIDs = altTitleIndexerIDs
-				altTitleReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
-				// Internal continuation of the primary search: skip history recording
-				// like the alternate connector-spelling pass below.
-				altTitleReq.SkipHistory = true
-				if altResp, altErr := s.searchOnce(waitCtx, &altTitleReq); altErr != nil {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
-					}
-					log.Debug().
-						Err(altErr).
-						Str("altTitleQuery", altTitle).
-						Ints("altTitleIndexerIDs", altTitleIndexerIDs).
-						Msg("[CROSSSEED-SEARCH] Alternate-title retry failed; continuing with primary results")
-					coveredIndexerIDs = subtractInts(coveredIndexerIDs, altTitleIndexerIDs)
-				} else if altResp != nil {
-					coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, altTitleIndexerIDs, altResp.CoveredIndexerIDs)
-					if len(altResp.Results) > 0 {
-						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
-					}
-				}
-			}
-		}
-	}
-
-	// Cross-tracker title-variant coverage: some trackers index a show with "&"
-	// (e.g. "Law & Order: SVU") while the release name spells out "and". A literal
-	// q only matches one spelling, so re-query the indexers that returned nothing
-	// for the primary spelling using the alternate connector and merge the extra
-	// candidates (the match loop dedupes by GUID/download URL). Skipped for
-	// arr-ID searches, which do not rely on title text; a tag-sourced ID
-	// primary keeps its title passes (see the alternate-title pass above).
-	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
-			if len(altIndexerIDs) > 0 {
-				altReq := *searchReq
-				clearSearchRequestIDs(&altReq)
-				altReq.Query = altQuery
-				altReq.IndexerIDs = altIndexerIDs
-				altReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan) // year actually searched (0 if yearless retry ran)
-				// Treat the alternate-spelling pass as an internal continuation of the
-				// primary search rather than a separate tracked job: skip its search-history
-				// recording so it does not create parallel history entries. Outcome reporting
-				// keys on indexer ID under the primary job (which already searched these
-				// indexers), so the merged candidates attribute correctly. Cache persistence
-				// is intentionally left enabled (SkipCachePersist unset) so repeated alternate
-				// passes reuse the Torznab result cache instead of re-hitting indexers.
-				altReq.SkipHistory = true
-				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
-					}
-					log.Debug().
-						Err(altErr).
-						Str("altQuery", altQuery).
-						Ints("altIndexerIDs", altIndexerIDs).
-						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass failed; continuing with primary results")
-					coveredIndexerIDs = subtractInts(coveredIndexerIDs, altIndexerIDs)
-				} else if altResp != nil {
-					coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, altIndexerIDs, altResp.CoveredIndexerIDs)
-					if len(altResp.Results) > 0 {
-						log.Debug().
-							Str("query", searchReq.Query).
-							Str("altQuery", altQuery).
-							Int("altResults", len(altResp.Results)).
-							Ints("altIndexerIDs", altIndexerIDs).
-							Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
-						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
-					}
-				}
-			}
-		}
-	}
 
 	// Count raw results before the late content filter drops any; the breakdown subtracts LateContentFiltered from this total.
 	totalResults := len(searchResults)
@@ -9686,7 +9376,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	exactSizeFallbackAccepted := 0
 	exactSizeHardRejected := 0
 
-	sourceSizeForSearch := searchSourceSize(sourceTorrent)
 	traceRejections := &searchTraceRejections{}
 	for _, res := range searchResults {
 		candidateRelease := s.releaseCache.Parse(res.Title)
