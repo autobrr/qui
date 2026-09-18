@@ -958,7 +958,7 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 // (from Sonarr) and are only added to the source (pack) side, matching the
 // search path: expanding the candidate side would let an unrelated show whose title
 // happens to equal one of the pack's aliases match by accident.
-func (s *Service) seasonPackReleasesMatchWithReason(
+func (m matcher) seasonPackReleasesMatchWithReason(
 	source *rls.Release,
 	candidate *rls.Release,
 	findIndividualEpisodes bool,
@@ -993,7 +993,7 @@ func (s *Service) seasonPackReleasesMatchWithReason(
 	// Run the standard field matcher first so the most informative reason (e.g. a title
 	// mismatch for an unrelated show) surfaces before the season-pack-specific variant and
 	// source gates. This changes only which reason is reported first, not the outcome.
-	if ok, reason := s.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, "", "", sourceAliasTitles, nil, findIndividualEpisodes); !ok {
+	if ok, reason := m.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, "", "", sourceAliasTitles, nil, findIndividualEpisodes); !ok {
 		return false, reason
 	}
 	if !seasonPackNonPackVariantsMatch(&sourceCopy, &candidateCopy) {
@@ -1189,10 +1189,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	aliasTitles []string,
 ) map[episodeIdentity][]episodeMatch {
 	candidates := make(map[episodeIdentity][]episodeMatch)
-	matcher := s
-	if matcher.stringNormalizer == nil {
-		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
-	}
+	m := s.matcher()
 
 	// logFiltered emits the field that filtered an episode candidate. It is the grep
 	// target the season-pack troubleshooting docs point users at. The loop below reads
@@ -1273,7 +1270,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			}
 		}
 
-		if ok, reason := matcher.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
+		if ok, reason := m.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
 			logFiltered(torrent.Name, reason)
 			continue
 		}
@@ -1335,7 +1332,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 
 	normalizer := seasonPackNormalizer(s)
 	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
-	matcher := &Service{stringNormalizer: normalizer}
+	m := s.matcher()
 	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
 	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
 	ids := sortedEpisodeCandidateIDs(candidates)
@@ -1371,7 +1368,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				lastErr = fmt.Errorf("%w: file size mismatch for %s: pack declares %d bytes, local file is %d bytes", errLayoutMismatch, expectedFile.file.Name, expectedFile.file.Size, localFile.size)
 				continue
 			}
-			if ok, reason := matcher.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !candidate.manual && !ok {
+			if ok, reason := m.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !candidate.manual && !ok {
 				reject(candidate, "release_mismatch")
 				lastErr = fmt.Errorf("%w: release mismatch for %s: %s", errLayoutMismatch, expectedFile.file.Name, reason)
 				continue
@@ -1556,7 +1553,7 @@ func buildSeasonPackPlan(
 		RootDir: destDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
-	matcher := &Service{stringNormalizer: normalizer}
+	m := matcher{stringNormalizer: normalizer}
 	build := &seasonPackPlanBuild{
 		plan:              plan,
 		packDir:           packDir,
@@ -1583,7 +1580,7 @@ func buildSeasonPackPlan(
 		if localFile.size != pf.Size {
 			continue
 		}
-		if ok, _ := matcher.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !localFile.manual && !ok {
+		if ok, _ := m.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !localFile.manual && !ok {
 			continue
 		}
 

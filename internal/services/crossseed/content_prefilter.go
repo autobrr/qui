@@ -78,7 +78,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			continue
 		}
 
-		matchResult := s.getMatchTypeWithReason(sourceRelease, candidate.release, sourceFiles, candidateFiles, contentPrefilterSizeTolerancePercent)
+		matchResult := s.matcher().getMatchTypeWithReason(sourceRelease, candidate.release, sourceFiles, candidateFiles, contentPrefilterSizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if !contentPrefilterAcceptsMatchType(matchResult.MatchType) {
 			trackerDomains := s.extractTrackerDomainsFromTorrent(candidate.view.Torrent)
@@ -163,7 +163,7 @@ func (s *Service) collectContentPrefilterCandidates(
 }
 
 func (s *Service) contentPrefilterReleasesMatch(sourceRelease *rls.Release, sourceName string, sourceFiles qbt.TorrentFiles, candidateRelease *rls.Release, candidateName string) bool {
-	if matched, _ := s.releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, sourceName, candidateName, false); matched {
+	if matched, _ := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, sourceName, candidateName, false); matched {
 		return true
 	}
 
@@ -172,8 +172,8 @@ func (s *Service) contentPrefilterReleasesMatch(sourceRelease *rls.Release, sour
 		return false
 	}
 
-	sourceFileRelease := s.parseFileRelease(fileBaseName(sourceFileName))
-	matched, _ := s.releasesMatchWithReasonAndNames(sourceFileRelease, candidateRelease, fileBaseName(sourceFileName), candidateName, false)
+	sourceFileRelease := s.matcher().parseFileRelease(fileBaseName(sourceFileName))
+	matched, _ := s.matcher().releasesMatchWithReasonAndNames(sourceFileRelease, candidateRelease, fileBaseName(sourceFileName), candidateName, false)
 	return matched
 }
 

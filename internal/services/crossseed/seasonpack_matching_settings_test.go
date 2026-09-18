@@ -160,7 +160,7 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 		},
 	}
 
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pack := parseSeasonPackTestRelease(t, tt.pack)
@@ -192,7 +192,7 @@ func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
 // supplied on the pack side (alias bridge, #2). The no-alias case is the current 0%
 // behaviour and keeps the fix load-bearing.
 func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	cases := []struct {
 		name    string
@@ -241,7 +241,7 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 // "Overtake.S01...") still matches local fansub episodes that keep it. Reported for
 // BTN's Overtake pack, which failed while BHD's punctuation-keeping name matched.
 func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	pack := parseSeasonPackTestRelease(t, "Overtake.S01.1080p.CR.WEB-DL.AAC2.0.H.264-SubsPlease")
 	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Overtake! - 01 (1080p) [F5A70A05]")
@@ -259,7 +259,7 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 // like Aither tag JAPANESE on anime that every other tracker leaves untagged, which used to
 // reject the whole season as a language mismatch.
 func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	pack := parseSeasonPackTestRelease(t, "Reborn as a Vending Machine, I Now Wander the Dungeon S03 JAPANESE 1080p CR WEB-DL AAC 2.0 H.264-SubsPlease")
 	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou S3 - 02 (1080p) [7ECCC53C]")

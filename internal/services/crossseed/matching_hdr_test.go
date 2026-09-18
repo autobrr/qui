@@ -19,7 +19,7 @@ import (
 func TestHDRCollectionMatchingIntegration(t *testing.T) {
 	t.Parallel()
 
-	svc := &Service{
+	svc := matcher{
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}

@@ -187,7 +187,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 			if err != nil {
 				return nil, err
 			}
-			match := s.getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[normalizeHash(proposal.Hash)], meta.Files, defaultSizeMismatchTolerancePercent)
+			match := s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[normalizeHash(proposal.Hash)], meta.Files, defaultSizeMismatchTolerancePercent)
 			_, unmatched := matchSourceFilesToCandidates(uploadFiles, usableFiles(files[normalizeHash(proposal.Hash)]))
 			if match.MatchType != "" && len(uploadFiles) > 0 && len(unmatched) == 0 {
 				resp.Targets = append(resp.Targets, ManualAssembleTarget{Hash: proposal.Hash, Name: proposal.Name})

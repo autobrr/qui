@@ -149,7 +149,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 // file is demoted to pending (downloaded, never linked); with no other files the
 // plan comes up empty and the pack fails.
 func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	packRelease := rls.ParseString("K-On! S01 1080p BluRay FLAC x264-Fansub")
 	local := rls.ParseString("[Fansub] K-On!! - 05 (1080p) [ABC12345]")
