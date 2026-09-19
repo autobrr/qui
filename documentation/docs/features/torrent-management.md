@@ -105,7 +105,7 @@ Hybrid and v2 formats require a qBittorrent build with libtorrent 2. On a libtor
 
 ### Creation tasks
 
-The **Torrent Creation Tasks** list in the header shows every creation job with its status: Queued, Running, Finished, or Failed. Running tasks show a progress bar. While tasks run, the list refreshes every 2 seconds. From a finished task, you can download the `.torrent` file or delete the task.
+The **Torrent Creation Tasks** list in the header shows every creation job with its status: Queued, Running, Finished, or Failed. Running tasks show a progress bar. While tasks run, the list refreshes every 2 seconds. From a finished task, you can download the `.torrent` file or delete the task. If the download fails with the qBittorrent option **Delete .torrent files afterwards** enabled, see [Troubleshooting](../advanced/compatibility.md#download-of-a-created-torrent-fails-with-failed-to-download-torrent-file).
 
 ## Torrent export
 
