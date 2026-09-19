@@ -399,7 +399,7 @@ func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 
 		// Nothing but the endpoint terms can refuse this write, so the CAS is
 		// what is under test rather than the already-pinned guard.
-		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey, false)
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.invalid", testSSHKeyPort, testHostKey, false)
 		require.ErrorIs(t, err, ErrSSHEndpointChanged)
 
 		stored, err := store.Get(ctx, instance.ID)
@@ -413,7 +413,7 @@ func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 		instance := newSSHTestInstance(t, store, "remote")
 		configureSSH(t, store, instance.ID)
 
-		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey, false)
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.invalid", testSSHKeyPort, testHostKey, false)
 		require.Error(t, err)
 
 		stored, err := store.Get(ctx, instance.ID)
@@ -497,7 +497,7 @@ func TestReplaceHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
 	instance := newSSHTestInstance(t, store, "remote")
 	configureSSH(t, store, instance.ID)
 
-	err := store.ReplaceHostKeyPin(ctx, instance.ID, "stale.example.com", testSSHKeyPort, sshtest.HostKey())
+	err := store.ReplaceHostKeyPin(ctx, instance.ID, "stale.example.invalid", testSSHKeyPort, sshtest.HostKey())
 	require.ErrorIs(t, err, ErrSSHEndpointChanged)
 
 	stored, err := store.Get(ctx, instance.ID)

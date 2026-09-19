@@ -96,7 +96,7 @@ func TestClassifyWebhookAnnouncementSourceEpisodeMap(t *testing.T) {
 // byte-equal size. Without a map the pair is an episode mismatch, and a tracker
 // that disagrees with Sonarr passes only through the exact-size tier.
 func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
-	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	service := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name          string

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
@@ -75,8 +76,9 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 			RespondError(w, http.StatusNotFound, "Instance not found")
 		case errors.Is(err, models.ErrInvalidSSHCredentials):
 			// A property of the submitted endpoint or key, so the store's own
-			// message is what the user needs to fix.
-			RespondError(w, http.StatusBadRequest, err.Error())
+			// message is what the user needs to fix; the sentinel's prefix is
+			// for errors.Is, not for the client.
+			RespondError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), models.ErrInvalidSSHCredentials.Error()+": "))
 		default:
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to store SSH credentials")
 			RespondError(w, http.StatusInternalServerError, "Failed to store SSH credentials")
@@ -120,11 +122,21 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 
 	report, err := h.sshDialer.Test(r.Context(), instance)
 	if err != nil {
-		if errors.Is(err, models.ErrSSHKeyNotConfigured) {
+		switch {
+		case errors.Is(err, models.ErrSSHKeyNotConfigured):
 			RespondError(w, http.StatusBadRequest, "SSH credentials are not configured for this instance")
-			return
+		case r.Context().Err() != nil:
+			// The client is gone; there is nobody to answer.
+		case errors.Is(err, sshpool.ErrConnect):
+			// The transport's text is what the user needs to act on: a refused
+			// port and a missing route call for different fixes.
+			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
+		default:
+			// What qui stored is at fault, and its text is not the client's to
+			// read, as with the confirm and credentials routes.
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for SSH test")
+			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: "Failed to read SSH credentials"})
 		}
-		RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
 		return
 	}
 
@@ -207,8 +219,17 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 			RespondError(w, http.StatusBadRequest, "SSH credentials are not configured for this instance")
 		case mismatch:
 			RespondError(w, http.StatusConflict, "Host presented a different key than the one being confirmed")
+		case r.Context().Err() != nil:
+			// The client is gone; there is nobody to answer.
+		case errors.Is(err, sshpool.ErrConnect):
+			log.Debug().Err(err).Int("instanceID", instance.ID).Msg("SSH host key confirmation could not connect")
+			RespondError(w, http.StatusBadGateway, "Could not connect to the SSH host")
 		default:
-			RespondError(w, http.StatusBadGateway, err.Error())
+			// What qui stored is at fault (a key that will not decrypt or parse),
+			// and its text is not the client's to read, as with the credentials
+			// route.
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for host key confirmation")
+			RespondError(w, http.StatusInternalServerError, "Failed to read SSH credentials")
 		}
 		return
 	}

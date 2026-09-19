@@ -3,6 +3,11 @@ info:
   title: qui API
   description: |
     qui API for managing multiple qBittorrent instances.
+    If allowedHosts is configured, a missing, invalid, or unlisted received Host
+    returns HTTP 400 before authentication or routing. X-Forwarded-Host is ignored.
+    Request ports do not affect matching. Only direct loopback GET and HEAD
+    requests to /health, /healthz/readiness, and /healthz/liveness bypass the list.
+
     For automation create and update requests, set `conditions.category.enabled` to `true`
     and `conditions.category.category` to an empty string to remove the torrent category.
     Set `conditions.category.enabled` to `false` to disable the category action.
@@ -1278,9 +1283,9 @@ paths:
         '409':
           description: The host presented a different key, the instance is already pinned, or its endpoint changed
         '502':
-          description: The host could not be reached
+          description: The host could not be reached or the SSH handshake failed
         '500':
-          description: Failed to load the instance or store the pin
+          description: Failed to load the instance, read the stored credentials, or store the pin
 
   /api/instances/{instanceID}/ssh-host-key/replace:
     post:
@@ -1310,9 +1315,9 @@ paths:
         '409':
           description: The host presented a different key, the instance is not pinned, or its endpoint changed
         '502':
-          description: The host could not be reached
+          description: The host could not be reached or the SSH handshake failed
         '500':
-          description: Failed to load the instance or store the pin
+          description: Failed to load the instance, read the stored credentials, or store the pin
 
   /api/instances/{instanceID}/app-info:
     get:
@@ -1395,6 +1400,14 @@ paths:
             type: string
           description: The directory path to list contents from
         - in: query
+          name: mode
+          required: false
+          schema:
+            type: string
+            enum: [all, dirs, files]
+            default: dirs
+          description: Which entries to list
+        - in: query
           name: withMetadata
           required: false
           schema:
@@ -1412,7 +1425,7 @@ paths:
                   type: string
                 description: List of file and folder paths in the directory
         '400':
-          description: Invalid instance ID or directory path
+          description: Invalid instance ID, directory path, or mode
         '500':
           description: Failed to get directory contents
 
@@ -6925,7 +6938,7 @@ components:
         hostKey:
           type: string
           format: byte
-          description: The host public key the user confirmed, base64 over SSH wire format — the `hostKey` a preceding SSH test reported, echoed back unchanged.
+          description: The host public key the user confirmed, base64 over SSH wire format. This is the `hostKey` a preceding SSH test reported, echoed back unchanged.
 
     SSHTestResponse:
       type: object
@@ -6940,7 +6953,8 @@ components:
             `pin_unreadable` means the stored pin cannot be decrypted (the
             presented key is shown, when the host answers, so it can be
             replaced; nothing is probed),
-            and `error` means the host could not be reached at all.
+            and `error` means no connection was made: the host could not be
+            reached, or the stored credentials could not be read.
         hostKey:
           type: string
           format: byte
@@ -6977,7 +6991,7 @@ components:
               description: Whether the host's find and stat are the GNU builds.
         error:
           type: string
-          description: Why the dial failed. Present with status `error` only.
+          description: Why no connection was made. Present with status `error` only. Carries the transport's own message for an unreachable host and a fixed message when the stored credentials could not be read.
 
     InstanceError:
       type: object

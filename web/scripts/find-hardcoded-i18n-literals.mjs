@@ -389,7 +389,7 @@ function shouldScanFile(relativePath) {
   return true
 }
 
-function walkFiles(rootDir) {
+export function walkFiles(rootDir) {
   const files = []
 
   function visit(dirPath) {
@@ -400,7 +400,8 @@ function walkFiles(rootDir) {
         continue
       }
 
-      const relativePath = path.relative(webRoot, fullPath)
+      // shouldScanFile matches on "src/", but path.relative yields "src\" on Windows.
+      const relativePath = path.relative(webRoot, fullPath).replaceAll(path.sep, "/")
       if (shouldScanFile(relativePath)) {
         files.push(fullPath)
       }

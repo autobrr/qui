@@ -6,6 +6,7 @@ package sshpool
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/pkg/sftp"
@@ -20,10 +21,11 @@ const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 // thing being probed, so its output is not trusted to be short.
 const outputLimit = 8 << 10
 
-// probe reports what the server lets us do. It is best effort and never fails
-// the call: a sub-probe that errors leaves its flags false, because Test
-// reports the outcome of the dial, not of the probe.
-func probe(ctx context.Context, client *ssh.Client) *Capabilities {
+// probe reports what the server lets us do. A sub-probe the server refuses
+// leaves its flag false; a probe the connection did not survive (the request
+// was cancelled, or the deadline fired) is an error, never a partial report
+// that reads as "this host cannot".
+func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 	capabilities := &Capabilities{}
 
 	// The sftp init and each command block inside x/crypto with no ctx of
@@ -45,8 +47,8 @@ func probe(ctx context.Context, client *ssh.Client) *Capabilities {
 	// needs a command of its own before the userland question can be asked.
 	_, err := run(client, "true")
 	capabilities.Exec = err == nil
-	if !capabilities.Exec || ctx.Err() != nil {
-		return capabilities
+	if !capabilities.Exec {
+		return capabilities, checkAlive(client)
 	}
 
 	// GNU tools print "<tool> (GNU <package>) <version>" as their first line;
@@ -57,7 +59,18 @@ func probe(ctx context.Context, client *ssh.Client) *Capabilities {
 		strings.Contains(out, "GNU findutils") &&
 		strings.Contains(out, "GNU coreutils")
 
-	return capabilities
+	return capabilities, checkAlive(client)
+}
+
+// checkAlive tells a refusal from a lost connection: a sub-probe fails the
+// same way when the key forbids it and when the socket is gone, so a false flag
+// is only trusted once the host still answers a global request. A host that
+// stopped answering is a connection failure, not a fault in what qui stored.
+func checkAlive(client *ssh.Client) error {
+	if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+		return fmt.Errorf("%w: probe interrupted: %w", ErrConnect, err)
+	}
+	return nil
 }
 
 func run(client *ssh.Client, command string) (string, error) {

@@ -85,6 +85,11 @@ type Capabilities struct {
 // not even authentication — runs against a host we cannot check.
 var errPinUnreadable = errors.New("stored host key pin is unreadable")
 
+// ErrConnect marks a failure to reach the host or complete the handshake, as
+// opposed to a fault in what qui stored: the caller answers the two
+// differently, and only the first earns an unreadable pin its precedence.
+var ErrConnect = errors.New("could not connect to the SSH host")
+
 // MismatchError reports that the host presented a key other than the expected
 // one. Error prints fingerprints only, so the message is safe to log; the
 // fields carry the keys for callers that need them.
@@ -100,7 +105,8 @@ func (e *MismatchError) Error() string {
 }
 
 // Test dials the instance and reports the host key, its relation to the pin,
-// and — unless the key mismatched — what the server can do.
+// and — unless the key mismatched or the pin is unreadable — what the server
+// can do.
 func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, error) {
 	pin, err := d.creds.GetHostKeyPin(inst)
 	unreadable := err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned)
@@ -143,11 +149,11 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 			// the handshake was aborted before authentication.
 			return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
 		}
-		if unreadable && !errors.Is(err, models.ErrSSHKeyNotConfigured) {
+		if unreadable && errors.Is(err, ErrConnect) {
 			// Tampering outranks an unreachable host: a corrupt pin and a host
 			// that does not answer is what a redirected instance looks like.
-			// Missing credentials still come first: there is nothing to dial
-			// with, and the caller answers that as a request error.
+			// A fault in the stored key is not the host's doing and is reported
+			// as itself.
 			return &Report{Status: StatusPinUnreadable}, nil
 		}
 		return nil, err
@@ -159,7 +165,17 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		status = StatusPinned
 	}
 
-	return &Report{Status: status, HostKey: presented, Capabilities: probe(ctx, client)}, nil
+	capabilities, err := probe(ctx, client)
+	if err != nil {
+		// The probe sees a closed socket either way; the caller's own reason
+		// is the one to report.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+
+	return &Report{Status: status, HostKey: presented, Capabilities: capabilities}, nil
 }
 
 // Confirm dials the instance and succeeds only if the host presents hostKey, so
@@ -259,7 +275,7 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 	addr := net.JoinHostPort(inst.SSHHost, strconv.Itoa(inst.SSHPort))
 	conn, err := (&net.Dialer{Timeout: d.timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("%w: dial %s: %w", ErrConnect, addr, err)
 	}
 
 	// ssh.ClientConfig.Timeout would buy nothing here: x/crypto reads it only
@@ -302,7 +318,7 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 	case result := <-done:
 		if result.err != nil {
 			_ = conn.Close()
-			return nil, fmt.Errorf("ssh handshake with %s: %w", addr, result.err)
+			return nil, fmt.Errorf("%w: ssh handshake with %s: %w", ErrConnect, addr, result.err)
 		}
 		if keepOpen {
 			_ = conn.SetDeadline(time.Time{})

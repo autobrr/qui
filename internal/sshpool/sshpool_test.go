@@ -291,8 +291,6 @@ func rsaSignerFor(t *testing.T, algorithms []string) ssh.Signer {
 	return restricted
 }
 
-// The connection's deadline stops a stalled exec eventually, but a request the
-// user has already abandoned must not start another command at all.
 // A request cancelled while a probe command is blocked must return then, not
 // at the connection deadline: the dialer here would wait ten seconds.
 func TestCancellationUnblocksProbe(t *testing.T) {
@@ -304,10 +302,9 @@ func TestCancellationUnblocksProbe(t *testing.T) {
 
 	start := time.Now()
 	report, err := dialerWithTimeout(10*time.Second).Test(ctx, instanceAt(t, server.Addr))
-	require.NoError(t, err)
+	require.ErrorIs(t, err, context.Canceled, "a probe cut short is not a report")
+	assert.Nil(t, report, "a command interrupted by the cancel must not read as a host that cannot run it")
 	assert.Less(t, time.Since(start), 5*time.Second)
-	assert.True(t, report.Capabilities.SFTP, "the sftp probe answered before the cancel")
-	assert.False(t, report.Capabilities.Exec, "a command interrupted by the cancel is not a capability")
 }
 
 func TestUnreadablePinOutranksUnreachableHost(t *testing.T) {
@@ -386,8 +383,27 @@ func TestTimeoutBoundsProbe(t *testing.T) {
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
 
 	report, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, server.Addr), 10*time.Second)
-	require.NoError(t, err)
-	require.NotNil(t, report.Capabilities)
-	assert.True(t, report.Capabilities.SFTP, "the sftp probe answers before the exec stalls")
-	assert.False(t, report.Capabilities.Exec, "a command the host never answers is not a capability")
+	require.ErrorIs(t, err, ErrConnect, "a host that stops answering mid-probe is a connection failure, not a credential fault")
+	assert.Nil(t, report, "a command the host never answered must not read as a host that cannot run it")
+}
+
+// A stored key that will not parse is qui's fault, not the host's, so it is
+// reported as itself: only a host that cannot be reached cedes to the
+// unreadable pin.
+func TestUnparseableKeyOutranksUnreadablePin(t *testing.T) {
+	t.Parallel()
+
+	dialer := NewDialer(fakeCreds{key: "not a key", pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	report, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrConnect)
+	assert.Nil(t, report)
+}
+
+func TestUnreachableHostIsErrConnect(t *testing.T) {
+	t.Parallel()
+
+	_, err := dialerFor(nil).Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.ErrorIs(t, err, ErrConnect)
 }

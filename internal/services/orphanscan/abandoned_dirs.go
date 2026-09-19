@@ -22,7 +22,7 @@ import (
 // categoryPaths returns the on-disk destination of every qBittorrent category,
 // resolved the way qBittorrent resolves it.
 func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
-	categories, err := s.getCategories(ctx, instanceID)
+	categories, err := s.sync.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
 	}

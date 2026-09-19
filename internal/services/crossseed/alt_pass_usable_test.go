@@ -137,51 +137,9 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Indexer 1 returned a raw hit (so the old logic omitted it), but it is junk;
 	// indexer 3 returned nothing. Both must be re-queried; only indexer 2 is done.
-	got := s.indexersWithoutUsableResults(
-		[]int{1, 2, 3}, results,
-		namedRelease{release: &source, rawName: sourceName},
-		size, nil, nil, 5, false,
-	)
-	require.Equal(t, []int{1, 3}, got)
+	usable := s.searchUsablePredicate(namedRelease{release: &source, rawName: sourceName}, size, nil, nil, 5, false)
+	require.Equal(t, []int{1, 3}, indexersWithoutUsableResults([]int{1, 2, 3}, results, usable))
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
-}
-
-// TestHasUsableSearchResult pins the retry-ladder gate. The yearless and
-// alternate-title passes run whenever nothing usable came back, which includes
-// the case that blocked them before: hits arrived but release and size
-// filtering rejected every one.
-func TestHasUsableSearchResult(t *testing.T) {
-	service := &Service{
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-	}
-	const (
-		sourceName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
-		size       = int64(4_000_000_000)
-	)
-	source := rls.ParseString(sourceName)
-	sourceView := namedRelease{release: &source, rawName: sourceName}
-
-	match := jackett.SearchResult{Title: sourceName, Size: size}
-	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
-	wrongSize := jackett.SearchResult{Title: sourceName, Size: size * 2}
-
-	tests := []struct {
-		name    string
-		results []jackett.SearchResult
-		want    bool
-	}{
-		{name: "no results", results: nil, want: false},
-		{name: "junk only", results: []jackett.SearchResult{junk}, want: false},
-		{name: "junk and wrong size", results: []jackett.SearchResult{junk, wrongSize}, want: false},
-		{name: "usable match", results: []jackett.SearchResult{match}, want: true},
-		{name: "junk plus usable match", results: []jackett.SearchResult{junk, match}, want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, nil, 5, false))
-		})
-	}
 }
