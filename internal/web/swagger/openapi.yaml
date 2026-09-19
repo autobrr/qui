@@ -3,6 +3,11 @@ info:
   title: qui API
   description: |
     qui API for managing multiple qBittorrent instances.
+    If allowedHosts is configured, a missing, invalid, or unlisted received Host
+    returns HTTP 400 before authentication or routing. X-Forwarded-Host is ignored.
+    Request ports do not affect matching. Only direct loopback GET and HEAD
+    requests to /health, /healthz/readiness, and /healthz/liveness bypass the list.
+
     For automation create and update requests, set `conditions.category.enabled` to `true`
     and `conditions.category.category` to an empty string to remove the torrent category.
     Set `conditions.category.enabled` to `false` to disable the category action.
