@@ -47,8 +47,8 @@ type linkMode struct {
 	// poolMode is the persisted partial-pool mode value, kept apart from name so
 	// a display rename never changes a stored row.
 	poolMode string
-	// poolReplaceable registers the cloned targets as replaceable in the partial
-	// pool. A hardlink cannot be replaced in place without touching the source.
+	// poolReplaceable allows the pool to replace placeholders that qBittorrent
+	// creates at paths missing before the add. Existing files stay protected.
 	poolReplaceable bool
 	// linkedPathsForResume hands the linked file set to the recheck-resume worker,
 	// which refuses to download into a linked file (ADR 0004). A reflink clone is
