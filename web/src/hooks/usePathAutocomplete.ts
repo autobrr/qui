@@ -5,12 +5,11 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { pathSeparator } from "@/lib/paths";
+import { endsWithSeparator, lastSeparatorIndex, pathSeparator } from "@/lib/paths";
 
 import { useDirectoryContent } from "./useDirectoryContent";
 
-const endsWithSeparator = (path: string) => /[\\/]$/.test(path);
-const lastSeparatorIndex = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+const MAX_SUGGESTIONS = 100;
 
 type UsePathAutocompleteOptions = {
   /** Also list files; a selected file closes the dropdown instead of descending into it. */
@@ -30,7 +29,6 @@ export function usePathAutocomplete(
   const listRef = useRef<HTMLDivElement | null>(null);
   const skipHighlightResetRef = useRef(false);
 
-  // Both separators are handled on every host: a Windows qBittorrent returns backslash paths.
   const getParentPath = useCallback((path: string) => {
     if (!path || path.trim() === "/") return "/";
     if (endsWithSeparator(path)) return path;
@@ -63,10 +61,13 @@ export function usePathAutocomplete(
     mode: "files",
   });
 
+  // Capped: a flat directory with thousands of files would render one button per entry.
   const suggestions = useMemo(() => {
     const entries = includeFiles ? [...directoryEntries, ...fileEntries] : directoryEntries;
-    if (!filterTerm) return entries;
-    return entries.filter((e) => e.slice(lastSeparatorIndex(e) + 1).toLowerCase().startsWith(filterTerm));
+    const matches = filterTerm
+      ? entries.filter((e) => e.slice(lastSeparatorIndex(e) + 1).toLowerCase().startsWith(filterTerm))
+      : entries;
+    return matches.slice(0, MAX_SUGGESTIONS);
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
   // Update highlighted index when suggestions change

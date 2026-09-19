@@ -14,6 +14,8 @@ vi.mock("./useDirectoryContent", () => {
   const listings: Record<string, { dirs: string[]; files: string[] }> = {
     "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/beta"], files: ["/data/album.flac"] },
     "/data/alpha/": { dirs: ["/data/alpha/one"], files: [] },
+    "/music/": { dirs: ["/music/ac\\dc", "/music/abba"], files: [] },
+    "/flat/": { dirs: [], files: Array.from({ length: 250 }, (_, i) => `/flat/${String(i).padStart(3, "0")}.jpg`) },
     "C:\\data\\": { dirs: ["C:\\data\\alpha", "C:\\data\\alps"], files: ["C:\\data\\album.flac"] },
     "C:\\data\\alpha\\": { dirs: ["C:\\data\\alpha\\one"], files: [] },
   }
@@ -127,6 +129,26 @@ describe("usePathAutocomplete file entries", () => {
     expect(onSelect).toHaveBeenCalledWith("/data/alpha/")
     expect(result.current.inputValue).toBe("/data/alpha/")
     expect(result.current.showSuggestions).toBe(true)
+  })
+
+  it("treats a backslash inside a POSIX path as part of the name, not a separator", () => {
+    const onSelect = vi.fn()
+    const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles: true }))
+    mountRefs(result)
+    act(() => result.current.handleInputChange("/music/ac\\d"))
+    expect(requestedPaths).toContain("/music/")
+    expect(requestedPaths).not.toContain("/music/ac\\")
+    expect(result.current.suggestions).toEqual(["/music/ac\\dc"])
+    act(() => result.current.handleSelect("/music/ac\\dc"))
+    expect(onSelect).toHaveBeenCalledWith("/music/ac\\dc/")
+  })
+
+  it("caps the list at 100 entries", () => {
+    const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
+    act(() => result.current.handleInputChange("/flat/"))
+    expect(result.current.suggestions).toHaveLength(100)
+    act(() => result.current.handleInputChange("/flat/2"))
+    expect(result.current.suggestions).toHaveLength(50)
   })
 
   it("selecting a file keeps the path as is and closes the list", () => {

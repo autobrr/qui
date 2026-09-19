@@ -17,6 +17,8 @@ describe("normalizeDirectoryPath", () => {
     ["C:\\data\\", "C:\\data\\"],
     ["C:", "C:\\"],
     ["\\\\server\\share", "\\\\server\\share\\"],
+    ["/data/ac\\dc", "/data/ac\\dc/"],
+    ["/data/ac\\dc/", "/data/ac\\dc/"],
   ])("%j -> %j", (input, expected) => {
     expect(normalizeDirectoryPath(input)).toBe(expected)
   })
