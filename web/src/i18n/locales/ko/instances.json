@@ -1355,7 +1355,10 @@
         "placeholder": "예: /data/torrents",
         "skipIfCrossSeedsDontMatch": "cross-seed가 규칙의 조건과 일치하지 않으면 건너뛰기",
         "aboutSkipping": "cross-seed가 있을 때 이동 건너뛰기 정보",
-        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다."
+        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다.",
+        "errors": {
+          "mustBeAbsolute": "절대 경로를 사용하세요. 예: /data/archive 또는 D:\\Archive"
+        }
       },
       "freeSpace": {
         "title": "여유 공간 소스",
