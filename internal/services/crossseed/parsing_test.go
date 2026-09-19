@@ -398,6 +398,15 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
+			// Video bytes only correct a music parse, so a video course keeps
+			// its name-based type instead of turning into a movie.
+			name:        "video files keep an education parse on the education type",
+			release:     rls.Release{Type: rls.Education, Title: "Test Course", Year: 2022},
+			files:       videoFiles,
+			wantType:    string(educationContentType),
+			wantIsMusic: false,
+		},
+		{
 			name:        "audio files keep a music parse music",
 			release:     rls.Release{Type: rls.Music, Artist: "Test Artist", Title: "Test Album"},
 			files:       audioFiles,

@@ -46,29 +46,30 @@ var ContentTypes = []ContentType{
 type ContentTypeInfo struct {
 	// ContentType is one of ContentTypes.
 	ContentType ContentType
-	// MediaType is an optional detected media format (e.g. "cd", "dvd-video", "bluray").
-	MediaType string
 }
 
 // normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
 // misclassifications (e.g. video torrents parsed as music because of dash-separated
 // folder names such as BDMV/STREAM paths).
 func normalizeReleaseTypeForContent(release *rls.Release) *rls.Release {
+	if release.Type == rls.Music && looksLikeVideoRelease(release) {
+		return DemoteMusicToVideo(release)
+	}
+
 	normalized := *release
-	if normalized.Type != rls.Music {
-		return &normalized
-	}
-
-	if looksLikeVideoRelease(&normalized) {
-		// Preserve episode metadata when present so TV content keeps season info.
-		if normalized.Series > 0 || normalized.Episode > 0 {
-			normalized.Type = rls.Episode
-		} else {
-			normalized.Type = rls.Movie
-		}
-	}
-
 	return &normalized
+}
+
+// DemoteMusicToVideo returns a copy of a music-typed release retyped as video.
+// Episode metadata is preserved when present so TV content keeps season info.
+func DemoteMusicToVideo(release *rls.Release) *rls.Release {
+	demoted := *release
+	if demoted.Series > 0 || demoted.Episode > 0 {
+		demoted.Type = rls.Episode
+	} else {
+		demoted.Type = rls.Movie
+	}
+	return &demoted
 }
 
 func looksLikeVideoRelease(release *rls.Release) bool {
@@ -232,14 +233,17 @@ func detectRIAJMediaType(title string) string {
 
 // DetermineContentType analyzes a parsed release and returns a best-effort content type.
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
-	var info ContentTypeInfo
-
 	if release == nil {
-		info.ContentType = ContentTypeUnknown
-		return info
+		return ContentTypeInfo{ContentType: ContentTypeUnknown}
 	}
+	return ClassifyRelease(normalizeReleaseTypeForContent(release))
+}
 
-	release = normalizeReleaseTypeForContent(release)
+// ClassifyRelease is DetermineContentType without the music-to-video rescue:
+// it trusts release.Type. Cross-seed calls it after retyping a release from its
+// file list, so a video-looking name cannot undo audio bytes.
+func ClassifyRelease(release *rls.Release) ContentTypeInfo {
+	var info ContentTypeInfo
 
 	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {
@@ -293,15 +297,15 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 
 	// Last resort: infer from RIAJ media type.
 	if info.ContentType == ContentTypeUnknown {
-		info.MediaType = detectRIAJMediaType(release.Title)
-		if info.MediaType != "" {
-			switch info.MediaType {
+		mediaType := detectRIAJMediaType(release.Title)
+		if mediaType != "" {
+			switch mediaType {
 			case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio":
 				info.ContentType = ContentTypeMusic
 			case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
 				info.ContentType = ContentTypeMovie
 			case "cd-rom", "dvd-music":
-				if info.MediaType == "dvd-music" {
+				if mediaType == "dvd-music" {
 					info.ContentType = ContentTypeMusic
 				} else {
 					info.ContentType = ContentTypeApp
