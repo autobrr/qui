@@ -40,22 +40,33 @@ func TestAutomationValidatePayload_Category(t *testing.T) {
 }
 
 func TestAutomationValidatePayload_MovePath(t *testing.T) {
+	const (
+		notAbsolute   = "Move path must be absolute"
+		startsWithCat = "Move path cannot start with the category"
+	)
 	tests := []struct {
 		path    string
 		enabled bool
-		wantErr bool
+		wantMsg string
 	}{
 		{path: "/data/archive", enabled: true},
 		{path: `D:\Archive`, enabled: true},
 		{path: "D:/Archive", enabled: true},
 		{path: `\\nas\media\archive`, enabled: true},
-		{path: "{{ .Category }}/done", enabled: true},
 		{path: "  /data/{{ .Category }}  ", enabled: true},
+		{path: "{{ .Name }}/done", enabled: true},
+		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
 		{path: "archive", enabled: false},
-		{path: "archive", enabled: true, wantErr: true},
-		{path: "rel/{{ .Category }}", enabled: true, wantErr: true},
-		{path: "../archive", enabled: true, wantErr: true},
-		{path: "C:archive", enabled: true, wantErr: true},
+		{path: "{{ .Category }}/done", enabled: false},
+		{path: "archive", enabled: true, wantMsg: notAbsolute},
+		{path: "rel/{{ .Category }}", enabled: true, wantMsg: notAbsolute},
+		{path: "../archive", enabled: true, wantMsg: notAbsolute},
+		{path: "C:archive", enabled: true, wantMsg: notAbsolute},
+		{path: "{{ .Category }}/done", enabled: true, wantMsg: startsWithCat},
+		{path: "{{.Category}}", enabled: true, wantMsg: startsWithCat},
+		{path: "{{- .Category }}/done", enabled: true, wantMsg: startsWithCat},
+		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: startsWithCat},
+		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: startsWithCat},
 	}
 
 	for _, tt := range tests {
@@ -71,10 +82,10 @@ func TestAutomationValidatePayload_MovePath(t *testing.T) {
 			}
 
 			status, message, err := handler.validatePayload(t.Context(), 1, payload)
-			if tt.wantErr {
+			if tt.wantMsg != "" {
 				require.Error(t, err)
 				require.Equal(t, http.StatusBadRequest, status)
-				require.Contains(t, message, "Move path must be absolute")
+				require.Contains(t, message, tt.wantMsg)
 				return
 			}
 			require.NoError(t, err)
