@@ -1065,10 +1065,6 @@
       "label": "Peers",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "Ban Peer",
-      "description": "Are you sure you want to ban {{address}}?"
-    },
     "banPeerPermanent": {
       "title": "Ban Peer Permanently",
       "description": "Are you sure you want to permanently ban this peer? This action cannot be undone.",

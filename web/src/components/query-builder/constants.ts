@@ -404,6 +404,11 @@ export function getFieldLabel(field: string, t: TFunction): string {
   return t(`queryBuilder.fields.${field}`, { defaultValue: CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS]?.label ?? field });
 }
 
+/** Get translated reason a field or state value is unavailable on this instance */
+export function getCapabilityReason(capability: keyof typeof CAPABILITY_REASONS, t: TFunction): string {
+  return t(`queryBuilder.capabilityReasons.${capability}`, { ns: "automations", defaultValue: CAPABILITY_REASONS[capability] });
+}
+
 /** Get translated label for a field group */
 export function getFieldGroupLabel(label: string, t: TFunction): string {
   return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });

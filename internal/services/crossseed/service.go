@@ -1512,7 +1512,7 @@ func (s *Service) determineLocalMatchType(
 
 	// Strategy 3: Release metadata match using rls library
 	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.releasesMatchWithReason(sourceRelease, candidateRelease, false)
+	matched, mismatchReason := s.matcher().releasesMatchWithReason(sourceRelease, candidateRelease, false)
 	if matched {
 		return matchTypeRelease
 	}
@@ -1523,7 +1523,7 @@ func (s *Service) determineLocalMatchType(
 	// positive exact reported total size and every release field but the title.
 	if mismatchReason == titleMismatchReason &&
 		classifySearchSizeEvidence(searchSourceSize(source), searchSourceSize(candidate.Torrent)).matches() {
-		if ok, _ := s.releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
+		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
 			return matchTypeRelease
 		}
 	}
@@ -4638,6 +4638,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 
 func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest, snapshots *automationSnapshots) (*FindCandidatesResponse, error) {
 	start := time.Now()
+	m := s.matcher()
 
 	if req.TorrentName == "" {
 		return nil, errors.New("torrent_name is required")
@@ -4844,7 +4845,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				// The listing title and info.name can differ by exactly the
 				// resolved alias, so both alias sets count; only one is ever
 				// non-empty per decision origin.
-				if ok, _ := s.searchCandidateMetadataConsistent(
+				if ok, _ := m.searchCandidateMetadataConsistent(
 					searchDecision.SearchCandidateName,
 					targetSide,
 					searchDecision.RelaxedDifferences,
@@ -4855,7 +4856,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(
+			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
 				fallbackInput.Source.release,
 				fallbackInput.Candidate.release,
 				fallbackInput.Source.rawName,
@@ -4867,7 +4868,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			replaysStrictChecksum := isSearchSource &&
 				searchDecision.Class == searchCandidateClassStrict &&
 				searchDecision.StrictChecksumReplay
-			if !releasesMatch && replaysStrictChecksum && s.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
+			if !releasesMatch && replaysStrictChecksum && m.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
 				releasesMatch = true
 				mismatchReason = ""
 			}
@@ -4877,12 +4878,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
 				(searchDecision.Class == searchCandidateClassTitleRescue ||
 					searchDecision.Class == searchCandidateClassWebSourceRelabel)
-			if replaysRelaxedDecision && !s.explicitGroupsAgree(sourceSide, targetSide) {
+			if replaysRelaxedDecision && !m.explicitGroupsAgree(sourceSide, targetSide) {
 				continue
 			}
 			if replaysGroupFallback &&
-				(!s.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
-					!s.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
+				(!m.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
+					!m.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
 				continue
 			}
 			if !releasesMatch {
@@ -4895,7 +4896,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
-					if ok, _ := s.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
+					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
 						continue
 					}
 					titleRescueHash = hashKey
@@ -4903,7 +4904,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					if !searchRelaxationAuthorizesCurrentReason(searchDecision.StrictMismatchReason, mismatchReason) {
 						continue
 					}
-					if _, ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
+					if _, ok, _ := m.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
 						continue
 					}
 					if searchRelaxedStructure(mismatchReason) {
@@ -4954,7 +4955,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
-			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}
@@ -7428,7 +7429,7 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	// release name inside themselves, so parsing the full path makes rls read the title
 	// twice and invent a Group ("Azure Compass" -> "Compass"). Folder-only fields are
 	// backfilled from the torrent-name parse below.
-	largestRelease := s.parseFileRelease(path.Base(largestFile.Name))
+	largestRelease := s.matcher().parseFileRelease(path.Base(largestFile.Name))
 	largestRelease = enrichReleaseFromTorrent(largestRelease, sourceRelease)
 	if largestRelease.Type == rls.Unknown {
 		return sourceRelease, false
@@ -7615,7 +7616,7 @@ func (s *Service) selectBestCandidateAddPlan(
 		} else {
 			// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 			// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
-			matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
+			matchResult := s.matcher().getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
 			if matchResult.MatchType == "" && !manualTarget {
 				// Track the rejection reason - prefer more specific reasons
 				if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
@@ -8715,7 +8716,7 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 // primary-pass result. Keeping this a boolean projection prevents alternate-query
 // scheduling from drifting from the main result loop.
 func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
-	return s.classifySearchCandidate(searchCandidateInput{
+	return s.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:                 source,
 		Candidate:              candidate,
 		SourceTitles:           arrTitles,
@@ -8731,7 +8732,7 @@ func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize,
 // searchResultUsable so the gatherer decides retries without seeing them.
 func (s *Service) searchUsablePredicate(source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) func(jackett.SearchResult) bool {
 	return func(r jackett.SearchResult) bool {
-		candidate := s.parseReleaseName(r.Title)
+		candidate := s.matcher().parseReleaseName(r.Title)
 		return s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes)
 	}
 }
@@ -9379,7 +9380,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		// candidate size. Positive exact equality may replace a relaxable release
 		// or structure check; the downloaded torrent is inspected later by the
 		// normal apply pipeline.
-		decision := s.classifySearchCandidate(searchCandidateInput{
+		decision := s.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:                 searchSource,
 			Candidate:              namedRelease{release: candidateRelease, rawName: res.Title},
 			SourceTitles:           arrTitles,
@@ -10772,7 +10773,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			matches, cached := releasesMatchCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches = s.releasesMatch(current.release, candidate.release, false)
+				matches = s.matcher().releasesMatch(current.release, candidate.release, false)
 				releasesMatchCache[cacheKey] = matches
 			}
 
@@ -13264,31 +13265,6 @@ func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {
 		Platform:   release.Platform,
 		Arch:       release.Arch,
 	}
-}
-
-// isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.
-// A tolerance of 5.0 means the candidate size can be ±5% of the source size.
-func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, tolerancePercent float64) bool {
-	if sourceSize == 0 || candidateSize == 0 {
-		return sourceSize == candidateSize // Both must be zero to match
-	}
-
-	if tolerancePercent < 0 {
-		tolerancePercent = 0 // Negative tolerance doesn't make sense
-	}
-
-	// If tolerance is 0, require exact match
-	if tolerancePercent == 0 {
-		return sourceSize == candidateSize
-	}
-
-	// Calculate acceptable size range
-	tolerance := float64(sourceSize) * (tolerancePercent / 100.0)
-	minAcceptableSize := float64(sourceSize) - tolerance
-	maxAcceptableSize := float64(sourceSize) + tolerance
-
-	candidateSizeFloat := float64(candidateSize)
-	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
 
 // autoTMMDecision holds the inputs and result of autoTMM evaluation for logging.

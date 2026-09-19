@@ -341,7 +341,7 @@ func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T
 	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)
 
 	const candidateName = sourceName + ".mkv"
-	ok, reason := svc.validateExactSizeSearchIdentity(searchCandidateInput{
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 		Source:        namedRelease{release: searchRelease, rawName: sourceName},
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName},
 		SourceSize:    sourceSize,
@@ -390,6 +390,6 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	require.NotEqual(t, contentDetectionRelease.Sum, searchRelease.Sum)
 
 	candidate := svc.releaseCache.Parse("Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA")
-	match, reason := svc.releasesMatchWithReason(searchRelease, candidate, false)
+	match, reason := svc.matcher().releasesMatchWithReason(searchRelease, candidate, false)
 	require.True(t, match, "season pack candidate should not be rejected by file-level identity, got %q", reason)
 }

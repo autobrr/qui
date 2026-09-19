@@ -15,7 +15,7 @@ import (
 func TestReleasesMatch_UnknownSeasonTV(t *testing.T) {
 	t.Parallel()
 
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name                   string
