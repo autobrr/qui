@@ -2894,7 +2894,13 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		withMetadata = parsed
 	}
 
-	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath, withMetadata)
+	mode, ok := parseDirectoryContentMode(r.URL.Query().Get("mode"))
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "Invalid mode")
+		return
+	}
+
+	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath, mode, withMetadata)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
 			return
@@ -2905,6 +2911,18 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 	}
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// An absent mode keeps the dirs-only listing older clients expect; qBittorrent itself would default to all.
+func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
+	switch mode := qbt.DirectoryContentMode(strings.TrimSpace(raw)); mode {
+	case "":
+		return qbt.DirectoryContentDirs, true
+	case qbt.DirectoryContentAll, qbt.DirectoryContentDirs, qbt.DirectoryContentFiles:
+		return mode, true
+	default:
+		return "", false
+	}
 }
 
 // requireLocalAccess checks that the instance has local filesystem access enabled.

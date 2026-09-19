@@ -86,7 +86,7 @@ The **Create torrent** button opens the creator dialog. On desktop it is in the 
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| Source Path | Full path on the qBittorrent server. Suggestions appear as you type. | Required |
+| Source Path | Full path to a file or folder on the qBittorrent server. Folders and files appear as suggestions while you type. | Required |
 | Private torrent | Disables DHT, PEX, and local peer discovery | On |
 | Trackers | Pick from active trackers or enter one URL per line | - |
 | Comment | Free-text comment stored in the torrent | - |
