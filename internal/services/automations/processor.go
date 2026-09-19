@@ -686,14 +686,36 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	data := map[string]any{
+	resolvedPath, err := renderMovePath(path, movePathData(torrent, tracker))
+	if err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to render move path template")
+		return "", false
+	}
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
+}
+
+// RenderMovePathSample renders a move path for a placeholder torrent, so a rule's
+// path can be checked when it is saved.
+func RenderMovePathSample(path string) (string, error) {
+	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
+	return renderMovePath(path, movePathData(sample, "tracker"))
+}
+
+func movePathData(torrent qbt.Torrent, tracker string) map[string]any {
+	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+}
 
+func renderMovePath(path string, data map[string]any) (string, error) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
@@ -701,24 +723,13 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		}).
 		Parse(path)
 	if err != nil {
-		// Log template parse error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
-		return "", false
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Log template execution error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
-		return "", false
+		return "", err
 	}
-
-	resolvedPath := strings.TrimSpace(buf.String())
-
-	if resolvedPath == "" {
-		return "", false
-	}
-
-	return resolvedPath, true
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func containsStringFold(list []string, candidate string) bool {

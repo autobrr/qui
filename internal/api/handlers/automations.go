@@ -14,8 +14,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"text/template"
-	"text/template/parse"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -587,49 +585,29 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-// validateMovePath rejects a relative literal move path and a path that starts
-// with the category. Other templated paths can only be judged per torrent, when
-// the rule runs.
+// validateMovePath renders the move path for a placeholder torrent and rejects
+// it unless the result is absolute. Branches the placeholder does not take are
+// still checked per torrent when the rule runs.
 func validateMovePath(move *models.MoveAction) (string, error) {
 	if move == nil || !move.Enabled {
 		return "", nil
 	}
 	path := strings.TrimSpace(move.Path)
-	switch {
-	case path == "", pathutil.IsAbsoluteClientPath(path):
-		return "", nil
-	case strings.HasPrefix(path, "{{"):
-		if startsWithCategory(path) {
-			return "Move path cannot start with the category. Start it with an absolute folder, for example /data/{{ .Category }}", errors.New("move path starts with category")
-		}
+	if path == "" {
 		return "", nil
 	}
-	return `Move path must be absolute, for example /data/archive or D:\Archive`, errors.New("move path must be absolute")
-}
-
-// startsWithCategory reports whether the first template action outputs the
-// category. qBittorrent category names cannot start with / or \, so the path is
-// relative for a categorized torrent and lands at the filesystem root for an
-// uncategorized one.
-func startsWithCategory(path string) bool {
-	tmpl, err := template.New("movePath").
-		Funcs(template.FuncMap{"sanitize": pathutil.SanitizePathSegment}).
-		Parse(path)
-	if err != nil || tmpl.Tree == nil || len(tmpl.Root.Nodes) == 0 {
-		return false
+	rendered, err := automations.RenderMovePathSample(path)
+	if err != nil {
+		return fmt.Sprintf("Invalid move path template: %v", err), err
 	}
-	action, ok := tmpl.Root.Nodes[0].(*parse.ActionNode)
-	if !ok {
-		return false
+	if pathutil.IsAbsoluteClientPath(rendered) {
+		return "", nil
 	}
-	for _, cmd := range action.Pipe.Cmds {
-		for _, arg := range cmd.Args {
-			if field, ok := arg.(*parse.FieldNode); ok && len(field.Ident) == 1 && field.Ident[0] == "Category" {
-				return true
-			}
-		}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
 	}
-	return false
+	return msg, errors.New("move path must be absolute")
 }
 
 func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {

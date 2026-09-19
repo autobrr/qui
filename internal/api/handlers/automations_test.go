@@ -41,8 +41,8 @@ func TestAutomationValidatePayload_Category(t *testing.T) {
 
 func TestAutomationValidatePayload_MovePath(t *testing.T) {
 	const (
-		notAbsolute   = "Move path must be absolute"
-		startsWithCat = "Move path cannot start with the category"
+		notAbsolute = "Move path must be absolute"
+		invalid     = "Invalid move path template"
 	)
 	tests := []struct {
 		path    string
@@ -54,19 +54,22 @@ func TestAutomationValidatePayload_MovePath(t *testing.T) {
 		{path: "D:/Archive", enabled: true},
 		{path: `\\nas\media\archive`, enabled: true},
 		{path: "  /data/{{ .Category }}  ", enabled: true},
-		{path: "{{ .Name }}/done", enabled: true},
+		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
 		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
 		{path: "archive", enabled: false},
 		{path: "{{ .Category }}/done", enabled: false},
 		{path: "archive", enabled: true, wantMsg: notAbsolute},
-		{path: "rel/{{ .Category }}", enabled: true, wantMsg: notAbsolute},
+		{path: "rel/{{ .Category }}", enabled: true, wantMsg: `renders "rel/sample"`},
 		{path: "../archive", enabled: true, wantMsg: notAbsolute},
 		{path: "C:archive", enabled: true, wantMsg: notAbsolute},
-		{path: "{{ .Category }}/done", enabled: true, wantMsg: startsWithCat},
-		{path: "{{.Category}}", enabled: true, wantMsg: startsWithCat},
-		{path: "{{- .Category }}/done", enabled: true, wantMsg: startsWithCat},
-		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: startsWithCat},
-		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: startsWithCat},
+		{path: "{{ .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{.Category}}", enabled: true, wantMsg: `renders "sample"`},
+		{path: "{{- .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Name }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "/data/{{ .Unknown }}", enabled: true, wantMsg: invalid},
+		{path: "/data/{{ .Name", enabled: true, wantMsg: invalid},
 	}
 
 	for _, tt := range tests {
