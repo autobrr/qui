@@ -21,6 +21,11 @@ if (window.location.pathname === import.meta.env.BASE_URL) {
   window.history.replaceState(null, "", `${import.meta.env.BASE_URL}instances/1`)
 }
 
+// Client settings boot from localStorage, so these apply from the first
+// paint. A toggle lasts the visit; a reload resets it like the rest.
+localStorage.setItem("qui-sidebar-collapsed", "true")
+localStorage.setItem("qui-torrent-desktop-view-mode", "dense")
+
 const store = createStore()
 const apiBase = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api`
 window.fetch = createDemoFetch(store, apiBase, window.fetch.bind(window))
