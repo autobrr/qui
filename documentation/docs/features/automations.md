@@ -761,7 +761,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Category` | qBittorrent category (on source instance) |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
-| `.CategorySavePath` | The torrent's [category save path](#category-save-path) on the source instance, not the target |
+| `.CategorySavePath` | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
 
 | Function | Description |
 | --- | --- |
