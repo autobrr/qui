@@ -34,6 +34,7 @@ func TestServerCompression(t *testing.T) {
 	deps.Config.Config.AuthDisabled = true
 	deps.Config.Config.IAcknowledgeThisIsABadIdea = true
 	deps.Config.Config.AuthDisabledAllowedCIDRs = []string{"127.0.0.1/32"}
+	// Bodies must exceed the compressor's 1 KiB MinSize, or gzip never applies.
 	fileData := bytes.Repeat([]byte("sample file content\n"), 200)
 	require.NoError(t, os.WriteFile(filepath.Join(configDir, "qui.log"), fileData, 0o600))
 	for day := 11; day <= 30; day++ {
@@ -141,16 +142,17 @@ func TestServerCompression(t *testing.T) {
 				require.Empty(t, res.Header().Get("Content-Encoding"))
 			})
 
-			for _, path := range []string{"/instances/7/torrents/sample/files", "/instances/7/torrents/sample/files/3/mediainfo", "/instances/7/rss/items"} {
-				t.Run("neighbor "+path, func(t *testing.T) {
+			// Neighbors of the uncompressed routes, plus top-level routes that must register on `compressed`.
+			for _, path := range []string{apiPrefix + "/instances/7/torrents/sample/files", apiPrefix + "/instances/7/torrents/sample/files/3/mediainfo", apiPrefix + "/instances/7/rss/items", "/health", baseURL} {
+				t.Run("compressed "+path, func(t *testing.T) {
 					data := `{"sample":"` + strings.Repeat("content ", 200) + `"}`
-					handler := withRouteRegisteredMiddleware(t, router, apiPrefix+path, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					handler := withRouteRegisteredMiddleware(t, router, path, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 						w.Header().Set("Content-Type", "application/json")
 						_, err := io.WriteString(w, data)
 						assert.NoError(t, err)
 					}))
 					res := httptest.NewRecorder()
-					handler.ServeHTTP(res, compressionRequest(t, apiPrefix+path, "gzip"))
+					handler.ServeHTTP(res, compressionRequest(t, path, "gzip"))
 					require.Equal(t, "gzip", res.Header().Get("Content-Encoding"))
 				})
 			}

@@ -326,7 +326,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		compression = append(compression, compressor)
+		compression = chi.Middlewares{compressor}
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -418,6 +418,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
 		})
 
+		// Every route below compresses; the group above must keep the raw writer.
 		r = r.With(compression...)
 
 		// Public routes (no auth required)
@@ -738,6 +739,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Proxy routes (outside of /api and not requiring authentication).
 	// Wrapped so proxy traffic gets the same status and latency record as /api.
+	// Top-level routes register on compressed, not r, or they silently skip gzip.
 	compressed := r.With(compression...)
 	proxyHandler.Routes(compressed.With(middleware.Logger(s.logger)))
 
