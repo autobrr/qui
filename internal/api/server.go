@@ -323,27 +323,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		httpcompression.GzipCompressionLevel(2),              // Use gzip level 2 (fast) instead of 6 (default)
 		httpcompression.Prefer(httpcompression.PreferServer), // Let server choose best compression
 	)
+	var compression chi.Middlewares
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		// SSE responses must never go through this compressor. Its writer buffers
-		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
-		// cuts the stream handler's http.NewResponseController off from the socket
-		// and silently disables the per-write deadline that evicts stalled clients.
-		// Bypass compression for event-stream requests (EventSource always sends
-		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
-		// without coupling to specific paths. /api/stream compresses itself instead:
-		// see gzipSessionWriter in internal/api/sse.
-		r.Use(func(next http.Handler) http.Handler {
-			compressed := compressor(next)
-			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
-					next.ServeHTTP(w, req)
-					return
-				}
-				compressed.ServeHTTP(w, req)
-			})
-		})
+		compression = chi.Middlewares{compressor}
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -423,6 +407,21 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		// Apply setup check middleware
 		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
+		r.With(authMiddleware).Group(func(r chi.Router) {
+			// ServeContent needs the original Range header and writer to preserve byte ranges and Content-Length.
+			r.Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+
+			// These streams bypass the buffering compressor so events flush promptly and socket write deadlines remain reachable.
+			// /stream handles its own gzip through gzipSessionWriter in internal/api/sse.
+			r.Get("/stream", s.streamManager.Serve)
+			r.Get("/logs/stream", logsHandler.StreamLogs)
+			r.Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
+		})
+
+		// Every route below compresses; the group above must keep the raw writer.
+		r = r.With(compression...)
+
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
 			// Apply rate limiting to auth endpoints
@@ -446,7 +445,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Get("/themes/settings", themesHandler.GetThemeSettings)
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
-		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
@@ -562,8 +560,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
 
-			r.Get("/stream", s.streamManager.Serve)
-
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
@@ -610,7 +606,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
-							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 							r.Get("/disc-scans", discScanHandler.ListForTorrent)
 							r.Post("/disc-scans", discScanHandler.Start)
@@ -671,7 +666,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// RSS management
 					r.Route("/rss", func(r chi.Router) {
 						rssHandler.Routes(r)
-						r.Get("/events", rssSSEHandler.HandleSSE)
 					})
 
 					// Preferences
@@ -753,13 +747,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Proxy routes (outside of /api and not requiring authentication).
 	// Wrapped so proxy traffic gets the same status and latency record as /api.
-	proxyHandler.Routes(r.With(middleware.Logger(s.logger)))
+	// Top-level routes register on compressed, not r, or they silently skip gzip.
+	compressed := r.With(compression...)
+	proxyHandler.Routes(compressed.With(middleware.Logger(s.logger)))
 
 	swaggerHandler, err := swagger.NewHandler(s.config.Config.BaseURL)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize Swagger UI")
 	} else if swaggerHandler != nil {
-		swaggerHandler.RegisterRoutes(r)
+		swaggerHandler.RegisterRoutes(compressed)
 	}
 
 	baseURL := s.config.Config.BaseURL
@@ -768,9 +764,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
-	r.Get("/health", healthHandler.HandleHealth)
-	r.Get("/healthz/readiness", healthHandler.HandleReady)
-	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
+	compressed.Get("/health", healthHandler.HandleHealth)
+	compressed.Get("/healthz/readiness", healthHandler.HandleReady)
+	compressed.Get("/healthz/liveness", healthHandler.HandleLiveness)
 
 	apiMount := "/api"
 	if baseURL != "/" {
@@ -788,15 +784,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			trimmedBaseURL = "/"
 		}
 
-		r.Route(trimmedBaseURL, func(sub chi.Router) {
+		compressed.Route(trimmedBaseURL, func(sub chi.Router) {
 			webHandler.RegisterRoutes(sub)
 		})
 	} else {
-		webHandler.RegisterRoutes(r)
+		webHandler.RegisterRoutes(compressed)
 	}
 
 	if baseURL != "/" {
-		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
+		compressed.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})
