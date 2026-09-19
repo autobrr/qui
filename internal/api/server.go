@@ -325,24 +325,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		// SSE responses must never go through this compressor. Its writer buffers
-		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
-		// cuts the stream handler's http.NewResponseController off from the socket
-		// and silently disables the per-write deadline that evicts stalled clients.
-		// Bypass compression for event-stream requests (EventSource always sends
-		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
-		// without coupling to specific paths. /api/stream compresses itself instead:
-		// see gzipSessionWriter in internal/api/sse.
-		r.Use(func(next http.Handler) http.Handler {
-			compressed := compressor(next)
-			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
-					next.ServeHTTP(w, req)
-					return
-				}
-				compressed.ServeHTTP(w, req)
-			})
-		})
+		r.Use(compressionMiddleware(compressor, s.config.Config.BaseURL))
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -799,4 +782,48 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	return r, nil
+}
+
+func compressionMiddleware(compressor func(http.Handler) http.Handler, baseURL string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		compressed := compressor(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			// EventSource sends Accept: text/event-stream, covering /stream and RSS
+			// /events without tying this bypass to either path. The compressor buffers
+			// small events until MinSize, so they do not flush promptly. It also lacks
+			// Unwrap(), preventing http.NewResponseController from reaching the socket
+			// and silently disabling the per-write deadline that evicts stalled clients.
+			// /api/stream handles its own gzip; see gzipSessionWriter in internal/api/sse.
+			if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
+				next.ServeHTTP(w, req)
+				return
+			}
+
+			// ServeContent needs the original Range header. Compression also removes
+			// the file's Content-Length, so content downloads use the original writer.
+			if isTorrentContentDownload(req, baseURL) {
+				next.ServeHTTP(w, req)
+				return
+			}
+
+			compressed.ServeHTTP(w, req)
+		})
+	}
+}
+
+func isTorrentContentDownload(req *http.Request, baseURL string) bool {
+	if req.Method != http.MethodGet || !strings.HasSuffix(req.URL.Path, "/download") {
+		return false
+	}
+
+	prefix := strings.TrimSuffix(baseURL, "/") + "/api/instances/"
+	rest, ok := strings.CutPrefix(req.URL.Path, prefix)
+	if !ok {
+		return false
+	}
+
+	parts := strings.Split(rest, "/")
+	return len(parts) == 6 &&
+		parts[0] != "" && parts[1] == "torrents" && parts[2] != "" &&
+		parts[3] == "files" && parts[4] != "" && parts[5] == "download"
 }
