@@ -383,7 +383,7 @@ func TestTimeoutBoundsProbe(t *testing.T) {
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
 
 	report, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, server.Addr), 10*time.Second)
-	require.Error(t, err, "a probe the deadline cut short is not a report")
+	require.ErrorIs(t, err, ErrConnect, "a host that stops answering mid-probe is a connection failure, not a credential fault")
 	assert.Nil(t, report, "a command the host never answered must not read as a host that cannot run it")
 }
 

@@ -48,7 +48,7 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 	_, err := run(client, "true")
 	capabilities.Exec = err == nil
 	if !capabilities.Exec {
-		return capabilities, alive(client)
+		return capabilities, checkAlive(client)
 	}
 
 	// GNU tools print "<tool> (GNU <package>) <version>" as their first line;
@@ -59,15 +59,16 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 		strings.Contains(out, "GNU findutils") &&
 		strings.Contains(out, "GNU coreutils")
 
-	return capabilities, alive(client)
+	return capabilities, checkAlive(client)
 }
 
-// alive tells a refusal from a lost connection: a sub-probe fails the same way
-// when the key forbids it and when the socket is gone, so a false flag is only
-// trusted once the host still answers a global request.
-func alive(client *ssh.Client) error {
+// checkAlive tells a refusal from a lost connection: a sub-probe fails the
+// same way when the key forbids it and when the socket is gone, so a false flag
+// is only trusted once the host still answers a global request. A host that
+// stopped answering is a connection failure, not a fault in what qui stored.
+func checkAlive(client *ssh.Client) error {
 	if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
-		return fmt.Errorf("probe interrupted: %w", err)
+		return fmt.Errorf("%w: probe interrupted: %w", ErrConnect, err)
 	}
 	return nil
 }
