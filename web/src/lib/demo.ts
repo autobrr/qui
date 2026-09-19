@@ -9,8 +9,8 @@ import { FileText, Home } from "lucide-react"
 // so production bundles fold each guard away. See src/demo/main.tsx.
 export const isDemo = import.meta.env.VITE_DEMO === "1"
 
-// The way back to the site from the standalone demo. Same origin, so plain paths.
+// The way back to the site. Same origin, so plain paths; target=_top leaves the landing page iframe.
 export const demoLinks = [
   { href: "/", label: "Back to getqui.com", icon: Home },
-  { href: "/docs", label: "Docs", icon: FileText },
+  { href: "/docs/intro", label: "Docs", icon: FileText },
 ]

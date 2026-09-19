@@ -82,12 +82,9 @@ export default function Home(): ReactNode {
       </Head>
       <main className={styles.main}>
         <header className={styles.top}>
-          <div>
+          <div className={styles.brand}>
             <h1 className={styles.title}>qui</h1>
             <p className={styles.tagline}>A fast web UI for qBittorrent</p>
-            <p className={styles.sub}>
-              Every instance in one place. Stays fast past your ten thousandth torrent.
-            </p>
           </div>
           <div className={styles.actions}>
             <Link className={styles.buttonPrimary} to="/docs/getting-started/installation">

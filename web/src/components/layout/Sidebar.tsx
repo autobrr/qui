@@ -221,6 +221,7 @@ export function Sidebar() {
             <a
               key={link.href}
               href={link.href}
+              target="_top"
               className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <link.icon className="h-4 w-4" />

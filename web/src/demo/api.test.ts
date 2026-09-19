@@ -76,6 +76,12 @@ describe("createDemoFetch", () => {
     expect(store.instances[0].torrents[0].name).toBe("fresh iso")
   })
 
+  it("starts visitors with the sidebar closed and keeps a toggle for the visit", async () => {
+    await expect(fetch("http://localhost/demo/api/client-settings").then(r => r.json())).resolves.toEqual({ "qui-sidebar-collapsed": "true" })
+    await fetch("http://localhost/demo/api/client-settings", { method: "PUT", body: JSON.stringify({ "qui-sidebar-collapsed": "false" }) })
+    await expect(fetch("http://localhost/demo/api/client-settings").then(r => r.json())).resolves.toEqual({ "qui-sidebar-collapsed": "false" })
+  })
+
   it("keys trackers by domain like the real endpoint", async () => {
     const res = await fetch("http://localhost/demo/api/instances/1/trackers")
     const body = await res.json() as Record<string, string>

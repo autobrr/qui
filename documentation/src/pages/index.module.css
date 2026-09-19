@@ -8,15 +8,22 @@
 
 .top {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 2rem;
+  gap: 1.5rem;
   flex-wrap: wrap;
-  padding: 3.5rem 0 2rem;
+  padding: 2rem 0 1.25rem;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .title {
-  font-size: 2.75rem;
+  font-size: 2.25rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -24,14 +31,9 @@
 }
 
 .tagline {
-  font-size: 1.25rem;
-  margin: 0.75rem 0 0;
-}
-
-.sub {
+  font-size: 1.125rem;
   color: var(--ifm-color-content-secondary);
-  max-width: 34rem;
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 
 .actions {
@@ -169,11 +171,16 @@
 
 /* ---- Responsive ---- */
 
-@media (max-width: 576px) {
-  .title {
-    font-size: 2.25rem;
+/* Below 1024px the app shows its phone chrome, and a 16:10 box on a wide
+   phone left two rows visible under the footer nav. */
+@media (max-width: 1023px) {
+  .demoFrame {
+    aspect-ratio: auto;
+    height: 88svh;
   }
+}
 
+@media (max-width: 576px) {
   .actions {
     width: 100%;
   }
@@ -186,9 +193,5 @@
   .features th:first-child,
   .features td:first-child {
     width: auto;
-  }
-
-  .demoFrame {
-    aspect-ratio: 3 / 4;
   }
 }

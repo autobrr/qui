@@ -561,7 +561,7 @@ export function MobileFooterNav() {
             </DropdownMenuSub>
             {isDemo && demoLinks.map((link) => (
               <DropdownMenuItem asChild key={link.href}>
-                <a href={link.href} className="flex items-center gap-2">
+                <a href={link.href} target="_top" className="flex items-center gap-2">
                   <link.icon className="h-4 w-4" />
                   {link.label}
                 </a>

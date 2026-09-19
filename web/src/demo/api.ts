@@ -97,8 +97,15 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/themes/settings", () => json(null))
   on("PUT", "/themes/settings", async ({ request }) => json(await bodyJSON(request)))
   on("GET", "/themes/custom", () => json({ directory: "", themes: [] }))
-  on("GET", "/client-settings", () => json({}))
-  on("PUT", "/client-settings", () => noContent())
+  // Server settings overwrite localStorage on every sync, so the demo keeps
+  // its own record: visitors start with the nav sidebar closed, and a toggle
+  // sticks for the rest of the visit.
+  const clientSettings: Record<string, string> = { "qui-sidebar-collapsed": "true" }
+  on("GET", "/client-settings", () => json(clientSettings))
+  on("PUT", "/client-settings", async ({ request }) => {
+    Object.assign(clientSettings, await bodyJSON<Record<string, string>>(request))
+    return noContent()
+  })
   on("GET", "/filter-views", () => json([]))
   on("GET", "/tracker-icons", () => json({}))
   on("GET", "/license/licensed", () => json({ licensed: false }))
