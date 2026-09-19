@@ -2913,7 +2913,7 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// parseDirectoryContentMode maps the mode query parameter to the library value; an absent mode keeps the dirs-only listing older clients expect.
+// An absent mode keeps the dirs-only listing older clients expect; qBittorrent itself would default to all.
 func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
 	switch mode := qbt.DirectoryContentMode(strings.TrimSpace(raw)); mode {
 	case "":

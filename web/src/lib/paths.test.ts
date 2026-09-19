@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import { normalizeDirectoryPath } from "./useDirectoryContent"
+import { normalizeDirectoryPath } from "./paths"
 
 describe("normalizeDirectoryPath", () => {
   it.each([
