@@ -69,23 +69,23 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: torrentFileName, Size: 1}}}, nil
 	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		if opts.categories != nil {
 			return opts.categories(defaultSavePath), nil
 		}

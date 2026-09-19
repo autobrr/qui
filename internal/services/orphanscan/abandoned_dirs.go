@@ -21,15 +21,15 @@ import (
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
 // resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, nestUnderParent bool) ([]string, error) {
-	categories, err := s.getCategories(ctx, instanceID)
+func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
+	categories, err := s.sync.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
 	}
 
 	seen := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, nestUnderParent))
+		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories))
 	}
 
 	return sortedRoots(seen), nil
@@ -48,7 +48,7 @@ func toValidPath(name string) string {
 // resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
 // destination cannot be determined; a depth cap here would silently drop
 // protection for a deeply nested category.
-func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, nestUnderParent bool) string {
+func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
 	savePath := categories[name].SavePath
 	if savePath != "" {
 		savePath = filepath.Clean(savePath)
@@ -62,9 +62,9 @@ func resolveCategoryPath(name string, categories map[string]qbt.Category, defaul
 	}
 
 	// Category names are slash-delimited whatever the host separator is.
-	if nestUnderParent {
+	if useSubcategories {
 		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, nestUnderParent)
+			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories)
 			if parent == "" {
 				return ""
 			}

@@ -178,8 +178,8 @@ func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
 	t.Parallel()
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{}, errors.New("boom")
 	}
 
@@ -193,20 +193,20 @@ func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
 func newDefaultSavePathService(defaultSavePath, torrentSavePath string) *Service {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "A", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
 	}
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
 	return svc
@@ -269,16 +269,16 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	otherSavePath := filepath.Join(defaultSavePath, "second-instance")
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: ownSavePath, State: qbt.TorrentStatePausedUp}}, nil
@@ -288,7 +288,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 			return nil, nil
 		}
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
@@ -298,8 +298,8 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 			return map[string]qbt.TorrentFiles{}, nil
 		}
 	}
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
 

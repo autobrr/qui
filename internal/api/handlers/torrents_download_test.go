@@ -131,7 +131,7 @@ func newDownloadRequest(t *testing.T, instanceID int, hash, fileIndex string) *h
 func TestDownloadTorrentContentFile_ReturnsServerErrorWithoutInstanceStore(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandlerForTesting(nil, nil)
+	handler := &TorrentsHandler{}
 	rec := httptest.NewRecorder()
 	req := newDownloadRequest(t, 1, "hash123", "0")
 

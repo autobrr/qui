@@ -1955,9 +1955,15 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/trackers`)
   }
 
-  async getDirectoryContent(instanceId: number, dirPath: string, signal?: AbortSignal): Promise<string[]> {
+  async getDirectoryContent(
+    instanceId: number,
+    dirPath: string,
+    mode: "dirs" | "files",
+    signal?: AbortSignal
+  ): Promise<string[]> {
+    const params = new URLSearchParams({ dirPath, mode })
     const response = await ssoSafeFetch(
-      `${API_BASE}/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(dirPath)}`,
+      `${API_BASE}/instances/${instanceId}/getDirectoryContent?${params}`,
       { method: "GET", signal }
     )
     if (!response.ok) {

@@ -489,7 +489,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 				return tt.categories, nil
 			}
 
@@ -531,13 +531,13 @@ func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) {
+			stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) {
 				return tc.subcategoriesEnabled, nil
 			}
-			svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+			stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 				return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 			}
-			svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+			stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 				return map[string]qbt.Category{
 					"movies":    {Name: "movies", SavePath: archive},
 					"movies/hd": {Name: "movies/hd", SavePath: ""},
