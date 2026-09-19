@@ -557,6 +557,18 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
 	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
+	// qBittorrent checks a relative path against its working directory and then
+	// moves under its default or category save path, so the save path never matches
+	// and the move would repeat every run.
+	if pathValid && !pathutil.IsAbsoluteClientPath(resolvedPath) {
+		ruleName := ""
+		if rule != nil {
+			ruleName = rule.Name
+		}
+		log.Warn().Str("rule", ruleName).Str("path", resolvedPath).Str("hash", torrent.Hash).
+			Msg("automations: skipping move, path is not absolute")
+		pathValid = false
+	}
 	if !pathValid {
 		if stats != nil {
 			stats.MoveConditionNotMet++

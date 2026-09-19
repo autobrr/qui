@@ -438,6 +438,50 @@ func TestMovePathNormalization(t *testing.T) {
 	require.Empty(t, state.movePath)
 }
 
+func TestMoveRequiresAbsolutePath(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		savePath   string
+		wantMove   bool
+		wantTarget string
+	}{
+		// qBittorrent stored a previous "rel3/sub" move under its default save path.
+		{name: "relative path already applied by qBittorrent", path: "rel3/sub", savePath: "/downloads/rel3/sub"},
+		{name: "relative literal", path: "archive", savePath: "/downloads"},
+		{name: "template rendering relative", path: "{{ .Category }}/done", savePath: "/downloads"},
+		{name: "posix absolute", path: "/data/archive", savePath: "/downloads", wantMove: true, wantTarget: "/data/archive"},
+		{name: "windows drive", path: `D:\Archive\{{ .Category }}`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `D:\Archive\tv`},
+		{name: "windows forward slashes", path: "D:/Archive", savePath: "C:/Downloads", wantMove: true, wantTarget: "D:/Archive"},
+		{name: "unc share", path: `\\nas\media\archive`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `\\nas\media\archive`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrent := qbt.Torrent{Hash: "abc123", Name: "Show.S01", Category: "tv", SavePath: tt.savePath}
+			rule := &models.Automation{
+				ID:      1,
+				Enabled: true,
+				Name:    "Archive Rule",
+				Conditions: &models.ActionConditions{
+					Move: &models.MoveAction{Enabled: true, Path: tt.path},
+				},
+			}
+			state := &torrentDesiredState{
+				hash:        torrent.Hash,
+				name:        torrent.Name,
+				currentTags: make(map[string]struct{}),
+				tagActions:  make(map[string]string),
+			}
+
+			processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
+
+			require.Equal(t, tt.wantMove, state.shouldMove)
+			require.Equal(t, tt.wantTarget, state.movePath)
+		})
+	}
+}
+
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 

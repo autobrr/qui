@@ -39,6 +39,50 @@ func TestAutomationValidatePayload_Category(t *testing.T) {
 	}
 }
 
+func TestAutomationValidatePayload_MovePath(t *testing.T) {
+	tests := []struct {
+		path    string
+		enabled bool
+		wantErr bool
+	}{
+		{path: "/data/archive", enabled: true},
+		{path: `D:\Archive`, enabled: true},
+		{path: "D:/Archive", enabled: true},
+		{path: `\\nas\media\archive`, enabled: true},
+		{path: "{{ .Category }}/done", enabled: true},
+		{path: "  /data/{{ .Category }}  ", enabled: true},
+		{path: "archive", enabled: false},
+		{path: "archive", enabled: true, wantErr: true},
+		{path: "rel/{{ .Category }}", enabled: true, wantErr: true},
+		{path: "../archive", enabled: true, wantErr: true},
+		{path: "C:archive", enabled: true, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+			payload := &AutomationPayload{
+				Name:           "Move rule",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Move:  &models.MoveAction{Enabled: tt.enabled, Path: tt.path},
+					Pause: &models.PauseAction{Enabled: true},
+				},
+			}
+
+			status, message, err := handler.validatePayload(t.Context(), 1, payload)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, status)
+				require.Contains(t, message, "Move path must be absolute")
+				return
+			}
+			require.NoError(t, err)
+			require.Zero(t, status)
+		})
+	}
+}
+
 func TestAutomationDryRunNow(t *testing.T) {
 	newRequest := func(body string) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/api/instances/1/automations/dry-run", strings.NewReader(body))

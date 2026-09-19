@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 type AutomationHandler struct {
@@ -433,6 +434,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, msg, err
 	}
 
+	if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
 	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
 		return http.StatusBadRequest, msg, err
 	}
@@ -578,6 +583,19 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	}
 
 	return "", nil
+}
+
+// validateMovePath rejects a relative literal move path. A path that starts with
+// a template action can only be judged per torrent, when the rule runs.
+func validateMovePath(move *models.MoveAction) (string, error) {
+	if move == nil || !move.Enabled {
+		return "", nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" || strings.HasPrefix(path, "{{") || pathutil.IsAbsoluteClientPath(path) {
+		return "", nil
+	}
+	return `Move path must be absolute, for example /data/archive or D:\Archive`, errors.New("move path must be absolute")
 }
 
 func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
