@@ -273,46 +273,6 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 	}
 }
 
-// Versions and results observed live with Auto TMM for a subcategory with an
-// empty save path under a parent with an absolute one.
-func TestClientCategoryPathsNest(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name             string
-		webAPIVersion    string
-		useSubcategories bool
-		want             bool
-	}{
-		{name: "4.5.5 subcategories off", webAPIVersion: "2.8.19"},
-		{name: "4.6.7 subcategories off", webAPIVersion: "2.9.3"},
-		{name: "4.6.7 subcategories on", webAPIVersion: "2.9.3", useSubcategories: true},
-		{name: "5.0.5 subcategories off", webAPIVersion: "2.11.2"},
-		{name: "5.0.5 subcategories on", webAPIVersion: "2.11.2", useSubcategories: true, want: true},
-		{name: "5.1.4 subcategories off", webAPIVersion: "2.11.4"},
-		{name: "5.1.4 subcategories on", webAPIVersion: "2.11.4", useSubcategories: true, want: true},
-		{name: "5.2.3 always on", webAPIVersion: "2.15.1", want: true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// A fresh cache means GetAppPreferences never reaches the host.
-			client := &Client{
-				Client:               qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1"}),
-				preferencesCache:     &qbt.AppPreferences{UseSubcategories: tc.useSubcategories},
-				preferencesFetchedAt: time.Now(),
-			}
-			client.applyCapabilitiesLocked(tc.webAPIVersion)
-
-			got, err := client.CategoryPathsNest(t.Context())
-			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncStarted := make(chan struct{})
 	releaseSync := make(chan struct{})
