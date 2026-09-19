@@ -1581,10 +1581,6 @@
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除"
-    },
-    "shareLimit": {
-      "global": "全局",
-      "unlimited": "无限制"
     }
   },
   "backups": {

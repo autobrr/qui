@@ -1581,10 +1581,6 @@
       },
       "trackerMatchInclude": "포함",
       "trackerMatchExclude": "제외"
-    },
-    "shareLimit": {
-      "global": "전역",
-      "unlimited": "무제한"
     }
   },
   "backups": {
