@@ -4,7 +4,7 @@
 // Package crossseed provides intelligent cross-seeding functionality for torrents.
 //
 // Key features:
-// - Uses moistari/rls parser for robust release name parsing on both torrent names and file names
+// - Uses the rls parser for robust release name parsing on both torrent names and file names
 // - TTL-based caching (5 minutes) of rls parsing results for performance (rls parsing is slow)
 // - Fuzzy matching for finding related content (single episodes, season packs, etc.)
 // - Metadata enrichment: fills missing group, resolution, codec, source, etc. from season pack torrent names
@@ -39,8 +39,8 @@ import (
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
+	"github.com/autobrr/rls"
 	"github.com/cespare/xxhash/v2"
-	"github.com/moistari/rls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/rs/zerolog"
