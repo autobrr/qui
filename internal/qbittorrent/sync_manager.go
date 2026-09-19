@@ -6905,14 +6905,14 @@ func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
 	return nil
 }
 
-// GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
-func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, withMetadata bool) (any, error) {
+// GetDirectoryContentCtx lists the entries inside a directory that match mode (for autocomplete).
+func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, mode qbt.DirectoryContentMode, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	content, err := client.GetDirectoryContentCtx(ctx, dirPath, withMetadata)
+	content, err := client.ListDirectoryCtx(ctx, dirPath, mode, withMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get directory contents: %w", err)
 	}

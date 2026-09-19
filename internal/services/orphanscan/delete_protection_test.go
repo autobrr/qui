@@ -88,7 +88,7 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-race")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(f.svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"leftover": {Name: "leftover", SavePath: f.abandoned}}, nil
 	}
 
@@ -104,7 +104,7 @@ func TestExecuteDeletion_SkipsDirectoryThatBecameACategoryDestination(t *testing
 func TestExecuteDeletion_ProtectsCategoriesEvenWhenTheOptionWasTurnedOff(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-category-toggle-off")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(f.svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"leftover": {Name: "leftover", SavePath: f.abandoned}}, nil
 	}
 	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -191,7 +191,7 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-second-pass")
 
-	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(f.svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: f.categoryFolder}}, nil
 	}
 
@@ -243,25 +243,25 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
 
 	// Only instance A exists while the preview is built.
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 
@@ -292,19 +292,19 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 
 	// Instance B now seeds that file, and default-save-path scanning is turned
 	// off, leaving A's live roots disjoint from B's.
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true},
 			{ID: 2, Name: "b", IsActive: true, HasLocalFilesystemAccess: true},
 		}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		if instanceID == 2 {
 			return []qbt.Torrent{{Hash: "b", SavePath: defaultSavePath, State: qbt.TorrentStatePausedUp}}, nil
 		}
 		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		if instanceID == 2 {
 			return map[string]qbt.TorrentFiles{"b": {{Name: "stray.txt", Size: 4}}}, nil
 		}
@@ -352,23 +352,23 @@ func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	stubSync(svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
-	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getCategories = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: categoryFolder}}, nil
 	}
 

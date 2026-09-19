@@ -144,7 +144,7 @@ var globalHardlinkIndexCache = &hardlinkIndexCache{
 // index ages past hardlinkIndexTTL, when too much of the set changed at once, or when
 // no previous scan is available to build on.
 func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent) *HardlinkIndex {
-	if s == nil || s.syncManager == nil {
+	if s == nil || s.filesReader == nil {
 		return nil
 	}
 
@@ -504,7 +504,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		// Every candidate becomes unverifiable, and unverifiable must not be deleted.
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
@@ -633,7 +633,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 	}
 
 	list := slices.Collect(maps.Keys(hashes))
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, list)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, list)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
 			Msg("automations: failed to fetch files for hardlink index update, falling back to a full build")
@@ -709,7 +709,7 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		torrentByHash[torrents[i].Hash] = torrents[i]
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for hardlink index build")
@@ -942,9 +942,9 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		return
 	}
 
-	if s.instanceStore == nil || s.syncManager == nil {
+	if s.instanceStore == nil || s.filesReader == nil {
 		log.Warn().Int("instanceID", instanceID).
-			Msg("automations: instanceStore or syncManager unavailable for cross-scope, falling back to single-instance scope")
+			Msg("automations: instanceStore or files reader unavailable for cross-scope, falling back to single-instance scope")
 		index.finalizeCrossScope(instanceID, "")
 		return
 	}
@@ -1095,7 +1095,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			continue
 		}
 
-		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, otherID)
+		views, err := s.filesReader.GetCachedInstanceTorrents(ctx, otherID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get torrents for cross-scope, skipping instance")
@@ -1110,7 +1110,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			savePaths[v.Hash] = v.SavePath
 		}
 
-		filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, otherID, otherHashes)
+		filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, otherID, otherHashes)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get files for cross-scope, skipping instance")
@@ -1220,8 +1220,3 @@ func scopeForTorrent(info *torrentFileInfo, fileIDMap map[hardlink.FileID]*fileI
 	}
 	return hardlinkScope(hasInside, hasOutside)
 }
-
-// Ensure syncManager implements the required interface
-var _ interface {
-	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-} = (*qbittorrent.SyncManager)(nil)

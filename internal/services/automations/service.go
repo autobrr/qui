@@ -528,6 +528,13 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult = crossseed.CrossMatchResult
 
+// filesReader is the slice of the sync manager the hardlink index, the
+// missing-files check, and the skipped-files check read. ADR 0005.
+type filesReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+}
+
 // CrossMatcher provides cross-seed torrent matching using content-aware
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
@@ -542,6 +549,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	filesReader               filesReader
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
@@ -586,6 +594,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		filesReader:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,

@@ -57,11 +57,7 @@ func (h *TorrentsHandler) ExportTorrentArchive(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	exporter := h.archiveExporter
-	if exporter == nil {
-		exporter = h.syncManager
-	}
-	if err := writeTorrentArchive(r.Context(), w, request.Targets, exporter); err != nil {
+	if err := writeTorrentArchive(r.Context(), w, request.Targets, h.archiveExporter); err != nil {
 		log.Error().Err(err).Msg("Failed to write torrent export archive")
 	}
 }

@@ -30,20 +30,53 @@ import (
 )
 
 // healthChecker is the subset of *qbittorrent.Client methods needed for readiness checks.
-// Extracted as an interface to enable unit testing without a real qBittorrent connection.
 type healthChecker interface {
 	IsHealthy() bool
 	GetLastSyncUpdate() time.Time
 }
 
+// syncReader is the slice of the sync manager an orphan scan reads. ADR 0005.
+type syncReader interface {
+	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error)
+}
+
+type clientReadiness interface {
+	Client(ctx context.Context, instanceID int) (healthChecker, error)
+}
+
+type instanceLister interface {
+	List(ctx context.Context) ([]*models.Instance, error)
+}
+
+type lastRunReader interface {
+	GetLastCompletedRun(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
+}
+
+// syncClients adapts the sync manager's concrete *Client to healthChecker.
+type syncClients struct{ sm *qbittorrent.SyncManager }
+
+func (c syncClients) Client(ctx context.Context, instanceID int) (healthChecker, error) {
+	client, err := c.sm.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
 // Service handles orphan file scanning and deletion.
 type Service struct {
-	cfg           Config
-	instanceStore *models.InstanceStore
-	store         *models.OrphanScanStore
-	syncManager   *qbittorrent.SyncManager
-	notifier      notifications.Notifier
-	backendPool   *fsops.Pool
+	cfg         Config
+	store       *models.OrphanScanStore
+	sync        syncReader
+	clients     clientReadiness
+	instances   instanceLister
+	lastRuns    lastRunReader
+	notifier    notifications.Notifier
+	backendPool *fsops.Pool
 
 	activityPublisher activity.Publisher
 
@@ -54,16 +87,6 @@ type Service struct {
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
-
-	// Providers for testing (nil = use real sync manager)
-	getAllTorrentsProvider       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
-	getTorrentFilesBatchProvider func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	getClientProvider            func(ctx context.Context, instanceID int) (healthChecker, error)
-	listInstancesProvider        func(ctx context.Context) ([]*models.Instance, error)
-	getLastCompletedRunProvider  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
-	getAppPreferencesProvider    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	getCategoriesProvider        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	categoryPathsNestProvider    func(ctx context.Context, instanceID int) (bool, error)
 }
 
 // NewService creates a new orphan scan service.
@@ -79,9 +102,11 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 	}
 	return &Service{
 		cfg:               cfg,
-		instanceStore:     instanceStore,
 		store:             store,
-		syncManager:       syncManager,
+		sync:              syncManager,
+		clients:           syncClients{sm: syncManager},
+		instances:         instanceStore,
+		lastRuns:          store,
 		notifier:          notifier,
 		backendPool:       backendPool,
 		activityPublisher: activity.NopPublisher{},
@@ -112,99 +137,6 @@ func (s *Service) emitRun(instanceID int, runID int64) {
 		InstanceID: instanceID,
 		ResourceID: strconv.FormatInt(runID, 10),
 	})
-}
-
-// getAllTorrents returns all torrents for an instance, using the provider if set.
-func (s *Service) getAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	if s.getAllTorrentsProvider != nil {
-		return s.getAllTorrentsProvider(ctx, instanceID)
-	}
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get all torrents: %w", err)
-	}
-	return torrents, nil
-}
-
-// getTorrentFilesBatch returns files for multiple torrents, using the provider if set.
-func (s *Service) getTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	if s.getTorrentFilesBatchProvider != nil {
-		return s.getTorrentFilesBatchProvider(ctx, instanceID, hashes)
-	}
-	files, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	if err != nil {
-		return nil, fmt.Errorf("get torrent files batch: %w", err)
-	}
-	return files, nil
-}
-
-// getClient returns a client for an instance, using the provider if set.
-func (s *Service) getClient(ctx context.Context, instanceID int) (healthChecker, error) {
-	if s.getClientProvider != nil {
-		return s.getClientProvider(ctx, instanceID)
-	}
-	client, err := s.syncManager.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get client: %w", err)
-	}
-	return client, nil
-}
-
-func (s *Service) listInstances(ctx context.Context) ([]*models.Instance, error) {
-	if s.listInstancesProvider != nil {
-		return s.listInstancesProvider(ctx)
-	}
-	instances, err := s.instanceStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list instances: %w", err)
-	}
-	return instances, nil
-}
-
-func (s *Service) getLastCompletedRun(ctx context.Context, instanceID int) (*models.OrphanScanRun, error) {
-	if s.getLastCompletedRunProvider != nil {
-		return s.getLastCompletedRunProvider(ctx, instanceID)
-	}
-	if s.store == nil {
-		return nil, errors.New("orphan scan store unavailable")
-	}
-	return s.store.GetLastCompletedRun(ctx, instanceID)
-}
-
-// getAppPreferences returns an instance's qBittorrent preferences, using the
-// provider if set.
-func (s *Service) getAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	if s.getAppPreferencesProvider != nil {
-		return s.getAppPreferencesProvider(ctx, instanceID)
-	}
-	if s.syncManager == nil {
-		return qbt.AppPreferences{}, errors.New("sync manager unavailable")
-	}
-	return s.syncManager.GetAppPreferences(ctx, instanceID)
-}
-
-// getCategories returns an instance's qBittorrent categories keyed by name,
-// using the provider if set.
-func (s *Service) getCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
-	if s.getCategoriesProvider != nil {
-		return s.getCategoriesProvider(ctx, instanceID)
-	}
-	if s.syncManager == nil {
-		return nil, errors.New("sync manager unavailable")
-	}
-	return s.syncManager.GetCategories(ctx, instanceID)
-}
-
-// categoryPathsNest reports whether the instance resolves an empty category
-// save path under the parent category, using the provider if set.
-func (s *Service) categoryPathsNest(ctx context.Context, instanceID int) (bool, error) {
-	if s.categoryPathsNestProvider != nil {
-		return s.categoryPathsNestProvider(ctx, instanceID)
-	}
-	if s.syncManager == nil {
-		return false, errors.New("sync manager unavailable")
-	}
-	return s.syncManager.CategorySavePathsNest(ctx, instanceID)
 }
 
 // validDefaultSavePath checks the default save path qBittorrent reported so it
@@ -419,7 +351,7 @@ func (s *Service) recoverStuckRuns(ctx context.Context) error {
 }
 
 func (s *Service) checkScheduledScans(ctx context.Context) {
-	instances, err := s.instanceStore.List(ctx)
+	instances, err := s.instances.List(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to list instances")
 		return
@@ -446,7 +378,7 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 		}
 
 		// Gate 3: check if scan is due (last completed + interval <= now)
-		lastRun, err := s.store.GetLastCompletedRun(ctx, inst.ID)
+		lastRun, err := s.lastRuns.GetLastCompletedRun(ctx, inst.ID)
 		if err != nil {
 			continue
 		}
@@ -492,7 +424,7 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 			}
 
 			// Pre-check 1: Get client (cheap, before 60s settling)
-			client, clientErr := s.getClient(ctx, scan.instanceID)
+			client, clientErr := s.clients.Client(ctx, scan.instanceID)
 			if clientErr != nil {
 				log.Debug().Err(clientErr).Int("instance", scan.instanceID).
 					Msg("orphanscan: skipping scheduled scan (client unavailable)")
@@ -1747,7 +1679,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 }
 
 func (s *Service) getOtherLocalInstances(ctx context.Context, excludeInstanceID int) ([]*models.Instance, error) {
-	instances, err := s.listInstances(ctx)
+	instances, err := s.instances.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1771,7 +1703,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, ti
 		defer cancel()
 	}
 
-	client, err := s.getClient(ctx, instanceID)
+	client, err := s.clients.Client(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1779,7 +1711,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, ti
 		return nil, readinessErr
 	}
 
-	torrents, err := s.getAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -1793,7 +1725,7 @@ func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID in
 		return roots, "live", nil
 	}
 
-	lastRun, lastErr := s.getLastCompletedRun(ctx, instanceID)
+	lastRun, lastErr := s.lastRuns.GetLastCompletedRun(ctx, instanceID)
 	if lastErr != nil {
 		return nil, "", err
 	}
@@ -1811,7 +1743,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		defer cancel()
 	}
 
-	client, err := s.getClient(ctx, instanceID)
+	client, err := s.clients.Client(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1819,13 +1751,13 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		return nil, readinessErr
 	}
 
-	torrents, err := s.getAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	filesByHash, err := s.getTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))
+	filesByHash, err := s.sync.GetTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
