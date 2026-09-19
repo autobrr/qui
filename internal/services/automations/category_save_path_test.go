@@ -17,6 +17,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 		name        string
 		categories  map[string]qbt.Category
 		defaultPath string
+		nest        bool
 		want        map[string]string
 	}{
 		{
@@ -40,7 +41,25 @@ func TestBuildCategorySavePaths(t *testing.T) {
 			},
 		},
 		{
+			name: "empty subcategory path uses the full name when paths do not nest (qBittorrent 4.x, or 5.0/5.1 with subcategories off)",
+			categories: map[string]qbt.Category{
+				"tv":          {Name: "tv", SavePath: "/media/tv"},
+				"tv/anime":    {Name: "tv/anime"},
+				"tv/rel":      {Name: "tv/rel", SavePath: "relsub"},
+				"movies:hd/x": {Name: "movies:hd/x"},
+			},
+			defaultPath: "/downloads",
+			want: map[string]string{
+				"":            "/downloads",
+				"tv":          "/media/tv",
+				"tv/anime":    "/downloads/tv/anime",
+				"tv/rel":      "/downloads/relsub",
+				"movies:hd/x": "/downloads/movies hd/x",
+			},
+		},
+		{
 			name: "empty subcategory path nests under the parent's resolved path",
+			nest: true,
 			categories: map[string]qbt.Category{
 				"tv":        {Name: "tv", SavePath: "/media/tv"},
 				"tv/anime":  {Name: "tv/anime"},
@@ -48,6 +67,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 				"a/b/c":     {Name: "a/b/c"},
 				"books/new": {Name: "books/new"},
 				"books":     {Name: "books", SavePath: "library"},
+				"tv/a:b":    {Name: "tv/a:b"},
 			},
 			defaultPath: "/downloads",
 			want: map[string]string{
@@ -58,6 +78,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 				"a/b/c":     "/downloads/a/b/c",
 				"books":     "/downloads/library",
 				"books/new": "/downloads/library/new",
+				"tv/a:b":    "/media/tv/a b",
 			},
 		},
 		{
@@ -79,7 +100,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, buildCategorySavePaths(tt.categories, tt.defaultPath))
+			require.Equal(t, tt.want, buildCategorySavePaths(tt.categories, tt.defaultPath, tt.nest))
 		})
 	}
 }
@@ -89,7 +110,7 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 		"tv":       {Name: "tv", SavePath: "/media/tv"},
 		"tv/anime": {Name: "tv/anime"},
 		"a/b":      {Name: "a/b"},
-	}, "/downloads")}
+	}, "/downloads", true)}
 
 	tests := []struct {
 		name     string
@@ -119,7 +140,7 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 func TestResolveMovePath_DefaultSavePath(t *testing.T) {
 	evalCtx := &EvalContext{CategorySavePaths: buildCategorySavePaths(map[string]qbt.Category{
 		"tv": {Name: "tv", SavePath: "/media/tv"},
-	}, "/downloads")}
+	}, "/downloads", true)}
 
 	for _, category := range []string{"", "tv", "gone"} {
 		torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: category}

@@ -669,7 +669,12 @@ If you want `.Tracker` to use your [tracker customization](./tracker-customizati
 - No category: the default save path from qBittorrent's settings.
 - Category with an absolute save path: that path.
 - Category with a relative save path: the default save path, then that path. For example, `shows` becomes `/downloads/shows`.
-- Category with no save path: the parent category's save path, then the last part of the category name. For example, `tv/anime` becomes `/media/tv/anime` when `tv` saves to `/media/tv`. A top-level category such as `music` uses the default save path: `/downloads/music`. qBittorrent does this even when subcategories are off.
+- Category with no save path: the default save path, then the category name. For example, `music` becomes `/downloads/music`.
+- Subcategory with no save path, such as `tv/anime`: this depends on the qBittorrent version.
+  - qBittorrent 5.2 and later, or 5.0 and 5.1 with subcategories turned on: the parent category's save path, then the last part of the name. If `tv` saves to `/media/tv`, `tv/anime` becomes `/media/tv/anime`.
+  - qBittorrent 4.x, or 5.0 and 5.1 with subcategories turned off: the default save path, then the full name: `/downloads/tv/anime`.
+
+qBittorrent replaces the characters `:?"*<>|` in a category name with a space when it turns the name into a folder. qui does the same.
 
 If the torrent's category no longer exists in qBittorrent, qui skips the move or export for that torrent.
 

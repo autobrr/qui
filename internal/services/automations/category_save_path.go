@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"regexp"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -37,10 +38,16 @@ func rulesUseSavePathVariables(rules []*models.Automation) bool {
 	return false
 }
 
+// qbtInvalidPathChars matches Utils::Fs::toValidPath, which qBittorrent applies
+// to a category name it turns into a folder (same as orphanscan's copy).
+var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
+
 // buildCategorySavePaths resolves every category's save path the way
 // qBittorrent's categorySavePath does for Auto TMM. The "" key holds the
-// default save path, for uncategorized torrents.
-func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string) map[string]string {
+// default save path, for uncategorized torrents. nest is
+// SyncManager.CategoryPathsNest: whether an empty-path subcategory goes under
+// its parent's path or under the default path with its full name.
+func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, nest bool) map[string]string {
 	resolved := make(map[string]string, len(categories)+1)
 	resolved[""] = defaultSavePath
 
@@ -52,13 +59,11 @@ func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath 
 		p := categories[name].SavePath
 		base := defaultSavePath
 		if p == "" {
-			// qBittorrent uses the parent's resolved path plus the leaf name,
-			// even when subcategories are turned off.
-			parent, leaf := "", name
-			if i := strings.LastIndex(name, "/"); i >= 0 {
-				parent, leaf = name[:i], name[i+1:]
+			p = name
+			if i := strings.LastIndex(name, "/"); nest && i >= 0 {
+				base, p = resolve(name[:i]), name[i+1:]
 			}
-			base, p = resolve(parent), leaf
+			p = qbtInvalidPathChars.ReplaceAllString(p, " ")
 		}
 		if !isAbsoluteRemotePath(p) {
 			p = joinRemotePath(base, p)
