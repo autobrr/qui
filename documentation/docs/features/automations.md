@@ -640,6 +640,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 | `.CategorySavePath` | The save path qBittorrent uses for the torrent's category with Automatic Torrent Management. See [Category save path](#category-save-path). |
+| `.DefaultSavePath` | qBittorrent's default save path, from its settings |
 
 **Template function:**
 
@@ -655,6 +656,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
 - Under the category's save path: `{{.CategorySavePath}}/done`
+- Under the default save path: `{{.DefaultSavePath}}/archive`
 
 :::note
 If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
@@ -762,6 +764,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 | `.CategorySavePath` | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
+| `.DefaultSavePath` | The source instance's default save path |
 
 | Function | Description |
 | --- | --- |

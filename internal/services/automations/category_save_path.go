@@ -11,19 +11,26 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-const categorySavePathVariable = "CategorySavePath"
+const (
+	categorySavePathVariable = "CategorySavePath"
+	defaultSavePathVariable  = "DefaultSavePath"
+)
 
-// rulesUseCategorySavePath reports whether any enabled rule's move path or
-// export save path references .CategorySavePath.
-func rulesUseCategorySavePath(rules []*models.Automation) bool {
+func usesSavePathVariable(path string) bool {
+	return strings.Contains(path, categorySavePathVariable) || strings.Contains(path, defaultSavePathVariable)
+}
+
+// rulesUseSavePathVariables reports whether any enabled rule's move path or
+// export save path references .CategorySavePath or .DefaultSavePath.
+func rulesUseSavePathVariables(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule == nil || !rule.Enabled || rule.Conditions == nil {
 			continue
 		}
-		if move := rule.Conditions.Move; move != nil && move.Enabled && strings.Contains(move.Path, categorySavePathVariable) {
+		if move := rule.Conditions.Move; move != nil && move.Enabled && usesSavePathVariable(move.Path) {
 			return true
 		}
-		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, categorySavePathVariable) {
+		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && usesSavePathVariable(export.SavePath) {
 			return true
 		}
 	}

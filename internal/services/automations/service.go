@@ -2224,7 +2224,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	if rulesUseCategorySavePath(eligibleRules) {
+	if rulesUseSavePathVariables(eligibleRules) {
 		evalCtx.CategorySavePaths = s.loadCategorySavePaths(ctx, instanceID)
 	}
 

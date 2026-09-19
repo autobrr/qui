@@ -116,16 +116,33 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 	}
 }
 
-func TestRulesUseCategorySavePath(t *testing.T) {
+func TestResolveMovePath_DefaultSavePath(t *testing.T) {
+	evalCtx := &EvalContext{CategorySavePaths: buildCategorySavePaths(map[string]qbt.Category{
+		"tv": {Name: "tv", SavePath: "/media/tv"},
+	}, "/downloads")}
+
+	for _, category := range []string{"", "tv", "gone"} {
+		torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: category}
+		got, ok := resolveMovePath("{{.DefaultSavePath}}/archive", torrent, nil, evalCtx)
+		require.True(t, ok, category)
+		require.Equal(t, "/downloads/archive", got, category)
+	}
+
+	_, ok := resolveMovePath("{{.DefaultSavePath}}/archive", qbt.Torrent{Hash: "abc"}, nil, &EvalContext{})
+	require.False(t, ok, "map not loaded skips the move")
+}
+
+func TestRulesUseSavePathVariables(t *testing.T) {
 	rule := func(enabled bool, conds *models.ActionConditions) *models.Automation {
 		return &models.Automation{Enabled: enabled, Conditions: conds}
 	}
 	movePath := &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "{{.CategorySavePath}}/done"}}
 	exportPath := &models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "{{ .CategorySavePath }}"}}
 
-	require.True(t, rulesUseCategorySavePath([]*models.Automation{rule(true, movePath)}))
-	require.True(t, rulesUseCategorySavePath([]*models.Automation{rule(true, exportPath)}))
-	require.False(t, rulesUseCategorySavePath([]*models.Automation{rule(false, movePath)}))
-	require.False(t, rulesUseCategorySavePath([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: false, Path: "{{.CategorySavePath}}"}})}))
-	require.False(t, rulesUseCategorySavePath([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Category}}"}})}))
+	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, movePath)}))
+	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, exportPath)}))
+	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(false, movePath)}))
+	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: false, Path: "{{.CategorySavePath}}"}})}))
+	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Category}}"}})}))
+	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "{{.DefaultSavePath}}/archive"}})}))
 }
