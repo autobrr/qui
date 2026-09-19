@@ -34,6 +34,7 @@ import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
@@ -236,7 +237,7 @@ export function MobileFooterNav() {
     >
       <div className="flex items-center justify-around h-16">
         {/* Dashboard */}
-        <Link
+        {!isDemo && <Link
           to="/dashboard"
           className={cn(
             "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
@@ -248,7 +249,7 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">{t("mobileNav.dashboard")}</span>
-        </Link>
+        </Link>}
 
         {/* Clients access */}
         {hasClientScopeEntry ? (
@@ -432,74 +433,78 @@ export function MobileFooterNav() {
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem asChild>
-              <Link
-                to="/search"
-                className="flex items-center gap-2"
-              >
-                <SearchIcon className="h-4 w-4" />
-                {t("nav.search")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/cross-seed"
-                params={{}}
-                className="flex items-center gap-2"
-              >
-                <GitBranch className="h-4 w-4" />
-                {t("nav.crossSeed")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/automations"
-                className="flex items-center gap-2"
-              >
-                <Zap className="h-4 w-4" />
-                {t("nav.automations")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/backups"
-                className="flex items-center gap-2"
-              >
-                <Archive className="h-4 w-4" />
-                {t("nav.instanceBackups")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/rss"
-                className="flex items-center gap-2"
-              >
-                <Rss className="h-4 w-4" />
-                {t("nav.rss")}
-              </Link>
-            </DropdownMenuItem>
+            {!isDemo && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/search"
+                    className="flex items-center gap-2"
+                  >
+                    <SearchIcon className="h-4 w-4" />
+                    {t("nav.search")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/cross-seed"
+                    params={{}}
+                    className="flex items-center gap-2"
+                  >
+                    <GitBranch className="h-4 w-4" />
+                    {t("nav.crossSeed")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/automations"
+                    className="flex items-center gap-2"
+                  >
+                    <Zap className="h-4 w-4" />
+                    {t("nav.automations")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/backups"
+                    className="flex items-center gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    {t("nav.instanceBackups")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/rss"
+                    className="flex items-center gap-2"
+                  >
+                    <Rss className="h-4 w-4" />
+                    {t("nav.rss")}
+                  </Link>
+                </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                className="flex items-center gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                {t("nav.generalSettings")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                search={{ tab: "instances" }}
-                className="flex items-center gap-2"
-              >
-                <Server className="h-4 w-4" />
-                {t("nav.manageInstances")}
-              </Link>
-            </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    className="flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    {t("nav.generalSettings")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    search={{ tab: "instances" }}
+                    className="flex items-center gap-2"
+                  >
+                    <Server className="h-4 w-4" />
+                    {t("nav.manageInstances")}
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuItem asChild>
               <Link
                 to="/settings"
@@ -554,14 +559,26 @@ export function MobileFooterNav() {
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => logout()}
-              className="text-destructive focus:text-destructive flex items-center gap-2"
-            >
-              <LogOut className="h-4 w-4 text-destructive" />
-              {t("mobileNav.logout")}
-            </DropdownMenuItem>
+            {isDemo && demoLinks.map((link) => (
+              <DropdownMenuItem asChild key={link.href}>
+                <a href={link.href} className="flex items-center gap-2">
+                  <link.icon className="h-4 w-4" />
+                  {link.label}
+                </a>
+              </DropdownMenuItem>
+            ))}
+            {!isDemo && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => logout()}
+                  className="text-destructive focus:text-destructive flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4 text-destructive" />
+                  {t("mobileNav.logout")}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

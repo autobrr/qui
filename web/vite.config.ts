@@ -16,10 +16,25 @@ import { VitePWA } from "vite-plugin-pwa"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
 const workboxMode = nodeMajor >= 24 ? "development" : "production"
+// getqui.com demo: the same index.html booted through src/demo/main.tsx,
+// served under /demo/ with a fake API and no service worker.
+const demo = process.env.VITE_DEMO === "1"
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  base: demo ? "/demo/" : "/",
+  // Defined for every build so src/lib/demo.ts folds to a constant.
+  define: { "import.meta.env.VITE_DEMO": JSON.stringify(demo ? "1" : "") },
   plugins: [
+    demo && {
+      name: "qui-demo-html",
+      transformIndexHtml: {
+        order: "pre" as const,
+        handler: (html: string) => html
+          .replace("<title>qui</title>", "<title>qui demo</title>\n    <meta name=\"robots\" content=\"noindex\" />")
+          .replace("/src/main.tsx", "/src/demo/main.tsx"),
+      },
+    },
     react({
       // React 19 requires the new JSX transform
       jsxRuntime: "automatic",
@@ -30,7 +45,7 @@ export default defineConfig(() => ({
       // Required for parse-torrent library to work in the browser
       include: ["path", "buffer", "stream"],
     }),
-    VitePWA({
+    !demo && VitePWA({
       // Workbox-build uses Rollup + terser when mode=production; that currently breaks builds
       // on some newer Node.js versions. We don't need SW minification, so prefer compatibility.
       mode: "development",
@@ -138,6 +153,10 @@ export default defineConfig(() => ({
     },
   },
   server: {
+    // src/demo imports the built-in theme CSS from internal/themes/assets.
+    fs: {
+      allow: [path.resolve(__dirname, "..")],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:7476",
@@ -146,6 +165,7 @@ export default defineConfig(() => ({
     },
   },
   build: {
+    outDir: demo ? "dist-demo" : "dist",
     rolldownOptions: {
       output: {
         codeSplitting: {
