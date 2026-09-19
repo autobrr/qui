@@ -38,6 +38,7 @@ var (
 	renameFolderMinVersion               = semver.MustParse("2.7.0")
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
+	nestedCategoryPathsMinVersion        = semver.MustParse("2.10.0") // 5.0 nests empty-path subcategories under the parent; 4.6 (2.9.x) never does
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
@@ -88,6 +89,7 @@ type Client struct {
 	supportsFilePriority       bool
 	supportsSubcategories      bool
 	subcategoriesAlwaysEnabled bool
+	nestedCategoryPaths        bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
 	trackerIncludeSupported    bool
@@ -468,6 +470,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
+	c.nestedCategoryPaths = !v.LessThan(nestedCategoryPathsMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
@@ -541,6 +544,26 @@ func (c *Client) SubcategoriesAlwaysEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.subcategoriesAlwaysEnabled
+}
+
+// CategoryPathsNest reports whether qBittorrent resolves a subcategory with an
+// empty save path under its parent category's path rather than under the
+// default save path with the full category name.
+func (c *Client) CategoryPathsNest(ctx context.Context) (bool, error) {
+	c.mu.RLock()
+	nested, always := c.nestedCategoryPaths, c.subcategoriesAlwaysEnabled
+	c.mu.RUnlock()
+	if !nested {
+		return false, nil
+	}
+	if always {
+		return true, nil
+	}
+	prefs, err := c.GetAppPreferences(ctx)
+	if err != nil {
+		return false, err
+	}
+	return prefs.UseSubcategories, nil
 }
 
 func (c *Client) SupportsTorrentTmpPath() bool {

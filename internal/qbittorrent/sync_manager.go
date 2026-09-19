@@ -5465,6 +5465,16 @@ func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int)
 	return prefs.UseSubcategories, nil
 }
 
+// CategoryPathsNest reports whether an instance resolves an empty-path
+// subcategory under its parent category's save path.
+func (sm *SyncManager) CategoryPathsNest(ctx context.Context, instanceID int) (bool, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client: %w", err)
+	}
+	return client.CategoryPathsNest(ctx)
+}
+
 func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
 	if !supports {
 		return false
