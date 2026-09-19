@@ -133,7 +133,7 @@ If you set `QUI__AUTH_DISABLED` without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`,
 
 The web UI signs in with a browser session cookie. These rules apply to that cookie:
 
-- One instance supports HTTP-only access or HTTPS-only access, not both. If you serve qui over HTTPS, set `sessionCookieSecure = true`. The browser then never sends the cookie over plain HTTP.
+- `sessionCookieSecure = true` adds the Secure attribute to the cookie. An HTTPS `oidcRedirectUrl` also adds it. With the attribute set, the browser never sends the cookie over plain HTTP, so HTTP access to the same instance stops working. Without it, the cookie travels over both HTTP and HTTPS.
 - Finish the initial setup before you expose qui to the Internet. The first client that reaches an unconfigured instance can create the account.
 - Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests must send an `X-Requested-With` header. The web UI and the Swagger UI do this. Scripts and other clients must use an [API key](../api/overview.md) instead of the cookie.
 - `/api/auth/setup` and `/api/auth/login` accept only `Content-Type: application/json`. Other media types get HTTP 415.
