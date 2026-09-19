@@ -33,6 +33,7 @@ import {
   getTranslatedOperatorsForField,
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
+  getTranslatedContentTypes,
   getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
@@ -251,6 +252,20 @@ export function LeafCondition({
       condition.field === "CATEGORY" && value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value;
     onChange({ ...condition, value: actualValue });
   };
+
+  // A CONTENT_TYPE condition saved with regex on holds a pattern, not a type, so it keeps the free-text input.
+  const isContentTypeEqualityOperator =
+    condition.field === "CONTENT_TYPE" &&
+    (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL") &&
+    !condition.regex;
+
+  const contentTypeOptions = isContentTypeEqualityOperator ? getTranslatedContentTypes(t) : [];
+  // The evaluator ignores case, so a saved "TV" selects "tv". Any other saved value stays
+  // selected as a flagged option, because rewriting it would change what the rule matches.
+  const contentTypeValue =
+    contentTypeOptions.find((option) => option.value === condition.value?.toLowerCase())?.value ?? condition.value ?? "";
+  const isCustomContentType =
+    contentTypeValue !== "" && !contentTypeOptions.some((option) => option.value === contentTypeValue);
 
   const getCategoryDisplayValue = (): string => {
     if (condition.field === "CATEGORY" && !condition.value) {
@@ -717,6 +732,26 @@ export function LeafCondition({
                   {scope.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        ) : isContentTypeEqualityOperator ? (
+          <Select value={contentTypeValue} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue placeholder={t("queryBuilder.selectContentType")} />
+            </SelectTrigger>
+            <SelectContent>
+              {contentTypeOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              {isCustomContentType && (
+                <SelectItem value={contentTypeValue}>
+                  <span className="italic text-muted-foreground">
+                    {t("queryBuilder.customContentType", { value: contentTypeValue })}
+                  </span>
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         ) : fieldType === "boolean" ? (

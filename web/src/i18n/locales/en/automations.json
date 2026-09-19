@@ -29,10 +29,12 @@
     "selectState": "Select state",
     "selectScope": "Select scope",
     "selectTrackerStatus": "Select status",
+    "selectContentType": "Select content type",
     "true": "True",
     "false": "False",
     "selectCategory": "Select category",
     "uncategorized": "Uncategorized",
+    "customContentType": "{{value}} (not a known content type)",
     "regexEnabled": "Regex enabled",
     "enableRegex": "Enable regex",
     "selectField": "Select field",
@@ -202,6 +204,18 @@
       "error": "Error",
       "tracker_error": "Tracker error",
       "unreachable": "Unreachable"
+    },
+    "contentTypes": {
+      "movie": "Movie",
+      "tv": "TV",
+      "music": "Music",
+      "audiobook": "Audiobook",
+      "book": "Book",
+      "comic": "Comic",
+      "game": "Game",
+      "app": "App",
+      "adult": "Adult",
+      "unknown": "Unknown"
     },
     "durationUnits": {
       "minutes": "minutes",
