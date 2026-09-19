@@ -1355,24 +1355,11 @@
         "placeholder": "例如：/data/torrents",
         "skipIfCrossSeedsDontMatch": "如果輔種不匹配規則條件則跳過",
         "aboutSkipping": "關於輔種存在時跳過移動",
-        "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。",
-        "templateHelp": {
-          "trigger": "路徑範本說明",
-          "title": "範本值",
-          "variables": {
-            "name": "種子名稱",
-            "hash": "Info Hash",
-            "category": "分類",
-            "isolationFolderName": "雜湊或安全名稱",
-            "tracker": "Tracker 顯示名稱或網域",
-            "sanitize": "移除資料夾名稱中的無效字元"
-          },
-          "trackerNote": "要讓 .Tracker 使用顯示名稱，請為規則新增 Tracker 條件。",
-          "exampleLabel": "範例",
-          "learnMore": "了解更多",
-          "copySnippet": "複製 {{snippet}}",
-          "copyFailed": "複製到剪貼簿失敗"
-        }
+        "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。"
+      },
+      "templateHelp": {
+        "intro": "支援 Go 範本：",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空間來源",

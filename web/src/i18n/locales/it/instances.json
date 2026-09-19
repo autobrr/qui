@@ -1385,24 +1385,11 @@
         "placeholder": "es., /data/torrents",
         "skipIfCrossSeedsDontMatch": "Ignora se i cross-seed non corrispondono alle condizioni della regola",
         "aboutSkipping": "Informazioni sull'ignorare lo spostamento se esistono cross-seed",
-        "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola.",
-        "templateHelp": {
-          "trigger": "Aiuto sui template di percorso",
-          "title": "Valori del template",
-          "variables": {
-            "name": "Nome del torrent",
-            "hash": "Info Hash",
-            "category": "Categoria",
-            "isolationFolderName": "Hash o nome sicuro",
-            "tracker": "Nome visualizzato o dominio del tracker",
-            "sanitize": "Rimuove i caratteri non validi nelle cartelle"
-          },
-          "trackerNote": "Perché .Tracker usi il nome visualizzato, aggiungi una condizione Tracker alla regola.",
-          "exampleLabel": "Esempio",
-          "learnMore": "Scopri di più",
-          "copySnippet": "Copia {{snippet}}",
-          "copyFailed": "Copia negli appunti non riuscita"
-        }
+        "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola."
+      },
+      "templateHelp": {
+        "intro": "Supporta i template Go:",
+        "learnMore": "Scopri di più"
       },
       "freeSpace": {
         "title": "Origine dello spazio libero",

@@ -1379,24 +1379,11 @@
         "placeholder": "ex., /data/torrents",
         "skipIfCrossSeedsDontMatch": "Ignorer si les cross-seeds ne correspondent pas aux conditions",
         "aboutSkipping": "À propos du saut de déplacement",
-        "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas.",
-        "templateHelp": {
-          "trigger": "Aide sur les modèles de chemin",
-          "title": "Valeurs de modèle",
-          "variables": {
-            "name": "Nom du torrent",
-            "hash": "Info Hash",
-            "category": "Catégorie",
-            "isolationFolderName": "Hash ou nom sûr",
-            "tracker": "Nom d'affichage ou domaine du tracker",
-            "sanitize": "Supprime les caractères interdits dans un dossier"
-          },
-          "trackerNote": "Pour que .Tracker utilise le nom d'affichage, ajoutez une condition Tracker à la règle.",
-          "exampleLabel": "Exemple",
-          "learnMore": "En savoir plus",
-          "copySnippet": "Copier {{snippet}}",
-          "copyFailed": "Échec de la copie dans le presse-papiers"
-        }
+        "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas."
+      },
+      "templateHelp": {
+        "intro": "Supporte les modèles Go :",
+        "learnMore": "En savoir plus"
       },
       "freeSpace": {
         "title": "Source d'espace libre",

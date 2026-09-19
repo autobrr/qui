@@ -1355,24 +1355,11 @@
         "placeholder": "예: /data/torrents",
         "skipIfCrossSeedsDontMatch": "cross-seed가 규칙의 조건과 일치하지 않으면 건너뛰기",
         "aboutSkipping": "cross-seed가 있을 때 이동 건너뛰기 정보",
-        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다.",
-        "templateHelp": {
-          "trigger": "경로 템플릿 도움말",
-          "title": "템플릿 값",
-          "variables": {
-            "name": "토렌트 이름",
-            "hash": "Info Hash",
-            "category": "카테고리",
-            "isolationFolderName": "해시 또는 안전한 이름",
-            "tracker": "트래커 표시 이름 또는 도메인",
-            "sanitize": "폴더 이름에 쓸 수 없는 문자 제거"
-          },
-          "trackerNote": ".Tracker에 표시 이름을 쓰려면 규칙에 Tracker 조건을 추가하세요.",
-          "exampleLabel": "예시",
-          "learnMore": "자세히 알아보기",
-          "copySnippet": "{{snippet}} 복사",
-          "copyFailed": "클립보드에 복사하지 못했습니다"
-        }
+        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다."
+      },
+      "templateHelp": {
+        "intro": "Go 템플릿을 지원합니다:",
+        "learnMore": "자세히 알아보기"
       },
       "freeSpace": {
         "title": "여유 공간 소스",

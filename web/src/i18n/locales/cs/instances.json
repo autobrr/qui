@@ -1421,24 +1421,11 @@
         "placeholder": "např. /data/torrents",
         "skipIfCrossSeedsDontMatch": "Přeskočit, pokud křížová sdílení neodpovídají podmínkám pravidla",
         "aboutSkipping": "O přeskakování přesunu, když existují křížová sdílení",
-        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla.",
-        "templateHelp": {
-          "trigger": "Nápověda k šablonám cesty",
-          "title": "Hodnoty šablony",
-          "variables": {
-            "name": "Název torrentu",
-            "hash": "Info Hash",
-            "category": "Kategorie",
-            "isolationFolderName": "Hash nebo bezpečný název",
-            "tracker": "Zobrazovaný název nebo doména trackeru",
-            "sanitize": "Odstraní znaky neplatné v názvu složky"
-          },
-          "trackerNote": "Aby .Tracker použil zobrazovaný název, přidejte do pravidla podmínku Tracker.",
-          "exampleLabel": "Příklad",
-          "learnMore": "Další informace",
-          "copySnippet": "Kopírovat {{snippet}}",
-          "copyFailed": "Kopírování do schránky se nezdařilo"
-        }
+        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla."
+      },
+      "templateHelp": {
+        "intro": "Podporuje šablony Go:",
+        "learnMore": "Další informace"
       },
       "freeSpace": {
         "title": "Zdroj volného místa",

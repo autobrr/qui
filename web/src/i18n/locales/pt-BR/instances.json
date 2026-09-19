@@ -1385,24 +1385,11 @@
         "placeholder": "/caminho/final/movimentado",
         "skipIfCrossSeedsDontMatch": "Abortar a mudança caso haja cross-seeds que não condizem com a regra",
         "aboutSkipping": "Sobre pular cross-seeds",
-        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos.",
-        "templateHelp": {
-          "trigger": "Ajuda sobre modelos de caminho",
-          "title": "Valores do modelo",
-          "variables": {
-            "name": "Nome do torrent",
-            "hash": "Info Hash",
-            "category": "Categoria",
-            "isolationFolderName": "Hash ou nome seguro",
-            "tracker": "Nome de exibição ou domínio do tracker",
-            "sanitize": "Remove caracteres inválidos em pastas"
-          },
-          "trackerNote": "Para que .Tracker use o nome de exibição, adicione uma condição Tracker à regra.",
-          "exampleLabel": "Exemplo",
-          "learnMore": "Saiba mais",
-          "copySnippet": "Copiar {{snippet}}",
-          "copyFailed": "Falha ao copiar para a área de transferência"
-        }
+        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
+      },
+      "templateHelp": {
+        "intro": "Suporta modelos Go:",
+        "learnMore": "Saiba mais"
       },
       "freeSpace": {
         "title": "Fonte de espaço livre",

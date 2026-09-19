@@ -85,13 +85,11 @@ import type {
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
-import { PathTemplateHelp } from "./PathTemplateHelp"
-import { MOVE_PATH_TEMPLATE_VARIABLES } from "./pathTemplateVariables"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 let ruleIdCounter = 0
@@ -658,8 +656,37 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
+// Mirrors the data map and FuncMap in resolveMovePath (internal/services/automations/processor.go).
+const PATH_TEMPLATE_SNIPPETS = [
+  "{{ .Name }}",
+  "{{ .Hash }}",
+  "{{ .Category }}",
+  "{{ .IsolationFolderName }}",
+  "{{ .Tracker }}",
+  "{{ sanitize .Name }}",
+]
+
+const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
+const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
+
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
+
+  const pathTemplateHelp = (docsUrl: string) => (
+    <>
+      {t("preferences.workflowDialog.templateHelp.intro")}{" "}
+      {PATH_TEMPLATE_SNIPPETS.map((snippet, index) => (
+        <Fragment key={snippet}>
+          {index > 0 && ", "}
+          <code className="whitespace-nowrap">{snippet}</code>
+        </Fragment>
+      ))}{" "}
+      <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+        {t("preferences.workflowDialog.templateHelp.learnMore")}
+      </a>
+    </>
+  )
+
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
@@ -3600,10 +3627,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-1">
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
-                            <PathTemplateHelp
-                              variables={MOVE_PATH_TEMPLATE_VARIABLES}
-                              description={t("preferences.workflowDialog.export.savePathHelp")}
-                            />
+                            <FieldHelp>
+                              {t("preferences.workflowDialog.export.savePathHelp")} {pathTemplateHelp(EXPORT_PATH_DOCS_URL)}
+                            </FieldHelp>
                           </Label>
                           <Input
                             value={formState.exprExportSavePath}
@@ -3815,7 +3841,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-1">
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.move.newSavePath")}
-                            <PathTemplateHelp variables={MOVE_PATH_TEMPLATE_VARIABLES} />
+                            <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
                           </Label>
                           <Input
                             type="text"

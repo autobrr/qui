@@ -1385,24 +1385,11 @@
         "placeholder": "e.g., /data/torrents",
         "skipIfCrossSeedsDontMatch": "Skip if cross-seeds don't match the rule's conditions",
         "aboutSkipping": "About skipping move if cross-seeds exist",
-        "skipDescription": "Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.",
-        "templateHelp": {
-          "trigger": "Path template help",
-          "title": "Template values",
-          "variables": {
-            "name": "Torrent name",
-            "hash": "Info hash",
-            "category": "Category",
-            "isolationFolderName": "Hash or safe name",
-            "tracker": "Tracker display name or domain",
-            "sanitize": "Removes invalid folder characters"
-          },
-          "trackerNote": "For the display name in .Tracker, add a Tracker condition to the rule.",
-          "exampleLabel": "Example",
-          "learnMore": "Learn more",
-          "copySnippet": "Copy {{snippet}}",
-          "copyFailed": "Failed to copy to clipboard"
-        }
+        "skipDescription": "Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions."
+      },
+      "templateHelp": {
+        "intro": "Supports Go templates:",
+        "learnMore": "Learn more"
       },
       "freeSpace": {
         "title": "Free space source",
