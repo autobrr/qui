@@ -273,6 +273,46 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 	}
 }
 
+// Versions and outcomes observed live with Automatic Torrent Management on,
+// default save path /downloads and categories tv=/media/tv, tv/anime="".
+func TestCategorySavePathsNest(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		version          string
+		useSubcategories bool
+		want             bool
+	}{
+		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true, want: false},
+		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true, want: false},
+		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false, want: false},
+		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: true},
+		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: true},
+		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The cached preferences are fresh, so no request reaches the host.
+			client := &Client{
+				Client:               qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1"}),
+				isHealthy:            true,
+				preferencesCache:     &qbt.AppPreferences{UseSubcategories: tc.useSubcategories},
+				preferencesFetchedAt: time.Now(),
+			}
+			client.applyCapabilitiesLocked(tc.version)
+			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+			got, err := sm.CategorySavePathsNest(t.Context(), 1)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncStarted := make(chan struct{})
 	releaseSync := make(chan struct{})

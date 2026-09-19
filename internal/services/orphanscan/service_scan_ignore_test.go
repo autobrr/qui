@@ -70,7 +70,7 @@ func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: base}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(context.Context, int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
@@ -405,7 +405,7 @@ func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(context.Context, int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"unused": {Name: "unused", SavePath: unusedCategory}}, nil
 	}
@@ -438,7 +438,7 @@ func TestExecuteScan_AbsentCategoryPathWithTorrentStillWarns(t *testing.T) {
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(context.Context, int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
 		// The same path the "missing" torrent saves into.
 		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: missingRoot}}, nil

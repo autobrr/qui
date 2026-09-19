@@ -531,7 +531,7 @@ func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) {
+			svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) {
 				return tc.subcategoriesEnabled, nil
 			}
 			svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {

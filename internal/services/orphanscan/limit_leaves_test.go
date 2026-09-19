@@ -60,7 +60,7 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: root}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
@@ -144,7 +144,7 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 			"gone": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(context.Context, int) (bool, error) { return false, nil }
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: parent}, nil
 	}
