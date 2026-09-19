@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"sort"
 	"strings"
@@ -107,6 +108,13 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	server := NewServer(newTestDependencies(t))
 	router, err := server.Handler()
 	require.NoError(t, err)
+
+	t.Run("torrent download route matches compression bypass", func(t *testing.T) {
+		path := "/api/instances/7/torrents/sample/files/3/download"
+		downloadRoute := router.Find(chi.NewRouteContext(), http.MethodGet, path)
+		require.Equal(t, "/api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", downloadRoute)
+		require.True(t, isTorrentContentDownload(httptest.NewRequest(http.MethodGet, path, nil), "/"))
+	})
 
 	actualRoutes := collectRouterRoutes(t, router)
 	documentedRoutes := loadDocumentedRoutes(t)
