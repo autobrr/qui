@@ -41,7 +41,7 @@ type syncReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error)
+	CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error)
 }
 
 type clientReadiness interface {
