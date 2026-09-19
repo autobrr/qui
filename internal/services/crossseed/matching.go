@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -20,6 +21,37 @@ import (
 
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
+
+// matcher carries only what the matching rules read. A rule that needs a
+// client, a store, or the sync manager does not compile here (ADR 0008).
+type matcher struct {
+	releaseCache     *ReleaseCache
+	stringNormalizer *stringutils.Normalizer[string, string]
+	metrics          *ServiceMetrics
+}
+
+func (s *Service) matcher() matcher {
+	return matcher{
+		releaseCache:     s.releaseCache,
+		stringNormalizer: s.stringNormalizer,
+		metrics:          s.metrics,
+	}
+}
+
+// normalizer falls back to the process-wide singleton instead of allocating a
+// fresh normalizer. Every NewDefaultNormalizer() spins up a ttlcache whose
+// startExpirations goroutine never terminates (the throwaway cache is never
+// closed), and this runs once per release pair on the matching hot path.
+func (m matcher) normalizer() *stringutils.Normalizer[string, string] {
+	return cmp.Or(m.stringNormalizer, stringutils.DefaultNormalizer)
+}
+
+func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
+	if s == nil {
+		return stringutils.DefaultNormalizer
+	}
+	return s.matcher().normalizer()
+}
 
 func isTVRelease(r *rls.Release) bool {
 	return r != nil && (r.Type == rls.Series || r.Type == rls.Episode || r.Series > 0 || r.Episode > 0)
@@ -110,17 +142,17 @@ func makeReleaseKey(r *rls.Release) releaseKey {
 }
 
 // parseReleaseName safely parses release metadata when the release cache is available.
-func (s *Service) parseReleaseName(name string) *rls.Release {
-	if s == nil || s.releaseCache == nil {
+func (m matcher) parseReleaseName(name string) *rls.Release {
+	if m.releaseCache == nil {
 		return &rls.Release{}
 	}
-	return s.releaseCache.Parse(name)
+	return m.releaseCache.Parse(name)
 }
 
 // parseFileRelease removes RAR volume suffixes so .s01 does not become season 1.
 // Torrent titles use parseReleaseName because a trailing .S01 can name a season.
-func (s *Service) parseFileRelease(name string) *rls.Release {
-	return s.parseReleaseName(rarVolumeSuffix.ReplaceAllString(name, ""))
+func (m matcher) parseFileRelease(name string) *rls.Release {
+	return m.parseReleaseName(rarVolumeSuffix.ReplaceAllString(name, ""))
 }
 
 // String serializes the releaseKey into a stable string for caching purposes.
@@ -130,38 +162,38 @@ func (k releaseKey) String() string {
 
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
-func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	match, _ := s.releasesMatchWithReason(source, candidate, findIndividualEpisodes)
+func (m matcher) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	match, _ := m.releasesMatchWithReason(source, candidate, findIndividualEpisodes)
 	return match
 }
 
-func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
-	return s.releasesMatchWithReasonAndNames(source, candidate, "", "", findIndividualEpisodes)
+func (m matcher) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+	return m.releasesMatchWithReasonAndNames(source, candidate, "", "", findIndividualEpisodes)
 }
 
-func (s *Service) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
-	return s.releasesMatchWithReasonAndNamesAndTitles(source, candidate, sourceName, candidateName, nil, nil, findIndividualEpisodes)
+func (m matcher) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
+	return m.releasesMatchWithReasonAndNamesAndTitles(source, candidate, sourceName, candidateName, nil, nil, findIndividualEpisodes)
 }
 
-func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
 	if source == candidate {
 		return true, ""
 	}
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := s.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
+	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
 		return false, reason
 	}
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, false); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, false); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
+	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+	if ok, reason := m.validateMetadataFlags(source, candidate); !ok {
 		return false, reason
 	}
 	if ok, reason := validateReleaseVariants(source, candidate); !ok {
@@ -169,19 +201,6 @@ func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rl
 	}
 
 	return true, ""
-}
-
-func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
-	if s != nil && s.stringNormalizer != nil {
-		return s.stringNormalizer
-	}
-	// Reuse the process-wide singleton instead of allocating a fresh
-	// normalizer here. Every NewDefaultNormalizer() spins up a ttlcache
-	// whose startExpirations goroutine never terminates (the throwaway
-	// cache is never closed), and this is on the cross-seed matching hot
-	// path - one call per release pair - so a fresh allocation leaks a
-	// goroutine on every comparison.
-	return stringutils.DefaultNormalizer
 }
 
 // titleMismatchReason is the rejection reason emitted when two releases differ
@@ -199,12 +218,12 @@ const (
 	checksumMismatchReason = "checksum mismatch"
 )
 
-func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
+func (m matcher) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitles := s.normalizedReleaseTitles(source, sourceName)
-	candidateTitles := s.normalizedReleaseTitles(candidate, candidateName)
+	sourceTitles := m.normalizedReleaseTitles(source, sourceName)
+	candidateTitles := m.normalizedReleaseTitles(candidate, candidateName)
 	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
 		return false, "empty normalized title"
 	}
@@ -228,11 +247,11 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 		return false, titleMismatchReason
 	}
 
-	return s.validateArtistAndDates(source, candidate, isTV)
+	return m.validateArtistAndDates(source, candidate, isTV)
 }
 
-func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
-	normalizer := normalizerForService(s)
+func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
+	normalizer := m.normalizer()
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -277,27 +296,27 @@ func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bo
 // paused-add full recheck as the final authority; callers that only report
 // existing pairings (local match detection) do not, so their false positives
 // must stay confined to display.
-func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
 	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := s.validateArtistAndDates(source, candidate, isTV); !ok {
+	if ok, reason := m.validateArtistAndDates(source, candidate, isTV); !ok {
 		return false, reason
 	}
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, true); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, true); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
+	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+	if ok, reason := m.validateMetadataFlags(source, candidate); !ok {
 		return false, reason
 	}
 	return validateReleaseVariants(source, candidate)
 }
 
-func (s *Service) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
+func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
 	titles := make(map[string]struct{})
 	addNormalizedTitle(titles, releaseTitle(release))
 	addNormalizedTitle(titles, releaseAlt(release))
@@ -323,7 +342,7 @@ func (s *Service) normalizedReleaseTitles(release *rls.Release, rawName string) 
 	// merely keeping "/" inside Title is not enough: NormalizeForMatching passes
 	// "/" through, so "fate/strange fake" still will not equal "fate strange fake".
 	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
-		parsed := s.parseReleaseName(unslashed)
+		parsed := m.parseReleaseName(unslashed)
 		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
 			addNormalizedTitle(titles, parsed.Title)
 			addNormalizedTitle(titles, parsed.Alt)
@@ -438,10 +457,10 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	return true, ""
 }
 
-func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
+func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
-	normalizer := normalizerForService(s)
+	normalizer := m.normalizer()
 	sourceGroup := normalizer.Normalize((source.Group))
 	candidateGroup := normalizer.Normalize((candidate.Group))
 	sourceSite := normalizer.Normalize(source.Site)
@@ -503,8 +522,8 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, t
 // rather than an inline literal.
 const sourceMismatchReason = "source mismatch"
 
-func (s *Service) validateFormatAndCodec(source, candidate *rls.Release) (bool, string) {
-	normalizer := normalizerForService(s)
+func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, string) {
+	normalizer := m.normalizer()
 
 	// Source must be compatible if both are present.
 	// WEB is ambiguous and matches both WEB-DL and WEBRip.
@@ -581,8 +600,8 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release) (bool, 
 	return true, ""
 }
 
-func (s *Service) validateMetadataFlags(source, candidate *rls.Release) (bool, string) {
-	normalizer := normalizerForService(s)
+func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, string) {
+	normalizer := m.normalizer()
 
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
 	// Indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the
@@ -764,7 +783,7 @@ func sourcesCompatible(source, candidate string) bool {
 // source differs we let the candidate reach the apply-stage file verification and
 // qBittorrent recheck instead of dropping it on the label alone. Callers must
 // still confirm the candidate size is within tolerance before trusting this.
-func (s *Service) isWebSourceRelabel(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) bool {
+func (m matcher) isWebSourceRelabel(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) bool {
 	if source == nil || candidate == nil {
 		return false
 	}
@@ -776,7 +795,7 @@ func (s *Service) isWebSourceRelabel(source, candidate *rls.Release, sourceName,
 	// the source label was the only difference between the two releases.
 	probe := *candidate
 	probe.Source = source.Source
-	match, _ := s.releasesMatchWithReasonAndNamesAndTitles(source, &probe, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
+	match, _ := m.releasesMatchWithReasonAndNamesAndTitles(source, &probe, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
 	return match
 }
 
@@ -786,7 +805,7 @@ func (s *Service) isWebSourceRelabel(source, candidate *rls.Release, sourceName,
 // a single episode of a season-pack source is legitimately much smaller than its
 // pack, so the full-size tolerance is bypassed in that case and the apply-stage
 // file verification makes the final call.
-func (s *Service) shouldAcceptWebSourceRelabel(
+func (m matcher) shouldAcceptWebSourceRelabel(
 	source, candidate *rls.Release,
 	sourceName, candidateName string,
 	sourceTitles, candidateTitles []string,
@@ -798,10 +817,10 @@ func (s *Service) shouldAcceptWebSourceRelabel(
 	if mismatchReason != sourceMismatchReason {
 		return false
 	}
-	if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent) {
+	if !ignoreSizeCheck && !m.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent) {
 		return false
 	}
-	return s.isWebSourceRelabel(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
+	return m.isWebSourceRelabel(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
 }
 
 // joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
@@ -825,12 +844,12 @@ func joinNormalizedCodecSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
+func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
-			fileRelease := s.parseFileRelease(cf.Name)
+		if !shouldIgnoreFile(cf.Name, m.normalizer()) {
+			fileRelease := m.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
 			key := makeReleaseKey(enrichedRelease)
@@ -962,22 +981,22 @@ type MatchResult struct {
 // getMatchTypeWithReason determines if files match for cross-seeding and provides
 // a detailed reason when they don't match.
 // tolerancePercent specifies the maximum size difference percentage for size matching (default 5%).
-func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, tolerancePercent float64) MatchResult {
+func (m matcher) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, tolerancePercent float64) MatchResult {
 	var timer *prometheus.Timer
-	if s.metrics != nil {
-		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
+	if m.metrics != nil {
+		timer = prometheus.NewTimer(m.metrics.GetMatchTypeDuration)
 		defer timer.ObserveDuration()
-		s.metrics.GetMatchTypeCalls.Inc()
+		m.metrics.GetMatchTypeCalls.Inc()
 	}
 
-	normalizer := normalizerForService(s)
+	normalizer := m.normalizer()
 
 	// Check layout compatibility first (RAR vs extracted files)
 	sourceLayout := classifyTorrentLayout(sourceFiles, normalizer)
 	candidateLayout := classifyTorrentLayout(candidateFiles, normalizer)
 	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeNoMatch.Inc()
+		if m.metrics != nil {
+			m.metrics.GetMatchTypeNoMatch.Inc()
 		}
 		reason := fmt.Sprintf("Layout mismatch: source is %s, candidate is %s", layoutDescription(sourceLayout), layoutDescription(candidateLayout))
 		return MatchResult{MatchType: "", Reason: reason}
@@ -1002,7 +1021,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 			})
 			totalSourceSize += sf.Size
 
-			fileRelease := s.parseFileRelease(sf.Name)
+			fileRelease := m.parseFileRelease(sf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
@@ -1022,7 +1041,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 			})
 			totalCandidateSize += cf.Size
 
-			fileRelease := s.parseFileRelease(cf.Name)
+			fileRelease := m.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
@@ -1034,25 +1053,25 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 	}
 
 	// Check for exact file match
-	if s.streamingExactMatch(filteredSourceFiles, filteredCandidateFiles) {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeExactMatch.Inc()
+	if m.streamingExactMatch(filteredSourceFiles, filteredCandidateFiles) {
+		if m.metrics != nil {
+			m.metrics.GetMatchTypeExactMatch.Inc()
 		}
 		return MatchResult{MatchType: "exact", Reason: ""}
 	}
 
 	// Check for partial match
 	if len(sourceReleaseKeys) > 0 && len(candidateReleaseKeys) > 0 {
-		if s.checkPartialMatch(sourceReleaseKeys, candidateReleaseKeys) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypePartialMatch.Inc()
+		if m.checkPartialMatch(sourceReleaseKeys, candidateReleaseKeys) {
+			if m.metrics != nil {
+				m.metrics.GetMatchTypePartialMatch.Inc()
 			}
 			return MatchResult{MatchType: "partial-in-pack", Reason: ""}
 		}
 
-		if s.checkPartialMatch(candidateReleaseKeys, sourceReleaseKeys) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypePartialMatch.Inc()
+		if m.checkPartialMatch(candidateReleaseKeys, sourceReleaseKeys) {
+			if m.metrics != nil {
+				m.metrics.GetMatchTypePartialMatch.Inc()
 			}
 			return MatchResult{MatchType: "partial-contains", Reason: ""}
 		}
@@ -1068,8 +1087,8 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 	// totals), so they stay with the size tier below.
 	if len(filteredSourceFiles) != len(filteredCandidateFiles) {
 		if containment := sizeContainmentMatchType(filteredSourceFiles, filteredCandidateFiles); containment != "" {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypeSizeMatch.Inc()
+			if m.metrics != nil {
+				m.metrics.GetMatchTypeSizeMatch.Inc()
 			}
 			return MatchResult{MatchType: containment, Reason: ""}
 		}
@@ -1077,9 +1096,9 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 
 	// Size match with tolerance
 	if totalSourceSize > 0 && len(filteredSourceFiles) > 0 {
-		if s.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypeSizeMatch.Inc()
+		if m.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
+			if m.metrics != nil {
+				m.metrics.GetMatchTypeSizeMatch.Inc()
 			}
 			return MatchResult{MatchType: "size", Reason: ""}
 		}
@@ -1088,17 +1107,17 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 	// Fallback to largest file match
 	if len(sourceReleaseKeys) == 0 && len(candidateReleaseKeys) == 0 &&
 		len(filteredSourceFiles) > 0 && len(filteredCandidateFiles) > 0 {
-		if s.streamingLargestFileMatch(filteredSourceFiles, filteredCandidateFiles) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypeSizeMatch.Inc()
+		if m.streamingLargestFileMatch(filteredSourceFiles, filteredCandidateFiles) {
+			if m.metrics != nil {
+				m.metrics.GetMatchTypeSizeMatch.Inc()
 			}
 			return MatchResult{MatchType: "size", Reason: ""}
 		}
 	}
 
 	// Build detailed reason for no match
-	if s.metrics != nil {
-		s.metrics.GetMatchTypeNoMatch.Inc()
+	if m.metrics != nil {
+		m.metrics.GetMatchTypeNoMatch.Inc()
 	}
 
 	reason := buildNoMatchReason(
@@ -1208,135 +1227,9 @@ func toQbtTorrentFiles(files []TorrentFile) qbt.TorrentFiles {
 	return converted
 }
 
-// getMatchType determines if files match for cross-seeding.
-// Returns "exact" for perfect match, "partial" for season pack partial matches,
-// "size" for total size match, or "" for no match.
-// Uses streaming file comparison to reduce memory usage.
-func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles) string {
-	var timer *prometheus.Timer
-	if s.metrics != nil {
-		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
-		defer timer.ObserveDuration()
-		s.metrics.GetMatchTypeCalls.Inc()
-	}
-
-	sourceLayout := classifyTorrentLayout(sourceFiles, s.stringNormalizer)
-	candidateLayout := classifyTorrentLayout(candidateFiles, s.stringNormalizer)
-	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeNoMatch.Inc()
-		}
-		return ""
-	}
-
-	// Stream through files to build filtered lists and accumulate sizes
-	var (
-		filteredSourceFiles    []TorrentFile
-		filteredCandidateFiles []TorrentFile
-		totalSourceSize        int64
-		totalCandidateSize     int64
-		sourceReleaseKeys      = make(map[releaseKey]int64)
-		candidateReleaseKeys   = make(map[releaseKey]int64)
-	)
-
-	// Process source files
-	for _, sf := range sourceFiles {
-		if !shouldIgnoreFile(sf.Name, s.stringNormalizer) {
-			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
-				Name: sf.Name,
-				Size: sf.Size,
-			})
-			totalSourceSize += sf.Size
-
-			fileRelease := s.parseFileRelease(sf.Name)
-			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
-			key := makeReleaseKey(enrichedRelease)
-			if key != (releaseKey{}) {
-				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
-				if existingSize, exists := sourceReleaseKeys[key]; !exists || sf.Size > existingSize {
-					sourceReleaseKeys[key] = sf.Size
-				}
-			}
-		}
-	}
-
-	// Process candidate files
-	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
-			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
-				Name: cf.Name,
-				Size: cf.Size,
-			})
-			totalCandidateSize += cf.Size
-
-			fileRelease := s.parseFileRelease(cf.Name)
-			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
-			key := makeReleaseKey(enrichedRelease)
-			if key != (releaseKey{}) {
-				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
-				if existingSize, exists := candidateReleaseKeys[key]; !exists || cf.Size > existingSize {
-					candidateReleaseKeys[key] = cf.Size
-				}
-			}
-		}
-	}
-
-	// Check for exact file match using streaming comparison
-	if s.streamingExactMatch(filteredSourceFiles, filteredCandidateFiles) {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeExactMatch.Inc()
-		}
-		return "exact"
-	}
-
-	// Check for partial match (season pack scenario, date-based releases, etc.).
-	if len(sourceReleaseKeys) > 0 && len(candidateReleaseKeys) > 0 {
-		// Check if source files are contained in candidate (source episode in candidate pack).
-		if s.checkPartialMatch(sourceReleaseKeys, candidateReleaseKeys) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypePartialMatch.Inc()
-			}
-			return "partial-in-pack"
-		}
-
-		// Check if candidate files are contained in source (candidate episode in source pack).
-		if s.checkPartialMatch(candidateReleaseKeys, sourceReleaseKeys) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypePartialMatch.Inc()
-			}
-			return "partial-contains"
-		}
-	}
-
-	// Size match for same content with different structure.
-	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(filteredSourceFiles) > 0 {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeSizeMatch.Inc()
-		}
-		return "size"
-	}
-
-	// If rls couldn't derive usable release keys but both torrents have at least one non-ignored
-	// file, fall back to comparing the largest file by base name and size.
-	if len(sourceReleaseKeys) == 0 && len(candidateReleaseKeys) == 0 &&
-		len(filteredSourceFiles) > 0 && len(filteredCandidateFiles) > 0 {
-		if s.streamingLargestFileMatch(filteredSourceFiles, filteredCandidateFiles) {
-			if s.metrics != nil {
-				s.metrics.GetMatchTypeSizeMatch.Inc()
-			}
-			return "size"
-		}
-	}
-
-	if s.metrics != nil {
-		s.metrics.GetMatchTypeNoMatch.Inc()
-	}
-	return ""
-}
-
 // streamingExactMatch checks if two file lists have exactly matching paths and sizes.
 // Uses streaming comparison to avoid storing all files in memory.
-func (s *Service) streamingExactMatch(sourceFiles, candidateFiles []TorrentFile) bool {
+func (m matcher) streamingExactMatch(sourceFiles, candidateFiles []TorrentFile) bool {
 	if len(sourceFiles) != len(candidateFiles) {
 		return false
 	}
@@ -1359,7 +1252,7 @@ func (s *Service) streamingExactMatch(sourceFiles, candidateFiles []TorrentFile)
 
 // streamingLargestFileMatch compares the largest files by size and base filename.
 // Returns true if the largest files match in size and normalized base name.
-func (s *Service) streamingLargestFileMatch(sourceFiles, candidateFiles []TorrentFile) bool {
+func (m matcher) streamingLargestFileMatch(sourceFiles, candidateFiles []TorrentFile) bool {
 	var (
 		srcPath  string
 		srcSize  int64
@@ -1477,7 +1370,7 @@ func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string
 
 // checkPartialMatch checks if subset files are contained in superset files.
 // Returns true if all subset files have matching release keys and sizes in superset.
-func (s *Service) checkPartialMatch(subset, superset map[releaseKey]int64) bool {
+func (m matcher) checkPartialMatch(subset, superset map[releaseKey]int64) bool {
 	if len(subset) == 0 || len(superset) == 0 {
 		return false
 	}
@@ -1492,4 +1385,29 @@ func (s *Service) checkPartialMatch(subset, superset map[releaseKey]int64) bool 
 	// Consider it a match if at least 80% of subset files are found.
 	threshold := float64(len(subset)) * 0.8
 	return float64(matchCount) >= threshold
+}
+
+// isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.
+// A tolerance of 5.0 means the candidate size can be ±5% of the source size.
+func (m matcher) isSizeWithinTolerance(sourceSize, candidateSize int64, tolerancePercent float64) bool {
+	if sourceSize == 0 || candidateSize == 0 {
+		return sourceSize == candidateSize // Both must be zero to match
+	}
+
+	if tolerancePercent < 0 {
+		tolerancePercent = 0 // Negative tolerance doesn't make sense
+	}
+
+	// If tolerance is 0, require exact match
+	if tolerancePercent == 0 {
+		return sourceSize == candidateSize
+	}
+
+	// Calculate acceptable size range
+	tolerance := float64(sourceSize) * (tolerancePercent / 100.0)
+	minAcceptableSize := float64(sourceSize) - tolerance
+	maxAcceptableSize := float64(sourceSize) + tolerance
+
+	candidateSizeFloat := float64(candidateSize)
+	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
