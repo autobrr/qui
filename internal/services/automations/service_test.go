@@ -717,6 +717,11 @@ func TestNormalizePath(t *testing.T) {
 			input: "/data/movie",
 			want:  "/data/movie",
 		},
+		{name: "posix double slash", input: "/a//b", want: "/a/b"},
+		{name: "posix triple slash and trailing slash", input: "/a///b/", want: "/a/b"},
+		{name: "windows double backslash", input: `C:\a\\b`, want: "c:/a/b"},
+		{name: "unc share keeps leading slashes", input: `\\server\share\\x`, want: "//server/share/x"},
+		{name: "unc share already normalized", input: `\\server\share\x`, want: "//server/share/x"},
 	}
 
 	for _, tc := range tests {

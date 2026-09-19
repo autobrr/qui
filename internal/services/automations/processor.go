@@ -694,9 +694,9 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	resolvedPath, err := renderMovePath(path, movePathData(torrent, tracker))
+	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker))
 	if err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to render move path template")
+		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
 		return "", false
 	}
 	if resolvedPath == "" {
@@ -710,10 +710,10 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 // path can be checked when it is saved.
 func RenderMovePathSample(path string) (string, error) {
 	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
-	return renderMovePath(path, movePathData(sample, "tracker"))
+	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
 }
 
-func movePathData(torrent qbt.Torrent, tracker string) map[string]any {
+func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
 	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
@@ -723,7 +723,7 @@ func movePathData(torrent qbt.Torrent, tracker string) map[string]any {
 	}
 }
 
-func renderMovePath(path string, data map[string]any) (string, error) {
+func executePathTemplate(path string, data map[string]any) (string, error) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{

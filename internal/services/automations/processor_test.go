@@ -454,6 +454,9 @@ func TestMoveRequiresAbsolutePath(t *testing.T) {
 		{name: "relative path already applied by qBittorrent", path: "rel3/sub", savePath: "/downloads/rel3/sub"},
 		{name: "relative literal", path: "archive", savePath: "/downloads"},
 		{name: "template rendering relative", path: "{{ .Category }}/done", savePath: "/downloads"},
+		// qBittorrent reports a previous "/downloads//done" move as "/downloads/done".
+		{name: "double slash already applied by qBittorrent", path: "/downloads//done", savePath: "/downloads/done"},
+		{name: "unc double backslash already applied", path: `\\nas\media\\done`, savePath: `\\nas\media\done`},
 		{name: "posix absolute", path: "/data/archive", savePath: "/downloads", wantMove: true, wantTarget: "/data/archive"},
 		{name: "windows drive", path: `D:\Archive\{{ .Category }}`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `D:\Archive\tv`},
 		{name: "windows forward slashes", path: "D:/Archive", savePath: "C:/Downloads", wantMove: true, wantTarget: "D:/Archive"},
@@ -779,7 +782,7 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
 }
 
-func TestResolveMovePath_Literal(t *testing.T) {
+func TestRenderPathTemplate_Literal(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Show.S01",
@@ -790,7 +793,7 @@ func TestResolveMovePath_Literal(t *testing.T) {
 	require.Equal(t, "/data/archive", resolved)
 }
 
-func TestResolveMovePath_Template(t *testing.T) {
+func TestRenderPathTemplate_Template(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Movie.2024",
@@ -801,7 +804,7 @@ func TestResolveMovePath_Template(t *testing.T) {
 	require.Equal(t, "/data/movies", resolved)
 }
 
-func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
+func TestRenderPathTemplate_TemplateWithSanitize(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Movie/2024:Bad*Name",
@@ -813,7 +816,7 @@ func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 	require.Equal(t, "/data/"+expectedName, resolved)
 }
 
-func TestResolveMovePath_TrackerFallback(t *testing.T) {
+func TestRenderPathTemplate_TrackerFallback(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Show.S01",
