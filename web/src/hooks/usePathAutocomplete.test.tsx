@@ -10,17 +10,15 @@ import { usePathAutocomplete } from "./usePathAutocomplete"
 
 const { requestedPaths } = vi.hoisted(() => ({ requestedPaths: [] as string[] }))
 
-vi.mock("./useDirectoryContent", async () => {
-  const actual = await vi.importActual<typeof import("./useDirectoryContent")>("./useDirectoryContent")
+vi.mock("./useDirectoryContent", () => {
   const listings: Record<string, { dirs: string[]; files: string[] }> = {
-    "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/logs"], files: ["/data/album.flac"] },
+    "/data/": { dirs: ["/data/alpha", "/data/alps", "/data/beta"], files: ["/data/album.flac"] },
     "/data/alpha/": { dirs: ["/data/alpha/one"], files: [] },
     "C:\\data\\": { dirs: ["C:\\data\\alpha", "C:\\data\\alps"], files: ["C:\\data\\album.flac"] },
     "C:\\data\\alpha\\": { dirs: ["C:\\data\\alpha\\one"], files: [] },
   }
   const results = new Map<string, { data: string[] }>()
   return {
-    pathSeparator: actual.pathSeparator,
     useDirectoryContent: (_id: number, path: string, options: { mode?: string }) => {
       const key = `${options.mode ?? "dirs"}:${path}`
       if (path) requestedPaths.push(path)
@@ -108,7 +106,7 @@ describe("usePathAutocomplete file entries", () => {
     expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps"])
   })
 
-  it("filters on the last segment, not on the parent path", () => {
+  it("matches the start of the last segment, not the parent path or the middle of a name", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1, { includeFiles: true }))
     act(() => result.current.handleInputChange("/data/a"))
     expect(result.current.suggestions).toEqual(["/data/alpha", "/data/alps", "/data/album.flac"])

@@ -5,7 +5,9 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { pathSeparator, useDirectoryContent } from "./useDirectoryContent";
+import { pathSeparator } from "@/lib/paths";
+
+import { useDirectoryContent } from "./useDirectoryContent";
 
 const endsWithSeparator = (path: string) => /[\\/]$/.test(path);
 const lastSeparatorIndex = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
@@ -52,22 +54,19 @@ export function usePathAutocomplete(
     [deferredInput, getFilterTerm]
   );
 
-  const { data: directoryEntries = [] } = useDirectoryContent(instanceId, parentPath, {
-    enabled: Boolean(deferredInput?.trim()),
-    staleTimeMs: 30000,
-  });
+  const enabled = Boolean(deferredInput?.trim());
+  const { data: directoryEntries = [] } = useDirectoryContent(instanceId, parentPath, { enabled });
   // Second query instead of mode=all with metadata: it works on qBittorrent 5.0
   // and returns full paths, while withMetadata needs 5.2 and returns basenames.
   const { data: fileEntries = [] } = useDirectoryContent(instanceId, parentPath, {
-    enabled: includeFiles && Boolean(deferredInput?.trim()),
-    staleTimeMs: 30000,
+    enabled: includeFiles && enabled,
     mode: "files",
   });
 
   const suggestions = useMemo(() => {
     const entries = includeFiles ? [...directoryEntries, ...fileEntries] : directoryEntries;
     if (!filterTerm) return entries;
-    return entries.filter((e) => e.slice(lastSeparatorIndex(e) + 1).toLowerCase().includes(filterTerm));
+    return entries.filter((e) => e.slice(lastSeparatorIndex(e) + 1).toLowerCase().startsWith(filterTerm));
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
   // Update highlighted index when suggestions change
