@@ -257,6 +257,42 @@ func TestUnreadablePinOnUnreachableHostHasNoKey(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPost, "/ssh-test", "").Code)
 }
 
+func TestConfirmReportsUnreachableHostWithoutDetail(t *testing.T) {
+	f := newSSHFixture(t, "ssh-confirm-unreachable")
+	f.putCredentials()
+
+	deadHost, deadPort := splitAddr(t, sshtest.DeadAddr(t))
+	body, err := json.Marshal(SSHCredentialsRequest{Host: deadHost, Port: deadPort, Username: "qui", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(body)).Code)
+
+	response := f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey))
+	assert.Equal(t, http.StatusBadGateway, response.Code)
+	assert.Contains(t, response.Body.String(), "Could not connect to the SSH host")
+	assert.NotContains(t, response.Body.String(), "refused", "the transport's own text stays out of the body")
+}
+
+// A cipher fault in the stored key is qui's problem, not the host's: it is not
+// a 502 and its text is not the client's to read, as with the credentials route.
+func TestConfirmHidesStoredKeyFault(t *testing.T) {
+	f := newSSHFixture(t, "ssh-confirm-corrupt-key")
+	f.putCredentials()
+
+	_, err := f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_key_encrypted = ? WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
+	require.NoError(t, err)
+
+	response := f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey))
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.NotContains(t, response.Body.String(), "authentication failed")
+
+	// The same fault next to an unreadable pin is still reported as itself,
+	// not as the pin: only an unreachable host cedes precedence.
+	_, err = f.db.ExecContext(t.Context(), "UPDATE instances SET ssh_host_key_encrypted = ? WHERE id = ?", "qui2:not-a-ciphertext", f.instance.ID)
+	require.NoError(t, err)
+	result := f.sshTest()
+	assert.Equal(t, "error", result.Status)
+}
+
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
 	f := newSSHFixture(t, "ssh-replace-other-key")
 	f.putCredentials()
