@@ -50,6 +50,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n`
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
+- `pnpm check:i18n:unused`
 - `pnpm check:i18n:zh-cn`
 - `pnpm check:i18n:zh-tw`
 - `pnpm check:i18n:fr`
@@ -62,6 +63,8 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:ca`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
+
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
 
 ## Adding Languages
 
@@ -88,3 +91,11 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state is stream-backed via `useSyncStream`; polling is fallback while stream unavailable. Content/files and Peers tabs still poll on interval, but polling is tab-scoped and visibility-gated.
 
 `useSyncStream` listeners receive raw frames. A delta for unchanged rows carries an empty `torrents` list and the previous `total`, so a handler clears its row only on `total === 0` and keeps the previous row on an empty list.
+
+## getqui.com Demo
+
+`pnpm build:demo` builds the unchanged app in Vite mode `demo` for the landing page at getqui.com/demo/. `web/src/demo/` replaces `window.fetch` and `window.EventSource` with an in-memory store; there is no backend.
+
+- A new API call on the torrent list surface needs a route in `web/src/demo/api.ts`, or the demo answers `404 {"error": "not available in the demo"}` and the feature looks broken on the site.
+- Demo-only UI branches use `isDemo` from `web/src/lib/demo.ts`. Vite folds it, so production bundles carry none of them.
+- Pages outside `/instances` are redirected in the demo; do not add demo handling to them.

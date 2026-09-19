@@ -315,10 +315,6 @@
         "error": "No s'han pogut actualitzar els límits de sembra"
       }
     },
-    "shareLimit": {
-      "global": "Global",
-      "unlimited": "Il·limitada"
-    },
     "reannounce": {
       "title": "Configura el reanunci",
       "saveChanges": "Desa els canvis",

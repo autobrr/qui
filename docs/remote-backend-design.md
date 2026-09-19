@@ -218,11 +218,20 @@ backend domain end to end.
   it matches a preconfigured fingerprint). No connection is trusted for
   real operations before that. `InsecureIgnoreHostKey` is forbidden.
 - What gets pinned is the marshaled public key and its algorithm, not a
-  display string; later connects constrain `HostKeyAlgorithms` to the
-  pinned type, so a key-type change is a mismatch, never a negotiation
-  accident. Fingerprints render as `SHA256:` for humans only.
+  display string; later connects put the pinned key's algorithms first in
+  `HostKeyAlgorithms` (a multi-key host offers the key the client prefers,
+  so a still-valid pin is never mismatched by accident) and leave the rest
+  allowed, so a host that changed key type reports as a mismatch the user
+  can act on rather than a failed negotiation. Verification is always the
+  byte comparison against the pin. Fingerprints render as `SHA256:` for
+  humans only.
 - A host-key change after pinning fails closed: no automatic re-pin. A
-  pin that fails to decrypt is a hard error, never "unpinned". An empty
+  pin that fails to decrypt is never "unpinned": `ssh-test` reports it as
+  `pin_unreadable` with the presented key (when the host answers) and no
+  probe, nothing runs over
+  that connection, and the way out is the replace route with its heavier
+  confirmation, the same door a mismatch uses (an endpoint change drops the
+  pin as it always does, and takes first contact). An empty
   pin column is unpinned and takes the first-contact flow: there is no
   separate "was pinned" state, so a database writer who clears the column
   is not detected. What that buys them is a first-contact confirmation the
@@ -269,7 +278,7 @@ Half of the old design's schema survives: SSH columns on `instances` —
 host, port, user, the AEAD-encrypted private key (AAD: instance id +
 field), and the pinned host key stored as the marshaled public key plus
 its algorithm under the same AEAD (AAD: instance id + field + host +
-port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
+port). Not a fingerprint column: the `HostKeyAlgorithms` preference and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
 capabilities. `FilesystemAccessMode` resolves to local | remote | none.
@@ -286,9 +295,19 @@ need insert-then-update in one transaction.
 
 ## API
 
-- `POST /instances/{id}/ssh-test` — dial with provided credentials, return
-  host-key fingerprint for TOFU confirmation plus the capability report.
-- `DELETE /instances/{id}/ssh-credentials`.
+- `PUT /instances/{id}/ssh-credentials` — store host, port, username and
+  private key; a host or port change drops the pin.
+- `DELETE /instances/{id}/ssh-credentials` — clear the credentials, keep
+  the pin.
+- `POST /instances/{id}/ssh-test` — dial with the stored credentials and
+  report the presented host key, its relation to the pin (`unpinned`,
+  `pinned`, `mismatch`, `pin_unreadable`, `error`) and, when the key is
+  trusted or unpinned, the capability report.
+- `POST /instances/{id}/ssh-host-key` — re-dial, require the host to
+  present exactly the echoed key, pin it; 409 when already pinned.
+- `POST /instances/{id}/ssh-host-key/replace` — the same over an existing
+  pin, reached only from the mismatch or unreadable-pin screen; 409 when
+  unpinned.
 - No deploy/redeploy/helper endpoints.
 
 ## Frontend

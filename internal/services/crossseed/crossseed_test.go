@@ -199,7 +199,7 @@ func TestPartialInPackIntegration(t *testing.T) {
 
 	// Step 1: Verify matching produces partial-in-pack
 	// The episode's files should be found inside the season pack's files
-	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles)
+	matchType := svc.matcher().getMatchTypeWithReason(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 }
@@ -230,7 +230,7 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles)
+	matchType := svc.matcher().getMatchTypeWithReason(movieRelease, collectionRelease, movieFiles, collectionFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 }
