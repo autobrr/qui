@@ -56,6 +56,7 @@ func TestAutomationValidatePayload_MovePath(t *testing.T) {
 		{path: "  /data/{{ .Category }}  ", enabled: true},
 		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
 		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
+		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
 		{path: "archive", enabled: false},
 		{path: "{{ .Category }}/done", enabled: false},
 		{path: "archive", enabled: true, wantMsg: notAbsolute},
