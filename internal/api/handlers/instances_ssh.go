@@ -122,11 +122,21 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 
 	report, err := h.sshDialer.Test(r.Context(), instance)
 	if err != nil {
-		if errors.Is(err, models.ErrSSHKeyNotConfigured) {
+		switch {
+		case errors.Is(err, models.ErrSSHKeyNotConfigured):
 			RespondError(w, http.StatusBadRequest, "SSH credentials are not configured for this instance")
-			return
+		case r.Context().Err() != nil:
+			// The client is gone; there is nobody to answer.
+		case errors.Is(err, sshpool.ErrConnect):
+			// The transport's text is what the user needs to act on: a refused
+			// port and a missing route call for different fixes.
+			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
+		default:
+			// What qui stored is at fault, and its text is not the client's to
+			// read, as with the confirm and credentials routes.
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for SSH test")
+			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: "Failed to read SSH credentials"})
 		}
-		RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
 		return
 	}
 

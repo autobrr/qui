@@ -291,6 +291,7 @@ func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	require.NoError(t, err)
 	result := f.sshTest()
 	assert.Equal(t, "error", result.Status)
+	assert.Equal(t, "Failed to read SSH credentials", result.Error, "the cipher fault's text stays out of this body too")
 }
 
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {

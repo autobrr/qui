@@ -104,7 +104,8 @@ func (e *MismatchError) Error() string {
 }
 
 // Test dials the instance and reports the host key, its relation to the pin,
-// and — unless the key mismatched — what the server can do.
+// and — unless the key mismatched or the pin is unreadable — what the server
+// can do.
 func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, error) {
 	pin, err := d.creds.GetHostKeyPin(inst)
 	unreadable := err != nil && !errors.Is(err, models.ErrSSHHostKeyNotPinned)

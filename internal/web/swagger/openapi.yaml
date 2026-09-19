@@ -6940,7 +6940,8 @@ components:
             `pin_unreadable` means the stored pin cannot be decrypted (the
             presented key is shown, when the host answers, so it can be
             replaced; nothing is probed),
-            and `error` means the host could not be reached at all.
+            and `error` means no connection was made: the host could not be
+            reached, or the stored credentials could not be read.
         hostKey:
           type: string
           format: byte
@@ -6977,7 +6978,7 @@ components:
               description: Whether the host's find and stat are the GNU builds.
         error:
           type: string
-          description: Why the dial failed. Present with status `error` only.
+          description: Why no connection was made. Present with status `error` only. Carries the transport's own message for an unreachable host and a fixed message when the stored credentials could not be read.
 
     InstanceError:
       type: object
