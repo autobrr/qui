@@ -118,6 +118,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
+		// The root is subject to IgnorePaths like every other entry, as it is
+		// locally: an ignored root yields an empty walk, not a lone root entry.
+		if slices.Contains(opts.IgnorePaths, root) {
+			return
+		}
 		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
 			return
 		}
@@ -252,43 +257,28 @@ func statVFS(ctx context.Context, client *sftp.Client, op, p string) (*sftp.Stat
 }
 
 func (b *Backend) MkdirAll(ctx context.Context, _ string, _ fs.FileMode) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return errReadOnly("mkdirall")
+	return readOnly(ctx, "mkdirall")
 }
 
 func (b *Backend) Remove(ctx context.Context, _ string, _ fsops.RemoveOptions) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return errReadOnly("remove")
+	return readOnly(ctx, "remove")
 }
 
 func (b *Backend) HardlinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return nil, errReadOnly("hardlinktree")
+	return nil, readOnly(ctx, "hardlinktree")
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return nil, errReadOnly("reflinktree")
+	return nil, readOnly(ctx, "reflinktree")
 }
 
 func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	// The interface promises a nil handle is safe: there is nothing to remove,
 	// so a defensive RemoveTree(nil) must not error.
 	if created == nil {
-		return nil
+		return ctx.Err()
 	}
-	return errReadOnly("removetree")
+	return readOnly(ctx, "removetree")
 }
 
 func (b *Backend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
@@ -298,10 +288,14 @@ func (b *Backend) SupportsReflink(ctx context.Context, _ string) (bool, string, 
 	return false, "reflinks are not available over sftp", nil
 }
 
-// errReadOnly is every mutating method's answer while this release ships reads
-// only. The op is named because the message reaches the user through a failed
-// job, and "unsupported" alone does not say what was attempted.
-func errReadOnly(op string) error {
+// readOnly is every mutating method's answer while this release ships reads
+// only, after the ctx check every method owes. The op is named because the
+// message reaches the user through a failed job, and "unsupported" alone does
+// not say what was attempted.
+func readOnly(ctx context.Context, op string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return fmt.Errorf("%s: %w: sftp backend is read-only in this release", op, fsops.ErrUnsupported)
 }
 

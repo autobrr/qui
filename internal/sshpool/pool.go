@@ -44,12 +44,16 @@ type Pool struct {
 	dialer *Dialer
 
 	mu    sync.Mutex
-	conns map[int]*conn
+	conns map[int]*entry
 }
 
-type conn struct {
-	mu      sync.Mutex // serialises dial and reconnect for this instance only
-	pin     string     // inst.SSHHostKeyEncrypted the connection or the memo was made under
+// entry is one instance's connection state.
+type entry struct {
+	// sem serialises dial and reconnect for this instance only. It is a channel
+	// rather than a mutex so a caller waiting behind another caller's dial can
+	// give up with its own ctx instead of sitting out that dial.
+	sem     chan struct{}
+	pin     string // inst.SSHHostKeyEncrypted the connection or the memo was made under
 	client  *ssh.Client
 	sftp    *sftp.Client
 	err     error         // memoised failure; nil when connected
@@ -58,7 +62,7 @@ type conn struct {
 }
 
 func NewPool(dialer *Dialer) *Pool {
-	return &Pool{dialer: dialer, conns: make(map[int]*conn)}
+	return &Pool{dialer: dialer, conns: make(map[int]*entry)}
 }
 
 // SFTP returns the instance's SFTP client, dialing if there is no live one. A
@@ -68,13 +72,15 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	p.mu.Lock()
 	entry := p.conns[inst.ID]
 	if entry == nil {
-		entry = &conn{}
+		entry = newEntry()
 		p.conns[inst.ID] = entry
 	}
 	p.mu.Unlock()
 
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
+	if err := entry.lock(ctx); err != nil {
+		return nil, err
+	}
+	defer entry.unlock()
 
 	if entry.pin != inst.SSHHostKeyEncrypted {
 		// A replaced pin (or a changed endpoint) is the only thing that clears
@@ -124,6 +130,8 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	done := make(chan struct{})
 	log.Debug().Int("instanceID", inst.ID).Msg("sshpool: opened connection")
 
+	// The watcher outlives the request that opened the connection by design.
+	//nolint:gosec // G118
 	go entry.watch(inst.ID, client, done)
 	go keepalive(client, done)
 	// sshd can close the sftp channel while the transport stays up; closing the
@@ -136,7 +144,7 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 // Close drops every connection. Called once, at shutdown.
 func (p *Pool) Close() {
 	p.mu.Lock()
-	entries := make([]*conn, 0, len(p.conns))
+	entries := make([]*entry, 0, len(p.conns))
 	for _, entry := range p.conns {
 		entries = append(entries, entry)
 	}
@@ -144,54 +152,70 @@ func (p *Pool) Close() {
 	p.mu.Unlock()
 
 	for _, entry := range entries {
-		entry.mu.Lock()
+		_ = entry.lock(context.Background())
 		entry.close()
-		entry.mu.Unlock()
+		entry.unlock()
 	}
 }
 
+func newEntry() *entry {
+	return &entry{sem: make(chan struct{}, 1)}
+}
+
+// lock takes the entry, or returns ctx's error if it is done first.
+func (e *entry) lock(ctx context.Context) error {
+	select {
+	case e.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (e *entry) unlock() { <-e.sem }
+
 // memoise records a dial failure. A mismatch or a pin we cannot read is not
 // retried at all: nothing about waiting makes a wrong host key right.
-func (c *conn) memoise(inst *models.Instance, err error) {
-	c.err = err
+func (e *entry) memoise(inst *models.Instance, err error) {
+	e.err = err
 	_, mismatch := errors.AsType[*MismatchError](err)
 	if mismatch || errors.Is(err, ErrPinUnusable) {
-		c.retryAt = time.Now().Add(refuseFor)
+		e.retryAt = time.Now().Add(refuseFor)
 		log.Debug().Int("instanceID", inst.ID).Err(err).Msg("sshpool: refusing the host until its pin changes")
 		return
 	}
 
-	c.backoff = min(max(c.backoff*2, backoffStart), backoffMax)
+	e.backoff = min(max(e.backoff*2, backoffStart), backoffMax)
 	// ±20% so instances that went down together do not come back in lockstep.
 	//nolint:gosec // G404: a retry delay is not a secret
-	jittered := time.Duration(float64(c.backoff) * (0.8 + 0.4*rand.Float64()))
-	c.retryAt = time.Now().Add(jittered)
+	jittered := time.Duration(float64(e.backoff) * (0.8 + 0.4*rand.Float64()))
+	e.retryAt = time.Now().Add(jittered)
 	log.Debug().Int("instanceID", inst.ID).Err(err).Dur("retryIn", jittered).Msg("sshpool: dial failed")
 }
 
-// close drops the connection and the memo. Callers hold c.mu.
-func (c *conn) close() {
-	if c.client != nil {
-		_ = c.client.Close()
+// close drops the connection and the memo. Callers hold the entry.
+func (e *entry) close() {
+	if e.client != nil {
+		_ = e.client.Close()
 	}
-	c.client = nil
-	c.sftp = nil
-	c.err = nil
-	c.retryAt = time.Time{}
-	c.backoff = 0
+	e.client = nil
+	e.sftp = nil
+	e.err = nil
+	e.retryAt = time.Time{}
+	e.backoff = 0
 }
 
 // watch clears the entry once this client is gone, so the next caller redials.
 // It compares the client rather than trusting the entry, because a Close or a
 // pin change may already have replaced it.
-func (c *conn) watch(instanceID int, client *ssh.Client, done chan struct{}) {
+func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 	err := client.Wait()
 	close(done)
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.client == client {
-		c.close()
+	_ = e.lock(context.Background())
+	defer e.unlock()
+	if e.client == client {
+		e.close()
 		log.Debug().Int("instanceID", instanceID).Err(err).Msg("sshpool: connection dropped")
 	}
 }

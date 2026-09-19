@@ -4,6 +4,7 @@
 package sshpool
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -79,18 +80,51 @@ func TestPoolBacksOffAfterDialFailure(t *testing.T) {
 
 	entry := pool.conns[inst.ID]
 	require.NotNil(t, entry)
-	entry.mu.Lock()
+	require.NoError(t, entry.lock(t.Context()))
 	assert.Equal(t, backoffStart, entry.backoff)
 	assert.True(t, entry.retryAt.After(time.Now()), "a failed dial must not be retried immediately")
 	// Pretend the delay elapsed, so the next call dials and doubles the delay.
 	entry.retryAt = time.Now().Add(-time.Second)
-	entry.mu.Unlock()
+	entry.unlock()
 
 	_, err = pool.SFTP(t.Context(), inst)
 	require.Error(t, err)
-	entry.mu.Lock()
+	require.NoError(t, entry.lock(t.Context()))
 	assert.Equal(t, 2*backoffStart, entry.backoff)
-	entry.mu.Unlock()
+	entry.unlock()
+}
+
+// A caller queued behind another caller's dial is bounded by its own ctx, not
+// by that dial: every operation on the pool is cancellable, waiting included.
+func TestPoolWaiterHonoursContext(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	pool := NewPool(dialerWithTimeout(2 * time.Second))
+	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
+	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := pool.SFTP(t.Context(), inst)
+		first <- err
+	}()
+	// Let the first caller take the entry and block in the handshake.
+	require.Eventually(t, func() bool {
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+		entry := pool.conns[inst.ID]
+		return entry != nil && len(entry.sem) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := pool.SFTP(ctx, inst)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second, "the waiter must not sit out the other caller's dial")
+
+	require.Error(t, <-first, "the hanging handshake fails on the dialer's own deadline")
 }
 
 func TestPoolReusesConnection(t *testing.T) {

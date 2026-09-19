@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -248,6 +249,17 @@ func TestWalkDir_SkipsAndIgnores(t *testing.T) {
 	assert.NotContains(t, relPaths, path.Join("$recycle.bin", "old.mkv"))
 	assert.NotContains(t, relPaths, path.Join(".trash-1000", "deleted.mkv"))
 	assert.NotContains(t, relPaths, "ignored.txt")
+
+	// An ignored root walks nothing, as it does locally.
+	ch, err = b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{IgnorePaths: []string{remotePath(dir)}})
+	require.NoError(t, err)
+	assert.Empty(t, slices.Collect(func(yield func(fsops.WalkEntry) bool) {
+		for entry := range ch {
+			if !yield(entry) {
+				return
+			}
+		}
+	}))
 }
 
 func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {
