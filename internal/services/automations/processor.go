@@ -139,7 +139,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
-	MoveInvalidPath                  int // rendered path is relative
+	MoveInvalidPath                  int // path failed to render or is relative
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -560,7 +560,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
 	if !ok {
 		if stats != nil {
-			stats.MoveConditionNotMet++
+			stats.MoveInvalidPath++
 		}
 		return
 	}

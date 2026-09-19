@@ -523,6 +523,29 @@ func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
 	require.Equal(t, 1, stats[rule.ID].MoveConditionNotMet)
 }
 
+func TestMoveRenderFailureCountsAsInvalidPath(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "Show.S01", Category: "tv", SavePath: "/downloads"},
+		{Hash: "b", Name: "Movie", Category: "movies", SavePath: "/downloads"},
+	}
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Broken template",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "/data/{{ .Unknown }}"},
+		},
+	}
+	stats := map[int]*ruleRunStats{}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, qbittorrent.NewSyncManager(nil, nil), nil, stats, nil)
+
+	require.Empty(t, states)
+	require.Equal(t, 2, stats[rule.ID].MoveInvalidPath)
+	require.Zero(t, stats[rule.ID].MoveConditionNotMet)
+}
+
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
