@@ -212,6 +212,7 @@ function renderSubscriber(params: StreamParams | null, enabled = true) {
 const DEFAULT: StreamState = {
   connected: false,
   initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -769,6 +770,175 @@ describe("SyncStreamContext", () => {
       // Only ever one source: no reconnect happened.
       expect(MockEventSource.instances).toHaveLength(1)
       expect(source.closed).toBe(false)
+    })
+  })
+
+  describe("per-stream data watchdog", () => {
+    it.each(["visible", "hidden"] as const)("stalls streams independently while %s", visibility => {
+      const paramsA = makeParams({ sort: "added_on" })
+      const paramsB = makeParams({ sort: "size" })
+      let stateA = DEFAULT
+      let stateB = DEFAULT
+      function Subscribers() {
+        stateA = useSyncStream(paramsA)
+        stateB = useSyncStream(paramsB)
+        return null
+      }
+      render(<TestProviders><Subscribers /></TestProviders>)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen()
+        for (const params of [paramsA, paramsB]) {
+          source.emit("init", {
+            type: "init",
+            version: { major: 1, minor: 1 },
+            meta: { streamKey: createStreamKey(params) },
+            data: { torrents: [], total: 0 },
+          })
+        }
+        setVisibility(visibility)
+      })
+      expect(stateA.initialized).toBe(true)
+      expect(stateB.initialized).toBe(true)
+
+      for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          source.emit("update", {
+            type: "update",
+            version: { major: 1, minor: 1 + elapsed / 10_000 },
+            meta: { streamKey: createStreamKey(paramsB) },
+            data: { torrents: [], total: 0 },
+          })
+        })
+        expect(stateA.dataStalled).toBe(elapsed === 120_000)
+        expect(stateB.dataStalled).toBe(false)
+      }
+
+      // B also goes silent. Recovering A must not extend B's remaining budget.
+      for (let elapsed = 0; elapsed < 60_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          source.emit("heartbeat")
+        })
+      }
+      act(() => {
+        source.emit("delta", {
+          type: "delta",
+          version: { major: 1, minor: 2 },
+          delta: { baseVersion: { major: 1, minor: 1 } },
+          meta: { streamKey: createStreamKey(paramsA) },
+          data: { torrents: [], total: 0 },
+        })
+      })
+      expect(stateA.dataStalled).toBe(false)
+      expect(stateB.dataStalled).toBe(false)
+      for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          source.emit("heartbeat")
+        })
+        expect(stateA.dataStalled).toBe(elapsed === 120_000)
+        expect(stateB.dataStalled).toBe(elapsed >= 60_000)
+      }
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+    })
+
+    it.each([90_000, 130_000])("bounds the replacement baseline grace (%i ms delay)", delay => {
+      const paramsA = makeParams({ sort: "added_on" })
+      const paramsB = makeParams({ sort: "size" })
+      let stateA = DEFAULT
+      let stateB = DEFAULT
+      let showSecond: (show: boolean) => void = () => undefined
+
+      function Root() {
+        const [show, setShow] = useState(false)
+        showSecond = setShow
+        stateA = useSyncStream(paramsA)
+        stateB = useSyncStream(show ? paramsB : null, { enabled: show })
+        return null
+      }
+
+      act(() => {
+        render(
+          <TestProviders>
+            <Root />
+          </TestProviders>
+        )
+      })
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+        first.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 1 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(paramsA) },
+          data: { torrents: [], total: 0 },
+        })
+        vi.advanceTimersByTime(14_000)
+        showSecond(true)
+      })
+      flushConnectionQueue()
+
+      expect(first.closed).toBe(true)
+      expect(MockEventSource.instances).toHaveLength(2)
+      const replacement = MockEventSource.instances[1]
+      act(() => {
+        replacement.emitOpen()
+        replacement.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 1 },
+          meta: { streamKey: createStreamKey(paramsB) },
+          data: { torrents: [], total: 0 },
+        })
+        vi.advanceTimersByTime(1_000)
+      })
+
+      expect(stateA.dataStalled).toBe(false)
+      expect(replacement.closed).toBe(false)
+
+      act(() => {
+        for (let elapsed = 0; elapsed < delay; elapsed += 10_000) {
+          vi.advanceTimersByTime(10_000)
+          replacement.emit("update", {
+            type: "update",
+            version: { major: 1, minor: 2 + elapsed / 10_000 },
+            meta: { streamKey: createStreamKey(paramsB) },
+            data: { torrents: [], total: 0 },
+          })
+        }
+      })
+      expect(stateA.dataStalled).toBe(delay >= 120_000)
+      expect(stateB.initialized).toBe(true)
+      expect(stateB.dataStalled).toBe(false)
+      act(() => {
+        setVisibility("hidden")
+        setVisibility("visible")
+      })
+      expect(stateA.dataStalled).toBe(delay >= 120_000)
+      act(() => {
+        replacement.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 2 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(paramsA) },
+          data: { torrents: [], total: 0 },
+        })
+      })
+      expect(stateA.dataStalled).toBe(false)
+      for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          replacement.emit("heartbeat")
+        })
+        expect(stateA.dataStalled).toBe(elapsed === 120_000)
+      }
+      expect(replacement.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(2)
     })
   })
 
