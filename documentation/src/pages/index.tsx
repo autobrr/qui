@@ -15,7 +15,7 @@ function Demo() {
         loading="lazy"
       />
       <p className={styles.demoNote}>
-        Live demo with synthetic data. Nothing you do here is saved.{" "}
+        Nothing you do here is saved.{" "}
         <Link href="/demo/" target="_blank" rel="noopener">
           Open the demo in a new tab
         </Link>
@@ -41,6 +41,11 @@ const features = [
     link: "/docs/features/automations",
   },
   {
+    title: "Reverse proxy",
+    body: "A qBittorrent-compatible endpoint per instance, so Sonarr, Radarr, and autobrr point at qui instead of each client.",
+    link: "/docs/features/reverse-proxy",
+  },
+  {
     title: "Backups",
     body: "Scheduled snapshots of each instance, with incremental and full restore.",
     link: "/docs/features/backups",
@@ -49,11 +54,6 @@ const features = [
     title: "Orphan scan",
     body: "Find files on disk that no torrent references, and clean them up.",
     link: "/docs/features/orphan-scan",
-  },
-  {
-    title: "Reverse proxy",
-    body: "A qBittorrent-compatible endpoint per instance, so Sonarr, Radarr, and autobrr point at qui instead of each client.",
-    link: "/docs/features/reverse-proxy",
   },
 ];
 
@@ -96,37 +96,18 @@ export default function Home(): ReactNode {
           </div>
         </header>
         <Demo />
-        <table className={styles.features}>
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>What it does</th>
-            </tr>
-          </thead>
-          <tbody>
-            {features.map((f) => (
-              <tr key={f.title}>
-                <td>
-                  <Link to={f.link}>{f.title}</Link>
-                </td>
-                <td>{f.body}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul className={styles.features}>
+          {features.map((f) => (
+            <li key={f.title}>
+              <Link to={f.link}>{f.title}</Link>
+              <p>{f.body}</p>
+            </li>
+          ))}
+        </ul>
         <p className={styles.facts}>
-          <span>
-            <b>Install</b> single binary or Docker
-          </span>
-          <span>
-            <b>Database</b> SQLite or Postgres
-          </span>
-          <span>
-            <b>Runs on</b> Linux, macOS, Windows
-          </span>
-          <span>
-            <b>License</b> GPL-2.0
-          </span>
+          <span>Single binary or Docker</span>
+          <span>SQLite or Postgres</span>
+          <span>Linux, macOS, Windows</span>
         </p>
       </main>
     </Layout>

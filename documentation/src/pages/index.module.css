@@ -106,67 +106,40 @@
 
 .demoNote {
   margin: 0;
+  text-align: center;
   font-size: 0.875rem;
   color: var(--ifm-color-content-secondary);
 }
 
-/* ---- Features table ---- */
+/* ---- Features list ---- */
 
 .features {
-  --ifm-table-stripe-background: transparent;
-  display: table;
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 3rem;
-  font-size: 0.9375rem;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem 3rem;
+  margin: 4rem 0 0;
+  padding: 0;
 }
 
-.features th,
-.features td {
-  text-align: left;
-  padding: 0.875rem 1rem;
-  border: 0;
-  border-bottom: 1px solid var(--ifm-toc-border-color);
-  vertical-align: top;
-  background: none;
-}
-
-.features th {
-  font-weight: 500;
-  font-size: 0.8125rem;
-  color: var(--ifm-color-content-secondary);
-  border-bottom-color: var(--ifm-color-content-secondary);
-}
-
-.features th:first-child,
-.features td:first-child {
-  padding-left: 0;
-  width: 12rem;
+.features a {
   font-weight: 600;
-}
-
-.features td:first-child a {
   color: var(--ifm-color-content);
 }
 
-.features tbody tr:hover {
-  background-color: var(--ifm-hover-overlay);
+.features p {
+  margin: 0.25rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--ifm-color-content-secondary);
 }
-
-/* ---- Facts line ---- */
 
 .facts {
   display: flex;
-  gap: 2rem;
   flex-wrap: wrap;
-  margin-top: 2.5rem;
-  font-size: 0.9375rem;
+  gap: 0.5rem 2rem;
+  margin: 3rem 0 0;
+  font-size: 0.875rem;
   color: var(--ifm-color-content-secondary);
-}
-
-.facts b {
-  font-weight: 600;
-  color: var(--ifm-color-content);
 }
 
 /* ---- Responsive ---- */
@@ -180,6 +153,12 @@
   }
 }
 
+@media (max-width: 800px) {
+  .features {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 576px) {
   .actions {
     width: 100%;
@@ -188,10 +167,5 @@
   .buttonPrimary,
   .buttonSecondary {
     flex: 1;
-  }
-
-  .features th:first-child,
-  .features td:first-child {
-    width: auto;
   }
 }
