@@ -1289,7 +1289,7 @@
         "noOtherInstances": "Žádné další instance nejsou dostupné.",
         "savePathLabel": "Cílová cesta (volitelné)",
         "savePathPlaceholder": "např. /data/torrents",
-        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie. Podporuje šablony:",
+        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie.",
         "categoryLabel": "Kategorie na cíli (volitelné)",
         "selectTargetFirst": "Vyberte cílovou instanci jako první",
         "loadingCategories": "Načítání kategorií...",
@@ -1421,7 +1421,29 @@
         "placeholder": "např. /data/torrents",
         "skipIfCrossSeedsDontMatch": "Přeskočit, pokud křížová sdílení neodpovídají podmínkám pravidla",
         "aboutSkipping": "O přeskakování přesunu, když existují křížová sdílení",
-        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla."
+        "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla.",
+        "templateHelp": {
+          "trigger": "Nápověda k šablonám cesty",
+          "title": "Šablony cesty",
+          "intro": "Použijte pevnou cestu, nebo vložte tyto hodnoty a sestavte cestu pro každý torrent.",
+          "variables": {
+            "name": "Zobrazovaný název torrentu",
+            "hash": "Info Hash",
+            "category": "Kategorie qBittorrentu",
+            "isolationFolderName": "Název složky bezpečný pro souborový systém (hash nebo upravený název)",
+            "tracker": "Zobrazovaný název trackeru z úprav trackerů, jinak doména trackeru",
+            "sanitize": "sanitize odstraní znaky, které nejsou platné v názvu složky. Používejte ji pro názvy."
+          },
+          "trackerNote": "Aby .Tracker použil váš zobrazovaný název, pravidlo potřebuje také podmínku Tracker, nebo akci tagu se zapnutými volbami „Použít název trackeru jako tag“ a „Použít název zobrazení“. Jinak .Tracker použije doménu trackeru.",
+          "examplesHeading": "Příklady",
+          "examples": {
+            "byCategory": "Jedna složka pro každou kategorii, např. /data/movies",
+            "byTrackerAndName": "Jedna složka pro každý tracker, v ní jedna pro každý torrent"
+          },
+          "learnMore": "Další informace",
+          "copySnippet": "Kopírovat {{snippet}}",
+          "copyFailed": "Kopírování do schránky se nezdařilo"
+        }
       },
       "freeSpace": {
         "title": "Zdroj volného místa",

@@ -1223,7 +1223,7 @@
         "noOtherInstances": "사용 가능한 다른 인스턴스가 없습니다.",
         "savePathLabel": "대상의 저장 경로(선택 사항)",
         "savePathPlaceholder": "예: /data/torrents",
-        "savePathHelp": "토렌트 콘텐츠의 상위 디렉터리입니다. 카테고리 기본값을 사용하려면 비워 두세요. 템플릿을 지원합니다:",
+        "savePathHelp": "토렌트 콘텐츠의 상위 디렉터리입니다. 카테고리 기본값을 사용하려면 비워 두세요.",
         "categoryLabel": "대상의 카테고리(선택 사항)",
         "selectTargetFirst": "먼저 대상 인스턴스를 선택하세요",
         "loadingCategories": "카테고리 불러오는 중...",
@@ -1355,7 +1355,29 @@
         "placeholder": "예: /data/torrents",
         "skipIfCrossSeedsDontMatch": "cross-seed가 규칙의 조건과 일치하지 않으면 건너뛰기",
         "aboutSkipping": "cross-seed가 있을 때 이동 건너뛰기 정보",
-        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다."
+        "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다.",
+        "templateHelp": {
+          "trigger": "경로 템플릿 도움말",
+          "title": "경로 템플릿",
+          "intro": "고정 경로를 쓰거나, 이 값들을 넣어 토렌트마다 경로를 만드세요.",
+          "variables": {
+            "name": "토렌트 표시 이름",
+            "hash": "Info Hash",
+            "category": "qBittorrent 카테고리",
+            "isolationFolderName": "파일 시스템에 안전한 폴더 이름(해시 또는 정리된 이름)",
+            "tracker": "트래커 사용자 지정의 트래커 표시 이름, 없으면 트래커 도메인",
+            "sanitize": "sanitize는 폴더 이름에 쓸 수 없는 문자를 제거합니다. 이름에 사용하세요."
+          },
+          "trackerNote": ".Tracker가 표시 이름을 쓰려면 규칙에 Tracker 조건이 있거나, \"트래커 이름을 태그로 사용\"과 \"표시 이름 사용\"을 켠 태그 작업이 있어야 합니다. 그렇지 않으면 .Tracker는 트래커 도메인을 사용합니다.",
+          "examplesHeading": "예시",
+          "examples": {
+            "byCategory": "카테고리별 폴더 하나, 예: /data/movies",
+            "byTrackerAndName": "트래커별 폴더, 그 안에 토렌트별 폴더"
+          },
+          "learnMore": "자세히 알아보기",
+          "copySnippet": "{{snippet}} 복사",
+          "copyFailed": "클립보드에 복사하지 못했습니다"
+        }
       },
       "freeSpace": {
         "title": "여유 공간 소스",

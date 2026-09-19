@@ -1253,7 +1253,7 @@
         "noOtherInstances": "Nessun'altra istanza disponibile.",
         "savePathLabel": "Percorso di salvataggio sulla destinazione (facoltativo)",
         "savePathPlaceholder": "es. /data/torrents",
-        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria. Supporta i template:",
+        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria.",
         "categoryLabel": "Categoria sulla destinazione (facoltativo)",
         "selectTargetFirst": "Seleziona prima un'istanza di destinazione",
         "loadingCategories": "Caricamento delle categorie...",
@@ -1385,7 +1385,29 @@
         "placeholder": "es., /data/torrents",
         "skipIfCrossSeedsDontMatch": "Ignora se i cross-seed non corrispondono alle condizioni della regola",
         "aboutSkipping": "Informazioni sull'ignorare lo spostamento se esistono cross-seed",
-        "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola."
+        "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola.",
+        "templateHelp": {
+          "trigger": "Aiuto sui template di percorso",
+          "title": "Template di percorso",
+          "intro": "Usa un percorso fisso, oppure inserisci questi valori per costruire un percorso per ogni torrent.",
+          "variables": {
+            "name": "Nome visualizzato del torrent",
+            "hash": "Info Hash",
+            "category": "Categoria di qBittorrent",
+            "isolationFolderName": "Nome di cartella sicuro per il filesystem (hash o nome ripulito)",
+            "tracker": "Nome visualizzato del tracker dalle personalizzazioni dei tracker, altrimenti il dominio del tracker",
+            "sanitize": "sanitize rimuove i caratteri non validi in un nome di cartella. Usala per i nomi."
+          },
+          "trackerNote": "Perché .Tracker usi il tuo nome visualizzato, la regola deve avere anche una condizione Tracker, oppure un'azione tag con «Usa il nome del tracker come tag» e «Usa il nome visualizzato» attivi. Altrimenti .Tracker usa il dominio del tracker.",
+          "examplesHeading": "Esempi",
+          "examples": {
+            "byCategory": "Una cartella per categoria, ad es. /data/movies",
+            "byTrackerAndName": "Una cartella per tracker, poi una per torrent"
+          },
+          "learnMore": "Scopri di più",
+          "copySnippet": "Copia {{snippet}}",
+          "copyFailed": "Copia negli appunti non riuscita"
+        }
       },
       "freeSpace": {
         "title": "Origine dello spazio libero",

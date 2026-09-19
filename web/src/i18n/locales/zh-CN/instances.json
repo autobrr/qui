@@ -1223,7 +1223,7 @@
         "noOtherInstances": "没有其他可用实例。",
         "savePathLabel": "目标上的保存路径（可选）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。支持模板：",
+        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。",
         "categoryLabel": "目标上的分类（可选）",
         "selectTargetFirst": "请先选择目标实例",
         "loadingCategories": "正在加载分类...",
@@ -1355,7 +1355,29 @@
         "placeholder": "例如：/data/torrents",
         "skipIfCrossSeedsDontMatch": "如果辅种不匹配规则条件则跳过",
         "aboutSkipping": "关于辅种存在时跳过移动",
-        "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。"
+        "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。",
+        "templateHelp": {
+          "trigger": "路径模板帮助",
+          "title": "路径模板",
+          "intro": "使用固定路径，或插入以下值为每个种子生成路径。",
+          "variables": {
+            "name": "种子显示名称",
+            "hash": "Info Hash",
+            "category": "qBittorrent 分类",
+            "isolationFolderName": "文件系统安全的文件夹名称（哈希或清理后的名称）",
+            "tracker": "Tracker 自定义中的显示名称，否则为 Tracker 域名",
+            "sanitize": "sanitize 会移除文件夹名称中无效的字符。请用于名称。"
+          },
+          "trackerNote": "要让 .Tracker 使用你的显示名称，规则还需要一个 Tracker 条件，或一个开启了“将 Tracker 名称用作标签”和“使用显示名称”的标签操作。否则 .Tracker 会使用 Tracker 域名。",
+          "examplesHeading": "示例",
+          "examples": {
+            "byCategory": "每个分类一个文件夹，例如 /data/movies",
+            "byTrackerAndName": "每个 Tracker 一个文件夹，其中每个种子一个文件夹"
+          },
+          "learnMore": "了解更多",
+          "copySnippet": "复制 {{snippet}}",
+          "copyFailed": "复制到剪贴板失败"
+        }
       },
       "freeSpace": {
         "title": "可用空间来源",

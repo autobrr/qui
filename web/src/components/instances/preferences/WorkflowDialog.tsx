@@ -90,6 +90,8 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
+import { PathTemplateHelp } from "./PathTemplateHelp"
+import { MOVE_PATH_TEMPLATE_VARIABLES } from "./pathTemplateVariables"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 let ruleIdCounter = 0
@@ -3598,9 +3600,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-1">
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
-                            <FieldHelp>
-                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
-                            </FieldHelp>
+                            <FieldHelp>{t("preferences.workflowDialog.export.savePathHelp")}</FieldHelp>
+                            <PathTemplateHelp variables={MOVE_PATH_TEMPLATE_VARIABLES} />
                           </Label>
                           <Input
                             value={formState.exprExportSavePath}
@@ -3810,7 +3811,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.move.newSavePath")}</Label>
+                          <Label className="text-xs">
+                            {t("preferences.workflowDialog.move.newSavePath")}
+                            <PathTemplateHelp variables={MOVE_PATH_TEMPLATE_VARIABLES} />
+                          </Label>
                           <Input
                             type="text"
                             value={formState.exprMovePath}
