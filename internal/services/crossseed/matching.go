@@ -848,7 +848,7 @@ func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetR
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, m.stringNormalizer) {
+		if !shouldIgnoreFile(cf.Name, m.normalizer()) {
 			fileRelease := m.parseFileRelease(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
