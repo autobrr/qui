@@ -131,7 +131,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		"Show.S01.1080p.WEB.x264-GRP",
 		t.TempDir(),
 		localFiles,
-		seasonPackNormalizer(nil),
+		normalizerForService(nil),
 		nil,
 		nil,
 	)
@@ -173,7 +173,7 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 		"K-On! S01 1080p BluRay",
 		t.TempDir(),
 		localFiles,
-		seasonPackNormalizer(nil),
+		normalizerForService(nil),
 		nil,
 		nil,
 	)
@@ -220,7 +220,7 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 		"Show.S01.1080p.WEB.x264-GRP",
 		t.TempDir(),
 		localFiles,
-		seasonPackNormalizer(nil),
+		normalizerForService(nil),
 		nil,
 		nil,
 	)

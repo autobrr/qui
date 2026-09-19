@@ -178,7 +178,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 		// Use the apply's file pairing, including its ignored sidecars.
 		usableFiles := func(files qbt.TorrentFiles) qbt.TorrentFiles {
 			return slices.DeleteFunc(slices.Clone(files), func(file qbt.TorrentFile) bool {
-				return shouldIgnoreFile(file.Name, seasonPackNormalizer(s))
+				return shouldIgnoreFile(file.Name, normalizerForService(s))
 			})
 		}
 		uploadFiles := usableFiles(meta.Files)

@@ -595,7 +595,7 @@ func (s *Service) planSeasonPack(
 
 	planBuild, err := buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		destDir, localFiles, seasonPackNormalizer(s), prep.settings, prep.aliasTitles,
+		destDir, localFiles, normalizerForService(s), prep.settings, prep.aliasTitles,
 	)
 	if err != nil {
 		return nil, episodes, err
@@ -814,15 +814,6 @@ func findInstance(instances []*models.Instance, id int) *models.Instance {
 	return nil
 }
 
-func seasonPackNormalizer(s *Service) *stringutils.Normalizer[string, string] {
-	if s != nil && s.stringNormalizer != nil {
-		return s.stringNormalizer
-	}
-	// Shared singleton: see normalizerForService - a fresh normalizer
-	// leaks a never-terminating ttlcache goroutine.
-	return stringutils.DefaultNormalizer
-}
-
 // parseSeasonPackEpisodePayload parses a torrent-internal episode file into a release,
 // enriched from the torrent-level release. seasonlessOrigin reports whether the file
 // name itself carried no season (Series 0 before enrichment), i.e. it was
@@ -888,7 +879,7 @@ type packEpisodeOrigin struct {
 // satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
 func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
-	normalizer := seasonPackNormalizer(nil)
+	normalizer := normalizerForService(nil)
 
 	minSeasonlessEpisode := -1
 	for _, f := range files {
@@ -1330,9 +1321,9 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 		return nil, nil, fmt.Errorf("load matched episode files: %w", err)
 	}
 
-	normalizer := seasonPackNormalizer(s)
-	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
 	m := s.matcher()
+	normalizer := m.normalizer()
+	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
 	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
 	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
 	ids := sortedEpisodeCandidateIDs(candidates)

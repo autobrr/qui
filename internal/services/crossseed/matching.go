@@ -22,7 +22,7 @@ import (
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
 
-// matcher carries the three inputs the matching rules read. A rule that needs a
+// matcher carries only what the matching rules read. A rule that needs a
 // client, a store, or the sync manager does not compile here (ADR 0008).
 type matcher struct {
 	releaseCache     *ReleaseCache

@@ -4638,6 +4638,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 
 func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest, snapshots *automationSnapshots) (*FindCandidatesResponse, error) {
 	start := time.Now()
+	m := s.matcher()
 
 	if req.TorrentName == "" {
 		return nil, errors.New("torrent_name is required")
@@ -4844,7 +4845,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				// The listing title and info.name can differ by exactly the
 				// resolved alias, so both alias sets count; only one is ever
 				// non-empty per decision origin.
-				if ok, _ := s.matcher().searchCandidateMetadataConsistent(
+				if ok, _ := m.searchCandidateMetadataConsistent(
 					searchDecision.SearchCandidateName,
 					targetSide,
 					searchDecision.RelaxedDifferences,
@@ -4855,7 +4856,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := s.matcher().releasesMatchWithReasonAndNamesAndTitles(
+			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
 				fallbackInput.Source.release,
 				fallbackInput.Candidate.release,
 				fallbackInput.Source.rawName,
@@ -4867,7 +4868,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			replaysStrictChecksum := isSearchSource &&
 				searchDecision.Class == searchCandidateClassStrict &&
 				searchDecision.StrictChecksumReplay
-			if !releasesMatch && replaysStrictChecksum && s.matcher().oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
+			if !releasesMatch && replaysStrictChecksum && m.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
 				releasesMatch = true
 				mismatchReason = ""
 			}
@@ -4877,12 +4878,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
 				(searchDecision.Class == searchCandidateClassTitleRescue ||
 					searchDecision.Class == searchCandidateClassWebSourceRelabel)
-			if replaysRelaxedDecision && !s.matcher().explicitGroupsAgree(sourceSide, targetSide) {
+			if replaysRelaxedDecision && !m.explicitGroupsAgree(sourceSide, targetSide) {
 				continue
 			}
 			if replaysGroupFallback &&
-				(!s.matcher().explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
-					!s.matcher().explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
+				(!m.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
+					!m.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
 				continue
 			}
 			if !releasesMatch {
@@ -4895,7 +4896,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
-					if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
+					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
 						continue
 					}
 					titleRescueHash = hashKey
@@ -4903,7 +4904,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					if !searchRelaxationAuthorizesCurrentReason(searchDecision.StrictMismatchReason, mismatchReason) {
 						continue
 					}
-					if _, ok, _ := s.matcher().validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
+					if _, ok, _ := m.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
 						continue
 					}
 					if searchRelaxedStructure(mismatchReason) {
@@ -4954,7 +4955,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
-			matchType := s.matcher().getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}
