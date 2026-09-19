@@ -56,6 +56,13 @@ describe("PathTemplateHelp", () => {
     }
   })
 
+  it("shows the field description above the template list", () => {
+    render(<PathTemplateHelp variables={MOVE_PATH_TEMPLATE_VARIABLES} description="Leave empty to use category default." />)
+    fireEvent.click(screen.getByRole("button", { name: triggerName }))
+
+    expect(screen.getByText("Leave empty to use category default.")).toBeTruthy()
+  })
+
   it("copies the snippet, not the translated description", async () => {
     fireEvent.click(renderHelp())
 

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Check, Copy, HelpCircle } from "lucide-react"
-import { useEffect, useRef, useState, type PointerEvent } from "react"
+import { Check, Copy, Info } from "lucide-react"
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -24,10 +24,16 @@ const MOVE_PATH_TEMPLATE_DOCS_URL = "https://getqui.com/docs/features/automation
 const HOVER_CLOSE_DELAY_MS = 200
 const COPIED_RESET_MS = 1500
 
+interface PathTemplateHelpProps {
+  variables: PathTemplateEntry[]
+  // Field help shown above the template list, so the label carries one help icon.
+  description?: ReactNode
+}
+
 // A popover rather than FieldHelp's tooltip: a tooltip closes before the
 // pointer reaches the copy buttons. Mouse hover previews it; a click or tap
 // pins it open until the user clicks outside or presses Escape.
-export function PathTemplateHelp({ variables }: { variables: PathTemplateEntry[] }) {
+export function PathTemplateHelp({ variables, description }: PathTemplateHelpProps) {
   const { t } = useTranslation("instances")
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -108,7 +114,7 @@ export function PathTemplateHelp({ variables }: { variables: PathTemplateEntry[]
             }
           }}
         >
-          <HelpCircle className="size-3.5" />
+          <Info className="size-3.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -121,6 +127,7 @@ export function PathTemplateHelp({ variables }: { variables: PathTemplateEntry[]
         onWheel={(event) => event.stopPropagation()}
         onTouchMove={(event) => event.stopPropagation()}
       >
+        {description && <p className="text-xs">{description}</p>}
         <div className="space-y-1">
           <p className="font-medium">{t("preferences.workflowDialog.move.templateHelp.title")}</p>
           <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.move.templateHelp.intro")}</p>

@@ -3600,8 +3600,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-1">
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
-                            <FieldHelp>{t("preferences.workflowDialog.export.savePathHelp")}</FieldHelp>
-                            <PathTemplateHelp variables={MOVE_PATH_TEMPLATE_VARIABLES} />
+                            <PathTemplateHelp
+                              variables={MOVE_PATH_TEMPLATE_VARIABLES}
+                              description={t("preferences.workflowDialog.export.savePathHelp")}
+                            />
                           </Label>
                           <Input
                             value={formState.exprExportSavePath}
