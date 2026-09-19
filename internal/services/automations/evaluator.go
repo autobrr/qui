@@ -123,6 +123,14 @@ type EvalContext struct {
 	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
 	SameInstanceCrossSeedTagsByHash map[string][]string
 
+	// SeasonPackSet holds one key per season each season pack on this instance
+	// covers, see seasonPackKey. Built when rules use SEASON_PACK_STATUS. Nil
+	// means not built: the status is unknown and never matches.
+	SeasonPackSet map[string]struct{}
+	// SeasonPackSetAnyInstance is the same over every active instance, for
+	// SEASON_PACK_STATUS_ANY_INSTANCE.
+	SeasonPackSetAnyInstance map[string]struct{}
+
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Read by the TRACKER and TRACKERS conditions, and by UseTrackerAsTag with the
 	// UseDisplayName option.
@@ -382,6 +390,10 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 		if ctx == nil || !ctx.InstanceHasLocalAccess {
 			return false
 		}
+	case FieldSeasonPackStatus:
+		return ctx != nil && ctx.SeasonPackSet != nil
+	case FieldSeasonPackStatusAnyInstance:
+		return ctx != nil && ctx.SeasonPackSetAnyInstance != nil
 	default:
 		return true
 	}
@@ -675,6 +687,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			parts = append(parts, ctx.SameInstanceCrossSeedTagsByHash[torrent.Hash]...)
 		}
 		return compareTags(strings.Join(parts, ","), cond)
+
+	case FieldSeasonPackStatus:
+		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSet), cond)
+	case FieldSeasonPackStatusAnyInstance:
+		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSetAnyInstance), cond)
 
 	default:
 		return false

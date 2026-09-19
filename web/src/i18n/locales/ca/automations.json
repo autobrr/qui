@@ -137,6 +137,8 @@
       "EXISTS_ON_SAME_INSTANCE": "El cross-seed existeix a la mateixa instància",
       "SEEDING_ON_SAME_INSTANCE": "El cross-seed està sembrant a la mateixa instància",
       "CROSS_SEED_TAGS": "Etiquetes dels cross-seed",
+      "SEASON_PACK_STATUS": "Estat del paquet de temporada",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Estat del paquet de temporada (qualsevol instància)",
       "HARDLINK_SCOPE": "Àmbit dels hardlinks"
     },
     "fieldGroups": {
@@ -193,6 +195,11 @@
       "inside_qbittorrent": "Dins de qBittorrent (encara que també estigui enllaçat a fora)",
       "outside_qbittorrent": "Fora de qBittorrent (biblioteca/importació)",
       "both": "Dins i fora de qBittorrent"
+    },
+    "seasonPackStatuses": {
+      "pack": "Paquet de temporada",
+      "packed": "Episodi cobert per un paquet de temporada",
+      "unpacked": "Episodi sense paquet de temporada"
     },
     "trackerStatuses": {
       "not_contacted": "No contactat",

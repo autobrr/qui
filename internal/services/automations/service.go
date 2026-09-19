@@ -529,7 +529,8 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 type CrossMatchResult = crossseed.CrossMatchResult
 
 // filesReader is the slice of the sync manager the hardlink index, the
-// missing-files check, and the skipped-files check read. ADR 0005.
+// missing-files check, the skipped-files check, and the any-instance season
+// pack set read. ADR 0005.
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
@@ -1022,6 +1023,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule.Conditions.Delete.Condition, torrents, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1588,6 +1590,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule.Conditions.Category.Condition, torrents, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
@@ -2153,6 +2156,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 	if needs.SameExists || needs.SameSeeding || needs.SameTags || needs.OtherExists || needs.OtherSeeding {
 		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
+	}
+
+	// On-demand season pack sets (only if rules use SEASON_PACK_STATUS*)
+	if rulesUseCondition(eligibleRules, FieldSeasonPackStatus) {
+		evalCtx.SeasonPackSet = buildSeasonPackSet(s.releaseParser, torrents)
+	}
+	if rulesUseCondition(eligibleRules, FieldSeasonPackStatusAnyInstance) {
+		evalCtx.SeasonPackSetAnyInstance = s.buildAnyInstanceSeasonPackSet(ctx)
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
