@@ -32,14 +32,13 @@ import (
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-// torrentAdder is the interface for adding torrents (used for testing)
+// Consumer slices of the sync manager and the indexer service. ADR 0005.
 type torrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 }
 
-// torrentDownloader is the interface for downloading torrents from indexers (used for testing)
 type torrentDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
@@ -51,12 +50,11 @@ type torrentContentResolver interface {
 }
 
 type TorrentsHandler struct {
-	syncManager    *qbittorrent.SyncManager
-	jackettService *jackett.Service
-	instanceStore  *models.InstanceStore
-	// Testing interfaces - when set, these are used instead of the concrete types
+	syncManager   *qbittorrent.SyncManager
+	instanceStore *models.InstanceStore
+
 	torrentAdder      torrentAdder
-	torrentDownloader torrentDownloader
+	torrentDownloader torrentDownloader // nil when no indexer service is configured
 	contentResolver   torrentContentResolver
 	archiveExporter   torrentArchiveExporter
 }
@@ -102,59 +100,17 @@ type SortedPeersResponse struct {
 }
 
 func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service, instanceStore *models.InstanceStore) *TorrentsHandler {
-	return &TorrentsHandler{
-		syncManager:    syncManager,
-		jackettService: jackettService,
-		instanceStore:  instanceStore,
+	h := &TorrentsHandler{
+		syncManager:     syncManager,
+		instanceStore:   instanceStore,
+		torrentAdder:    syncManager,
+		contentResolver: syncManager,
+		archiveExporter: syncManager,
 	}
-}
-
-// NewTorrentsHandlerForTesting creates a TorrentsHandler with mock interfaces for testing
-func NewTorrentsHandlerForTesting(adder torrentAdder, downloader torrentDownloader) *TorrentsHandler {
-	return &TorrentsHandler{
-		torrentAdder:      adder,
-		torrentDownloader: downloader,
+	if jackettService != nil {
+		h.torrentDownloader = jackettService
 	}
-}
-
-// addTorrent wraps the torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
-	if h.torrentAdder != nil {
-		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
-	}
-	return h.syncManager.AddTorrent(ctx, instanceID, fileContent, options)
-}
-
-// addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
-	if h.torrentAdder != nil {
-		return h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, urls, options)
-	}
-	return h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options)
-}
-
-// getAppPreferences wraps preferences retrieval to support both production and test modes
-func (h *TorrentsHandler) getAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	if h.torrentAdder != nil {
-		return h.torrentAdder.GetAppPreferences(ctx, instanceID)
-	}
-	if h.syncManager == nil {
-		return qbt.AppPreferences{}, errors.New("sync manager not configured")
-	}
-	return h.syncManager.GetAppPreferences(ctx, instanceID)
-}
-
-// downloadTorrent wraps torrent download to support both production and test modes
-func (h *TorrentsHandler) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
-	if h.torrentDownloader != nil {
-		return h.torrentDownloader.DownloadTorrent(ctx, req)
-	}
-	return h.jackettService.DownloadTorrent(ctx, req)
-}
-
-// hasJackettService checks if jackett service is available (either real or mock)
-func (h *TorrentsHandler) hasJackettService() bool {
-	return h.jackettService != nil || h.torrentDownloader != nil
+	return h
 }
 
 // ListTorrents returns paginated torrents for an instance with enhanced metadata
@@ -795,7 +751,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		requestedPaused := pausedStr == "true"
 
 		// Get current preferences to check start_paused_enabled
-		prefs, err := h.getAppPreferences(ctx, instanceID)
+		prefs, err := h.torrentAdder.GetAppPreferences(ctx, instanceID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
 			// If we can't get preferences, apply the requested paused state explicitly
@@ -917,7 +873,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			if _, err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
@@ -939,7 +895,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		// If indexer_id is provided, download torrent files from the indexer first
 		// (needed for remote qBittorrent instances that can't reach the indexer)
 		if indexerID > 0 {
-			if !h.hasJackettService() {
+			if h.torrentDownloader == nil {
 				log.Error().Int("indexerID", indexerID).Int("instanceID", instanceID).
 					Msg("Indexer download requested but jackett service is not available")
 				RespondError(w, http.StatusServiceUnavailable,
@@ -962,7 +918,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 				// Magnet links can be added directly to qBittorrent
 				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-					resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+					resp, err := h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, []string{url}, options)
 					if err != nil {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
@@ -989,7 +945,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Download torrent file from indexer
-				torrentBytes, err := h.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
+				torrentBytes, err := h.torrentDownloader.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
 					IndexerID:   indexerID,
 					DownloadURL: url,
 				})
@@ -997,7 +953,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					var magnetErr *jackett.MagnetDownloadError
 					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-						resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
+						resp, err := h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
 						if err != nil {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
@@ -1030,7 +986,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Add torrent from downloaded file content
-				if _, err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+				if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
@@ -1062,7 +1018,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 
-				resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+				resp, err := h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, []string{url}, options)
 				if err != nil {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 						return
@@ -3077,18 +3033,6 @@ func parseTorrentContentFileParams(w http.ResponseWriter, r *http.Request) (int,
 	return instanceID, hash, fileIndex, true
 }
 
-func chooseTorrentContentResolver(h *TorrentsHandler, w http.ResponseWriter, unavailableMessage string) (torrentContentResolver, bool) {
-	switch {
-	case h.contentResolver != nil:
-		return h.contentResolver, true
-	case h.syncManager != nil:
-		return h.syncManager, true
-	default:
-		RespondError(w, http.StatusInternalServerError, unavailableMessage)
-		return nil, false
-	}
-}
-
 func fetchTorrentFilesAndPropsForContentFile(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, fileIndex int, context string, w http.ResponseWriter) (string, int, *qbt.TorrentProperties, bool) {
 	files, err := resolver.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
@@ -3192,17 +3136,17 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 		return resolvedTorrentContentFile{}, false
 	}
 
-	resolver, ok := chooseTorrentContentResolver(h, w, unavailableMessage)
+	if h.contentResolver == nil {
+		RespondError(w, http.StatusInternalServerError, unavailableMessage)
+		return resolvedTorrentContentFile{}, false
+	}
+
+	targetFileName, filesLen, props, ok := fetchTorrentFilesAndPropsForContentFile(r.Context(), h.contentResolver, instanceID, hash, fileIndex, context, w)
 	if !ok {
 		return resolvedTorrentContentFile{}, false
 	}
 
-	targetFileName, filesLen, props, ok := fetchTorrentFilesAndPropsForContentFile(r.Context(), resolver, instanceID, hash, fileIndex, context, w)
-	if !ok {
-		return resolvedTorrentContentFile{}, false
-	}
-
-	resolvedPath, ok := resolveTorrentContentFilePathOnDisk(r.Context(), resolver, instanceID, hash, props, targetFileName, filesLen, w)
+	resolvedPath, ok := resolveTorrentContentFilePathOnDisk(r.Context(), h.contentResolver, instanceID, hash, props, targetFileName, filesLen, w)
 	if !ok {
 		return resolvedTorrentContentFile{}, false
 	}
@@ -3427,7 +3371,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	prefs, err := h.getAppPreferences(r.Context(), instanceID)
+	prefs, err := h.torrentAdder.GetAppPreferences(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getContentPathMediaInfo") {
 			return

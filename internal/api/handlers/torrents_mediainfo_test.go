@@ -46,7 +46,7 @@ func testMakeMediaInfoHandler(t *testing.T, hasLocalAccess bool, resolver *mockC
 func TestGetTorrentFileMediaInfo_ReturnsServerErrorWithoutInstanceStore(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandlerForTesting(nil, nil)
+	handler := &TorrentsHandler{}
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, 1, "hash123", "0")
 
