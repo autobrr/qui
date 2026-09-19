@@ -42,26 +42,26 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+	stubSync(svc).getClient = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "o", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"o": {
 			{Name: "seeded/owned.mkv", Size: 1},
 			{Name: "claimed/unwritten.mkv", Size: 1},
 		}}, nil
 	}
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: root}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+	stubSync(svc).subcategoriesEnabled = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
 
@@ -125,30 +125,30 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+	stubSync(svc).getClient = func(context.Context, int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
-	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+	stubSync(svc).listInstances = func(context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	// Two torrents: one in the parent, one on the volume that is not mounted.
-	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
 			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
 			{Hash: "gone", SavePath: nested, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
-	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
 			"here": {{Name: "owned.mkv", Size: 1}},
 			"gone": {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
-	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+	stubSync(svc).subcategoriesEnabled = func(context.Context, int) (bool, error) { return false, nil }
+	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: parent}, nil
 	}
-	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
 
