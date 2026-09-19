@@ -176,8 +176,8 @@ function segmentLiteralsInEnclosingFunction(node) {
 }
 
 // Keys that were already dead when this checker landed. The checker is a ratchet: this
-// list may shrink, never grow. Removing a key here means deleting it from all ten
-// locales in the same change. Entries are `namespace:key.path`.
+// list may shrink, never grow. Removing a key here means deleting it from every
+// locale in the same change. Entries are `namespace:key.path`.
 const knownUnusedKeys = new Set([
   "automations:queryBuilder.durationUnits.seconds",
   "common:actions.toggle",
@@ -360,6 +360,6 @@ if (process.argv[1] === import.meta.filename) {
 
   console.log(
     `${localeKeys.length} English locale keys checked, ` +
-    `${unusedKeys.length} known-unused allowlisted, no new unused keys.`
+    `${unusedKeys.length} unreachable, all allowlisted.`
   )
 }

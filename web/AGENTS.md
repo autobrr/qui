@@ -64,7 +64,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 
-`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from all ten locales.
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
 
 ## Adding Languages
 
