@@ -167,7 +167,8 @@ export function createRoutes(store: DemoStore): Route[] {
     const category = String(form?.get("category") ?? "")
     const tags = String(form?.get("tags") ?? "").split(",").map(s => s.trim()).filter(Boolean)
     const paused = form?.get("paused") === "true"
-    for (const name of names) store.addTorrent(id(params), name, category, tags, paused)
+    const savePath = form?.get("autoTMM") === "false" ? String(form?.get("savepath") ?? "") : ""
+    for (const name of names) store.addTorrent(id(params), name, category, tags, paused, savePath)
     return json({ message: "ok", added: names.length, failed: 0 })
   })
 
@@ -183,7 +184,18 @@ export function createRoutes(store: DemoStore): Route[] {
   }
   on("PUT", "/instances/:instanceId/torrents/:hash/rename-file", renamePath)
   on("PUT", "/instances/:instanceId/torrents/:hash/rename-folder", renamePath)
-  on("PUT", "/instances/:instanceId/torrents/:hash/files", () => noContent())
+  on("PUT", "/instances/:instanceId/torrents/:hash/files", async ({ params, request }) => {
+    const body = await bodyJSON<{ indices?: number[]; priority?: number }>(request)
+    store.setFilePriority(id(params), params.hash, body.indices ?? [], body.priority ?? 1)
+    return noContent()
+  })
+  on("POST", "/instances/:instanceId/torrents/add-peers", () => noContent())
+  on("POST", "/instances/:instanceId/torrents/ban-peers", async ({ params, request }) => {
+    const body = await bodyJSON<{ peers?: string[] }>(request)
+    store.banPeers(id(params), body.peers ?? [])
+    return noContent()
+  })
+  on("POST", "/instances/:instanceId/alternative-speed-limits/toggle", ({ params }) => json({ enabled: store.toggleAltSpeedLimits(id(params)) }))
 
   const detail = (part: keyof NonNullable<ReturnType<DemoStore["details"]>>) => ({ params }: { params: Record<string, string> }) => {
     const d = store.details(id(params), params.hash)

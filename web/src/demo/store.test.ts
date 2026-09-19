@@ -166,6 +166,57 @@ describe("createStore", () => {
     expect(added.content_path).toBe("/data/torrents/films/renamed")
   })
 
+  it("gives batched adds distinct hashes", () => {
+    store.addTorrent(1, "one", "", [], false)
+    store.addTorrent(1, "two", "", [], false)
+    expect(all()[0].hash).not.toBe(all()[1].hash)
+  })
+
+  it("keeps a custom save path and turns auto TMM off for it", () => {
+    store.addTorrent(1, "manual", "films", [], true, "/mnt/other")
+    expect(all()[0]).toMatchObject({ auto_tmm: false, save_path: "/mnt/other", content_path: "/mnt/other/manual" })
+  })
+
+  it("honours the enable flag on forceStart and toggleSequentialDownload", () => {
+    const t = all()[8]
+    store.bulkAction(1, { hashes: [t.hash], action: "forceStart", enable: true })
+    expect(t.force_start).toBe(true)
+    expect(t.state).toMatch(/^forced/)
+    store.bulkAction(1, { hashes: [t.hash], action: "forceStart", enable: false })
+    expect(t.force_start).toBe(false)
+    expect(t.state).toMatch(/^(uploading|downloading)$/)
+    store.bulkAction(1, { hashes: [t.hash], action: "toggleSequentialDownload", enable: true })
+    store.bulkAction(1, { hashes: [t.hash], action: "toggleSequentialDownload", enable: true })
+    expect(t.seq_dl).toBe(true)
+  })
+
+  it("edits the tracker URL of rows that carry the old one", () => {
+    const t = all()[9]
+    const other = all().find(x => x.tracker !== t.tracker)!
+    store.bulkAction(1, { hashes: [t.hash, other.hash], action: "editTrackers", trackerOldURL: t.tracker, trackerNewURL: "https://new.example/announce" })
+    expect(t.tracker).toBe("https://new.example/announce")
+    expect(other.tracker).not.toBe("https://new.example/announce")
+    expect(store.details(1, t.hash)!.trackers.at(-1)!.url).toBe("https://new.example/announce")
+  })
+
+  it("overlays file priorities and banned peers on derived details", () => {
+    const t = all().find(x => x.num_seeds + x.num_leechs > 0)!
+    store.setFilePriority(1, t.hash, [0], 0)
+    const before = store.details(1, t.hash)!
+    const key = before.peers.sorted_peers![0].key
+    store.banPeers(1, [key])
+    const d = store.details(1, t.hash)!
+    expect(d.files[0].priority).toBe(0)
+    expect(d.peers.sorted_peers!.some(p => p.key === key)).toBe(false)
+    expect(d.peers.peers![key]).toBeUndefined()
+  })
+
+  it("toggles the alternative speed limits flag", () => {
+    expect(store.toggleAltSpeedLimits(1)).toBe(true)
+    expect(store.instances[0].serverState.use_alt_speed_limits).toBe(true)
+    expect(store.toggleAltSpeedLimits(1)).toBe(false)
+  })
+
   it("overlays comment and path renames on derived details", () => {
     const t = all()[6]
     store.bulkAction(1, { hashes: [t.hash], action: "setComment", comment: "hello" })

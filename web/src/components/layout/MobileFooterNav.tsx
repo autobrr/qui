@@ -503,18 +503,18 @@ export function MobileFooterNav() {
                     {t("nav.manageInstances")}
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/settings"
+                    search={{ tab: "logs" }}
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {t("nav.logs")}
+                  </Link>
+                </DropdownMenuItem>
               </>
             )}
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings"
-                search={{ tab: "logs" }}
-                className="flex items-center gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                {t("nav.logs")}
-              </Link>
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
               {t("nav.appearance")}

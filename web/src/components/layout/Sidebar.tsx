@@ -197,7 +197,7 @@ export function Sidebar() {
 
       <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
         <div className="space-y-1">
-          {(isDemo ? [] : navigation).map((item) => {
+          {!isDemo && navigation.map((item) => {
             const Icon = item.icon
             const isActive = item.isActive? item.isActive(location.pathname, routeSearch): location.pathname === item.href
 

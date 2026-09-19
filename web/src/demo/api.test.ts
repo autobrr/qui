@@ -76,6 +76,18 @@ describe("createDemoFetch", () => {
     expect(store.instances[0].torrents[0].name).toBe("fresh iso")
   })
 
+  it("routes the details writes and the speed toggle", async () => {
+    const h = hash()
+    const post = (path: string, body: unknown, method = "POST") => fetch(`http://localhost/demo/api${path}`, { method, body: JSON.stringify(body) })
+    expect((await post(`/instances/1/torrents/${h}/files`, { indices: [0], priority: 7 }, "PUT")).status).toBe(204)
+    expect(store.details(1, h)!.files[0].priority).toBe(7)
+    expect((await post("/instances/1/torrents/add-peers", { hashes: [h], peers: ["1.2.3.4:5"] })).status).toBe(204)
+    expect((await post("/instances/1/torrents/ban-peers", { peers: ["1.2.3.4:5"] })).status).toBe(204)
+    expect(store.instances[0].bannedPeers.has("1.2.3.4:5")).toBe(true)
+    const toggled = await post("/instances/1/alternative-speed-limits/toggle", null)
+    await expect(toggled.json()).resolves.toEqual({ enabled: true })
+  })
+
   it("keys trackers by domain like the real endpoint", async () => {
     const res = await fetch("http://localhost/demo/api/instances/1/trackers")
     const body = await res.json() as Record<string, string>

@@ -38,9 +38,13 @@ export default defineConfig(() => ({
       name: "qui-demo-html",
       transformIndexHtml: {
         order: "pre" as const,
-        handler: (html: string) => html
-          .replace("<title>qui</title>", `<title>qui demo</title>\n    <meta name="robots" content="noindex" />\n    ${demoBoot}`)
-          .replace("/src/main.tsx", "/src/demo/main.tsx"),
+        handler: (html: string) => {
+          const out = html
+            .replace("<title>qui</title>", `<title>qui demo</title>\n    <meta name="robots" content="noindex" />\n    ${demoBoot}`)
+            .replace("/src/main.tsx", "/src/demo/main.tsx")
+          if (!out.includes("/src/demo/main.tsx") || !out.includes(demoBoot)) throw new Error("index.html changed; update the demo rewrite")
+          return out
+        },
       },
     },
     react({

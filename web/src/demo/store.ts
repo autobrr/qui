@@ -170,6 +170,8 @@ export interface DemoInstance {
   // Detail writes the app can make. Details are derived from the hash, so these overlay them.
   comments: Map<string, string>
   renames: Map<string, Array<[string, string]>>
+  filePriorities: Map<string, Map<number, number>>
+  bannedPeers: Set<string>
 }
 
 export interface ListParams {
@@ -187,13 +189,16 @@ export interface DemoStore {
   query(instanceIds: number[], params: ListParams, crossInstance?: boolean): TorrentResponse
   tick(): void
   bulkAction(instanceId: number, body: BulkActionBody): void
-  addTorrent(instanceId: number, name: string, category: string, tags: string[], paused: boolean): void
+  addTorrent(instanceId: number, name: string, category: string, tags: string[], paused: boolean, savePath?: string): void
   addCategory(instanceId: number, name: string, savePath: string): void
   removeCategories(instanceId: number, names: string[]): void
   addTags(instanceId: number, tags: string[]): void
   removeTags(instanceId: number, tags: string[]): void
   rename(instanceId: number, hash: string, name: string): void
   renamePath(instanceId: number, hash: string, oldPath: string, newPath: string): void
+  setFilePriority(instanceId: number, hash: string, indices: number[], priority: number): void
+  banPeers(instanceId: number, peers: string[]): void
+  toggleAltSpeedLimits(instanceId: number): boolean
   find(instanceId: number, hash: string): Torrent | undefined
   details(instanceId: number, hash: string): TorrentDetails | undefined
   instanceResponses(): InstanceResponse[]
@@ -220,6 +225,8 @@ export interface BulkActionBody {
   uploadLimit?: number
   downloadLimit?: number
   location?: string
+  trackerOldURL?: string
+  trackerNewURL?: string
 }
 
 export interface TorrentDetails {
@@ -389,7 +396,7 @@ function buildInstance(id: number, name: string, count: number, seed: number, no
   serverState.alltime_dl = torrents.reduce((sum, t) => sum + t.downloaded, 0)
   serverState.alltime_ul = torrents.reduce((sum, t) => sum + t.uploaded, 0)
   serverState.global_ratio = (serverState.alltime_ul / Math.max(1, serverState.alltime_dl)).toFixed(2)
-  return { id, name, torrents, categories, tags, serverState, comments: new Map(), renames: new Map() }
+  return { id, name, torrents, categories, tags, serverState, comments: new Map(), renames: new Map(), filePriorities: new Map(), bannedPeers: new Set() }
 }
 
 function compareBy(sort: string, order: "asc" | "desc") {
@@ -691,6 +698,8 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
   ]
   const byId = new Map(instances.map(i => [i.id, i]))
   const tickRng = mulberry32(seed + 2)
+  // One stream for every add, so two adds in the same millisecond get distinct hashes.
+  const addRng = mulberry32(seed + 3)
   let sessionDl = 0
   let sessionUl = 0
 
@@ -722,7 +731,7 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
     })
   }
 
-  function applyAction(inst: DemoInstance, t: Torrent, body: BulkActionBody, now: number): boolean {
+  function applyAction(inst: DemoInstance, t: Torrent, body: BulkActionBody, now: number): void {
     switch (body.action) {
       case "pause":
         t.state = t.progress === 1 ? "stoppedUP" : "stoppedDL"
@@ -730,27 +739,25 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         t.upspeed = 0
         t.eta = QBIT_INFINITE_ETA
         t.force_start = false
-        return true
+        break
       case "resume":
         t.state = t.progress === 1 ? "uploading" : "downloading"
         t.force_start = false
-        return true
+        break
       case "forceStart":
-        t.state = t.progress === 1 ? "forcedUP" : "forcedDL"
-        t.force_start = true
-        return true
-      case "delete":
-        return false
+        t.force_start = body.enable ?? true
+        t.state = t.progress === 1 ? (t.force_start ? "forcedUP" : "uploading") : (t.force_start ? "forcedDL" : "downloading")
+        break
       case "recheck":
         t.state = t.progress === 1 ? "checkingUP" : "checkingDL"
         t.dlspeed = 0
         t.upspeed = 0
-        return true
+        break
       case "setCategory":
         t.category = body.category ?? ""
         t.save_path = body.category ? (inst.categories[body.category]?.savePath ?? t.save_path) : "/data/torrents"
         t.content_path = `${t.save_path}/${t.name}`
-        return true
+        break
       case "addTags": {
         const set = new Set(tagList(t))
         for (const tag of (body.tags ?? "").split(",").map(s => s.trim()).filter(Boolean)) {
@@ -758,49 +765,50 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
           inst.tags.add(tag)
         }
         t.tags = [...set].sort().join(", ")
-        return true
+        break
       }
       case "removeTags": {
         const remove = new Set((body.tags ?? "").split(",").map(s => s.trim()).filter(Boolean))
         t.tags = tagList(t).filter(tag => !remove.has(tag)).join(", ")
-        return true
+        break
       }
       case "setTags": {
         const list = (body.tags ?? "").split(",").map(s => s.trim()).filter(Boolean)
         for (const tag of list) inst.tags.add(tag)
         t.tags = [...new Set(list)].sort().join(", ")
-        return true
+        break
       }
       case "setLocation":
         t.save_path = body.location ?? t.save_path
         t.content_path = `${t.save_path}/${t.name}`
-        return true
+        break
       case "setShareLimit":
         t.ratio_limit = body.ratioLimit ?? t.ratio_limit
         t.seeding_time_limit = body.seedingTimeLimit ?? t.seeding_time_limit
         t.inactive_seeding_time_limit = body.inactiveSeedingTimeLimit ?? t.inactive_seeding_time_limit
-        return true
+        break
       case "setUploadLimit":
         t.up_limit = (body.uploadLimit ?? 0) * KIB
-        return true
+        break
       case "setDownloadLimit":
         t.dl_limit = (body.downloadLimit ?? 0) * KIB
-        return true
+        break
       case "toggleAutoTMM":
         t.auto_tmm = body.enable ?? !t.auto_tmm
-        return true
+        break
       case "toggleSequentialDownload":
-        t.seq_dl = !t.seq_dl
-        return true
+        t.seq_dl = body.enable ?? !t.seq_dl
+        break
       case "reannounce":
         t.reannounce = 1800
         t.last_activity = now
-        return true
+        break
       case "setComment":
         inst.comments.set(t.hash, body.comment ?? "")
-        return true
-      default:
-        return true
+        break
+      case "editTrackers":
+        if (body.trackerNewURL && t.tracker === body.trackerOldURL) t.tracker = body.trackerNewURL
+        break
     }
   }
 
@@ -918,11 +926,10 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       }
     },
 
-    addTorrent(instanceId, name, category, tags, paused) {
+    addTorrent(instanceId, name, category, tags, paused, savePath) {
       const inst = instance(instanceId)
       if (!inst) return
-      const rng = mulberry32(Date.now() & 0xffffffff)
-      const t = generateTorrent(rng, nowSeconds(), inst.torrents.length)
+      const t = generateTorrent(addRng, nowSeconds(), inst.torrents.length)
       t.name = name
       t.category = category
       t.tags = tags.join(", ")
@@ -936,10 +943,11 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       t.completion_on = 0
       t.seeding_time = 0
       t.added_on = nowSeconds()
-      t.dlspeed = paused ? 0 : Math.round((2 + rng() * 10) * MIB)
+      t.dlspeed = paused ? 0 : Math.round((2 + addRng() * 10) * MIB)
       t.upspeed = 0
       t.tracker_health = undefined
-      t.save_path = category ? (inst.categories[category]?.savePath ?? "/data/torrents") : "/data/torrents"
+      t.auto_tmm = !savePath
+      t.save_path = savePath || (category ? (inst.categories[category]?.savePath ?? "/data/torrents") : "/data/torrents")
       t.content_path = `${t.save_path}/${name}`
       inst.torrents.unshift(t)
     },
@@ -988,6 +996,27 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       inst.renames.set(hash, [...(inst.renames.get(hash) ?? []), [oldPath, newPath]])
     },
 
+    setFilePriority(instanceId, hash, indices, priority) {
+      const inst = instance(instanceId)
+      if (!inst) return
+      const map = inst.filePriorities.get(hash) ?? new Map<number, number>()
+      for (const i of indices) map.set(i, priority)
+      inst.filePriorities.set(hash, map)
+    },
+
+    banPeers(instanceId, peers) {
+      const inst = instance(instanceId)
+      if (!inst) return
+      for (const p of peers) inst.bannedPeers.add(p)
+    },
+
+    toggleAltSpeedLimits(instanceId) {
+      const inst = instance(instanceId)
+      if (!inst) return false
+      inst.serverState.use_alt_speed_limits = !inst.serverState.use_alt_speed_limits
+      return inst.serverState.use_alt_speed_limits
+    },
+
     details(instanceId, hash) {
       const inst = instance(instanceId)
       const t = inst?.torrents.find(x => x.hash === hash)
@@ -995,6 +1024,9 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       const d = buildDetails(t, nowSeconds())
       const comment = inst.comments.get(hash)
       if (comment !== undefined) d.properties.comment = comment
+      for (const [i, priority] of inst.filePriorities.get(hash) ?? []) d.files[i].priority = priority
+      d.peers.sorted_peers = d.peers.sorted_peers!.filter(p => !inst.bannedPeers.has(p.key))
+      for (const key of inst.bannedPeers) delete d.peers.peers![key]
       for (const [oldPath, newPath] of inst.renames.get(hash) ?? []) {
         for (const f of d.files) {
           if (f.name === oldPath) f.name = newPath
