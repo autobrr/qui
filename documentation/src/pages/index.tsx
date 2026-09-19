@@ -13,7 +13,6 @@ function Demo() {
         className={styles.demoFrame}
         src="/demo/"
         title="qui demo"
-        loading="lazy"
       />
       <p className={styles.demoNote}>
         Nothing you do here is saved.{" "}
