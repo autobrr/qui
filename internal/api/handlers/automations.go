@@ -594,7 +594,7 @@ func validateMovePath(move *models.MoveAction) (string, error) {
 	}
 	path := strings.TrimSpace(move.Path)
 	if path == "" {
-		return "", nil
+		return "Move path is required", errors.New("move path required")
 	}
 	rendered, err := automations.RenderMovePathSample(path)
 	if err != nil {
