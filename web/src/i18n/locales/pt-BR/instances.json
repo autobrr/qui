@@ -1253,7 +1253,7 @@
         "noOtherInstances": "Só há o qBittorrent atual ativo.",
         "savePathLabel": "Onde salvar o arquivo no destino",
         "savePathPlaceholder": "ex. /arquivos/novos",
-        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria. Suporta modelos:",
+        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria.",
         "categoryLabel": "Em que categoria classificar no destino",
         "selectTargetFirst": "Escolha a instância no menu acima primeiro",
         "loadingCategories": "Acessando qBittorrent destino...",
@@ -1385,7 +1385,24 @@
         "placeholder": "/caminho/final/movimentado",
         "skipIfCrossSeedsDontMatch": "Abortar a mudança caso haja cross-seeds que não condizem com a regra",
         "aboutSkipping": "Sobre pular cross-seeds",
-        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
+        "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos.",
+        "templateHelp": {
+          "trigger": "Ajuda sobre modelos de caminho",
+          "title": "Valores do modelo",
+          "variables": {
+            "name": "Nome do torrent",
+            "hash": "Info Hash",
+            "category": "Categoria",
+            "isolationFolderName": "Hash ou nome seguro",
+            "tracker": "Nome de exibição ou domínio do tracker",
+            "sanitize": "Remove caracteres inválidos em pastas"
+          },
+          "trackerNote": "Para que .Tracker use o nome de exibição, adicione uma condição Tracker à regra.",
+          "exampleLabel": "Exemplo",
+          "learnMore": "Saiba mais",
+          "copySnippet": "Copiar {{snippet}}",
+          "copyFailed": "Falha ao copiar para a área de transferência"
+        }
       },
       "freeSpace": {
         "title": "Fonte de espaço livre",
