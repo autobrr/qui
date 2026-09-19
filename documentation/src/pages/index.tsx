@@ -3,6 +3,7 @@ import Head from "@docusaurus/Head";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 import type { ReactNode } from "react";
+import { ExternalArrowIcon } from "../components/OpenInAI";
 import styles from "./index.module.css";
 
 function Demo() {
@@ -83,8 +84,8 @@ export default function Home(): ReactNode {
       <main className={styles.main}>
         <header className={styles.top}>
           <div className={styles.brand}>
-            <h1 className={styles.title}>qui</h1>
-            <p className={styles.tagline}>A fast web UI for qBittorrent</p>
+            <span className={styles.title}>qui</span>
+            <h1 className={styles.tagline}>A fast web UI for qBittorrent</h1>
           </div>
           <div className={styles.actions}>
             <Link className={styles.buttonPrimary} to="/docs/getting-started/installation">
@@ -99,16 +100,36 @@ export default function Home(): ReactNode {
         <ul className={styles.features}>
           {features.map((f) => (
             <li key={f.title}>
-              <Link to={f.link}>{f.title}</Link>
+              <Link to={f.link}>
+                {f.title}
+                <ExternalArrowIcon />
+              </Link>
               <p>{f.body}</p>
             </li>
           ))}
         </ul>
-        <p className={styles.facts}>
-          <span>Single binary or Docker</span>
-          <span>SQLite or Postgres</span>
-          <span>Linux, macOS, Windows</span>
-        </p>
+        <div className={styles.about}>
+          <p>
+            qui is a web UI for qBittorrent. Add each instance once and manage all of them from one
+            page. The torrent table is virtualized and updates arrive over server-sent events, so ten
+            thousand torrents or more scroll, filter, and sort without lag. Indexer search, RSS, and
+            notifications are built in.
+          </p>
+          <p>
+            Download one binary or run the Docker image on Linux, macOS, or Windows. SQLite by default,
+            Postgres when you want it. Free and open source under GPL-2.0-or-later, made by the{" "}
+            <Link href="https://github.com/autobrr">autobrr</Link> team. The demo above runs the real
+            interface on synthetic data.
+          </p>
+          <div className={styles.actions}>
+            <Link className={styles.buttonPrimary} to="/docs/getting-started/installation">
+              Get started
+            </Link>
+            <Link className={styles.buttonSecondary} to="/docs/intro">
+              Read the docs
+            </Link>
+          </div>
+        </div>
       </main>
     </Layout>
   );

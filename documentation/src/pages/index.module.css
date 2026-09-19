@@ -27,11 +27,11 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
-  margin: 0;
 }
 
 .tagline {
   font-size: 1.125rem;
+  font-weight: 400;
   color: var(--ifm-color-content-secondary);
   margin: 0;
 }
@@ -123,8 +123,17 @@
 }
 
 .features a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   font-weight: 600;
   color: var(--ifm-color-content);
+}
+
+.features a svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ifm-color-content-secondary);
 }
 
 .features p {
@@ -133,13 +142,9 @@
   color: var(--ifm-color-content-secondary);
 }
 
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 2rem;
+.about {
+  max-width: 65ch;
   margin: 3rem 0 0;
-  font-size: 0.875rem;
-  color: var(--ifm-color-content-secondary);
 }
 
 /* ---- Responsive ---- */
