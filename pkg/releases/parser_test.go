@@ -205,6 +205,17 @@ func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
 	}
 }
 
+// The Audio.Description row lives in the fork's taginfo.csv. It stopped loading
+// once when the module path changed under a replace directive, so pin it here.
+func TestParser_AudioDescriptionIsOtherTag(t *testing.T) {
+	t.Parallel()
+
+	release := NewDefaultParser().Parse("Show.Name.S01E03.with.Audio.Description.1080p.WEB-DL.DDP5.1.H.264-GRP")
+	require.Equal(t, []string{"Audio.Description"}, release.Other)
+	require.Empty(t, release.Subtitle)
+	require.Equal(t, "Show Name", release.Title)
+}
+
 func TestIsEpisodeRange(t *testing.T) {
 	t.Parallel()
 

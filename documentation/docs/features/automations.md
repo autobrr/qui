@@ -1007,7 +1007,7 @@ The `SEASON_PACK_STATUS` field tells you whether a torrent is a season pack, an 
 | `pack` | The name has a season and no episode, for example `Show.S01.1080p.WEB-DL-GRP` or `Show.S01-S03.1080p.WEB-DL-GRP`. A multi-season pack covers every season in its range. |
 | `packed` | A single episode or an episode range such as `S01E05E06`, and a season pack of the same release is in the client. |
 | `unpacked` | A single episode or an episode range, and no season pack of the same release is in the client. |
-| empty | The name has no season: movies, date-based releases, absolute-numbered anime, and "Complete Series" names without a season token. |
+| empty | The name has no season: movies, date-based releases, absolute-numbered anime, "Complete Series" names without a season token, and names the parser cannot read. |
 
 `SEASON_PACK_STATUS` looks at the torrent's own instance. `SEASON_PACK_STATUS_ANY_INSTANCE` looks at every active instance, so a pack on one instance covers an episode on another. Both fields support only `is` and `is not`.
 
