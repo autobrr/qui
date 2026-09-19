@@ -681,6 +681,12 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+	// An unknown category leaves the key unset, so missingkey=error skips the move.
+	if evalCtx != nil {
+		if categorySavePath, found := evalCtx.CategorySavePaths[torrent.Category]; found {
+			data[categorySavePathVariable] = categorySavePath
+		}
+	}
 
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").

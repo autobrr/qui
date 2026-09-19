@@ -128,6 +128,10 @@ type EvalContext struct {
 	// UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
 
+	// CategorySavePaths maps category name to its resolved save path ("" is the
+	// default save path). Built only when a move or export path uses .CategorySavePath.
+	CategorySavePaths map[string]string
+
 	// ReleaseParser caches parsed release metadata for RLS-derived fields.
 	ReleaseParser *releases.Parser
 

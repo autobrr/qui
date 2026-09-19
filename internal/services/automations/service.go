@@ -2224,6 +2224,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	if rulesUseCategorySavePath(eligibleRules) {
+		evalCtx.CategorySavePaths = s.loadCategorySavePaths(ctx, instanceID)
+	}
+
 	// Ensure lastApplied map is initialized for this instance
 	s.mu.RLock()
 	instLastApplied, ok := s.lastApplied[instanceID]
@@ -5098,6 +5102,22 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	}
 
 	return false
+}
+
+// loadCategorySavePaths returns nil on error, which fails every template that
+// uses .CategorySavePath instead of moving torrents to a wrong path.
+func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map[string]string {
+	categories, err := s.syncManager.GetCategories(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load categories for category save paths")
+		return nil
+	}
+	prefs, err := s.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load default save path for category save paths")
+		return nil
+	}
+	return buildCategorySavePaths(categories, prefs.SavePath)
 }
 
 // rulesUseTrackerEntryData reports whether any rule needs the per-torrent tracker

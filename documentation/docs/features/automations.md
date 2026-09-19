@@ -639,6 +639,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 | `.Category` | qBittorrent category |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | The save path qBittorrent uses for the torrent's category with Automatic Torrent Management. See [Category save path](#category-save-path). |
 
 **Template function:**
 
@@ -653,10 +654,22 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
+- Under the category's save path: `{{.CategorySavePath}}/done`
 
 :::note
 If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
 :::
+
+#### Category save path
+
+`.CategorySavePath` follows the same rules as qBittorrent's Automatic Torrent Management:
+
+- No category: the default save path from qBittorrent's settings.
+- Category with an absolute save path: that path.
+- Category with a relative save path: the default save path, then that path. For example, `shows` becomes `/downloads/shows`.
+- Category with no save path: the parent category's save path, then the last part of the category name. For example, `tv/anime` becomes `/media/tv/anime` when `tv` saves to `/media/tv`. A top-level category such as `music` uses the default save path: `/downloads/music`. qBittorrent does this even when subcategories are off.
+
+If the torrent's category no longer exists in qBittorrent, qui skips the move or export for that torrent.
 
 ### Auto management
 
@@ -748,6 +761,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Category` | qBittorrent category (on source instance) |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | The torrent's [category save path](#category-save-path) on the source instance, not the target |
 
 | Function | Description |
 | --- | --- |
