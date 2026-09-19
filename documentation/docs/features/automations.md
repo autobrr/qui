@@ -630,6 +630,8 @@ Options:
 
 qui evaluates the move path as a **Go template** for each torrent. Use a fixed path (for example `/data/archive`) or template actions to build paths from torrent properties.
 
+The path must be absolute on the machine that runs qBittorrent, for example `/data/archive`, `D:\Archive` or `\\nas\media`. When you save the rule, qui renders the path for a sample torrent and rejects it if the result is relative or the template is invalid. When the rule runs, qui skips the move if a template produces a relative path for a torrent.
+
 **Available template variables:**
 
 | Variable | Description |

@@ -1379,7 +1379,10 @@
         "placeholder": "ex., /data/torrents",
         "skipIfCrossSeedsDontMatch": "Ignorer si les cross-seeds ne correspondent pas aux conditions",
         "aboutSkipping": "À propos du saut de déplacement",
-        "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas."
+        "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas.",
+        "errors": {
+          "mustBeAbsolute": "Utilisez un chemin absolu, par exemple /data/archive ou D:\\Archive."
+        }
       },
       "freeSpace": {
         "title": "Source d'espace libre",

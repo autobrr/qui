@@ -139,6 +139,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	MoveInvalidPath                  int // path failed to render or is relative
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -556,16 +557,34 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 }
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
-	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
-	if !pathValid {
+	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
+	if !ok {
 		if stats != nil {
-			stats.MoveConditionNotMet++
+			stats.MoveInvalidPath++
 		}
 		return
 	}
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+	// qBittorrent checks a relative path against its working directory and then
+	// moves under its default or category save path, so the save path never matches
+	// and the move would repeat every run.
+	if conditionMet && !pathutil.IsAbsoluteClientPath(resolvedPath) {
+		// One warning per rule per run; stats is per rule per run.
+		if stats == nil || stats.MoveInvalidPath == 0 {
+			ruleName := ""
+			if rule != nil {
+				ruleName = rule.Name
+			}
+			log.Warn().Str("rule", ruleName).Str("path", resolvedPath).
+				Msg("automations: skipping move, path is not absolute")
+		}
+		if stats != nil {
+			stats.MoveInvalidPath++
+		}
+		return
+	}
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
@@ -665,23 +684,46 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// resolveMovePath returns the path to use for a move. The path is executed as a
+// renderPathTemplate renders a Move or Export save path template for torrent; ok
+// is false when rendering fails or yields nothing. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
-func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	data := map[string]any{
+	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker))
+	if err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		return "", false
+	}
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
+}
+
+// RenderMovePathSample renders a move path for a placeholder torrent, so a rule's
+// path can be checked when it is saved.
+func RenderMovePathSample(path string) (string, error) {
+	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
+	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
+}
+
+func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
+	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+}
 
+func executePathTemplate(path string, data map[string]any) (string, error) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
@@ -689,24 +731,13 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		}).
 		Parse(path)
 	if err != nil {
-		// Log template parse error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
-		return "", false
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Log template execution error for debugging
-		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
-		return "", false
+		return "", err
 	}
-
-	resolvedPath := strings.TrimSpace(buf.String())
-
-	if resolvedPath == "" {
-		return "", false
-	}
-
-	return resolvedPath, true
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func containsStringFold(list []string, candidate string) bool {

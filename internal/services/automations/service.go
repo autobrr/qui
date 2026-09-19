@@ -2316,6 +2316,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("moveNoMatch", stats.MoveConditionNotMet).
 			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
 			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
+			Int("moveInvalidPath", stats.MoveInvalidPath).
 			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
 			Msg("automations: rule matched trackers but applied no actions")
 	}
@@ -2793,7 +2794,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			default:
 				resolvedPath := state.exportToInstance.SavePath
 				if resolvedPath != "" {
-					if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
+					if resolved, ok := renderPathTemplate(resolvedPath, torrent, state, evalCtx); ok {
 						resolvedPath = resolved
 					} else {
 						log.Warn().

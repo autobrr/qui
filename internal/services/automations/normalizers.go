@@ -34,6 +34,15 @@ func normalizePathInner(p string) string {
 	p = strings.ToLower(p)
 	// Normalize path separators (Windows backslashes to forward slashes)
 	p = strings.ReplaceAll(p, "\\", "/")
+	// qBittorrent reports /a//b as /a/b, so collapse repeated separators. A
+	// leading // is a UNC path and keeps both slashes.
+	unc := strings.HasPrefix(p, "//")
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+	if unc {
+		p = "/" + p
+	}
 	// Remove trailing slash
 	p = strings.TrimSuffix(p, "/")
 	return p

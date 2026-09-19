@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 type AutomationHandler struct {
@@ -433,6 +434,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, msg, err
 	}
 
+	if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
 	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
 		return http.StatusBadRequest, msg, err
 	}
@@ -578,6 +583,31 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	}
 
 	return "", nil
+}
+
+// validateMovePath renders the move path for a placeholder torrent and rejects
+// it unless the result is absolute. Branches the placeholder does not take are
+// still checked per torrent when the rule runs.
+func validateMovePath(move *models.MoveAction) (string, error) {
+	if move == nil || !move.Enabled {
+		return "", nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" {
+		return "Move path is required", errors.New("move path required")
+	}
+	rendered, err := automations.RenderMovePathSample(path)
+	if err != nil {
+		return fmt.Sprintf("Invalid move path template: %v", err), err
+	}
+	if pathutil.IsAbsoluteClientPath(rendered) {
+		return "", nil
+	}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
+	}
+	return msg, errors.New("move path must be absolute")
 }
 
 func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
