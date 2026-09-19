@@ -5,7 +5,7 @@ date: 2026-09-18
 
 # Torznab search passes are one gatherer with an injected usable predicate
 
-A cross-seed search runs a Torznab primary pass and up to four retries: the yearless retry, the title rescue after a tag-sourced ID primary, the alternate-title pass, and the alternate connector-spelling pass. All five live in `searchGatherer.gather` in `internal/services/crossseed/search_gather.go`. The gatherer takes three functions: `search` for one pass, `idCapIndexers` for the ID-capable indexer set, and a `usable` predicate that says whether a result would survive matching. It decides retries with that predicate and never parses or classifies a title itself. It returns the merged results and the covered indexer IDs as separate outputs. Issue #2747.
+A cross-seed search runs a Torznab primary pass and up to four retries: the yearless retry, the title retry after a tag-sourced ID primary, the alternate-title pass, and the alternate connector-spelling pass. All five live in `searchGatherer.gather` in `internal/services/crossseed/search_gather.go`. The gatherer takes three functions: `search` for one pass, `idCapIndexers` for the ID-capable indexer set, and a `usable` predicate that says whether a result would survive matching. It decides retries with that predicate and never parses or classifies a title itself. It returns the merged results and the covered indexer IDs as separate outputs. Issue #2747.
 
 ## Considered options
 

@@ -32,9 +32,9 @@ type gatherInput struct {
 }
 
 // gather returns the response with every pass's results merged, the covered
-// indexer IDs, and the primary-pass or context error. Passes search on waitCtx;
-// only a dead ctx aborts a retry. A retry that hits the waitCtx deadline marks
-// the response partial and continues.
+// indexer IDs, and the primary-pass or context error. Passes search on waitCtx.
+// Only ctx cancellation aborts a retry. A failed yearless retry marks the
+// response partial. A failed per-indexer retry removes its targets from coverage.
 func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*jackett.SearchResponse, []int, error) {
 	req := in.req
 	resp, err := g.search(waitCtx, req)
@@ -146,14 +146,13 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	}
 	unsatisfied := func() []int { return indexersWithoutUsableResults(req.IndexerIDs, results, g.usable) }
 
-	// Title rescue for the tag-sourced ID primary: indexers that searched by
-	// ID never saw the title query, so a wrong or unrecognized muxer tag would
-	// end their search with nothing and no rescue. Indexers without ID caps
-	// already searched by title in the primary pass and are covered by the
-	// passes below.
+	// Indexers that searched by tag-sourced ID never saw the title query.
+	// Retry by title so an incorrect tag does not leave them without usable
+	// results. Indexers without ID caps already searched by title in the
+	// primary pass and are covered by the passes below.
 	if in.tagSourcedIDs {
 		targets := intersectInts(g.idCapIndexers(waitCtx, req), unsatisfied())
-		if err := retry("title rescue", targets, req.Query); err != nil {
+		if err := retry("title retry after tag-sourced IDs", targets, req.Query); err != nil {
 			return nil, nil, err
 		}
 	}
