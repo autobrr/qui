@@ -230,6 +230,13 @@ func (s *Service) processLinkMode(
 		return linkModeResult{}
 	}
 
+	// Reject unsafe paths before any error can fall back to regular mode.
+	for _, file := range candidateFiles {
+		if _, ok := safeTorrentRelativeFilePath(file.Name); !ok {
+			return linkError(fmt.Sprintf("Unsafe candidate file path: %q", file.Name))
+		}
+	}
+
 	// From here on, link mode is ENABLED
 	// Check if fallback is enabled - if so, errors return linkModeResult{} instead of <mode>_error
 	fallbackEnabled := instance.FallbackToRegularMode
@@ -395,7 +402,7 @@ func (s *Service) processLinkMode(
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
 		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: filepath.Join(props.SavePath, f.Name),
+			AbsPath: filepath.Join(props.SavePath, filepath.FromSlash(f.Name)),
 			RelPath: f.Name,
 			Size:    f.Size,
 		})
