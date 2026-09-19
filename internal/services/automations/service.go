@@ -5117,7 +5117,7 @@ func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load default save path for category save paths")
 		return nil
 	}
-	nest, err := s.syncManager.CategoryPathsNest(ctx, instanceID)
+	nest, err := s.syncManager.CategorySavePathsNest(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to check subcategory paths for category save paths")
 		return nil

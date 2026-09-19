@@ -45,7 +45,7 @@ var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
 // buildCategorySavePaths resolves every category's save path the way
 // qBittorrent's categorySavePath does for Auto TMM. The "" key holds the
 // default save path, for uncategorized torrents. nest is
-// SyncManager.CategoryPathsNest: whether an empty-path subcategory goes under
+// SyncManager.CategorySavePathsNest: whether an empty-path subcategory goes under
 // its parent's path or under the default path with its full name.
 func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, nest bool) map[string]string {
 	resolved := make(map[string]string, len(categories)+1)
