@@ -48,7 +48,7 @@ func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string
 
 	store := models.NewOrphanScanStore(db)
 
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend(), nil))
 	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}
@@ -262,7 +262,7 @@ func TestExecuteDeletion_AllFailuresPreservePartialWarning(t *testing.T) {
 	require.True(t, run.Partial)
 	require.Contains(t, run.ErrorMessage, missingRoot)
 
-	svc.backendPool = fsops.NewPool(stubInstanceGetter{}, removalDeniedBackend{Backend: newTestBackend()})
+	svc.backendPool = fsops.NewPool(stubInstanceGetter{}, removalDeniedBackend{Backend: newTestBackend()}, nil)
 	events := make(chan notifications.Event, 1)
 	svc.notifier = scanNotifier{events: events}
 	svc.executeDeletion(t.Context(), 1, run.ID)
@@ -299,7 +299,7 @@ func TestExecuteScan_PrunedRootsWithFailedWalk(t *testing.T) {
 		Backend: newTestBackend(),
 		entries: []fsops.WalkEntry{{Path: presentRoot, Err: os.ErrPermission}},
 	}
-	svc.backendPool = fsops.NewPool(stubInstanceGetter{}, backend)
+	svc.backendPool = fsops.NewPool(stubInstanceGetter{}, backend, nil)
 	require.Equal(t, []string{presentRoot}, pruneNestedScanRoots(t.Context(), []string{presentRoot, nestedRoot}, backend))
 
 	run := runScanForTest(t, svc, store)

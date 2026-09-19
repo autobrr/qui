@@ -60,12 +60,17 @@ func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, err
 	return false, "", nil
 }
 
+// remoteFactory returns a factory that hands out backend for every instance.
+func remoteFactory(backend Backend) func(*models.Instance) Backend {
+	return func(*models.Instance) Backend { return backend }
+}
+
 func TestPool_LocalAccess(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
 		1: {ID: 1, HasLocalFilesystemAccess: true},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local)
+	pool := NewPool(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 1)
 	require.NoError(t, err)
@@ -77,7 +82,7 @@ func TestPool_NoAccess(t *testing.T) {
 		2: {ID: 2, HasLocalFilesystemAccess: false},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local)
+	pool := NewPool(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 2)
 	require.NoError(t, err)
@@ -90,20 +95,28 @@ func TestPool_NoAccess(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 }
 
-func TestPool_RemoteNotImplemented(t *testing.T) {
-	store := &fakeInstanceStore{instances: map[int]*models.Instance{
-		3: {ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
-	}}
-	pool := NewPool(store, fakeBackend{kind: "local"})
+func TestPool_RemoteAccess(t *testing.T) {
+	remote := fakeBackend{kind: "remote"}
+	instance := &models.Instance{ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{3: instance}}
+
+	var got *models.Instance
+	pool := NewPool(store, fakeBackend{kind: "local"}, func(inst *models.Instance) Backend {
+		got = inst
+		return remote
+	})
 
 	backend, err := pool.GetBackend(context.Background(), 3)
-	require.ErrorIs(t, err, ErrRemoteBackendNotImplemented)
-	assert.Nil(t, backend)
+	require.NoError(t, err)
+	assert.Equal(t, Backend(remote), backend)
+	// The factory gets the loaded row, not just the id: the remote backend
+	// dials from the instance's own SSH columns.
+	assert.Same(t, instance, got)
 }
 
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
-	pool := NewPool(store, fakeBackend{})
+	pool := NewPool(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))
 
 	_, err := pool.GetBackend(context.Background(), 999)
 	require.Error(t, err)

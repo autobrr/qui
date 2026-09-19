@@ -63,7 +63,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 					}, nil
 				},
 			}
-			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 			if mode == "reflink" {
 				// Exercise the same tree on hosts without reflink support.
 				svc.seasonPackLinkCreator = local.NewBackend().HardlinkTree
@@ -139,7 +139,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	svc.syncManager = sm
 	svc.automationSettingsLoader = defaultSettings(false, 1)
 	svc.recheckResumeChan = make(chan *pendingResume, 1)
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	req := &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData}
 	preview, err := svc.CheckManualAssemble(t.Context(), req)
 	require.NoError(t, err)

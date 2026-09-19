@@ -11,8 +11,8 @@ var (
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
 
-	// ErrRemoteBackendNotImplemented is returned by Pool.GetBackend for an
-	// instance that resolves to remote filesystem access: the SSH backend does
-	// not exist yet, which is a different answer from "not configured".
-	ErrRemoteBackendNotImplemented = errors.New("remote filesystem backend is not implemented")
+	// ErrUnsupported reports a per-host fact: this server lacks the extension
+	// the operation needs, or this transport has no such operation at all.
+	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.
+	ErrUnsupported = errors.New("operation is not supported by this filesystem backend")
 )

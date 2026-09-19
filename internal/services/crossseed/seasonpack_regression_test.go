@@ -289,7 +289,7 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -341,7 +341,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -423,7 +423,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenCoverageLookupFails
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -473,7 +473,7 @@ func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t
 		automationSettingsLoader: defaultSettings(true, 1.0),
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -530,7 +530,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -650,7 +650,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend(), nil))
 	resp, err := svc.ApplySeasonPackWebhook(ctx, &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,

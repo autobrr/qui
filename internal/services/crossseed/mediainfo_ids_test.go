@@ -225,6 +225,7 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 	svc.SetBackendPool(fsops.NewPool(
 		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		local.NewBackend(),
+		nil,
 	))
 	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "ABC123", SavePath: dir}
 	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10, Progress: 1}}

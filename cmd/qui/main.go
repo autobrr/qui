@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -50,6 +51,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -726,7 +728,10 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 
-	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
+	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+		return remotebackend.New(sshPool, inst)
+	})
 	crossSeedService.SetBackendPool(backendPool)
 	syncManager.SetBackendPool(backendPool)
 
@@ -981,6 +986,10 @@ func (app *Application) runServer() {
 
 		os.Exit(1)
 	}
+
+	// The http server is done, so nothing is left to run a remote filesystem
+	// operation; os.Exit below means a defer would never have fired.
+	sshPool.Close()
 
 	// if err := srv.Shutdown(context.Background()); err != nil {
 	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
