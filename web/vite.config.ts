@@ -19,6 +19,14 @@ const workboxMode = nodeMajor >= 24 ? "development" : "production"
 // getqui.com demo: the same index.html booted through src/demo/main.tsx,
 // served under /demo/ with a fake API and no service worker.
 const demo = process.env.VITE_DEMO === "1"
+// Runs before the anti-FOUC script. Docusaurus keeps its color mode under
+// "theme" on the same origin, so the demo mirrors it into its own key and
+// seeds the layout for every visit; a toggle lasts the visit, a reload resets.
+const demoBoot = `<script>
+      localStorage.setItem('qui-demo-theme', localStorage.getItem('theme') || 'auto');
+      localStorage.setItem('qui-sidebar-collapsed', 'true');
+      localStorage.setItem('qui-torrent-desktop-view-mode', 'dense');
+    </script>`
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
@@ -31,7 +39,7 @@ export default defineConfig(() => ({
       transformIndexHtml: {
         order: "pre" as const,
         handler: (html: string) => html
-          .replace("<title>qui</title>", "<title>qui demo</title>\n    <meta name=\"robots\" content=\"noindex\" />")
+          .replace("<title>qui</title>", `<title>qui demo</title>\n    <meta name="robots" content="noindex" />\n    ${demoBoot}`)
           .replace("/src/main.tsx", "/src/demo/main.tsx"),
       },
     },
