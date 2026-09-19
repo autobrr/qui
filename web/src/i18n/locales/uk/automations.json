@@ -32,6 +32,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
+    "customContentType": "{{value}} (невідомий тип вмісту)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -205,6 +206,7 @@
       "localFilesystemAccess": "Потребує локального доступу до файлової системи"
     },
     "selectTrackerStatus": "Вибрати статус",
+    "selectContentType": "Вибрати тип вмісту",
     "trackerStatuses": {
       "not_contacted": "Не зв'язувалися",
       "working": "Працює",
@@ -212,6 +214,18 @@
       "error": "Помилка",
       "tracker_error": "Помилка трекера",
       "unreachable": "Недоступний"
+    },
+    "contentTypes": {
+      "movie": "Фільм",
+      "tv": "Серіал",
+      "music": "Музика",
+      "audiobook": "Аудіокнига",
+      "book": "Книга",
+      "comic": "Комікс",
+      "game": "Гра",
+      "app": "Застосунок",
+      "adult": "Для дорослих",
+      "unknown": "Невідомо"
     }
   }
 }
