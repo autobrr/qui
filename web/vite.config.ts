@@ -16,9 +16,8 @@ import { VitePWA } from "vite-plugin-pwa"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
 const workboxMode = nodeMajor >= 24 ? "development" : "production"
-// getqui.com demo: the same index.html booted through src/demo/main.tsx,
-// served under /demo/ with a fake API and no service worker.
-const demo = process.env.VITE_DEMO === "1"
+// getqui.com demo (`vite build --mode demo`): the same index.html booted
+// through src/demo/main.tsx, served under /demo/ with a fake API and no service worker.
 // Runs before the anti-FOUC script. Docusaurus keeps its color mode under
 // "theme" on the same origin, so the demo mirrors it into its own key and
 // seeds the layout for every visit; a toggle lasts the visit, a reload resets.
@@ -29,7 +28,9 @@ const demoBoot = `<script>
     </script>`
 
 // https://vite.dev/config/
-export default defineConfig(() => ({
+export default defineConfig(({ mode }) => {
+  const demo = mode === "demo"
+  return {
   base: demo ? "/demo/" : "/",
   // Defined for every build so src/lib/demo.ts folds to a constant.
   define: { "import.meta.env.VITE_DEMO": JSON.stringify(demo ? "1" : "") },
@@ -204,4 +205,5 @@ export default defineConfig(() => ({
     chunkSizeWarningLimit: 750,
     sourcemap: false,
   },
-}));
+}
+});

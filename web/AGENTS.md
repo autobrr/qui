@@ -90,7 +90,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 ## getqui.com Demo
 
-`pnpm build:demo` builds the unchanged app with `VITE_DEMO=1` for the landing page at getqui.com/demo/. `web/src/demo/` replaces `window.fetch` and `window.EventSource` with an in-memory store; there is no backend.
+`pnpm build:demo` builds the unchanged app in Vite mode `demo` for the landing page at getqui.com/demo/. `web/src/demo/` replaces `window.fetch` and `window.EventSource` with an in-memory store; there is no backend.
 
 - A new API call on the torrent list surface needs a route in `web/src/demo/api.ts`, or the demo answers `404 {"error": "not available in the demo"}` and the feature looks broken on the site.
 - Demo-only UI branches use `isDemo` from `web/src/lib/demo.ts`. Vite folds it, so production bundles carry none of them.

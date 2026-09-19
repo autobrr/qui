@@ -731,6 +731,26 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
     })
   }
 
+  // Queue moves renumber the queued rows (priority > 0) from 1 like qBittorrent does.
+  function reorderQueue(inst: DemoInstance, hashes: Set<string>, action: string): void {
+    const queue = inst.torrents.filter(t => t.priority > 0).sort((a, b) => a.priority - b.priority)
+    const selected = queue.filter(t => hashes.has(t.hash))
+    const rest = queue.filter(t => !hashes.has(t.hash))
+    if (action === "topPriority") queue.splice(0, queue.length, ...selected, ...rest)
+    else if (action === "bottomPriority") queue.splice(0, queue.length, ...rest, ...selected)
+    else {
+      const step = action === "increasePriority" ? -1 : 1
+      const positions = queue.flatMap((t, i) => hashes.has(t.hash) ? [i] : [])
+      if (step === 1) positions.reverse()
+      for (const i of positions) {
+        const j = i + step
+        if (j < 0 || j >= queue.length || hashes.has(queue[j].hash)) continue
+        ;[queue[i], queue[j]] = [queue[j], queue[i]]
+      }
+    }
+    queue.forEach((t, i) => { t.priority = i + 1 })
+  }
+
   function applyAction(inst: DemoInstance, t: Torrent, body: BulkActionBody, now: number): void {
     switch (body.action) {
       case "pause":
@@ -920,6 +940,10 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         if (hashes.size === 0) continue
         if (body.action === "delete") {
           inst.torrents = inst.torrents.filter(t => !hashes.has(t.hash))
+          continue
+        }
+        if (body.action.endsWith("Priority")) {
+          reorderQueue(inst, hashes, body.action)
           continue
         }
         for (const t of inst.torrents) if (hashes.has(t.hash)) applyAction(inst, t, body, now)

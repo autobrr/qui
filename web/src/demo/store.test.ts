@@ -211,6 +211,20 @@ describe("createStore", () => {
     expect(d.peers.peers![key]).toBeUndefined()
   })
 
+  it("moves rows through the queue and renumbers it from 1", () => {
+    const queued = () => all().filter(t => t.priority > 0).sort((a, b) => a.priority - b.priority)
+    const [first, second, third] = queued()
+    store.bulkAction(1, { hashes: [third.hash], action: "topPriority" })
+    expect(queued().slice(0, 3)).toEqual([third, first, second])
+    store.bulkAction(1, { hashes: [third.hash], action: "decreasePriority" })
+    expect(queued().slice(0, 3)).toEqual([first, third, second])
+    store.bulkAction(1, { hashes: [third.hash], action: "increasePriority" })
+    expect(queued()[0]).toBe(third)
+    store.bulkAction(1, { hashes: [third.hash], action: "bottomPriority" })
+    expect(queued().at(-1)).toBe(third)
+    expect(queued().map(t => t.priority)).toEqual(queued().map((_, i) => i + 1))
+  })
+
   it("toggles the alternative speed limits flag", () => {
     expect(store.toggleAltSpeedLimits(1)).toBe(true)
     expect(store.instances[0].serverState.use_alt_speed_limits).toBe(true)
