@@ -4,9 +4,13 @@
 package automations
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -482,6 +486,40 @@ func TestMoveRequiresAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&logs)
+	t.Cleanup(func() { log.Logger = previous })
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "Show.S01", Category: "tv", SavePath: "/downloads"},
+		{Hash: "b", Name: "Show.S02", Category: "tv", SavePath: "/downloads"},
+		{Hash: "c", Name: "Movie", Category: "movies", SavePath: "/downloads"},
+	}
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Relative",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{
+				Enabled:   true,
+				Path:      "{{ .Category }}/done",
+				Condition: &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: "tv"},
+			},
+		},
+	}
+	stats := map[int]*ruleRunStats{}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, qbittorrent.NewSyncManager(nil, nil), nil, stats, nil)
+
+	require.Empty(t, states)
+	require.Equal(t, 1, strings.Count(logs.String(), "path is not absolute"))
+	require.Equal(t, 2, stats[rule.ID].MoveInvalidPath)
+	require.Equal(t, 1, stats[rule.ID].MoveConditionNotMet)
+}
+
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
@@ -747,7 +785,7 @@ func TestResolveMovePath_Literal(t *testing.T) {
 		Name:     "Show.S01",
 		Category: "tv",
 	}
-	resolved, ok := resolveMovePath("/data/archive", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/archive", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/archive", resolved)
 }
@@ -758,7 +796,7 @@ func TestResolveMovePath_Template(t *testing.T) {
 		Name:     "Movie.2024",
 		Category: "movies",
 	}
-	resolved, ok := resolveMovePath("/data/{{.Category}}", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/{{.Category}}", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/movies", resolved)
 }
@@ -769,7 +807,7 @@ func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 		Name:     "Movie/2024:Bad*Name",
 		Category: "movies",
 	}
-	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
 	expectedName := pathutil.SanitizePathSegment(torrent.Name)
 	require.Equal(t, "/data/"+expectedName, resolved)
@@ -784,7 +822,7 @@ func TestResolveMovePath_TrackerFallback(t *testing.T) {
 	state := &torrentDesiredState{
 		trackerDomains: []string{"tracker.example.com"},
 	}
-	resolved, ok := resolveMovePath("/data/{{.Tracker}}", torrent, state, nil)
+	resolved, ok := renderPathTemplate("/data/{{.Tracker}}", torrent, state, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/tracker.example.com", resolved)
 }

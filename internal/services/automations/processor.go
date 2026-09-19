@@ -139,6 +139,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	MoveInvalidPath                  int // rendered path is relative
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -556,20 +557,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 }
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
-	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
-	// qBittorrent checks a relative path against its working directory and then
-	// moves under its default or category save path, so the save path never matches
-	// and the move would repeat every run.
-	if pathValid && !pathutil.IsAbsoluteClientPath(resolvedPath) {
-		ruleName := ""
-		if rule != nil {
-			ruleName = rule.Name
-		}
-		log.Warn().Str("rule", ruleName).Str("path", resolvedPath).Str("hash", torrent.Hash).
-			Msg("automations: skipping move, path is not absolute")
-		pathValid = false
-	}
-	if !pathValid {
+	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
+	if !ok {
 		if stats != nil {
 			stats.MoveConditionNotMet++
 		}
@@ -578,6 +567,24 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+	// qBittorrent checks a relative path against its working directory and then
+	// moves under its default or category save path, so the save path never matches
+	// and the move would repeat every run.
+	if conditionMet && !pathutil.IsAbsoluteClientPath(resolvedPath) {
+		// One warning per rule per run; stats is per rule per run.
+		if stats == nil || stats.MoveInvalidPath == 0 {
+			ruleName := ""
+			if rule != nil {
+				ruleName = rule.Name
+			}
+			log.Warn().Str("rule", ruleName).Str("path", resolvedPath).
+				Msg("automations: skipping move, path is not absolute")
+		}
+		if stats != nil {
+			stats.MoveInvalidPath++
+		}
+		return
+	}
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
@@ -677,10 +684,11 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// resolveMovePath returns the path to use for a move. The path is executed as a
+// renderPathTemplate renders a Move or Export save path template for torrent; ok
+// is false when rendering fails or yields nothing. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
-func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
