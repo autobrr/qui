@@ -70,20 +70,41 @@ type TrackerSpec struct {
 	RateLimit  int
 	RatePeriod int
 	SourceFlag string
+	// LegacyFlags are the source flags the tracker used before SourceFlag.
+	// Uploads from that time still carry them, so the target hash can be any of these.
+	LegacyFlags []string
+}
+
+// TargetHashes returns every info hash the torrent can have on this tracker:
+// the current source flag first, then the legacy flags. The tracker writes a
+// flag into every upload, so a flagless hash is not a case worth a call.
+func (s TrackerSpec) TargetHashes(torrentBytes []byte) ([]string, error) {
+	flags := append([]string{s.SourceFlag}, s.LegacyFlags...)
+	hashes, err := CalculateHashesWithSources(torrentBytes, flags)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		out = append(out, hashes[flag])
+	}
+	return out, nil
 }
 
 var KnownTrackers = map[string]TrackerSpec{
 	"redacted.sh": {
-		Host:       "redacted.sh",
-		RateLimit:  10,
-		RatePeriod: 10,
-		SourceFlag: "RED",
+		Host:        "redacted.sh",
+		RateLimit:   10,
+		RatePeriod:  10,
+		SourceFlag:  "RED",
+		LegacyFlags: []string{"PTH"},
 	},
 	"orpheus.network": {
-		Host:       "orpheus.network",
-		RateLimit:  5,
-		RatePeriod: 10,
-		SourceFlag: "OPS",
+		Host:        "orpheus.network",
+		RateLimit:   5,
+		RatePeriod:  10,
+		SourceFlag:  "OPS",
+		LegacyFlags: []string{"APL"},
 	},
 }
 
@@ -223,6 +244,10 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 
 func (c *Client) Host() string       { return c.host }
 func (c *Client) SourceFlag() string { return c.spec.SourceFlag }
+
+func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
+	return c.spec.TargetHashes(torrentBytes)
+}
 
 func (c *Client) request(ctx context.Context, method, endpoint string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
