@@ -84,7 +84,7 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	svc.categoryPathsNestProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		if opts.categories != nil {
 			return opts.categories(defaultSavePath), nil

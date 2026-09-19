@@ -84,14 +84,14 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 
 	if scope.needsCategories() {
 		// Only category resolution needs the nesting state, and on qBittorrent
-		// before 5.2 answering it costs a second preferences read.
-		var useSubcategories bool
-		useSubcategories, err = s.subcategoriesEnabled(ctx, instanceID)
+		// 5.0 and 5.1 answering it costs a second preferences read.
+		var nestUnderParent bool
+		nestUnderParent, err = s.categoryPathsNest(ctx, instanceID)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath, useSubcategories)
+		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath, nestUnderParent)
 		if err != nil {
 			return nil, nil, err
 		}
