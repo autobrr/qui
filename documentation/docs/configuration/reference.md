@@ -49,6 +49,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. An empty list disables CORS. Origins must match `http(s)://host[:port]`. qui rejects wildcards and normalizes default ports. Restart required. |
 | `allowedHosts` | `QUI__ALLOWED_HOSTS` | string[] | empty list | Restricts the received HTTP Host. Accepts exact hostnames, IP addresses, and leading `*.` subdomain wildcards. Restart required. See [Allowed Hosts](#allowed-hosts). |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. The value cannot be empty. Use at least 32 characters on a new install. Leave the value alone on an install that already stores credentials. On the first start after upgrading, qui re-encrypts stored credentials under a key derived from this secret. A credential that does not decrypt is left as it is. qui warns about it on every start until you enter it again. The re-encryption is one way, so an older qui cannot read the new values. After rolling back, enter the credentials again or restore a database backup taken before the upgrade. |
+| `sessionCookieSecure` | `QUI__SESSION_COOKIE_SECURE` | bool | `false` | Sends the browser session cookie only over HTTPS. Enable it when you serve qui through an HTTPS reverse proxy. An HTTPS `oidcRedirectUrl` enables it automatically. When enabled, login over plain HTTP does not work. See [Sessions](#sessions). Restart required. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. qui applies changes immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty, qui logs to stdout. qui resolves relative paths against the config directory. qui applies changes immediately. |
 | `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts log rotation. qui applies changes immediately. |
@@ -127,6 +128,17 @@ If you use private trackers, running qui without authentication creates severe r
 :::
 
 If you set `QUI__AUTH_DISABLED` without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui logs a warning and keeps authentication enabled.
+
+## Sessions
+
+The web UI signs in with a browser session cookie. These rules apply to that cookie:
+
+- `sessionCookieSecure = true` adds the Secure attribute to the cookie. An HTTPS `oidcRedirectUrl` also adds it. With the attribute set, the browser never sends the cookie over plain HTTP, so HTTP access to the same instance stops working. Without it, the cookie travels over both HTTP and HTTPS.
+- Finish the initial setup before you expose qui to the Internet. The first client that reaches an unconfigured instance can create the account.
+- Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests must send an `X-Requested-With` header. The web UI and the Swagger UI do this. Scripts and other clients must use an [API key](../api/overview.md) instead of the cookie.
+- `/api/auth/setup` and `/api/auth/login` accept only `Content-Type: application/json`. Other media types get HTTP 415.
+- After five failed password logins in one minute, qui rejects password logins with HTTP 429 until the minute passes. This limit is process-wide and does not apply to OIDC or API keys.
+- A password change ends every session, including the browser that changed it. Sign in again with the new password.
 
 ## Allowed Hosts
 
