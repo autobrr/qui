@@ -190,7 +190,7 @@ export function Sidebar() {
       <div className="p-6">
         <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (
-            <a href="/" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
+            <a href="/" target="_top" className="flex items-center gap-2 hover:opacity-80">{brand}</a>
           ) : brand}
         </h2>
       </div>

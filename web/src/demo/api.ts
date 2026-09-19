@@ -167,8 +167,9 @@ export function createRoutes(store: DemoStore): Route[] {
     const category = String(form?.get("category") ?? "")
     const tags = String(form?.get("tags") ?? "").split(",").map(s => s.trim()).filter(Boolean)
     const paused = form?.get("paused") === "true"
-    const savePath = form?.get("autoTMM") === "false" ? String(form?.get("savepath") ?? "") : ""
-    for (const name of names) store.addTorrent(id(params), name, category, tags, paused, savePath)
+    const autoTMM = form?.get("autoTMM") !== "false"
+    const savePath = String(form?.get("savepath") ?? "")
+    for (const name of names) store.addTorrent(id(params), name, category, tags, paused, autoTMM, savePath)
     return json({ message: "ok", added: names.length, failed: 0 })
   })
 

@@ -156,7 +156,7 @@ describe("createStore", () => {
   })
 
   it("adds a torrent that starts downloading and renames it", () => {
-    store.addTorrent(1, "new-download", "films", ["keep"], false)
+    store.addTorrent(1, "new-download", "films", ["keep"], false, true, "")
     const added = all()[0]
     expect(added.name).toBe("new-download")
     expect(added.state).toBe("downloading")
@@ -167,14 +167,16 @@ describe("createStore", () => {
   })
 
   it("gives batched adds distinct hashes", () => {
-    store.addTorrent(1, "one", "", [], false)
-    store.addTorrent(1, "two", "", [], false)
+    store.addTorrent(1, "one", "", [], false, true, "")
+    store.addTorrent(1, "two", "", [], false, true, "")
     expect(all()[0].hash).not.toBe(all()[1].hash)
   })
 
-  it("keeps a custom save path and turns auto TMM off for it", () => {
-    store.addTorrent(1, "manual", "films", [], true, "/mnt/other")
+  it("keeps the auto TMM choice and a custom save path", () => {
+    store.addTorrent(1, "manual", "films", [], true, false, "/mnt/other")
     expect(all()[0]).toMatchObject({ auto_tmm: false, save_path: "/mnt/other", content_path: "/mnt/other/manual" })
+    store.addTorrent(1, "blank", "films", [], true, false, "")
+    expect(all()[0]).toMatchObject({ auto_tmm: false, save_path: "/data/torrents/films" })
   })
 
   it("honours the enable flag on forceStart and toggleSequentialDownload", () => {

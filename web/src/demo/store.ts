@@ -189,7 +189,7 @@ export interface DemoStore {
   query(instanceIds: number[], params: ListParams, crossInstance?: boolean): TorrentResponse
   tick(): void
   bulkAction(instanceId: number, body: BulkActionBody): void
-  addTorrent(instanceId: number, name: string, category: string, tags: string[], paused: boolean, savePath?: string): void
+  addTorrent(instanceId: number, name: string, category: string, tags: string[], paused: boolean, autoTMM: boolean, savePath: string): void
   addCategory(instanceId: number, name: string, savePath: string): void
   removeCategories(instanceId: number, names: string[]): void
   addTags(instanceId: number, tags: string[]): void
@@ -950,7 +950,7 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       }
     },
 
-    addTorrent(instanceId, name, category, tags, paused, savePath) {
+    addTorrent(instanceId, name, category, tags, paused, autoTMM, savePath) {
       const inst = instance(instanceId)
       if (!inst) return
       const t = generateTorrent(addRng, nowSeconds(), inst.torrents.length)
@@ -970,8 +970,8 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
       t.dlspeed = paused ? 0 : Math.round((2 + addRng() * 10) * MIB)
       t.upspeed = 0
       t.tracker_health = undefined
-      t.auto_tmm = !savePath
-      t.save_path = savePath || (category ? (inst.categories[category]?.savePath ?? "/data/torrents") : "/data/torrents")
+      t.auto_tmm = autoTMM
+      t.save_path = (!autoTMM && savePath) || (category ? (inst.categories[category]?.savePath ?? "/data/torrents") : "/data/torrents")
       t.content_path = `${t.save_path}/${name}`
       inst.torrents.unshift(t)
     },
