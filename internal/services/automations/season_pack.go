@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -24,10 +23,10 @@ import (
 // also parses with season 0 but names no season, so it has no pack.
 var explicitSeasonTag = regexp.MustCompile(`(?i)^s\d`)
 
-// releaseSeasons returns the sorted seasons the release names, nil when it
-// names none. A multi-season pack such as S01-S03 returns its bounds.
-func releaseSeasons(r *rls.Release) []int {
-	var seasons []int
+// hasSingleSeason reports whether the release names exactly one season. A name
+// with more than one, such as S01-S03, is neither a pack nor an episode.
+func hasSingleSeason(r *rls.Release) bool {
+	count := 0
 	for _, tag := range r.Tags() {
 		if !tag.Is(rls.TagTypeSeries) {
 			continue
@@ -36,20 +35,19 @@ func releaseSeasons(r *rls.Release) []int {
 		if season == 0 && !explicitSeasonTag.MatchString(fmt.Sprintf("%o", tag)) {
 			continue
 		}
-		seasons = append(seasons, season)
+		count++
 	}
-	slices.Sort(seasons)
-	return seasons
+	return count == 1
 }
 
-// seasonPackKey identifies one season of one release in pack form. The field
+// seasonPackKey identifies the season of one release in pack form. The field
 // list is deliberate: Subtitle stays out because an episode title lands there,
 // and REPACK, PROPER, and RERIP stay in through Other, so a repacked episode is
 // not covered by a plain pack. The key has to be safe under a delete action.
-func seasonPackKey(r *rls.Release, season int) string {
+func seasonPackKey(r *rls.Release) string {
 	return strings.Join([]string{
 		stringutils.NormalizeForMatching(r.Title),
-		strconv.Itoa(season),
+		strconv.Itoa(r.Series),
 		joinUpperSortedUnique(r.Cut),
 		joinUpperSortedUnique(r.Other),
 		joinUpperSortedUnique(r.Language),
@@ -67,31 +65,25 @@ func isSeasonPack(r *rls.Release) bool {
 	return r.Episode == 0 && !releases.IsEpisodeRange(r)
 }
 
-// addSeasonPack records every season a pack release covers. Episodes, episode
-// ranges, and names without a season are ignored.
+// addSeasonPack records the season a pack release covers. Episodes, episode
+// ranges, and names without a single season are ignored.
 func addSeasonPack(packs map[string]struct{}, r *rls.Release) {
-	if !isSeasonPack(r) {
+	if !isSeasonPack(r) || !hasSingleSeason(r) {
 		return
 	}
-	seasons := releaseSeasons(r)
-	if len(seasons) == 0 {
-		return
-	}
-	for season := seasons[0]; season <= seasons[len(seasons)-1]; season++ {
-		packs[seasonPackKey(r, season)] = struct{}{}
-	}
+	packs[seasonPackKey(r)] = struct{}{}
 }
 
 // seasonPackStatus reports pack, packed, unpacked, or "" for a release without
 // a season. An episode range counts as an episode.
 func seasonPackStatus(r *rls.Release, packs map[string]struct{}) string {
-	if len(releaseSeasons(r)) == 0 {
+	if !hasSingleSeason(r) {
 		return ""
 	}
 	if isSeasonPack(r) {
 		return SeasonPackStatusPack
 	}
-	if _, ok := packs[seasonPackKey(r, r.Series)]; ok {
+	if _, ok := packs[seasonPackKey(r)]; ok {
 		return SeasonPackStatusPacked
 	}
 	return SeasonPackStatusUnpacked
