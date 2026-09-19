@@ -40,7 +40,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")

@@ -171,7 +171,7 @@ func TestEnrichReleaseFromTorrent(t *testing.T) {
 
 // TestCheckPartialMatch tests the partial matching logic
 func TestCheckPartialMatch(t *testing.T) {
-	s := &Service{}
+	s := matcher{}
 
 	tests := []struct {
 		name     string

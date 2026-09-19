@@ -17,7 +17,7 @@ import (
 // motivating case is "Law & Order: SVU" S05, which trackers list as both
 // WEBRip (the seeded copy) and WEB-DL (the relabel) at the same content size.
 func TestIsWebSourceRelabel(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
 		webripDotted = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"
@@ -84,7 +84,7 @@ func TestIsWebSourceRelabel(t *testing.T) {
 // dropped on the full-pack vs episode size mismatch before the episode-size
 // bypass could apply (P1). The pack is ~100GB, the episode ~5GB.
 func TestShouldAcceptWebSourceRelabel(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
 		packWebrip   = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"

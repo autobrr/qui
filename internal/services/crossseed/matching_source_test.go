@@ -90,7 +90,7 @@ func TestSourcesCompatible(t *testing.T) {
 }
 
 func TestReleasesMatch_SourceCompatibility(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name        string

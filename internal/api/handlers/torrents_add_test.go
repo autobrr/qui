@@ -273,7 +273,7 @@ func TestAddTorrentHandler_SuccessfulIndexerDownload_Returns201(t *testing.T) {
 		downloadTorrentData: []byte("fake torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -322,7 +322,7 @@ func TestAddTorrentHandler_SuccessfulMagnetWithIndexer_Returns201(t *testing.T) 
 		downloadTorrentData: []byte("should not be used"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
 	body := &bytes.Buffer{}
@@ -367,7 +367,7 @@ func TestAddTorrentHandler_MixedURLsAndMagnets_Returns201(t *testing.T) {
 		downloadTorrentData: []byte("downloaded torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
 	httpURL := "http://indexer.example.com/download/456"
@@ -423,7 +423,7 @@ func TestAddTorrentHandler_MagnetWithIndexerPartialFailure_Returns201WithFailedU
 		downloadTorrentData: []byte("downloaded torrent data"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -475,7 +475,7 @@ func TestAddTorrentHandler_MagnetRedirectPartialFailure_Returns201WithFailedURLs
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -520,7 +520,7 @@ func TestAddTorrentHandler_PartialFailure_Returns201WithFailedURLs(t *testing.T)
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -570,7 +570,7 @@ func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs
 		},
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+	handler := &TorrentsHandler{torrentAdder: mockSync}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -626,7 +626,7 @@ func TestAddTorrentHandler_NoIndexerID_UsesDirectURL(t *testing.T) {
 		downloadTorrentData: []byte("should not be used"),
 	}
 
-	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+	handler := &TorrentsHandler{torrentAdder: mockSync, torrentDownloader: mockJackett}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
