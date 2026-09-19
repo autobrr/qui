@@ -1649,7 +1649,7 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 
 	results, _, lookupCompleted, remoteRequestsMade := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, "redacted.sh", true, clients)
 	require.Empty(t, results)
-	require.False(t, lookupCompleted)
+	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
 	require.False(t, remoteRequestsMade)
 	require.Equal(t, 0, callCount, "an APL-flagged OPS copy already seeded must skip the remote lookup")
 }
@@ -1685,6 +1685,41 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 	require.Empty(t, results)
 	require.True(t, remoteRequestsMade)
 	require.False(t, lookupCompleted)
+}
+
+// A non-OPS/RED source with both keys looks up both sites. One site
+// answering does not make the torrent done while the other site failed.
+func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
+	sourceTorrent := &qbt.Torrent{
+		Hash: "223759985c562a644428312c8cd3585d04686847",
+		Name: "Durante - LMK (2024 WF)",
+		Size: 123,
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+	}
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+	redClient, err := gazellemusic.NewClient("redacted.sh", gazelleTestServer.URL, "red-key")
+	require.NoError(t, err)
+	clients.byHost["redacted.sh"] = redClient
+
+	prevFindMatch := findGazelleMatch
+	findGazelleMatch = func(_ context.Context, c *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
+		if c.Host() == "orpheus.network" {
+			return nil, errors.New("API error: rate limit exceeded")
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		findGazelleMatch = prevFindMatch
+	})
+
+	svc := &Service{}
+
+	_, _, lookupCompleted, remoteRequestsMade := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, "", false, clients)
+	require.True(t, remoteRequestsMade)
+	require.False(t, lookupCompleted, "the failed site must keep the torrent eligible")
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
@@ -1757,9 +1792,9 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		},
 	}
 
-	results, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, clients)
+	results, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, clients)
 	require.True(t, gazelleConfigured)
-	require.False(t, lookupAttempted)
+	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
 	require.Empty(t, results, "should skip Gazelle search when target tracker content exists locally")
 	require.Equal(t, 0, callCount, "should skip remote Gazelle lookup for matching local content")
 }
@@ -1859,9 +1894,9 @@ func TestSearchGazelleMatches_SkipsPrefilterWhenNoConfiguredClient(t *testing.T)
 		syncManager:      syncManager,
 	}
 
-	results, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, &gazelleClientSet{})
+	results, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, &gazelleClientSet{})
 	require.False(t, gazelleConfigured)
-	require.False(t, lookupAttempted)
+	require.False(t, lookupCompleted)
 	require.Empty(t, results)
 	require.Equal(t, 0, syncManager.cachedInstanceCalls)
 }
@@ -1936,9 +1971,9 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 		},
 	}
 
-	results, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, clients)
+	results, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, "redacted.sh", true, clients)
 	require.True(t, gazelleConfigured)
-	require.True(t, lookupAttempted)
+	require.True(t, lookupCompleted)
 	require.Empty(t, results, "no matches expected with stubbed remote lookup")
 	require.Equal(t, 1, callCount, "should attempt Gazelle lookup when local content is on non-target tracker")
 }

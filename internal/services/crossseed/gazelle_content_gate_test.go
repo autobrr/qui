@@ -159,9 +159,9 @@ func TestSearchGazelleMatches_NonGazelleVideoSourceSkipsRemoteLookup(t *testing.
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	results, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
+	results, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
 	require.True(t, gazelleConfigured, "Gazelle stays configured, so Gazelle-only runs do not fail")
-	require.False(t, lookupAttempted)
+	require.True(t, lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
 	require.Empty(t, results)
 	require.Equal(t, 0, *callCount, "qui must not query RED/OPS for a video torrent from a source that is not Gazelle")
 }
@@ -184,9 +184,9 @@ func TestSearchGazelleMatches_BonusDirectoryStillSearches(t *testing.T) {
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	_, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
+	_, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
 	require.True(t, gazelleConfigured)
-	require.True(t, lookupAttempted)
+	require.True(t, lookupCompleted)
 	require.Equal(t, 1, *callCount)
 }
 
@@ -206,9 +206,9 @@ func TestSearchGazelleMatches_NonGazelleMusicSourceStillSearches(t *testing.T) {
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	_, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
+	_, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
 	require.True(t, gazelleConfigured)
-	require.True(t, lookupAttempted)
+	require.True(t, lookupCompleted)
 	require.Equal(t, 1, *callCount)
 }
 
@@ -230,8 +230,8 @@ func TestSearchGazelleMatches_GazelleSourceBypassesContentGate(t *testing.T) {
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	_, gazelleConfigured, lookupAttempted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "redacted.sh", true, clients)
+	_, gazelleConfigured, lookupCompleted, _ := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "redacted.sh", true, clients)
 	require.True(t, gazelleConfigured)
-	require.True(t, lookupAttempted)
+	require.True(t, lookupCompleted)
 	require.Equal(t, 1, *callCount)
 }

@@ -8258,6 +8258,11 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 	return "", false
 }
 
+// searchGazelleMatches runs the Gazelle leg of one torrent's search.
+// gazelleLookupCompleted reports that the Gazelle side needs no retry: clients
+// are configured, and every due lookup either ran without error or had nothing
+// to look up. A failed lookup on any target clears it, so the caller does not
+// stamp the torrent's Gazelle cooldown.
 func (s *Service) searchGazelleMatches(
 	ctx context.Context,
 	instanceID int,
@@ -8270,14 +8275,15 @@ func (s *Service) searchGazelleMatches(
 	if s == nil || sourceTorrent == nil {
 		return []TorrentSearchResult{}, false, false, false
 	}
+	hasClients := clients != nil && len(clients.byHost) > 0
 
 	targetHosts := gazelleTargetsForSource(sourceSite, isGazelleSource)
 	if len(targetHosts) == 0 {
-		return []TorrentSearchResult{}, false, false, false
+		return []TorrentSearchResult{}, false, hasClients, false
 	}
 
 	configuredTargetHosts := make([]string, 0, len(targetHosts))
-	if clients != nil && len(clients.byHost) > 0 {
+	if hasClients {
 		for _, targetHost := range targetHosts {
 			if clients.byHost[normalizeLowerTrim(targetHost)] != nil {
 				configuredTargetHosts = append(configuredTargetHosts, targetHost)
@@ -8285,7 +8291,7 @@ func (s *Service) searchGazelleMatches(
 		}
 	}
 	if len(configuredTargetHosts) == 0 {
-		return []TorrentSearchResult{}, false, false, false
+		return []TorrentSearchResult{}, false, hasClients, false
 	}
 
 	// Torrents that are already on RED/OPS skip the content gate, because the
@@ -8293,12 +8299,13 @@ func (s *Service) searchGazelleMatches(
 	// look like content that these sites carry before we spend rate-limited API
 	// calls on it.
 	if !isGazelleSource && !gazellePlausibleContent(sourceFiles) {
-		return []TorrentSearchResult{}, true, false, false
+		return []TorrentSearchResult{}, true, true, false
 	}
 
 	results = make([]TorrentSearchResult, 0, len(configuredTargetHosts))
 	contentMatchedHosts := make(map[string]struct{}, len(configuredTargetHosts))
 	gazelleConfigured = true
+	gazelleLookupCompleted = true
 
 	// Run local content prefilter once before any remote Gazelle calls.
 	if s.syncManager != nil {
@@ -8391,9 +8398,9 @@ func (s *Service) searchGazelleMatches(
 				Str("targetHost", targetHost).
 				Str("hash", sourceTorrent.Hash).
 				Msg("[CROSSSEED-GAZELLE] Search failed")
+			gazelleLookupCompleted = false
 			continue
 		}
-		gazelleLookupCompleted = true
 		if match == nil {
 			log.Debug().
 				Str("sourceSite", sourceSite).
@@ -11367,13 +11374,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
 	if s.automationStore != nil {
-		// Gazelle stamps per torrent: either a lookup completed, or the
-		// search completed with Gazelle due but nothing to look up for this
-		// torrent. Both cool the gazelle side so the candidate stops
-		// re-qualifying for a lookup that will never happen. A lookup that
-		// failed does not stamp, like a failed Torznab indexer below.
-		gazelleStamped := gazelleLookupCompleted || (err == nil && hasGazelle && !skipGazelle)
-		if gazelleStamped {
+		// Gazelle stamps per torrent only when its side needs no retry; see
+		// searchGazelleMatches. A failed lookup does not stamp, like a failed
+		// Torznab indexer below.
+		if gazelleLookupCompleted {
 			if histErr := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); histErr != nil {
 				log.Debug().Err(histErr).Msg("failed to update search history")
 			}
@@ -11388,7 +11392,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if histErr := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, coveredIndexerIDs, processedAt); histErr != nil {
 			log.Debug().Err(histErr).Msg("failed to update indexer search history")
 		}
-		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt, coveredIndexerIDs, gazelleStamped)
+		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt, coveredIndexerIDs, gazelleLookupCompleted)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
