@@ -1382,22 +1382,17 @@
         "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas.",
         "templateHelp": {
           "trigger": "Aide sur les modèles de chemin",
-          "title": "Modèles de chemin",
-          "intro": "Utilisez un chemin fixe, ou insérez ces valeurs pour construire un chemin pour chaque torrent.",
+          "title": "Valeurs de modèle",
           "variables": {
-            "name": "Nom affiché du torrent",
+            "name": "Nom du torrent",
             "hash": "Info Hash",
-            "category": "Catégorie qBittorrent",
-            "isolationFolderName": "Nom de dossier sûr pour le système de fichiers (hash ou nom nettoyé)",
-            "tracker": "Nom d'affichage du tracker défini dans les personnalisations de trackers, sinon le domaine du tracker",
-            "sanitize": "sanitize supprime les caractères interdits dans un nom de dossier. Utilisez-la pour les noms."
+            "category": "Catégorie",
+            "isolationFolderName": "Hash ou nom sûr",
+            "tracker": "Nom d'affichage ou domaine du tracker",
+            "sanitize": "Supprime les caractères interdits dans un dossier"
           },
-          "trackerNote": "Pour que .Tracker utilise votre nom d'affichage, la règle doit aussi avoir une condition Tracker, ou une action de tag avec « Utiliser le nom du tracker comme tag » et « Utiliser le nom d'affichage » activés. Sinon, .Tracker utilise le domaine du tracker.",
-          "examplesHeading": "Exemples",
-          "examples": {
-            "byCategory": "Un dossier par catégorie, par ex. /data/movies",
-            "byTrackerAndName": "Un dossier par tracker, puis un par torrent"
-          },
+          "trackerNote": "Pour que .Tracker utilise le nom d'affichage, ajoutez une condition Tracker à la règle.",
+          "exampleLabel": "Exemple",
           "learnMore": "En savoir plus",
           "copySnippet": "Copier {{snippet}}",
           "copyFailed": "Échec de la copie dans le presse-papiers"

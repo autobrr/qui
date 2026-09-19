@@ -4,7 +4,7 @@
  */
 
 import { Check, Copy, Info } from "lucide-react"
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { Fragment, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -13,10 +13,7 @@ import { copyTextToClipboard } from "@/lib/utils"
 
 import type { PathTemplateEntry } from "./pathTemplateVariables"
 
-const MOVE_PATH_TEMPLATE_EXAMPLES: PathTemplateEntry[] = [
-  { snippet: "/data/{{ .Category }}", descriptionKey: "examples.byCategory" },
-  { snippet: "/data/{{ .Tracker }}/{{ sanitize .Name }}", descriptionKey: "examples.byTrackerAndName" },
-]
+const MOVE_PATH_TEMPLATE_EXAMPLE = "/data/{{ .Tracker }}/{{ sanitize .Name }}"
 
 const MOVE_PATH_TEMPLATE_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
 
@@ -73,25 +70,19 @@ export function PathTemplateHelp({ variables, description }: PathTemplateHelpPro
     }
   }
 
-  const renderEntry = (entry: PathTemplateEntry) => (
-    <li key={entry.snippet} className="space-y-0.5">
-      <div className="flex items-center gap-1">
-        <code className="min-w-0 flex-1 break-all rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-          {entry.snippet}
-        </code>
-        <button
-          type="button"
-          onClick={() => void handleCopy(entry.snippet)}
-          className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label={t("preferences.workflowDialog.move.templateHelp.copySnippet", { snippet: entry.snippet })}
-        >
-          {copiedSnippet === entry.snippet ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {t(`preferences.workflowDialog.move.templateHelp.${entry.descriptionKey}`)}
-      </p>
-    </li>
+  // The snippet itself is the copy button, so each value takes one row.
+  const renderSnippet = (snippet: string) => (
+    <button
+      type="button"
+      onClick={() => void handleCopy(snippet)}
+      className="inline-flex max-w-full items-center gap-1.5 rounded bg-muted px-1.5 py-0.5 text-left font-mono text-xs transition-colors hover:bg-accent"
+      aria-label={t("preferences.workflowDialog.move.templateHelp.copySnippet", { snippet })}
+    >
+      <span className="break-all">{snippet}</span>
+      {copiedSnippet === snippet
+        ? <Check className="size-3 shrink-0" />
+        : <Copy className="size-3 shrink-0 text-muted-foreground" />}
+    </button>
   )
 
   return (
@@ -119,7 +110,8 @@ export function PathTemplateHelp({ variables, description }: PathTemplateHelpPro
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-(--radix-popover-content-available-height) w-[min(24rem,calc(100vw-2rem))] space-y-3 overflow-y-auto p-3 text-sm"
+        collisionPadding={16}
+        className="max-h-(--radix-popover-content-available-height) w-[min(26rem,calc(100vw-2rem))] space-y-3 overflow-y-auto p-3 text-sm"
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
         onOpenAutoFocus={(event) => event.preventDefault()}
@@ -128,15 +120,21 @@ export function PathTemplateHelp({ variables, description }: PathTemplateHelpPro
         onTouchMove={(event) => event.stopPropagation()}
       >
         {description && <p className="text-xs">{description}</p>}
-        <div className="space-y-1">
-          <p className="font-medium">{t("preferences.workflowDialog.move.templateHelp.title")}</p>
-          <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.move.templateHelp.intro")}</p>
-        </div>
-        <ul className="space-y-2">{variables.map(renderEntry)}</ul>
+        <p className="font-medium">{t("preferences.workflowDialog.move.templateHelp.title")}</p>
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+          {variables.map(entry => (
+            <Fragment key={entry.snippet}>
+              <dt>{renderSnippet(entry.snippet)}</dt>
+              <dd className="text-xs text-muted-foreground">
+                {t(`preferences.workflowDialog.move.templateHelp.${entry.descriptionKey}`)}
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
         <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.move.templateHelp.trackerNote")}</p>
-        <div className="space-y-2">
-          <p className="text-xs font-medium">{t("preferences.workflowDialog.move.templateHelp.examplesHeading")}</p>
-          <ul className="space-y-2">{MOVE_PATH_TEMPLATE_EXAMPLES.map(renderEntry)}</ul>
+        <div className="space-y-1">
+          <p className="text-xs font-medium">{t("preferences.workflowDialog.move.templateHelp.exampleLabel")}</p>
+          {renderSnippet(MOVE_PATH_TEMPLATE_EXAMPLE)}
         </div>
         <a
           href={MOVE_PATH_TEMPLATE_DOCS_URL}

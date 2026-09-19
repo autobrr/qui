@@ -1050,22 +1050,17 @@
         "skipDescription": "Omet el trasllat si hi ha qualsevol altre torrent del mateix grup de cross-seed que no compleixi les condicions de la regla. Si no, es mouran tots els cross-seed, encara que no coincideixin amb les condicions de la regla.",
         "templateHelp": {
           "trigger": "Ajuda de plantilles de camí",
-          "title": "Plantilles de camí",
-          "intro": "Fes servir un camí fix o insereix aquests valors per construir un camí per a cada torrent.",
+          "title": "Valors de plantilla",
           "variables": {
-            "name": "Nom visible del torrent",
+            "name": "Nom del torrent",
             "hash": "Hash d'informació",
-            "category": "Categoria de qBittorrent",
-            "isolationFolderName": "Nom de carpeta segur per al sistema de fitxers (hash o nom sanejat)",
-            "tracker": "Nom visible del tracker de les personalitzacions de trackers; si no, el domini del tracker",
-            "sanitize": "sanitize elimina els caràcters que no són vàlids en un nom de carpeta. Fes-la servir per als noms."
+            "category": "Categoria",
+            "isolationFolderName": "Hash o nom segur",
+            "tracker": "Nom visible o domini del tracker",
+            "sanitize": "Elimina caràcters no vàlids en carpetes"
           },
-          "trackerNote": "Perquè .Tracker faci servir el nom visible, la regla també necessita una condició de Tracker, o una acció d'etiqueta amb «Fes servir el nom del tracker com a etiqueta» i «Fes servir el nom a mostrar» activats. Si no, .Tracker recorre al domini del tracker.",
-          "examplesHeading": "Exemples",
-          "examples": {
-            "byCategory": "Una carpeta per categoria, p. ex. /data/movies",
-            "byTrackerAndName": "Una carpeta per tracker i, dins, una per torrent"
-          },
+          "trackerNote": "Perquè .Tracker faci servir el nom visible, afegeix una condició de Tracker a la regla.",
+          "exampleLabel": "Exemple",
           "learnMore": "Més informació",
           "copySnippet": "Copia {{snippet}}",
           "copyFailed": "No s'ha pogut copiar al porta-retalls"

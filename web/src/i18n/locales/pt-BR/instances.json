@@ -1388,22 +1388,17 @@
         "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos.",
         "templateHelp": {
           "trigger": "Ajuda sobre modelos de caminho",
-          "title": "Modelos de caminho",
-          "intro": "Use um caminho fixo ou insira estes valores para montar um caminho para cada torrent.",
+          "title": "Valores do modelo",
           "variables": {
-            "name": "Nome de exibição do torrent",
+            "name": "Nome do torrent",
             "hash": "Info Hash",
-            "category": "Categoria do qBittorrent",
-            "isolationFolderName": "Nome de pasta seguro para o sistema de arquivos (hash ou nome sanitizado)",
-            "tracker": "Nome de exibição do tracker nas personalizações de trackers; caso contrário, o domínio do tracker",
-            "sanitize": "sanitize remove caracteres inválidos em um nome de pasta. Use-a para nomes."
+            "category": "Categoria",
+            "isolationFolderName": "Hash ou nome seguro",
+            "tracker": "Nome de exibição ou domínio do tracker",
+            "sanitize": "Remove caracteres inválidos em pastas"
           },
-          "trackerNote": "Para que .Tracker use seu nome de exibição, a regra também precisa de uma condição Tracker, ou de uma ação de tag com \"Sincronizar a tag para o nome do tracker\" e \"Usar 'Display Name'\" ativados. Caso contrário, .Tracker usa o domínio do tracker.",
-          "examplesHeading": "Exemplos",
-          "examples": {
-            "byCategory": "Uma pasta por categoria, ex.: /data/movies",
-            "byTrackerAndName": "Uma pasta por tracker e, dentro dela, uma por torrent"
-          },
+          "trackerNote": "Para que .Tracker use o nome de exibição, adicione uma condição Tracker à regra.",
+          "exampleLabel": "Exemplo",
           "learnMore": "Saiba mais",
           "copySnippet": "Copiar {{snippet}}",
           "copyFailed": "Falha ao copiar para a área de transferência"

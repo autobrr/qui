@@ -1388,22 +1388,17 @@
         "skipDescription": "Überspringt das Verschieben, wenn es weitere Torrents in derselben Cross-Seed-Gruppe gibt, die nicht auf die Bedingungen der Regel passen. Andernfalls werden alle Cross-Seeds verschoben, auch wenn sie nicht von den Bedingungen der Regel erfasst werden.",
         "templateHelp": {
           "trigger": "Hilfe zu Pfadvorlagen",
-          "title": "Pfadvorlagen",
-          "intro": "Verwende einen festen Pfad oder füge diese Werte ein, um für jeden Torrent einen Pfad zu bilden.",
+          "title": "Vorlagenwerte",
           "variables": {
-            "name": "Anzeigename des Torrents",
+            "name": "Torrent-Name",
             "hash": "Info-Hash",
-            "category": "qBittorrent-Kategorie",
-            "isolationFolderName": "Dateisystemsicherer Ordnername (Hash oder bereinigter Name)",
-            "tracker": "Tracker-Anzeigename aus den Tracker-Anpassungen, sonst die Tracker-Domain",
-            "sanitize": "sanitize entfernt Zeichen, die in einem Ordnernamen ungültig sind. Verwende es für Namen."
+            "category": "Kategorie",
+            "isolationFolderName": "Hash oder sicherer Name",
+            "tracker": "Tracker-Anzeigename oder -Domain",
+            "sanitize": "Entfernt ungültige Ordnerzeichen"
           },
-          "trackerNote": "Damit .Tracker deinen Anzeigenamen nutzt, braucht die Regel zusätzlich eine Tracker-Bedingung oder eine Tag-Aktion mit aktiviertem „Tracker-Namen als Tag verwenden“ und „Anzeigenamen verwenden“. Sonst fällt .Tracker auf die Tracker-Domain zurück.",
-          "examplesHeading": "Beispiele",
-          "examples": {
-            "byCategory": "Ein Ordner pro Kategorie, z. B. /data/movies",
-            "byTrackerAndName": "Ein Ordner pro Tracker, darin einer pro Torrent"
-          },
+          "trackerNote": "Damit .Tracker den Anzeigenamen nutzt, füge der Regel eine Tracker-Bedingung hinzu.",
+          "exampleLabel": "Beispiel",
           "learnMore": "Mehr erfahren",
           "copySnippet": "{{snippet}} kopieren",
           "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"

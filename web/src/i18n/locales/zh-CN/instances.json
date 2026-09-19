@@ -1358,22 +1358,17 @@
         "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。",
         "templateHelp": {
           "trigger": "路径模板帮助",
-          "title": "路径模板",
-          "intro": "使用固定路径，或插入以下值为每个种子生成路径。",
+          "title": "模板值",
           "variables": {
-            "name": "种子显示名称",
+            "name": "种子名称",
             "hash": "Info Hash",
-            "category": "qBittorrent 分类",
-            "isolationFolderName": "文件系统安全的文件夹名称（哈希或清理后的名称）",
-            "tracker": "Tracker 自定义中的显示名称，否则为 Tracker 域名",
-            "sanitize": "sanitize 会移除文件夹名称中无效的字符。请用于名称。"
+            "category": "分类",
+            "isolationFolderName": "哈希或安全名称",
+            "tracker": "Tracker 显示名称或域名",
+            "sanitize": "移除文件夹名称中的无效字符"
           },
-          "trackerNote": "要让 .Tracker 使用你的显示名称，规则还需要一个 Tracker 条件，或一个开启了“将 Tracker 名称用作标签”和“使用显示名称”的标签操作。否则 .Tracker 会使用 Tracker 域名。",
-          "examplesHeading": "示例",
-          "examples": {
-            "byCategory": "每个分类一个文件夹，例如 /data/movies",
-            "byTrackerAndName": "每个 Tracker 一个文件夹，其中每个种子一个文件夹"
-          },
+          "trackerNote": "要让 .Tracker 使用显示名称，请为规则添加 Tracker 条件。",
+          "exampleLabel": "示例",
           "learnMore": "了解更多",
           "copySnippet": "复制 {{snippet}}",
           "copyFailed": "复制到剪贴板失败"

@@ -1358,22 +1358,17 @@
         "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。",
         "templateHelp": {
           "trigger": "路徑範本說明",
-          "title": "路徑範本",
-          "intro": "使用固定路徑，或插入以下值為每個種子產生路徑。",
+          "title": "範本值",
           "variables": {
-            "name": "種子顯示名稱",
+            "name": "種子名稱",
             "hash": "Info Hash",
-            "category": "qBittorrent 分類",
-            "isolationFolderName": "檔案系統安全的資料夾名稱（雜湊或清理後的名稱）",
-            "tracker": "Tracker 自訂中的顯示名稱，否則為 Tracker 網域",
-            "sanitize": "sanitize 會移除資料夾名稱中無效的字元。請用於名稱。"
+            "category": "分類",
+            "isolationFolderName": "雜湊或安全名稱",
+            "tracker": "Tracker 顯示名稱或網域",
+            "sanitize": "移除資料夾名稱中的無效字元"
           },
-          "trackerNote": "要讓 .Tracker 使用你的顯示名稱，規則還需要一個 Tracker 條件，或一個開啟了「將 Tracker 名稱用作標籤」和「使用顯示名稱」的標籤動作。否則 .Tracker 會使用 Tracker 網域。",
-          "examplesHeading": "範例",
-          "examples": {
-            "byCategory": "每個分類一個資料夾，例如 /data/movies",
-            "byTrackerAndName": "每個 Tracker 一個資料夾，其中每個種子一個資料夾"
-          },
+          "trackerNote": "要讓 .Tracker 使用顯示名稱，請為規則新增 Tracker 條件。",
+          "exampleLabel": "範例",
           "learnMore": "了解更多",
           "copySnippet": "複製 {{snippet}}",
           "copyFailed": "複製到剪貼簿失敗"
