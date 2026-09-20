@@ -145,6 +145,37 @@ func TestPoolReusesConnection(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts(), "a second caller must reuse the open connection")
 }
 
+// Credentials are part of what a connection was made under: a new username or
+// key against the same pin ends the old session, while a refused host key stays
+// refused, since the credentials say nothing about it.
+func TestPoolReconnectsWhenCredentialsChange(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
+	t.Cleanup(pool.Close)
+	inst := pinnedInstanceAt(t, server.Addr)
+
+	first, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+
+	inst.SSHUsername = "someone-else"
+	second, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	assert.NotSame(t, first, second, "new credentials must not ride the old session")
+	assert.Equal(t, 2, server.Accepts())
+
+	refusing := NewPool(dialerFor(sshtest.NewSigner().PublicKey().Marshal()))
+	t.Cleanup(refusing.Close)
+	_, err = refusing.SFTP(t.Context(), inst)
+	_, mismatch := errors.AsType[*MismatchError](err)
+	require.True(t, mismatch, "expected a mismatch, got %v", err)
+	inst.SSHKeyEncrypted = "enc-key-v2"
+	_, again := refusing.SFTP(t.Context(), inst)
+	require.Equal(t, err, again, "a credential change must not clear a host-key refusal")
+}
+
 func TestPoolReconnectsAfterDrop(t *testing.T) {
 	t.Parallel()
 

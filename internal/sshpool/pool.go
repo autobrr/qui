@@ -58,12 +58,25 @@ type entry struct {
 	// rather than a mutex so a caller waiting behind another caller's dial can
 	// give up with its own ctx instead of sitting out that dial.
 	sem     chan struct{}
-	pin     string // inst.SSHHostKeyEncrypted the connection or the memo was made under
+	id      identity // what the connection and the memo were made under
 	client  *ssh.Client
 	sftp    *sftp.Client
 	err     error         // memoised failure; nil when connected
 	retryAt time.Time     // when a dial may be attempted again
 	backoff time.Duration // delay for the next failure, doubling to backoffMax
+}
+
+// identity is everything a connection depends on. A changed pin clears the
+// memo as well as the connection; changed credentials drop only the
+// connection, since the host key the memo refused is still the same.
+type identity struct {
+	pin, host string
+	port      int
+	user, key string
+}
+
+func identityOf(inst *models.Instance) identity {
+	return identity{pin: inst.SSHHostKeyEncrypted, host: inst.SSHHost, port: inst.SSHPort, user: inst.SSHUsername, key: inst.SSHKeyEncrypted}
 }
 
 func NewPool(dialer *Dialer) *Pool {
@@ -91,11 +104,16 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	}
 	defer entry.unlock()
 
-	if entry.pin != inst.SSHHostKeyEncrypted {
+	if id := identityOf(inst); entry.id != id {
 		// A replaced pin (or a changed endpoint) is the only thing that clears
-		// a refusal, and it clears it with no persisted state of its own.
-		entry.close()
-		entry.pin = inst.SSHHostKeyEncrypted
+		// a refusal, and it clears it with no persisted state of its own. New
+		// credentials against the same pin end the old session and nothing else.
+		if entry.id.pin != id.pin {
+			entry.close()
+		} else {
+			entry.drop()
+		}
+		entry.id = id
 	}
 
 	switch {
@@ -207,14 +225,19 @@ func (e *entry) memoise(inst *models.Instance, err error) {
 
 // close drops the connection and the memo. Callers hold the entry.
 func (e *entry) close() {
+	e.drop()
+	e.err = nil
+	e.retryAt = time.Time{}
+	e.backoff = 0
+}
+
+// drop ends the connection and keeps the memo. Callers hold the entry.
+func (e *entry) drop() {
 	if e.client != nil {
 		_ = e.client.Close()
 	}
 	e.client = nil
 	e.sftp = nil
-	e.err = nil
-	e.retryAt = time.Time{}
-	e.backoff = 0
 }
 
 // watch clears the entry once this client is gone, so the next caller redials.

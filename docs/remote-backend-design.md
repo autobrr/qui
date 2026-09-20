@@ -285,7 +285,9 @@ the stored pin ciphertext and lives only in memory: replacing the pin, or
 changing the host or port, changes the ciphertext and clears it (an
 endpoint change drops the pin, so the memo becomes an unpinned refusal
 until the key is confirmed again). Nothing
-about it is persisted.
+about it is persisted. A connection is also keyed on the username and the
+key it authenticated with: new credentials against the same pin end the
+old session and keep the refusal, since they say nothing about the host key.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
