@@ -172,6 +172,18 @@
 
 /* ---- Responsive ---- */
 
+/* Desktop server-renders the poster too, until hydration swaps in the iframe.
+   Show it as a plain placeholder there: no dim, no button. */
+@media (min-width: 1024px) {
+  .demoPoster img {
+    filter: none;
+  }
+
+  .demoPosterButton {
+    display: none;
+  }
+}
+
 @media (max-width: 800px) {
   .features {
     grid-template-columns: 1fr;
