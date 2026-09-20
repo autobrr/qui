@@ -28,6 +28,8 @@ export interface UseTorrentSelectionDerivationsParams {
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
   columnFiltersExpr: string | null
+  // True when the table, not the backend, applies the column filters (cross-seed mode).
+  clientSideFiltering?: boolean
   filters: TorrentFilters
   stats?: { totalSize?: number }
   totalCount: number
@@ -53,6 +55,7 @@ export function useTorrentSelectionDerivations({
   getVisibleRows,
   sortedTorrents,
   columnFiltersExpr,
+  clientSideFiltering = false,
   filters,
   stats,
   totalCount,
@@ -67,9 +70,10 @@ export function useTorrentSelectionDerivations({
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
     if (isAllSelected) {
-      // When all are selected, return all currently loaded hashes minus exclusions
-      // This is needed for actions to work properly
-      return sortedTorrents
+      // The table's row model, not sortedTorrents: in cross-seed mode the column
+      // filter applies client-side, and select-all is the visible set (#1925).
+      return getVisibleRowsRef.current()
+        .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
         .map(torrent => torrent.hash)
     } else {
@@ -82,24 +86,31 @@ export function useTorrentSelectionDerivations({
         .filter(row => selectedRowIdSet.has(row.id))
         .map(row => row.original.hash)
     }
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, getSelectionIdentity])
+    // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
     if (isAllSelected) {
-      // When all selected, count is total minus exclusions
+      // The backend total does not know a client-side column filter; the
+      // visible rows do, and a select-all action reaches exactly those.
+      if (clientSideFiltering) {
+        return selectedHashes.length
+      }
       return Math.max(0, totalCount - excludedFromSelectAll.size)
     } else {
       // Regular selection mode - use the computed selectedHashes length
       return selectedRowIds.length
     }
-  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
+  }, [isAllSelected, clientSideFiltering, selectedHashes.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
 
   // Get selected torrents
   const selectedTorrents = useMemo((): Torrent[] => {
     if (isAllSelected) {
-      // When all are selected, return all torrents minus exclusions
-      return sortedTorrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
+      return getVisibleRowsRef.current()
+        .map(row => row.original)
+        .filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
     } else {
       if (selectedRowIdSet.size === 0) {
         return EMPTY_TORRENTS
@@ -109,11 +120,12 @@ export function useTorrentSelectionDerivations({
         .filter(row => selectedRowIdSet.has(row.id))
         .map(row => row.original)
     }
-  }, [selectedRowIdSet, sortedTorrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowIdSet, sortedTorrents, columnFiltersExpr, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
+    if (isAllSelected && !clientSideFiltering) {
       const aggregateTotalSize = stats?.totalSize ?? 0
 
       if (aggregateTotalSize <= 0) {
@@ -135,7 +147,7 @@ export function useTorrentSelectionDerivations({
     }
 
     return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
+  }, [isAllSelected, clientSideFiltering, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active

@@ -26,7 +26,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
-import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
 import type { ComponentProps, ReactNode } from "react"
@@ -35,7 +34,7 @@ import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
-const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false, totalCount: 3 }))
+const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -141,7 +140,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
     useTorrentsList: () => {
       result ??= {
         torrents,
-        get totalCount() { return scenario.totalCount },
+        totalCount: torrents.length,
         stats: {
           total: torrents.length,
           downloading: 1,
@@ -228,7 +227,6 @@ describe("TorrentTableOptimized smoke", () => {
     localStorage.clear()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
-    scenario.totalCount = torrents.length
   })
 
   it("renders a row for each torrent", () => {
@@ -279,21 +277,20 @@ describe("TorrentTableOptimized smoke", () => {
     expect(container.textContent).toContain("Bravo Release")
   })
 
-  // Issue #1925 on the copy side: copy-all must scope to the visible set, so
-  // the field request joins the column filter with the cross-seed expression
-  // like a bulk action does, even though the list request sends the hash
-  // expression alone.
-  it("copy-all names in cross-seed mode sends the column filter AND the cross-seed expression", async () => {
-    const crossSeedExpr = "Hash == \"hash-aaa\" || Hash == \"hash-bbb\""
-    // A filter every row passes client-side too, so the rows stay rendered.
-    const columnFilter = { columnId: "name", operation: "contains", value: "Release" } as const
-    localStorage.setItem("qui-column-filters-1", JSON.stringify([columnFilter]))
+  // Issue #1925 on the copy side: in cross-seed mode the column filter applies
+  // client-side, so select-all must mean the rows the user sees. Copy-all names
+  // then copies those rows only, and the selection count says so.
+  it("copy-all names in cross-seed mode copies the rows the column filter left visible", async () => {
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([{ columnId: "name", operation: "contains", value: "Alpha" }]))
     scenario.isCrossSeedFiltering = true
-    scenario.totalCount = 10
-    vi.mocked(api.getTorrentField).mockResolvedValue({ values: ["Alpha Release"], total: 1 })
-    // jsdom has no clipboard; the copy fallback calls execCommand.
-    document.execCommand = vi.fn(() => true)
-    const { container, findByRole } = renderTable({ filters: makeFilters({ expr: crossSeedExpr }) })
+    let copied = ""
+    // jsdom has no clipboard; the copy fallback selects a textarea and calls execCommand.
+    document.execCommand = vi.fn(() => {
+      copied = (document.activeElement as HTMLTextAreaElement).value
+      return true
+    })
+    const { container, findByRole } = renderTable({ filters: makeFilters({ expr: "Hash == \"hash-aaa\" || Hash == \"hash-bbb\"" }) })
+    expect(container.textContent).not.toContain("Bravo Release")
 
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
     fireEvent.contextMenu(within(container).getByText("Alpha Release"))
@@ -301,9 +298,7 @@ describe("TorrentTableOptimized smoke", () => {
     fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
     fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
 
-    await waitFor(() => expect(api.getTorrentField).toHaveBeenCalled())
-    const [, field, request] = vi.mocked(api.getTorrentField).mock.calls[0]
-    expect(field).toBe("name")
-    expect(request.filters?.expr).toBe(`(${columnFiltersToExpr([columnFilter])}) && (${crossSeedExpr})`)
+    await waitFor(() => expect(copied).toBe("Alpha Release"))
+    expect(api.getTorrentField).not.toHaveBeenCalled()
   })
 })

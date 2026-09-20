@@ -94,6 +94,29 @@ describe("useTorrentSelectionDerivations — selectedHashes / selectedTorrents",
     const { result } = render({ isAllSelected: true, excludedFromSelectAll: new Set(["h1"]) })
     expect(result.current.selectedHashes).toEqual(["h0", "h2"])
   })
+
+  // #1925 on the client side: in cross-seed mode the column filter hides rows
+  // client-side, so select-all must resolve to the rows the user sees, not to
+  // every loaded row. Copy-all reads this list when everything is loaded.
+  it("resolves the visible rows in select-all mode when the column filter applies client-side", () => {
+    const { result, rerender, params } = render({
+      isAllSelected: true,
+      columnFiltersExpr: "state == \"downloading\"",
+      clientSideFiltering: true,
+      getVisibleRows: () => makeRows([TORRENTS[1]]),
+      totalCount: 3,
+    })
+    expect(result.current.selectedHashes).toEqual(["h1"])
+    expect(result.current.selectedTorrents.map(t => t.hash)).toEqual(["h1"])
+    // The count follows the visible rows, not the backend total (the menu
+    // label "Pause (6)" must not promise 6 when the action reaches 2).
+    expect(result.current.effectiveSelectionCount).toBe(1)
+    expect(result.current.selectedTotalSize).toBe(TORRENTS[1].size)
+
+    // Clearing the column filter widens the visible set again.
+    rerender({ ...params, columnFiltersExpr: null, getVisibleRows: () => makeRows(TORRENTS) })
+    expect(result.current.selectedHashes).toEqual(["h0", "h1", "h2"])
+  })
 })
 
 describe("useTorrentSelectionDerivations — effectiveSelectionCount", () => {

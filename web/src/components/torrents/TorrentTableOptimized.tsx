@@ -878,6 +878,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
     columnFiltersExpr,
+    clientSideFiltering: isCrossSeedFiltering,
     filters,
     stats,
     totalCount,
