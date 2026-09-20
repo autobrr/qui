@@ -1017,34 +1017,45 @@ A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition t
 
 #### Example: tag packs, packed, and unpacked
 
-Three tag actions in one rule keep the tags in sync on every run. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack.
+One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
 
 ```json
 {
-  "name": "Season pack status",
+  "name": "Season pack",
   "trackerPattern": "*",
   "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
-      {
-        "enabled": true,
-        "mode": "full",
-        "tags": ["season-pack"],
-        "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "pack" }
-      },
-      {
-        "enabled": true,
-        "mode": "full",
-        "tags": ["packed"],
-        "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "packed" }
-      },
-      {
-        "enabled": true,
-        "mode": "full",
-        "tags": ["unpacked"],
-        "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "unpacked" }
-      }
+      { "enabled": true, "mode": "full", "tags": ["season-pack"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "pack" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Packed episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["packed"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "packed" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Unpacked episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["unpacked"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "unpacked" } }
     ]
   }
 }
