@@ -123,9 +123,9 @@ type EvalContext struct {
 	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
 	SameInstanceCrossSeedTagsByHash map[string][]string
 
-	// SeasonPackSet holds one key per season each season pack on this instance
-	// covers, see seasonPackKey. Built when rules use SEASON_PACK_STATUS. Nil
-	// means not built: the status is unknown and never matches.
+	// SeasonPackSet holds one seasonPackKey per single-season pack on this
+	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
+	// the status is unknown and never matches.
 	SeasonPackSet map[string]struct{}
 	// SeasonPackSetAnyInstance is the same over every active instance, for
 	// SEASON_PACK_STATUS_ANY_INSTANCE.

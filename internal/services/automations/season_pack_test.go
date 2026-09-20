@@ -138,3 +138,20 @@ func TestBuildAnyInstanceSeasonPackSet_ReadsEveryActiveInstance(t *testing.T) {
 	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 	require.Equal(t, SeasonPackStatusUnpacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
+
+// The preview builds a pack set when only a score rule uses the field, as the run does.
+func TestSeasonPackStatus_PreviewScoreRuleGate(t *testing.T) {
+	rule := &models.Automation{SortingConfig: &models.SortingConfig{
+		Type: models.SortingTypeScore,
+		ScoreRules: []models.ScoreRule{{
+			Type: models.ScoreRuleTypeConditional,
+			Conditional: &models.ConditionalScoreRule{
+				Score:     1,
+				Condition: &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: SeasonPackStatusPacked},
+			},
+		}},
+	}}
+	evalCtx := &EvalContext{ReleaseParser: releases.NewDefaultParser()}
+	(&Service{}).setupPreviewSeasonPackContext(t.Context(), rule, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, evalCtx)
+	require.Len(t, evalCtx.SeasonPackSet, 1)
+}

@@ -1023,7 +1023,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
-		s.setupPreviewSeasonPackContext(ctx, rule.Conditions.Delete.Condition, torrents, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Delete.Condition, torrents, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1590,7 +1590,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
-		s.setupPreviewSeasonPackContext(ctx, rule.Conditions.Category.Condition, torrents, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Category.Condition, torrents, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)

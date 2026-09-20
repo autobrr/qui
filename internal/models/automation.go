@@ -829,9 +829,9 @@ const (
 	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"  // Condition-only: linked to other torrents, even if also outside (#1177)
 )
 
-// Season pack status values. Empty when the name parses without a season.
+// Season pack status values. Empty when the name parses without exactly one season.
 const (
-	SeasonPackStatusPack     = "pack"     // A season pack, one or more whole seasons
+	SeasonPackStatusPack     = "pack"     // A whole single season
 	SeasonPackStatusPacked   = "packed"   // An episode whose season pack of the same release is in the client
 	SeasonPackStatusUnpacked = "unpacked" // An episode with no such pack
 )
