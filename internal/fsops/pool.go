@@ -27,22 +27,22 @@ type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
-// NewPool creates a Backend pool backed by the given instance store, local
-// backend and remote-backend factory. The factory is called per resolution:
-// the backend it returns is a thin handle over the shared SSH connection pool,
-// which owns the connections and their lifetime.
-func NewPool(store instanceGetter, local Backend, remote func(*models.Instance) Backend) *Pool {
+// NewPool creates a Backend pool backed by the given instance store and local
+// backend. Without an SSH pool a remote-mode instance resolves to the noop
+// backend; NewPoolWithRemote is the constructor that adds one.
+func NewPool(store instanceGetter, local Backend) *Pool {
+	return NewPoolWithRemote(store, local, func(*models.Instance) Backend { return noopBackend{} })
+}
+
+// NewPoolWithRemote is NewPool plus a remote-backend factory, called per
+// resolution: the backend it returns is a thin handle over the shared SSH
+// connection pool, which owns the connections and their lifetime.
+func NewPoolWithRemote(store instanceGetter, local Backend, remote func(*models.Instance) Backend) *Pool {
 	return &Pool{
 		instanceStore: store,
 		local:         local,
 		remote:        remote,
 	}
-}
-
-// NewLocalPool is NewPool for a process with no SSH pool: a remote-mode
-// instance resolves to the noop backend rather than to a nil factory.
-func NewLocalPool(store instanceGetter, local Backend) *Pool {
-	return NewPool(store, local, func(*models.Instance) Backend { return noopBackend{} })
 }
 
 // GetBackend returns the appropriate Backend for the given instance ID.

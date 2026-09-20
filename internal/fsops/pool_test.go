@@ -70,7 +70,7 @@ func TestPool_LocalAccess(t *testing.T) {
 		1: {ID: 1, HasLocalFilesystemAccess: true},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 1)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestPool_NoAccess(t *testing.T) {
 		2: {ID: 2, HasLocalFilesystemAccess: false},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 2)
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestPool_RemoteAccess(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{3: instance}}
 
 	var got *models.Instance
-	pool := NewPool(store, fakeBackend{kind: "local"}, func(inst *models.Instance) Backend {
+	pool := NewPoolWithRemote(store, fakeBackend{kind: "local"}, func(inst *models.Instance) Backend {
 		got = inst
 		return remote
 	})
@@ -114,11 +114,11 @@ func TestPool_RemoteAccess(t *testing.T) {
 	assert.Same(t, instance, got)
 }
 
-func TestLocalPool_RemoteInstanceGetsNoop(t *testing.T) {
+func TestPool_RemoteInstanceWithoutSSHPoolGetsNoop(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
 		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
 	}}
-	pool := NewLocalPool(store, fakeBackend{kind: "local"})
+	pool := NewPool(store, fakeBackend{kind: "local"})
 
 	backend, err := pool.GetBackend(context.Background(), 3)
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestLocalPool_RemoteInstanceGetsNoop(t *testing.T) {
 
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
-	pool := NewPool(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))
+	pool := NewPoolWithRemote(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))
 
 	_, err := pool.GetBackend(context.Background(), 999)
 	require.Error(t, err)

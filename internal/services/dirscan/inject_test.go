@@ -25,7 +25,7 @@ import (
 )
 
 func testBackendPool(instance *models.Instance) *fsops.Pool {
-	return fsops.NewLocalPool(&fakeInstanceStore{instance: instance}, local.NewBackend())
+	return fsops.NewPool(&fakeInstanceStore{instance: instance}, local.NewBackend())
 }
 
 type fakeInstanceStore struct {

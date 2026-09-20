@@ -669,7 +669,7 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 			}
 		},
 	}
-	s.SetBackendPool(fsops.NewLocalPool(s.instanceStore, local.NewBackend()))
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
 	result := s.processHardlinkMode(
 		context.Background(),
@@ -719,7 +719,7 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	result := service.processHardlinkMode(
 		context.Background(),
@@ -790,7 +790,7 @@ func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 				},
 			}
 
-			service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 			result := service.processHardlinkMode(
 				context.Background(),
@@ -851,7 +851,7 @@ func TestProcessHardlinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 		syncManager: syncManager,
 	}
 
-	service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	result := service.processHardlinkMode(
 		context.Background(),
@@ -967,7 +967,7 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 		},
 	}
 
-	service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	result := service.processReflinkMode(
 		context.Background(),
@@ -1033,7 +1033,7 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 		},
 	}
 
-	service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	result := service.processReflinkMode(
 		context.Background(),
@@ -1514,7 +1514,7 @@ func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t 
 		},
 		syncManager: sync,
 	}
-	s.SetBackendPool(fsops.NewLocalPool(s.instanceStore, local.NewBackend()))
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
 	result := s.processReflinkMode(
 		context.Background(),
@@ -1806,7 +1806,7 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 				instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}},
 				syncManager:   sync,
 			}
-			s.SetBackendPool(fsops.NewLocalPool(s.instanceStore, tt.backend))
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, tt.backend))
 
 			files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
 			used, success := tt.process(s, ctx,

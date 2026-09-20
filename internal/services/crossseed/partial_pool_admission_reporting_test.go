@@ -219,7 +219,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
-			service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
 				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					created := &fsops.TreeCreateResult{}
@@ -450,7 +450,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
-			service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
 				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					created := &fsops.TreeCreateResult{}

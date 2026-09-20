@@ -729,7 +729,7 @@ func (app *Application) runServer() {
 	reannounceService.SetActivityPublisher(activityHub)
 
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
-	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
 		return remotebackend.New(sshPool, inst)
 	})
 	crossSeedService.SetBackendPool(backendPool)

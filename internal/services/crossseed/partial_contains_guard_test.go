@@ -61,7 +61,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		},
 	}
 
-	pool := fsops.NewLocalPool(instanceStore, local.NewBackend())
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
 
 	service := &Service{
 		syncManager:      sync,
@@ -142,7 +142,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		},
 	}
 
-	pool := fsops.NewLocalPool(instanceStore, local.NewBackend())
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
 
 	service := &Service{
 		syncManager:      sync,
@@ -234,7 +234,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		},
 	}
 
-	pool := fsops.NewLocalPool(instanceStore, local.NewBackend())
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
 
 	service := &Service{
 		syncManager:      sync,
@@ -317,7 +317,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		},
 	}
 
-	pool := fsops.NewLocalPool(instanceStore, local.NewBackend())
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
 
 	service := &Service{
 		syncManager:      sync,

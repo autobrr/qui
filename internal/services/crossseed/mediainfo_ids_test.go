@@ -222,7 +222,7 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 	}
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	// The MKV path is resolved through the instance's filesystem backend.
-	svc.SetBackendPool(fsops.NewLocalPool(
+	svc.SetBackendPool(fsops.NewPool(
 		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		local.NewBackend(),
 	))
