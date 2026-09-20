@@ -355,6 +355,7 @@ To run a dry-run immediately without waiting for interval execution:
 - **Workflow list menu:** `Run dry-run now`
 
 A dry-run executes the current workflow configuration as a simulation and writes results to automation activity.
+A dry-run reports the same torrents as the live impact preview, because it deletes nothing.
 
 No-match behavior:
 
