@@ -1160,7 +1160,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     selectAllFilters,
     selectAllExcludeHashes,
     selectAllExcludedTargets,
-    filters,
     effectiveSearch,
     activeSortField,
     activeSortOrder,

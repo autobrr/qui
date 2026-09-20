@@ -143,7 +143,10 @@ const API_BASE = getApiBaseUrl()
 // The backend FilterOptions has no expandedCategories field. The sidebar keeps
 // categories as the user's selection and expandedCategories as the subcategory
 // expansion, so the wire gets the expanded list under categories (ADR 0010).
-function serializeFilters(filters: TorrentFilters): TorrentFilters {
+function serializeFilters(filters: TorrentFilters | null | undefined): TorrentFilters | undefined {
+  if (!filters) {
+    return undefined
+  }
   const { expandedCategories, expandedExcludeCategories, ...rest } = filters
   return {
     ...rest,
@@ -923,7 +926,7 @@ class ApiClient {
         sort: stream.sort,
         order: stream.order,
         search: stream.search ?? "",
-        filters: stream.filters ? serializeFilters(stream.filters) : null,
+        filters: serializeFilters(stream.filters) ?? null,
       }))
       params.set("streams", JSON.stringify(normalized))
     }
@@ -966,7 +969,7 @@ class ApiClient {
           targets: params.targets,
           selectAll: params.selectAll,
           search: params.search,
-          filters: params.filters && serializeFilters(params.filters),
+          filters: serializeFilters(params.filters),
           excludeHashes: params.excludeHashes,
           excludeTargets: params.excludeTargets,
           instanceIds: params.instanceIds,
@@ -1128,7 +1131,7 @@ class ApiClient {
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
       method: "POST",
-      body: JSON.stringify({ ...data, filters: data.filters && serializeFilters(data.filters) }),
+      body: JSON.stringify({ ...data, filters: serializeFilters(data.filters) }),
     })
   }
 
