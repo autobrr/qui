@@ -148,6 +148,7 @@ func TestMismatchReportsBothKeysAndOpensNoSession(t *testing.T) {
 	require.NotNil(t, report.PinnedKey)
 	assert.Equal(t, otherKey.Marshal(), report.PinnedKey.Marshal())
 	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Auths(), "a refused host key must not be offered the client key")
 	assert.Zero(t, server.Channels(), "a refused host key must not open a session")
 }
 
