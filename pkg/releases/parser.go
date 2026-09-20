@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/autobrr/go-cache/ttlcache"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )

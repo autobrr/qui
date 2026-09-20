@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
 
 // TestMakeReleaseKey tests the release key extraction logic using rls parser
