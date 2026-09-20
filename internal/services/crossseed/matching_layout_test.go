@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"

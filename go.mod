@@ -14,6 +14,7 @@ require (
 	github.com/autobrr/go-mediainfo v0.8.0
 	github.com/autobrr/go-qbittorrent v1.19.0
 	github.com/autobrr/go-torrent v1.1.1
+	github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.20.0
@@ -28,7 +29,6 @@ require (
 	github.com/klauspost/compress v1.19.2
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mat/besticon/v3 v3.22.0
-	github.com/moistari/rls v0.6.0
 	github.com/nicholas-fedor/shoutrrr v0.17.0
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.11
@@ -102,5 +102,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/moistari/rls => github.com/autobrr/rls v0.8.1
