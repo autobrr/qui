@@ -107,11 +107,13 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	if id := identityOf(inst); entry.id != id {
 		// A replaced pin (or a changed endpoint) is the only thing that clears
 		// a refusal, and it clears it with no persisted state of its own. New
-		// credentials against the same pin end the old session and nothing else.
-		if entry.id.pin != id.pin {
-			entry.close()
+		// credentials against the same pin end the old session and forgive a
+		// failed dial, since the fix may be exactly what changed; the refusal
+		// stays, because credentials say nothing about the host key.
+		if entry.id.pin == id.pin && entry.refused() {
+			entry.disconnect()
 		} else {
-			entry.drop()
+			entry.forget()
 		}
 		entry.id = id
 	}
@@ -183,7 +185,7 @@ func (p *Pool) Close() {
 
 	for _, entry := range entries {
 		_ = entry.lock(context.Background())
-		entry.close()
+		entry.forget()
 		entry.unlock()
 	}
 }
@@ -208,8 +210,7 @@ func (e *entry) unlock() { <-e.sem }
 // retried at all: nothing about waiting makes a wrong host key right.
 func (e *entry) memoise(inst *models.Instance, err error) {
 	e.err = err
-	_, mismatch := errors.AsType[*MismatchError](err)
-	if mismatch || errors.Is(err, ErrPinUnusable) {
+	if isRefusal(err) {
 		e.retryAt = time.Now().Add(refuseFor)
 		log.Debug().Int("instanceID", inst.ID).Err(err).Msg("sshpool: refusing the host until its pin changes")
 		return
@@ -223,16 +224,26 @@ func (e *entry) memoise(inst *models.Instance, err error) {
 	log.Debug().Int("instanceID", inst.ID).Err(err).Dur("retryIn", jittered).Msg("sshpool: dial failed")
 }
 
-// close drops the connection and the memo. Callers hold the entry.
-func (e *entry) close() {
-	e.drop()
+// isRefusal tells the memo that outlives a credential change from the one
+// that does not: a wrong host key is not something new credentials can fix.
+func isRefusal(err error) bool {
+	_, mismatch := errors.AsType[*MismatchError](err)
+	return mismatch || errors.Is(err, ErrPinUnusable)
+}
+
+// refused reports whether the memo is a host-key refusal. Callers hold the entry.
+func (e *entry) refused() bool { return e.err != nil && isRefusal(e.err) }
+
+// forget ends the connection and the memo. Callers hold the entry.
+func (e *entry) forget() {
+	e.disconnect()
 	e.err = nil
 	e.retryAt = time.Time{}
 	e.backoff = 0
 }
 
-// drop ends the connection and keeps the memo. Callers hold the entry.
-func (e *entry) drop() {
+// disconnect ends the connection and keeps the memo. Callers hold the entry.
+func (e *entry) disconnect() {
 	if e.client != nil {
 		_ = e.client.Close()
 	}
@@ -250,7 +261,7 @@ func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 	_ = e.lock(context.Background())
 	defer e.unlock()
 	if e.client == client {
-		e.close()
+		e.forget()
 		log.Debug().Int("instanceID", instanceID).Err(err).Msg("sshpool: connection dropped")
 	}
 }

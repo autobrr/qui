@@ -174,6 +174,19 @@ func TestPoolReconnectsWhenCredentialsChange(t *testing.T) {
 	inst.SSHKeyEncrypted = "enc-key-v2"
 	_, again := refusing.SFTP(t.Context(), inst)
 	require.Equal(t, err, again, "a credential change must not clear a host-key refusal")
+
+	// A plain dial failure is forgiven by a credential change: the fix may be
+	// exactly what changed, so the caller must not sit out the backoff.
+	backingOff := NewPool(NewDialer(&fakeCreds{key: "not a key", pin: hostKey.PublicKey().Marshal()}))
+	t.Cleanup(backingOff.Close)
+	dead := pinnedInstanceAt(t, server.Addr)
+	_, err = backingOff.SFTP(t.Context(), dead)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrPinUnusable)
+	dead.SSHKeyEncrypted = "enc-key-v3"
+	backingOff.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
+	_, err = backingOff.SFTP(t.Context(), dead)
+	require.NoError(t, err, "corrected credentials must dial at once, not wait out the backoff")
 }
 
 func TestPoolReconnectsAfterDrop(t *testing.T) {
