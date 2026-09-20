@@ -299,7 +299,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			requestedHashes := buildExcludeHashSet(req.Hashes)
 			torrents, crossErr := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs, nil, nil)
 			if crossErr != nil {
-				h.respondTorrentFieldSelectionError(w, crossErr, req.Field, req.InstanceIDs)
+				respondTorrentFieldSelectionError(w, crossErr, req.Field, req.InstanceIDs)
 				return
 			}
 
@@ -373,7 +373,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		if instanceID != allInstancesID && respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
 			return
 		}
-		h.respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
+		respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
 		return
 	}
 
@@ -479,7 +479,7 @@ func matchesExcludedTargetSet(excludeTargets map[string]struct{}, instanceID int
 	return false
 }
 
-func (h *TorrentsHandler) respondTorrentFieldSelectionError(w http.ResponseWriter, err error, field string, instanceIDs []int) {
+func respondTorrentFieldSelectionError(w http.ResponseWriter, err error, field string, instanceIDs []int) {
 	if errors.Is(err, errPartialResults) {
 		log.Warn().Str("field", field).Ints("instanceIDs", instanceIDs).Msg("Cross-instance torrent field returned partial results")
 		RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
