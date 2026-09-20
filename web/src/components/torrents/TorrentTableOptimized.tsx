@@ -451,6 +451,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
   const isVisibilitySettled = isHiddenDelayed || isVisible
 
+  // The list request; in cross-seed mode combinedFiltersExpr is the hash
+  // expression alone, unlike selectAllFilters which always joins the column filters.
   const listFilters = useMemo(
     () => ({ ...filters, expr: combinedFiltersExpr || undefined }),
     [filters, combinedFiltersExpr]

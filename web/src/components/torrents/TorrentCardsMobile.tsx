@@ -1372,7 +1372,7 @@ export function TorrentCardsMobile({
     enabled: isTabVisible,
     instanceIds,
     search: effectiveSearch,
-    filters: filters,
+    filters,
     sort: backendSortField,
     order: sortOrder,
   })
