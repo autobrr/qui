@@ -95,6 +95,8 @@ export function useTorrentSelectionDerivations({
     if (isAllSelected) {
       // The backend total does not know a client-side column filter; the
       // visible rows do, and a select-all action reaches exactly those.
+      // ponytail: counts loaded rows only, so a cross-seed set past one page
+      // (300) under-reports; a cross-seed expression is one torrent's siblings.
       if (clientSideFiltering) {
         return selectedHashes.length
       }

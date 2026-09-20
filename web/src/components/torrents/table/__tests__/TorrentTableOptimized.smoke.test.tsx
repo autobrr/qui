@@ -26,6 +26,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
+import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
 import type { ComponentProps, ReactNode } from "react"
@@ -34,7 +35,7 @@ import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
-const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false }))
+const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false, totalCount: 3 }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -140,7 +141,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
     useTorrentsList: () => {
       result ??= {
         torrents,
-        totalCount: torrents.length,
+        get totalCount() { return scenario.totalCount },
         stats: {
           total: torrents.length,
           downloading: 1,
@@ -210,7 +211,10 @@ vi.mock("@/hooks/useTorrentActions", () => {
   }
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -227,6 +231,7 @@ describe("TorrentTableOptimized smoke", () => {
     localStorage.clear()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
+    scenario.totalCount = torrents.length
   })
 
   it("renders a row for each torrent", () => {
@@ -275,6 +280,30 @@ describe("TorrentTableOptimized smoke", () => {
     const { container } = renderTable()
     expect(container.textContent).toContain("Alpha Release")
     expect(container.textContent).toContain("Bravo Release")
+  })
+
+  // Issue #1925 on the copy side: when select-all reaches past the loaded rows,
+  // the field request joins the column filter with the filter expression like a
+  // bulk action does, not the list expression.
+  it("copy-all names past the loaded rows sends the column filter AND the filter expression", async () => {
+    const expr = "Ratio > 1"
+    const columnFilter = { columnId: "name", operation: "contains", value: "Release" } as const
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([columnFilter]))
+    scenario.totalCount = 10
+    vi.mocked(api.getTorrentField).mockResolvedValue({ values: ["Alpha Release"], total: 1 })
+    // jsdom has no clipboard; the copy fallback calls execCommand.
+    document.execCommand = vi.fn(() => true)
+    const { container, findByRole } = renderTable({ filters: makeFilters({ expr }) })
+
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+    fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
+    fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
+
+    await waitFor(() => expect(api.getTorrentField).toHaveBeenCalled())
+    const [, field, request] = vi.mocked(api.getTorrentField).mock.calls[0]
+    expect(field).toBe("name")
+    expect(request.filters?.expr).toBe(`(${columnFiltersToExpr([columnFilter])}) && (${expr})`)
   })
 
   // Issue #1925 on the copy side: in cross-seed mode the column filter applies
