@@ -775,7 +775,9 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	if n, err := res.RowsAffected(); err != nil {
 		return err
 	} else if n != 1 {
-		return fmt.Errorf("backup run %d already has items", runID)
+		// Either the run committed items already, or it was deleted while this
+		// snapshot was being built.
+		return fmt.Errorf("backup run %d is gone or already has items", runID)
 	}
 
 	// Pre-deduplicate all strings before interning to minimize database operations

@@ -56,21 +56,26 @@ func runBackupItemRangeTests(t *testing.T, open func(t *testing.T) *database.DB)
 	})
 }
 
-// waitForLockWaiters blocks until want writers are queued on the instance lock,
-// so the Postgres tests order their writers without sleeping for a fixed time.
-func waitForLockWaiters(t *testing.T, db *database.DB, want int) {
+// waitForLockWaiters blocks until want writers are queued on one instance's
+// lock, so the Postgres tests order their writers without sleeping for a fixed
+// time. Advisory locks are database-wide while test schemas share a database,
+// so the instance id has to be part of the match or another schema's writer
+// would satisfy the wait.
+func waitForLockWaiters(t *testing.T, db *database.DB, instanceID, want int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var waiting int
 		require.NoError(t, db.QueryRowContext(t.Context(),
-			"SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND classid = CAST(? AS INTEGER)",
-			models.BackupItemsLockClass).Scan(&waiting))
+			`SELECT COUNT(*) FROM pg_locks
+			 WHERE locktype = 'advisory' AND NOT granted
+			   AND classid = CAST(? AS INTEGER) AND objid = CAST(? AS INTEGER)`,
+			models.BackupItemsLockClass, instanceID).Scan(&waiting))
 		if waiting >= want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %d writers on the instance lock, saw %d", want, waiting)
+			t.Fatalf("timed out waiting for %d writers on instance %d, saw %d", want, instanceID, waiting)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -474,7 +479,7 @@ func checkItemWritersSerialize(t *testing.T, db *database.DB) {
 
 		done := make(chan error, 1)
 		go func() { done <- write() }()
-		waitForLockWaiters(t, db, 1)
+		waitForLockWaiters(t, db, inst, 1)
 		select {
 		case err := <-done:
 			_ = holder.Rollback()
@@ -516,10 +521,10 @@ func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 
 	insertDone := make(chan error, 1)
 	go func() { insertDone <- f.store.InsertItems(f.ctx, committing, changed) }()
-	waitForLockWaiters(t, db, 1) // InsertItems queues on the lock first
+	waitForLockWaiters(t, db, inst, 1) // InsertItems queues on the lock first
 	cleanupDone := make(chan error, 1)
 	go func() { cleanupDone <- f.store.CleanupRun(f.ctx, committing) }()
-	waitForLockWaiters(t, db, 2) // cleanup queues behind it
+	waitForLockWaiters(t, db, inst, 2) // cleanup queues behind it
 	require.NoError(t, holder.Rollback())
 	require.NoError(t, <-insertDone)
 	require.NoError(t, <-cleanupDone)
