@@ -6,6 +6,7 @@ package sshpool
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"strconv"
 	"testing"
@@ -82,6 +83,41 @@ func TestFirstContactReportsKeyAndCapabilities(t *testing.T) {
 	// pkg/sftp's server cannot advertise limits@openssh.com, so this flag is
 	// only ever exercised against a real OpenSSH host.
 	assert.False(t, report.Capabilities.Limits)
+}
+
+// legacyHostKeySigner hides ssh.AlgorithmSigner, which is what makes x/crypto's
+// server offer ssh-rsa on its own instead of the SHA-2 signature names as well.
+// That is the host key an old OpenSSH presents.
+type legacyHostKeySigner struct{ signer ssh.Signer }
+
+func (s legacyHostKeySigner) PublicKey() ssh.PublicKey { return s.signer.PublicKey() }
+
+func (s legacyHostKeySigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	return s.signer.Sign(rand, data)
+}
+
+func TestFirstContactRefusesSHA1RSAHostKey(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, legacyHostKeySigner{sshtest.NewRSASigner()}, sshtest.ExecGNU)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, ErrConnect, "first contact must not pin a key negotiated under SHA-1 ssh-rsa")
+	assert.Nil(t, report)
+	assert.Zero(t, server.Accepts(), "negotiation fails before the host key is exchanged")
+	assert.Zero(t, server.Auths())
+	assert.Zero(t, server.Channels())
+}
+
+func TestFirstContactOffersOnlySupportedHostKeyAlgorithms(t *testing.T) {
+	t.Parallel()
+
+	algorithms := hostKeyAlgorithms(nil)
+
+	require.NotEmpty(t, algorithms)
+	assert.Equal(t, ssh.KeyAlgoED25519, algorithms[0], "a host holding several keys should pin its ed25519 one")
+	assert.ElementsMatch(t, ssh.SupportedAlgorithms().HostKeys, algorithms,
+		"first contact offers the supported set and nothing else, which excludes ssh-rsa, ssh-dss and their certificate forms")
 }
 
 func TestPinnedMatchReportsCapabilities(t *testing.T) {
