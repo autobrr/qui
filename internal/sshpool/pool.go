@@ -104,6 +104,15 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	}
 	defer entry.unlock()
 
+	// Close may have run while this caller waited on the entry; the entry it
+	// holds is then orphaned and a dial through it would outlive the pool.
+	p.mu.Lock()
+	closed := p.closed
+	p.mu.Unlock()
+	if closed {
+		return nil, ErrPoolClosed
+	}
+
 	if id := identityOf(inst); entry.id != id {
 		// A replaced pin (or a changed endpoint) is the only thing that clears
 		// a refusal, and it clears it with no persisted state of its own. New

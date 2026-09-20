@@ -127,6 +127,41 @@ func TestPoolWaiterHonoursContext(t *testing.T) {
 	require.Error(t, <-first, "the hanging handshake fails on the dialer's own deadline")
 }
 
+// A caller that was already waiting on the entry when Close ran must not dial
+// through the orphaned entry afterwards, whichever of the two took the entry
+// first.
+func TestPoolCloseRefusesAWaitingCaller(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	pool := NewPool(dialerWithTimeout(time.Second))
+	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
+	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := pool.SFTP(t.Context(), inst)
+		first <- err
+	}()
+	require.Eventually(t, func() bool {
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+		entry := pool.conns[inst.ID]
+		return entry != nil && len(entry.sem) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	waiter := make(chan error, 1)
+	go func() {
+		_, err := pool.SFTP(t.Context(), inst)
+		waiter <- err
+	}()
+	time.Sleep(50 * time.Millisecond) // let the waiter queue on the entry
+	pool.Close()
+
+	require.Error(t, <-first)
+	require.ErrorIs(t, <-waiter, ErrPoolClosed, "a caller queued behind Close must not dial through the orphaned entry")
+}
+
 func TestPoolReusesConnection(t *testing.T) {
 	t.Parallel()
 
