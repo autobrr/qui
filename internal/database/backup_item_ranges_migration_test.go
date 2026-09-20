@@ -24,10 +24,12 @@ func TestBackupItemRangesMigrationSQLite(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	// 010 rebuilds referenced tables and only runs with foreign keys off.
+	// 010 rebuilds referenced tables and only runs with foreign keys off; the
+	// helper turns enforcement back on before the migration under test, which
+	// is the mode applyAllMigrations runs it in.
 	_, err = conn.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF")
 	require.NoError(t, err)
-	checkBackupItemRangesMigration(t.Context(), t, conn, migrationsFS, "migrations", "101_backup_item_ranges.sql")
+	checkBackupItemRangesMigration(t.Context(), t, conn, migrationsFS, "migrations", "101_backup_item_ranges.sql", true)
 }
 
 func TestBackupItemRangesMigrationPostgresIntegration(t *testing.T) {
@@ -38,12 +40,12 @@ func TestBackupItemRangesMigrationPostgresIntegration(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkBackupItemRangesMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations", "102_backup_item_ranges.sql")
+	checkBackupItemRangesMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations", "102_backup_item_ranges.sql", false)
 }
 
 // A migrated run must list exactly the items it listed before, and each
 // instance's newest snapshot must stay open for the next run to extend.
-func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadDirFS, dir, target string) {
+func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadDirFS, dir, target string, enforceForeignKeys bool) {
 	t.Helper()
 
 	entries, err := fsys.ReadDir(dir)
@@ -54,12 +56,16 @@ func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql
 			earlier = append(earlier, name)
 		}
 	}
-	sort.Strings(earlier)
 	for _, name := range earlier {
 		body, err := fs.ReadFile(fsys, path.Join(dir, name))
 		require.NoError(t, err)
 		_, err = conn.ExecContext(ctx, string(body))
 		require.NoError(t, err, name)
+	}
+
+	if enforceForeignKeys {
+		_, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+		require.NoError(t, err)
 	}
 
 	str := func(value string) int64 {
@@ -92,6 +98,8 @@ func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql
 	item(4, 3, "h3", "Three", "'/data/cross-seed/three'")
 	item(5, 4, "h1", "One", "NULL")
 
+	runsBefore := backupRunMetadata(ctx, t, conn)
+
 	before := backupRunContents(ctx, t, conn, `
 		SELECT r.id, i.torrent_hash, i.name, i.tags, i.save_path
 		FROM instance_backup_runs r JOIN instance_backup_items_view i ON i.run_id = r.id`)
@@ -108,6 +116,8 @@ func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql
 		  ON i.instance_id = r.instance_id AND i.from_seq <= r.items_seq AND (i.to_seq IS NULL OR i.to_seq > r.items_seq)`)
 	require.Equal(t, before, after)
 	require.Len(t, after, 3)
+
+	require.Equal(t, runsBefore, backupRunMetadata(ctx, t, conn), "migration changed run metadata")
 
 	seqs := map[int]sql.NullInt64{}
 	rows, err := conn.QueryContext(ctx, "SELECT id, items_seq FROM instance_backup_runs")
@@ -158,4 +168,24 @@ func backupRunContents(ctx context.Context, t *testing.T, conn *sql.DB, query st
 		sort.Strings(items)
 	}
 	return contents
+}
+
+// backupRunMetadata reads the run columns the migration must leave untouched.
+func backupRunMetadata(ctx context.Context, t *testing.T, conn *sql.DB) []string {
+	t.Helper()
+	rows, err := conn.QueryContext(ctx, `
+		SELECT id, instance_id, kind, status, requested_by, torrent_count, total_bytes
+		FROM instance_backup_runs_view ORDER BY id`)
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, instanceID, torrents int
+		var totalBytes int64
+		var kind, status, requestedBy sql.NullString
+		require.NoError(t, rows.Scan(&id, &instanceID, &kind, &status, &requestedBy, &torrents, &totalBytes))
+		out = append(out, fmt.Sprintf("%d|%d|%v|%v|%v|%d|%d", id, instanceID, kind, status, requestedBy, torrents, totalBytes))
+	}
+	require.NoError(t, rows.Err())
+	return out
 }

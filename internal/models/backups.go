@@ -727,25 +727,6 @@ func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, 
 	return ids, nil
 }
 
-func (s *BackupStore) DeleteRun(ctx context.Context, runID int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
 // InsertItems records runID's snapshot. Torrents whose state matches the
 // instance's current rows extend those rows to this run without a write; only
 // new or changed torrents insert a row, and states the run no longer has are
@@ -1068,7 +1049,9 @@ func (s *BackupStore) lockInstanceItems(ctx context.Context, tx dbinterface.TxQu
 // snapshotItemsQuery selects the item rows whose sequence range covers one
 // run's snapshot. It takes the run id, instance id and the run's items_seq
 // twice; passing the run's values as constants lets the planner filter by
-// instance before it resolves strings.
+// instance before it resolves strings. The first parameter is echoed back as
+// the run id because rows no longer store one, and BackupItem.RunID is part of
+// the JSON the API returns.
 const snapshotItemsQuery = `
 		SELECT id, CAST(? AS BIGINT), torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
 		FROM instance_backup_items_view
@@ -1109,6 +1092,11 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 	}
 	defer rows.Close()
 
+	return scanBackupItems(rows)
+}
+
+// scanBackupItems reads rows selected with snapshotItemsQuery's column list.
+func scanBackupItems(rows *sql.Rows) ([]*BackupItem, error) {
 	items := make([]*BackupItem, 0)
 
 	for rows.Next() {
@@ -1161,23 +1149,61 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		items = append(items, &item)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
+	return items, rows.Err()
 }
 
 func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
+	if len(runIDs) == 0 {
+		return nil, nil
+	}
+
+	// Process in chunks to avoid hitting SQLite parameter limits
+	const chunkSize = 900
+
 	var allItems []*BackupItem
-	for _, runID := range runIDs {
-		items, err := s.ListItems(ctx, runID)
+
+	for i := 0; i < len(runIDs); i += chunkSize {
+		end := min(i+chunkSize, len(runIDs))
+
+		items, err := s.listItemsForRunsChunk(ctx, runIDs[i:end])
 		if err != nil {
 			return nil, err
 		}
 		allItems = append(allItems, items...)
 	}
+
 	return allItems, nil
+}
+
+func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
+	orderByName := "i.name COLLATE NOCASE"
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		orderByName = "LOWER(i.name)"
+	}
+
+	args := make([]any, len(runIDs))
+	for i, id := range runIDs {
+		args[i] = id
+	}
+
+	// One statement for the whole chunk: the per-run query of ListItems costs
+	// two round trips each, which on Postgres took 8x longer for 900 runs.
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT i.id, r.id, i.torrent_hash, i.name, i.category, i.size_bytes, i.archive_rel_path,
+		       i.infohash_v1, i.infohash_v2, i.tags, i.torrent_blob_path, i.save_path, i.created_at
+		FROM instance_backup_runs r
+		JOIN instance_backup_items_view i
+		  ON i.instance_id = r.instance_id
+		 AND i.from_seq <= r.items_seq
+		 AND (i.to_seq IS NULL OR i.to_seq > r.items_seq)
+		WHERE r.id IN `+buildInPlaceholders(len(runIDs))+`
+		ORDER BY r.id, `+orderByName, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanBackupItems(rows)
 }
 
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {

@@ -28,6 +28,7 @@ func TestBackupItemRangesSQLite(t *testing.T) {
 }
 
 func TestBackupItemRangesPostgresIntegration(t *testing.T) {
+	t.Parallel()
 	runBackupItemRangeTests(t, func(t *testing.T) *database.DB { return testdb.NewMigratedPostgres(t, "backup-item-ranges") })
 }
 
@@ -50,6 +51,29 @@ func runBackupItemRangeTests(t *testing.T, open func(t *testing.T) *database.DB)
 	t.Run("deleting a run whose items are committing leaves no uncovered rows", func(t *testing.T) {
 		checkDeleteDuringCommit(t, open(t))
 	})
+	t.Run("concurrent commits take distinct snapshot sequences", func(t *testing.T) {
+		checkConcurrentCommits(t, open(t))
+	})
+}
+
+// waitForLockWaiters blocks until want writers are queued on the instance lock,
+// so the Postgres tests order their writers without sleeping for a fixed time.
+func waitForLockWaiters(t *testing.T, db *database.DB, want int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		require.NoError(t, db.QueryRowContext(t.Context(),
+			"SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND classid = CAST(? AS INTEGER)",
+			models.BackupItemsLockClass).Scan(&waiting))
+		if waiting >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d writers on the instance lock, saw %d", want, waiting)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 type backupFixture struct {
@@ -450,11 +474,12 @@ func checkItemWritersSerialize(t *testing.T, db *database.DB) {
 
 		done := make(chan error, 1)
 		go func() { done <- write() }()
+		waitForLockWaiters(t, db, 1)
 		select {
 		case err := <-done:
 			_ = holder.Rollback()
 			t.Fatalf("%s finished while another writer held the instance lock (err=%v)", name, err)
-		case <-time.After(300 * time.Millisecond):
+		default:
 		}
 		require.NoError(t, holder.Rollback())
 		require.NoError(t, <-done, name)
@@ -491,10 +516,10 @@ func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 
 	insertDone := make(chan error, 1)
 	go func() { insertDone <- f.store.InsertItems(f.ctx, committing, changed) }()
-	time.Sleep(300 * time.Millisecond) // InsertItems queues on the lock first
+	waitForLockWaiters(t, db, 1) // InsertItems queues on the lock first
 	cleanupDone := make(chan error, 1)
 	go func() { cleanupDone <- f.store.CleanupRun(f.ctx, committing) }()
-	time.Sleep(300 * time.Millisecond) // cleanup queues behind it
+	waitForLockWaiters(t, db, 2) // cleanup queues behind it
 	require.NoError(t, holder.Rollback())
 	require.NoError(t, <-insertDone)
 	require.NoError(t, <-cleanupDone)
@@ -516,4 +541,44 @@ func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 		gotItems[i] = *item
 	}
 	require.Equal(t, sortedKeys(kept), sortedKeys(gotItems))
+}
+
+// checkConcurrentCommits starts two snapshots for one instance at once. Both
+// must commit, with their own sequence number and their own item set.
+func checkConcurrentCommits(t *testing.T, db *database.DB) {
+	f := newBackupFixture(t, db)
+	inst := f.instance("concurrent-commits")
+	rng := rand.New(rand.NewPCG(11, 12))
+	first := make([]models.BackupItem, 30)
+	for i := range first {
+		first[i] = randomItem(rng, i)
+	}
+	second := slices.Clone(first)
+	second[0].Tags = new("second-run")
+
+	runA, runB := f.run(inst), f.run(inst)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Go(func() { errs <- f.store.InsertItems(f.ctx, runA, first) })
+	wg.Go(func() { errs <- f.store.InsertItems(f.ctx, runB, second) })
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	var seqA, seqB int64
+	require.NoError(t, db.QueryRowContext(f.ctx, "SELECT items_seq FROM instance_backup_runs WHERE id = ?", runA).Scan(&seqA))
+	require.NoError(t, db.QueryRowContext(f.ctx, "SELECT items_seq FROM instance_backup_runs WHERE id = ?", runB).Scan(&seqB))
+	require.NotEqual(t, seqA, seqB, "concurrent commits reused a snapshot sequence")
+
+	for runID, want := range map[int64][]models.BackupItem{runA: first, runB: second} {
+		got, err := f.store.ListItems(f.ctx, runID)
+		require.NoError(t, err)
+		gotItems := make([]models.BackupItem, len(got))
+		for i, item := range got {
+			gotItems[i] = *item
+		}
+		require.Equal(t, sortedKeys(want), sortedKeys(gotItems), "run %d", runID)
+	}
 }
