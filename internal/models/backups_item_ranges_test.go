@@ -69,7 +69,8 @@ func waitForLockWaiters(t *testing.T, db *database.DB, instanceID, want int) {
 		require.NoError(t, db.QueryRowContext(t.Context(),
 			`SELECT COUNT(*) FROM pg_locks
 			 WHERE locktype = 'advisory' AND NOT granted
-			   AND classid = CAST(? AS INTEGER) AND objid = CAST(? AS INTEGER)`,
+			   AND classid = CAST(? AS INTEGER) AND objid = CAST(? AS INTEGER)
+			   AND objsubid = 2`, // 2 = the two-integer advisory lock form
 			models.BackupItemsLockClass, instanceID).Scan(&waiting))
 		if waiting >= want {
 			return
