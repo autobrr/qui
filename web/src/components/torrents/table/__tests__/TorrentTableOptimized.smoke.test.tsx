@@ -25,15 +25,17 @@ import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimiz
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { api } from "@/lib/api"
+import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, renderHook, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
 import type { ComponentProps, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
 
 // Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
-const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false }))
+const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false, totalCount: 3 }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -111,9 +113,12 @@ vi.stubGlobal("ResizeObserver", class {
 })
 
 // Network boundary: any api.* call resolves to undefined (real hooks degrade
-// gracefully via their ?? fallbacks).
+// gracefully via their ?? fallbacks). One spy per method so a test can read
+// what the table sent.
 vi.mock("@/lib/api", () => ({
-  api: new Proxy({}, { get: () => vi.fn(() => Promise.resolve(undefined)) }),
+  api: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
+    get: (target, prop: string) => (target[prop] ??= vi.fn(() => Promise.resolve(undefined))),
+  }),
 }))
 
 // Tracker query hooks subscribe to the activity stream (needs a provider);
@@ -136,7 +141,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
     useTorrentsList: () => {
       result ??= {
         torrents,
-        totalCount: torrents.length,
+        get totalCount() { return scenario.totalCount },
         stats: {
           total: torrents.length,
           downloading: 1,
@@ -223,6 +228,7 @@ describe("TorrentTableOptimized smoke", () => {
     localStorage.clear()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
+    scenario.totalCount = torrents.length
   })
 
   it("renders a row for each torrent", () => {
@@ -271,5 +277,33 @@ describe("TorrentTableOptimized smoke", () => {
     const { container } = renderTable()
     expect(container.textContent).toContain("Alpha Release")
     expect(container.textContent).toContain("Bravo Release")
+  })
+
+  // Issue #1925 on the copy side: copy-all must scope to the visible set, so
+  // the field request joins the column filter with the cross-seed expression
+  // like a bulk action does, even though the list request sends the hash
+  // expression alone.
+  it("copy-all names in cross-seed mode sends the column filter AND the cross-seed expression", async () => {
+    const crossSeedExpr = "Hash == \"hash-aaa\" || Hash == \"hash-bbb\""
+    // A filter every row passes client-side too, so the rows stay rendered.
+    const columnFilter = { columnId: "name", operation: "contains", value: "Release" } as const
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([columnFilter]))
+    scenario.isCrossSeedFiltering = true
+    scenario.totalCount = 10
+    vi.mocked(api.getTorrentField).mockResolvedValue({ values: ["Alpha Release"], total: 1 })
+    // jsdom has no clipboard; the copy fallback calls execCommand.
+    document.execCommand = vi.fn(() => true)
+    const { container, findByRole } = renderTable({ filters: makeFilters({ expr: crossSeedExpr }) })
+
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.contextMenu(within(container).getByText("Alpha Release"))
+    // The copy items sit in a submenu; ArrowRight opens it without pointer events.
+    fireEvent.keyDown(await findByRole("menuitem", { name: "contextMenu.copy" }), { key: "ArrowRight" })
+    fireEvent.click(await findByRole("menuitem", { name: "contextMenu.copyName" }))
+
+    await waitFor(() => expect(api.getTorrentField).toHaveBeenCalled())
+    const [, field, request] = vi.mocked(api.getTorrentField).mock.calls[0]
+    expect(field).toBe("name")
+    expect(request.filters?.expr).toBe(`(${columnFiltersToExpr([columnFilter])}) && (${crossSeedExpr})`)
   })
 })

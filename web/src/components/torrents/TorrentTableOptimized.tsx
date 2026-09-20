@@ -987,13 +987,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       sort: activeSortField,
       order: activeSortOrder,
       search: effectiveSearch,
-      filters: listFilters,
+      // The scope is only read without an explicit selection, so this is the
+      // select-all set: column filters AND expr, like a bulk action (#1925).
+      filters: selectAllFilters,
       excludeHashes: selectAllExcludeHashes,
       excludeTargets: selectAllExcludedTargets,
     }
     const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
-  }, [instanceId, listFilters, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  }, [instanceId, selectAllFilters, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
