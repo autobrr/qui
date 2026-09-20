@@ -2013,10 +2013,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	s.mu.RLock()
 	lastFSDelete := s.lastFreeSpaceDeleteAt[instanceID]
 	s.mu.RUnlock()
-	inFreeSpaceCooldown := !lastFSDelete.IsZero() && now.Sub(lastFSDelete) < freeSpaceDeleteCooldown
 
-	// If in cooldown, filter out delete rules that use FREE_SPACE
-	if inFreeSpaceCooldown {
+	// If in cooldown, filter out delete rules that use FREE_SPACE. A dry run deletes nothing, so it skips the cooldown.
+	if !dryRun && !lastFSDelete.IsZero() && now.Sub(lastFSDelete) < freeSpaceDeleteCooldown {
 		filtered := make([]*models.Automation, 0, len(eligibleRules))
 		for _, rule := range eligibleRules {
 			// Skip delete rules that use FREE_SPACE condition
@@ -2246,8 +2245,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.mu.Unlock()
 	}
 
-	// Skip checker for recently processed torrents
+	// Skip checker for recently processed torrents. A dry run never stamps this map, so it must not read it either.
 	skipCheck := func(hash string) bool {
+		if dryRun {
+			return false
+		}
 		s.mu.RLock()
 		ts, exists := instLastApplied[hash]
 		s.mu.RUnlock()
