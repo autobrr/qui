@@ -291,60 +291,25 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(req.Targets) > 0 || len(req.Hashes) > 0 {
-		targetsByInstance := make(map[int][]string)
-		seenTargets := make(map[int]map[string]struct{})
+		targetsByInstance := explicitTargets(instanceID, req.Targets, req.Hashes)
 
-		for _, target := range req.Targets {
-			targetInstanceID := target.InstanceID
-			if targetInstanceID <= 0 {
-				if instanceID == allInstancesID {
+		// A bare hash in the unified scope names a torrent, not an instance, so it
+		// resolves against every scoped instance. BulkAction rejects the same
+		// payload (#2530): a field read over duplicate copies is harmless, an action is not.
+		if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
+			seenTargets := make(map[int]map[string]struct{})
+			requestedHashes := buildExcludeHashSet(req.Hashes)
+			torrents, crossErr := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs)
+			if crossErr != nil {
+				h.respondTorrentFieldSelectionError(w, crossErr, req.Field, req.InstanceIDs)
+				return
+			}
+
+			for _, torrent := range torrents {
+				if !matchesRequestedHashSet(requestedHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 					continue
 				}
-				targetInstanceID = instanceID
-			}
-			if instanceID != allInstancesID && targetInstanceID != instanceID {
-				continue
-			}
-			addBulkTarget(targetsByInstance, seenTargets, targetInstanceID, target.Hash)
-		}
-
-		if len(req.Hashes) > 0 {
-			if instanceID == allInstancesID && len(req.Targets) == 0 {
-				requestedHashes := buildExcludeHashSet(req.Hashes)
-				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-					qbittorrent.WithSkipFreshData(r.Context()),
-					0,
-					0,
-					"",
-					"",
-					"",
-					qbittorrent.FilterOptions{},
-					req.InstanceIDs,
-				)
-				if crossErr != nil {
-					log.Error().Err(crossErr).Str("field", req.Field).Msg("Failed to resolve hash targets for torrent field request")
-					RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
-					return
-				}
-				if response.PartialResults {
-					log.Warn().
-						Str("field", req.Field).
-						Ints("instanceIDs", req.InstanceIDs).
-						Msg("Cross-instance hash resolution aborted due to partial results")
-					RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
-					return
-				}
-
-				for _, torrent := range response.CrossInstanceTorrents {
-					if !matchesRequestedHashSet(requestedHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-						continue
-					}
-					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, resolvedTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2))
-				}
-			} else if instanceID != allInstancesID {
-				for _, hash := range req.Hashes {
-					addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
-				}
+				addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, resolvedTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2))
 			}
 		}
 
@@ -406,38 +371,16 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 
 	if instanceID == allInstancesID {
-		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-			qbittorrent.WithSkipFreshData(r.Context()),
-			0,
-			0,
-			req.Sort,
-			req.Order,
-			req.Search,
-			req.Filters,
-			req.InstanceIDs,
-		)
+		torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs)
 		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Str("field", req.Field).Msg("Failed to get cross-instance torrent field")
-			RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
-			return
-		}
-		// A truncated value list behind a 200 reads as complete, so partial aggregates fail for every field.
-		if response.PartialResults {
-			log.Warn().
-				Str("field", req.Field).
-				Ints("instanceIDs", req.InstanceIDs).
-				Msg("Cross-instance torrent field returned partial results")
-			RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
+			h.respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
 			return
 		}
 
 		excludeHashes := buildExcludeHashSet(req.ExcludeHashes)
 		excludeTargets := buildExcludeTargetSet(req.ExcludeTargets)
-		values := make([]string, 0, len(response.CrossInstanceTorrents))
-		for _, torrent := range response.CrossInstanceTorrents {
-			if !hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-				continue
-			}
+		values := make([]string, 0, len(torrents))
+		for _, torrent := range torrents {
 			if matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 				continue
 			}
@@ -542,7 +485,7 @@ func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
 }
 
 func hasTorrentFieldHash(hash, infohashV1, infohashV2 string) bool {
-	return len(torrentFieldHashVariants(hash, infohashV1, infohashV2)) > 0
+	return normalizeHashValue(hash) != "" || normalizeHashValue(infohashV1) != "" || normalizeHashValue(infohashV2) != ""
 }
 
 func matchesRequestedHashSet(requestedHashes map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
@@ -583,6 +526,16 @@ func toQBittorrentTargets(targets []BulkActionTarget) []qbittorrent.TorrentTarge
 	}
 
 	return result
+}
+
+func (h *TorrentsHandler) respondTorrentFieldSelectionError(w http.ResponseWriter, err error, field string, instanceIDs []int) {
+	if errors.Is(err, errPartialResults) {
+		log.Warn().Str("field", field).Ints("instanceIDs", instanceIDs).Msg("Cross-instance torrent field returned partial results")
+		RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
+		return
+	}
+	log.Error().Err(err).Str("field", field).Msg("Failed to get torrent field")
+	RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 }
 
 // CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
@@ -1156,6 +1109,81 @@ func addBulkTarget(targetsByInstance map[int][]string, seen map[int]map[string]s
 	targetsByInstance[instanceID] = append(targetsByInstance[instanceID], strings.TrimSpace(hash))
 }
 
+// errPartialResults reports a select-all read that could not reach every scoped
+// instance. A truncated value list or a half-applied action behind a 200 reads
+// as complete, so each handler maps it to a 503 (ADR 0009).
+var errPartialResults = errors.New("selection read returned partial results")
+
+// explicitTargets turns a request's targets and hashes into hashes per instance.
+// A target with no instance ID takes the scope instance. Bare hashes are dropped
+// in the unified scope: BulkAction rejects them before this runs (#2530) and
+// GetTorrentField resolves them across the scope itself.
+func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map[int][]string {
+	targetsByInstance := make(map[int][]string)
+	seenTargets := make(map[int]map[string]struct{})
+
+	for _, target := range targets {
+		targetInstanceID := target.InstanceID
+		if targetInstanceID <= 0 {
+			if scope == allInstancesID {
+				continue
+			}
+			targetInstanceID = scope
+		}
+		if scope != allInstancesID && targetInstanceID != scope {
+			continue
+		}
+		addBulkTarget(targetsByInstance, seenTargets, targetInstanceID, target.Hash)
+	}
+
+	if scope != allInstancesID {
+		for _, hash := range hashes {
+			addBulkTarget(targetsByInstance, seenTargets, scope, hash)
+		}
+	}
+
+	return targetsByInstance
+}
+
+// selectAllTorrents reads every torrent the scope, search, and filters select
+// and drops the ones with no hash, which nothing can address or exclude.
+// It returns errPartialResults when a scoped instance could not be read.
+func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	var torrents []qbittorrent.CrossInstanceTorrentView
+	if scope == allInstancesID {
+		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, sort, order, search, filters, instanceIDs)
+		if err != nil {
+			return nil, err
+		}
+		if response.PartialResults {
+			return nil, errPartialResults
+		}
+		torrents = response.CrossInstanceTorrents
+	} else {
+		response, err := h.syncManager.GetTorrentsWithFilters(ctx, scope, 0, 0, sort, order, search, filters)
+		if err != nil {
+			if !errors.Is(err, qbittorrent.ErrInstanceDisabled) {
+				if recordErr := h.syncManager.GetErrorStore().RecordError(ctx, scope, err); recordErr != nil {
+					log.Error().Err(recordErr).Int("instanceID", scope).Msg("Failed to record torrent error")
+				}
+			}
+			return nil, err
+		}
+		torrents = make([]qbittorrent.CrossInstanceTorrentView, 0, len(response.Torrents))
+		for i := range response.Torrents {
+			torrents = append(torrents, qbittorrent.CrossInstanceTorrentView{TorrentView: &response.Torrents[i], InstanceID: scope})
+		}
+	}
+
+	selected := torrents[:0]
+	for _, torrent := range torrents {
+		if hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
+			selected = append(selected, torrent)
+		}
+	}
+	return selected, nil
+}
+
 func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
 	if len(excludeHashes) == 0 {
 		return nil
@@ -1362,122 +1390,40 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetsByInstance := make(map[int][]string)
-	seenTargets := make(map[int]map[string]struct{})
-
+	var targetsByInstance map[int][]string
 	if req.SelectAll {
+		targetsByInstance = make(map[int][]string)
 		if req.Filters == nil {
 			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
-		excludeHashes := buildExcludeHashSet(req.ExcludeHashes)
-		excludeTargets := buildExcludeTargetSet(req.ExcludeTargets)
-
-		if instanceID == allInstancesID {
-			response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-				r.Context(),
-				0,
-				0,
-				"added_on",
-				"desc",
-				req.Search,
-				*req.Filters,
-				req.InstanceIDs,
-			)
-			if crossErr != nil {
-				log.Error().Err(crossErr).Msg("Failed to get cross-instance torrents for selectAll operation")
-				RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
+		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs)
+		if selectErr != nil {
+			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
 				return
 			}
-			if response.PartialResults {
-				log.Warn().
-					Str("action", req.Action).
-					Ints("instanceIDs", req.InstanceIDs).
-					Msg("Cross-instance selectAll bulk action aborted due to partial results")
+			if errors.Is(selectErr, errPartialResults) {
+				log.Warn().Str("action", req.Action).Ints("instanceIDs", req.InstanceIDs).Msg("SelectAll bulk action aborted due to partial results")
 				RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
 				return
 			}
-			appendTargetsFromCrossInstanceTorrents(
-				targetsByInstance,
-				seenTargets,
-				response.CrossInstanceTorrents,
-				excludeHashes,
-				excludeTargets,
-			)
-
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("totalFound", len(response.CrossInstanceTorrents)).
-				Int("excludedHashes", len(req.ExcludeHashes)).
-				Int("excludedTargets", len(req.ExcludeTargets)).
-				Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
-				Str("action", req.Action).
-				Msg("SelectAll cross-instance bulk action")
-		} else {
-			// Use a very large limit to get all torrents (backend will handle this properly)
-			response, listErr := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, 100000, 0, "added_on", "desc", req.Search, *req.Filters)
-			if listErr != nil {
-				if respondIfInstanceDisabled(w, listErr, instanceID, "torrents:selectAll") {
-					return
-				}
-				// Record error for user visibility
-				errorStore := h.syncManager.GetErrorStore()
-				if recordErr := errorStore.RecordError(r.Context(), instanceID, listErr); recordErr != nil {
-					log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
-				}
-
-				log.Error().Err(listErr).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
-				RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
-				return
-			}
-
-			for _, torrent := range response.Torrents {
-				normalized := normalizeHashValue(torrent.Hash)
-				if normalized == "" {
-					continue
-				}
-				if excludeHashes != nil {
-					if _, skip := excludeHashes[normalized]; skip {
-						continue
-					}
-				}
-				if excludeTargets != nil {
-					key := fmt.Sprintf("%d:%s", instanceID, normalized)
-					if _, skip := excludeTargets[key]; skip {
-						continue
-					}
-				}
-				addBulkTarget(targetsByInstance, seenTargets, instanceID, torrent.Hash)
-			}
-
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("totalFound", len(response.Torrents)).
-				Int("excluded", len(req.ExcludeHashes)).
-				Int("targetCount", len(targetsByInstance[instanceID])).
-				Str("action", req.Action).
-				Msg("SelectAll bulk action")
+			log.Error().Err(selectErr).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
+			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
+			return
 		}
+
+		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, buildExcludeHashSet(req.ExcludeHashes), buildExcludeTargetSet(req.ExcludeTargets))
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("totalFound", len(torrents)).
+			Int("excludedHashes", len(req.ExcludeHashes)).
+			Int("excludedTargets", len(req.ExcludeTargets)).
+			Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
+			Str("action", req.Action).
+			Msg("SelectAll bulk action")
 	} else {
-		for _, target := range req.Targets {
-			targetInstanceID := target.InstanceID
-			if targetInstanceID <= 0 {
-				if instanceID == allInstancesID {
-					continue
-				}
-				targetInstanceID = instanceID
-			}
-			if instanceID != allInstancesID && targetInstanceID != instanceID {
-				continue
-			}
-			addBulkTarget(targetsByInstance, seenTargets, targetInstanceID, target.Hash)
-		}
-
-		if instanceID != allInstancesID {
-			for _, hash := range req.Hashes {
-				addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
-			}
-		}
+		targetsByInstance = explicitTargets(instanceID, req.Targets, req.Hashes)
 	}
 
 	if len(targetsByInstance) == 0 {
