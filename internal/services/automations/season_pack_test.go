@@ -5,6 +5,7 @@ package automations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -108,11 +109,15 @@ func TestSeasonPackStatus_EpisodeRangeWithoutPack(t *testing.T) {
 type seasonPackViewsReader struct {
 	fakeFilesReader
 	byInstance map[int][]qbittorrent.CrossInstanceTorrentView
+	failing    map[int]bool
 	read       []int
 }
 
 func (r *seasonPackViewsReader) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	r.read = append(r.read, instanceID)
+	if r.failing[instanceID] {
+		return nil, errors.New("instance unreachable")
+	}
 	return r.byInstance[instanceID], nil
 }
 
@@ -137,6 +142,24 @@ func TestBuildAnyInstanceSeasonPackSet_ReadsEveryActiveInstance(t *testing.T) {
 	require.Equal(t, []int{1, 2}, reader.read, "reads every active instance, skips the inactive one")
 	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 	require.Equal(t, SeasonPackStatusUnpacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
+}
+
+// An unreadable instance is skipped; the packs of the other instances still count.
+func TestBuildAnyInstanceSeasonPackSet_SkipsUnreadableInstance(t *testing.T) {
+	reader := &seasonPackViewsReader{
+		byInstance: map[int][]qbittorrent.CrossInstanceTorrentView{2: {seasonPackView("Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP")}},
+		failing:    map[int]bool{1: true},
+	}
+	s := &Service{
+		instanceStore: newSeasonPackInstanceStore(t, []bool{true, true}),
+		filesReader:   reader,
+		releaseParser: releases.NewDefaultParser(),
+	}
+
+	packs := s.buildAnyInstanceSeasonPackSet(t.Context())
+
+	require.Equal(t, []int{1, 2}, reader.read)
+	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
 
 // The preview builds a pack set when only a score rule uses the field, as the run does.

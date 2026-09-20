@@ -100,9 +100,8 @@ func buildSeasonPackSet(parser *releases.Parser, torrents []qbt.Torrent) map[str
 }
 
 // buildAnyInstanceSeasonPackSet indexes the season packs cached for every active
-// instance. Zero qBittorrent requests. Returns nil when any instance cannot be
-// read: a missing instance would report its episodes as unpacked, which is not
-// safe under a delete action, so the status stays unknown instead.
+// instance. Zero qBittorrent requests. An unreadable instance is skipped, as in
+// the hardlink cross-scope and cross-match builders.
 func (s *Service) buildAnyInstanceSeasonPackSet(ctx context.Context) map[string]struct{} {
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
@@ -116,8 +115,8 @@ func (s *Service) buildAnyInstanceSeasonPackSet(ctx context.Context) map[string]
 		}
 		views, err := s.filesReader.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", inst.ID).Msg("automations: failed to read cached torrents for season pack status")
-			return nil
+			log.Debug().Err(err).Int("instanceID", inst.ID).Msg("automations: failed to read cached torrents for season pack status, skipping instance")
+			continue
 		}
 		for i := range views {
 			addSeasonPack(packs, s.releaseParser.Parse(views[i].Name))
