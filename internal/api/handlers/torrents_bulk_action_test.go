@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -290,4 +291,58 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.EqualValues(t, 1, recheckHits["alpha"].Load())
 	require.EqualValues(t, 0, recheckHits["beta"].Load())
+}
+
+// TestBulkAction_SelectAllExcludesHybridByV1Hash drives story 7 of #2749 through
+// the handler: a unified select-all skips a hybrid torrent excluded by its v1
+// hash, the same rule the copy route applies.
+func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
+	t.Parallel()
+
+	db := testdb.NewMigratedSQLite(t, "torrents-bulk-action-exclude")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	var mu sync.Mutex
+	var rechecked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/torrents/recheck":
+			_ = r.ParseForm()
+			mu.Lock()
+			rechecked = append(rechecked, r.Form.Get("hashes"))
+			mu.Unlock()
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa":{"name":"Plain","hash":"aaa","added_on":2},"ddd":{"name":"Hybrid","hash":"ddd","infohash_v1":"eee","added_on":1}}}`))
+			return
+		}
+		_, _ = w.Write([]byte("Ok."))
+	}))
+	t.Cleanup(srv.Close)
+
+	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	setUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+		{Name: "Plain", Hash: "aaa", AddedOn: 2},
+		{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+	})})
+
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore)
+	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+		"action":        "recheck",
+		"selectAll":     true,
+		"instanceIds":   []int{instance.ID},
+		"excludeHashes": []string{"EEE"},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.BulkAction(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"aaa"}, rechecked)
 }
