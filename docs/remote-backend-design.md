@@ -408,7 +408,15 @@ scratch directories and a temporarily added, uniquely tagged
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
 4. Frontend.
-5. Feature rollout per service, degraded-mode UX.
+5. Feature rollout per service, degraded-mode UX. Every consumer still
+   admits an instance on `HasLocalFilesystemAccess` rather than on its
+   filesystem mode: orphan scan (handler and service filters), automations
+   (free-space path source, missing-files condition, hardlink index),
+   dirscan, cross-seed (link mode, manual assemble, mediainfo, season pack,
+   partial pool) and the sync manager's hardlink base dir. Each lifts its
+   gate in its own slice, with the degraded-mode handling that service
+   needs, and the API-driven checks (free space, missing files, orphan
+   scan) become the field test of that slice.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.
