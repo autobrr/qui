@@ -299,7 +299,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
 			seenTargets := make(map[int]map[string]struct{})
 			requestedHashes := buildExcludeHashSet(req.Hashes)
-			torrents, crossErr := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs)
+			torrents, crossErr := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, "", "", "", qbittorrent.FilterOptions{}, req.InstanceIDs, nil, nil)
 			if crossErr != nil {
 				h.respondTorrentFieldSelectionError(w, crossErr, req.Field, req.InstanceIDs)
 				return
@@ -371,23 +371,14 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 
 	if instanceID == allInstancesID {
-		torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs)
+		torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 		if err != nil {
 			h.respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
 			return
 		}
 
-		excludeHashes := buildExcludeHashSet(req.ExcludeHashes)
-		excludeTargets := buildExcludeTargetSet(req.ExcludeTargets)
 		values := make([]string, 0, len(torrents))
 		for _, torrent := range torrents {
-			if matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-				continue
-			}
-			if matchesExcludedTargetSet(excludeTargets, torrent.InstanceID, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-				continue
-			}
-
 			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
@@ -1145,10 +1136,10 @@ func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map
 	return targetsByInstance
 }
 
-// selectAllTorrents reads every torrent the scope, search, and filters select
-// and drops the ones with no hash, which nothing can address or exclude.
-// It returns errPartialResults when a scoped instance could not be read.
-func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+// selectAllTorrents reads every torrent the scope, search, and filters select,
+// drops the excluded ones, and drops the ones with no hash, which nothing can
+// address. It returns errPartialResults when a scoped instance could not be read.
+func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	var torrents []qbittorrent.CrossInstanceTorrentView
 	if scope == allInstancesID {
 		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, sort, order, search, filters, instanceIDs)
@@ -1175,13 +1166,22 @@ func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort
 		}
 	}
 
+	excludedHashes := buildExcludeHashSet(excludeHashes)
+	excludedTargets := buildExcludeTargetSet(excludeTargets)
 	selected := torrents[:0]
 	for _, torrent := range torrents {
-		if hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
+		if hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) && !selectionExcluded(excludedHashes, excludedTargets, torrent) {
 			selected = append(selected, torrent)
 		}
 	}
 	return selected, nil
+}
+
+// selectionExcluded matches an exclude against the hash, infohash v1, and
+// infohash v2, so an exclude by any of a hybrid torrent's hashes holds.
+func selectionExcluded(excludeHashes, excludeTargets map[string]struct{}, torrent qbittorrent.CrossInstanceTorrentView) bool {
+	return matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) ||
+		matchesExcludedTargetSet(excludeTargets, torrent.InstanceID, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
 }
 
 func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
@@ -1280,20 +1280,8 @@ func appendTargetsFromCrossInstanceTorrents(
 	excludeTargets map[string]struct{},
 ) {
 	for _, torrent := range torrents {
-		normalized := normalizeHashValue(torrent.Hash)
-		if normalized == "" {
+		if selectionExcluded(excludeHashes, excludeTargets, torrent) {
 			continue
-		}
-		if excludeHashes != nil {
-			if _, skip := excludeHashes[normalized]; skip {
-				continue
-			}
-		}
-		if excludeTargets != nil {
-			key := fmt.Sprintf("%d:%s", torrent.InstanceID, normalized)
-			if _, skip := excludeTargets[key]; skip {
-				continue
-			}
 		}
 		addBulkTarget(targetsByInstance, seen, torrent.InstanceID, torrent.Hash)
 	}
@@ -1397,7 +1385,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
-		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs)
+		torrents, selectErr := h.selectAllTorrents(r.Context(), instanceID, "added_on", "desc", req.Search, *req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 		if selectErr != nil {
 			if instanceID != allInstancesID && respondIfInstanceDisabled(w, selectErr, instanceID, "torrents:selectAll") {
 				return
@@ -1412,14 +1400,14 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, buildExcludeHashSet(req.ExcludeHashes), buildExcludeTargetSet(req.ExcludeTargets))
+		// selectAllTorrents already dropped the excluded torrents.
+		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, nil, nil)
 
 		log.Debug().
 			Int("instanceID", instanceID).
-			Int("totalFound", len(torrents)).
+			Int("targetCount", len(torrents)).
 			Int("excludedHashes", len(req.ExcludeHashes)).
 			Int("excludedTargets", len(req.ExcludeTargets)).
-			Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
 			Str("action", req.Action).
 			Msg("SelectAll bulk action")
 	} else {

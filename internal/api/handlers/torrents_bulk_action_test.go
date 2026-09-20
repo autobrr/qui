@@ -121,11 +121,17 @@ func TestAppendTargetsFromCrossInstanceTorrents_RespectsExclusions(t *testing.T)
 			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc"}},
 			InstanceID:  2,
 		},
+		// A hybrid torrent excluded by its v1 hash: the row lists it under Hash
+		// (the v2 hash), so a Hash-only match would still act on it (#1481, #1571).
+		{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd", InfohashV1: "eee"}},
+			InstanceID:  1,
+		},
 	}
 
 	targetsByInstance := make(map[int][]string)
 	seen := make(map[int]map[string]struct{})
-	excludeHashes := map[string]struct{}{"bbb": {}}
+	excludeHashes := map[string]struct{}{"bbb": {}, "eee": {}}
 	excludeTargets := buildExcludeTargetSet([]BulkActionTarget{
 		{InstanceID: 2, Hash: "ccc"},
 	})
