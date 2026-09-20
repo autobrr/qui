@@ -37,6 +37,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
 
+## Automations
+
+- **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
+
 ## Disc reports
 
 - **Disc**: A Blu-ray as one unit: the folder that holds `BDMV`, or one `.iso`. The unit a BDInfo scan reads. One torrent can hold several Discs. _Avoid_: Blu-ray folder, disc torrent.
@@ -45,3 +49,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Search candidate**: The unit of work in a seeded search run: a source torrent, or a season group formed by season pack automation. A run counts candidates, not torrents. _Avoid_: Torrent (when the count is meant), item.
 - **Cross-seed added**: One successful apply into the client. One Search candidate can produce several. _Avoid_: Match, torrent added.
 - **Due candidate**: A Search candidate that still needs a search. _Avoid_: Total torrents, pending, remaining.
+
+## Allowed Hosts
+
+- **Allowed Hosts**: The optional list of hostnames and IP addresses a request may use to reach qui. Empty means every host. _Avoid_: Host allowlist, host filter.
+- **Received Host**: The `Host` header, or the HTTP/2 `:authority`, as the main listener sees it. Never `X-Forwarded-Host`. _Avoid_: Forwarded host, original host.

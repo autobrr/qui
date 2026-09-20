@@ -1611,10 +1611,6 @@
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"
-    },
-    "shareLimit": {
-      "global": "Do Servidor",
-      "unlimited": "Infinito"
     }
   },
   "backups": {

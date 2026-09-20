@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "동일 인스턴스에 Cross-seed 존재",
       "SEEDING_ON_SAME_INSTANCE": "동일 인스턴스에서 Cross-seed 시딩 중",
       "CROSS_SEED_TAGS": "크로스시드 태그",
+      "SEASON_PACK_STATUS": "시즌 팩 상태",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "시즌 팩 상태 (모든 인스턴스)",
       "HARDLINK_SCOPE": "하드링크 범위"
     },
     "fieldGroups": {
@@ -196,6 +198,11 @@
       "inside_qbittorrent": "qBittorrent 내부 (외부 링크가 있어도 포함)",
       "outside_qbittorrent": "qBittorrent 외부 (라이브러리/가져오기)",
       "both": "qBittorrent 내부 + 외부"
+    },
+    "seasonPackStatuses": {
+      "pack": "시즌 팩",
+      "packed": "시즌 팩에 포함된 에피소드",
+      "unpacked": "시즌 팩이 없는 에피소드"
     },
     "trackerStatuses": {
       "not_contacted": "접속 시도 안 함",

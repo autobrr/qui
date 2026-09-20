@@ -34,6 +34,7 @@ import {
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
   getTranslatedContentTypes,
+  getTranslatedSeasonPackStatuses,
   getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
@@ -203,6 +204,8 @@ export function LeafCondition({
       defaultValue = "true";
     } else if (newFieldType === "hardlinkScope") {
       defaultValue = "outside_qbittorrent";
+    } else if (newFieldType === "seasonPackStatus") {
+      defaultValue = "packed";
     }
 
     onChange({
@@ -752,6 +755,19 @@ export function LeafCondition({
                   </span>
                 </SelectItem>
               )}
+            </SelectContent>
+          </Select>
+        ) : fieldType === "seasonPackStatus" ? (
+          <Select value={condition.value ?? "packed"} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {getTranslatedSeasonPackStatuses(t).map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         ) : fieldType === "boolean" ? (

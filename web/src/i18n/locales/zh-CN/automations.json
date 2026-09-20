@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "辅种存在于同一实例",
       "SEEDING_ON_SAME_INSTANCE": "辅种在同一实例做种",
       "CROSS_SEED_TAGS": "交叉做种标签",
+      "SEASON_PACK_STATUS": "季包状态",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "季包状态（任意实例）",
       "HARDLINK_SCOPE": "硬链接范围"
     },
     "fieldGroups": {
@@ -196,6 +198,11 @@
       "inside_qbittorrent": "qBittorrent 内部（即使同时链接到外部）",
       "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）",
       "both": "qBittorrent 内部 + 外部"
+    },
+    "seasonPackStatuses": {
+      "pack": "季包",
+      "packed": "已被季包覆盖的剧集",
+      "unpacked": "没有季包的剧集"
     },
     "trackerStatuses": {
       "not_contacted": "未联系",
