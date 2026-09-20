@@ -215,7 +215,7 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
       <TooltipProvider>{children}</TooltipProvider>
     </QueryClientProvider>
   )
-  return render(<TorrentTableOptimized instanceId={1} {...props} />, { wrapper })
+  return render(<TorrentTableOptimized instanceId={1} filters={makeFilters()} {...props} />, { wrapper })
 }
 
 describe("TorrentTableOptimized smoke", () => {

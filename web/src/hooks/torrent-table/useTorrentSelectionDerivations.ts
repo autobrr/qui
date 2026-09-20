@@ -5,6 +5,7 @@
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
 import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { combineFilterExpr } from "@/lib/torrent-filters"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -27,7 +28,7 @@ export interface UseTorrentSelectionDerivationsParams {
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
   columnFiltersExpr: string | null
-  filters?: TorrentFilters
+  filters: TorrentFilters
   stats?: { totalSize?: number }
   totalCount: number
   isCrossInstanceEndpoint?: boolean
@@ -40,11 +41,8 @@ export interface UseTorrentSelectionDerivationsParams {
  * the resolved hashes/torrents, counts, sizes, and the select-all targeting
  * filters/excludes.
  *
- * #1925 PIN: `selectAllFilters` must ALWAYS combine `columnFiltersExpr` with
- * `filters.expr` when both are present. This is deliberately DIFFERENT from
- * `useTorrentTableFilterExpr`'s `combinedFiltersExpr`, which early-returns the
- * cross-seed expression alone. Collapsing the two re-introduces #1925 (bulk
- * actions matching more torrents than the user sees).
+ * `selectAllFilters` always combines column filters with `filters.expr`
+ * (#1925), unlike the list expression in `useTorrentTableFilterExpr`.
  */
 export function useTorrentSelectionDerivations({
   isAllSelected,
@@ -167,33 +165,9 @@ export function useTorrentSelectionDerivations({
       return undefined
     }
 
-    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
-    // so select-all operations target exactly the visible set.
-    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
-    // causing bulk actions to match more torrents than the user sees.
-    const combinedExpr = (columnFiltersExpr && filters?.expr)? `(${columnFiltersExpr}) && (${filters.expr})`: (columnFiltersExpr || filters?.expr)
-
-    if (filters) {
-      return {
-        ...filters,
-        expr: combinedExpr ?? filters.expr ?? "",
-      }
-    }
-
-    if (combinedExpr == null) {
-      return undefined
-    }
-
     return {
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: combinedExpr,
+      ...filters,
+      expr: combineFilterExpr(columnFiltersExpr, filters.expr) ?? "",
     }
   }, [isAllSelected, filters, columnFiltersExpr])
 

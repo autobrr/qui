@@ -443,7 +443,7 @@ function MobileSpeedLimitsDialog({
 interface TorrentCardsMobileProps {
   instanceId: number
   instanceIds?: number[]
-  filters?: TorrentFilters
+  filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean

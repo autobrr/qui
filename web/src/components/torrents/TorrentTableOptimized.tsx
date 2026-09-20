@@ -231,7 +231,7 @@ interface TorrentTableOptimizedProps {
   instanceId: number
   instanceIds?: number[]
   readOnly?: boolean
-  filters?: TorrentFilters
+  filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
@@ -451,6 +451,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
   const isVisibilitySettled = isHiddenDelayed || isVisible
 
+  const listFilters = useMemo(
+    () => ({ ...filters, expr: combinedFiltersExpr || undefined }),
+    [filters, combinedFiltersExpr]
+  )
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -483,19 +488,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     pollingEnabled: isVisibilitySettled,
     instanceIds,
     search: effectiveSearch,
-    filters: {
-      status: filters?.status || [],
-      excludeStatus: filters?.excludeStatus || [],
-      categories: filters?.categories || [],
-      excludeCategories: filters?.excludeCategories || [],
-      tags: filters?.tags || [],
-      excludeTags: filters?.excludeTags || [],
-      trackers: filters?.trackers || [],
-      excludeTrackers: filters?.excludeTrackers || [],
-      expandedCategories: filters?.expandedCategories,
-      expandedExcludeCategories: filters?.expandedExcludeCategories,
-      expr: combinedFiltersExpr || undefined,
-    },
+    filters: listFilters,
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -663,10 +656,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [isLoading, torrents.length])
 
   const hasSidebarFilters = useMemo(() => {
-    if (!filters) {
-      return false
-    }
-
     const {
       status = [],
       excludeStatus = [],
@@ -998,25 +987,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       sort: activeSortField,
       order: activeSortOrder,
       search: effectiveSearch,
-      filters: {
-        status: filters?.status || [],
-        excludeStatus: filters?.excludeStatus || [],
-        categories: filters?.categories || [],
-        excludeCategories: filters?.excludeCategories || [],
-        tags: filters?.tags || [],
-        excludeTags: filters?.excludeTags || [],
-        trackers: filters?.trackers || [],
-        excludeTrackers: filters?.excludeTrackers || [],
-        expandedCategories: filters?.expandedCategories,
-        expandedExcludeCategories: filters?.expandedExcludeCategories,
-        expr: combinedFiltersExpr || undefined,
-      },
+      filters: listFilters,
       excludeHashes: selectAllExcludeHashes,
       excludeTargets: selectAllExcludedTargets,
     }
     const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
-  }, [instanceId, filters, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  }, [instanceId, listFilters, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()

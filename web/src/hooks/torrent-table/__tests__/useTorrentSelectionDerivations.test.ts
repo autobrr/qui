@@ -31,7 +31,7 @@ function render(overrides: Partial<UseTorrentSelectionDerivationsParams> = {}) {
     getVisibleRows: () => makeRows(TORRENTS),
     sortedTorrents: TORRENTS,
     columnFiltersExpr: null,
-    filters: undefined,
+    filters: makeFilters(),
     stats: { totalSize: 600 },
     totalCount: 3,
     isCrossInstanceEndpoint: false,
