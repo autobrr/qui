@@ -104,6 +104,29 @@
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
 }
 
+.demoPoster {
+  position: relative;
+  display: block;
+}
+
+/* Whole screenshot, scaled to the phone width; its own ratio, not the frame's. */
+.demoPoster img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 0.75rem;
+  filter: brightness(0.65);
+}
+
+.demoPosterButton {
+  composes: buttonPrimary;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .demoNote {
   margin: 0;
   text-align: center;
@@ -148,15 +171,6 @@
 }
 
 /* ---- Responsive ---- */
-
-/* Below 1024px the app shows its phone chrome, and a 16:10 box on a wide
-   phone left two rows visible under the footer nav. */
-@media (max-width: 1023px) {
-  .demoFrame {
-    aspect-ratio: auto;
-    height: 88svh;
-  }
-}
 
 @media (max-width: 800px) {
   .features {

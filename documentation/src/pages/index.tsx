@@ -1,23 +1,36 @@
 import Link from "@docusaurus/Link";
 import Head from "@docusaurus/Head";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
+import { useWindowSize } from "@docusaurus/theme-common";
 import Layout from "@theme/Layout";
 import type { ReactNode } from "react";
 import { ExternalArrowIcon } from "../components/OpenInAI";
 import styles from "./index.module.css";
 
+// Below 1024px the app shows its phone chrome, which does not fit in a framed
+// box on a phone. Those visitors get a poster that opens the demo in its own tab.
+// The poster is also the server-rendered state, so a phone never fetches the iframe.
 function Demo() {
+  const desktop = useWindowSize({ desktopBreakpoint: 1023 }) === "desktop";
   return (
     <div className={styles.demo}>
-      <iframe
-        className={styles.demoFrame}
-        src="/demo/"
-        title="qui demo"
-      />
+      {desktop ? (
+        <iframe className={styles.demoFrame} src="/demo/" title="qui demo" />
+      ) : (
+        <Link className={styles.demoPoster} href="/demo/" target="_blank" rel="noopener">
+          <img
+            src="/img/qui-hero.webp"
+            width={1400}
+            height={840}
+            alt="The qui torrent table with sidebar filters, categories, and live stats"
+          />
+          <span className={styles.demoPosterButton}>Open the demo</span>
+        </Link>
+      )}
       <p className={styles.demoNote}>
-        Nothing you do here is saved.{" "}
+        Nothing you do in the demo is saved.{" "}
         <Link href="/demo/" target="_blank" rel="noopener">
-          Open the demo in a new tab
+          Open it in a new tab
         </Link>
       </p>
     </div>
