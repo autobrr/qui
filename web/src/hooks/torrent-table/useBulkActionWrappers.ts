@@ -114,19 +114,6 @@ export function useBulkActionWrappers({
     excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
     excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
   }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
-  const normalizedSelectionFilters = useMemo(() => {
-    const sourceFilters = selectAllFilters ?? filters
-    if (!sourceFilters) {
-      return undefined
-    }
-
-    return {
-      ...sourceFilters,
-      categories: sourceFilters.expandedCategories ?? sourceFilters.categories ?? [],
-      excludeCategories: sourceFilters.expandedExcludeCategories ?? sourceFilters.excludeCategories ?? [],
-    }
-  }, [selectAllFilters, filters])
-
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
     totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
@@ -231,24 +218,24 @@ export function useBulkActionWrappers({
       comment,
       contextHashes,
       isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleSetComment, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetComment, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleTagsWrapper = useCallback((plan: Parameters<TorrentActions["handleUpdateTags"]>[0]) => {
     handleUpdateTags(
       plan,
       contextHashes,
       isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleUpdateTags, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleUpdateTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
@@ -410,7 +397,6 @@ export function useBulkActionWrappers({
   }, [setDropPayload])
 
   return {
-    normalizedSelectionFilters,
     contextClientMeta,
     runAction,
     handleExportWrapper,

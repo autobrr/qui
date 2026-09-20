@@ -448,18 +448,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
 
-  // Memoized so the `?? []` fallback cannot mint a fresh array per render:
-  // these feed fetchTorrentField, whose identity anchors the shared row
-  // menu bundle.
-  const effectiveIncludedCategories = useMemo(
-    () => filters?.expandedCategories ?? filters?.categories ?? [],
-    [filters]
-  )
-  const effectiveExcludedCategories = useMemo(
-    () => filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? [],
-    [filters]
-  )
-
   const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
   const isVisibilitySettled = isHiddenDelayed || isVisible
 
@@ -498,8 +486,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters: {
       status: filters?.status || [],
       excludeStatus: filters?.excludeStatus || [],
-      categories: effectiveIncludedCategories,
-      excludeCategories: effectiveExcludedCategories,
+      categories: filters?.categories || [],
+      excludeCategories: filters?.excludeCategories || [],
       tags: filters?.tags || [],
       excludeTags: filters?.excludeTags || [],
       trackers: filters?.trackers || [],
@@ -1013,8 +1001,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       filters: {
         status: filters?.status || [],
         excludeStatus: filters?.excludeStatus || [],
-        categories: effectiveIncludedCategories,
-        excludeCategories: effectiveExcludedCategories,
+        categories: filters?.categories || [],
+        excludeCategories: filters?.excludeCategories || [],
         tags: filters?.tags || [],
         excludeTags: filters?.excludeTags || [],
         trackers: filters?.trackers || [],
@@ -1028,7 +1016,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
     const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
-  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  }, [instanceId, filters, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1146,7 +1134,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Wrapper functions to adapt hook handlers to component needs
   const {
-    normalizedSelectionFilters,
     contextClientMeta,
     runAction,
     handleExportWrapper,
@@ -1986,7 +1973,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleReannounceWrapper={handleReannounceWrapper}
           handleTmmConfirmWrapper={handleTmmConfirmWrapper}
           proceedToLocationDialog={proceedToLocationDialog}
-          normalizedSelectionFilters={normalizedSelectionFilters}
+          selectAllFilters={selectAllFilters}
           contextClientMeta={contextClientMeta}
           isAllSelected={isAllSelected}
           effectiveSelectionCount={effectiveSelectionCount}

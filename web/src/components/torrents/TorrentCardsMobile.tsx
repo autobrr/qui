@@ -1181,18 +1181,6 @@ export function TorrentCardsMobile({
   const previousSearchRef = useRef("")
   const previousSortRef = useRef(sortState)
 
-  const effectiveFilters = useMemo(() => {
-    if (!filters) {
-      return undefined
-    }
-
-    return {
-      ...filters,
-      categories: filters.expandedCategories ?? filters.categories ?? [],
-      excludeCategories: filters.expandedExcludeCategories ?? filters.excludeCategories ?? [],
-    }
-  }, [filters])
-
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
@@ -1384,7 +1372,7 @@ export function TorrentCardsMobile({
     enabled: isTabVisible,
     instanceIds,
     search: effectiveSearch,
-    filters: effectiveFilters,
+    filters: filters,
     sort: backendSortField,
     order: sortOrder,
   })
@@ -1921,7 +1909,7 @@ export function TorrentCardsMobile({
       plan,
       hashes,
       isAllSelected,
-      isAllSelected ? effectiveFilters : undefined,
+      isAllSelected ? filters : undefined,
       isAllSelected ? effectiveSearch : undefined,
       isAllSelected ? excludeHashesForRequest : undefined,
       {
@@ -1932,7 +1920,7 @@ export function TorrentCardsMobile({
       }
     )
     setActionTorrents([])
-  }, [isAllSelected, selectedRequestHashes, handleUpdateTags, effectiveFilters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
+  }, [isAllSelected, selectedRequestHashes, handleUpdateTags, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
 
   const handleSetCategoryWrapper = useCallback(async (category: string) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
@@ -2648,7 +2636,7 @@ export function TorrentCardsMobile({
           hashes: !isAllSelected ? selectedRequestHashes : undefined,
           targets: !isAllSelected && selectedActionTargets.length === selectedRequestHashes.length ? selectedActionTargets : undefined,
           selectAll: isAllSelected,
-          filters: isAllSelected ? effectiveFilters : undefined,
+          filters: isAllSelected ? filters : undefined,
           search: isAllSelected ? effectiveSearch : undefined,
           excludeHashes: isAllSelected ? excludeHashesForRequest : undefined,
           excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,

@@ -17,7 +17,7 @@ import type { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSe
 import type { useTorrentsList } from "@/hooks/useTorrentsList"
 import { api } from "@/lib/api"
 import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
-import type { Category, CrossInstanceTorrent, Torrent } from "@/types"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { type Dispatch, type SetStateAction, useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -105,7 +105,7 @@ export interface TorrentTableDialogsProps {
   handleReannounceWrapper: Wrappers["handleReannounceWrapper"]
   handleTmmConfirmWrapper: Wrappers["handleTmmConfirmWrapper"]
   proceedToLocationDialog: () => void
-  normalizedSelectionFilters: Wrappers["normalizedSelectionFilters"]
+  selectAllFilters: TorrentFilters | undefined
   contextClientMeta: Wrappers["contextClientMeta"]
 
   // Selection derivations
@@ -197,7 +197,7 @@ export function TorrentTableDialogs({
   handleReannounceWrapper,
   handleTmmConfirmWrapper,
   proceedToLocationDialog,
-  normalizedSelectionFilters,
+  selectAllFilters,
   contextClientMeta,
   isAllSelected,
   effectiveSelectionCount,
@@ -305,7 +305,7 @@ export function TorrentTableDialogs({
           hashes: !isAllSelected ? contextHashes : undefined,
           targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
           selectAll: isAllSelected,
-          filters: isAllSelected ? normalizedSelectionFilters : undefined,
+          filters: selectAllFilters,
           search: isAllSelected ? effectiveSearch : undefined,
           excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
           excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
