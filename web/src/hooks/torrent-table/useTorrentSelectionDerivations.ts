@@ -67,28 +67,29 @@ export function useTorrentSelectionDerivations({
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
-  // Get selected torrent hashes - handle both regular selection and "select all" mode
-  const selectedHashes = useMemo((): string[] => {
+  // Get selected torrents - handle both regular selection and "select all" mode
+  const selectedTorrents = useMemo((): Torrent[] => {
     if (isAllSelected) {
       // The table's row model, not sortedTorrents: in cross-seed mode the column
       // filter applies client-side, and select-all is the visible set (#1925).
       return getVisibleRowsRef.current()
         .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-        .map(torrent => torrent.hash)
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_HASHES
-      }
-      // Regular selection mode - get hashes from selected torrents directly
-      const tableRows = getVisibleRowsRef.current()
-      return tableRows
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original.hash)
     }
+    if (selectedRowIdSet.size === 0) {
+      return EMPTY_TORRENTS
+    }
+    return getVisibleRowsRef.current()
+      .filter(row => selectedRowIdSet.has(row.id))
+      .map(row => row.original)
     // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
+
+  const selectedHashes = useMemo(
+    (): string[] => selectedTorrents.length === 0 ? EMPTY_HASHES : selectedTorrents.map(torrent => torrent.hash),
+    [selectedTorrents]
+  )
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -98,32 +99,14 @@ export function useTorrentSelectionDerivations({
       // ponytail: counts loaded rows only, so a cross-seed set past one page
       // (300) under-reports; a cross-seed expression is one torrent's siblings.
       if (clientSideFiltering) {
-        return selectedHashes.length
+        return selectedTorrents.length
       }
       return Math.max(0, totalCount - excludedFromSelectAll.size)
     } else {
       // Regular selection mode - use the computed selectedHashes length
       return selectedRowIds.length
     }
-  }, [isAllSelected, clientSideFiltering, selectedHashes.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
-
-  // Get selected torrents
-  const selectedTorrents = useMemo((): Torrent[] => {
-    if (isAllSelected) {
-      return getVisibleRowsRef.current()
-        .map(row => row.original)
-        .filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_TORRENTS
-      }
-      // Regular selection mode
-      return getVisibleRowsRef.current()
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowIdSet, sortedTorrents, columnFiltersExpr, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
+  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {

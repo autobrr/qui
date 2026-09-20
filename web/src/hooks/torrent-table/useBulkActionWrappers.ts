@@ -63,7 +63,7 @@ export interface UseBulkActionWrappersParams {
 /**
  * Adapts the raw useTorrentActions handlers into the bulk-action wrappers the
  * table's dialogs and context menu call. Each wrapper resolves the correct
- * select-all vs. context-selection targeting (hashes, search,
+ * select-all vs. context-selection targeting (hashes, filters, search,
  * exclusions, client metadata) before delegating.
  */
 export function useBulkActionWrappers({
@@ -248,7 +248,7 @@ export function useBulkActionWrappers({
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => {
     const usingSelectAll = isAllSelected
-    const resolvedFilters = usingSelectAll ? (selectAllFilters) : undefined
+    const resolvedFilters = usingSelectAll ? selectAllFilters : undefined
     const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
     const resolvedExclusions = usingSelectAll ? selectAllExcludeHashes : undefined
     const clientHashes = hashes.length > 0 ? hashes : selectedHashes

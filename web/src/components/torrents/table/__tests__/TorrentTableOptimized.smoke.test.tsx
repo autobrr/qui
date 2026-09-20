@@ -214,6 +214,8 @@ vi.mock("@/hooks/useTorrentActions", () => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // jsdom has no execCommand; the copy tests below stub one in.
+  delete (document as { execCommand?: unknown }).execCommand
 })
 
 function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
