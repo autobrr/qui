@@ -231,7 +231,9 @@ backend domain end to end.
   probe, nothing runs over
   that connection, and the way out is the replace route with its heavier
   confirmation, the same door a mismatch uses (an endpoint change drops the
-  pin as it always does, and takes first contact). An empty
+  pin as it always does, and takes first contact). A probe the connection
+  does not survive, whether the request was cancelled or the deadline
+  fired, is an error, never a partial capability report. An empty
   pin column is unpinned and takes the first-contact flow: there is no
   separate "was pinned" state, so a database writer who clears the column
   is not detected. What that buys them is a first-contact confirmation the
