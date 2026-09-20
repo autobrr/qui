@@ -293,9 +293,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	if len(req.Targets) > 0 || len(req.Hashes) > 0 {
 		targetsByInstance := explicitTargets(instanceID, req.Targets, req.Hashes)
 
-		// A bare hash in the unified scope names a torrent, not an instance, so it
-		// resolves against every scoped instance. BulkAction rejects the same
-		// payload (#2530): a field read over duplicate copies is harmless, an action is not.
+		// Bare hashes resolve across the scope here; BulkAction rejects them (#2530).
 		if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
 			seenTargets := make(map[int]map[string]struct{})
 			requestedHashes := buildExcludeHashSet(req.Hashes)
@@ -370,49 +368,27 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if instanceID == allInstancesID {
-		torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), allInstancesID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
-		if err != nil {
-			h.respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
-			return
-		}
-
-		values := make([]string, 0, len(torrents))
-		for _, torrent := range torrents {
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
-			if shouldIncludeTorrentFieldValue(req.Field, value) {
-				values = append(values, value)
-			}
-		}
-
-		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
-			Values: values,
-			Total:  len(values),
-		})
-		return
-	}
-
-	fieldResponse, err := h.syncManager.GetTorrentField(
-		r.Context(),
-		instanceID,
-		req.Field,
-		req.Sort,
-		req.Order,
-		req.Search,
-		req.Filters,
-		req.ExcludeHashes,
-		toQBittorrentTargets(req.ExcludeTargets),
-	)
+	torrents, err := h.selectAllTorrents(qbittorrent.WithSkipFreshData(r.Context()), instanceID, req.Sort, req.Order, req.Search, req.Filters, req.InstanceIDs, req.ExcludeHashes, req.ExcludeTargets)
 	if err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
+		if instanceID != allInstancesID && respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("field", req.Field).Msg("Failed to get torrent field")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
+		h.respondTorrentFieldSelectionError(w, err, req.Field, req.InstanceIDs)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, fieldResponse)
+	values := make([]string, 0, len(torrents))
+	for _, torrent := range torrents {
+		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+		if shouldIncludeTorrentFieldValue(req.Field, value) {
+			values = append(values, value)
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+		Values: values,
+		Total:  len(values),
+	})
 }
 
 func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
@@ -501,22 +477,6 @@ func matchesExcludedTargetSet(excludeTargets map[string]struct{}, instanceID int
 		}
 	}
 	return false
-}
-
-func toQBittorrentTargets(targets []BulkActionTarget) []qbittorrent.TorrentTarget {
-	if len(targets) == 0 {
-		return nil
-	}
-
-	result := make([]qbittorrent.TorrentTarget, 0, len(targets))
-	for _, target := range targets {
-		result = append(result, qbittorrent.TorrentTarget{
-			InstanceID: target.InstanceID,
-			Hash:       target.Hash,
-		})
-	}
-
-	return result
 }
 
 func (h *TorrentsHandler) respondTorrentFieldSelectionError(w http.ResponseWriter, err error, field string, instanceIDs []int) {
@@ -1168,13 +1128,9 @@ func (h *TorrentsHandler) selectAllTorrents(ctx context.Context, scope int, sort
 
 	excludedHashes := buildExcludeHashSet(excludeHashes)
 	excludedTargets := buildExcludeTargetSet(excludeTargets)
-	selected := torrents[:0]
-	for _, torrent := range torrents {
-		if hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) && !selectionExcluded(excludedHashes, excludedTargets, torrent) {
-			selected = append(selected, torrent)
-		}
-	}
-	return selected, nil
+	return slices.DeleteFunc(torrents, func(torrent qbittorrent.CrossInstanceTorrentView) bool {
+		return !hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) || selectionExcluded(excludedHashes, excludedTargets, torrent)
+	}), nil
 }
 
 // selectionExcluded matches an exclude against the hash, infohash v1, and
