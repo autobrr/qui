@@ -138,6 +138,8 @@
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed Existe na Mesma Instância",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed Semeando na Mesma Instância",
       "CROSS_SEED_TAGS": "Tags de cross-seed",
+      "SEASON_PACK_STATUS": "Status do pacote de temporada",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Status do pacote de temporada (qualquer instância)",
       "HARDLINK_SCOPE": "Escopo de Hardlink"
     },
     "fieldGroups": {
@@ -194,6 +196,11 @@
       "inside_qbittorrent": "Dentro do qBittorrent (mesmo se também vinculado fora)",
       "outside_qbittorrent": "Fora do qBittorrent (biblioteca/importação)",
       "both": "Dentro + fora do qBittorrent"
+    },
+    "seasonPackStatuses": {
+      "pack": "Pacote de temporada",
+      "packed": "Episódio coberto por um pacote de temporada",
+      "unpacked": "Episódio sem pacote de temporada"
     },
     "trackerStatuses": {
       "not_contacted": "Não contatado",

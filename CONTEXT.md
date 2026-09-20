@@ -37,6 +37,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
 
+## Automations
+
+- **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
+
 ## Disc reports
 
 - **Disc**: A Blu-ray as one unit: the folder that holds `BDMV`, or one `.iso`. The unit a BDInfo scan reads. One torrent can hold several Discs. _Avoid_: Blu-ray folder, disc torrent.

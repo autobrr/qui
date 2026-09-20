@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"

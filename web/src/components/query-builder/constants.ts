@@ -127,13 +127,15 @@ export const CONDITION_FIELDS = {
   EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
   SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
   CROSS_SEED_TAGS: { label: "Cross-seed Tags", type: "string" as const, description: "Tags across this torrent and its same-instance cross-seeds" },
+  SEASON_PACK_STATUS: { label: "Season pack status", type: "seasonPackStatus" as const, description: "Whether this torrent is a season pack, an episode covered by a season pack of the same release on this instance, or an episode with no such pack. Empty for movies and names without a season." },
+  SEASON_PACK_STATUS_ANY_INSTANCE: { label: "Season pack status (any instance)", type: "seasonPackStatus" as const, description: "Same as Season pack status, but a season pack on any active instance counts" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
   HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
-export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -216,6 +218,10 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "EQUAL", label: "is" },
     { value: "NOT_EQUAL", label: "is not" },
   ],
+  seasonPackStatus: [
+    { value: "EQUAL", label: "is" },
+    { value: "NOT_EQUAL", label: "is not" },
+  ],
 };
 
 // Hardlink scope values (matches backend wire format)
@@ -224,6 +230,13 @@ export const HARDLINK_SCOPE_VALUES = [
   { value: "torrents_only", label: "Only other torrents" },
   { value: "inside_qbittorrent", label: "Inside qBittorrent (even if also linked outside)" },
   { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
+];
+
+// Season pack status values (matches backend wire format)
+export const SEASON_PACK_STATUS_VALUES = [
+  { value: "pack", label: "Season pack" },
+  { value: "packed", label: "Episode covered by a season pack" },
+  { value: "unpacked", label: "Episode with no season pack" },
 ];
 
 // qBittorrent torrent states
@@ -298,7 +311,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Cross-Seed",
-    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE", "EXISTS_ON_SAME_INSTANCE", "SEEDING_ON_SAME_INSTANCE", "CROSS_SEED_TAGS"],
+    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE", "EXISTS_ON_SAME_INSTANCE", "SEEDING_ON_SAME_INSTANCE", "CROSS_SEED_TAGS", "SEASON_PACK_STATUS", "SEASON_PACK_STATUS_ANY_INSTANCE"],
   },
   {
     label: "Mode",
@@ -442,7 +455,7 @@ export function getTranslatedOperatorsForField(field: string, t: TFunction): { v
     if (!key) return op;
     // "is" / "is not" share keys with equals/notEquals for state/boolean types but have different labels
     const type = getFieldType(field);
-    if ((type === "state" || type === "trackerStatus" || type === "boolean" || type === "hardlinkScope") && (op.value === "EQUAL" || op.value === "NOT_EQUAL")) {
+    if ((type === "state" || type === "trackerStatus" || type === "boolean" || type === "hardlinkScope" || type === "seasonPackStatus") && (op.value === "EQUAL" || op.value === "NOT_EQUAL")) {
       return { value: op.value, label: t(`queryBuilder.operators.${op.value === "EQUAL" ? "is" : "isNot"}`, { defaultValue: op.label }) };
     }
     return { value: op.value, label: t(`queryBuilder.operators.${key}`, { defaultValue: op.label }) };
@@ -470,5 +483,13 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
   return HARDLINK_SCOPE_VALUES.map((scope) => ({
     value: scope.value,
     label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
+  }));
+}
+
+/** Get translated season pack status values */
+export function getTranslatedSeasonPackStatuses(t: TFunction): { value: string; label: string }[] {
+  return SEASON_PACK_STATUS_VALUES.map((status) => ({
+    value: status.value,
+    label: t(`queryBuilder.seasonPackStatuses.${status.value}`, { defaultValue: status.label }),
   }));
 }

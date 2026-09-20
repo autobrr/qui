@@ -192,6 +192,8 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Cross-seed Exists on Same Instance | Boolean: another matching torrent exists on this instance |
 | Cross-seed Seeding on Same Instance | Boolean: another matching torrent is actively seeding on this instance |
 | Cross-seed Tags | String: the tags of this torrent and all of its same-instance cross-seeds as one set. NOT operators match only when no copy has the tag. Same matching rules as **Tags** (see [Tag conditions](#tag-conditions)). If there are no cross-seeds, qui checks only the torrent's own tags. |
+| Season pack status | `pack`, `packed`, `unpacked`, or empty. Whether this torrent is a season pack, an episode covered by a season pack of the same release on this instance, or an episode with no such pack (see [Season pack status](#season-pack-status)) |
+| Season pack status (any instance) | Same as **Season pack status**, but a season pack on any active instance counts |
 
 #### Filesystem fields
 
@@ -996,6 +998,69 @@ If torrents have no media library hardlinks, this rule tags them with `noHL`, ev
 ```
 
 This configuration works because `HARDLINK_SCOPE_CROSS != outside_qbittorrent` matches both `none` (no hardlinks) and `torrents_only` (hardlinks only between qBittorrent instances). Torrents with a media library copy (`outside_qbittorrent`) do not receive the tag.
+
+## Season pack status
+
+The `SEASON_PACK_STATUS` field tells you whether a torrent is a season pack, an episode that a season pack in the client already covers, or an episode with no such pack. qui builds the set of season packs from the torrent names it already has in memory. It sends no extra requests to qBittorrent, and it builds the set only when a rule uses the field.
+
+| Value | Meaning |
+| --- | --- |
+| `pack` | The name has one season and no episode, for example `Show.S01.1080p.WEB-DL-GRP`. |
+| `packed` | A single episode or an episode range such as `S01E05E06`, and a season pack of the same release is in the client. |
+| `unpacked` | A single episode or an episode range, and no season pack of the same release is in the client. |
+| empty | The name has no single season: movies, date-based releases, absolute-numbered anime, multi-season packs such as `S01-S03`, "Complete Series" names without a season token, and names the parser cannot read. |
+
+`SEASON_PACK_STATUS` looks at the torrent's own instance. `SEASON_PACK_STATUS_ANY_INSTANCE` looks at every active instance, so a pack on one instance covers an episode on another. Both fields support only `is` and `is not`.
+
+"Same release" is strict on purpose, because `packed` is often paired with a delete action. A pack covers an episode only when these parsed fields match: title, season, cut, other markers (`REPACK`, `PROPER`, `RERIP`, `HYBRiD`, `REMASTERED`, `Audio.Description`), language markers (`DUBBED`, `SUBBED`), resolution, source, codec, audio, channels, HDR, and group. A 720p pack does not cover a 1080p episode, a pack from another group does not cover, and a plain pack does not cover a `REPACK` episode. An episode title in the name, such as `S01E03.The.Long.Night`, does not split the episode from its pack.
+
+A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition to the rule if you want more.
+
+#### Example: tag packs, packed, and unpacked
+
+One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
+
+```json
+{
+  "name": "Season pack",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["season-pack"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "pack" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Packed episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["packed"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "packed" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Unpacked episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["unpacked"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "unpacked" } }
+    ]
+  }
+}
+```
 
 ## Missing files detection
 

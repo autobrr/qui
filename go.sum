@@ -27,8 +27,8 @@ github.com/autobrr/go-qbittorrent v1.19.0 h1:gjR34fXbfsoAzlZ0TXJ6u4ARZN31v1oxgmb
 github.com/autobrr/go-qbittorrent v1.19.0/go.mod h1:5uSG7nI6+dvhjvywkxzqooBAH1RDZxGtoRacDRfOtTQ=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
-github.com/autobrr/rls v0.8.1 h1:OjoFFVGcTibGrwf6b4pfk7JHsSYrGOX7F5P/8WtS3aE=
-github.com/autobrr/rls v0.8.1/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
+github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a h1:Xj2gx7IEZrnJu1ya7SBu9W5JvzvAfFVQsfFbTq4WDYc=
+github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a/go.mod h1:I23lis91GxYKLB0U8SqCQeWdGLgQKN1rZ1e/9aXNU3M=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
