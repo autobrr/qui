@@ -114,6 +114,18 @@ func TestPool_RemoteAccess(t *testing.T) {
 	assert.Same(t, instance, got)
 }
 
+func TestLocalPool_RemoteInstanceGetsNoop(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewLocalPool(store, fakeBackend{kind: "local"})
+
+	backend, err := pool.GetBackend(context.Background(), 3)
+	require.NoError(t, err)
+	_, err = backend.Stat(context.Background(), "/any")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess, "a process without an SSH pool has no remote access, not a panic")
+}
+
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
 	pool := NewPool(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))

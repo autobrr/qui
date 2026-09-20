@@ -273,8 +273,7 @@ func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*f
 }
 
 func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
-	// The interface promises a nil handle is safe: there is nothing to remove,
-	// so a defensive RemoveTree(nil) must not error.
+	// A nil handle is nothing to remove, per the interface.
 	if created == nil {
 		return ctx.Err()
 	}
@@ -289,9 +288,8 @@ func (b *Backend) SupportsReflink(ctx context.Context, _ string) (bool, string, 
 }
 
 // readOnly is every mutating method's answer while this release ships reads
-// only, after the ctx check every method owes. The op is named because the
-// message reaches the user through a failed job, and "unsupported" alone does
-// not say what was attempted.
+// only; the op is named because the message reaches the user through a failed
+// job.
 func readOnly(ctx context.Context, op string) error {
 	if err := ctx.Err(); err != nil {
 		return err

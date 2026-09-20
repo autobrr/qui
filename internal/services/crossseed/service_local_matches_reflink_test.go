@@ -492,7 +492,7 @@ func TestFindLocalMatches_ReflinkVerificationErrorPolicy(t *testing.T) {
 			return false, queryErr
 		},
 	}
-	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend(), nil))
+	service.SetBackendPool(fsops.NewLocalPool(service.instanceStore, local.NewBackend()))
 
 	response, err := service.FindLocalMatches(context.Background(), 1, source.Hash, false)
 	require.NoError(t, err)

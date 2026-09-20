@@ -47,7 +47,7 @@ func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend(), nil))
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewLocalPool(stubInstanceGetter{}, local.NewBackend()))
 	stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
 	}

@@ -546,7 +546,7 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals have AMZN")
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
@@ -604,7 +604,7 @@ func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResp.Ready, "check must accept when collections agree")
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
@@ -1237,7 +1237,7 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1347,7 +1347,7 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1400,7 +1400,7 @@ func TestApplySeasonPackWebhook_HardFailsWhenCoverageDrifts(t *testing.T) {
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1461,7 +1461,7 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1559,7 +1559,7 @@ func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
 				},
 			}
 
-			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+			svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -1622,7 +1622,7 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1759,7 +1759,7 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 				},
 			}
 
-			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+			svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -1817,7 +1817,7 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1881,7 +1881,7 @@ func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *te
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1934,7 +1934,7 @@ func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t 
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1995,7 +1995,7 @@ func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -2049,7 +2049,7 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2112,7 +2112,7 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2163,7 +2163,7 @@ func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -2231,7 +2231,7 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2305,7 +2305,7 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2374,7 +2374,7 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2859,7 +2859,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	require.True(t, checkResp.Ready, "check must accept via ARR alternate titles")
 	require.Equal(t, 1, spy.seasonCalls, "check must make exactly one season lookup")
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend(), nil))
+	svc.SetBackendPool(fsops.NewLocalPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})

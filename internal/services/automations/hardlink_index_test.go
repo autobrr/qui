@@ -764,7 +764,7 @@ func newHardlinkIndexService(t *testing.T, instanceID int, backend fsops.Backend
 	t.Cleanup(clearHardlinkIndex)
 	return &Service{
 		filesReader: fakeFilesReader{files: files},
-		backendPool: fsops.NewPool(stubInstanceGetter{}, backend, nil),
+		backendPool: fsops.NewLocalPool(stubInstanceGetter{}, backend),
 	}
 }
 
@@ -821,7 +821,7 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 	return &hardlinkIndexRig{
 		service: &Service{
 			filesReader: syncManager,
-			backendPool: fsops.NewPool(instanceStore, backend, nil),
+			backendPool: fsops.NewLocalPool(instanceStore, backend),
 		},
 		instanceID: instance.ID,
 		db:         db,

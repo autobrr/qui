@@ -222,10 +222,9 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 	}
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	// The MKV path is resolved through the instance's filesystem backend.
-	svc.SetBackendPool(fsops.NewPool(
+	svc.SetBackendPool(fsops.NewLocalPool(
 		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		local.NewBackend(),
-		nil,
 	))
 	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "ABC123", SavePath: dir}
 	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10, Progress: 1}}

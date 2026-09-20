@@ -39,6 +39,12 @@ func NewPool(store instanceGetter, local Backend, remote func(*models.Instance) 
 	}
 }
 
+// NewLocalPool is NewPool for a process with no SSH pool: a remote-mode
+// instance resolves to the noop backend rather than to a nil factory.
+func NewLocalPool(store instanceGetter, local Backend) *Pool {
+	return NewPool(store, local, func(*models.Instance) Backend { return noopBackend{} })
+}
+
 // GetBackend returns the appropriate Backend for the given instance ID.
 // Returns ErrNoFilesystemAccess wrapped in a noop backend for instances
 // without filesystem access configured.

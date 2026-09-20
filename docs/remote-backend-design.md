@@ -282,7 +282,9 @@ come back in lockstep.
 A host-key mismatch and an unreadable or missing pin are not retried at
 all — waiting does not make a wrong key right. That refusal is keyed on
 the stored pin ciphertext and lives only in memory: replacing the pin, or
-changing the host or port, changes the ciphertext and clears it. Nothing
+changing the host or port, changes the ciphertext and clears it (an
+endpoint change drops the pin, so the memo becomes an unpinned refusal
+until the key is confirmed again). Nothing
 about it is persisted.
 
 Exec sessions will share the same connection. Concurrency comes from sftp

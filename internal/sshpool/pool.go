@@ -43,9 +43,14 @@ const (
 type Pool struct {
 	dialer *Dialer
 
-	mu    sync.Mutex
-	conns map[int]*entry
+	mu     sync.Mutex
+	conns  map[int]*entry
+	closed bool
 }
+
+// ErrPoolClosed answers a caller that arrives after shutdown began: nothing
+// may dial once Close has run.
+var ErrPoolClosed = errors.New("ssh pool is closed")
 
 // entry is one instance's connection state.
 type entry struct {
@@ -70,6 +75,10 @@ func NewPool(dialer *Dialer) *Pool {
 // host pays for one connect attempt, not hundreds.
 func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, error) {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil, ErrPoolClosed
+	}
 	entry := p.conns[inst.ID]
 	if entry == nil {
 		entry = newEntry()
@@ -141,9 +150,12 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	return sftpClient, nil
 }
 
-// Close drops every connection. Called once, at shutdown.
+// Close drops every connection and refuses every later caller. Called once, at
+// shutdown; a caller mid-dial holds its entry until that dial ends, which the
+// dial timeout bounds.
 func (p *Pool) Close() {
 	p.mu.Lock()
+	p.closed = true
 	entries := make([]*entry, 0, len(p.conns))
 	for _, entry := range p.conns {
 		entries = append(entries, entry)

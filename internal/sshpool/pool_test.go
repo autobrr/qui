@@ -192,4 +192,8 @@ func TestPoolCloseClosesClients(t *testing.T) {
 	_, err = client.Stat(dir)
 	require.Error(t, err, "Close must drop the connection the client was using")
 	assert.Empty(t, pool.conns)
+
+	_, err = pool.SFTP(t.Context(), inst)
+	require.ErrorIs(t, err, ErrPoolClosed, "nothing may dial once shutdown has begun")
+	assert.Equal(t, 1, server.Accepts())
 }

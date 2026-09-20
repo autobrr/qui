@@ -116,7 +116,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	scanner := &fakeScanner{started: make(chan string, 8), release: make(chan struct{})}
 	service.SetScanner(scanner.scan)
 
-	handler := NewDiscScanHandler(service, store, resolver, fsops.NewPool(instanceStore, localbackend.NewBackend(), nil))
+	handler := NewDiscScanHandler(service, store, resolver, fsops.NewLocalPool(instanceStore, localbackend.NewBackend()))
 	router := chi.NewRouter()
 	router.Route("/api/instances/{instanceID}", func(r chi.Router) {
 		r.Get("/torrents/{hash}/disc-scans", handler.ListForTorrent)
