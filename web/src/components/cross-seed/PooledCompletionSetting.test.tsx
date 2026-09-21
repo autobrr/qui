@@ -23,7 +23,7 @@ vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
 
-import { PooledCompletionSetting } from "@/pages/CrossSeedPage"
+import { PooledCompletionSetting } from "./PooledCompletionSetting"
 
 afterEach(cleanup)
 

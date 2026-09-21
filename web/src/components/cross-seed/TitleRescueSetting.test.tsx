@@ -16,7 +16,7 @@ vi.mock("react-i18next", async (importOriginal) => {
   }
 })
 
-import { TitleRescueSetting } from "@/pages/CrossSeedPage"
+import { TitleRescueSetting } from "./TitleRescueSetting"
 
 afterEach(cleanup)
 

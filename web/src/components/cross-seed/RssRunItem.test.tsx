@@ -20,7 +20,7 @@ vi.mock("react-i18next", async (importOriginal) => {
   }
 })
 
-import { RSSRunItem } from "@/pages/CrossSeedPage"
+import { RSSRunItem } from "./RssRunItem"
 
 function makeRun(overrides: Partial<CrossSeedRun> = {}): CrossSeedRun {
   return {
