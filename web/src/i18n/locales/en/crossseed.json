@@ -201,7 +201,6 @@
       "helpSelectedQueried_other": "Only {{count}} selected indexers will be queried."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: loading",
       "disabled": "Gazelle: disabled",
       "enabledOpsRed": "Gazelle: enabled (OPS+RED keys set)",
       "enabledOpsMissingRed": "Gazelle: enabled (OPS key set, RED missing)",

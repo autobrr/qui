@@ -206,7 +206,6 @@
       "helpSelectedQueried_other": "Bude dotázáno pouze {{count}} vybraných indexerů."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: načítání",
       "disabled": "Gazelle: zakázáno",
       "enabledOpsRed": "Gazelle: povoleno (nastaveny klíče OPS+RED)",
       "enabledOpsMissingRed": "Gazelle: povoleno (nastaven klíč OPS, RED chybí)",

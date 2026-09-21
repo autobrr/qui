@@ -201,7 +201,6 @@
       "helpSelectedQueried_other": "Només es consultaran {{count}} indexadors seleccionats."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: s'està carregant",
       "disabled": "Gazelle: desactivat",
       "enabledOpsRed": "Gazelle: activat (claus d'OPS i RED definides)",
       "enabledOpsMissingRed": "Gazelle: activat (clau d'OPS definida, falta la de RED)",

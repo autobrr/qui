@@ -9,7 +9,7 @@ description: Scan local folders for content already on disk and cross-seed it to
 
 Directory Scanner (Dir Scan) scans local folders to find cross-seed opportunities for content already on disk. Library Scan queries the qBittorrent torrent list. Dir Scan works directly with files on the filesystem.
 
-Configure it in **Cross-Seed > Dir Scan**.
+Configure it in **Cross-Seed > Directories**.
 
 ## Requirements
 

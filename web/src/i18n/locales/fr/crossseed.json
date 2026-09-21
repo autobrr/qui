@@ -201,7 +201,6 @@
       "helpSelectedQueried_other": "Seuls {{count}} indexeurs sélectionnés seront interrogés."
     },
     "gazelleStatus": {
-      "loading": "Gazelle : en cours de chargement",
       "disabled": "Gazelle : désactivé",
       "enabledOpsRed": "Gazelle : activé (clés OPS+RED configurées)",
       "enabledOpsMissingRed": "Gazelle : activé (clé OPS configurée, RED manquante)",

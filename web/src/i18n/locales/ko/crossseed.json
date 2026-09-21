@@ -198,7 +198,6 @@
       "helpSelectedQueried_other": "선택된 인덱서 {{count}}개만 쿼리합니다."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: 로딩 중",
       "disabled": "Gazelle: 비활성화됨",
       "enabledOpsRed": "Gazelle: 활성화됨(OPS+RED 키 설정됨)",
       "enabledOpsMissingRed": "Gazelle: 활성화됨(OPS 키 설정됨, RED 없음)",

@@ -198,7 +198,6 @@
       "helpSelectedQueried_other": "將僅查詢 {{count}} 個選定的索引器。"
     },
     "gazelleStatus": {
-      "loading": "Gazelle：載入中",
       "disabled": "Gazelle：已停用",
       "enabledOpsRed": "Gazelle：已啟用（已設定 OPS+RED 金鑰）",
       "enabledOpsMissingRed": "Gazelle：已啟用（已設定 OPS 金鑰，缺少 RED）",

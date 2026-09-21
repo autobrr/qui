@@ -89,9 +89,9 @@ Common reasons:
 - **Webhook source filters excluded your episodes**: include/exclude category or tag filters removed them from the scan
 - **The release is not a season pack** or **season-pack matching is disabled**
 
-If the pack matches except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Rules > Season packs > Matching settings**.
+If the pack matches except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Season packs > Matching settings**.
 
-Open **Cross-Seed > Rules > Season packs** to review recent season-pack activity. The page displays the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
+Open **Cross-Seed > Season packs** to review recent season-pack activity. The page displays the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
 
 See [Season Packs](./season-packs.md) for the full flow, setup requirements, and season-pack-specific debugging steps.
 

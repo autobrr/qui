@@ -200,7 +200,6 @@
       "helpSelectedQueried_other": "Solo {{count}} indexer selezionati verranno interrogati."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: caricamento",
       "disabled": "Gazelle: disabilitato",
       "enabledOpsRed": "Gazelle: abilitato (chiavi OPS+RED impostate)",
       "enabledOpsMissingRed": "Gazelle: abilitato (chiave OPS impostata, RED mancante)",

@@ -198,7 +198,6 @@
       "helpSelectedQueried_other": "将仅查询 {{count}} 个选定的索引器。"
     },
     "gazelleStatus": {
-      "loading": "Gazelle：加载中",
       "disabled": "Gazelle：已禁用",
       "enabledOpsRed": "Gazelle：已启用（已设置 OPS+RED 密钥）",
       "enabledOpsMissingRed": "Gazelle：已启用（已设置 OPS 密钥，缺少 RED）",

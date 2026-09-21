@@ -49,7 +49,7 @@ qui provides several ways to find cross-seed opportunities:
 
 ### RSS Automation
 
-qui polls tracker RSS feeds on a schedule. Configure this in the **Auto** tab on the Cross-Seed page.
+qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the target instances and indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
 
 - **Run interval**: How often qui polls the feeds (minimum 30 minutes)
 - **Target instances**: The qBittorrent instances that receive cross-seeds
@@ -63,7 +63,7 @@ qui makes this comparison before it downloads the intended torrent file. RSS doe
 
 ### Library Scan
 
-Library Scan searches other trackers for torrents you already seed. Configure it in the **Scan** tab.
+Library Scan searches other trackers for torrents you already seed. Configure it in the **Library** tab. **Save** stores the settings without a run. **Start** stores them and starts a run.
 
 - **Source instance**: The qBittorrent instance to scan
 - **Categories/Tags**: Filter which torrents to include
@@ -85,7 +85,7 @@ Run this sparingly. The scan touches every matching torrent and queries Torznab 
 
 ### Auto-Search on Completion
 
-When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Auto** tab under "Auto-search on completion".
+When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Webhook** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
 
 - **Categories/Tags**: Filter which completed torrents trigger searches
 - **Target indexers**: Limit completion searches to specific indexers (empty means all enabled)

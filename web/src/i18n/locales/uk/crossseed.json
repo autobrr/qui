@@ -207,7 +207,6 @@
       "helpSelectedQueried_other": "Буде надіслано запит лише до {{count}} вибраних індексаторів."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: завантаження",
       "disabled": "Gazelle: вимкнено",
       "enabledOpsRed": "Gazelle: увімкнено (налаштовані ключі OPS+RED)",
       "enabledOpsMissingRed": "Gazelle: увімкнено (налаштовано ключ OPS, немає RED)",

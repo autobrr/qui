@@ -2,12 +2,12 @@
 sidebar_position: 2
 title: Cross-seed matching rules
 sidebar_label: Rules
-description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, season pack threshold, category naming, source tags, and auto-start limits."
+description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, category naming, source tags, and auto-start limits."
 ---
 
 # Cross-Seed Rules
 
-Configure matching behavior in the **Rules** tab on the Cross-Seed page.
+Configure matching behavior in the **Rules** tab on the Cross-Seed page. The tab holds the settings that apply to every cross-seed source. Settings that belong to one source, such as its tags and its auto-resume switch, live on that source's tab: **RSS**, **Webhook**, **Library**, or **Season packs**.
 
 ## Matching
 
@@ -75,11 +75,9 @@ Manual search, Library Scan, completion search, RSS matching, and autobrr matchi
 Audiobook and Music request the same categories from indexers, and both send an artist and an album parameter. Only the text of the search query differs.
 :::
 
-## Season Pack Threshold
+## Season packs
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. qui gets season episode totals from Sonarr first. If Sonarr cannot resolve the release, qui uses TVDB or TVMaze. If torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. qui adds incomplete packs paused and rechecks them. When the recheck reports progress close to the share of bytes qui linked, qui resumes the pack. If progress lands well below that share, the links failed and the pack stays paused for manual review. Configure this in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
-
-Season-pack matching rules live in **Rules > Season packs** and affect every season pack flow: the autobrr webhook, automatic assembly, and library search runs.
+Season pack settings have their own **Season packs** tab. See [Season Packs](./season-packs.md).
 
 ## Categories
 
@@ -127,15 +125,19 @@ Uses a fixed category name for all cross-seeds (for example `cross-seed`). qui a
 
 ## Source Tagging
 
-Configure the tags that qui applies to cross-seed torrents, based on the discovery method:
+Each source tab has a **Cross-seed tags** field for the torrents that source adds. The default is `cross-seed` for every source.
 
-| Tag Setting | Description | Default |
-|-------------|-------------|---------|
-| RSS Automation Tags | Torrents added via RSS feed polling | `["cross-seed"]` |
-| Seeded Search Tags | Torrents added via seeded torrent search | `["cross-seed"]` |
-| Completion Search Tags | Torrents added via completion-triggered search | `["cross-seed"]` |
-| Webhook Tags | Torrents added via `/apply` webhook | `["cross-seed"]` |
-| Inherit source torrent tags | Also copy tags from the matched source torrent | - |
+| Source | Where |
+|--------|-------|
+| RSS automation | **RSS** tab |
+| `/apply` webhook | **Webhook** tab, "Webhook / autobrr" card |
+| Completion-triggered search | **Webhook** tab, "On completion" card |
+| Library Scan | **Library** tab |
+| Season packs | **Season packs** tab |
+
+**Inherit source torrent tags** in the **Rules** tab also copies the tags of the matched source torrent. It applies to every source.
+
+Each source tab also has an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
 
 ## Max Auto-Start Download
 
