@@ -290,7 +290,11 @@ until the key is confirmed again). Nothing
 about it is persisted. A connection is also keyed on the username and the
 key it authenticated with: new credentials against the same pin end the
 old session and forgive a failed dial, but keep a host-key refusal, since
-they say nothing about the host key.
+they say nothing about the host key. A refusal caused by a pin that would
+not decrypt outlives an out-of-band fix of the encryption key, since the
+ciphertext did not change; a restart clears it. A connection nobody has
+used for ten minutes is closed, which is how the pool lets go of an
+instance that was deleted or left remote mode.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process

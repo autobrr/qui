@@ -224,6 +224,34 @@ func TestPoolReconnectsWhenCredentialsChange(t *testing.T) {
 	require.NoError(t, err, "corrected credentials must dial at once, not wait out the backoff")
 }
 
+// A connection nobody uses is closed by the keepalive loop, which is how the
+// pool lets go of an instance that was deleted or left remote mode.
+func TestPoolClosesIdleConnection(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
+	t.Cleanup(pool.Close)
+	inst := pinnedInstanceAt(t, server.Addr)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	// Backdate the last use past the idle limit and run one keepalive tick.
+	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+	done := make(chan struct{})
+	go entry.keepalive(entry.client, done, 20*time.Millisecond)
+	require.Eventually(t, func() bool {
+		_, err := client.Getwd()
+		return err != nil
+	}, 5*time.Second, 20*time.Millisecond, "the idle connection must be closed on the next tick")
+	close(done)
+}
+
 func TestPoolReconnectsAfterDrop(t *testing.T) {
 	t.Parallel()
 

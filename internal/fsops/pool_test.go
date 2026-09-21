@@ -60,7 +60,6 @@ func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, err
 	return false, "", nil
 }
 
-// remoteFactory returns a factory that hands out backend for every instance.
 func remoteFactory(backend Backend) func(*models.Instance) Backend {
 	return func(*models.Instance) Backend { return backend }
 }
@@ -114,16 +113,15 @@ func TestPool_RemoteAccess(t *testing.T) {
 	assert.Same(t, instance, got)
 }
 
-func TestPool_RemoteInstanceWithoutSSHPoolGetsNoop(t *testing.T) {
+func TestPool_RemoteInstanceWithoutFactoryFailsLoudly(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
 		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
 	}}
 	pool := NewPool(store, fakeBackend{kind: "local"})
 
 	backend, err := pool.GetBackend(context.Background(), 3)
-	require.NoError(t, err)
-	_, err = backend.Stat(context.Background(), "/any")
-	require.ErrorIs(t, err, ErrNoFilesystemAccess, "a process without an SSH pool has no remote access, not a panic")
+	require.ErrorIs(t, err, ErrRemoteBackendNotWired, "a pool without a remote factory must not pass a remote instance off as unconfigured")
+	assert.Nil(t, backend)
 }
 
 func TestPool_InstanceNotFound(t *testing.T) {

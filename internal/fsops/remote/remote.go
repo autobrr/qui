@@ -38,7 +38,6 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 	return &Backend{pool: pool, inst: inst}
 }
 
-// compile-time check
 var _ fsops.Backend = (*Backend)(nil)
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
@@ -135,7 +134,9 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 // handling here: readdir carries the attrs, so there is no per-entry stat left
 // to fail.
 //
-// ponytail: one round trip per directory, walked serially; the exec-tier find
+// ponytail: four round trips per directory (opendir, readdir, the readdir
+// that answers EOF, close), walked serially; a bounded walk over sibling
+// directories is the lever on a key that forbids exec, and the exec-tier find
 // sweep is the upgrade when a deep tree makes the latency hurt.
 func walk(ctx context.Context, client *sftp.Client, ch chan<- fsops.WalkEntry, dir, rel string, opts fsops.WalkOptions) bool {
 	entries, err := client.ReadDirContext(ctx, dir)
@@ -159,12 +160,9 @@ func walk(ctx context.Context, client *sftp.Client, ch chan<- fsops.WalkEntry, d
 		name := fi.Name()
 		childPath := path.Join(dir, name)
 
-		switch {
-		case opts.SkipHidden && strings.HasPrefix(name, "."):
-			continue
-		case fi.IsDir() && ignoredDirName(name, opts):
-			continue
-		case slices.Contains(opts.IgnorePaths, childPath):
+		if (opts.SkipHidden && strings.HasPrefix(name, ".")) ||
+			(fi.IsDir() && ignoredDirName(name, opts)) ||
+			slices.Contains(opts.IgnorePaths, childPath) {
 			continue
 		}
 
@@ -210,11 +208,16 @@ func (b *Backend) Statfs(ctx context.Context, p string) (*fsops.StatfsResult, er
 	if err != nil {
 		return nil, err
 	}
-	//nolint:gosec // G115: a byte count that overflows int64 is not a real filesystem
+	return statfsResult(stat), nil
+}
+
+// statfsResult reports Bavail, not Bfree: the root reserve is not space this
+// user can fill, and the local backend reports the same figure.
+func statfsResult(stat *sftp.StatVFS) *fsops.StatfsResult {
 	return &fsops.StatfsResult{
-		BytesAvailable: int64(stat.FreeSpace()),
+		BytesAvailable: int64(stat.Frsize * stat.Bavail),
 		BytesTotal:     int64(stat.TotalSpace()),
-	}, nil
+	}
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {

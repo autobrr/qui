@@ -361,11 +361,25 @@ func TestStatfs(t *testing.T) {
 	t.Parallel()
 
 	b, _ := newBackend(t)
-	result, err := b.Statfs(t.Context(), remotePath(t.TempDir()))
+	dir := remotePath(t.TempDir())
+	result, err := b.Statfs(t.Context(), dir)
 	require.NoError(t, err)
 	assert.Positive(t, result.BytesAvailable)
 	assert.Positive(t, result.BytesTotal)
 	assert.LessOrEqual(t, result.BytesAvailable, result.BytesTotal)
+}
+
+// Available is what this user may fill (Bavail), never the free figure that
+// includes the root reserve; a free-space gate must agree with the local
+// backend on the same volume.
+func TestStatfsResultUsesBavail(t *testing.T) {
+	t.Parallel()
+
+	stat := &sftp.StatVFS{Frsize: 4096, Blocks: 1000, Bfree: 100, Bavail: 50}
+	result := statfsResult(stat)
+	assert.Equal(t, int64(4096*50), result.BytesAvailable)
+	assert.Equal(t, int64(4096*1000), result.BytesTotal)
+	assert.Less(t, result.BytesAvailable, int64(stat.FreeSpace()), "the root reserve is not available space")
 }
 
 func TestStatfsWithoutStatvfsExtension(t *testing.T) {
@@ -386,6 +400,7 @@ func TestStatfsWithoutStatvfsExtension(t *testing.T) {
 
 	_, err = b.SameFilesystem(t.Context(), dir, dir)
 	require.ErrorIs(t, err, fsops.ErrUnsupported)
+	assert.Contains(t, err.Error(), statvfsExtension, "the missing extension, not a zero fsid, is the reason")
 }
 
 func TestSameFilesystem(t *testing.T) {

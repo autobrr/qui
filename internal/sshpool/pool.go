@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -30,10 +31,10 @@ const (
 	keepaliveInterval = 30 * time.Second
 	keepaliveTimeout  = 15 * time.Second
 
-	// refuseFor is how long a mismatch or an unreadable pin is remembered. It
-	// is not a retry delay: only a changed pin clears it, and the entry is
-	// keyed on the pin ciphertext so a replace does exactly that.
-	refuseFor = 100 * 365 * 24 * time.Hour
+	// idleTimeout closes a connection nobody has used for a while. It is what
+	// reclaims the connection of an instance that was deleted or left remote
+	// mode, since no caller comes back to tell the pool.
+	idleTimeout = 10 * time.Minute
 )
 
 // Pool keeps one SSH connection with one SFTP session per instance.
@@ -62,13 +63,17 @@ type entry struct {
 	client  *ssh.Client
 	sftp    *sftp.Client
 	err     error         // memoised failure; nil when connected
-	retryAt time.Time     // when a dial may be attempted again
+	retryAt time.Time     // when a dial may be attempted again; unused for a refusal
 	backoff time.Duration // delay for the next failure, doubling to backoffMax
+	// lastUsed is read by the keepalive loop to close an idle connection.
+	lastUsed atomic.Int64
 }
 
-// identity is everything a connection depends on. A changed pin clears the
-// memo as well as the connection; changed credentials drop only the
-// connection, since the host key the memo refused is still the same.
+// identity is everything a connection depends on; pin and key hold the
+// ciphertext columns, which is enough to notice a change without decrypting.
+// A changed pin clears the memo as well as the connection; changed credentials
+// drop only the connection, since the host key the memo refused is still the
+// same.
 type identity struct {
 	pin, host string
 	port      int
@@ -129,8 +134,9 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 
 	switch {
 	case entry.sftp != nil:
+		entry.lastUsed.Store(time.Now().UnixNano())
 		return entry.sftp, nil
-	case entry.err != nil && time.Now().Before(entry.retryAt):
+	case entry.refused(), entry.err != nil && time.Now().Before(entry.retryAt):
 		return nil, entry.err
 	}
 
@@ -151,7 +157,11 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	defer cancel()
 	stop := context.AfterFunc(initCtx, func() { _ = client.Close() })
 	sftpClient, err := sftp.NewClient(client)
-	stop()
+	if !stop() && err == nil {
+		// The close ran between the init finishing and stop: the client in
+		// hand is dead and must not be handed out.
+		err = initCtx.Err()
+	}
 	if err != nil {
 		_ = client.Close()
 		if ctx.Err() != nil {
@@ -165,13 +175,13 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	entry.sftp = sftpClient
 	entry.err = nil
 	entry.backoff = 0
+	entry.lastUsed.Store(time.Now().UnixNano())
 	done := make(chan struct{})
 	log.Debug().Int("instanceID", inst.ID).Msg("sshpool: opened connection")
 
-	// The watcher outlives the request that opened the connection by design.
-	//nolint:gosec // G118
+	//nolint:gosec // G118: the watcher outlives the request that opened the connection by design
 	go entry.watch(inst.ID, client, done)
-	go keepalive(client, done)
+	go entry.keepalive(client, done, keepaliveInterval)
 	// sshd can close the sftp channel while the transport stays up; closing the
 	// client routes that through the watcher like any other drop.
 	go func() { _ = sftpClient.Wait(); _ = client.Close() }()
@@ -220,7 +230,6 @@ func (e *entry) unlock() { <-e.sem }
 func (e *entry) memoise(inst *models.Instance, err error) {
 	e.err = err
 	if isRefusal(err) {
-		e.retryAt = time.Now().Add(refuseFor)
 		log.Debug().Int("instanceID", inst.ID).Err(err).Msg("sshpool: refusing the host until its pin changes")
 		return
 	}
@@ -275,11 +284,12 @@ func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 	}
 }
 
-// keepalive pings the host until the connection goes away. The request is sent
-// from a goroutine because SendRequest has no deadline of its own: a host that
-// accepts bytes and never answers would otherwise wedge this loop forever.
-func keepalive(client *ssh.Client, done <-chan struct{}) {
-	ticker := time.NewTicker(keepaliveInterval)
+// keepalive pings the host until the connection goes away, and closes it once
+// it has sat unused past idleTimeout. The request is sent from a goroutine
+// because SendRequest has no deadline of its own: a host that accepts bytes and
+// never answers would otherwise wedge this loop forever.
+func (e *entry) keepalive(client *ssh.Client, done <-chan struct{}, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -287,6 +297,11 @@ func keepalive(client *ssh.Client, done <-chan struct{}) {
 		case <-done:
 			return
 		case <-ticker.C:
+		}
+
+		if time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
+			_ = client.Close()
+			return
 		}
 
 		reply := make(chan error, 1)

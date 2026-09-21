@@ -28,10 +28,10 @@ type instanceGetter interface {
 }
 
 // NewPool creates a Backend pool backed by the given instance store and local
-// backend. Without an SSH pool a remote-mode instance resolves to the noop
-// backend; NewPoolWithRemote is the constructor that adds one.
+// backend. Without a remote factory a remote-mode instance is an error, not a
+// silent "not configured": NewPoolWithRemote is the constructor that wires one.
 func NewPool(store instanceGetter, local Backend) *Pool {
-	return NewPoolWithRemote(store, local, func(*models.Instance) Backend { return noopBackend{} })
+	return NewPoolWithRemote(store, local, nil)
 }
 
 // NewPoolWithRemote is NewPool plus a remote-backend factory, called per
@@ -62,6 +62,9 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 	case models.FilesystemModeLocal:
 		return p.local, nil
 	case models.FilesystemModeRemote:
+		if p.remote == nil {
+			return nil, fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotWired)
+		}
 		return p.remote(instance), nil
 	case models.FilesystemModeNone:
 		return noopBackend{}, nil

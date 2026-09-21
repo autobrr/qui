@@ -3,7 +3,10 @@
 
 package fsops
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors returned by Backend implementations.
 var (
@@ -11,8 +14,13 @@ var (
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
 
+	// ErrRemoteBackendNotWired is returned by a Pool built without a remote
+	// factory for an instance in remote mode: a wiring mistake must fail
+	// loudly rather than read as "not configured".
+	ErrRemoteBackendNotWired = errors.New("remote filesystem backend is not wired into this pool")
+
 	// ErrUnsupported reports a per-host fact: this server lacks the extension
 	// the operation needs, or this transport has no such operation at all.
 	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.
-	ErrUnsupported = errors.New("operation is not supported by this filesystem backend")
+	ErrUnsupported = fmt.Errorf("operation is not supported by this filesystem backend: %w", errors.ErrUnsupported)
 )
