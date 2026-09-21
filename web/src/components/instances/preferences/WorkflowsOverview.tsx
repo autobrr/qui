@@ -79,13 +79,14 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
+import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 /**
@@ -403,6 +404,8 @@ export function WorkflowsOverview({
     },
   })
 
+  const [jsonEdit, setJsonEdit] = useState<Automation | null>(null)
+
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importInstanceId, setImportInstanceId] = useState<number | null>(null)
@@ -621,8 +624,8 @@ export function WorkflowsOverview({
     if (!importInstanceId) return
 
     const result = parseImportJSON(importJSON)
-    if (result.error || !result.data) {
-      setImportError(result.error ?? t("preferences.workflowsOverview.importDialog.invalidImportData"))
+    if (result.data === null) {
+      setImportError(t(result.error))
       return
     }
 
@@ -1015,6 +1018,7 @@ export function WorkflowsOverview({
                                     onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
+                                    onEditJson={() => setJsonEdit(rule)}
                                     onExport={() => handleExport(rule)}
                                     disableDrag={sortedRules.length < 2 || reorderRules.isPending}
                                   />
@@ -1631,8 +1635,12 @@ export function WorkflowsOverview({
         isInitialLoading={enableConfirm?.isInitialLoading ?? false}
       />
 
+      {jsonEdit && (
+        <WorkflowJsonEditDialog rule={jsonEdit} onOpenChange={(open) => !open && setJsonEdit(null)} />
+      )}
+
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-lg max-h-[85dvh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("preferences.workflowsOverview.importDialog.title")}</DialogTitle>
             <DialogDescription>
@@ -1691,6 +1699,7 @@ interface RulePreviewProps {
   onRunDryRun: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
+  onEditJson: () => void
   onExport: () => void
 }
 
@@ -1708,6 +1717,7 @@ function SortableRulePreview({
   onRunDryRun,
   onDuplicate,
   onCopyToInstance,
+  onEditJson,
   onExport,
   disableDrag,
 }: SortableRulePreviewProps) {
@@ -1742,6 +1752,7 @@ function SortableRulePreview({
         onRunDryRun={onRunDryRun}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
+        onEditJson={onEditJson}
         onExport={onExport}
         dragHandle={(
           <Button
@@ -1777,6 +1788,7 @@ function RulePreview({
   onRunDryRun,
   onDuplicate,
   onCopyToInstance,
+  onEditJson,
   onExport,
 }: RulePreviewProps) {
   const { t } = useTranslation("instances")
@@ -1956,6 +1968,10 @@ function RulePreview({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
+            <DropdownMenuItem onClick={onEditJson}>
+              <Braces className="h-4 w-4 mr-2" />
+              {t("preferences.workflowsOverview.editJSON")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onExport}>
               <Download className="h-4 w-4 mr-2" />
               {t("preferences.workflowsOverview.exportJSON")}

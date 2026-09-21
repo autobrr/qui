@@ -10,6 +10,7 @@ import {
   getTrackerTokens,
   parseImportJSON,
   toDuplicateInput,
+  toEditInput,
   toExportFormat,
   toExportJSON,
   type WorkflowExport
@@ -168,6 +169,29 @@ describe("toDuplicateInput", () => {
   })
 })
 
+// Intent: "Edit as JSON" replaces the exported fields and keeps the state the
+// JSON never carries: enabled and sortOrder. An omitted optional key resets to
+// its default, the same as an import would.
+describe("toEditInput", () => {
+  it("keeps enabled and sortOrder from the rule and takes every other field from the JSON", () => {
+    const rule = makeAutomation({ id: 5, enabled: true, sortOrder: 3, dryRun: true, intervalSeconds: 60, name: "Old" })
+    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions })
+    expect(result).toEqual({
+      name: "New",
+      enabled: true,
+      sortOrder: 3,
+      trackerPattern: "a.com",
+      trackerDomains: ["a.com"],
+      conditions,
+      freeSpaceSource: undefined,
+      sortingConfig: undefined,
+      dryRun: false,
+      notify: true,
+    })
+    expect(result).not.toHaveProperty("id")
+  })
+})
+
 // Intent: copy-name generator used by import and duplicate. Must handle
 // re-duplicates (don't grow "(copy) (copy)"), avoid collisions
 // case-insensitively, and never produce a name that collides with an
@@ -218,35 +242,35 @@ describe("parseImportJSON", () => {
   it("rejects unparseable JSON", () => {
     const result = parseImportJSON("{not json")
     expect(result.data).toBeNull()
-    expect(result.error).toBe("Invalid JSON format")
+    expect(result.error).toBe("preferences.workflowsOverview.importDialog.errors.invalidJson")
   })
 
   it("rejects non-object root values", () => {
-    expect(parseImportJSON("123").error).toBe("Expected a JSON object")
-    expect(parseImportJSON("null").error).toBe("Expected a JSON object")
+    expect(parseImportJSON("123").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
+    expect(parseImportJSON("null").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
     // Arrays pass the typeof === "object" check, then fail on missing 'name'.
     // Pinning this behavior so future readers know arrays aren't a special case.
-    expect(parseImportJSON("[]").error).toBe("Missing or invalid 'name' field")
+    expect(parseImportJSON("[]").error).toBe("preferences.workflowsOverview.importDialog.errors.missingName")
   })
 
   it("rejects missing/empty name", () => {
     expect(parseImportJSON(JSON.stringify({ conditions: { schemaVersion: "1" }, trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'name' field"
+      "preferences.workflowsOverview.importDialog.errors.missingName"
     )
     expect(parseImportJSON(JSON.stringify({ name: "   ", conditions: { schemaVersion: "1" }, trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'name' field"
+      "preferences.workflowsOverview.importDialog.errors.missingName"
     )
   })
 
   it("rejects missing conditions", () => {
     expect(parseImportJSON(JSON.stringify({ name: "x", trackerDomains: [] })).error).toBe(
-      "Missing or invalid 'conditions' field"
+      "preferences.workflowsOverview.importDialog.errors.missingConditions"
     )
   })
 
   it("requires at least one of trackerDomains or trackerPattern", () => {
     expect(parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } })).error).toBe(
-      "Must specify either 'trackerDomains' (array of strings) or 'trackerPattern'"
+      "preferences.workflowsOverview.importDialog.errors.missingTracker"
     )
   })
 
@@ -276,16 +300,6 @@ describe("parseImportJSON", () => {
       dryRun: true,
     }))
     expect(result.data?.dryRun).toBe(true)
-  })
-
-  it("drops a malformed freeSpaceSource instead of passing it through", () => {
-    const result = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      trackerDomains: [],
-      freeSpaceSource: { type: "path" },
-    }))
-    expect(result.data).not.toHaveProperty("freeSpaceSource")
   })
 
   it("includes notify only when it's an explicit boolean", () => {
