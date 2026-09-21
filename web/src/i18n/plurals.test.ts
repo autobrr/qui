@@ -6,17 +6,12 @@
 import i18next, { type ResourceKey, type ResourceLanguage, type i18n } from "i18next"
 import { describe, expect, it } from "vitest"
 
-// The coverage scripts check the *shape* of the locale JSON, which only ever encodes
-// our belief about which suffixes i18next needs. This renders every plural through
-// i18next itself and fails when a locale cannot answer and the app quietly shows
-// English instead. Two things the CLDR table alone gets wrong: i18next has no
-// within-language fallback between plural categories, and an unsuffixed base key is
-// a legitimate answer for every category a locale omits.
+// Asks i18next, not a CLDR table, whether each locale can answer each count: i18next
+// never falls back between plural categories, and an unsuffixed base key answers all.
 const COUNTS = [0, 1, 2, 3, 4, 5, 11, 21, 101]
 
-// Italian omits crossseed scan.crossSeedsAddedBadge_one, so count 1 resolves against
-// English. It reads correctly today only because the Italian plural happens to match
-// the English singular; the fix is an it _one form, which is a translation change.
+// Known English fallbacks awaiting a translation. Entries only leave this set.
+// it lacks crossSeedsAddedBadge_one; its _other happens to match the English singular.
 const KNOWN_GAPS = new Set(["it crossseed:scan.crossSeedsAddedBadge@1"])
 
 const modules = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, ResourceKey>
@@ -53,7 +48,7 @@ function pluralKeysOf(english: ResourceLanguage): string[] {
 
 async function createInstance(lng: string, bundles: Record<string, ResourceLanguage>, fallbackLng: string | false): Promise<i18n> {
   const instance = i18next.createInstance()
-  // Mirrors src/i18n/index.ts: English is always bundled and is the fallback.
+  // Copies the fallback settings from src/i18n/index.ts, not its plugins or postProcess.
   await instance.init({
     resources: bundles,
     lng,

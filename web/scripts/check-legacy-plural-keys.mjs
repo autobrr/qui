@@ -21,9 +21,8 @@ function flattenKeys(obj, prefix = "") {
   return keys
 }
 
-// i18next v4 resolves plurals through CLDR suffixes only, so a `_plural` key is
-// never looked up and the base renders its `_other` form (or the English
-// fallback) at every count. Three of them sat in all ten locales unnoticed.
+// i18next v4 never looks up a `_plural` key, so the base renders its `_other` form
+// (or the English fallback) at every count.
 export function findLegacyPluralKeys(localesRoot = defaultLocalesRoot) {
   const found = []
 

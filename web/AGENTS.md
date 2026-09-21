@@ -83,8 +83,15 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
-- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` needs `_one`/`_few`/`_other` and may add `_many`, which nothing requires because Czech uses it for decimals and every count is floored before the lookup; `uk` needs `_one`/`_few`/`_many`/`_other`. A locale that omits a category it needs renders the English string at those counts: i18next resolves a missing category against `fallbackLng`, never against another category in the same language, so the gap reads as a working translation until someone opens that locale in the app. An **unsuffixed** base key beside the suffixed ones is the exception, and answers every category the locale omits. `_plural` is the pre-v4 suffix and i18next resolves it in no locale — never add one.
-- `pnpm check:i18n` enforces both rules: `check-legacy-plural-keys.mjs` rejects `_plural` in every locale including `en`, and `src/i18n/plurals.test.ts` renders every plural base through the app's own i18next config and fails when a locale falls back to English.
+- Plurals use the i18next v4 CLDR suffixes:
+  - English needs `_one` and `_other`.
+  - Chinese and Korean take `_other` alone.
+  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and every count is floored before the lookup.
+  - `uk` needs `_one`, `_few`, `_many` and `_other`.
+- A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
+- An unsuffixed base key beside the suffixed ones answers every category the locale omits.
+- Never add the pre-v4 `_plural` suffix. i18next does not resolve it in any locale.
+- `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` renders every plural base through i18next with the app's fallback settings, and fails when a locale falls back to English.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
 
