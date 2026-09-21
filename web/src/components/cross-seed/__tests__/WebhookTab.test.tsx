@@ -31,7 +31,6 @@ vi.mock("@/components/ui/field-help", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getInstances: () => Promise.resolve([{ id: 1, name: "main", isActive: true }]),
     getCategories: () => Promise.resolve({}),
     getTags: () => Promise.resolve([]),
@@ -39,6 +38,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { WebhookTab } from "../WebhookTab"
 
 afterEach(() => {
@@ -50,7 +50,7 @@ async function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <WebhookTab />
+      <WebhookTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
     </QueryClientProvider>
   )
   return await screen.findByRole("button", { name: "rules.saveChanges" })

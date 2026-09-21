@@ -14,7 +14,6 @@ interface RSSRunItemProps {
   formatDateValue: (date: string | undefined) => string
 }
 
-/** Single RSS run item - used for scheduled, manual, and other run lists */
 export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
   const hasResults = run.results && run.results.length > 0

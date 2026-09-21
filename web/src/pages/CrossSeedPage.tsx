@@ -7,7 +7,6 @@ import { AfterInjectionTab } from "@/components/cross-seed/AfterInjectionTab"
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { CategoriesTab } from "@/components/cross-seed/CategoriesTab"
 import { CompletionTab } from "@/components/cross-seed/CompletionTab"
-import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/components/cross-seed/cross-seed-settings"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { LibraryTab } from "@/components/cross-seed/LibraryTab"
 import { MatchingTab } from "@/components/cross-seed/MatchingTab"
@@ -18,8 +17,9 @@ import { WebhookTab } from "@/components/cross-seed/WebhookTab"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { cn } from "@/lib/utils"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
+import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/hooks/useCrossSeedSettings"
+import { cn } from "@/lib/utils"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -116,15 +116,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         </nav>
 
         <div className="min-w-0 flex-1 space-y-6">
-          {activeTab === "rss" && <RssTab />}
-          {activeTab === "webhook" && <WebhookTab />}
-          {activeTab === "completion" && <CompletionTab />}
-          {activeTab === "library" && <LibraryTab />}
+          {settings && (
+            <>
+              {activeTab === "rss" && <RssTab settings={settings} />}
+              {activeTab === "webhook" && <WebhookTab settings={settings} />}
+              {activeTab === "completion" && <CompletionTab settings={settings} />}
+              {activeTab === "library" && <LibraryTab settings={settings} />}
+              {activeTab === "season-packs" && <SeasonPacksTab settings={settings} />}
+              {activeTab === "matching" && <MatchingTab settings={settings} />}
+              {activeTab === "categories" && <CategoriesTab settings={settings} />}
+              {activeTab === "after-injection" && <AfterInjectionTab settings={settings} />}
+            </>
+          )}
           {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
-          {activeTab === "season-packs" && <SeasonPacksTab />}
-          {activeTab === "matching" && <MatchingTab />}
-          {activeTab === "categories" && <CategoriesTab />}
-          {activeTab === "after-injection" && <AfterInjectionTab />}
           {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
         </div>
       </div>

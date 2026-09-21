@@ -37,13 +37,13 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     listExternalPrograms: () => Promise.resolve([]),
     getTorznabSearchCacheStats: () => Promise.resolve(null),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { AfterInjectionTab } from "../AfterInjectionTab"
 
 afterEach(() => {
@@ -57,7 +57,7 @@ describe("AfterInjectionTab save", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <AfterInjectionTab />
+        <AfterInjectionTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </QueryClientProvider>
     )
     const save = await screen.findByRole("button", { name: "rules.saveChanges" })

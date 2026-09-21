@@ -8,7 +8,6 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { useTranslation } from "react-i18next"
 
-/** Renders the global pooled partial completion checkbox. */
 export function PooledCompletionSetting({
   id,
   checked,

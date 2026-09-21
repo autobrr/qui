@@ -3,21 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  CROSS_SEED_SEARCH_SETTINGS_KEY,
-  CROSS_SEED_SETTINGS_KEY,
-  CROSS_SEED_STATUS_KEY,
-  normalizeNumberList,
-  normalizeStringList,
-  useActiveInstances,
-  useAggregatedInstanceMetadata,
-  useCrossSeedSearchSettings,
-  useCrossSeedSearchStatus,
-  useCrossSeedSettings,
-  useEnabledIndexers,
-  useFormatDateValue,
-  useMissingIndexersToast
-} from "@/components/cross-seed/cross-seed-settings"
 import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -32,12 +17,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  CROSS_SEED_SEARCH_SETTINGS_KEY,
+  CROSS_SEED_SETTINGS_KEY,
+  CROSS_SEED_STATUS_KEY,
+  useActiveInstances,
+  useAggregatedInstanceMetadata,
+  useCrossSeedSearchSettings,
+  useCrossSeedSearchStatus,
+  useEnabledIndexers,
+  useFormatDateValue,
+  useMissingIndexersToast
+} from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
-import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
+import { normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettings,
-  CrossSeedSearchResult,
   CrossSeedSearchSettings,
   Instance
 } from "@/types"
@@ -57,19 +53,10 @@ function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, bas
   return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
 }
 
-function isCrossSeedSearchFailure(result: CrossSeedSearchResult): boolean {
-  return result.status === "failed"
-}
-
-function isCrossSeedSearchSkipped(result: CrossSeedSearchResult): boolean {
-  return result.status === "skipped"
-}
-
-export function LibraryTab() {
-  const { data: settings } = useCrossSeedSettings()
+export function LibraryTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { data: searchSettings } = useCrossSeedSearchSettings()
   const { instances } = useActiveInstances()
-  if (!settings || !searchSettings || !instances) {
+  if (!searchSettings || !instances) {
     return null
   }
   return (
@@ -757,8 +744,8 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                   <div className="space-y-1">
                     {searchRuns.map(run => {
                       const successResults = run.results?.filter(r => r.status === "added") ?? []
-                      const failedResults = run.results?.filter(isCrossSeedSearchFailure) ?? []
-                      const skippedResults = run.results?.filter(isCrossSeedSearchSkipped) ?? []
+                      const failedResults = run.results?.filter(r => r.status === "failed") ?? []
+                      const skippedResults = run.results?.filter(r => r.status === "skipped") ?? []
                       const hasResults = (run.results?.length ?? 0) > 0
                       return (
                         <Collapsible key={run.id}>

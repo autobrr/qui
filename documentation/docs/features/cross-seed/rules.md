@@ -1,11 +1,11 @@
 ---
 sidebar_position: 2
 title: Cross-seed matching rules
-sidebar_label: Rules
+sidebar_label: Matching rules
 description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, category naming, source tags, and auto-start limits."
 ---
 
-# Cross-Seed Rules
+# Cross-seed matching rules
 
 The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags and its auto-resume switch, live on that source's tab: **RSS**, **Webhook**, **Library**, or **Season packs**.
 

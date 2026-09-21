@@ -40,7 +40,6 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getCrossSeedStatus: () => Promise.resolve({ settings: mocks.settings, running: false, lastRun: null }),
     getInstances: () => Promise.resolve([{ id: 1, name: "main", isActive: true }]),
     listTorznabIndexers: () => Promise.resolve([{ id: 7, name: "idx", enabled: true, indexer_id: "idx", base_url: "http://idx.test" }]),
@@ -51,6 +50,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { RssTab } from "../RssTab"
 
 afterEach(() => {
@@ -63,7 +63,7 @@ function renderTab() {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <RssTab />
+        <RssTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </TooltipProvider>
     </QueryClientProvider>
   )

@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { normalizeStringList } from "@/components/cross-seed/cross-seed-settings"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
+import { normalizeStringList } from "@/lib/cross-seed-utils"
 import { useTranslation } from "react-i18next"
 
 interface SourceTagsFieldProps {

@@ -29,11 +29,11 @@ vi.mock("@/components/instances/preferences/CompletionOverview", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { CompletionTab } from "../CompletionTab"
 
 afterEach(() => {
@@ -47,7 +47,7 @@ describe("CompletionTab save", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <CompletionTab />
+        <CompletionTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </QueryClientProvider>
     )
     const save = await screen.findByRole("button", { name: "rules.saveChanges" })

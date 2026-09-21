@@ -38,7 +38,6 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getCrossSeedSearchSettings: () => Promise.resolve(mocks.searchSettings),
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve([]),
@@ -51,6 +50,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { LibraryTab } from "../LibraryTab"
 
 afterEach(() => {
@@ -63,7 +63,7 @@ function renderTab() {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <LibraryTab />
+        <LibraryTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </TooltipProvider>
     </QueryClientProvider>
   )

@@ -3,15 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/components/cross-seed/cross-seed-settings"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/hooks/useCrossSeedSettings"
 import type { CrossSeedAutomationSettings } from "@/types"
-import { Loader2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -86,16 +85,7 @@ function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           </div>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end">
-        <Button
-          className="min-h-11 md:min-h-9"
-          onClick={() => patchSettings.mutate({ gazelleEnabled, redactedApiKey, orpheusApiKey })}
-          disabled={patchSettings.isPending}
-        >
-          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("gazelle.save")}
-        </Button>
-      </CardFooter>
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ gazelleEnabled, redactedApiKey, orpheusApiKey })} label={t("gazelle.save")} />
     </Card>
   )
 }

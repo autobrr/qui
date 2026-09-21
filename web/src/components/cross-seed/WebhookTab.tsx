@@ -3,30 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { MultiSelect } from "@/components/ui/multi-select"
 import {
   useActiveInstances,
   useAggregatedInstanceMetadata,
-  useCrossSeedSettings,
   usePatchCrossSeedSettings
-} from "@/components/cross-seed/cross-seed-settings"
-import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { MultiSelect } from "@/components/ui/multi-select"
+} from "@/hooks/useCrossSeedSettings"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import type { CrossSeedAutomationSettings } from "@/types"
-import { Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-
-export function WebhookTab() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
-  }
-  return <WebhookCard settings={settings} />
-}
 
 interface WebhookFormState {
   webhookSourceCategories: string[]
@@ -37,7 +27,7 @@ interface WebhookFormState {
   skipAutoResumeWebhook: boolean
 }
 
-function WebhookCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+export function WebhookTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const patchSettings = usePatchCrossSeedSettings()
   const { activeInstanceIds } = useActiveInstances()
@@ -159,12 +149,7 @@ function WebhookCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           />
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end">
-        <Button className="min-h-11 md:min-h-9" onClick={() => patchSettings.mutate({ ...form })} disabled={patchSettings.isPending}>
-          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("rules.saveChanges")}
-        </Button>
-      </CardFooter>
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} />
     </Card>
   )
 }

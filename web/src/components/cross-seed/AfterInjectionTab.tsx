@@ -3,21 +3,21 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCrossSeedSettings, useFormatDateValue, usePatchCrossSeedSettings } from "@/components/cross-seed/cross-seed-settings"
 import { HardlinkModeSettings } from "@/components/cross-seed/HardlinkModeSettings"
+import { SaveFooter } from "@/components/cross-seed/SaveFooter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useFormatDateValue, usePatchCrossSeedSettings } from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type { CrossSeedAutomationSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -27,15 +27,7 @@ interface AfterInjectionFormState {
   runExternalProgramId: number | null
 }
 
-export function AfterInjectionTab() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
-  }
-  return <AfterInjectionCard settings={settings} />
-}
-
-function AfterInjectionCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+export function AfterInjectionTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const patchSettings = usePatchCrossSeedSettings()
@@ -135,12 +127,7 @@ function AfterInjectionCard({ settings }: { settings: CrossSeedAutomationSetting
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex justify-end">
-        <Button className="min-h-11 md:min-h-9" onClick={() => patchSettings.mutate(form)} disabled={patchSettings.isPending}>
-          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("rules.saveChanges")}
-        </Button>
-      </CardFooter>
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} />
     </Card>
   )
 }

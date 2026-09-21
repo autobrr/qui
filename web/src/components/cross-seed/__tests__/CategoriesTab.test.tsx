@@ -34,12 +34,12 @@ vi.mock("@/components/ui/field-help", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getInstances: () => Promise.resolve([]),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { CategoriesTab } from "../CategoriesTab"
 
 afterEach(() => {
@@ -52,7 +52,7 @@ async function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <CategoriesTab />
+      <CategoriesTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
     </QueryClientProvider>
   )
   return screen.findByRole("button", { name: "rules.saveChanges" })

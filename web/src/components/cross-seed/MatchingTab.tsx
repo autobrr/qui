@@ -3,21 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  useActiveInstances,
-  useAggregatedInstanceMetadata,
-  useCrossSeedSettings,
-  usePatchCrossSeedSettings
-} from "@/components/cross-seed/cross-seed-settings"
-import { TitleRescueSetting } from "@/components/cross-seed/TitleRescueSetting"
 import { CategoryMappingRulesEditor } from "@/components/cross-seed/CategoryMappingRulesEditor"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { TitleRescueSetting } from "@/components/cross-seed/TitleRescueSetting"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  useActiveInstances,
+  useAggregatedInstanceMetadata,
+  usePatchCrossSeedSettings
+} from "@/hooks/useCrossSeedSettings"
 import type { CategoryMappingRule, CrossSeedAutomationSettings } from "@/types"
-import { Loader2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -29,15 +27,7 @@ interface MatchingFormState {
   skipPieceBoundarySafetyCheck: boolean
 }
 
-export function MatchingTab() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
-  }
-  return <MatchingCard settings={settings} />
-}
-
-function MatchingCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+export function MatchingTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const patchSettings = usePatchCrossSeedSettings()
   const { activeInstanceIds } = useActiveInstances()
@@ -58,7 +48,6 @@ function MatchingCard({ settings }: { settings: CrossSeedAutomationSettings }) {
         <CardDescription>{t("rules.tabDescriptions.matching")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Search category rules */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.matching.categoryMapping.title")}</p>
@@ -71,7 +60,6 @@ function MatchingCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           />
         </div>
 
-        {/* Safety & validation */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.safety.title")}</p>
@@ -113,7 +101,6 @@ function MatchingCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           </div>
         </div>
 
-        {/* Episodes */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
@@ -129,12 +116,7 @@ function MatchingCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           </div>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end">
-        <Button className="min-h-11 md:min-h-9" onClick={() => patchSettings.mutate(form)} disabled={patchSettings.isPending}>
-          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("rules.saveChanges")}
-        </Button>
-      </CardFooter>
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} />
     </Card>
   )
 }

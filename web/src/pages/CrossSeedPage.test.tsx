@@ -18,7 +18,7 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: () => undefined }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => new Promise(() => {}),
+    getCrossSeedSettings: () => Promise.resolve({ enabled: false }),
     getInstances: () => new Promise(() => {}),
     listTorznabIndexers: () => new Promise(() => {}),
   },
@@ -40,7 +40,7 @@ import { CrossSeedPage } from "./CrossSeedPage"
 afterEach(cleanup)
 
 describe("CrossSeedPage tabs", () => {
-  it.each(CROSS_SEED_TABS)("renders only the %s tab when it is active", (tab) => {
+  it.each(CROSS_SEED_TABS)("renders only the %s tab when it is active", async (tab) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
@@ -48,7 +48,7 @@ describe("CrossSeedPage tabs", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByTestId(`tab-${tab}`)).toBeTruthy()
+    expect(await screen.findByTestId(`tab-${tab}`)).toBeTruthy()
     for (const other of CROSS_SEED_TABS) {
       if (other !== tab) expect(screen.queryByTestId(`tab-${other}`)).toBeNull()
     }

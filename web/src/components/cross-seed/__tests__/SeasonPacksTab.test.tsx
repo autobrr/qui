@@ -43,13 +43,13 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getInstances: () => Promise.resolve([]),
     listSeasonPackRuns: () => Promise.resolve([]),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { SeasonPacksTab } from "../SeasonPacksTab"
 
 afterEach(() => {
@@ -63,7 +63,7 @@ describe("SeasonPacksTab save", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
       <QueryClientProvider client={client}>
-        <SeasonPacksTab />
+        <SeasonPacksTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </QueryClientProvider>
     )
 

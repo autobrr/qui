@@ -3,28 +3,26 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  useActiveInstances,
-  useAggregatedInstanceMetadata,
-  useCrossSeedSettings,
-  useFormatDateValue,
-  usePatchCrossSeedSettings
-} from "@/components/cross-seed/cross-seed-settings"
+import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPackCategoryRulesEditor"
 import { SeasonPackRunsPanel } from "@/components/cross-seed/SeasonPackRunsPanel"
 import { SourceTagsField } from "@/components/cross-seed/SourceCardFields"
-import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPackCategoryRulesEditor"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
+import {
+  useActiveInstances,
+  useAggregatedInstanceMetadata,
+  useFormatDateValue,
+  usePatchCrossSeedSettings
+} from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import type { CrossSeedAutomationSettings, SeasonPackCategoryRule } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -43,15 +41,7 @@ interface SeasonPackFormState {
   seasonPackTvdbPin: string
 }
 
-export function SeasonPacksTab() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
-  }
-  return <SeasonPacksCard settings={settings} />
-}
-
-function SeasonPacksCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const patchSettings = usePatchCrossSeedSettings()
@@ -274,12 +264,7 @@ function SeasonPacksCard({ settings }: { settings: CrossSeedAutomationSettings }
           formatDateValue={formatDateValue}
         />
       </CardContent>
-      <CardFooter className="flex justify-end">
-        <Button className="min-h-11 md:min-h-9" onClick={() => patchSettings.mutate({ ...form })} disabled={patchSettings.isPending}>
-          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("rules.saveChanges")}
-        </Button>
-      </CardFooter>
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} />
     </Card>
   )
 }

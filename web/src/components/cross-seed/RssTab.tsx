@@ -3,20 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  DEFAULT_RSS_INTERVAL_MINUTES,
-  MIN_RSS_INTERVAL_MINUTES,
-  normalizeNumberList,
-  useActiveInstances,
-  useAggregatedInstanceMetadata,
-  useCrossSeedSettings,
-  useCrossSeedStatus,
-  useEnabledIndexers,
-  useFormatDateValue,
-  useManualRunCooldown,
-  useMissingIndexersToast,
-  usePatchCrossSeedSettings
-} from "@/components/cross-seed/cross-seed-settings"
 import { RSSRunItem } from "@/components/cross-seed/RssRunItem"
 import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import {
@@ -40,8 +26,19 @@ import { MultiSelect } from "@/components/ui/multi-select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  useActiveInstances,
+  useAggregatedInstanceMetadata,
+  useCrossSeedStatus,
+  useEnabledIndexers,
+  useFormatDateValue,
+  useMissingIndexersToast,
+  usePatchCrossSeedSettings
+} from "@/hooks/useCrossSeedSettings"
+import { DEFAULT_RSS_INTERVAL_MINUTES, MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManualRunCooldown"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { normalizeNumberList } from "@/lib/cross-seed-utils"
 import type { CrossSeedAutomationSettings, CrossSeedRun } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { ChevronDown, Clock, History, Loader2, Play, XCircle, Zap } from "lucide-react"
@@ -90,15 +87,7 @@ function seedRssForm(settings: CrossSeedAutomationSettings): RssFormState {
   }
 }
 
-export function RssTab() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
-  }
-  return <RssCard settings={settings} />
-}
-
-function RssCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const { activeInstances } = useActiveInstances()

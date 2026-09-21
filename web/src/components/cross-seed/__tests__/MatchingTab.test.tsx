@@ -34,12 +34,12 @@ vi.mock("@/components/cross-seed/CategoryMappingRulesEditor", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getInstances: () => Promise.resolve([]),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
+import type { CrossSeedAutomationSettings } from "@/types"
 import { MatchingTab } from "../MatchingTab"
 
 afterEach(() => {
@@ -53,7 +53,7 @@ describe("MatchingTab save", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <MatchingTab />
+        <MatchingTab settings={mocks.settings as unknown as CrossSeedAutomationSettings} />
       </QueryClientProvider>
     )
     const save = await screen.findByRole("button", { name: "rules.saveChanges" })
