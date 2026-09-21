@@ -16,8 +16,9 @@ const mocks = vi.hoisted(() => ({
     gazelleEnabled: false,
     seasonPackAutomationEnabled: false,
   },
-  searchSettings: { instanceId: 1, categories: [], tags: [], indexerIds: [], intervalSeconds: 60, cooldownMinutes: 720 },
+  searchSettings: { instanceId: 1, categories: [], tags: [], indexerIds: [] as number[], intervalSeconds: 60, cooldownMinutes: 720 },
   instances: [{ id: 1, name: "main", isActive: true }],
+  indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
   getSearchSettings: vi.fn(() => Promise.resolve(mocks.searchSettings)),
@@ -41,7 +42,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     getCrossSeedSearchSettings: mocks.getSearchSettings,
     getInstances: () => Promise.resolve(mocks.instances),
-    listTorznabIndexers: () => Promise.resolve([]),
+    listTorznabIndexers: () => Promise.resolve(mocks.indexers),
     getCrossSeedSearchStatus: () => Promise.resolve({ running: false }),
     listCrossSeedSearchRuns: () => Promise.resolve([]),
     getCategories: () => Promise.resolve({}),
@@ -57,6 +58,9 @@ import { LibraryTab } from "../LibraryTab"
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.settings.gazelleEnabled = false
+  mocks.searchSettings.indexerIds = []
+  mocks.indexers = []
 })
 
 function renderTab() {
@@ -129,5 +133,25 @@ describe("LibraryTab save", () => {
     expect(screen.getByText("validation.minCooldown")).toBeTruthy()
     expect(mocks.patchSearch).not.toHaveBeenCalled()
     expect(mocks.patchSettings).not.toHaveBeenCalled()
+  })
+
+  it("reads a stale OPS/RED-only pick as every other indexer and saves it as all", async () => {
+    // Saved before both Gazelle keys existed; the picker hides OPS/RED now, so nothing is left to show or store.
+    Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
+    mocks.indexers = [
+      { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },
+      { id: 2, indexer_id: "redacted", name: "RED", base_url: "https://redacted.example.invalid", enabled: true },
+      { id: 3, indexer_id: "other", name: "Other", base_url: "https://other.example.invalid", enabled: true },
+    ]
+    mocks.searchSettings.indexerIds = [1, 2]
+    mocks.patchSearch.mockResolvedValue(mocks.searchSettings)
+    mocks.patchSettings.mockResolvedValue(mocks.settings)
+    renderTab()
+
+    expect(await screen.findByText("scan.indexers.helpAllEnabledNonOpsRedQueried")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+
+    await waitFor(() => expect(mocks.patchSearch).toHaveBeenCalledTimes(1))
+    expect(mocks.patchSearch.mock.calls[0][0].indexerIds).toEqual([])
   })
 })
