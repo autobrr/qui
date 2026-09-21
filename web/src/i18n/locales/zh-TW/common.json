@@ -147,6 +147,9 @@
     "activatedTitle": "qui 已更新",
     "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}}（伺服器傳回了 HTML 錯誤頁面）"
+  },
   "notFound": {
     "title": "迷路了？",
     "subtitle": "看起來您進入了未知區域。",

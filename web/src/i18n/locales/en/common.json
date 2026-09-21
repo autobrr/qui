@@ -147,6 +147,9 @@
     "activatedTitle": "qui updated",
     "activatedDescription": "Reload when convenient to finish installing the latest release."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (server returned HTML error page)"
+  },
   "notFound": {
     "title": "Oops! Lost in the swarm?",
     "subtitle": "Looks like you've ventured into the unknown.",

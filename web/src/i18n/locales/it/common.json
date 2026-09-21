@@ -147,6 +147,9 @@
     "activatedTitle": "qui è stato aggiornato",
     "activatedDescription": "Ricarica quando preferisci per completare l'installazione dell'ultima versione."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (il server ha restituito una pagina di errore HTML)"
+  },
   "notFound": {
     "title": "Ops! Persi nello sciame?",
     "subtitle": "Sembra che ti sia avventurato nell'ignoto.",

@@ -147,6 +147,9 @@
     "activatedTitle": "qui a été mis à jour",
     "activatedDescription": "Rechargez quand cela vous convient pour terminer l'installation de la dernière version."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (le serveur a renvoyé une page d'erreur HTML)"
+  },
   "notFound": {
     "title": "Oups ! Perdu dans l'essaim ?",
     "subtitle": "Il semble que vous vous soyez aventuré dans l'inconnu.",

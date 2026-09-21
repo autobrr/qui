@@ -147,6 +147,9 @@
     "activatedTitle": "qui s'ha actualitzat",
     "activatedDescription": "Recarrega quan et vagi bé per acabar d'instal·lar la darrera versió."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (el servidor ha retornat una pàgina d'error HTML)"
+  },
   "notFound": {
     "title": "Ups! T'has perdut dins de l'eixam?",
     "subtitle": "Sembla que t'has endinsat en terreny desconegut.",

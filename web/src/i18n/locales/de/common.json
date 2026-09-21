@@ -147,6 +147,9 @@
     "activatedTitle": "qui wurde aktualisiert",
     "activatedDescription": "Bei Gelegenheit neu laden, um die Installation der neuesten Version abzuschließen."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (Server hat eine HTML-Fehlerseite zurückgegeben)"
+  },
   "notFound": {
     "title": "Hoppla! Im Schwarm verloren?",
     "subtitle": "Sieht aus, als hättest du dich ins Unbekannte gewagt.",

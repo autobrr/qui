@@ -147,6 +147,9 @@
     "activatedTitle": "qui atualizado",
     "activatedDescription": "Recarregue quando for conveniente para concluir a instalação da versão mais recente."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (o servidor retornou uma página de erro HTML)"
+  },
   "notFound": {
     "title": "Ops! Perdido no swarm?",
     "subtitle": "Parece que você se aventurou no desconhecido.",

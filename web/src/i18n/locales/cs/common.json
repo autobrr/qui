@@ -147,6 +147,9 @@
     "activatedTitle": "qui bylo aktualizováno",
     "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
   },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (server vrátil chybovou stránku HTML)"
+  },
   "notFound": {
     "title": "Ajeje! Ztratil jsi se?",
     "subtitle": "Zdá se, že jsi se ztratil.",
