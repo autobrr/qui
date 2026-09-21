@@ -8,7 +8,8 @@ import { z } from "zod"
 /** Nav sections in display order. A group without a label renders its tabs without a heading. */
 export const CROSS_SEED_NAV_GROUPS = [
   { labelKey: "nav.sources", tabs: ["rss", "webhook", "completion", "library", "directories"] },
-  { labelKey: "nav.matching", tabs: ["season-packs", "rules"] },
+  { labelKey: "nav.matching", tabs: ["season-packs", "matching"] },
+  { labelKey: "nav.injection", tabs: ["categories", "after-injection"] },
   { tabs: ["blocklist"] },
 ] as const
 

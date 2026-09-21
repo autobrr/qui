@@ -23,12 +23,15 @@
     "library": "Libreria",
     "directories": "Cartelle",
     "season-packs": "Season pack",
-    "rules": "Regole",
+    "matching": "Regole di corrispondenza",
+    "categories": "Categorie e tag",
+    "after-injection": "Dopo l'iniezione",
     "blocklist": "Lista di blocco"
   },
   "nav": {
     "sources": "Sorgenti",
-    "matching": "Corrispondenza"
+    "matching": "Corrispondenza",
+    "injection": "Iniezione"
   },
   "automation": {
     "title": "Automazione RSS",
@@ -194,8 +197,6 @@
     "noMessageProvided": "Nessun messaggio disponibile"
   },
   "rules": {
-    "title": "Regole di Cross-Seed",
-    "description": "Impostazioni che si applicano a tutte le operazioni di cross-seed.",
     "hardlinkReflink": "Modalità Hardlink / Reflink",
     "noActiveInstances": "Nessuna istanza attiva. Aggiungi prima delle istanze.",
     "hardlinkDescription": "Crea alberi di file in hardlink o reflink (copy-on-write) per i cross-seed. Ogni istanza può essere configurata in modo indipendente. La directory di base deve trovarsi sullo stesso filesystem dei percorsi di download dell'istanza.",
@@ -219,11 +220,6 @@
     "fallbackDescription": "Se {{mode}} fallisce (es. filesystem diversi), ripiega sulla modalità normale utilizzando i file esistenti.",
     "saveChanges": "Salva le modifiche",
     "noLocalAccess": "Nessun accesso locale",
-    "sections": {
-      "matching": "Corrispondenza",
-      "organization": "Organizzazione",
-      "afterInjection": "Dopo l'iniezione"
-    },
     "seasonPack": {
       "title": "Pacchetti stagionali",
       "description": "Quando autobrr preleva un pacchetto stagionale, qui verifica se hai già abbastanza dati locali per iniettarlo, poi lascia che qBittorrent scarichi quanto ancora manca.",
@@ -360,7 +356,10 @@
       "cachedSearches": "{{count}} ricerche in cache",
       "lastUsed": "Ultimo utilizzo {{timestamp}}"
     },
-    "saveGlobalSettings": "Salva le impostazioni globali di cross-seed"
+    "tabDescriptions": {
+      "matching": "Regole che decidono quali candidati qui aggiunge, per tutte le sorgenti.",
+      "categories": "La categoria e i tag che qui assegna a ogni nuovo cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Esecuzioni recenti dei pacchetti stagionali",

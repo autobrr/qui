@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { AfterInjectionTab } from "@/components/cross-seed/AfterInjectionTab"
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
+import { CategoriesTab } from "@/components/cross-seed/CategoriesTab"
 import { CompletionTab } from "@/components/cross-seed/CompletionTab"
 import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/components/cross-seed/cross-seed-settings"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { LibraryTab } from "@/components/cross-seed/LibraryTab"
+import { MatchingTab } from "@/components/cross-seed/MatchingTab"
 import { RssTab } from "@/components/cross-seed/RssTab"
-import { RulesTab } from "@/components/cross-seed/RulesTab"
 import { SeasonPacksTab } from "@/components/cross-seed/SeasonPacksTab"
 import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
@@ -120,7 +122,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           {activeTab === "library" && <LibraryTab />}
           {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
           {activeTab === "season-packs" && <SeasonPacksTab />}
-          {activeTab === "rules" && <RulesTab />}
+          {activeTab === "matching" && <MatchingTab />}
+          {activeTab === "categories" && <CategoriesTab />}
+          {activeTab === "after-injection" && <AfterInjectionTab />}
           {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
         </div>
       </div>

@@ -23,12 +23,15 @@
     "library": "Library",
     "directories": "Directories",
     "season-packs": "Season packs",
-    "rules": "Rules",
+    "matching": "Matching rules",
+    "categories": "Categories and tags",
+    "after-injection": "After injection",
     "blocklist": "Blocklist"
   },
   "nav": {
     "sources": "Sources",
-    "matching": "Matching"
+    "matching": "Matching",
+    "injection": "Injection"
   },
   "automation": {
     "title": "RSS Automation",
@@ -195,8 +198,6 @@
     "noMessageProvided": "No message provided"
   },
   "rules": {
-    "title": "Cross-Seed Rules",
-    "description": "Settings that apply to all cross-seed operations.",
     "hardlinkReflink": "Hardlink / Reflink Mode",
     "noActiveInstances": "No active instances. Add instances first.",
     "hardlinkDescription": "Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured independently. The base directory must be on the same filesystem as the instance's download paths.",
@@ -220,11 +221,6 @@
     "fallbackDescription": "If {{mode}} fails (e.g., different filesystems), fall back to regular mode using existing files.",
     "saveChanges": "Save Changes",
     "noLocalAccess": "No local access",
-    "sections": {
-      "matching": "Matching",
-      "organization": "Organization",
-      "afterInjection": "After injection"
-    },
     "seasonPack": {
       "title": "Season packs",
       "description": "When autobrr grabs a season pack, qui checks whether you already have enough local data to inject it, then lets qBittorrent download anything still missing.",
@@ -361,7 +357,10 @@
       "cachedSearches": "{{count}} cached searches",
       "lastUsed": "Last used {{timestamp}}"
     },
-    "saveGlobalSettings": "Save global cross-seed settings"
+    "tabDescriptions": {
+      "matching": "Rules that decide which candidates qui adds, for every source.",
+      "categories": "The category and the tags qui gives to every new cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Recent season pack runs",

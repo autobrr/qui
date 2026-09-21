@@ -36,7 +36,7 @@ An exact reported size is evidence, not byte verification. qui still checks the 
 
 ### Season pack vs episodes
 
-By default, season packs only match other season packs. If you enable **Cross-seed episodes from packs** under Cross-Seed > Rules, season packs match individual episode releases.
+By default, season packs only match other season packs. If you enable **Cross-seed episodes from packs** under Cross-Seed > Matching rules, season packs match individual episode releases.
 
 ### Prowlarr filters remove expected results
 
@@ -156,7 +156,7 @@ If the source files and the link-tree base reside on different filesystems, or i
 
 qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips them instead. If you enable **Skip recheck**, disable **Fallback to regular mode**, because all fallbacks require a recheck.
 
-If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if the **Piece boundary safety check** switch in Rules is off. If the check fails, qui skips the torrent before adding it to qBittorrent.
+If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if the **Piece boundary safety check** switch in Matching rules is off. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
 ### 4. Exact-size identity fallback
 
@@ -176,7 +176,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - If only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
 - Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
-- Configure this limit with **Max auto-start download** in Rules
+- Configure this limit with **Max auto-start download** in Cross-Seed > After injection
 - In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 ## Hardlink mode failed
@@ -242,19 +242,19 @@ Common causes:
 
 ## Cross-seed skipped: "extra files share pieces with content"
 
-In regular reuse mode, this occurs if the **Piece boundary safety check** switch in Cross-Seed > Rules > Safety & validation is on (it is off by default). Link-mode fallback is stricter: for partial or otherwise non-perfect matches, qui always runs the check before adding the torrent to qBittorrent.
+In regular reuse mode, this occurs if the **Piece boundary safety check** switch in Cross-Seed > Matching rules > Safety & validation is on (it is off by default). Link-mode fallback is stricter: for partial or otherwise non-perfect matches, qui always runs the check before adding the torrent to qBittorrent.
 
 The incoming torrent contains files absent from your matched torrent, and those files share torrent pieces with your existing content. Downloading them can overwrite parts of your existing files.
 
 **Solutions:**
 - **Use reflink mode** (recommended): enable reflink mode for the instance. It clones the files, so qBittorrent modifies the clone without affecting the originals.
-- **Disable the safety check**: turn off the **Piece boundary safety check** switch in Cross-Seed > Rules > Safety & validation (the default). If the content differs, the match proceeds, but it **can corrupt your existing seeded files**.
+- **Disable the safety check**: turn off the **Piece boundary safety check** switch in Cross-Seed > Matching rules > Safety & validation (the default). If the content differs, the match proceeds, but it **can corrupt your existing seeded files**.
 - If reflinks are unavailable and you want to avoid risk, download the torrent normally.
 
 ## Cross-seed stuck at low percentage after recheck
 
 - Check if the source torrent contains extra files (NFO, samples) that do not exist on disk
-- Check the "Max auto-start download" setting in Rules
+- Check the "Max auto-start download" setting in Cross-Seed > After injection
 - Torrents that miss more data than the limit stay paused for manual review
 
 ## Linked file does not match the torrent
@@ -270,7 +270,7 @@ qui always adds torrents that contain disc-based media (Blu-ray `BDMV` or DVD `V
 **Why?** Disc layout torrents are sensitive to file alignment. Even minor path differences can cause qBittorrent to redownload large video segments and can corrupt your seeded content. Pausing these torrents lets you verify that the recheck reached 100% before you resume.
 
 **What to do:**
-1. If you enable **Skip recheck** in Cross-Seed Rules, qui skips disc-layout matches.
+1. If you enable **Skip recheck** in Cross-Seed > Matching rules, qui skips disc-layout matches.
 2. Otherwise, qui triggers a recheck automatically and auto-resumes only after the recheck reaches **100%**.
 3. If auto-resume is disabled, resume the torrent manually after the recheck reaches 100%.
 
@@ -307,7 +307,7 @@ The `toRawJson` function (from Sprig) escapes special characters and outputs a v
 
 - Check your cross-seed configuration in qui
 - Ensure the matched torrent has the expected category
-- For Dir Scan injections, Cross-Seed > Rules category modes do not apply. Dir Scan uses its own Default Category / Category override. If you leave it blank, the torrent receives no category.
+- For Dir Scan injections, Cross-Seed > Categories and tags category modes do not apply. Dir Scan uses its own Default Category / Category override. If you leave it blank, the torrent receives no category.
 
 ## autoTMM unexpectedly enabled/disabled
 

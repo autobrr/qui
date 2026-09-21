@@ -23,12 +23,15 @@
     "library": "Biblioteca",
     "directories": "Directoris",
     "season-packs": "Packs de temporada",
-    "rules": "Regles",
+    "matching": "Regles de coincidència",
+    "categories": "Categories i etiquetes",
+    "after-injection": "Després de la injecció",
     "blocklist": "Llista de bloqueig"
   },
   "nav": {
     "sources": "Fonts",
-    "matching": "Coincidència"
+    "matching": "Coincidència",
+    "injection": "Injecció"
   },
   "automation": {
     "title": "Automatització d'RSS",
@@ -195,8 +198,6 @@
     "noMessageProvided": "No s'ha proporcionat cap missatge"
   },
   "rules": {
-    "title": "Regles de cross-seed",
-    "description": "Configuració que s'aplica a totes les operacions de cross-seed.",
     "hardlinkReflink": "Mode hardlink / reflink",
     "noActiveInstances": "No hi ha cap instància activa. Primer afegeix-ne una.",
     "hardlinkDescription": "Crea arbres de fitxers amb hardlinks o reflinks (còpia en escriure) per als cross-seed. Cada instància es pot configurar de manera independent. El directori base ha de ser al mateix sistema de fitxers que els camins de baixada de la instància.",
@@ -220,11 +221,6 @@
     "fallbackDescription": "Si el mode {{mode}} falla (per exemple, per sistemes de fitxers diferents), recorre al mode normal fent servir els fitxers existents.",
     "saveChanges": "Desa els canvis",
     "noLocalAccess": "Sense accés local",
-    "sections": {
-      "matching": "Coincidències",
-      "organization": "Organització",
-      "afterInjection": "Després de la injecció"
-    },
     "seasonPack": {
       "title": "Packs de temporada",
       "description": "Quan autobrr captura un pack de temporada, qui comprova si ja tens prou dades locals per injectar-lo i, després, deixa que qBittorrent baixi tot el que hi falti.",
@@ -361,7 +357,10 @@
       "cachedSearches": "{{count}} cerques a la memòria cau",
       "lastUsed": "Últim ús: {{timestamp}}"
     },
-    "saveGlobalSettings": "Desa la configuració global de cross-seed"
+    "tabDescriptions": {
+      "matching": "Regles que decideixen quins candidats afegeix qui, per a totes les fonts.",
+      "categories": "La categoria i les etiquetes que qui assigna a cada nou cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Execucions recents de packs de temporada",

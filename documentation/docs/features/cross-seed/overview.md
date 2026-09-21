@@ -137,7 +137,7 @@ The check first selects a complete matching pack alone, if one exists. Otherwise
 
 Before you add the pack, the check shows matched episodes, coverage, missing bytes, rejected targets, and the resolved destination. Coverage uses the episode files in your upload. No coverage threshold applies to manual assembly. Each selected torrent must be complete and provide one playable episode file with an exact size match. Manual selection bypasses title, source-filter, and numbering-scheme checks, but each file still needs a parsed episode identity.
 
-Piece boundary protection also applies to manual assembly in hardlink mode. It blocks the pack when selected and missing files share a data block. Downloading that block can change the original files through hardlinks. The warning links to Cross-seed > Rules, where you can review this protection under Safety & validation.
+Piece boundary protection also applies to manual assembly in hardlink mode. It blocks the pack when selected and missing files share a data block. Downloading that block can change the original files through hardlinks. The warning links to Cross-Seed > Matching rules, where you can review this protection under Safety & validation.
 
 qui adds the assembled pack paused and rechecks it. It resumes when verified progress reaches the linked byte fraction, with the assembly margin for piece boundaries. If a file moves between check and apply, qui drops that target, reports its name, and assembles the remaining files. Season pack run history records the matched count, coverage, and link mode.
 

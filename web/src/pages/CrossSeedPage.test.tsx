@@ -29,7 +29,9 @@ vi.mock("@/components/cross-seed/CompletionTab", () => ({ CompletionTab: () => <
 vi.mock("@/components/cross-seed/LibraryTab", () => ({ LibraryTab: () => <div data-testid="tab-library" /> }))
 vi.mock("@/components/cross-seed/DirScanTab", () => ({ DirScanTab: () => <div data-testid="tab-directories" /> }))
 vi.mock("@/components/cross-seed/SeasonPacksTab", () => ({ SeasonPacksTab: () => <div data-testid="tab-season-packs" /> }))
-vi.mock("@/components/cross-seed/RulesTab", () => ({ RulesTab: () => <div data-testid="tab-rules" /> }))
+vi.mock("@/components/cross-seed/MatchingTab", () => ({ MatchingTab: () => <div data-testid="tab-matching" /> }))
+vi.mock("@/components/cross-seed/CategoriesTab", () => ({ CategoriesTab: () => <div data-testid="tab-categories" /> }))
+vi.mock("@/components/cross-seed/AfterInjectionTab", () => ({ AfterInjectionTab: () => <div data-testid="tab-after-injection" /> }))
 vi.mock("@/components/cross-seed/BlocklistTab", () => ({ BlocklistTab: () => <div data-testid="tab-blocklist" /> }))
 
 import { CROSS_SEED_TABS } from "@/components/cross-seed/tabs"

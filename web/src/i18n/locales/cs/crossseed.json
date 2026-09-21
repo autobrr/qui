@@ -23,12 +23,15 @@
     "library": "Knihovna",
     "directories": "Adresáře",
     "season-packs": "Season packy",
-    "rules": "Pravidla",
+    "matching": "Pravidla párování",
+    "categories": "Kategorie a tagy",
+    "after-injection": "Po vložení",
     "blocklist": "Blokované"
   },
   "nav": {
     "sources": "Zdroje",
-    "matching": "Párování"
+    "matching": "Párování",
+    "injection": "Vložení"
   },
   "automation": {
     "title": "Automatizace RSS",
@@ -200,8 +203,6 @@
     "noMessageProvided": "Nebyla poskytnuta žádná zpráva"
   },
   "rules": {
-    "title": "Pravidla křížového sdílení",
-    "description": "Nastavení, která se vztahují na všechna křížová sdílení.",
     "hardlinkReflink": "Hardlink / Reflink režim",
     "noActiveInstances": "Žádné aktivní instance. Přidejte nejprve instanci(e).",
     "hardlinkDescription": "Vytvořit hardlink (pevný odkaz) nebo reflink (kopírování při zápisu) soubory pro křížová sdílení. Každá instance může být nakonfigurována nezávisle. Základní adresář musí být na stejném souborovém systému jako cílové instance.",
@@ -225,11 +226,6 @@
     "fallbackDescription": "Pokud {{mode}} selže (např. různé souborové systémy), přepnout na standardní režim použitím existujících souborů.",
     "saveChanges": "Uložit změny",
     "noLocalAccess": "Žádný místní přístup",
-    "sections": {
-      "matching": "Shody",
-      "organization": "Organizace",
-      "afterInjection": "Po vložení"
-    },
     "seasonPack": {
       "title": "Celé sezóny",
       "description": "Když autobrr zachytí balík celé sezóny, qui zkontroluje, zda již máte dostatek místních dat a pak umožní qBittorrentu stáhnout vše, co stále chybí.",
@@ -366,7 +362,10 @@
       "cachedSearches": "{{count}} hledání v cache",
       "lastUsed": "Poslední použití {{timestamp}}"
     },
-    "saveGlobalSettings": "Uložit globální nastavení křížového sdílení"
+    "tabDescriptions": {
+      "matching": "Pravidla, která rozhodují, které kandidáty qui přidá, pro všechny zdroje.",
+      "categories": "Kategorie a tagy, které qui přiřadí každému novému cross-seedu."
+    }
   },
   "seasonPackRuns": {
     "title": "Nedávno spuštěné balíky celých sezón",

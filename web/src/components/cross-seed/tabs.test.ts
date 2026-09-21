@@ -17,6 +17,7 @@ describe("cross-seed route search", () => {
   it("drops an unknown or retired tab value so the page falls back to the default", () => {
     expect(crossSeedSearchSchema.parse({ tab: "auto" }).tab).toBeUndefined()
     expect(crossSeedSearchSchema.parse({ tab: "scan" }).tab).toBeUndefined()
+    expect(crossSeedSearchSchema.parse({ tab: "rules" }).tab).toBeUndefined()
     expect(crossSeedSearchSchema.parse({}).tab).toBeUndefined()
   })
 })

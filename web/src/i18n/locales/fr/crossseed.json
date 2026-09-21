@@ -23,12 +23,15 @@
     "library": "Bibliothèque",
     "directories": "Dossiers",
     "season-packs": "Packs de saison",
-    "rules": "Règles",
+    "matching": "Règles de correspondance",
+    "categories": "Catégories et tags",
+    "after-injection": "Après injection",
     "blocklist": "Liste de blocage"
   },
   "nav": {
     "sources": "Sources",
-    "matching": "Correspondance"
+    "matching": "Correspondance",
+    "injection": "Injection"
   },
   "automation": {
     "title": "Automatisation RSS",
@@ -195,8 +198,6 @@
     "noMessageProvided": "Aucun message fourni"
   },
   "rules": {
-    "title": "Règles de Cross-Seed",
-    "description": "Paramètres s'appliquant à toutes les opérations de cross-seed.",
     "hardlinkReflink": "Mode Hardlink / Reflink",
     "noActiveInstances": "Aucune instance active. Ajoutez d'abord des instances.",
     "hardlinkDescription": "Créer des arborescences de fichiers en hardlink ou reflink (copie sur écriture) pour les cross-seeds. Chaque instance peut être configurée indépendamment. Le répertoire de base doit se trouver sur le même système de fichiers que les chemins de téléchargement de l'instance.",
@@ -220,11 +221,6 @@
     "fallbackDescription": "Si {{mode}} échoue (ex. systèmes de fichiers différents), repli sur le mode normal utilisant les fichiers existants.",
     "saveChanges": "Sauvegarder les modifications",
     "noLocalAccess": "Pas d'accès local",
-    "sections": {
-      "matching": "Correspondance",
-      "organization": "Organisation",
-      "afterInjection": "Après injection"
-    },
     "seasonPack": {
       "title": "Packs de saison",
       "description": "Lorsqu'autobrr saisit un pack de saison, qui vérifie si vous avez suffisamment de données locales pour l'injecter, puis laisse qBittorrent télécharger ce qui manque.",
@@ -361,7 +357,10 @@
       "cachedSearches": "{{count}} recherches en cache",
       "lastUsed": "Dernière utilisation {{timestamp}}"
     },
-    "saveGlobalSettings": "Sauvegarder les paramètres globaux"
+    "tabDescriptions": {
+      "matching": "Règles qui décident quels candidats qui ajoute, pour toutes les sources.",
+      "categories": "La catégorie et les tags que qui attribue à chaque nouveau cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Exécutions récentes des packs de saison",

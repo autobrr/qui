@@ -23,12 +23,15 @@
     "library": "库",
     "directories": "目录",
     "season-packs": "季包",
-    "rules": "规则",
+    "matching": "匹配规则",
+    "categories": "分类与标签",
+    "after-injection": "注入后",
     "blocklist": "屏蔽列表"
   },
   "nav": {
     "sources": "来源",
-    "matching": "匹配"
+    "matching": "匹配",
+    "injection": "注入"
   },
   "automation": {
     "title": "RSS 自动化",
@@ -192,8 +195,6 @@
     "noMessageProvided": "未提供消息"
   },
   "rules": {
-    "title": "辅种规则",
-    "description": "适用于所有辅种操作的设置。",
     "hardlinkReflink": "硬链接 / 引用链接模式",
     "noActiveInstances": "没有活跃的实例。请先添加实例。",
     "hardlinkDescription": "为辅种创建硬链接或引用链接（写时复制）文件树。每个实例可独立配置。基础目录必须与实例的下载路径位于同一文件系统。",
@@ -217,11 +218,6 @@
     "fallbackDescription": "如果 {{mode}} 失败（例如不同文件系统），则回退到使用现有文件的常规模式。",
     "saveChanges": "保存更改",
     "noLocalAccess": "无本地访问权限",
-    "sections": {
-      "matching": "匹配",
-      "organization": "组织方式",
-      "afterInjection": "注入后"
-    },
     "seasonPack": {
       "title": "季度包",
       "description": "当 autobrr 抓取季度包时，qui 会检查你是否已有足够的本地数据来注入它，然后让 qBittorrent 下载仍然缺失的内容。",
@@ -358,7 +354,10 @@
       "cachedSearches": "{{count}} 次缓存搜索",
       "lastUsed": "上次使用 {{timestamp}}"
     },
-    "saveGlobalSettings": "保存全局辅种设置"
+    "tabDescriptions": {
+      "matching": "决定 qui 为所有来源添加哪些候选的规则。",
+      "categories": "qui 为每个新交叉做种设置的分类和标签。"
+    }
   },
   "seasonPackRuns": {
     "title": "最近的季度包运行",

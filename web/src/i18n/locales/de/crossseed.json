@@ -23,12 +23,15 @@
     "library": "Bibliothek",
     "directories": "Verzeichnisse",
     "season-packs": "Season Packs",
-    "rules": "Regeln",
+    "matching": "Abgleichregeln",
+    "categories": "Kategorien und Tags",
+    "after-injection": "Nach der Injektion",
     "blocklist": "Blocklist"
   },
   "nav": {
     "sources": "Quellen",
-    "matching": "Abgleich"
+    "matching": "Abgleich",
+    "injection": "Injektion"
   },
   "automation": {
     "title": "RSS-Automatisierung",
@@ -195,8 +198,6 @@
     "noMessageProvided": "Keine Meldung vorhanden"
   },
   "rules": {
-    "title": "Cross-Seed-Regeln",
-    "description": "Einstellungen, die für alle Cross-Seed-Vorgänge gelten.",
     "hardlinkReflink": "Hardlink-/Reflink-Modus",
     "noActiveInstances": "Keine aktiven Instanzen. Füge zuerst Instanzen hinzu.",
     "hardlinkDescription": "Erstelle hardlinked oder reflinked (Copy-on-Write) Dateibäume für Cross-Seeds. Jede Instanz kann unabhängig konfiguriert werden. Das Basisverzeichnis muss auf demselben Dateisystem liegen wie die Download-Pfade der Instanz.",
@@ -220,11 +221,6 @@
     "fallbackDescription": "Wenn {{mode}} fehlschlägt (z. B. bei unterschiedlichen Dateisystemen), auf den regulären Modus mit vorhandenen Dateien zurückfallen.",
     "saveChanges": "Änderungen speichern",
     "noLocalAccess": "Kein lokaler Zugriff",
-    "sections": {
-      "matching": "Matching",
-      "organization": "Organisation",
-      "afterInjection": "Nach der Injektion"
-    },
     "seasonPack": {
       "title": "Season Packs",
       "description": "Wenn autobrr ein Season Pack greift, prüft qui, ob du bereits genug lokale Daten zum Injizieren hast, und lässt qBittorrent dann alles noch Fehlende herunterladen.",
@@ -361,7 +357,10 @@
       "cachedSearches": "{{count}} gecachte Suchen",
       "lastUsed": "Zuletzt verwendet {{timestamp}}"
     },
-    "saveGlobalSettings": "Globale Cross-Seed-Einstellungen speichern"
+    "tabDescriptions": {
+      "matching": "Regeln, die für alle Quellen entscheiden, welche Kandidaten qui hinzufügt.",
+      "categories": "Die Kategorie und die Tags, die qui jedem neuen Cross-Seed gibt."
+    }
   },
   "seasonPackRuns": {
     "title": "Letzte Season-Pack-Durchläufe",

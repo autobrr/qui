@@ -7,9 +7,11 @@ description: "Rules that decide which cross-seed candidates qui adds: matching, 
 
 # Cross-Seed Rules
 
-Configure matching behavior in the **Rules** tab on the Cross-Seed page. The tab holds the settings that apply to every cross-seed source. Settings that belong to one source, such as its tags and its auto-resume switch, live on that source's tab: **RSS**, **Webhook**, **Library**, or **Season packs**.
+The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags and its auto-resume switch, live on that source's tab: **RSS**, **Webhook**, **Library**, or **Season packs**.
 
 ## Matching
+
+These settings sit in **Matching rules**.
 
 - **Cross-seed episodes from packs**: If enabled, season packs also match individual episodes. If disabled, season packs only match other season packs. qui adds episodes with AutoTMM disabled to prevent save path conflicts.
 - **Skip recheck**: If enabled, qui skips any cross-seed that requires a recheck. This includes renamed paths, extra files, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes.
@@ -51,8 +53,8 @@ In both examples, the torrent is in a category that you control. A rule on that 
 
 ### Add a rule
 
-1. Open the **Rules** tab on the Cross-Seed page.
-2. Find **Search category rules** under the **Matching** heading.
+1. Open **Matching rules** on the Cross-Seed page.
+2. Find **Search category rules**.
 3. Select **Add rule**.
 4. Select or type one or more qBittorrent categories.
 5. Select the content type in the **search as** list.
@@ -81,7 +83,7 @@ Season pack settings have their own **Season packs** tab. See [Season Packs](./s
 
 ## Categories
 
-These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
+These modes sit in **Categories and tags**. They set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
 Choose one of four mutually exclusive category modes:
 
@@ -135,13 +137,13 @@ Each source tab has a **Cross-seed tags** field for the torrents that source add
 | Library Scan | **Library** tab |
 | Season packs | **Season packs** tab |
 
-**Inherit source torrent tags** in the **Rules** tab also copies the tags of the matched source torrent. It applies to every source.
+**Inherit source torrent tags** in **Categories and tags** also copies the tags of the matched source torrent. It applies to every source.
 
 Each source tab also has an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
 
 ## Max Auto-Start Download
 
-After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
+This limit sits in **After injection**. After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
 
 If only ignorable files are missing (samples, `.nfo`, subtitles, and similar sidecar files), qui starts the torrent anyway. This exception has a fixed 200 MiB ceiling.
 
@@ -149,7 +151,7 @@ This limit applies to new cross-seed additions from RSS, seeded search, completi
 
 ## External Program
 
-qui can run an external program after it injects a cross-seed torrent.
+In **After injection**, qui can run an external program after it injects a cross-seed torrent.
 
 ## Category Behavior Details
 

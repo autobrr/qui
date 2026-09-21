@@ -23,12 +23,15 @@
     "library": "媒體庫",
     "directories": "目錄",
     "season-packs": "季包",
-    "rules": "規則",
+    "matching": "比對規則",
+    "categories": "分類與標籤",
+    "after-injection": "注入後",
     "blocklist": "封鎖清單"
   },
   "nav": {
     "sources": "來源",
-    "matching": "比對"
+    "matching": "比對",
+    "injection": "注入"
   },
   "automation": {
     "title": "RSS 自動化",
@@ -192,8 +195,6 @@
     "noMessageProvided": "未提供訊息"
   },
   "rules": {
-    "title": "輔種規則",
-    "description": "適用於所有輔種操作的設定。",
     "hardlinkReflink": "硬連結 / 引用連結模式",
     "noActiveInstances": "沒有活躍的實例。請先新增實例。",
     "hardlinkDescription": "為輔種建立硬連結或引用連結（寫時複製）檔案樹。每個實例可獨立配置。基礎目錄必須與實例的下載路徑位於同一檔案系統。",
@@ -217,11 +218,6 @@
     "fallbackDescription": "如果 {{mode}} 失敗（例如不同檔案系統），則回退到使用現有檔案的一般模式。",
     "saveChanges": "儲存更改",
     "noLocalAccess": "無本機存取權限",
-    "sections": {
-      "matching": "匹配",
-      "organization": "組織方式",
-      "afterInjection": "注入後"
-    },
     "seasonPack": {
       "title": "季度包",
       "description": "當 autobrr 抓取季度包時，qui 會檢查您是否已有足夠的本機資料來注入它，然後讓 qBittorrent 下載仍然缺失的內容。",
@@ -358,7 +354,10 @@
       "cachedSearches": "{{count}} 次快取搜尋",
       "lastUsed": "上次使用 {{timestamp}}"
     },
-    "saveGlobalSettings": "儲存全域輔種設定"
+    "tabDescriptions": {
+      "matching": "決定 qui 為所有來源加入哪些候選的規則。",
+      "categories": "qui 為每個新交叉做種設定的分類和標籤。"
+    }
   },
   "seasonPackRuns": {
     "title": "最近的季度包執行",

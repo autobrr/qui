@@ -117,7 +117,7 @@ For each configured scan directory, qui:
 :::note Categories + AutoTMM
 Dir Scan adds torrents with an explicit `savepath` to point qBittorrent at the existing files on disk. That forces **AutoTMM off** for Dir Scan injections.
 
-Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Rules category modes (affix / indexer / custom) do not apply to Dir Scan.
+Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Categories and tags category modes (affix / indexer / custom) do not apply to Dir Scan.
 
 If you later enable AutoTMM on an injected torrent, qBittorrent can relocate files based on its default save path and category rules.
 :::
@@ -382,7 +382,7 @@ The UI shows the current phase and progress during active scans.
 
 ## Hardlink/Reflink Modes
 
-You configure each instance under **Cross-Seed > Rules > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
+You configure each instance under **Cross-Seed > After injection > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
 
 If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
 

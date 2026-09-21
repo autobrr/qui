@@ -852,7 +852,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
           {searchRunning ? (
             <Button
               variant="outline"
-              className="min-h-11 sm:min-h-9"
+              className="min-h-11 md:min-h-9"
               onClick={() => cancelSearchRunMutation.mutate()}
               disabled={cancelSearchRunMutation.isPending}
             >
@@ -873,7 +873,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="min-h-11 sm:min-h-9 disabled:cursor-not-allowed disabled:pointer-events-auto"
+                  className="min-h-11 md:min-h-9 disabled:cursor-not-allowed disabled:pointer-events-auto"
                   onClick={handleStartSearchRun}
                   disabled={startSearchRunDisabled}
                 >
@@ -889,7 +889,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
             </Tooltip>
           )}
         </div>
-        <Button className="min-h-11 sm:min-h-9" onClick={handleSave} disabled={saveMutation.isPending}>
+        <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={saveMutation.isPending}>
           {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {t("rules.saveChanges")}
         </Button>

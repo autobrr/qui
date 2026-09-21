@@ -23,12 +23,15 @@
     "library": "Biblioteca",
     "directories": "Diretórios",
     "season-packs": "Season packs",
-    "rules": "Regras",
+    "matching": "Regras de correspondência",
+    "categories": "Categorias e tags",
+    "after-injection": "Pós-injeção",
     "blocklist": "Lista de Bloqueios"
   },
   "nav": {
     "sources": "Fontes",
-    "matching": "Correspondência"
+    "matching": "Correspondência",
+    "injection": "Injeção"
   },
   "automation": {
     "title": "Automação RSS",
@@ -195,8 +198,6 @@
     "noMessageProvided": "Nenhuma mensagem fornecida"
   },
   "rules": {
-    "title": "Regras Cross-Seed",
-    "description": "Configurações que se aplicam a todas as operações de cross-seed.",
     "hardlinkReflink": "Modo Hardlink / Reflink",
     "noActiveInstances": "Nenhuma instância ativa. Adicione instâncias primeiro.",
     "hardlinkDescription": "Crie árvores de arquivos hardlinked ou reflinked (cópia na gravação) para cross-seeds. Cada instância pode ser configurada independentemente. O diretório base deve estar no mesmo sistema de arquivos que os caminhos de download da instância.",
@@ -220,11 +221,6 @@
     "fallbackDescription": "Se o {{mode}} falhar (ex: sistemas de arquivos diferentes), retorne ao modo regular usando os arquivos existentes.",
     "saveChanges": "Salvar Alterações",
     "noLocalAccess": "Sem acesso local",
-    "sections": {
-      "matching": "Correspondência",
-      "organization": "Organização",
-      "afterInjection": "Pós-injeção"
-    },
     "seasonPack": {
       "title": "Pacotes de Temporada (Season packs)",
       "description": "Quando o autobrr captura um pacote de temporada, o qui verifica se você já tem dados locais suficientes para injetá-lo e depois permite que o qBittorrent baixe tudo o que ainda estiver faltando.",
@@ -361,7 +357,10 @@
       "cachedSearches": "{{count}} buscas em cache",
       "lastUsed": "Último uso {{timestamp}}"
     },
-    "saveGlobalSettings": "Salvar configurações globais de cross-seed"
+    "tabDescriptions": {
+      "matching": "Regras que decidem quais candidatos o qui adiciona, para todas as fontes.",
+      "categories": "A categoria e as tags que o qui atribui a cada novo cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Execuções recentes de pacote de temporada",

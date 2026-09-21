@@ -18,7 +18,7 @@ This applies to:
 
 ## Settings
 
-Configure these options per qBittorrent instance in **Cross-Seed > Rules > Hardlink / Reflink Mode**:
+Configure these options per qBittorrent instance in **Cross-Seed > After injection > Hardlink / Reflink Mode**:
 
 - **Base directories** (`HardlinkBaseDir`): root paths where qui creates link trees. Separate several paths with commas. qui uses the first path that is on the same filesystem as the matched source files.
 - **Directory organization** (`HardlinkDirPreset`): controls how qui groups trees below the base directory.

@@ -10,11 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
-    categoryMappingRules: [],
-    findIndividualEpisodes: false,
-    rescueTitleMismatches: false,
-    skipRecheck: false,
-    skipPieceBoundarySafetyCheck: true,
     // Flags that disagree: custom wins, and the patch sends exactly one true flag.
     useCustomCategory: true,
     useCategoryFromIndexer: true,
@@ -23,14 +18,10 @@ const mocks = vi.hoisted(() => ({
     categoryAffix: ".cross",
     customCategory: "seeds",
     inheritSourceTags: false,
-    pooledPartialCompletionEnabled: false,
+    skipRecheck: false,
     autoResumeMaxDownloadMb: 50,
-    runExternalProgramId: null,
-    rssAutomationTags: ["rss"],
-    seasonPackEnabled: true,
   },
   patchSettings: vi.fn(),
-  instances: { instances: [], updateInstance: vi.fn(), isUpdating: false },
 }))
 
 vi.mock("react-i18next", async (importOriginal) => ({
@@ -38,71 +29,52 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
-}))
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-}))
-vi.mock("@/components/crossseed/CategoryMappingRulesEditor", () => ({
-  CategoryMappingRulesEditor: () => <div data-testid="mapping-editor" />,
-}))
-vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
-vi.mock("@/hooks/useDateTimeFormatters", () => ({
-  useDateTimeFormatters: () => ({ formatDate: (date: Date) => date.toISOString() }),
 }))
 vi.mock("@/lib/api", () => ({
   api: {
     getCrossSeedSettings: () => Promise.resolve(mocks.settings),
     getInstances: () => Promise.resolve([]),
-    listExternalPrograms: () => Promise.resolve([]),
-    getTorznabSearchCacheStats: () => Promise.resolve(null),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
-import { RulesTab } from "./RulesTab"
+import { CategoriesTab } from "./CategoriesTab"
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.settings.customCategory = "seeds"
 })
 
 async function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <RulesTab />
+      <CategoriesTab />
     </QueryClientProvider>
   )
-  return waitFor(() => screen.getByRole("button", { name: "rules.saveGlobalSettings" }))
+  return screen.findByRole("button", { name: "rules.saveChanges" })
 }
 
-describe("RulesTab save", () => {
-  it("sends the global fields with one category mode and nothing from a source card", async () => {
+describe("CategoriesTab save", () => {
+  it("sends one category mode and the inherit-tags switch only", async () => {
     mocks.patchSettings.mockResolvedValue(mocks.settings)
     const save = await renderTab()
 
-    fireEvent.click(screen.getByRole("switch", { name: "rules.safety.skipRecheck" }))
+    fireEvent.click(screen.getByRole("switch", { name: "rules.tagging.inheritSourceTags" }))
     fireEvent.click(save)
 
     await waitFor(() => expect(mocks.patchSettings).toHaveBeenCalledTimes(1))
     expect(mocks.patchSettings).toHaveBeenCalledWith({
-      categoryMappingRules: [],
-      findIndividualEpisodes: false,
-      rescueTitleMismatches: false,
-      skipRecheck: true,
-      skipPieceBoundarySafetyCheck: true,
       useCustomCategory: true,
       useCategoryFromIndexer: false,
       useCrossCategoryAffix: false,
       categoryAffixMode: "suffix",
       categoryAffix: ".cross",
       customCategory: "seeds",
-      inheritSourceTags: false,
-      pooledPartialCompletionEnabled: false,
-      autoResumeMaxDownloadMb: 50,
-      runExternalProgramId: null,
+      inheritSourceTags: true,
     })
   })
 
@@ -113,6 +85,5 @@ describe("RulesTab save", () => {
 
     expect(screen.getByText("toast.customCategoryRequired")).toBeTruthy()
     expect(mocks.patchSettings).not.toHaveBeenCalled()
-    mocks.settings.customCategory = "seeds"
   })
 })
