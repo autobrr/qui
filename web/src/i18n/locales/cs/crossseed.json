@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "Automatické",
-    "scan": "Hledání",
-    "dirScan": "Hledání v adresářích",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "Knihovna",
+    "directories": "Adresáře",
+    "seasonPacks": "Season packy",
     "rules": "Pravidla",
     "blocklist": "Blokované"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtrování torrentů, které jsou považovány za lokální, když autobrr volá webhook /apply.",
-    "emptyFiltersNote": "Prázdné filtry znamenají, že jsou kontrolovány všechny torrenty. Pokud nastavíte obě filtry kategorie a štítku, torrenty musí odpovídat oběma.",
-    "saveFilters": "Uložit filtry webhooku"
+    "emptyFiltersNote": "Prázdné filtry znamenají, že jsou kontrolovány všechny torrenty. Pokud nastavíte obě filtry kategorie a štítku, torrenty musí odpovídat oběma."
+  },
+  "completion": {
+    "title": "Po dokončení",
+    "description": "Štítky a automatické obnovení pro cross-seedy, které přidá vyhledávání po dokončeném stahování. Vyhledávání zapněte níže pro každou instanci."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Štítky cross-seedu",
+    "autoResume": "Automaticky obnovit po vložení",
+    "autoResumeHelp": "Pokud je vypnuto, přidané torrenty zůstanou pozastavené ke kontrole."
   },
   "scan": {
     "title": "Hledání ve sdílených",
@@ -343,16 +353,12 @@
     "tagging": {
       "title": "Tagování",
       "description": "Nastavte tagy (štítky), které se vztahují na křížová sdílení torrentů na základě toho, jak byly objeveny.",
-      "rssAutomationTags": "Tagy pro RSS automatizaci",
       "selectRssTags": "Vybrat tagy pro RSS automatizaci",
       "rssTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes automatizaci RSS vláken.",
-      "seededSearchTags": "Tagy pro hledání seedovaných torrentů",
       "selectSeededTags": "Vybrat tagy pro hledání seedovaných torrentů",
       "seededTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes hledání seedovaných torrentů.",
-      "completionSearchTags": "Tagy pro hledání dokončených torrentů",
       "selectCompletionTags": "Vybrat tagy pro hledání dokončených torrentů",
       "completionTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes hledání dokončených torrentů.",
-      "webhookTags": "Tagy pro webhook/apply",
       "selectWebhookTags": "Vybrat tagy pro webhook/apply",
       "webhookTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes webhook/apply (např. autobrr).",
       "inheritSourceTags": "Zdědit tagy zdrojového torrentu",
@@ -363,19 +369,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Tagy pro balíky celých sezón",
       "selectSeasonPackTags": "Vybrat tagy...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Chování po vložení",
       "description": "Kontrolujte, co se stane po úspěšném vložení křížového sdílení torrentů.",
-      "autoResumeNote": "Automatické obnovení po vložení (když je vypnuto, torrenty zůstanou pauznuté pro revizi)",
-      "rss": "RSS",
-      "seededSearch": "Hledání sdílených/seedovaných torrentů",
       "seededSearchDescription": "Obnovit hledání seedovaných torrentů a manuálně vložených torrentů automaticky",
-      "completion": "Dokončení",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Obnovit /apply webhook torrentů automaticky",
       "pooledPartialCompletion": "Automaticky sdružovat torrenty s dodatečnými daty",
       "pooledPartialCompletionDescription": "Používá stávající maximální hodnotu stahování pro automatické spuštění a koordinuje jedno stahování pro každý související fond cross-seedů, aby zpracoval dodatečné soubory v cross-seedech.",

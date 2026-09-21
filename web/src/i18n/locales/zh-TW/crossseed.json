@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "自動",
-    "scan": "掃描",
-    "dirScan": "目錄掃描",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "媒體庫",
+    "directories": "目錄",
+    "seasonPacks": "季包",
     "rules": "規則",
     "blocklist": "封鎖清單"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "篩選當 autobrr 呼叫 /apply Webhook 端點時需要檢查的本機種子。",
-    "emptyFiltersNote": "空篩選器表示檢查所有種子。如果同時配置了分類和標籤篩選器，種子必須同時匹配兩者。",
-    "saveFilters": "儲存 Webhook 篩選器"
+    "emptyFiltersNote": "空篩選器表示檢查所有種子。如果同時配置了分類和標籤篩選器，種子必須同時匹配兩者。"
+  },
+  "completion": {
+    "title": "完成時",
+    "description": "下載完成後觸發的搜尋所新增的交叉做種的標籤與自動恢復設定。請在下方依實例開啟該搜尋。"
+  },
+  "sourceCard": {
+    "crossSeedTags": "交叉做種標籤",
+    "autoResume": "注入後自動恢復",
+    "autoResumeHelp": "關閉時，新增的種子會保持暫停以供檢查。"
   },
   "scan": {
     "title": "做種庫掃描",
@@ -335,16 +345,12 @@
     "tagging": {
       "title": "標籤",
       "description": "配置根據發現方式應用於輔種的標籤。",
-      "rssAutomationTags": "RSS 自動化標籤",
       "selectRssTags": "選擇 RSS 自動化的標籤",
       "rssTagsDescription": "透過 RSS 訂閱源自動化新增的種子所應用的標籤。",
-      "seededSearchTags": "做種搜尋標籤",
       "selectSeededTags": "選擇做種搜尋的標籤",
       "seededTagsDescription": "透過做種搜尋新增的種子所應用的標籤。",
-      "completionSearchTags": "完成搜尋標籤",
       "selectCompletionTags": "選擇完成搜尋的標籤",
       "completionTagsDescription": "透過完成觸發搜尋新增的種子所應用的標籤。",
-      "webhookTags": "Webhook 標籤",
       "selectWebhookTags": "選擇 Webhook/apply 的標籤",
       "webhookTagsDescription": "透過 /apply Webhook（例如 autobrr）新增的種子所應用的標籤。",
       "inheritSourceTags": "繼承源種子標籤",
@@ -355,19 +361,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "季度包標籤",
       "selectSeasonPackTags": "選擇標籤…",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "注入後行為",
       "description": "控制輔種成功注入後的操作。",
-      "autoResumeNote": "注入後自動繼續（關閉時種子將保持暫停以供審查）",
-      "rss": "RSS",
-      "seededSearch": "做種搜尋",
       "seededSearchDescription": "自動繼續做種搜尋和對話方塊注入的種子",
-      "completion": "完成",
-      "webhookLabel": "Webhook",
       "webhookDescription": "自動繼續 /apply Webhook 種子",
       "pooledPartialCompletion": "自動彙集包含額外資料的種子",
       "pooledPartialCompletionDescription": "使用現有的自動開始最大下載量，並為每個相關輔種池協調一個下載任務，以處理輔種中的額外檔案。",

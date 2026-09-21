@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "自动",
-    "scan": "扫描",
-    "dirScan": "目录扫描",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "库",
+    "directories": "目录",
+    "seasonPacks": "季包",
     "rules": "规则",
     "blocklist": "屏蔽列表"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "筛选当 autobrr 调用 /apply Webhook 端点时需要检查的本地种子。",
-    "emptyFiltersNote": "空筛选器表示检查所有种子。如果同时配置了分类和标签筛选器，种子必须同时匹配两者。",
-    "saveFilters": "保存 Webhook 筛选器"
+    "emptyFiltersNote": "空筛选器表示检查所有种子。如果同时配置了分类和标签筛选器，种子必须同时匹配两者。"
+  },
+  "completion": {
+    "title": "完成时",
+    "description": "下载完成后触发的搜索所添加的交叉做种的标签和自动恢复设置。请在下方按实例开启该搜索。"
+  },
+  "sourceCard": {
+    "crossSeedTags": "交叉做种标签",
+    "autoResume": "注入后自动恢复",
+    "autoResumeHelp": "关闭时，添加的种子将保持暂停以供检查。"
   },
   "scan": {
     "title": "做种库扫描",
@@ -335,16 +345,12 @@
     "tagging": {
       "title": "标签",
       "description": "配置根据发现方式应用于辅种的标签。",
-      "rssAutomationTags": "RSS 自动化标签",
       "selectRssTags": "选择 RSS 自动化的标签",
       "rssTagsDescription": "通过 RSS 订阅源自动化添加的种子所应用的标签。",
-      "seededSearchTags": "做种搜索标签",
       "selectSeededTags": "选择做种搜索的标签",
       "seededTagsDescription": "通过做种搜索添加的种子所应用的标签。",
-      "completionSearchTags": "完成搜索标签",
       "selectCompletionTags": "选择完成搜索的标签",
       "completionTagsDescription": "通过完成触发搜索添加的种子所应用的标签。",
-      "webhookTags": "Webhook 标签",
       "selectWebhookTags": "选择 Webhook/apply 的标签",
       "webhookTagsDescription": "通过 /apply Webhook（例如 autobrr）添加的种子所应用的标签。",
       "inheritSourceTags": "继承源种子标签",
@@ -355,19 +361,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "季度包标签",
       "selectSeasonPackTags": "选择标签…",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "注入后行为",
       "description": "控制辅种成功注入后的操作。",
-      "autoResumeNote": "注入后自动继续（关闭时种子将保持暂停以供审查）",
-      "rss": "RSS",
-      "seededSearch": "做种搜索",
       "seededSearchDescription": "自动继续做种搜索和对话框注入的种子",
-      "completion": "完成",
-      "webhookLabel": "Webhook",
       "webhookDescription": "自动继续 /apply Webhook 种子",
       "pooledPartialCompletion": "自动汇集包含额外数据的种子",
       "pooledPartialCompletionDescription": "使用现有的自动开始最大下载量，并为每个相关辅种池协调一个下载任务，以处理辅种中的额外文件。",

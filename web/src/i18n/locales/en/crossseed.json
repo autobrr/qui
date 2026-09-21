@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Scan",
-    "dirScan": "Dir Scan",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "Library",
+    "directories": "Directories",
+    "seasonPacks": "Season packs",
     "rules": "Rules",
     "blocklist": "Blocklist"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filter which local torrents are considered when autobrr calls the /apply webhook endpoint.",
-    "emptyFiltersNote": "Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.",
-    "saveFilters": "Save webhook filters"
+    "emptyFiltersNote": "Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both."
+  },
+  "completion": {
+    "title": "On completion",
+    "description": "Tags and auto-resume for cross-seeds that the search after a completed download adds. Turn the search on per instance below."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Cross-seed tags",
+    "autoResume": "Auto-resume after injection",
+    "autoResumeHelp": "When off, added torrents stay paused for review."
   },
   "scan": {
     "title": "Library Scan",
@@ -338,16 +348,12 @@
     "tagging": {
       "title": "Tagging",
       "description": "Configure tags applied to cross-seed torrents based on how they were discovered.",
-      "rssAutomationTags": "RSS Automation Tags",
       "selectRssTags": "Select tags for RSS automation",
       "rssTagsDescription": "Tags applied to torrents added via RSS feed automation.",
-      "seededSearchTags": "Seeded Search Tags",
       "selectSeededTags": "Select tags for seeded search",
       "seededTagsDescription": "Tags applied to torrents added via seeded torrent search.",
-      "completionSearchTags": "Completion Search Tags",
       "selectCompletionTags": "Select tags for completion search",
       "completionTagsDescription": "Tags applied to torrents added via completion-triggered search.",
-      "webhookTags": "Webhook Tags",
       "selectWebhookTags": "Select tags for webhook/apply",
       "webhookTagsDescription": "Tags applied to torrents added via /apply webhook (e.g., autobrr).",
       "inheritSourceTags": "Inherit source torrent tags",
@@ -358,19 +364,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Season pack tags",
       "selectSeasonPackTags": "Select tags...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Post-injection behavior",
       "description": "Control what happens after cross-seed torrents are successfully injected.",
-      "autoResumeNote": "Auto-resume after injection (when off, torrents stay paused for review)",
-      "rss": "RSS",
-      "seededSearch": "Seeded Search",
       "seededSearchDescription": "Resume seeded search and dialog-injected torrents automatically",
-      "completion": "Completion",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Resume /apply webhook torrents automatically",
       "pooledPartialCompletion": "Automatically pool torrents with extra data",
       "pooledPartialCompletionDescription": "Uses the existing maximum auto-start download value, and coordinates one downloader per related cross-seed pool for handling extra files in cross-seeds.",

@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Buscar",
-    "dirScan": "Scanner Dir",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "Biblioteca",
+    "directories": "Diretórios",
+    "seasonPacks": "Season packs",
     "rules": "Regras",
     "blocklist": "Lista de Bloqueios"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtre quais torrents locais são considerados quando o autobrr chama o endpoint webhook /apply.",
-    "emptyFiltersNote": "Filtros vazios significam que todos os torrents são verificados. Se você configurar filtros de categoria e tag, os torrents devem corresponder a ambos.",
-    "saveFilters": "Salvar filtros de webhook"
+    "emptyFiltersNote": "Filtros vazios significam que todos os torrents são verificados. Se você configurar filtros de categoria e tag, os torrents devem corresponder a ambos."
+  },
+  "completion": {
+    "title": "Ao concluir",
+    "description": "Tags e retomada automática para cross-seeds adicionados pela busca que roda após um download concluído. Ative a busca por instância abaixo."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Tags de cross-seed",
+    "autoResume": "Retomar automaticamente após a injeção",
+    "autoResumeHelp": "Quando desligado, os torrents adicionados ficam pausados para revisão."
   },
   "scan": {
     "title": "Busca na Biblioteca",
@@ -338,16 +348,12 @@
     "tagging": {
       "title": "Tags (Marcação)",
       "description": "Configure as tags aplicadas a torrents cross-seed com base em como foram descobertos.",
-      "rssAutomationTags": "Tags de Automação RSS",
       "selectRssTags": "Selecione tags para automação RSS",
       "rssTagsDescription": "Tags aplicadas a torrents adicionados via automação de feed RSS.",
-      "seededSearchTags": "Tags de Busca Semeada",
       "selectSeededTags": "Selecione tags para busca semeada",
       "seededTagsDescription": "Tags aplicadas a torrents adicionados via busca de torrents semeados.",
-      "completionSearchTags": "Tags de Busca por Conclusão",
       "selectCompletionTags": "Selecione tags para busca por conclusão",
       "completionTagsDescription": "Tags aplicadas a torrents adicionados via busca acionada por conclusão.",
-      "webhookTags": "Tags de Webhook",
       "selectWebhookTags": "Selecione tags para webhook/apply",
       "webhookTagsDescription": "Tags aplicadas a torrents adicionados via webhook /apply (ex: autobrr).",
       "inheritSourceTags": "Herdar tags do torrent de origem",
@@ -358,19 +364,13 @@
       "tagCompletion": "conclusão",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Tags de pacote de temporada",
       "selectSeasonPackTags": "Selecionar tags...",
       "tagSeasonPack": "pacote-temporada"
     },
     "postInjection": {
       "title": "Comportamento Pós-Injeção",
       "description": "Controle o que acontece após os torrents de cross-seed serem injetados com sucesso.",
-      "autoResumeNote": "Retomada automática após injeção (quando desativado, os torrents ficam pausados para revisão)",
-      "rss": "RSS",
-      "seededSearch": "Busca Semeada",
       "seededSearchDescription": "Retomar torrents injetados por diálogo e busca semeada automaticamente",
-      "completion": "Conclusão",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Retomar torrents do webhook /apply automaticamente",
       "pooledPartialCompletion": "Agrupar automaticamente torrents com dados extras",
       "pooledPartialCompletionDescription": "Usa o valor máximo de download para início automático existente e coordena um downloader por pool de cross-seeds relacionados para lidar com arquivos extras nos cross-seeds.",

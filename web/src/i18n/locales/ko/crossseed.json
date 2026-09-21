@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "자동",
-    "scan": "스캔",
-    "dirScan": "디렉터리 스캔",
+    "rss": "RSS",
+    "webhook": "웹훅",
+    "library": "라이브러리",
+    "directories": "디렉터리",
+    "seasonPacks": "시즌 팩",
     "rules": "규칙",
     "blocklist": "차단 목록"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "autobrr가 /apply 웹훅 엔드포인트를 호출할 때 고려되는 로컬 토렌트를 필터링합니다.",
-    "emptyFiltersNote": "필터가 비어 있으면 모든 토렌트가 확인됩니다. 카테고리와 태그 필터를 모두 구성하면 토렌트가 둘 다 일치해야 합니다.",
-    "saveFilters": "웹훅 필터 저장"
+    "emptyFiltersNote": "필터가 비어 있으면 모든 토렌트가 확인됩니다. 카테고리와 태그 필터를 모두 구성하면 토렌트가 둘 다 일치해야 합니다."
+  },
+  "completion": {
+    "title": "완료 시",
+    "description": "다운로드 완료 후 검색이 추가한 크로스 시드의 태그와 자동 재개 설정입니다. 아래에서 인스턴스별로 검색을 켭니다."
+  },
+  "sourceCard": {
+    "crossSeedTags": "크로스 시드 태그",
+    "autoResume": "주입 후 자동 재개",
+    "autoResumeHelp": "끄면 추가된 토렌트는 검토를 위해 일시 정지 상태로 유지됩니다."
   },
   "scan": {
     "title": "라이브러리 스캔",
@@ -335,16 +345,12 @@
     "tagging": {
       "title": "태그 지정",
       "description": "cross-seed 토렌트가 발견된 방식에 따라 적용되는 태그를 구성합니다.",
-      "rssAutomationTags": "RSS 자동화 태그",
       "selectRssTags": "RSS 자동화 태그 선택",
       "rssTagsDescription": "RSS 피드 자동화를 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "seededSearchTags": "시드 검색 태그",
       "selectSeededTags": "시드 검색 태그 선택",
       "seededTagsDescription": "시드 중인 토렌트 검색을 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "completionSearchTags": "완료 검색 태그",
       "selectCompletionTags": "완료 검색 태그 선택",
       "completionTagsDescription": "완료 트리거 검색을 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "webhookTags": "웹훅 태그",
       "selectWebhookTags": "웹훅/적용 태그 선택",
       "webhookTagsDescription": "/apply 웹훅(예: autobrr)을 통해 추가된 토렌트에 적용되는 태그입니다.",
       "inheritSourceTags": "소스 토렌트 태그 상속",
@@ -355,19 +361,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "시즌 팩 태그",
       "selectSeasonPackTags": "태그 선택...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "주입 후 동작",
       "description": "cross-seed 토렌트가 성공적으로 주입된 후의 동작을 제어합니다.",
-      "autoResumeNote": "주입 후 자동 재개(꺼져 있으면 검토를 위해 토렌트가 일시 정지된 상태로 유지)",
-      "rss": "RSS",
-      "seededSearch": "시드 검색",
       "seededSearchDescription": "시드 검색 및 대화 상자로 주입된 토렌트를 자동으로 재개",
-      "completion": "완료",
-      "webhookLabel": "웹훅",
       "webhookDescription": "/apply 웹훅 토렌트를 자동으로 재개",
       "pooledPartialCompletion": "추가 데이터가 있는 토렌트 자동 풀링",
       "pooledPartialCompletionDescription": "기존 자동 시작 최대 다운로드 값을 사용하고 교차 시드의 추가 파일을 처리하기 위해 관련 교차 시드 풀마다 하나의 다운로드 작업을 조정합니다.",

@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Analyse",
-    "dirScan": "Analyse de répertoires",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "Bibliothèque",
+    "directories": "Dossiers",
+    "seasonPacks": "Packs de saison",
     "rules": "Règles",
     "blocklist": "Liste de blocage"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtrez les torrents locaux pris en compte lorsqu'autobrr appelle le point de terminaison webhook /apply.",
-    "emptyFiltersNote": "Des filtres vides signifient que tous les torrents sont vérifiés. Si vous configurez à la fois des filtres de catégories et de tags, les torrents doivent correspondre aux deux.",
-    "saveFilters": "Sauvegarder les filtres du webhook"
+    "emptyFiltersNote": "Des filtres vides signifient que tous les torrents sont vérifiés. Si vous configurez à la fois des filtres de catégories et de tags, les torrents doivent correspondre aux deux."
+  },
+  "completion": {
+    "title": "À la fin du téléchargement",
+    "description": "Tags et reprise automatique des cross-seeds ajoutés par la recherche lancée après un téléchargement terminé. Activez la recherche par instance ci-dessous."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Tags de cross-seed",
+    "autoResume": "Reprise automatique après injection",
+    "autoResumeHelp": "Si désactivé, les torrents ajoutés restent en pause pour vérification."
   },
   "scan": {
     "title": "Analyse de la bibliothèque",
@@ -338,16 +348,12 @@
     "tagging": {
       "title": "Tags",
       "description": "Configurez les tags appliqués aux torrents cross-seed en fonction de la manière dont ils ont été découverts.",
-      "rssAutomationTags": "Tags d'automatisation RSS",
       "selectRssTags": "Sélectionnez les tags pour l'automatisation RSS",
       "rssTagsDescription": "Tags appliqués aux torrents ajoutés via l'automatisation de flux RSS.",
-      "seededSearchTags": "Tags de recherche en seed",
       "selectSeededTags": "Sélectionnez les tags pour la recherche en seed",
       "seededTagsDescription": "Tags appliqués aux torrents ajoutés via la recherche de torrents en seed.",
-      "completionSearchTags": "Tags de recherche à la complétion",
       "selectCompletionTags": "Sélectionnez les tags pour la recherche à la complétion",
       "completionTagsDescription": "Tags appliqués aux torrents ajoutés via la recherche déclenchée par la complétion.",
-      "webhookTags": "Tags de Webhook",
       "selectWebhookTags": "Sélectionnez les tags pour le webhook /apply",
       "webhookTagsDescription": "Tags appliqués aux torrents ajoutés via le webhook /apply (ex. autobrr).",
       "inheritSourceTags": "Hériter des tags du torrent source",
@@ -358,19 +364,13 @@
       "tagCompletion": "achèvement",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Tags de pack de saison",
       "selectSeasonPackTags": "Sélectionnez les tags...",
       "tagSeasonPack": "pack-saison"
     },
     "postInjection": {
       "title": "Comportement post-injection",
       "description": "Contrôlez ce qui se passe après l'injection réussie de torrents cross-seed.",
-      "autoResumeNote": "Reprise automatique après l'injection (lorsque désactivé, les torrents restent en pause pour révision)",
-      "rss": "RSS",
-      "seededSearch": "Recherche en seed",
       "seededSearchDescription": "Reprendre automatiquement la recherche en seed et les torrents injectés par boîte de dialogue",
-      "completion": "Complétion",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Reprendre automatiquement les torrents du webhook /apply",
       "pooledPartialCompletion": "Regrouper automatiquement les torrents contenant des données supplémentaires",
       "pooledPartialCompletionDescription": "Utilise la limite de téléchargement existante pour le démarrage automatique et coordonne un seul téléchargement par groupe de cross-seeds associés afin de gérer les fichiers supplémentaires dans les cross-seeds.",

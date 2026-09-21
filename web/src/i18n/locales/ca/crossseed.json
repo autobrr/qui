@@ -36,9 +36,11 @@
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Exploració",
-    "dirScan": "Directoris",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "library": "Biblioteca",
+    "directories": "Directoris",
+    "seasonPacks": "Packs de temporada",
     "rules": "Regles",
     "blocklist": "Llista de bloqueig"
   },
@@ -104,8 +106,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtra quins torrents locals es tenen en compte quan autobrr crida el punt final /apply del webhook.",
-    "emptyFiltersNote": "Si els filtres són buits, es comproven tots els torrents. Si configures filtres de categoria i d'etiqueta alhora, els torrents han de coincidir amb tots dos.",
-    "saveFilters": "Desa els filtres del webhook"
+    "emptyFiltersNote": "Si els filtres són buits, es comproven tots els torrents. Si configures filtres de categoria i d'etiqueta alhora, els torrents han de coincidir amb tots dos."
+  },
+  "completion": {
+    "title": "En completar",
+    "description": "Etiquetes i represa automàtica per als cross-seeds que afegeix la cerca després d'una baixada completada. Activeu la cerca per instància a sota."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Etiquetes de cross-seed",
+    "autoResume": "Represa automàtica després de la injecció",
+    "autoResumeHelp": "Si està desactivat, els torrents afegits queden en pausa per revisar-los."
   },
   "scan": {
     "title": "Exploració de la biblioteca",
@@ -338,16 +348,12 @@
     "tagging": {
       "title": "Etiquetatge",
       "description": "Configura les etiquetes que s'apliquen als torrents de cross-seed segons com s'han descobert.",
-      "rssAutomationTags": "Etiquetes de l'automatització d'RSS",
       "selectRssTags": "Selecciona les etiquetes de l'automatització d'RSS",
       "rssTagsDescription": "Etiquetes que s'apliquen als torrents afegits per l'automatització de canals RSS.",
-      "seededSearchTags": "Etiquetes de la cerca de sembrats",
       "selectSeededTags": "Selecciona les etiquetes de la cerca de sembrats",
       "seededTagsDescription": "Etiquetes que s'apliquen als torrents afegits per la cerca de torrents sembrats.",
-      "completionSearchTags": "Etiquetes de la cerca en completar",
       "selectCompletionTags": "Selecciona les etiquetes de la cerca en completar",
       "completionTagsDescription": "Etiquetes que s'apliquen als torrents afegits per una cerca activada en completar-se una baixada.",
-      "webhookTags": "Etiquetes del webhook",
       "selectWebhookTags": "Selecciona les etiquetes del webhook/apply",
       "webhookTagsDescription": "Etiquetes que s'apliquen als torrents afegits pel webhook /apply (per exemple, autobrr).",
       "inheritSourceTags": "Hereta les etiquetes del torrent d'origen",
@@ -358,19 +364,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Etiquetes dels packs de temporada",
       "selectSeasonPackTags": "Selecciona les etiquetes...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Comportament posterior a la injecció",
       "description": "Controla què passa després d'injectar correctament els torrents de cross-seed.",
-      "autoResumeNote": "Reprèn automàticament després de la injecció (si està desactivat, els torrents es mantenen aturats per revisar-los)",
-      "rss": "RSS",
-      "seededSearch": "Cerca de sembrats",
       "seededSearchDescription": "Reprèn automàticament els torrents de la cerca de sembrats i els injectats des del diàleg",
-      "completion": "En completar",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Reprèn automàticament els torrents del webhook /apply",
       "pooledPartialCompletion": "Agrupa automàticament els torrents amb dades de més",
       "pooledPartialCompletionDescription": "Fa servir el valor màxim d'inici automàtic de baixada que ja hi ha, i coordina un únic baixador per cada grup de cross-seed relacionat per gestionar els fitxers de més dels cross-seed.",
