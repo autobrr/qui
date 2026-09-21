@@ -5,9 +5,17 @@
 
 import { z } from "zod"
 
-/** Tab values as they appear in the URL search parameter. Order is the tab strip order. */
-export const CROSS_SEED_TABS = ["rss", "webhook", "library", "directories", "season-packs", "rules", "blocklist"] as const
-export type CrossSeedTab = (typeof CROSS_SEED_TABS)[number]
+/** Nav sections in display order. A group without a label renders its tabs without a heading. */
+export const CROSS_SEED_NAV_GROUPS = [
+  { labelKey: "nav.sources", tabs: ["rss", "webhook", "completion", "library", "directories"] },
+  { labelKey: "nav.matching", tabs: ["season-packs", "rules"] },
+  { tabs: ["blocklist"] },
+] as const
+
+export type CrossSeedTab = (typeof CROSS_SEED_NAV_GROUPS)[number]["tabs"][number]
+
+/** Tab values as they appear in the URL search parameter. The cast gives z.enum the tuple it needs. */
+export const CROSS_SEED_TABS = CROSS_SEED_NAV_GROUPS.flatMap(group => group.tabs) as [CrossSeedTab, ...CrossSeedTab[]]
 
 export const DEFAULT_CROSS_SEED_TAB: CrossSeedTab = "rss"
 

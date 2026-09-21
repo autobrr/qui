@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "Вебхук",
+    "completion": "Завершення",
     "library": "Бібліотека",
     "directories": "Каталоги",
-    "seasonPacks": "Пакети сезонів",
+    "season-packs": "Пакети сезонів",
     "rules": "Правила",
     "blocklist": "Чорний список"
+  },
+  "nav": {
+    "sources": "Джерела",
+    "matching": "Зіставлення"
   },
   "automation": {
     "title": "RSS Автоматизація",

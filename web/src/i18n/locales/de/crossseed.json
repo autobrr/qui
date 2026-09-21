@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "Webhook",
+    "completion": "Abschluss",
     "library": "Bibliothek",
     "directories": "Verzeichnisse",
-    "seasonPacks": "Season Packs",
+    "season-packs": "Season Packs",
     "rules": "Regeln",
     "blocklist": "Blocklist"
+  },
+  "nav": {
+    "sources": "Quellen",
+    "matching": "Abgleich"
   },
   "automation": {
     "title": "RSS-Automatisierung",

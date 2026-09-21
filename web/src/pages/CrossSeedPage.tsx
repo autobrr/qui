@@ -4,6 +4,7 @@
  */
 
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
+import { CompletionTab } from "@/components/cross-seed/CompletionTab"
 import {
   DEFAULT_RSS_INTERVAL_MINUTES,
   useActiveInstances,
@@ -20,13 +21,13 @@ import { LibraryTab } from "@/components/cross-seed/LibraryTab"
 import { RssTab } from "@/components/cross-seed/RssTab"
 import { RulesTab } from "@/components/cross-seed/RulesTab"
 import { SeasonPacksTab } from "@/components/cross-seed/SeasonPacksTab"
-import { CROSS_SEED_TABS, type CrossSeedTab } from "@/components/cross-seed/tabs"
+import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
@@ -34,16 +35,6 @@ import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-
-const TAB_LABEL_KEYS: Record<CrossSeedTab, string> = {
-  "rss": "tabs.rss",
-  "webhook": "tabs.webhook",
-  "library": "tabs.library",
-  "directories": "tabs.directories",
-  "season-packs": "tabs.seasonPacks",
-  "rules": "tabs.rules",
-  "blocklist": "tabs.blocklist",
-}
 
 interface CrossSeedPageProps {
   activeTab: CrossSeedTab
@@ -194,47 +185,60 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as CrossSeedTab)} className="space-y-4">
-        <div className="md:hidden">
-          <Select value={activeTab} onValueChange={(value) => onTabChange(value as CrossSeedTab)}>
-            <SelectTrigger className="w-full min-h-11" aria-label={t("pageTitle")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CROSS_SEED_TABS.map(tab => (
-                <SelectItem key={tab} value={tab}>{t(TAB_LABEL_KEYS[tab])}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <TabsList className="hidden md:inline-flex w-auto justify-start">
-          {CROSS_SEED_TABS.map(tab => (
-            <TabsTrigger key={tab} className="shrink-0" value={tab}>{t(TAB_LABEL_KEYS[tab])}</TabsTrigger>
-          ))}
-        </TabsList>
+      <div className="md:hidden">
+        <Select value={activeTab} onValueChange={(value) => onTabChange(value as CrossSeedTab)}>
+          <SelectTrigger className="w-full min-h-11" aria-label={t("pageTitle")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CROSS_SEED_NAV_GROUPS.map(group => (
+              <SelectGroup key={group.tabs[0]}>
+                {"labelKey" in group && <SelectLabel>{t(group.labelKey)}</SelectLabel>}
+                {group.tabs.map(tab => (
+                  <SelectItem key={tab} value={tab}>{t(`tabs.${tab}`)}</SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-        <TabsContent value="rss" className="space-y-6">
-          <RssTab />
-        </TabsContent>
-        <TabsContent value="webhook" className="space-y-6">
-          <WebhookTab />
-        </TabsContent>
-        <TabsContent value="library" className="space-y-6">
-          <LibraryTab onOpenGazelleSettings={handleOpenGazelleSettings} />
-        </TabsContent>
-        <TabsContent value="directories" className="space-y-6">
-          <DirScanTab instances={instances ?? []} />
-        </TabsContent>
-        <TabsContent value="season-packs" className="space-y-6">
-          <SeasonPacksTab />
-        </TabsContent>
-        <TabsContent value="rules" className="space-y-6">
-          <RulesTab />
-        </TabsContent>
-        <TabsContent value="blocklist" className="space-y-6">
-          <BlocklistTab instances={instances ?? []} />
-        </TabsContent>
-      </Tabs>
+      <div className="flex flex-col gap-6 md:flex-row">
+        <nav className="hidden w-56 shrink-0 space-y-4 md:block" aria-label={t("pageTitle")}>
+          {CROSS_SEED_NAV_GROUPS.map(group => (
+            <div key={group.tabs[0]} className="space-y-1">
+              {"labelKey" in group && (
+                <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(group.labelKey)}</p>
+              )}
+              {group.tabs.map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => onTabChange(tab)}
+                  aria-current={activeTab === tab ? "page" : undefined}
+                  className={cn(
+                    "w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
+                    activeTab === tab ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                  )}
+                >
+                  {t(`tabs.${tab}`)}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="min-w-0 flex-1 space-y-6">
+          {activeTab === "rss" && <RssTab />}
+          {activeTab === "webhook" && <WebhookTab />}
+          {activeTab === "completion" && <CompletionTab />}
+          {activeTab === "library" && <LibraryTab onOpenGazelleSettings={handleOpenGazelleSettings} />}
+          {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
+          {activeTab === "season-packs" && <SeasonPacksTab />}
+          {activeTab === "rules" && <RulesTab />}
+          {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
+        </div>
+      </div>
     </div>
   )
 }

@@ -131,7 +131,7 @@ Each source tab has a **Cross-seed tags** field for the torrents that source add
 |--------|-------|
 | RSS automation | **RSS** tab |
 | `/apply` webhook | **Webhook** tab, "Webhook / autobrr" card |
-| Completion-triggered search | **Webhook** tab, "On completion" card |
+| Completion-triggered search | **Completion** tab, "On completion" card |
 | Library Scan | **Library** tab |
 | Season packs | **Season packs** tab |
 

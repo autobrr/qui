@@ -85,7 +85,7 @@ Run this sparingly. The scan touches every matching torrent and queries Torznab 
 
 ### Auto-Search on Completion
 
-When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Webhook** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
+When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Completion** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
 
 - **Categories/Tags**: Filter which completed torrents trigger searches
 - **Target indexers**: Limit completion searches to specific indexers (empty means all enabled)

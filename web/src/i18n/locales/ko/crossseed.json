@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "웹훅",
+    "completion": "완료",
     "library": "라이브러리",
     "directories": "디렉터리",
-    "seasonPacks": "시즌 팩",
+    "season-packs": "시즌 팩",
     "rules": "규칙",
     "blocklist": "차단 목록"
+  },
+  "nav": {
+    "sources": "소스",
+    "matching": "매칭"
   },
   "automation": {
     "title": "RSS 자동화",

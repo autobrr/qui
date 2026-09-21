@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "Webhook",
+    "completion": "完成",
     "library": "媒體庫",
     "directories": "目錄",
-    "seasonPacks": "季包",
+    "season-packs": "季包",
     "rules": "規則",
     "blocklist": "封鎖清單"
+  },
+  "nav": {
+    "sources": "來源",
+    "matching": "比對"
   },
   "automation": {
     "title": "RSS 自動化",

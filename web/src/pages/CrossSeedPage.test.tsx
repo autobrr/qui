@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
@@ -31,6 +31,7 @@ vi.mock("@/lib/api", () => ({
 }))
 vi.mock("@/components/cross-seed/RssTab", () => ({ RssTab: () => <div data-testid="tab-rss" /> }))
 vi.mock("@/components/cross-seed/WebhookTab", () => ({ WebhookTab: () => <div data-testid="tab-webhook" /> }))
+vi.mock("@/components/cross-seed/CompletionTab", () => ({ CompletionTab: () => <div data-testid="tab-completion" /> }))
 vi.mock("@/components/cross-seed/LibraryTab", () => ({ LibraryTab: () => <div data-testid="tab-library" /> }))
 vi.mock("@/components/cross-seed/DirScanTab", () => ({ DirScanTab: () => <div data-testid="tab-directories" /> }))
 vi.mock("@/components/cross-seed/SeasonPacksTab", () => ({ SeasonPacksTab: () => <div data-testid="tab-season-packs" /> }))
@@ -40,16 +41,6 @@ vi.mock("@/components/cross-seed/BlocklistTab", () => ({ BlocklistTab: () => <di
 import { CROSS_SEED_TABS } from "@/components/cross-seed/tabs"
 import { CrossSeedPage } from "./CrossSeedPage"
 
-beforeAll(() => {
-  // The tab strip measures its indicator with ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
-afterAll(() => vi.unstubAllGlobals())
 afterEach(cleanup)
 
 describe("CrossSeedPage tabs", () => {

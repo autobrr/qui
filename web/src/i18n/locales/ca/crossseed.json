@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "Webhook",
+    "completion": "Finalització",
     "library": "Biblioteca",
     "directories": "Directoris",
-    "seasonPacks": "Packs de temporada",
+    "season-packs": "Packs de temporada",
     "rules": "Regles",
     "blocklist": "Llista de bloqueig"
+  },
+  "nav": {
+    "sources": "Fonts",
+    "matching": "Coincidència"
   },
   "automation": {
     "title": "Automatització d'RSS",

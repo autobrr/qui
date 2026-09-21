@@ -38,11 +38,16 @@
   "tabs": {
     "rss": "RSS",
     "webhook": "Webhook",
+    "completion": "Dokončení",
     "library": "Knihovna",
     "directories": "Adresáře",
-    "seasonPacks": "Season packy",
+    "season-packs": "Season packy",
     "rules": "Pravidla",
     "blocklist": "Blokované"
+  },
+  "nav": {
+    "sources": "Zdroje",
+    "matching": "Párování"
   },
   "automation": {
     "title": "Automatizace RSS",
