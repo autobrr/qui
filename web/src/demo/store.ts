@@ -434,10 +434,8 @@ function matchesFilters(t: Torrent, f: TorrentFilters, categoryNames: readonly s
   if (hashes && !hashes.has(t.hash.toUpperCase())) return false
   if (f.status?.length && !f.status.some(s => matchesStatus(t, s))) return false
   if (f.excludeStatus?.some(s => matchesStatus(t, s))) return false
-  const include = f.expandedCategories ?? f.categories
-  if (include?.length && !expandCategories(include, categoryNames).has(t.category)) return false
-  const exclude = f.expandedExcludeCategories ?? f.excludeCategories
-  if (exclude?.length && expandCategories(exclude, categoryNames).has(t.category)) return false
+  if (f.categories?.length && !expandCategories(f.categories, categoryNames).has(t.category)) return false
+  if (f.excludeCategories?.length && expandCategories(f.excludeCategories, categoryNames).has(t.category)) return false
   const tags = tagList(t)
   if (f.tags?.length) {
     const wantUntagged = f.tags.includes("")
