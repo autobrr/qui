@@ -4,8 +4,6 @@
  */
 
 import {
-  instanceIdsOf,
-  normalizeStringList,
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedSettings,
@@ -13,6 +11,7 @@ import {
   usePatchCrossSeedSettings
 } from "@/components/cross-seed/cross-seed-settings"
 import { SeasonPackRunsPanel } from "@/components/cross-seed/SeasonPackRunsPanel"
+import { SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,8 +55,7 @@ function SeasonPacksCard({ settings }: { settings: CrossSeedAutomationSettings }
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const patchSettings = usePatchCrossSeedSettings()
-  const { activeInstances } = useActiveInstances()
-  const activeInstanceIds = useMemo(() => instanceIdsOf(activeInstances), [activeInstances])
+  const { activeInstanceIds } = useActiveInstances()
   const { data: metadata } = useAggregatedInstanceMetadata(activeInstanceIds)
 
   const [form, setForm] = useState<SeasonPackFormState>(() => ({
@@ -257,21 +255,14 @@ function SeasonPacksCard({ settings }: { settings: CrossSeedAutomationSettings }
               disabled={inactive}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="season-pack-tags">{t("sourceCard.crossSeedTags")}</Label>
-            <MultiSelect
-              options={[
-                { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
-                { label: t("rules.tagging.tagSeasonPack"), value: "season-pack" },
-              ]}
-              selected={form.seasonPackTags}
-              onChange={values => setForm(prev => ({ ...prev, seasonPackTags: normalizeStringList(values) }))}
-              placeholder={t("rules.tagging.selectSeasonPackTags")}
-              className="max-w-sm"
-              creatable
-              onCreateOption={value => setForm(prev => ({ ...prev, seasonPackTags: normalizeStringList([...prev.seasonPackTags, value]) }))}
-            />
-          </div>
+          <SourceTagsField
+            id="season-pack-tags"
+            suggestions={[{ label: t("rules.tagging.tagSeasonPack"), value: "season-pack" }]}
+            selected={form.seasonPackTags}
+            onChange={seasonPackTags => setForm(prev => ({ ...prev, seasonPackTags }))}
+            placeholder={t("rules.tagging.selectSeasonPackTags")}
+            className="max-w-sm"
+          />
         </div>
 
         <SeasonPackRunsPanel

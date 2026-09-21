@@ -4,20 +4,17 @@
  */
 
 import {
-  instanceIdsOf,
-  normalizeStringList,
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedSettings,
   usePatchCrossSeedSettings
 } from "@/components/cross-seed/cross-seed-settings"
+import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
-import { Switch } from "@/components/ui/switch"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import type { CrossSeedAutomationSettings } from "@/types"
 import { Loader2 } from "lucide-react"
@@ -50,8 +47,7 @@ interface WebhookFormState {
 function WebhookCard({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const patchSettings = usePatchCrossSeedSettings()
-  const { activeInstances } = useActiveInstances()
-  const activeInstanceIds = useMemo(() => instanceIdsOf(activeInstances), [activeInstances])
+  const { activeInstanceIds } = useActiveInstances()
   const { data: sourceMetadata } = useAggregatedInstanceMetadata(activeInstanceIds)
 
   const [form, setForm] = useState<WebhookFormState>(() => ({
@@ -151,35 +147,23 @@ function WebhookCard({ settings }: { settings: CrossSeedAutomationSettings }) {
         </p>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="webhook-tags">{t("sourceCard.crossSeedTags")}</Label>
-              <FieldHelp>{t("rules.tagging.webhookTagsDescription")}</FieldHelp>
-            </div>
-            <MultiSelect
-              options={[
-                { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
-                { label: t("rules.tagging.tagWebhook"), value: "webhook" },
-                { label: t("rules.tagging.tagAutobrr"), value: "autobrr" },
-              ]}
-              selected={form.webhookTags}
-              onChange={values => setForm(prev => ({ ...prev, webhookTags: normalizeStringList(values) }))}
-              placeholder={t("rules.tagging.selectWebhookTags")}
-              creatable
-              onCreateOption={value => setForm(prev => ({ ...prev, webhookTags: normalizeStringList([...prev.webhookTags, value]) }))}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="auto-resume-webhook" className="font-medium">{t("sourceCard.autoResume")}</Label>
-              <FieldHelp>{t("sourceCard.autoResumeHelp")} {t("rules.postInjection.webhookDescription")}</FieldHelp>
-            </div>
-            <Switch
-              id="auto-resume-webhook"
-              checked={!form.skipAutoResumeWebhook}
-              onCheckedChange={value => setForm(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
-            />
-          </div>
+          <SourceTagsField
+            id="webhook-tags"
+            suggestions={[
+              { label: t("rules.tagging.tagWebhook"), value: "webhook" },
+              { label: t("rules.tagging.tagAutobrr"), value: "autobrr" },
+            ]}
+            selected={form.webhookTags}
+            onChange={webhookTags => setForm(prev => ({ ...prev, webhookTags }))}
+            placeholder={t("rules.tagging.selectWebhookTags")}
+            help={t("rules.tagging.webhookTagsDescription")}
+          />
+          <AutoResumeSwitch
+            id="auto-resume-webhook"
+            skip={form.skipAutoResumeWebhook}
+            onSkipChange={skipAutoResumeWebhook => setForm(prev => ({ ...prev, skipAutoResumeWebhook }))}
+            help={t("rules.postInjection.webhookDescription")}
+          />
         </div>
       </CardContent>
       <CardFooter className="flex justify-end">
@@ -206,34 +190,19 @@ function CompletionCard({ settings }: { settings: CrossSeedAutomationSettings })
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="completion-search-tags">{t("sourceCard.crossSeedTags")}</Label>
-              <FieldHelp>{t("rules.tagging.completionTagsDescription")}</FieldHelp>
-            </div>
-            <MultiSelect
-              options={[
-                { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
-                { label: t("rules.tagging.tagCompletion"), value: "completion" },
-              ]}
-              selected={completionSearchTags}
-              onChange={values => setCompletionSearchTags(normalizeStringList(values))}
-              placeholder={t("rules.tagging.selectCompletionTags")}
-              creatable
-              onCreateOption={value => setCompletionSearchTags(prev => normalizeStringList([...prev, value]))}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="auto-resume-completion" className="font-medium">{t("sourceCard.autoResume")}</Label>
-              <FieldHelp>{t("sourceCard.autoResumeHelp")}</FieldHelp>
-            </div>
-            <Switch
-              id="auto-resume-completion"
-              checked={!skipAutoResumeCompletion}
-              onCheckedChange={value => setSkipAutoResumeCompletion(!value)}
-            />
-          </div>
+          <SourceTagsField
+            id="completion-search-tags"
+            suggestions={[{ label: t("rules.tagging.tagCompletion"), value: "completion" }]}
+            selected={completionSearchTags}
+            onChange={setCompletionSearchTags}
+            placeholder={t("rules.tagging.selectCompletionTags")}
+            help={t("rules.tagging.completionTagsDescription")}
+          />
+          <AutoResumeSwitch
+            id="auto-resume-completion"
+            skip={skipAutoResumeCompletion}
+            onSkipChange={setSkipAutoResumeCompletion}
+          />
         </div>
       </CardContent>
       <CardFooter className="flex justify-end">

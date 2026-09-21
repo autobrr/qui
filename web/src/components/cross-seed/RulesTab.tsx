@@ -4,7 +4,6 @@
  */
 
 import {
-  instanceIdsOf,
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedSettings,
@@ -106,8 +105,7 @@ function RulesCard({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const patchSettings = usePatchCrossSeedSettings()
-  const { activeInstances } = useActiveInstances()
-  const activeInstanceIds = useMemo(() => instanceIdsOf(activeInstances), [activeInstances])
+  const { activeInstanceIds } = useActiveInstances()
   const { data: metadata } = useAggregatedInstanceMetadata(activeInstanceIds)
 
   const [form, setForm] = useState<RulesFormState>(() => seedRulesForm(settings))

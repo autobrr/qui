@@ -8,6 +8,7 @@ import {
   DEFAULT_RSS_INTERVAL_MINUTES,
   useActiveInstances,
   useCrossSeedSearchSettings,
+  useCrossSeedSearchStatus,
   useCrossSeedSettings,
   useCrossSeedStatus,
   useEnabledIndexers,
@@ -62,11 +63,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { instances } = useActiveInstances()
   const hasEnabledIndexers = useEnabledIndexers().length > 0
 
-  const { data: searchStatus } = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
-  })
+  const { data: searchStatus } = useCrossSeedSearchStatus()
 
   const searchInstanceId = searchSettings?.instanceId ?? null
   const { data: searchRuns } = useQuery({

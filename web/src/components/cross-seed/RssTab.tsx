@@ -7,7 +7,6 @@ import {
   DEFAULT_RSS_INTERVAL_MINUTES,
   MIN_RSS_INTERVAL_MINUTES,
   normalizeNumberList,
-  normalizeStringList,
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedSettings,
@@ -19,6 +18,7 @@ import {
   usePatchCrossSeedSettings
 } from "@/components/cross-seed/cross-seed-settings"
 import { RSSRunItem } from "@/components/cross-seed/RssRunItem"
+import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -440,34 +440,19 @@ function RssCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="rss-automation-tags">{t("sourceCard.crossSeedTags")}</Label>
-                <FieldHelp>{t("rules.tagging.rssTagsDescription")}</FieldHelp>
-              </div>
-              <MultiSelect
-                options={[
-                  { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
-                  { label: t("rules.tagging.tagRss"), value: "rss" },
-                ]}
-                selected={form.rssAutomationTags}
-                onChange={values => setForm(prev => ({ ...prev, rssAutomationTags: normalizeStringList(values) }))}
-                placeholder={t("rules.tagging.selectRssTags")}
-                creatable
-                onCreateOption={value => setForm(prev => ({ ...prev, rssAutomationTags: normalizeStringList([...prev.rssAutomationTags, value]) }))}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="auto-resume-rss" className="font-medium">{t("sourceCard.autoResume")}</Label>
-                <FieldHelp>{t("sourceCard.autoResumeHelp")}</FieldHelp>
-              </div>
-              <Switch
-                id="auto-resume-rss"
-                checked={!form.skipAutoResumeRss}
-                onCheckedChange={value => setForm(prev => ({ ...prev, skipAutoResumeRss: !value }))}
-              />
-            </div>
+            <SourceTagsField
+              id="rss-automation-tags"
+              suggestions={[{ label: t("rules.tagging.tagRss"), value: "rss" }]}
+              selected={form.rssAutomationTags}
+              onChange={rssAutomationTags => setForm(prev => ({ ...prev, rssAutomationTags }))}
+              placeholder={t("rules.tagging.selectRssTags")}
+              help={t("rules.tagging.rssTagsDescription")}
+            />
+            <AutoResumeSwitch
+              id="auto-resume-rss"
+              skip={form.skipAutoResumeRss}
+              onSkipChange={skipAutoResumeRss => setForm(prev => ({ ...prev, skipAutoResumeRss }))}
+            />
           </div>
 
           <Separator />

@@ -5,7 +5,7 @@
 
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
-import type { CrossSeedAutomationSettingsPatch, Instance } from "@/types"
+import type { Category, CrossSeedAutomationSettingsPatch } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -58,6 +58,15 @@ export function usePatchCrossSeedSettings() {
   })
 }
 
+export function useCrossSeedSearchStatus() {
+  return useQuery({
+    queryKey: ["cross-seed", "search-status"],
+    queryFn: () => api.getCrossSeedSearchStatus(),
+    // Poll only while a search is actively running for smooth live progress; events drive idle transitions.
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
+  })
+}
+
 export function useActiveInstances() {
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -67,7 +76,8 @@ export function useActiveInstances() {
     () => (instances ?? []).filter(instance => instance.isActive),
     [instances]
   )
-  return { instances, activeInstances }
+  const activeInstanceIds = useMemo(() => activeInstances.map(instance => instance.id), [activeInstances])
+  return { instances, activeInstances, activeInstanceIds }
 }
 
 export function useEnabledIndexers() {
@@ -78,13 +88,13 @@ export function useEnabledIndexers() {
   return useMemo(() => (indexers ?? []).filter(indexer => indexer.enabled), [indexers])
 }
 
-export type InstanceMetadata = { categories: Record<string, { name: string; savePath: string }>; tags: string[] }
+type AggregatedInstanceMetadata = { categories: Record<string, Category>; tags: string[] }
 
 /** Categories and tags merged across the given instances, for source filter pickers. */
 export function useAggregatedInstanceMetadata(instanceIds: number[]) {
   return useQuery({
     queryKey: ["cross-seed", "instance-metadata", instanceIds],
-    queryFn: async (): Promise<InstanceMetadata> => {
+    queryFn: async (): Promise<AggregatedInstanceMetadata> => {
       const results = await Promise.all(
         instanceIds.map(async (instanceId) => {
           const [categories, tags] = await Promise.all([
@@ -94,7 +104,7 @@ export function useAggregatedInstanceMetadata(instanceIds: number[]) {
           return { categories, tags }
         })
       )
-      const categories: InstanceMetadata["categories"] = {}
+      const categories: AggregatedInstanceMetadata["categories"] = {}
       const tags = new Set<string>()
       for (const result of results) {
         Object.assign(categories, result.categories)
@@ -105,10 +115,6 @@ export function useAggregatedInstanceMetadata(instanceIds: number[]) {
     enabled: instanceIds.length > 0,
     staleTime: 5 * 60 * 1000,
   })
-}
-
-export function instanceIdsOf(instances: Instance[]): number[] {
-  return instances.map(instance => instance.id)
 }
 
 export function useFormatDateValue() {

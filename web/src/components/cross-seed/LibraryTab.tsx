@@ -10,12 +10,15 @@ import {
   normalizeNumberList,
   normalizeStringList,
   useActiveInstances,
+  useAggregatedInstanceMetadata,
   useCrossSeedSearchSettings,
+  useCrossSeedSearchStatus,
   useCrossSeedSettings,
   useEnabledIndexers,
   useFormatDateValue,
   useMissingIndexersToast
 } from "@/components/cross-seed/cross-seed-settings"
+import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -110,12 +113,7 @@ function LibraryCard({ settings, searchSettings, instances, onOpenGazelleSetting
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
 
-  const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    // Poll only while a search is actively running for smooth live progress; events drive idle transitions.
-    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
-  })
+  const { data: searchStatus, refetch: refetchSearchStatus } = useCrossSeedSearchStatus()
 
   const searchRunsRefetchInterval =
     searchStatus?.running && searchStatus.run?.instanceId === searchInstanceId ? 5_000 : false
@@ -144,18 +142,8 @@ function LibraryCard({ settings, searchSettings, instances, onOpenGazelleSetting
     activeSearchInstanceIdRef.current = null
   }, [refetchSearchRuns, searchInstanceId, searchStatus?.running, searchStatus?.run?.instanceId])
 
-  const { data: searchMetadata } = useQuery({
-    queryKey: ["cross-seed", "search-metadata", searchInstanceId],
-    queryFn: async () => {
-      if (!searchInstanceId) return null
-      const [categories, tags] = await Promise.all([
-        api.getCategories(searchInstanceId),
-        api.getTags(searchInstanceId),
-      ])
-      return { categories, tags }
-    },
-    enabled: !!searchInstanceId,
-  })
+  const searchInstanceIds = useMemo(() => searchInstanceId ? [searchInstanceId] : [], [searchInstanceId])
+  const { data: searchMetadata } = useAggregatedInstanceMetadata(searchInstanceIds)
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -687,34 +675,20 @@ function LibraryCard({ settings, searchSettings, instances, onOpenGazelleSetting
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="seeded-search-tags">{t("sourceCard.crossSeedTags")}</Label>
-              <FieldHelp>{t("rules.tagging.seededTagsDescription")}</FieldHelp>
-            </div>
-            <MultiSelect
-              options={[
-                { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
-                { label: t("rules.tagging.tagSeededSearch"), value: "seeded-search" },
-              ]}
-              selected={seededSearchTags}
-              onChange={values => setSeededSearchTags(normalizeStringList(values))}
-              placeholder={t("rules.tagging.selectSeededTags")}
-              creatable
-              onCreateOption={value => setSeededSearchTags(prev => normalizeStringList([...prev, value]))}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="auto-resume-seeded-search" className="font-medium">{t("sourceCard.autoResume")}</Label>
-              <FieldHelp>{t("sourceCard.autoResumeHelp")} {t("rules.postInjection.seededSearchDescription")}</FieldHelp>
-            </div>
-            <Switch
-              id="auto-resume-seeded-search"
-              checked={!skipAutoResume}
-              onCheckedChange={value => setSkipAutoResume(!value)}
-            />
-          </div>
+          <SourceTagsField
+            id="seeded-search-tags"
+            suggestions={[{ label: t("rules.tagging.tagSeededSearch"), value: "seeded-search" }]}
+            selected={seededSearchTags}
+            onChange={setSeededSearchTags}
+            placeholder={t("rules.tagging.selectSeededTags")}
+            help={t("rules.tagging.seededTagsDescription")}
+          />
+          <AutoResumeSwitch
+            id="auto-resume-seeded-search"
+            skip={skipAutoResume}
+            onSkipChange={setSkipAutoResume}
+            help={t("rules.postInjection.seededSearchDescription")}
+          />
         </div>
 
         <Separator />

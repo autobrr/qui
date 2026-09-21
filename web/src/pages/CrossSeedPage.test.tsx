@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
@@ -49,6 +49,7 @@ beforeAll(() => {
   })
 })
 
+afterAll(() => vi.unstubAllGlobals())
 afterEach(cleanup)
 
 describe("CrossSeedPage tabs", () => {

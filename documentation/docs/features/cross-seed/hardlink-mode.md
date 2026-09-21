@@ -74,7 +74,7 @@ For the `flat` preset, qui always uses an isolation folder to keep each torrent'
 
 ## Pause behavior
 
-By default, hardlink-added torrents start seeding immediately because `skip_checking=true` sets them to 100%. If you want hardlink-added torrents to stay paused, disable the "Auto-resume after injection" toggle for your cross-seed source under **Cross-Seed > Rules > Post-injection behavior**.
+By default, hardlink-added torrents start seeding immediately because `skip_checking=true` sets them to 100%. If you want hardlink-added torrents to stay paused, disable the "Auto-resume after injection" toggle for your cross-seed source on the source's tab (**RSS**, **Webhook**, or **Library**).
 
 When hardlink or reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
 
