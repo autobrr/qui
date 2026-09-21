@@ -270,19 +270,6 @@
         }
       }
     },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Aktiviere direktes API-Matching gegen Orpheus und Redacted. Dies läuft parallel zu Torznab; OPS-/RED-Torznab-Indexer werden ignoriert.",
-      "enableMatching": "Gazelle-Matching aktivieren",
-      "enableDescription": "Gilt für alle Quell-Torrents. Wenn möglich, prüft qui auch RED/OPS über Gazelle.",
-      "redactedApiKey": "Redacted API Key",
-      "orpheusApiKey": "Orpheus API Key",
-      "pasteRedKey": "RED API Key einfügen",
-      "pasteOpsKey": "OPS API Key einfügen",
-      "enableToConfigure": "Zum Konfigurieren aktivieren",
-      "redDescription": "Wird für redacted.sh-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen.",
-      "opsDescription": "Wird für orpheus.network-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen."
-    },
     "matching": {
       "title": "Episoden",
       "description": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst.",

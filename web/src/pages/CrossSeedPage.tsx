@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
-import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 
 interface CrossSeedPageProps {
@@ -38,13 +37,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { instances } = useActiveInstances()
   const hasEnabledIndexers = useEnabledIndexers().length > 0
   const automationEnabled = settings?.enabled ?? false
-
-  const handleOpenGazelleSettings = useCallback(() => {
-    onTabChange("rules")
-    window.setTimeout(() => {
-      document.getElementById("gazelle-settings")?.scrollIntoView({ behavior: "smooth", block: "start" })
-    }, 50)
-  }, [onTabChange])
 
   return (
     <div className="space-y-6 p-4 lg:p-6 pb-16">
@@ -125,7 +117,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           {activeTab === "rss" && <RssTab />}
           {activeTab === "webhook" && <WebhookTab />}
           {activeTab === "completion" && <CompletionTab />}
-          {activeTab === "library" && <LibraryTab onOpenGazelleSettings={handleOpenGazelleSettings} />}
+          {activeTab === "library" && <LibraryTab />}
           {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
           {activeTab === "season-packs" && <SeasonPacksTab />}
           {activeTab === "rules" && <RulesTab />}

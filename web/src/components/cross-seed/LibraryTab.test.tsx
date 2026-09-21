@@ -27,6 +27,9 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}))
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
@@ -60,7 +63,7 @@ function renderTab() {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <LibraryTab onOpenGazelleSettings={() => {}} />
+        <LibraryTab />
       </TooltipProvider>
     </QueryClientProvider>
   )

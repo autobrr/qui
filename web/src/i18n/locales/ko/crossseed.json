@@ -267,19 +267,6 @@
         }
       }
     },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Orpheus 및 Redacted에 대한 직접 API 일치를 활성화합니다. 이는 Torznab과 함께 실행되며, OPS/RED Torznab 인덱서는 무시됩니다.",
-      "enableMatching": "Gazelle 일치 활성화",
-      "enableDescription": "모든 소스 토렌트에 적용됩니다. 가능한 경우 qui는 Gazelle을 통해 RED/OPS도 확인합니다.",
-      "redactedApiKey": "Redacted API 키",
-      "orpheusApiKey": "Orpheus API 키",
-      "pasteRedKey": "RED API 키 붙여 넣기",
-      "pasteOpsKey": "OPS API 키 붙여 넣기",
-      "enableToConfigure": "구성하려면 활성화",
-      "redDescription": "redacted.sh 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요.",
-      "opsDescription": "orpheus.network 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요."
-    },
     "matching": {
       "title": "에피소드",
       "description": "로컬 시즌 팩이 인덱서의 개별 에피소드 토렌트와 일치하여 두 형식을 모두 시드할 수 있습니다.",

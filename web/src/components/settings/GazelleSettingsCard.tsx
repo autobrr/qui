@@ -1,0 +1,101 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/components/cross-seed/cross-seed-settings"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { FieldHelp } from "@/components/ui/field-help"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import type { CrossSeedAutomationSettings } from "@/types"
+import { Loader2 } from "lucide-react"
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
+
+/** Gazelle (OPS/RED) keys live on the cross-seed settings; this card saves only those three fields. */
+export function GazelleSettingsCard() {
+  const { data: settings } = useCrossSeedSettings()
+  if (!settings) {
+    return null
+  }
+  return <GazelleCard settings={settings} />
+}
+
+function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+  const { t } = useTranslation("settings")
+  const patchSettings = usePatchCrossSeedSettings()
+  const [gazelleEnabled, setGazelleEnabled] = useState(settings.gazelleEnabled)
+  const [redactedApiKey, setRedactedApiKey] = useState(settings.redactedApiKey)
+  const [orpheusApiKey, setOrpheusApiKey] = useState(settings.orpheusApiKey)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("gazelle.title")}</CardTitle>
+        <CardDescription>{t("gazelle.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="gazelle-enabled" className="font-medium">{t("gazelle.enableMatching")}</Label>
+            <FieldHelp>{t("gazelle.enableDescription")}</FieldHelp>
+          </div>
+          <Switch
+            id="gazelle-enabled"
+            checked={gazelleEnabled}
+            onCheckedChange={setGazelleEnabled}
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="gazelle-red-api-key">{t("gazelle.redactedApiKey")}</Label>
+              <FieldHelp>{t("gazelle.redDescription")}</FieldHelp>
+            </div>
+            <Input
+              id="gazelle-red-api-key"
+              type="password"
+              value={redactedApiKey}
+              data-1p-ignore="true"
+              onChange={event => setRedactedApiKey(event.target.value)}
+              placeholder={gazelleEnabled ? t("gazelle.pasteRedKey") : t("gazelle.enableToConfigure")}
+              disabled={!gazelleEnabled}
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="gazelle-ops-api-key">{t("gazelle.orpheusApiKey")}</Label>
+              <FieldHelp>{t("gazelle.opsDescription")}</FieldHelp>
+            </div>
+            <Input
+              id="gazelle-ops-api-key"
+              type="password"
+              value={orpheusApiKey}
+              data-1p-ignore="true"
+              onChange={event => setOrpheusApiKey(event.target.value)}
+              placeholder={gazelleEnabled ? t("gazelle.pasteOpsKey") : t("gazelle.enableToConfigure")}
+              disabled={!gazelleEnabled}
+              autoComplete="off"
+            />
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="flex justify-end">
+        <Button
+          className="min-h-11 md:min-h-9"
+          onClick={() => patchSettings.mutate({ gazelleEnabled, redactedApiKey, orpheusApiKey })}
+          disabled={patchSettings.isPending}
+        >
+          {patchSettings.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {t("gazelle.save")}
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}

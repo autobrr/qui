@@ -10,9 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
-    gazelleEnabled: false,
-    redactedApiKey: "",
-    orpheusApiKey: "",
     categoryMappingRules: [],
     findIndividualEpisodes: false,
     rescueTitleMismatches: false,
@@ -91,9 +88,6 @@ describe("RulesTab save", () => {
 
     await waitFor(() => expect(mocks.patchSettings).toHaveBeenCalledTimes(1))
     expect(mocks.patchSettings).toHaveBeenCalledWith({
-      gazelleEnabled: false,
-      redactedApiKey: "",
-      orpheusApiKey: "",
       categoryMappingRules: [],
       findIndividualEpisodes: false,
       rescueTitleMismatches: false,

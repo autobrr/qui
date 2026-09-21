@@ -42,6 +42,7 @@ import type {
   Instance
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock, History, Loader2, Rocket, XCircle } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -64,11 +65,7 @@ function isCrossSeedSearchSkipped(result: CrossSeedSearchResult): boolean {
   return result.status === "skipped"
 }
 
-interface LibraryTabProps {
-  onOpenGazelleSettings: () => void
-}
-
-export function LibraryTab({ onOpenGazelleSettings }: LibraryTabProps) {
+export function LibraryTab() {
   const { data: settings } = useCrossSeedSettings()
   const { data: searchSettings } = useCrossSeedSearchSettings()
   const { instances } = useActiveInstances()
@@ -80,18 +77,17 @@ export function LibraryTab({ onOpenGazelleSettings }: LibraryTabProps) {
       settings={settings}
       searchSettings={searchSettings}
       instances={instances}
-      onOpenGazelleSettings={onOpenGazelleSettings}
     />
   )
 }
 
-interface LibraryCardProps extends LibraryTabProps {
+interface LibraryCardProps {
   settings: CrossSeedAutomationSettings
   searchSettings: CrossSeedSearchSettings
   instances: Instance[]
 }
 
-function LibraryCard({ settings, searchSettings, instances, onOpenGazelleSettings }: LibraryCardProps) {
+function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
   const formatDateValue = useFormatDateValue()
@@ -631,13 +627,9 @@ function LibraryCard({ settings, searchSettings, instances, onOpenGazelleSetting
             </p>
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
               <span>{seededSearchFlowSummary}</span>
-              <button
-                type="button"
-                onClick={onOpenGazelleSettings}
-                className="underline underline-offset-2 hover:text-foreground"
-              >
+              <Link to="/settings" search={{ tab: "indexers" }} className="underline underline-offset-2 hover:text-foreground">
                 {seededSearchGazelleStatus}
-              </button>
+              </Link>
             </div>
           </div>
         </div>

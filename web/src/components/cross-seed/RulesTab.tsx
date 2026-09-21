@@ -37,9 +37,6 @@ import { useTranslation } from "react-i18next"
 type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
 
 interface RulesFormState {
-  gazelleEnabled: boolean
-  redactedApiKey: string
-  orpheusApiKey: string
   categoryMappingRules: CategoryMappingRule[]
   findIndividualEpisodes: boolean
   rescueTitleMismatches: boolean
@@ -65,9 +62,6 @@ function categoryModeOf(settings: CrossSeedAutomationSettings): CategoryMode {
 
 function seedRulesForm(settings: CrossSeedAutomationSettings): RulesFormState {
   return {
-    gazelleEnabled: settings.gazelleEnabled,
-    redactedApiKey: settings.redactedApiKey ?? "",
-    orpheusApiKey: settings.orpheusApiKey ?? "",
     categoryMappingRules: settings.categoryMappingRules ?? [],
     findIndividualEpisodes: settings.findIndividualEpisodes,
     rescueTitleMismatches: settings.rescueTitleMismatches,
@@ -155,64 +149,6 @@ function RulesCard({ settings }: { settings: CrossSeedAutomationSettings }) {
         <div className="flex items-center gap-2 pt-1">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">{t("rules.sections.matching")}</span>
           <Separator className="flex-1" />
-        </div>
-
-        {/* Gazelle (OPS/RED) */}
-        <div id="gazelle-settings" className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3 scroll-mt-24">
-          <div className="space-y-1">
-            <p className="text-sm font-medium leading-none">{t("rules.gazelle.title")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t("rules.gazelle.description")}
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="gazelle-enabled" className="font-medium">{t("rules.gazelle.enableMatching")}</Label>
-              <FieldHelp>{t("rules.gazelle.enableDescription")}</FieldHelp>
-            </div>
-            <Switch
-              id="gazelle-enabled"
-              checked={form.gazelleEnabled}
-              onCheckedChange={value => setForm(prev => ({ ...prev, gazelleEnabled: !!value }))}
-            />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="gazelle-red-api-key">{t("rules.gazelle.redactedApiKey")}</Label>
-                <FieldHelp>{t("rules.gazelle.redDescription")}</FieldHelp>
-              </div>
-              <Input
-                id="gazelle-red-api-key"
-                type="password"
-                value={form.redactedApiKey}
-                data-1p-ignore="true"
-                onChange={event => setForm(prev => ({ ...prev, redactedApiKey: event.target.value }))}
-                placeholder={form.gazelleEnabled ? t("rules.gazelle.pasteRedKey") : t("rules.gazelle.enableToConfigure")}
-                disabled={!form.gazelleEnabled}
-                autoComplete="off"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="gazelle-ops-api-key">{t("rules.gazelle.orpheusApiKey")}</Label>
-                <FieldHelp>{t("rules.gazelle.opsDescription")}</FieldHelp>
-              </div>
-              <Input
-                id="gazelle-ops-api-key"
-                type="password"
-                value={form.orpheusApiKey}
-                data-1p-ignore="true"
-                onChange={event => setForm(prev => ({ ...prev, orpheusApiKey: event.target.value }))}
-                placeholder={form.gazelleEnabled ? t("rules.gazelle.pasteOpsKey") : t("rules.gazelle.enableToConfigure")}
-                disabled={!form.gazelleEnabled}
-                autoComplete="off"
-              />
-            </div>
-          </div>
         </div>
 
         {/* Search category rules */}
