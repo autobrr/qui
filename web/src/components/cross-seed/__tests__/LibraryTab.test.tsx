@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   instances: [{ id: 1, name: "main", isActive: true }],
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
+  getSearchSettings: vi.fn(() => Promise.resolve(mocks.searchSettings)),
 }))
 
 vi.mock("react-i18next", async (importOriginal) => ({
@@ -38,7 +39,7 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   api: {
-    getCrossSeedSearchSettings: () => Promise.resolve(mocks.searchSettings),
+    getCrossSeedSearchSettings: mocks.getSearchSettings,
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve([]),
     getCrossSeedSearchStatus: () => Promise.resolve({ running: false }),
@@ -97,6 +98,22 @@ describe("LibraryTab save", () => {
       seededSearchTags: ["cross-seed"],
       skipAutoResumeSeededSearch: true,
     })
+  })
+
+  it("refetches the search settings when one of the two saves fails", async () => {
+    mocks.patchSearch.mockRejectedValue(new Error("boom"))
+    mocks.patchSettings.mockResolvedValue(mocks.settings)
+    renderTab()
+    await waitFor(() => expect(mocks.getSearchSettings).toHaveBeenCalledTimes(1))
+    fireEvent.click(await screen.findByRole("button", { name: "rules.saveChanges" }))
+
+    await waitFor(() => expect(mocks.getSearchSettings).toHaveBeenCalledTimes(2))
+  })
+
+  it("associates the tags label with the picker trigger", async () => {
+    renderTab()
+    const trigger = await screen.findByLabelText("sourceCard.crossSeedTags")
+    expect(trigger.getAttribute("role")).toBe("combobox")
   })
 
   it("rejects a cooldown under the minimum before it sends anything", async () => {

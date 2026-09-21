@@ -31,6 +31,7 @@ export function SourceTagsField({ id, suggestions, selected, onChange, placehold
         {help && <FieldHelp>{help}</FieldHelp>}
       </div>
       <MultiSelect
+        id={id}
         options={[{ label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" }, ...suggestions]}
         selected={selected}
         onChange={values => onChange(normalizeStringList(values))}

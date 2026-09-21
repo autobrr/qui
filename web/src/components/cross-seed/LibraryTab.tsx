@@ -154,6 +154,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     },
     onError: (error: Error) => {
       toast.error(error.message)
+      // One PATCH can land while the other fails; refetch both so the caches show what the server kept.
+      void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SEARCH_SETTINGS_KEY })
+      void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SETTINGS_KEY })
     },
   })
 
