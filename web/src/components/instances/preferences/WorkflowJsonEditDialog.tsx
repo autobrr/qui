@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+import { JsonEditor } from "@/components/ui/json-editor"
 import { api } from "@/lib/api"
 import { parseImportJSON, toEditInput, toExportFormat, toExportJSON } from "@/lib/workflow-utils"
 import type { Automation } from "@/types"
@@ -63,12 +63,11 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
             {t("preferences.workflowsOverview.editJsonDialog.description")}
           </DialogDescription>
         </DialogHeader>
-        <div className="overflow-y-auto flex-1 min-h-0">
-          <Textarea
+        <div className="min-h-0">
+          <JsonEditor
             aria-label={t("preferences.workflowsOverview.editJsonDialog.title", { name: rule.name })}
             value={json}
-            onChange={(e) => setJson(e.target.value)}
-            className="min-h-[300px] max-h-[60vh] font-mono text-sm"
+            onChange={setJson}
           />
         </div>
         <DialogFooter>

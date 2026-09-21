@@ -20,6 +20,11 @@ vi.mock("react-i18next", async (importOriginal) => ({
 }))
 vi.mock("sonner", () => ({ toast: { error: mocks.toastError, success: mocks.toastSuccess } }))
 vi.mock("@/lib/api", () => ({ api: { updateAutomation: mocks.updateAutomation } }))
+vi.mock("@/components/ui/json-editor", () => ({
+  JsonEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <textarea value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}))
 
 import { WorkflowJsonEditDialog } from "@/components/instances/preferences/WorkflowJsonEditDialog"
 

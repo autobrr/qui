@@ -37,9 +37,9 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { JsonEditor } from "@/components/ui/json-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
@@ -1648,14 +1648,13 @@ export function WorkflowsOverview({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
-            <Textarea
+            <JsonEditor
               placeholder={t("preferences.workflowsOverview.importDialog.placeholder")}
               value={importJSON}
-              onChange={(e) => {
-                setImportJSON(e.target.value)
+              onChange={(value) => {
+                setImportJSON(value)
                 setImportError(null)
               }}
-              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
