@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Automation, AutomationInput, ActionConditions, SortingConfig } from "@/types"
+import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
 
 export type TrackerMatchMode = "include" | "exclude" | "mixed"
 
@@ -18,6 +18,7 @@ export interface WorkflowExport {
   trackerPattern: string
   trackerDomains: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig
   intervalSeconds?: number
   dryRun?: boolean
@@ -41,6 +42,10 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
     trackerDomains,
     conditions: workflow.conditions,
     sortingConfig: workflow.sortingConfig,
+  }
+
+  if (workflow.freeSpaceSource) {
+    exported.freeSpaceSource = workflow.freeSpaceSource
   }
 
   // Only include intervalSeconds if it differs from default
@@ -121,6 +126,7 @@ export function fromImportFormat(
     trackerPattern,
     trackerDomains,
     conditions: data.conditions,
+    freeSpaceSource: data.freeSpaceSource,
     sortingConfig: data.sortingConfig,
     enabled: false, // Always start disabled
     dryRun: data.dryRun ?? false,
@@ -223,9 +229,17 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
     sortingConfig: obj.sortingConfig as SortingConfig | undefined,
   }
 
+  if (isFreeSpaceSource(obj.freeSpaceSource)) {
+    data.freeSpaceSource = obj.freeSpaceSource
+  }
+
   // Optional intervalSeconds
   if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
     data.intervalSeconds = obj.intervalSeconds
+  }
+
+  if (typeof obj.dryRun === "boolean") {
+    data.dryRun = obj.dryRun
   }
 
   if (typeof obj.notify === "boolean") {
@@ -233,6 +247,13 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
   }
 
   return { data, error: null }
+}
+
+function isFreeSpaceSource(value: unknown): value is FreeSpaceSource {
+  if (typeof value !== "object" || value === null) return false
+  const source = value as Record<string, unknown>
+  if (source.type === "qbittorrent") return true
+  return source.type === "path" && typeof source.path === "string" && source.path !== ""
 }
 
 /**

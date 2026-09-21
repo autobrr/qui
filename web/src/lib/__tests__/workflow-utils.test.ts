@@ -80,6 +80,16 @@ describe("toExportFormat", () => {
     expect(toExportFormat(makeAutomation({ notify: false })).notify).toBe(false)
     expect(toExportFormat(makeAutomation({ notify: true }))).not.toHaveProperty("notify")
   })
+
+  it("carries freeSpaceSource through export and import; omits the key when unset", () => {
+    const source = { type: "path" as const, path: "/data" }
+    const exported = toExportFormat(makeAutomation({ freeSpaceSource: source }))
+    expect(exported.freeSpaceSource).toEqual(source)
+    const parsed = parseImportJSON(toExportJSON(exported))
+    expect(parsed.data?.freeSpaceSource).toEqual(source)
+    expect(fromImportFormat(parsed.data!, []).freeSpaceSource).toEqual(source)
+    expect(toExportFormat(makeAutomation())).not.toHaveProperty("freeSpaceSource")
+  })
 })
 
 // Intent: turn clipboard JSON back into an AutomationInput. Two safety
@@ -256,6 +266,26 @@ describe("parseImportJSON", () => {
       intervalSeconds: 30,
     }))
     expect(tooSmall.data?.intervalSeconds).toBeUndefined()
+  })
+
+  it("keeps dryRun: true from the export shape", () => {
+    const result = parseImportJSON(JSON.stringify({
+      name: "x",
+      conditions: { schemaVersion: "1" },
+      trackerDomains: [],
+      dryRun: true,
+    }))
+    expect(result.data?.dryRun).toBe(true)
+  })
+
+  it("drops a malformed freeSpaceSource instead of passing it through", () => {
+    const result = parseImportJSON(JSON.stringify({
+      name: "x",
+      conditions: { schemaVersion: "1" },
+      trackerDomains: [],
+      freeSpaceSource: { type: "path" },
+    }))
+    expect(result.data).not.toHaveProperty("freeSpaceSource")
   })
 
   it("includes notify only when it's an explicit boolean", () => {
