@@ -104,19 +104,18 @@ test("flags UI string properties in .ts option tables, including reason", () => 
   )
 })
 
-test("skips only the named fallback tables in the query-builder constants", () => {
+test("skips object properties in the query-builder constants file only", () => {
   const source = `
     export const TORRENT_STATES = [{ value: "downloading", label: "Downloading" }]
-    export const NEW_TABLE = [{ value: "x", label: "Rendered raw" }]
+    export const NEW_TABLE = [{ value: "x", label: "Fallback text" }]
   `
 
   for (const filePath of ["src/components/query-builder/constants.ts", "C:\\qui\\web\\src\\components\\query-builder\\constants.ts"]) {
-    const matches = detectorModule.findHardcodedStringsInSource(source, filePath)
-    assert.deepEqual(matches.map((match) => match.text), ["Rendered raw"])
+    assert.deepEqual(detectorModule.findHardcodedStringsInSource(source, filePath), [])
   }
 
   const elsewhere = detectorModule.findHardcodedStringsInSource(source, "src/lib/constants.ts")
-  assert.deepEqual(elsewhere.map((match) => match.text), ["Downloading", "Rendered raw"])
+  assert.deepEqual(elsewhere.map((match) => match.text), ["Downloading", "Fallback text"])
 })
 
 test("leaves arrays of template snippets alone in .ts and .tsx files", () => {

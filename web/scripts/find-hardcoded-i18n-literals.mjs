@@ -34,20 +34,9 @@ const interestingPropertyNames = new Set([
   "reason",
 ])
 
-// These query-builder tables only carry the English defaultValue for the t() helpers
-// beside them. constants.test.ts checks that every value they list has an en key.
+// Every table in this file renders only through a getTranslated* helper with its English
+// as defaultValue. constants.test.ts checks each helper's keys exist in en.
 const fallbackOnlyFile = "src/components/query-builder/constants.ts"
-const fallbackOnlyExports = new Set([
-  "CONDITION_FIELDS",
-  "FIELD_GROUPS",
-  "OPERATORS_BY_TYPE",
-  "NAME_SPECIAL_OPERATORS",
-  "TORRENT_STATES",
-  "TRACKER_STATUS_VALUES",
-  "HARDLINK_SCOPE_VALUES",
-  "SEASON_PACK_STATUS_VALUES",
-  "CAPABILITY_REASONS",
-])
 
 const interestingVariableNames = new Set([
   "title",
@@ -220,14 +209,8 @@ function isInterestingJsxAttributeString(node) {
   return false
 }
 
-function isInFallbackOnlyExport(node, sourceFile) {
-  if (!sourceFile.fileName.replaceAll("\\", "/").endsWith(fallbackOnlyFile)) return false
-
-  let current = node.parent
-  while (current && !ts.isVariableDeclaration(current)) {
-    current = current.parent
-  }
-  return !!current && ts.isIdentifier(current.name) && fallbackOnlyExports.has(current.name.text)
+function isFallbackOnlyFile(sourceFile) {
+  return sourceFile.fileName.replaceAll("\\", "/").endsWith(fallbackOnlyFile)
 }
 
 // Unlike the variable and format-return checks, this one also covers .ts files:
@@ -241,7 +224,7 @@ function isInterestingPropertyString(node, sourceFile) {
     ? node.parent.name.text
     : node.parent.name.text
 
-  return interestingPropertyNames.has(propertyName) && !isInFallbackOnlyExport(node, sourceFile)
+  return interestingPropertyNames.has(propertyName) && !isFallbackOnlyFile(sourceFile)
 }
 
 // Walk up through transparent expressions to find a variable declaration,

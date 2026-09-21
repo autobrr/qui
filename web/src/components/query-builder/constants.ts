@@ -6,6 +6,10 @@
 import type { TFunction } from "i18next";
 import type { ConditionField } from "@/types";
 
+// Tables here render only through a getTranslated* helper (or getFieldLabel and siblings)
+// with their English as defaultValue, so scripts/find-hardcoded-i18n-literals.mjs exempts
+// this file. A table rendered raw needs a helper, or it ships untranslated unnoticed.
+
 // Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
 // past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
 export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([

@@ -8,18 +8,14 @@ import { afterEach, describe, expect, it } from "vitest"
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
 import type { TFunction } from "i18next"
+import * as constants from "./constants"
 import {
   CAPABILITY_REASONS,
   CONDITION_FIELDS,
   FIELD_GROUPS,
   getCapabilityReason,
   getFieldGroupLabel,
-  getFieldLabel,
-  getTranslatedHardlinkScopes,
-  getTranslatedOperatorsForField,
-  getTranslatedSeasonPackStatuses,
-  getTranslatedTorrentStates,
-  getTranslatedTrackerStatuses
+  getFieldLabel
 } from "./constants"
 
 afterEach(async () => {
@@ -47,7 +43,6 @@ describe("query-builder translation keys", () => {
 
     for (const field of Object.keys(CONDITION_FIELDS)) {
       getFieldLabel(field, recordingT)
-      getTranslatedOperatorsForField(field, recordingT)
     }
     for (const group of FIELD_GROUPS) {
       getFieldGroupLabel(group.label, recordingT)
@@ -55,10 +50,18 @@ describe("query-builder translation keys", () => {
     for (const capability of Object.keys(CAPABILITY_REASONS) as (keyof typeof CAPABILITY_REASONS)[]) {
       getCapabilityReason(capability, recordingT)
     }
-    getTranslatedTorrentStates(recordingT)
-    getTranslatedTrackerStatuses(recordingT)
-    getTranslatedHardlinkScopes(recordingT)
-    getTranslatedSeasonPackStatuses(recordingT)
+    const translatedHelpers = Object.entries(constants).filter(([name, value]) => name.startsWith("getTranslated") && typeof value === "function")
+    // Fails when a module change hides the helpers, instead of passing with nothing checked.
+    expect(translatedHelpers.length).toBeGreaterThanOrEqual(5)
+    for (const [, helper] of translatedHelpers) {
+      if (helper.length === 2) {
+        for (const field of Object.keys(CONDITION_FIELDS)) {
+          (helper as (field: string, t: TFunction) => unknown)(field, recordingT)
+        }
+      } else {
+        (helper as (t: TFunction) => unknown)(recordingT)
+      }
+    }
 
     const missing = [...requested].filter((key) => !i18n.exists(key, { ns: "automations", lng: "en" }))
     expect(missing).toEqual([])
