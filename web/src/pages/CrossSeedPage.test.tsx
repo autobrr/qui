@@ -16,15 +16,9 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
 vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: () => undefined }))
-vi.mock("@/hooks/useDateTimeFormatters", () => ({
-  useDateTimeFormatters: () => ({ formatDate: (date: Date) => date.toISOString() }),
-}))
 vi.mock("@/lib/api", () => ({
   api: {
     getCrossSeedSettings: () => new Promise(() => {}),
-    getCrossSeedStatus: () => new Promise(() => {}),
-    getCrossSeedSearchSettings: () => new Promise(() => {}),
-    getCrossSeedSearchStatus: () => new Promise(() => {}),
     getInstances: () => new Promise(() => {}),
     listTorznabIndexers: () => new Promise(() => {}),
   },

@@ -5,17 +5,7 @@
 
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { CompletionTab } from "@/components/cross-seed/CompletionTab"
-import {
-  DEFAULT_RSS_INTERVAL_MINUTES,
-  useActiveInstances,
-  useCrossSeedSearchSettings,
-  useCrossSeedSearchStatus,
-  useCrossSeedSettings,
-  useCrossSeedStatus,
-  useEnabledIndexers,
-  useFormatDateValue,
-  useManualRunCooldown
-} from "@/components/cross-seed/cross-seed-settings"
+import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/components/cross-seed/cross-seed-settings"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { LibraryTab } from "@/components/cross-seed/LibraryTab"
 import { RssTab } from "@/components/cross-seed/RssTab"
@@ -25,15 +15,12 @@ import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-see
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
-import { api } from "@/lib/api"
-import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
-import { useCallback, useMemo } from "react"
+import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 
 interface CrossSeedPageProps {
@@ -43,50 +30,14 @@ interface CrossSeedPageProps {
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
-  const formatDateValue = useFormatDateValue()
 
   // Keep the shared SSE stream open so qui activity events drive cache invalidation.
   useActivityStream()
 
   const { data: settings } = useCrossSeedSettings()
-  const { data: status } = useCrossSeedStatus()
-  const { data: searchSettings } = useCrossSeedSearchSettings()
   const { instances } = useActiveInstances()
   const hasEnabledIndexers = useEnabledIndexers().length > 0
-
-  const { data: searchStatus } = useCrossSeedSearchStatus()
-
-  const searchInstanceId = searchSettings?.instanceId ?? null
-  const { data: searchRuns } = useQuery({
-    queryKey: ["cross-seed", "search-runs", searchInstanceId],
-    queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
-    enabled: !!searchInstanceId,
-  })
-
   const automationEnabled = settings?.enabled ?? false
-  const automationRunning = status?.running ?? false
-  const latestRun = status?.lastRun
-  const cooldown = useManualRunCooldown(settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES, latestRun?.startedAt)
-
-  const searchRunning = searchStatus?.running ?? false
-  const activeSearchRun = searchStatus?.run
-
-  const currentSearchInstanceName = useMemo(() => {
-    const id = searchRunning && activeSearchRun ? activeSearchRun.instanceId : searchInstanceId
-    const name = instances?.find(instance => instance.id === id)?.name
-    if (name) return name
-    if (searchRunning && activeSearchRun) return t("scan.instanceFallback", { id: activeSearchRun.instanceId })
-    return t("scan.noInstanceSelected")
-  }, [activeSearchRun, instances, searchInstanceId, searchRunning, t])
-
-  const searchRunStats = useMemo(() => ({
-    totalRuns: searchRuns?.length ?? 0,
-    totalAdded: (searchRuns ?? []).reduce((sum, run) => sum + run.crossSeedsAdded, 0),
-  }), [searchRuns])
-
-  const automationStatusLabel = automationRunning ? t("scan.runningUpper") : automationEnabled ? t("automation.scheduledUpper") : t("overview.rssAutomation.disabledUpper")
-  const automationStatusVariant: "default" | "secondary" | "destructive" =
-    automationRunning ? "default" : automationEnabled ? "secondary" : "destructive"
 
   const handleOpenGazelleSettings = useCallback(() => {
     onTabChange("rules")
@@ -126,64 +77,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           </AlertDescription>
         </Alert>
       )}
-
-      <div className="grid gap-4 md:grid-cols-2 mb-6">
-        <Card className="h-full">
-          <CardHeader className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-base">{t("overview.rssAutomation.title")}</CardTitle>
-              <Badge variant={automationStatusVariant}>
-                {automationStatusLabel}
-              </Badge>
-            </div>
-            <CardDescription>{t("overview.rssAutomation.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.rssAutomation.nextRun")}</span>
-              <span className="font-medium">
-                {automationEnabled ? status?.nextRunAt ? formatDateValue(status.nextRunAt) : "—" : t("overview.rssAutomation.disabled")}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.rssAutomation.manualTrigger")}</span>
-              <span className="font-medium">{cooldown.active ? t("overview.rssAutomation.cooldown", { display: cooldown.display }) : t("overview.rssAutomation.ready")}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.rssAutomation.lastRun")}</span>
-              <span className="font-medium">
-                {latestRun ? `${t(`dirScan.statusLabelsUpper.${latestRun.status}`, latestRun.status)} • ${formatDateValue(latestRun.startedAt)}` : t("overview.rssAutomation.noRunsYet")}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full">
-          <CardHeader className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-base">{t("overview.seededSearch.title")}</CardTitle>
-              <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? t("scan.runningUpper") : t("scan.idleUpper")}</Badge>
-            </div>
-            <CardDescription>{t("overview.seededSearch.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.seededSearch.instance")}</span>
-              <span className="font-medium truncate text-right max-w-[180px]">{currentSearchInstanceName}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.seededSearch.recentRuns")}</span>
-              <span className="font-medium">{t("scan.runSummary", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded })}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t("overview.seededSearch.now")}</span>
-              <span className="font-medium">
-                {searchRunning ? activeSearchRun ? t("scan.scannedProgress", { processed: activeSearchRun.processed, total: activeSearchRun.totalTorrents ?? "?" }) : t("overview.seededSearch.running") : t("overview.seededSearch.idle")}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       <div className="md:hidden">
         <Select value={activeTab} onValueChange={(value) => onTabChange(value as CrossSeedTab)}>

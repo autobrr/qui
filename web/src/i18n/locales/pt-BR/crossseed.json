@@ -10,26 +10,7 @@
     "linkSuffix": "para adicionar ou ativar um."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automação RSS",
-      "description": "Sondagem automática dos feeds RSS dos trackers usando suas regras.",
-      "nextRun": "Próxima execução",
-      "manualTrigger": "Acionamento manual",
-      "lastRun": "Última execução",
-      "cooldown": "Espera {{display}}",
-      "ready": "Pronto",
-      "disabled": "Desativado",
-      "noRunsYet": "Nenhuma execução ainda",
-      "disabledUpper": "DESATIVADO"
-    },
     "seededSearch": {
-      "title": "Busca de torrents semeados",
-      "description": "Varredura profunda dos torrents que você já semeia para preencher lacunas.",
-      "instance": "Instância",
-      "recentRuns": "Execuções recentes",
-      "now": "Agora",
-      "running": "Executando...",
-      "idle": "Ocioso",
       "gazelleFullDescription": "O Gazelle verifica RED/OPS para cada torrent de origem. O Torznab consulta indexadores selecionados não OPS/RED.",
       "gazellePartialDescription": "O Gazelle verifica sites configurados para cada torrent de origem. O Torznab consulta indexadores selecionados.",
       "noGazelleDescription": "Sem o Gazelle, todas as correspondências dependem dos indexadores Torznab."
@@ -52,6 +33,7 @@
   "automation": {
     "title": "Automação RSS",
     "description": "Sonda feeds RSS de trackers em um intervalo fixo e adiciona cross-seeds correspondentes automaticamente.",
+    "nextRun": "Próxima execução: {{date}}",
     "enableSwitch": "Ativar automação RSS",
     "intervalLabel": "Intervalo de execução RSS (minutos)",
     "intervalTooltip": "A automação processa o feed completo de cada indexador Torznab ativado a cada execução. O intervalo mínimo é de {{min}} minutos para evitar sobrecarregar os indexadores.",
@@ -104,7 +86,6 @@
     "runError": "Erro: {{message}}",
     "runSummary": "{{runs}} execuções • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execuções • +{{added}} • {{failed}} falharam",
-    "scheduledUpper": "AGENDADO",
     "runDisabledAlreadyRunning": "Uma execução da automação já está em andamento.",
     "runDisabledCooldown": "As execuções manuais são limitadas a um intervalo de {{minutes}} minutos. Tente novamente em {{remaining}}."
   },
@@ -180,7 +161,6 @@
     "runSummary": "{{runs}} execuções • +{{added}} cross-seeds",
     "runSummaryWithFailures": "{{runs}} execuções • +{{added}} cross-seeds • {{failed}} falharam",
     "searchNeedsTorznabUnlessGazelle": "A Busca de Torrents Semeados precisa de indexadores Torznab (a menos que você esteja apenas varrendo OPS/RED via Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} varridos",
     "torrentsCount": "{{count}} candidatos",
     "failedCount": "{{count}} falharam",
     "runError": "Erro: {{message}}",
@@ -212,8 +192,6 @@
       "enabledRedMissingOps": "Gazelle: ativado (chave RED configurada, OPS ausente)",
       "enabledKeysMissing": "Gazelle: ativado (chaves ausentes)"
     },
-    "noInstanceSelected": "Nenhuma instância selecionada",
-    "instanceFallback": "Instância {{id}}",
     "noMessageProvided": "Nenhuma mensagem fornecida"
   },
   "rules": {
@@ -735,19 +713,6 @@
       "description": "Isto removerá o diretório de busca e seu histórico. Torrents já adicionados não serão afetados.",
       "cancel": "Cancelar",
       "delete": "Excluir"
-    },
-    "statusLabelsUpper": {
-      "queued": "NA FILA",
-      "scanning": "VARRENDO",
-      "searching": "PROCURANDO",
-      "injecting": "INJETANDO",
-      "success": "SUCESSO",
-      "failed": "FALHA",
-      "added": "ADICIONADO",
-      "canceled": "CANCELADO",
-      "running": "EXECUTANDO",
-      "partial": "PARCIAL",
-      "pending": "PENDENTE"
     }
   }
 }

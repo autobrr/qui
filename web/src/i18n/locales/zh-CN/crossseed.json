@@ -10,26 +10,7 @@
     "linkSuffix": "以添加或启用索引器。"
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 自动化",
-      "description": "使用你的规则自动轮询 Tracker RSS 订阅源。",
-      "nextRun": "下次运行",
-      "manualTrigger": "手动触发",
-      "lastRun": "上次运行",
-      "cooldown": "冷却 {{display}}",
-      "ready": "就绪",
-      "disabled": "已禁用",
-      "noRunsYet": "尚无运行记录",
-      "disabledUpper": "已禁用"
-    },
     "seededSearch": {
-      "title": "做种搜索",
-      "description": "深度扫描你已做种的种子以回填缺失项。",
-      "instance": "实例",
-      "recentRuns": "最近的运行",
-      "now": "现在",
-      "running": "运行中...",
-      "idle": "空闲",
       "gazelleFullDescription": "Gazelle 会对每个源种子检查 RED/OPS。Torznab 查询已选择的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 会对每个源种子检查已配置的站点。Torznab 查询已选择的索引器。",
       "noGazelleDescription": "没有 Gazelle，所有匹配依赖 Torznab 索引器。"
@@ -52,6 +33,7 @@
   "automation": {
     "title": "RSS 自动化",
     "description": "按固定间隔轮询 Tracker RSS 订阅源，并自动添加匹配的辅种。",
+    "nextRun": "下次运行: {{date}}",
     "enableSwitch": "启用 RSS 自动化",
     "intervalLabel": "RSS 运行间隔（分钟）",
     "intervalTooltip": "自动化每次运行时会处理每个已启用 Torznab 索引器的完整订阅源。最小间隔为 {{min}} 分钟，以避免对索引器造成过多请求。",
@@ -104,7 +86,6 @@
     "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "scheduledUpper": "定时",
     "runDisabledAlreadyRunning": "自动化运行已在进行中。",
     "runDisabledCooldown": "手动运行的间隔限制为 {{minutes}} 分钟。请在 {{remaining}} 后重试。"
   },
@@ -179,7 +160,6 @@
     "runSummary": "{{runs}} 次运行 • +{{added}} 个交叉做种",
     "runSummaryWithFailures": "{{runs}} 次运行 • +{{added}} 个交叉做种 • {{failed}} 失败",
     "searchNeedsTorznabUnlessGazelle": "做种搜索需要 Torznab 索引器（除非你仅通过 Gazelle 扫描 OPS/RED）。",
-    "scannedProgress": "已扫描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 个候选",
     "failedCount": "{{count}} 个失败",
     "runError": "错误：{{message}}",
@@ -209,8 +189,6 @@
       "enabledRedMissingOps": "Gazelle：已启用（已设置 RED 密钥，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已启用（缺少密钥）"
     },
-    "noInstanceSelected": "未选择实例",
-    "instanceFallback": "实例 {{id}}",
     "noMessageProvided": "未提供消息"
   },
   "rules": {
@@ -724,19 +702,6 @@
       "description": "这将移除扫描目录及其运行历史。已添加的种子不会受到影响。",
       "cancel": "取消",
       "delete": "删除"
-    },
-    "statusLabelsUpper": {
-      "queued": "排队中",
-      "scanning": "扫描中",
-      "searching": "搜索中",
-      "injecting": "注入中",
-      "success": "成功",
-      "failed": "失败",
-      "added": "已添加",
-      "canceled": "已取消",
-      "running": "运行中",
-      "partial": "部分成功",
-      "pending": "等待中"
     }
   }
 }

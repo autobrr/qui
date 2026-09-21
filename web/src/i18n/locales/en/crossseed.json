@@ -10,26 +10,7 @@
     "linkSuffix": "to add or enable one."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS automation",
-      "description": "Hands-free polling of tracker RSS feeds using your rules.",
-      "nextRun": "Next run",
-      "manualTrigger": "Manual trigger",
-      "lastRun": "Last run",
-      "cooldown": "Cooldown {{display}}",
-      "ready": "Ready",
-      "disabled": "Disabled",
-      "noRunsYet": "No runs yet",
-      "disabledUpper": "DISABLED"
-    },
     "seededSearch": {
-      "title": "Seeded torrent search",
-      "description": "Deep scan the torrents you already seed to backfill gaps.",
-      "instance": "Instance",
-      "recentRuns": "Recent runs",
-      "now": "Now",
-      "running": "Running...",
-      "idle": "Idle",
       "gazelleFullDescription": "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers.",
       "gazellePartialDescription": "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.",
       "noGazelleDescription": "Without Gazelle, all matching relies on Torznab indexers."
@@ -52,6 +33,7 @@
   "automation": {
     "title": "RSS Automation",
     "description": "Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.",
+    "nextRun": "Next run: {{date}}",
     "enableSwitch": "Enable RSS automation",
     "intervalLabel": "RSS run interval (minutes)",
     "intervalTooltip": "Automation processes the full feed from every enabled Torznab indexer on each run. Minimum interval is {{min}} minutes to avoid hammering indexers.",
@@ -104,7 +86,6 @@
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} runs • +{{added}}",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
-    "scheduledUpper": "SCHEDULED",
     "runDisabledAlreadyRunning": "Automation run is already in progress.",
     "runDisabledCooldown": "Manual runs are limited to every {{minutes}}-minute interval. Try again in {{remaining}}."
   },
@@ -180,7 +161,6 @@
     "runSummary": "{{runs}} runs • +{{added}} cross-seeds",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} cross-seeds • {{failed}} failed",
     "searchNeedsTorznabUnlessGazelle": "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} scanned",
     "torrentsCount": "{{count}} candidates",
     "failedCount": "{{count}} failed",
     "runError": "Error: {{message}}",
@@ -212,8 +192,6 @@
       "enabledRedMissingOps": "Gazelle: enabled (RED key set, OPS missing)",
       "enabledKeysMissing": "Gazelle: enabled (keys missing)"
     },
-    "noInstanceSelected": "No instance selected",
-    "instanceFallback": "Instance {{id}}",
     "noMessageProvided": "No message provided"
   },
   "rules": {
@@ -735,19 +713,6 @@
       "description": "This will remove the scan directory and its run history. Torrents already added will not be affected.",
       "cancel": "Cancel",
       "delete": "Delete"
-    },
-    "statusLabelsUpper": {
-      "queued": "QUEUED",
-      "scanning": "SCANNING",
-      "searching": "SEARCHING",
-      "injecting": "INJECTING",
-      "success": "SUCCESS",
-      "failed": "FAILED",
-      "added": "ADDED",
-      "canceled": "CANCELED",
-      "running": "RUNNING",
-      "partial": "PARTIAL",
-      "pending": "PENDING"
     }
   }
 }

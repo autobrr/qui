@@ -10,26 +10,7 @@
     "linkSuffix": "하여 추가하거나 활성화하세요."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 자동화",
-      "description": "규칙을 사용하여 트래커 RSS 피드를 자동으로 폴링합니다.",
-      "nextRun": "다음 실행",
-      "manualTrigger": "수동 트리거",
-      "lastRun": "마지막 실행",
-      "cooldown": "대기 시간 {{display}}",
-      "ready": "준비됨",
-      "disabled": "비활성화됨",
-      "disabledUpper": "비활성화됨",
-      "noRunsYet": "아직 실행 없음"
-    },
     "seededSearch": {
-      "title": "시드 중인 토렌트 검색",
-      "description": "이미 시드 중인 토렌트를 깊이 스캔하여 빈틈을 채웁니다.",
-      "instance": "인스턴스",
-      "recentRuns": "최근 실행",
-      "now": "지금",
-      "running": "실행 중...",
-      "idle": "대기",
       "gazelleFullDescription": "Gazelle은 모든 소스 토렌트에 대해 RED/OPS를 확인합니다. Torznab은 선택한 OPS/RED 이외의 인덱서를 쿼리합니다.",
       "gazellePartialDescription": "Gazelle은 모든 소스 토렌트에 대해 구성된 사이트를 확인합니다. Torznab은 선택한 인덱서를 쿼리합니다.",
       "noGazelleDescription": "Gazelle 없이는 모든 일치가 Torznab 인덱서에 의존합니다."
@@ -52,6 +33,7 @@
   "automation": {
     "title": "RSS 자동화",
     "description": "고정된 간격으로 트래커 RSS 피드를 폴링하고 일치하는 cross-seed를 자동으로 추가합니다.",
+    "nextRun": "다음 실행: {{date}}",
     "enableSwitch": "RSS 자동화 활성화",
     "intervalLabel": "RSS 실행 간격(분)",
     "intervalTooltip": "자동화는 실행할 때마다 활성화된 모든 Torznab 인덱서의 전체 피드를 처리합니다. 인덱서에 과부하를 주지 않도록 최소 간격은 {{min}}분입니다.",
@@ -90,7 +72,6 @@
     "noRunsYet": "아직 실행 없음",
     "noRunsRecorded": "아직 기록된 RSS 자동화 실행이 없습니다.",
     "scheduled": "예약됨",
-    "scheduledUpper": "예약됨",
     "manual": "수동",
     "other": "기타",
     "dryRun": "모의 실행",
@@ -179,7 +160,6 @@
     "runSummary": "{{runs}}회 실행 • +{{added}} 크로스시드",
     "runSummaryWithFailures": "{{runs}}회 실행 • +{{added}} 크로스시드 • {{failed}}개 실패",
     "searchNeedsTorznabUnlessGazelle": "시드 중인 토렌트 검색에는 Torznab 인덱서가 필요합니다(Gazelle을 통해 OPS/RED만 스캔하는 경우 제외).",
-    "scannedProgress": "{{processed}}/{{total}} 스캔됨",
     "torrentsCount": "후보 {{count}}개",
     "failedCount": "실패 {{count}}개",
     "runError": "오류: {{message}}",
@@ -209,8 +189,6 @@
       "enabledRedMissingOps": "Gazelle: 활성화됨(RED 키 설정됨, OPS 없음)",
       "enabledKeysMissing": "Gazelle: 활성화됨(키 없음)"
     },
-    "noInstanceSelected": "선택된 인스턴스 없음",
-    "instanceFallback": "인스턴스 {{id}}",
     "noMessageProvided": "제공된 메시지 없음"
   },
   "rules": {
@@ -588,19 +566,6 @@
       "resetFailed": "파일을 재설정하지 못했습니다: {{error}}"
     },
     "statusLabels": {
-      "queued": "대기 중",
-      "scanning": "스캔 중",
-      "searching": "검색 중",
-      "injecting": "주입 중",
-      "success": "성공",
-      "failed": "실패",
-      "added": "추가됨",
-      "canceled": "취소됨",
-      "running": "실행 중",
-      "partial": "부분 성공",
-      "pending": "보류 중"
-    },
-    "statusLabelsUpper": {
       "queued": "대기 중",
       "scanning": "스캔 중",
       "searching": "검색 중",

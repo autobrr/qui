@@ -10,26 +10,7 @@
     "linkSuffix": "per aggiungerne o abilitarne uno."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automazione RSS",
-      "description": "Polling automatico dei feed RSS dei tracker in base alle tue regole.",
-      "nextRun": "Prossima esecuzione",
-      "manualTrigger": "Attivazione manuale",
-      "lastRun": "Ultima esecuzione",
-      "cooldown": "Attesa {{display}}",
-      "ready": "Pronto",
-      "disabled": "Disabilitato",
-      "noRunsYet": "Ancora nessuna esecuzione",
-      "disabledUpper": "DISABILITATO"
-    },
     "seededSearch": {
-      "title": "Ricerca torrent in distribuzione",
-      "description": "Scansione approfondita dei torrent che già distribuisci per colmare le lacune.",
-      "instance": "Istanza",
-      "recentRuns": "Esecuzioni recenti",
-      "now": "Adesso",
-      "running": "In corso...",
-      "idle": "Inattivo",
       "gazelleFullDescription": "Gazelle verifica RED/OPS per ogni torrent di origine. Torznab interroga gli indexer non-OPS/RED selezionati.",
       "gazellePartialDescription": "Gazelle verifica i siti configurati per ogni torrent di origine. Torznab interroga gli indexer selezionati.",
       "noGazelleDescription": "Senza Gazelle, ogni corrispondenza si basa sugli indexer Torznab."
@@ -52,6 +33,7 @@
   "automation": {
     "title": "Automazione RSS",
     "description": "Esegue il polling dei feed RSS dei tracker a intervalli regolari e aggiunge automaticamente i cross-seed corrispondenti.",
+    "nextRun": "Prossima esecuzione: {{date}}",
     "enableSwitch": "Abilita automazione RSS",
     "intervalLabel": "Intervallo di esecuzione RSS (minuti)",
     "intervalTooltip": "L'automazione elabora l'intero feed di ogni indexer Torznab abilitato a ogni esecuzione. L'intervallo minimo è di {{min}} minuti per evitare di sovraccaricare gli indexer.",
@@ -104,7 +86,6 @@
     "runError": "Errore: {{message}}",
     "runSummary": "{{runs}} esecuzioni • +{{added}}",
     "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} • {{failed}} non riusciti",
-    "scheduledUpper": "PIANIFICATO",
     "runDisabledAlreadyRunning": "Un'esecuzione dell'automazione è già in corso.",
     "runDisabledCooldown": "Le esecuzioni manuali sono limitate a un intervallo di {{minutes}} minuti. Riprova tra {{remaining}}."
   },
@@ -179,7 +160,6 @@
     "runSummary": "{{runs}} esecuzioni • +{{added}} cross-seed",
     "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} cross-seed • {{failed}} non riusciti",
     "searchNeedsTorznabUnlessGazelle": "La ricerca dei torrent in distribuzione richiede indexer Torznab (a meno che tu non stia scansionando solo OPS/RED tramite Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} scansionati",
     "torrentsCount": "{{count}} candidati",
     "failedCount": "{{count}} non riusciti",
     "runError": "Errore: {{message}}",
@@ -211,8 +191,6 @@
       "enabledRedMissingOps": "Gazelle: abilitato (chiave RED impostata, OPS mancante)",
       "enabledKeysMissing": "Gazelle: abilitato (chiavi mancanti)"
     },
-    "noInstanceSelected": "Nessuna istanza selezionata",
-    "instanceFallback": "Istanza {{id}}",
     "noMessageProvided": "Nessun messaggio disponibile"
   },
   "rules": {
@@ -734,19 +712,6 @@
       "regular": "Normale",
       "hardlink": "Hardlink",
       "reflink": "Reflink"
-    },
-    "statusLabelsUpper": {
-      "queued": "IN CODA",
-      "scanning": "ANALISI IN CORSO",
-      "searching": "RICERCA IN CORSO",
-      "injecting": "INIEZIONE IN CORSO",
-      "success": "RIUSCITO",
-      "failed": "NON RIUSCITO",
-      "added": "AGGIUNTO",
-      "canceled": "ANNULLATO",
-      "running": "IN ESECUZIONE",
-      "partial": "PARZIALE",
-      "pending": "IN ATTESA"
     }
   }
 }

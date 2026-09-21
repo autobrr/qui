@@ -282,6 +282,9 @@ function RssCard({ settings }: { settings: CrossSeedAutomationSettings }) {
         <CardHeader>
           <CardTitle>{t("automation.title")}</CardTitle>
           <CardDescription>{t("automation.description")}</CardDescription>
+          {settings.enabled && status?.nextRunAt && (
+            <p className="text-xs text-muted-foreground">{t("automation.nextRun", { date: formatDateValue(status.nextRunAt) })}</p>
+          )}
         </CardHeader>
         <CardContent className="space-y-5">
 

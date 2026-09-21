@@ -10,26 +10,7 @@
     "linkSuffix": "pro přidání nebo zapnutí jednoho."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automatizace RSS",
-      "description": "Automatické dotazování RSS vláken pomocí vašich pravidel.",
-      "nextRun": "Další spuštění",
-      "manualTrigger": "Manuální spuštění",
-      "lastRun": "Poslední spuštění",
-      "cooldown": "Vyčkávání {{display}}",
-      "ready": "Připraveno",
-      "disabled": "Vypnuto",
-      "noRunsYet": "Žádné spuštění",
-      "disabledUpper": "VYPNUTO"
-    },
     "seededSearch": {
-      "title": "Hledání torrentů, které již seedujete",
-      "description": "Hloubkové prohledání torrentů, které již seedujete, aby se našli chybějící torrenty.",
-      "instance": "Instance",
-      "recentRuns": "Nedávno spuštěná hledání",
-      "now": "Nyní",
-      "running": "Běží...",
-      "idle": "Neaktivní",
       "gazelleFullDescription": "Gazelle kontroluje RED/OPS pro každý torrent. Torznab dotazuje vybrané ne-OPS/RED indexery.",
       "gazellePartialDescription": "Gazelle kontroluje nakonfigurované stránky pro každý zdrojový torrent. Torznab dotazuje vybrané indexery.",
       "noGazelleDescription": "Bez Gazelle, všechny shody závisí na Torznab indexerech."
@@ -52,6 +33,7 @@
   "automation": {
     "title": "Automatizace RSS",
     "description": "Dotazování RSS feedů na pevně daném intervalu a automatické přidávání shod křížového sdílení.",
+    "nextRun": "Další spuštění: {{date}}",
     "enableSwitch": "Zapnout automatizaci RSS",
     "intervalLabel": "Interval RSS spuštění (minut)",
     "intervalTooltip": "Automatizace zpracovává celý feed z každého zapnutého Torznab indexeru při každém spuštění. Minimální interval je {{min}} minut, aby se nezatěžovaly indexery.",
@@ -104,7 +86,6 @@
     "runError": "Chyba: {{message}}",
     "runSummary": "{{runs}} spuštění • +{{added}}",
     "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo",
-    "scheduledUpper": "NAPLÁNOVÁNO",
     "runDisabledAlreadyRunning": "Spuštění automatizace již probíhá.",
     "runDisabledCooldown": "Ruční spuštění jsou omezena na interval {{minutes}} minut. Zkuste to znovu za {{remaining}}."
   },
@@ -181,7 +162,6 @@
     "runSummary": "{{runs}} běhů • +{{added}} cross-seedů",
     "runSummaryWithFailures": "{{runs}} běhů • +{{added}} cross-seedů • {{failed}} selhalo",
     "searchNeedsTorznabUnlessGazelle": "Hledání seedovaných torrentů vyžaduje Torznab indexery (kromě případu, kdy skenujete pouze OPS/RED přes Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} hledáno",
     "torrentsCount": "{{count}} kandidátů",
     "failedCount": "{{count}} selhalo",
     "runError": "Chyba: {{message}}",
@@ -217,8 +197,6 @@
       "enabledRedMissingOps": "Gazelle: povoleno (nastaven klíč RED, OPS chybí)",
       "enabledKeysMissing": "Gazelle: povoleno (chybí klíče)"
     },
-    "noInstanceSelected": "Není vybrána žádná instance",
-    "instanceFallback": "Instance {{id}}",
     "noMessageProvided": "Nebyla poskytnuta žádná zpráva"
   },
   "rules": {
@@ -749,19 +727,6 @@
       "regular": "Běžný",
       "hardlink": "Hardlink",
       "reflink": "Reflink"
-    },
-    "statusLabelsUpper": {
-      "queued": "VE FRONTĚ",
-      "scanning": "SKENOVÁNÍ",
-      "searching": "HLEDÁNÍ",
-      "injecting": "VKLÁDÁNÍ",
-      "success": "ÚSPĚCH",
-      "failed": "SELHALO",
-      "added": "PŘIDÁNO",
-      "canceled": "ZRUŠENO",
-      "running": "BĚŽÍ",
-      "partial": "ČÁSTEČNĚ",
-      "pending": "ČEKÁ"
     }
   }
 }

@@ -10,26 +10,7 @@
     "linkSuffix": "以新增或啟用索引器。"
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 自動化",
-      "description": "使用您的規則自動輪詢 Tracker RSS 訂閱源。",
-      "nextRun": "下次執行",
-      "manualTrigger": "手動觸發",
-      "lastRun": "上次執行",
-      "cooldown": "冷卻 {{display}}",
-      "ready": "就緒",
-      "disabled": "已停用",
-      "noRunsYet": "尚無執行記錄",
-      "disabledUpper": "已停用"
-    },
     "seededSearch": {
-      "title": "做種搜尋",
-      "description": "深度掃描您已做種的種子以回填缺失項。",
-      "instance": "實例",
-      "recentRuns": "最近的執行",
-      "now": "現在",
-      "running": "執行中...",
-      "idle": "空閒",
       "gazelleFullDescription": "Gazelle 會對每個源種子檢查 RED/OPS。Torznab 查詢已選擇的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 會對每個源種子檢查已配置的站點。Torznab 查詢已選擇的索引器。",
       "noGazelleDescription": "沒有 Gazelle，所有匹配依賴 Torznab 索引器。"
@@ -52,6 +33,7 @@
   "automation": {
     "title": "RSS 自動化",
     "description": "按固定間隔輪詢 Tracker RSS 訂閱源，並自動新增匹配的輔種。",
+    "nextRun": "下次執行: {{date}}",
     "enableSwitch": "啟用 RSS 自動化",
     "intervalLabel": "RSS 執行間隔（分鐘）",
     "intervalTooltip": "自動化每次執行時會處理每個已啟用 Torznab 索引器的完整訂閱源。最小間隔為 {{min}} 分鐘，以避免對索引器造成過多請求。",
@@ -104,7 +86,6 @@
     "runError": "錯誤：{{message}}",
     "runSummary": "{{runs}} 次執行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次執行 - +{{added}} - {{failed}} 次失敗",
-    "scheduledUpper": "排程",
     "runDisabledAlreadyRunning": "自動化執行已在進行中。",
     "runDisabledCooldown": "手動執行的間隔限制為 {{minutes}} 分鐘。請在 {{remaining}} 後重試。"
   },
@@ -179,7 +160,6 @@
     "runSummary": "{{runs}} 次執行 • +{{added}} 個交叉做種",
     "runSummaryWithFailures": "{{runs}} 次執行 • +{{added}} 個交叉做種 • {{failed}} 失敗",
     "searchNeedsTorznabUnlessGazelle": "做種搜尋需要 Torznab 索引器（除非您僅透過 Gazelle 掃描 OPS/RED）。",
-    "scannedProgress": "已掃描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 個候選",
     "failedCount": "{{count}} 個失敗",
     "runError": "錯誤：{{message}}",
@@ -209,8 +189,6 @@
       "enabledRedMissingOps": "Gazelle：已啟用（已設定 RED 金鑰，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已啟用（缺少金鑰）"
     },
-    "noInstanceSelected": "未選擇實例",
-    "instanceFallback": "實例 {{id}}",
     "noMessageProvided": "未提供訊息"
   },
   "rules": {
@@ -724,19 +702,6 @@
       "description": "這將移除掃描目錄及其執行歷史。已新增的種子不會受到影響。",
       "cancel": "取消",
       "delete": "刪除"
-    },
-    "statusLabelsUpper": {
-      "queued": "排隊中",
-      "scanning": "掃描中",
-      "searching": "搜尋中",
-      "injecting": "注入中",
-      "success": "成功",
-      "failed": "失敗",
-      "added": "已新增",
-      "canceled": "已取消",
-      "running": "執行中",
-      "partial": "部分成功",
-      "pending": "等待中"
     }
   }
 }
