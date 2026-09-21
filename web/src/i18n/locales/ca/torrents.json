@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} seleccionats - Accions massives disponibles",
+    "ariaLabel_one": "{{count}} torrent seleccionat - Accions massives disponibles",
+    "ariaLabel_other": "{{count}} torrents seleccionats - Accions massives disponibles",
     "resume": "Reprèn",
     "pause": "Atura",
     "forceRecheck": "Força la comprovació",
@@ -305,7 +306,8 @@
     "url": "URL",
     "noHttpSources": "Cap font HTTP",
     "searchUrls": "Cerca URL...",
-    "httpSources": "{{count}} font{{plural}} HTTP",
+    "httpSources_one": "{{count}} font HTTP",
+    "httpSources_other": "{{count}} fonts HTTP",
     "filteredCount": "{{filtered}} de {{total}}",
     "copyUrl": "Copia l'URL",
     "toast": {
@@ -324,7 +326,8 @@
     "expandAll": "Amplia-ho tot",
     "collapseAll": "Redueix-ho tot",
     "searchFiles": "Cerca fitxers...",
-    "fileCount": "{{count}} fitxer{{plural}}",
+    "fileCount_one": "{{count}} fitxer",
+    "fileCount_other": "{{count}} fitxers",
     "filteredCount": "{{filtered}} de {{total}}",
     "noFiles": "Cap fitxer",
     "headers": {
@@ -966,22 +969,28 @@
     "deleteEmptyCategories": {
       "title": "Suprimeix les categories buides",
       "noEmpty": "No hi ha cap categoria buida per suprimir.",
-      "confirm": "Segur que vols suprimir {{count}} categor{{plural}} buides? Aquesta acció no es pot desfer.",
+      "confirm_one": "Segur que vols suprimir {{count}} categoria buida? Aquesta acció no es pot desfer.",
+      "confirm_other": "Segur que vols suprimir {{count}} categories buides? Aquesta acció no es pot desfer.",
       "cancel": "Cancel·la",
-      "remove": "Suprimeix {{count}} categor{{plural}}",
+      "remove_one": "Suprimeix {{count}} categoria",
+      "remove_other": "Suprimeix {{count}} categories",
       "toast": {
-        "success": "S'han suprimit {{count}} categor{{plural}} buides",
+        "success_one": "S'ha suprimit {{count}} categoria buida",
+        "success_other": "S'han suprimit {{count}} categories buides",
         "error": "No s'han pogut suprimir les categories buides"
       }
     },
     "deleteUnusedTags": {
       "title": "Elimina les etiquetes no utilitzades",
       "noUnused": "No hi ha cap etiqueta no utilitzada per eliminar.",
-      "confirm": "Segur que vols eliminar {{count}} etiqueta{{plural}} no utilitzades? Aquesta acció no es pot desfer.",
+      "confirm_one": "Segur que vols eliminar {{count}} etiqueta no utilitzada? Aquesta acció no es pot desfer.",
+      "confirm_other": "Segur que vols eliminar {{count}} etiquetes no utilitzades? Aquesta acció no es pot desfer.",
       "cancel": "Cancel·la",
-      "delete": "Elimina {{count}} etiqueta{{plural}}",
+      "delete_one": "Elimina {{count}} etiqueta",
+      "delete_other": "Elimina {{count}} etiquetes",
       "toast": {
-        "success": "S'han eliminat {{count}} etiqueta{{plural}} no utilitzades",
+        "success_one": "S'ha eliminat {{count}} etiqueta no utilitzada",
+        "success_other": "S'han eliminat {{count}} etiquetes no utilitzades",
         "error": "No s'han pogut eliminar les etiquetes no utilitzades"
       }
     }
@@ -1010,7 +1019,8 @@
       "fileRenameFailed": "No s'ha pogut reanomenar el fitxer",
       "folderRenamed": "S'ha reanomenat la carpeta correctament",
       "folderRenameFailed": "No s'ha pogut reanomenar la carpeta",
-      "deletedTorrents": "S'han eliminat {{count}} torrent{{plural}}",
+      "deletedTorrents_one": "S'ha eliminat {{count}} torrent",
+      "deletedTorrents_other": "S'han eliminat {{count}} torrents",
       "deletedTorrent": "S'ha eliminat el torrent: {{name}}",
       "deleteFailed": "No s'ha pogut eliminar: {{error}}"
     },
@@ -1423,7 +1433,8 @@
     "contentFilteringInProgress": "Filtratge de contingut en curs",
     "analyzingContent": "S'està analitzant el contingut existent...",
     "smartFilteringActive": "Filtratge intel·ligent actiu",
-    "indexersFiltered": "{{count}} indexador{{plural}} filtrats",
+    "indexersFiltered_one": "{{count}} indexador filtrat",
+    "indexersFiltered_other": "{{count}} indexadors filtrats",
     "contentFilteringDescription": "S'estan comprovant els teus torrents existents per trobar duplicats i excloure trackers redundants. Això ajuda a evitar baixar el mateix contingut diverses vegades.",
     "excludedDescription": "Ja sembres aquesta release des d'aquests trackers, així que queden exclosos de la cerca.",
     "noContentDuplicates": "S'ha completat el filtratge de contingut. No s'ha trobat contingut duplicat als teus trackers activats.",

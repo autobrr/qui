@@ -121,7 +121,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery? t("webSeedsTable.filteredCount", { filtered: filteredData.length, total: webseeds.length }): t("webSeedsTable.httpSources", { count: webseeds.length, plural: webseeds.length !== 1 ? "s" : "" })}
+          {searchQuery? t("webSeedsTable.filteredCount", { filtered: filteredData.length, total: webseeds.length }): t("webSeedsTable.httpSources", { count: webseeds.length })}
         </span>
       </div>
 

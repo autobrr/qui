@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} Torrent{{plural}} ausgewählt - Sammelaktionen verfügbar",
+    "ariaLabel_one": "{{count}} Torrent ausgewählt - Sammelaktionen verfügbar",
+    "ariaLabel_other": "{{count}} Torrents ausgewählt - Sammelaktionen verfügbar",
     "resume": "Fortsetzen",
     "pause": "Pausieren",
     "forceRecheck": "Neuprüfung erzwingen",
@@ -680,22 +681,28 @@
     "deleteEmptyCategories": {
       "title": "Leere Kategorien entfernen",
       "noEmpty": "Es gibt keine leeren Kategorien zum Entfernen.",
-      "confirm": "Bist du sicher, dass du {{count}} leere Kategorien entfernen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "confirm_one": "Bist du sicher, dass du {{count}} leere Kategorie entfernen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "confirm_other": "Bist du sicher, dass du {{count}} leere Kategorien entfernen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
       "cancel": "Abbrechen",
-      "remove": "{{count}} Kategorien entfernen",
+      "remove_one": "{{count}} Kategorie entfernen",
+      "remove_other": "{{count}} Kategorien entfernen",
       "toast": {
-        "success": "{{count}} leere Kategorien entfernt",
+        "success_one": "{{count}} leere Kategorie entfernt",
+        "success_other": "{{count}} leere Kategorien entfernt",
         "error": "Leere Kategorien konnten nicht entfernt werden"
       }
     },
     "deleteUnusedTags": {
       "title": "Ungenutzte Tags löschen",
       "noUnused": "Es gibt keine ungenutzten Tags zum Löschen.",
-      "confirm": "Bist du sicher, dass du {{count}} ungenutzte Tags löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "confirm_one": "Bist du sicher, dass du {{count}} ungenutzten Tag löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "confirm_other": "Bist du sicher, dass du {{count}} ungenutzte Tags löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
       "cancel": "Abbrechen",
-      "delete": "{{count}} Tags löschen",
+      "delete_one": "{{count}} Tag löschen",
+      "delete_other": "{{count}} Tags löschen",
       "toast": {
-        "success": "{{count}} ungenutzte Tags gelöscht",
+        "success_one": "{{count}} ungenutzter Tag gelöscht",
+        "success_other": "{{count}} ungenutzte Tags gelöscht",
         "error": "Ungenutzte Tags konnten nicht gelöscht werden"
       }
     }
@@ -721,7 +728,8 @@
     "contentFilteringInProgress": "Inhaltsfilterung läuft",
     "analyzingContent": "Vorhandene Inhalte werden analysiert...",
     "smartFilteringActive": "Intelligente Filterung aktiv",
-    "indexersFiltered": "{{count}} Indexer gefiltert",
+    "indexersFiltered_one": "{{count}} Indexer gefiltert",
+    "indexersFiltered_other": "{{count}} Indexer gefiltert",
     "contentFilteringDescription": "Deine vorhandenen Torrents werden geprüft, um Duplikate zu finden und überflüssige Tracker auszuschließen. So wird vermieden, denselben Inhalt mehrfach herunterzuladen.",
     "excludedDescription": "Du seedest diesen Release bereits von diesen Trackern, daher werden sie von der Suche ausgeschlossen.",
     "noContentDuplicates": "Inhaltsfilterung abgeschlossen. Keine doppelten Inhalte auf deinen aktivierten Trackern gefunden.",
@@ -1055,7 +1063,8 @@
       "fileRenameFailed": "Umbenennen der Datei fehlgeschlagen",
       "folderRenamed": "Ordner erfolgreich umbenannt",
       "folderRenameFailed": "Umbenennen des Ordners fehlgeschlagen",
-      "deletedTorrents": "{{count}} Torrent{{plural}} gelöscht",
+      "deletedTorrents_one": "{{count}} Torrent gelöscht",
+      "deletedTorrents_other": "{{count}} Torrents gelöscht",
       "deletedTorrent": "Torrent gelöscht: {{name}}",
       "deleteFailed": "Löschen fehlgeschlagen: {{error}}"
     },
@@ -1263,7 +1272,8 @@
     "url": "URL",
     "noHttpSources": "Keine HTTP-Quellen",
     "searchUrls": "URLs suchen...",
-    "httpSources": "{{count}} HTTP-Quelle{{plural}}",
+    "httpSources_one": "{{count}} HTTP-Quelle",
+    "httpSources_other": "{{count}} HTTP-Quellen",
     "filteredCount": "{{filtered}} von {{total}}",
     "copyUrl": "URL kopieren",
     "toast": {
@@ -1282,7 +1292,8 @@
     "expandAll": "Alle ausklappen",
     "collapseAll": "Alle einklappen",
     "searchFiles": "Dateien suchen...",
-    "fileCount": "{{count}} Datei{{plural}}",
+    "fileCount_one": "{{count}} Datei",
+    "fileCount_other": "{{count}} Dateien",
     "filteredCount": "{{filtered}} von {{total}}",
     "noFiles": "Keine Dateien",
     "headers": {

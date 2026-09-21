@@ -467,7 +467,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <div
         className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
-        aria-label={t("managementBar.ariaLabel", { count: selectionCount, plural: selectionCount !== 1 ? "s" : "" })}
+        aria-label={t("managementBar.ariaLabel", { count: selectionCount })}
       >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
           <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
