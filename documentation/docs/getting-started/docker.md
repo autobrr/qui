@@ -1,6 +1,6 @@
 ---
 sidebar_position: 3
-title: Run qui in Docker
+title: Run qui in Docker with docker compose
 sidebar_label: Docker
 description: Run qui with Docker Compose or docker run, with the volumes and environment variables it needs.
 ---

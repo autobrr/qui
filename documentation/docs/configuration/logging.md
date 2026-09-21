@@ -1,6 +1,6 @@
 ---
 sidebar_position: 6
-title: qui logging
+title: qui log level, log files, and live log viewer
 sidebar_label: Logging
 description: Set the log level, rotate log files, watch the live log viewer, and mute noisy messages in the live log viewer.
 ---
