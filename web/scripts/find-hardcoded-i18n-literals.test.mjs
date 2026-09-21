@@ -118,3 +118,17 @@ test("skips only the named fallback tables in the query-builder constants", () =
   const elsewhere = detectorModule.findHardcodedStringsInSource(source, "src/lib/constants.ts")
   assert.deepEqual(elsewhere.map((match) => match.text), ["Downloading", "Rendered raw"])
 })
+
+test("leaves arrays of template snippets alone in .ts and .tsx files", () => {
+  const source = `
+    const PATH_TEMPLATE_SNIPPETS = [
+      "{{ .Name }}",
+      "{{ .CategorySavePath }}",
+      "{{ sanitize .Name }}",
+    ]
+  `
+
+  for (const filePath of ["src/components/example.tsx", "src/lib/example.ts"]) {
+    assert.deepEqual(detectorModule.findHardcodedStringsInSource(source, filePath), [])
+  }
+})
