@@ -10,10 +10,6 @@ import { describe, expect, it } from "vitest"
 // never falls back between plural categories, and an unsuffixed base key answers all.
 const COUNTS = [0, 1, 2, 3, 4, 5, 11, 21, 101]
 
-// Known English fallbacks awaiting a translation. Entries only leave this set.
-// it lacks crossSeedsAddedBadge_one; its _other happens to match the English singular.
-const KNOWN_GAPS = new Set(["it crossseed:scan.crossSeedsAddedBadge@1"])
-
 const modules = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, ResourceKey>
 
 const resources: Record<string, ResourceLanguage> = {}
@@ -132,6 +128,6 @@ describe("plural forms resolve in-language", () => {
   it.each(locales)("%s never falls back to English for a count", async (locale) => {
     const leaks = await findLeaks(locale, resources.en, resources[locale])
 
-    expect(leaks.filter((leak) => !KNOWN_GAPS.has(`${locale} ${leak}`))).toEqual([])
+    expect(leaks).toEqual([])
   })
 })
