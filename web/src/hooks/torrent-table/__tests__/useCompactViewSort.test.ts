@@ -8,6 +8,8 @@ import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
+import "@/i18n"
+
 type FakeColumn = { id: string; columnDef: { meta?: { headerString?: string }; header?: unknown } }
 
 function fakeTable(columns: FakeColumn[]): TorrentTable {

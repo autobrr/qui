@@ -109,6 +109,7 @@
       "RATIO": "Ratio",
       "RATIO_LIMIT": "Limite de Ratio",
       "MAX_RATIO": "Ratio Máximo",
+      "UPLOADED_OVER_SIZE": "Enviado / Tamanho",
       "PROGRESS": "Progresso",
       "AVAILABILITY": "Disponibilidade",
       "POPULARITY": "Popularidade",
@@ -140,7 +141,8 @@
       "CROSS_SEED_TAGS": "Tags de cross-seed",
       "SEASON_PACK_STATUS": "Status do pacote de temporada",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Status do pacote de temporada (qualquer instância)",
-      "HARDLINK_SCOPE": "Escopo de Hardlink"
+      "HARDLINK_SCOPE": "Escopo de Hardlink",
+      "HARDLINK_SCOPE_CROSS": "Escopo de Hardlink (entre instâncias)"
     },
     "fieldGroups": {
       "Identity": "Identidade",
@@ -185,6 +187,7 @@
       "stalled_downloading": "Download Estagnado",
       "errored": "Erro",
       "tracker_down": "Tracker Offline",
+      "tracker_error": "Erro do tracker",
       "checking": "Verificando",
       "checkingResumeData": "Verificando Dados de Retomada",
       "moving": "Movendo",

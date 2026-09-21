@@ -7,7 +7,20 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
-import { getCapabilityReason } from "./constants"
+import type { TFunction } from "i18next"
+import {
+  CAPABILITY_REASONS,
+  CONDITION_FIELDS,
+  FIELD_GROUPS,
+  getCapabilityReason,
+  getFieldGroupLabel,
+  getFieldLabel,
+  getTranslatedHardlinkScopes,
+  getTranslatedOperatorsForField,
+  getTranslatedSeasonPackStatuses,
+  getTranslatedTorrentStates,
+  getTranslatedTrackerStatuses
+} from "./constants"
 
 afterEach(async () => {
   await changeLanguage("en")
@@ -19,5 +32,36 @@ describe("getCapabilityReason", () => {
 
     expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
     expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+  })
+})
+
+// The English labels in constants.ts are only defaultValues, so a missing key renders
+// English in every locale without failing any other check.
+describe("query-builder translation keys", () => {
+  it("every label the helpers look up has an English automations key", () => {
+    const requested = new Set<string>()
+    const recordingT = ((key: string, options?: { defaultValue?: string }) => {
+      requested.add(key)
+      return options?.defaultValue ?? key
+    }) as TFunction
+
+    for (const field of Object.keys(CONDITION_FIELDS)) {
+      getFieldLabel(field, recordingT)
+      getTranslatedOperatorsForField(field, recordingT)
+    }
+    for (const group of FIELD_GROUPS) {
+      getFieldGroupLabel(group.label, recordingT)
+    }
+    for (const capability of Object.keys(CAPABILITY_REASONS) as (keyof typeof CAPABILITY_REASONS)[]) {
+      getCapabilityReason(capability, recordingT)
+    }
+    getTranslatedTorrentStates(recordingT)
+    getTranslatedTrackerStatuses(recordingT)
+    getTranslatedHardlinkScopes(recordingT)
+    getTranslatedSeasonPackStatuses(recordingT)
+
+    const missing = [...requested].filter((key) => !i18n.exists(key, { ns: "automations", lng: "en" }))
+    expect(missing).toEqual([])
+    expect(requested.size).toBeGreaterThan(Object.keys(CONDITION_FIELDS).length)
   })
 })

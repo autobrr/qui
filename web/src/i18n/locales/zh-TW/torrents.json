@@ -765,6 +765,26 @@
     "setConditions": "設定條件以篩選此列",
     "operation": "操作",
     "selectOperation": "選擇操作",
+    "operations": {
+      "equalTo": "等於",
+      "notEqualTo": "不等於",
+      "greaterThan": "大於",
+      "greaterThanOrEqual": "大於或等於",
+      "lessThan": "小於",
+      "lessThanOrEqual": "小於或等於",
+      "between": "介於",
+      "equals": "等於",
+      "notEquals": "不等於",
+      "contains": "包含",
+      "doesNotContain": "不包含",
+      "startsWith": "開頭為",
+      "endsWith": "結尾為",
+      "on": "當天",
+      "after": "晚於",
+      "before": "早於",
+      "is": "是",
+      "isNot": "不是"
+    },
     "value": "值",
     "from": "從",
     "to": "到",
@@ -1544,7 +1564,16 @@
   "sort": {
     "label": "排序",
     "ascending": "升序",
-    "descending": "降序"
+    "descending": "降序",
+    "options": {
+      "addedOn": "最近新增",
+      "downloadLimit": "下載限制",
+      "uploadLimit": "上傳限制",
+      "sessionDownloaded": "已下載（本次工作階段）",
+      "sessionUploaded": "已上傳（本次工作階段）",
+      "lastSeenComplete": "最近完成",
+      "reannounceIn": "重新通報倒數計時"
+    }
   },
   "details": {
     "failedToUpdatePriorities": "更新檔案優先順序失敗",

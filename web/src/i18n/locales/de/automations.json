@@ -109,6 +109,7 @@
       "RATIO": "Ratio",
       "RATIO_LIMIT": "Ratio-Limit",
       "MAX_RATIO": "Max. Ratio",
+      "UPLOADED_OVER_SIZE": "Hochgeladen / Größe",
       "PROGRESS": "Fortschritt",
       "AVAILABILITY": "Verfügbarkeit",
       "POPULARITY": "Beliebtheit",
@@ -140,7 +141,8 @@
       "CROSS_SEED_TAGS": "Cross-Seed-Tags",
       "SEASON_PACK_STATUS": "Staffelpaket-Status",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Staffelpaket-Status (beliebige Instanz)",
-      "HARDLINK_SCOPE": "Hardlink-Bereich"
+      "HARDLINK_SCOPE": "Hardlink-Bereich",
+      "HARDLINK_SCOPE_CROSS": "Hardlink-Bereich (instanzübergreifend)"
     },
     "fieldGroups": {
       "Identity": "Identität",
@@ -185,6 +187,7 @@
       "stalled_downloading": "Download stehengeblieben",
       "errored": "Fehler",
       "tracker_down": "Tracker offline",
+      "tracker_error": "Tracker-Fehler",
       "checking": "Wird geprüft",
       "checkingResumeData": "Wiederaufnahmedaten werden geprüft",
       "moving": "Wird verschoben",

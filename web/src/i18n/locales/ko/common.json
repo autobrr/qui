@@ -12,7 +12,9 @@
     "generalSettings": "일반 설정",
     "manageInstances": "인스턴스 관리",
     "appearance": "테마",
-    "instanceBackups": "인스턴스 백업"
+    "instanceBackups": "인스턴스 백업",
+    "backToSite": "getqui.com으로 돌아가기",
+    "docs": "문서"
   },
   "sidebar": {
     "instances": "인스턴스",
@@ -138,6 +140,12 @@
     "versionAvailable": "버전 {{version}}을(를) 지금 사용할 수 있습니다",
     "viewRelease": "릴리스 보기",
     "dismiss": "닫기"
+  },
+  "pwaUpdate": {
+    "reload": "새로고침",
+    "waitingDescription": "최신 qui 릴리스를 적용하려면 새로고침하세요.",
+    "activatedTitle": "qui가 업데이트됨",
+    "activatedDescription": "편할 때 새로고침하여 최신 릴리스 설치를 완료하세요."
   },
   "notFound": {
     "title": "이런! 군집 속에서 길을 잃으셨나요?",

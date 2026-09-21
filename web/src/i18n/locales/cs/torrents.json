@@ -861,6 +861,26 @@
     "setConditions": "Nastavte podmínky pro filtrování tohoto sloupce",
     "operation": "Operace",
     "selectOperation": "Vybrat operaci",
+    "operations": {
+      "equalTo": "Rovná se",
+      "notEqualTo": "Nerovná se",
+      "greaterThan": "Větší než",
+      "greaterThanOrEqual": "Větší nebo rovno",
+      "lessThan": "Menší než",
+      "lessThanOrEqual": "Menší nebo rovno",
+      "between": "Je mezi",
+      "equals": "Rovná se",
+      "notEquals": "Nerovná se",
+      "contains": "Obsahuje",
+      "doesNotContain": "Neobsahuje",
+      "startsWith": "Začíná",
+      "endsWith": "Končí",
+      "on": "Dne",
+      "after": "Po",
+      "before": "Před",
+      "is": "Je",
+      "isNot": "Není"
+    },
     "value": "Hodnota",
     "from": "Od",
     "to": "Do",
@@ -1586,7 +1606,16 @@
   "sort": {
     "label": "Řadit",
     "ascending": "vzestupně",
-    "descending": "sestupně"
+    "descending": "sestupně",
+    "options": {
+      "addedOn": "Nedávno přidané",
+      "downloadLimit": "Limit stahování",
+      "uploadLimit": "Limit odesílání",
+      "sessionDownloaded": "Staženo (současná relace)",
+      "sessionUploaded": "Nahráno (současná relace)",
+      "lastSeenComplete": "Naposledy dokončeno",
+      "reannounceIn": "Opětovné oznámení"
+    }
   },
   "tableColumns": {
     "selectAll": "Vybrat torrent",

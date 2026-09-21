@@ -105,6 +105,7 @@
       "RATIO": "Poměr",
       "RATIO_LIMIT": "Limit poměru",
       "MAX_RATIO": "Maximální poměr",
+      "UPLOADED_OVER_SIZE": "Nahráno / Velikost",
       "PROGRESS": "Pokrok",
       "AVAILABILITY": "Dostupnost",
       "POPULARITY": "Popularita",
@@ -137,6 +138,7 @@
       "SEASON_PACK_STATUS": "Stav sezónního balíčku",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Stav sezónního balíčku (libovolná instance)",
       "HARDLINK_SCOPE": "Rozsah hardlinků",
+      "HARDLINK_SCOPE_CROSS": "Rozsah hardlinků (napříč instancemi)",
       "RLS_YEAR": "Rok (RLS)",
       "TRACKER_STATUS": "Stav trackeru",
       "TRACKER_MESSAGE": "Zpráva trackeru"
@@ -184,6 +186,7 @@
       "stalled_downloading": "Zamrznuto při stahování",
       "errored": "Chyba",
       "tracker_down": "Tracker je nedostupný",
+      "tracker_error": "Chyba trackeru",
       "checking": "Kontrola",
       "checkingResumeData": "Kontrola dat",
       "moving": "Přesouvání",

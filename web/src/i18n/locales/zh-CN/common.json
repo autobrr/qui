@@ -12,7 +12,9 @@
     "generalSettings": "常规设置",
     "manageInstances": "管理实例",
     "appearance": "外观",
-    "instanceBackups": "实例备份"
+    "instanceBackups": "实例备份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文档"
   },
   "sidebar": {
     "instances": "实例",
@@ -138,6 +140,12 @@
     "versionAvailable": "版本 {{version}} 现已可用",
     "viewRelease": "查看发布",
     "dismiss": "关闭"
+  },
+  "pwaUpdate": {
+    "reload": "重新加载",
+    "waitingDescription": "重新加载以应用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便时请重新加载，以完成最新版本的安装。"
   },
   "notFound": {
     "title": "迷路了？",

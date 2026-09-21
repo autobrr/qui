@@ -105,6 +105,7 @@
       "RATIO": "Співвідношення",
       "RATIO_LIMIT": "Ліміт співвідношення",
       "MAX_RATIO": "Макс. співвідношення",
+      "UPLOADED_OVER_SIZE": "Вивантажено / Розмір",
       "PROGRESS": "Прогрес",
       "AVAILABILITY": "Доступність",
       "POPULARITY": "Популярність",
@@ -137,6 +138,7 @@
       "SEASON_PACK_STATUS": "Статус сезонного паку",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Статус сезонного паку (будь-який інстанс)",
       "HARDLINK_SCOPE": "Область жорстких посилань",
+      "HARDLINK_SCOPE_CROSS": "Область жорстких посилань (між інстансами)",
       "TRACKER_STATUS": "Статус трекера",
       "TRACKER_MESSAGE": "Повідомлення трекера",
       "RLS_YEAR": "Рік (RLS)"
@@ -184,6 +186,7 @@
       "stalled_downloading": "Зависає (завантаження)",
       "errored": "Помилка",
       "tracker_down": "Трекер недоступний",
+      "tracker_error": "Помилка трекера",
       "checking": "Перевірка",
       "checkingResumeData": "Перевірка даних відновлення",
       "moving": "Переміщення",

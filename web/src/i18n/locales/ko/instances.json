@@ -1255,7 +1255,9 @@
         "conditional": "조건부",
         "addScore": "점수 추가:",
         "addFieldMultiplier": "필드 곱셈기 추가",
-        "addBonus": "보너스 추가"
+        "addBonus": "보너스 추가",
+        "notSupportedForSimpleSort": "단순 정렬에서 지원되지 않음",
+        "notSupportedForScoreMultiplier": "점수 곱셈기에서 지원되지 않음"
       },
       "conditionsLabel": "조건(선택 사항)",
       "actions": {

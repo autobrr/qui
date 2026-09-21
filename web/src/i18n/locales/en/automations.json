@@ -109,6 +109,7 @@
       "RATIO": "Ratio",
       "RATIO_LIMIT": "Ratio Limit",
       "MAX_RATIO": "Max Ratio",
+      "UPLOADED_OVER_SIZE": "Uploaded / Size",
       "PROGRESS": "Progress",
       "AVAILABILITY": "Availability",
       "POPULARITY": "Popularity",
@@ -140,7 +141,8 @@
       "CROSS_SEED_TAGS": "Cross-seed Tags",
       "SEASON_PACK_STATUS": "Season pack status",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Season pack status (any instance)",
-      "HARDLINK_SCOPE": "Hardlink scope"
+      "HARDLINK_SCOPE": "Hardlink scope",
+      "HARDLINK_SCOPE_CROSS": "Hardlink scope (cross-instance)"
     },
     "fieldGroups": {
       "Identity": "Identity",
@@ -185,6 +187,7 @@
       "stalled_downloading": "Stalled Down",
       "errored": "Error",
       "tracker_down": "Tracker Down",
+      "tracker_error": "Tracker Error",
       "checking": "Checking",
       "checkingResumeData": "Checking Resume Data",
       "moving": "Moving",

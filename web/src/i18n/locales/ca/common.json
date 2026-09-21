@@ -12,7 +12,9 @@
     "generalSettings": "Configuració general",
     "manageInstances": "Gestiona les instàncies",
     "appearance": "Aspecte",
-    "instanceBackups": "Còpies de seguretat de les instàncies"
+    "instanceBackups": "Còpies de seguretat de les instàncies",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentació"
   },
   "sidebar": {
     "instances": "Instàncies",
@@ -138,6 +140,12 @@
     "versionAvailable": "La versió {{version}} ja està disponible",
     "viewRelease": "Mostra la versió",
     "dismiss": "Descarta"
+  },
+  "pwaUpdate": {
+    "reload": "Recarrega",
+    "waitingDescription": "Recarrega per aplicar la darrera versió de qui.",
+    "activatedTitle": "qui s'ha actualitzat",
+    "activatedDescription": "Recarrega quan et vagi bé per acabar d'instal·lar la darrera versió."
   },
   "notFound": {
     "title": "Ups! T'has perdut dins de l'eixam?",

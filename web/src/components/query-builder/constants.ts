@@ -348,13 +348,6 @@ export function getOperatorsForField(field: string) {
   return baseOperators;
 }
 
-export const DURATION_UNITS = [
-  { value: 1, label: "seconds" },
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
-];
-
 export const SPEED_UNITS = [
   { value: 1, label: "B/s" },
   { value: 1024, label: "KiB/s" },

@@ -12,7 +12,9 @@
     "generalSettings": "Загальні налаштування",
     "manageInstances": "Керування екземплярами",
     "appearance": "Зовнішній вигляд",
-    "instanceBackups": "Резервні копії екземплярів"
+    "instanceBackups": "Резервні копії екземплярів",
+    "backToSite": "Назад на getqui.com",
+    "docs": "Документація"
   },
   "sidebar": {
     "instances": "Екземпляри",
@@ -138,6 +140,12 @@
     "versionAvailable": "Версія {{version}} тепер доступна",
     "viewRelease": "Переглянути реліз",
     "dismiss": "Закрити"
+  },
+  "pwaUpdate": {
+    "reload": "Перезавантажити",
+    "waitingDescription": "Перезавантажте сторінку, щоб застосувати найновіший випуск qui.",
+    "activatedTitle": "qui оновлено",
+    "activatedDescription": "Перезавантажте сторінку, коли буде зручно, щоб завершити встановлення найновішого випуску."
   },
   "notFound": {
     "title": "Упс! Загубився в рої?",

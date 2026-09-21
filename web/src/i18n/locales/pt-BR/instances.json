@@ -1285,7 +1285,9 @@
         "conditional": "Por Condições",
         "addScore": "Base de Pontos:",
         "addFieldMultiplier": "Campo P/ Multiplicar",
-        "addBonus": "Adicionar Bônus"
+        "addBonus": "Adicionar Bônus",
+        "notSupportedForSimpleSort": "Não suportado na ordenação simples",
+        "notSupportedForScoreMultiplier": "Não suportado nos multiplicadores de pontuação"
       },
       "conditionsLabel": "Condições (Quando a regra vai agir?)",
       "actions": {
