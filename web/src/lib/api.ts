@@ -537,7 +537,9 @@ class ApiClient {
         // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
         if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
           // Don't show raw HTML to user, provide a readable message
-          return { message: i18n.t("apiErrors.htmlErrorPage", { ns: "common", message: fallbackMessage }) }
+          // i18next returns undefined before init (tests or callers that never import @/i18n).
+          const message = i18n.t("apiErrors.htmlErrorPage", { ns: "common", message: fallbackMessage }) as string | undefined
+          return { message: message ?? `${fallbackMessage} (server returned HTML error page)` }
         }
 
         // Plain text error
