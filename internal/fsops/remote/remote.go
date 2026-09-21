@@ -125,7 +125,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
 			return
 		}
-		walk(ctx, client, ch, root, ".", opts)
+		b.walk(ctx, ch, root, ".", opts)
 	}()
 	return ch, nil
 }
@@ -138,7 +138,18 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 // that answers EOF, close), walked serially; a bounded walk over sibling
 // directories is the lever on a key that forbids exec, and the exec-tier find
 // sweep is the upgrade when a deep tree makes the latency hurt.
-func walk(ctx context.Context, client *sftp.Client, ch chan<- fsops.WalkEntry, dir, rel string, opts fsops.WalkOptions) bool {
+func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel string, opts fsops.WalkOptions) bool {
+	// The client is taken from the pool per directory, not once per walk: each
+	// take marks the connection used, so a walk longer than the idle limit is
+	// not closed underneath itself, and a reconnect mid-walk is picked up.
+	client, err := b.client(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return false
+		}
+		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
+		return false
+	}
 	entries, err := client.ReadDirContext(ctx, dir)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -173,7 +184,7 @@ func walk(ctx context.Context, client *sftp.Client, ch chan<- fsops.WalkEntry, d
 
 		// readdir attrs are lstat-style, so a symlinked directory reports
 		// IsDir false and is never descended.
-		if fi.IsDir() && !walk(ctx, client, ch, childPath, childRel, opts) {
+		if fi.IsDir() && !b.walk(ctx, ch, childPath, childRel, opts) {
 			return false
 		}
 	}
