@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Atualizar Todos",
-    "addFolder": "Adicionar Pasta",
-    "addFeed": "Adicionar Feed",
     "articles": "Artigos",
     "unread": "{{count}} não lidos",
     "markAllAsRead": "Marcar todos como lidos",

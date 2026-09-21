@@ -98,8 +98,7 @@
     "copyPath": "Copia el camí",
     "scrollToTop": "Vés a dalt de tot",
     "search": "Cerca",
-    "select": "Selecciona",
-    "toggle": "Commuta"
+    "select": "Selecciona"
   },
   "placeholders": {
     "search": "Cerca...",
@@ -130,8 +129,7 @@
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència.",
-    "custom": "Personalitzat"
+    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència."
   },
   "updateBanner": {
     "updateAvailable": "Actualització disponible",

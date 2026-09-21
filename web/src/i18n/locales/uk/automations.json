@@ -204,8 +204,7 @@
     "durationUnits": {
       "minutes": "хвилин",
       "hours": "годин",
-      "days": "днів",
-      "seconds": "секунд"
+      "days": "днів"
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",

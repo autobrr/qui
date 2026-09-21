@@ -98,8 +98,7 @@
     "copyPath": "경로 복사",
     "scrollToTop": "맨 위로 스크롤",
     "search": "검색",
-    "select": "선택",
-    "toggle": "전환"
+    "select": "선택"
   },
   "placeholders": {
     "search": "검색...",
@@ -130,8 +129,7 @@
     "switchedToMode": "{{mode}} 모드로 전환했습니다",
     "switchedToTheme": "{{theme}} 테마로 전환했습니다",
     "switchedToThemeVariation": "{{theme}} 테마({{variation}})로 전환했습니다",
-    "premiumThemeError": "프리미엄 테마입니다. 설정 → 테마에서 라이선스를 활성화하세요.",
-    "custom": "사용자 지정"
+    "premiumThemeError": "프리미엄 테마입니다. 설정 → 테마에서 라이선스를 활성화하세요."
   },
   "updateBanner": {
     "updateAvailable": "업데이트 사용 가능",

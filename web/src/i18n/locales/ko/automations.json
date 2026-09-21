@@ -213,8 +213,7 @@
     "durationUnits": {
       "minutes": "분",
       "hours": "시간",
-      "days": "일",
-      "seconds": "초"
+      "days": "일"
     },
     "capabilityReasons": {
       "trackerHealth": "qBittorrent 5.1+ 필요",

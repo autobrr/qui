@@ -98,8 +98,7 @@
     "copyPath": "Копіювати шлях",
     "scrollToTop": "Прокрутити вгору",
     "search": "Пошук",
-    "select": "Вибрати",
-    "toggle": "Перемкнути"
+    "select": "Вибрати"
   },
   "placeholders": {
     "search": "Пошук...",
@@ -130,8 +129,7 @@
     "switchedToMode": "Перемкнуто на {{mode}} режим",
     "switchedToTheme": "Перемкнуто на тему {{theme}}",
     "switchedToThemeVariation": "Перемкнуто на тему {{theme}} ({{variation}})",
-    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії.",
-    "custom": "Власна"
+    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії."
   },
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",

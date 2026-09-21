@@ -213,8 +213,7 @@
     "durationUnits": {
       "minutes": "分钟",
       "hours": "小时",
-      "days": "天",
-      "seconds": "秒"
+      "days": "天"
     },
     "capabilityReasons": {
       "trackerHealth": "需要 qBittorrent 5.1+",

@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Canals",
     "refreshAll": "Actualitza'ls tots",
-    "addFolder": "Afegeix una carpeta",
-    "addFeed": "Afegeix un canal",
     "articles": "Articles",
     "unread": "{{count}} sense llegir",
     "markAllAsRead": "Marca'ls tots com a llegits",

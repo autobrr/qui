@@ -98,8 +98,7 @@
     "copyPath": "Copy path",
     "scrollToTop": "Scroll to top",
     "search": "Search",
-    "select": "Select",
-    "toggle": "Toggle"
+    "select": "Select"
   },
   "placeholders": {
     "search": "Search...",
@@ -130,8 +129,7 @@
     "switchedToMode": "Switched to {{mode}} mode",
     "switchedToTheme": "Switched to {{theme}} theme",
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
-    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license.",
-    "custom": "Custom"
+    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license."
   },
   "updateBanner": {
     "updateAvailable": "Update Available",
