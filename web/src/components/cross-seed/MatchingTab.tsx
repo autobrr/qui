@@ -10,7 +10,7 @@ import {
   usePatchCrossSeedSettings
 } from "@/components/cross-seed/cross-seed-settings"
 import { TitleRescueSetting } from "@/components/cross-seed/TitleRescueSetting"
-import { CategoryMappingRulesEditor } from "@/components/crossseed/CategoryMappingRulesEditor"
+import { CategoryMappingRulesEditor } from "@/components/cross-seed/CategoryMappingRulesEditor"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"

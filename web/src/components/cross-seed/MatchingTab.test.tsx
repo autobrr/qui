@@ -29,7 +29,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
-vi.mock("@/components/crossseed/CategoryMappingRulesEditor", () => ({
+vi.mock("@/components/cross-seed/CategoryMappingRulesEditor", () => ({
   CategoryMappingRulesEditor: () => <div data-testid="mapping-editor" />,
 }))
 vi.mock("@/lib/api", () => ({

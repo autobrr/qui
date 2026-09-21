@@ -12,7 +12,7 @@ import {
 } from "@/components/cross-seed/cross-seed-settings"
 import { SeasonPackRunsPanel } from "@/components/cross-seed/SeasonPackRunsPanel"
 import { SourceTagsField } from "@/components/cross-seed/SourceCardFields"
-import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
+import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPackCategoryRulesEditor"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"

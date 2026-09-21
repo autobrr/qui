@@ -35,7 +35,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
-vi.mock("@/components/crossseed/SeasonPackCategoryRulesEditor", () => ({
+vi.mock("@/components/cross-seed/SeasonPackCategoryRulesEditor", () => ({
   SeasonPackCategoryRulesEditor: () => <div data-testid="rules-editor" />,
 }))
 vi.mock("@/hooks/useDateTimeFormatters", () => ({
