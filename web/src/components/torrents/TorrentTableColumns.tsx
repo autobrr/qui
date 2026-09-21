@@ -436,6 +436,8 @@ export const createColumns = (
 ): TorrentTableColumnDef[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
+  // 16px icon plus the row padding of the view mode: px-2 (dense) or px-3 (normal).
+  const iconColumnWidth = 16 + 2 * (viewMode === "dense" ? 8 : 12)
   const instanceLabel = t?.("tableColumns.instance") ?? "Instance"
   const selectionLabel = t?.("tableColumns.selection") ?? "Selection"
   const selectAllRowsLabel = t?.("tableColumns.selectAllRows") ?? "Select all"
@@ -683,9 +685,9 @@ export const createColumns = (
           </div>
         )
       },
-      size: 48,
-      minSize: 48,
-      maxSize: 48,
+      size: iconColumnWidth,
+      minSize: iconColumnWidth,
+      maxSize: iconColumnWidth,
       enableResizing: false,
       enableSorting: true,
     },
@@ -910,9 +912,9 @@ export const createColumns = (
           />
         )
       },
-      size: 48,
-      minSize: 48,
-      maxSize: 48,
+      size: iconColumnWidth,
+      minSize: iconColumnWidth,
+      maxSize: iconColumnWidth,
       enableResizing: false,
       enableSorting: false,
     },
