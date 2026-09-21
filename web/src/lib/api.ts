@@ -137,7 +137,9 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
-import i18n from "@/i18n"
+// The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
+// English namespaces out of the entry chunk into eight extra initial requests.
+import i18n from "i18next"
 
 const API_BASE = getApiBaseUrl()
 

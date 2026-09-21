@@ -6,6 +6,7 @@
 import { HttpResponse, http } from "msw"
 import { describe, expect, it } from "vitest"
 
+import "@/i18n"
 import { APIError, api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
