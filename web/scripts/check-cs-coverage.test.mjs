@@ -55,6 +55,19 @@ test("requires a cs _few form for every English plural base", (t) => {
   assert.match(result.stdout, /\[Plural Forms] 1 error\n {2}- common\.items_few\n/)
 })
 
+test("a missing _one is reported once, by Missing Keys", (t) => {
+  const cs = fixture(t)
+  cs.write(english, {
+    items_few: "{{count}} položky",
+    items_other: "{{count}} položek",
+  })
+
+  const result = cs.run()
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(result.stdout, /\[Missing Keys] 1 error\n {2}- common\.items_one:/)
+  assert.doesNotMatch(result.stdout, /\[Plural Forms]/)
+})
+
 test("accepts the three required forms and does not demand _many", (t) => {
   const cs = fixture(t)
   cs.write(english, {
