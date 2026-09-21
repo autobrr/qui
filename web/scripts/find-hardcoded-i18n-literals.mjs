@@ -31,6 +31,22 @@ const interestingPropertyNames = new Set([
   "ctaLabel",
   "confirmText",
   "cancelText",
+  "reason",
+])
+
+// These query-builder tables only carry the English defaultValue for the t() helpers
+// beside them. constants.test.ts checks that every value they list has an en key.
+const fallbackOnlyFile = "src/components/query-builder/constants.ts"
+const fallbackOnlyExports = new Set([
+  "CONDITION_FIELDS",
+  "FIELD_GROUPS",
+  "OPERATORS_BY_TYPE",
+  "NAME_SPECIAL_OPERATORS",
+  "TORRENT_STATES",
+  "TRACKER_STATUS_VALUES",
+  "HARDLINK_SCOPE_VALUES",
+  "SEASON_PACK_STATUS_VALUES",
+  "CAPABILITY_REASONS",
 ])
 
 const interestingVariableNames = new Set([
@@ -204,8 +220,20 @@ function isInterestingJsxAttributeString(node) {
   return false
 }
 
+function isInFallbackOnlyExport(node, sourceFile) {
+  if (!sourceFile.fileName.replaceAll("\\", "/").endsWith(fallbackOnlyFile)) return false
+
+  let current = node.parent
+  while (current && !ts.isVariableDeclaration(current)) {
+    current = current.parent
+  }
+  return !!current && ts.isIdentifier(current.name) && fallbackOnlyExports.has(current.name.text)
+}
+
+// Unlike the variable and format-return checks, this one also covers .ts files:
+// exported option tables in .ts modules are rendered as-is by the components that map them.
 function isInterestingPropertyString(node, sourceFile) {
-  if (!/\.[jt]sx$/i.test(sourceFile.fileName)) return false
+  if (!/\.[jt]sx?$/i.test(sourceFile.fileName)) return false
   if (!ts.isPropertyAssignment(node.parent)) return false
   if (!ts.isIdentifier(node.parent.name) && !ts.isStringLiteral(node.parent.name)) return false
 
@@ -213,7 +241,7 @@ function isInterestingPropertyString(node, sourceFile) {
     ? node.parent.name.text
     : node.parent.name.text
 
-  return interestingPropertyNames.has(propertyName)
+  return interestingPropertyNames.has(propertyName) && !isInFallbackOnlyExport(node, sourceFile)
 }
 
 // Walk up through transparent expressions to find a variable declaration,

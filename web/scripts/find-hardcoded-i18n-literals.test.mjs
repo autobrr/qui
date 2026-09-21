@@ -85,3 +85,36 @@ test("flags UI copy assigned through interesting variable names", () => {
     ],
   )
 })
+
+test("flags UI string properties in .ts option tables, including reason", () => {
+  const source = `
+    export const SORT_OPTIONS = [{ value: "added_on", label: "Recently Added" }]
+    export const DISABLED = [{ field: "NAME", reason: "Not supported here" }]
+    const title = "Not a property"
+  `
+
+  const matches = detectorModule.findHardcodedStringsInSource(source, "src/lib/options.ts")
+
+  assert.deepEqual(
+    matches.map((match) => [match.kind, match.text]),
+    [
+      ["object-property", "Recently Added"],
+      ["object-property", "Not supported here"],
+    ],
+  )
+})
+
+test("skips only the named fallback tables in the query-builder constants", () => {
+  const source = `
+    export const TORRENT_STATES = [{ value: "downloading", label: "Downloading" }]
+    export const NEW_TABLE = [{ value: "x", label: "Rendered raw" }]
+  `
+
+  for (const filePath of ["src/components/query-builder/constants.ts", "C:\\qui\\web\\src\\components\\query-builder\\constants.ts"]) {
+    const matches = detectorModule.findHardcodedStringsInSource(source, filePath)
+    assert.deepEqual(matches.map((match) => match.text), ["Rendered raw"])
+  }
+
+  const elsewhere = detectorModule.findHardcodedStringsInSource(source, "src/lib/constants.ts")
+  assert.deepEqual(elsewhere.map((match) => match.text), ["Downloading", "Rendered raw"])
+})
