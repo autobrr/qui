@@ -40,7 +40,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-import { CategoriesTab } from "./CategoriesTab"
+import { CategoriesTab } from "../CategoriesTab"
 
 afterEach(() => {
   cleanup()

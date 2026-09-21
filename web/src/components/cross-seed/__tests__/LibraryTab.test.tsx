@@ -51,7 +51,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-import { LibraryTab } from "./LibraryTab"
+import { LibraryTab } from "../LibraryTab"
 
 afterEach(() => {
   cleanup()

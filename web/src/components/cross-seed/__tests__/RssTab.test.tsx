@@ -51,7 +51,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-import { RssTab } from "./RssTab"
+import { RssTab } from "../RssTab"
 
 afterEach(() => {
   cleanup()

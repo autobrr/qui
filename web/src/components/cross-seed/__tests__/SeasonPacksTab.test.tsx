@@ -50,7 +50,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-import { SeasonPacksTab } from "./SeasonPacksTab"
+import { SeasonPacksTab } from "../SeasonPacksTab"
 
 afterEach(() => {
   cleanup()

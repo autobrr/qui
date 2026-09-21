@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import { CROSS_SEED_TABS, crossSeedSearchSchema } from "./tabs"
+import { CROSS_SEED_TABS, crossSeedSearchSchema } from "../tabs"
 
 describe("cross-seed route search", () => {
   it("keeps every known tab value", () => {

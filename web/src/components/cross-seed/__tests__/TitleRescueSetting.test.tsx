@@ -16,7 +16,7 @@ vi.mock("react-i18next", async (importOriginal) => {
   }
 })
 
-import { TitleRescueSetting } from "./TitleRescueSetting"
+import { TitleRescueSetting } from "../TitleRescueSetting"
 
 afterEach(cleanup)
 

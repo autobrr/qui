@@ -10,13 +10,13 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
-    categoryMappingRules: [],
-    findIndividualEpisodes: false,
-    rescueTitleMismatches: false,
-    skipRecheck: false,
-    skipPieceBoundarySafetyCheck: true,
-    inheritSourceTags: true,
-    autoResumeMaxDownloadMb: 50,
+    webhookSourceCategories: [],
+    webhookSourceTags: ["keep"],
+    webhookSourceExcludeCategories: [],
+    webhookSourceExcludeTags: [],
+    webhookTags: ["cross-seed", "autobrr"],
+    skipAutoResumeWebhook: false,
+    rssAutomationTags: ["rss"],
   },
   patchSettings: vi.fn(),
 }))
@@ -29,45 +29,49 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
-vi.mock("@/components/cross-seed/CategoryMappingRulesEditor", () => ({
-  CategoryMappingRulesEditor: () => <div data-testid="mapping-editor" />,
-}))
 vi.mock("@/lib/api", () => ({
   api: {
     getCrossSeedSettings: () => Promise.resolve(mocks.settings),
-    getInstances: () => Promise.resolve([]),
+    getInstances: () => Promise.resolve([{ id: 1, name: "main", isActive: true }]),
+    getCategories: () => Promise.resolve({}),
+    getTags: () => Promise.resolve([]),
     patchCrossSeedSettings: mocks.patchSettings,
   },
 }))
 
-import { MatchingTab } from "./MatchingTab"
+import { WebhookTab } from "../WebhookTab"
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
-describe("MatchingTab save", () => {
-  it("sends the matching fields only", async () => {
-    mocks.patchSettings.mockResolvedValue(mocks.settings)
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
-      <QueryClientProvider client={client}>
-        <MatchingTab />
-      </QueryClientProvider>
-    )
-    const save = await screen.findByRole("button", { name: "rules.saveChanges" })
+async function renderTab() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <WebhookTab />
+    </QueryClientProvider>
+  )
+  return await screen.findByRole("button", { name: "rules.saveChanges" })
+}
 
-    fireEvent.click(screen.getByRole("switch", { name: "rules.safety.skipRecheck" }))
+describe("WebhookTab save", () => {
+  it("the webhook card sends its filters, tags, and auto-resume only", async () => {
+    mocks.patchSettings.mockResolvedValue(mocks.settings)
+    const save = await renderTab()
+
+    fireEvent.click(screen.getByRole("switch", { name: "sourceCard.autoResume" }))
     fireEvent.click(save)
 
     await waitFor(() => expect(mocks.patchSettings).toHaveBeenCalledTimes(1))
     expect(mocks.patchSettings).toHaveBeenCalledWith({
-      categoryMappingRules: [],
-      findIndividualEpisodes: false,
-      rescueTitleMismatches: false,
-      skipRecheck: true,
-      skipPieceBoundarySafetyCheck: true,
+      webhookSourceCategories: [],
+      webhookSourceTags: ["keep"],
+      webhookSourceExcludeCategories: [],
+      webhookSourceExcludeTags: [],
+      webhookTags: ["cross-seed", "autobrr"],
+      skipAutoResumeWebhook: true,
     })
   })
 })
