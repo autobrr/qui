@@ -50,10 +50,12 @@ describe("query-builder translation keys", () => {
     for (const capability of Object.keys(CAPABILITY_REASONS) as (keyof typeof CAPABILITY_REASONS)[]) {
       getCapabilityReason(capability, recordingT)
     }
-    const translatedHelpers = Object.entries(constants).filter(([name, value]) => name.startsWith("getTranslated") && typeof value === "function")
+    const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>
+      name.startsWith("getTranslated") && typeof value === "function" ? [value as (...args: never[]) => unknown] : []
+    )
     // Fails when a module change hides the helpers, instead of passing with nothing checked.
     expect(translatedHelpers.length).toBeGreaterThanOrEqual(5)
-    for (const [, helper] of translatedHelpers) {
+    for (const helper of translatedHelpers) {
       if (helper.length === 2) {
         for (const field of Object.keys(CONDITION_FIELDS)) {
           (helper as (field: string, t: TFunction) => unknown)(field, recordingT)
