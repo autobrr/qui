@@ -64,6 +64,9 @@
     "allScope": "TOTES",
     "unified": "Unificat"
   },
+  "titleBar": {
+    "speeds": "B: {{download}} P: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unificat",
     "collapseScope": "Redueix l'àmbit unificat",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "No s'ha trobat cap resultat."
+  },
+  "errors": {
+    "unknown": "Error desconegut",
+    "httpStatus": "Error HTTP! Estat: {{status}}",
+    "ssoHtmlResponse": "S'ha rebut una resposta HTML en lloc de JSON de l'API. Si ets darrere d'un servidor intermediari SSO (Cloudflare Access, Pangolin, etc.), prova d'actualitzar la pàgina o de tornar a obrir l'URL en una pestanya nova.",
+    "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}"
   },
   "status": {
     "disabled": "Desactivat",

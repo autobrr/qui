@@ -64,6 +64,9 @@
     "allScope": "VŠE",
     "unified": "Unifikované"
   },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unifikované",
     "collapseScope": "Sbalit unifikovaný rozsah",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "Žádné výsledky."
+  },
+  "errors": {
+    "unknown": "Neznámá chyba",
+    "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
   },
   "status": {
     "disabled": "Vypnuto",

@@ -64,6 +64,9 @@
     "allScope": "ALL",
     "unified": "Unified"
   },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unified",
     "collapseScope": "Collapse unified scope",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "No results found."
+  },
+  "errors": {
+    "unknown": "Unknown error",
+    "httpStatus": "HTTP error! status: {{status}}",
+    "ssoHtmlResponse": "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.",
+    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}"
   },
   "status": {
     "disabled": "Disabled",

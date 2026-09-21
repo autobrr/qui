@@ -64,6 +64,9 @@
     "allScope": "ВСІ",
     "unified": "Об'єднано"
   },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Об'єднано",
     "collapseScope": "Згорнути об'єднану область",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "Результатів не знайдено."
+  },
+  "errors": {
+    "unknown": "Невідома помилка",
+    "httpStatus": "Помилка HTTP! Статус: {{status}}",
+    "ssoHtmlResponse": "API повернув відповідь HTML замість JSON. Якщо ви за SSO-проксі (Cloudflare Access, Pangolin тощо), спробуйте оновити сторінку або знову відкрити URL у новій вкладці.",
+    "torrentFileDownloadFailed": "Не вдалося завантажити торрент-файл: {{status}}"
   },
   "status": {
     "disabled": "Вимкнено",
