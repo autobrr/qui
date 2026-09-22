@@ -7,7 +7,7 @@ description: "Rules that decide which cross-seed candidates qui adds: matching, 
 
 # Cross-seed matching rules
 
-The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags and its auto-resume switch, live on that source's tab: **RSS**, **Webhook**, **Library**, or **Season packs**.
+The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags, live on that source's tab: **RSS**, **Webhook**, **Completion**, **Library**, or **Season packs**.
 
 ## Matching
 
@@ -139,7 +139,7 @@ Each source tab has a **Cross-seed tags** field for the torrents that source add
 
 **Inherit source torrent tags** in **Categories and tags** also copies the tags of the matched source torrent. It applies to every source.
 
-Each source tab also has an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
+The **RSS**, **Webhook**, **Completion**, and **Library** tabs each have an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
 
 ## Max Auto-Start Download
 
