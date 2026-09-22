@@ -78,7 +78,7 @@ By default, hardlink-added torrents start seeding immediately because `skip_chec
 
 When hardlink or reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
 
-When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [Rules](./rules.md#max-auto-start-download)).
+When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [After injection](./rules.md#max-auto-start-download)).
 
 ### Linked files that fail a recheck
 
