@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { AutoResumeSwitch, SourceFilterFields, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -87,7 +87,7 @@ export function WebhookTab({ settings }: { settings: CrossSeedAutomationSettings
           />
         </div>
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} />
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} label={t("rules.saveChanges")} />
     </Card>
   )
 }

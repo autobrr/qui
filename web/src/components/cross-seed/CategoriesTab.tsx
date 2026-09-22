@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
@@ -206,7 +206,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
           </div>
         </div>
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={handleSave} />
+      <SaveFooter pending={patchSettings.isPending} onSave={handleSave} label={t("rules.saveChanges")} />
     </Card>
   )
 }

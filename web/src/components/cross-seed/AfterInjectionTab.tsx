@@ -4,7 +4,7 @@
  */
 
 import { HardlinkModeSettings } from "@/components/cross-seed/HardlinkModeSettings"
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -127,7 +127,7 @@ export function AfterInjectionTab({ settings }: { settings: CrossSeedAutomationS
           </div>
         )}
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} />
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} label={t("rules.saveChanges")} />
     </Card>
   )
 }

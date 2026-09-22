@@ -4,7 +4,7 @@
  */
 
 import { CategoryMappingRulesEditor } from "@/components/cross-seed/CategoryMappingRulesEditor"
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { TitleRescueSetting } from "@/components/cross-seed/TitleRescueSetting"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
@@ -116,7 +116,7 @@ export function MatchingTab({ settings }: { settings: CrossSeedAutomationSetting
           </div>
         </div>
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} />
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate(form)} label={t("rules.saveChanges")} />
     </Card>
   )
 }

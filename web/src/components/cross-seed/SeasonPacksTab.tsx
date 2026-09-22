@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPackCategoryRulesEditor"
 import { SeasonPackRunsPanel } from "@/components/cross-seed/SeasonPackRunsPanel"
 import { SourceTagsField } from "@/components/cross-seed/SourceCardFields"
@@ -264,7 +264,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           formatDateValue={formatDateValue}
         />
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} />
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} label={t("rules.saveChanges")} />
     </Card>
   )
 }

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SaveFooter } from "@/components/cross-seed/SaveFooter"
+import { SaveFooter } from "@/components/ui/save-footer"
 import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,7 +42,7 @@ export function CompletionTab({ settings }: { settings: CrossSeedAutomationSetti
             />
           </div>
         </CardContent>
-        <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ completionSearchTags, skipAutoResumeCompletion })} />
+        <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ completionSearchTags, skipAutoResumeCompletion })} label={t("rules.saveChanges")} />
       </Card>
       <CompletionOverview />
     </>
