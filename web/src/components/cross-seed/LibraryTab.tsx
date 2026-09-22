@@ -48,7 +48,7 @@ const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60
 const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
 
-function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
+function isOpsRedTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
   const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
   return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
 }
@@ -196,49 +196,20 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
   const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
 
-  const seededSearchForceGazelleOnly = useMemo(() => {
-    if (!seededSearchTorznabEnabled) {
-      return false
-    }
-    if (!gazelleSavedFullyConfigured) {
-      return false
-    }
-    if (searchIndexerIds.length === 0) {
-      return false
-    }
+  const seededSearchNeedsGazelle = !seededSearchTorznabEnabled && !gazelleSavedConfigured
+  const seededSearchGazelleOnlyRun = !seededSearchTorznabEnabled && gazelleSavedConfigured
 
-    const selected = new Set(searchIndexerIds)
-    let hasSelection = false
-    for (const idx of enabledIndexers) {
-      if (!selected.has(idx.id)) {
-        continue
-      }
-      hasSelection = true
-      if (!isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
-        return false
-      }
-    }
-    return hasSelection
-  }, [enabledIndexers, gazelleSavedFullyConfigured, searchIndexerIds, seededSearchTorznabEnabled])
-
-  const seededSearchTorznabEffectiveEnabled = seededSearchTorznabEnabled && !seededSearchForceGazelleOnly
-
-  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
+  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || seededSearchNeedsGazelle || (!hasEnabledIndexers && !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
-    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+    if (seededSearchNeedsGazelle) {
       return t("toast.enableGazelleDescription")
     }
     if (!hasEnabledIndexers && !gazelleSavedConfigured) {
       return t("toast.configureTorznabOrGazelle")
     }
     return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled, t])
-  const seededSearchIntervalMinimum = useMemo(() => {
-    if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
-      return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
-    }
-    return MIN_SEEDED_SEARCH_INTERVAL_SECONDS
-  }, [gazelleSavedConfigured, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchNeedsGazelle, t])
+  const seededSearchIntervalMinimum = seededSearchGazelleOnlyRun ? MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS : MIN_SEEDED_SEARCH_INTERVAL_SECONDS
 
   useEffect(() => {
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
@@ -250,7 +221,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       return disallowedIDs
     }
     for (const idx of enabledIndexers) {
-      if (isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+      if (isOpsRedTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
         disallowedIDs.add(idx.id)
       }
     }
@@ -258,62 +229,35 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   }, [enabledIndexers, gazelleSavedFullyConfigured])
 
   const seededSearchIndexerOptions = useMemo(
-    () => (gazelleSavedFullyConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
+    () => enabledIndexers
+      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
       .map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
-    [enabledIndexers, gazelleSavedFullyConfigured]
+    [enabledIndexers, seededSearchIndexerExclusions]
   )
 
-  const seededSearchHasOnlyGazelleIndexers = useMemo(() => (
+  const seededSearchHasOnlyOpsRedIndexers = useMemo(() => (
     enabledIndexers.length > 0 &&
     seededSearchIndexerOptions.length === 0 &&
     seededSearchIndexerExclusions.size > 0
   ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
 
   const seededSearchIndexerPlaceholder = useMemo(() => {
-    if (!seededSearchTorznabEffectiveEnabled) {
-      if (seededSearchForceGazelleOnly) {
-        return t("scan.indexers.placeholderTorznabSkippedGazelleOnly")
-      }
+    if (!seededSearchTorznabEnabled) {
       return gazelleSavedConfigured ? t("scan.indexers.placeholderTorznabDisabledGazelleOnly") : t("scan.indexers.placeholderTorznabDisabledEnableGazelle")
     }
     if (seededSearchIndexerOptions.length > 0) {
       return gazelleSavedFullyConfigured ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
     }
-    if (seededSearchHasOnlyGazelleIndexers) {
+    if (seededSearchHasOnlyOpsRedIndexers) {
       return t("scan.indexers.placeholderOnlyOpsRedEnabled")
     }
     return t("scan.indexers.placeholderNoTorznabConfigured")
-  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
 
-  const seededSearchEffectiveIndexerIds = useMemo(() => {
-    const allAllowed = enabledIndexers
-      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
-      .map(idx => idx.id)
-
-    if (searchIndexerIds.length === 0) {
-      if (seededSearchIndexerExclusions.size === 0) {
-        return []
-      }
-      // Backend treats [] as "all enabled"; when exclusions exist, send an explicit list.
-      return allAllowed
-    }
-    if (seededSearchIndexerExclusions.size === 0) {
-      return searchIndexerIds
-    }
-
-    const filtered = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
-    if (filtered.length === 0) {
-      // Keep empty selection so we can preserve user intent by running Gazelle-only.
-      return []
-    }
-    return filtered
-  }, [enabledIndexers, searchIndexerIds, seededSearchIndexerExclusions])
+  const seededSearchEffectiveIndexerIds = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
 
   const seededSearchIndexerHelpText = useMemo(() => {
-    if (!seededSearchTorznabEffectiveEnabled) {
-      if (seededSearchForceGazelleOnly) {
-        return t("scan.indexers.helpTorznabSkippedGazelleOnly")
-      }
+    if (!seededSearchTorznabEnabled) {
       if (gazelleSavedConfigured) {
         return t("scan.indexers.helpTorznabDisabledGazelleCheck")
       }
@@ -321,7 +265,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     }
 
     if (seededSearchIndexerOptions.length === 0) {
-      if (seededSearchHasOnlyGazelleIndexers) {
+      if (seededSearchHasOnlyOpsRedIndexers) {
         return t("scan.indexers.helpOnlyOpsRedEnabled")
       }
 
@@ -341,7 +285,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       return t("scan.indexers.helpSelectedTorznabQueriedGazelle", { count: seededSearchEffectiveIndexerIds.length })
     }
     return t("scan.indexers.helpSelectedQueried", { count: seededSearchEffectiveIndexerIds.length })
-  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings.gazelleEnabled) {
@@ -354,9 +298,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     if (red) return t("scan.gazelleStatus.enabledRedMissingOps")
     return t("scan.gazelleStatus.enabledKeysMissing")
   }, [settings, t])
-  const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
-
-  const seededSearchIntervalPresets = seededSearchGazelleOnlyMode ? [10, 30, 60] : [60, 120, 300]
+  const seededSearchIntervalPresets = seededSearchGazelleOnlyRun ? [10, 30, 60] : [60, 120, 300]
 
   const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
 
@@ -392,7 +334,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const handleStartSearchRun = () => {
     setValidationErrors({})
 
-    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+    if (seededSearchNeedsGazelle) {
       toast.error(t("toast.seededSearchNeedsGazelle"), {
         description: t("toast.enableGazelleDescription"),
       })
@@ -418,8 +360,8 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       categories: searchCategories,
       tags: searchTags,
       intervalSeconds: searchIntervalSeconds,
-      indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
-      disableTorznab: !seededSearchTorznabEffectiveEnabled,
+      indexerIds: seededSearchTorznabEnabled ? seededSearchEffectiveIndexerIds : [],
+      disableTorznab: !seededSearchTorznabEnabled,
       cooldownMinutes: searchCooldownMinutes,
       skipIndividualEpisodes,
       maxAddedAgeDays,
@@ -475,7 +417,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
               <Label htmlFor="search-interval">{t("scan.intervalLabel")}</Label>
               <FieldHelp>
                 {t("scan.waitTimeDescription", { min: seededSearchIntervalMinimum })}
-                {seededSearchGazelleOnlyMode && t("scan.gazelleOnlyNote")}
+                {seededSearchGazelleOnlyRun && t("scan.gazelleOnlyNote")}
               </FieldHelp>
             </div>
             <Input
