@@ -47,7 +47,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
-import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
+import { changedSecret, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
@@ -1335,8 +1335,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
       gazelleEnabled: globalSource.gazelleEnabled,
-      redactedApiKey: globalSource.redactedApiKey,
-      orpheusApiKey: globalSource.orpheusApiKey,
+      redactedApiKey: changedSecret(globalSource.redactedApiKey, settings.redactedApiKey),
+      orpheusApiKey: changedSecret(globalSource.orpheusApiKey, settings.orpheusApiKey),
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
@@ -1367,8 +1367,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackTags: globalSource.seasonPackTags,
       seasonPackCategory: globalSource.seasonPackCategory,
       seasonPackCategoryRules: globalSource.seasonPackCategoryRules,
-      seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
-      seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
+      seasonPackTvdbApiKey: changedSecret(globalSource.seasonPackTvdbApiKey, settings.seasonPackTvdbApiKey),
+      seasonPackTvdbPin: changedSecret(globalSource.seasonPackTvdbPin, settings.seasonPackTvdbPin),
     }
   }, [
     settings,
