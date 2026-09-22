@@ -157,7 +157,7 @@
       ],
       "title": "qBittorrent",
       "type": "stat",
-      "description": "État de connexion à l'instance qBittorrent."
+      "description": "Connection status of the qBittorrent instance."
     },
     {
       "datasource": {
