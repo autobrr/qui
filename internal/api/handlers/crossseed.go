@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -408,18 +409,19 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
-	if patch.RedactedAPIKey != nil {
-		settings.RedactedAPIKey = strings.TrimSpace(*patch.RedactedAPIKey)
+	// GetSettings reports an undecryptable secret as "", and merging that back
+	// would clear the stored ciphertext. An unnamed secret keeps what is stored.
+	settings.RedactedAPIKey = patchSecret(patch.RedactedAPIKey)
+	settings.OrpheusAPIKey = patchSecret(patch.OrpheusAPIKey)
+	settings.SeasonPackTVDBAPIKey = patchSecret(patch.SeasonPackTVDBAPIKey)
+	settings.SeasonPackTVDBPIN = patchSecret(patch.SeasonPackTVDBPIN)
+}
+
+func patchSecret(value *string) string {
+	if value == nil {
+		return domain.RedactedStr
 	}
-	if patch.OrpheusAPIKey != nil {
-		settings.OrpheusAPIKey = strings.TrimSpace(*patch.OrpheusAPIKey)
-	}
-	if patch.SeasonPackTVDBAPIKey != nil {
-		settings.SeasonPackTVDBAPIKey = strings.TrimSpace(*patch.SeasonPackTVDBAPIKey)
-	}
-	if patch.SeasonPackTVDBPIN != nil {
-		settings.SeasonPackTVDBPIN = strings.TrimSpace(*patch.SeasonPackTVDBPIN)
-	}
+	return strings.TrimSpace(*value)
 }
 
 var validSeasonPackRuleSources = map[string]struct{}{

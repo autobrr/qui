@@ -409,8 +409,13 @@ func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, err
 	})
 }
 
+// apiKeyRedacted reports a stored secret as set only when qui can decrypt it.
+// The code that uses the secret reports the decrypt failure, so this path stays quiet.
 func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 	if strings.TrimSpace(encrypted) == "" {
+		return ""
+	}
+	if _, err := s.decrypt(encrypted); err != nil {
 		return ""
 	}
 	return domain.RedactedStr
