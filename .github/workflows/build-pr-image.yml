@@ -1,0 +1,140 @@
+name: Build PR image
+
+# Builds and pushes a Docker image for a pull request from a fork.
+# release.yml only pushes images for in-repo PRs. The workflow file comes from
+# the ref it is dispatched on; only the build context is checked out from the
+# fork, so fork code never changes what runs with the repository token.
+# Premium themes are skipped: make themes-fetch would run the fork's Makefile
+# with THEMES_REPO_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number"
+        required: true
+        type: number
+      platforms:
+        description: "Comma separated list of platforms to build"
+        required: false
+        default: "linux/amd64,linux/arm64"
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+  NODE_VERSION: "24.15.0"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-pr-image-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    name: Build Docker image for PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve pull request head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr view "${{ inputs.pr }}" --repo "${{ github.repository }}" \
+            --json headRefOid,headRepository,headRepositoryOwner,state \
+            --jq '"sha=\(.headRefOid)\nrepo=\(.headRepositoryOwner.login)/\(.headRepository.name)\nstate=\(.state)"' \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: Checkout pull request head
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ steps.pr.outputs.repo }}
+          ref: ${{ steps.pr.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          package_json_file: web/package.json
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web frontend
+        working-directory: web
+        run: CI= pnpm run build
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=raw,value=pr-${{ inputs.pr }}
+          flavor: |
+            latest=false
+          labels: |
+            org.opencontainers.image.revision=${{ steps.pr.outputs.sha }}
+            org.opencontainers.image.version=pr-${{ inputs.pr }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.3.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.3.0
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: ./distrib/docker/ci.Dockerfile
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=pr-${{ inputs.pr }}
+            REVISION=${{ steps.pr.outputs.sha }}
+            BUILDER=${{ github.actor }}@github-actions
+          cache-from: type=gha,scope=pr-${{ inputs.pr }}
+          cache-to: type=gha,mode=max,scope=pr-${{ inputs.pr }}
+          provenance: false
+
+      - name: Summary
+        run: |
+          {
+            echo "Built \`${{ env.REGISTRY_IMAGE }}:pr-${{ inputs.pr }}\`"
+            echo
+            echo "- source: \`${{ steps.pr.outputs.repo }}@${{ steps.pr.outputs.sha }}\` (PR ${{ steps.pr.outputs.state }})"
+            echo "- platforms: \`${{ inputs.platforms }}\`"
+            echo "- premium themes: not included"
+          } >> "$GITHUB_STEP_SUMMARY"
