@@ -1735,6 +1735,9 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
+	// torznabSearched records that a candidate searched Torznab. Resolved
+	// indexers do not prove it: the filter or cooldown can skip every candidate.
+	torznabSearched bool
 
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
 	// This avoids repeated settings/key lookups for every candidate torrent.
@@ -8397,6 +8400,10 @@ func (s *Service) searchGazelleMatches(
 		}
 
 		remoteRequestsMade = true
+		if clients.queried == nil {
+			clients.queried = make(map[string]struct{}, len(clients.byHost))
+		}
+		clients.queried[client.Host()] = struct{}{}
 		match, matchErr := findGazelleMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
 		if errors.Is(matchErr, gazellemusic.ErrAccessDenied) {
 			log.Warn().
@@ -8783,10 +8790,13 @@ type gazelleClientSet struct {
 	// returned. The set lives as long as one search, so a denied host gets no
 	// more requests in that search.
 	denied map[string]error
+	// queried holds each host the search sent a request to. A configured host
+	// can go unqueried: sources from OPS only ever target RED.
+	queried map[string]struct{}
 }
 
 // deniedMessage describes each tracker that rejected the key or the IP, for the
-// run record. allDenied reports that no configured tracker is left to search.
+// run record. allDenied reports that every tracker the search queried rejected it.
 func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
 	if c == nil || len(c.denied) == 0 {
 		return "", false
@@ -8796,7 +8806,7 @@ func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
 		lines = append(lines, c.byHost[host].SourceFlag()+" "+err.Error())
 	}
 	slices.Sort(lines)
-	return strings.Join(lines, "; "), len(c.denied) == len(c.byHost)
+	return strings.Join(lines, "; "), len(c.denied) == len(c.queried)
 }
 
 func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*gazelleClientSet, error) {
@@ -10657,7 +10667,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 			deniedMsg = *state.run.ErrorMessage + "; " + deniedMsg
 		}
 		state.run.ErrorMessage = &deniedMsg
-		if allDenied && len(state.resolvedTorznabIndexerIDs) == 0 && state.run.Status == models.CrossSeedSearchRunStatusSuccess {
+		if allDenied && !state.torznabSearched && state.run.Status == models.CrossSeedSearchRunStatusSuccess {
 			state.run.Status = models.CrossSeedSearchRunStatusFailed
 		}
 	}
@@ -11405,6 +11415,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 
+	if !searchDisableTorznab {
+		state.torznabSearched = true
+	}
 	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
 	if searchCancel != nil {
 		defer searchCancel()

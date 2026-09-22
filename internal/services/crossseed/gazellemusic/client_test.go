@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestNewClient_SharesLimiterPerHost(t *testing.T) {
@@ -93,7 +94,11 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
 }
 
+// The ban and wrong-key rows copy the status and error text of real tracker
+// replies, captured in September 2026. Do not reword them.
 func TestClientClassifiesAccessDenied(t *testing.T) {
+	// The wrong-key rows are replies captured from the live trackers on
+	// 2026-09-22; the ban row is the OPS text from #2807. Do not edit them to fit code.
 	tests := []struct {
 		name       string
 		status     int
@@ -121,6 +126,13 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			body:       `{"status":"failure","error":"bad credentials"}`,
 			wantDenied: true,
 			wantText:   "bad credentials",
+		},
+		{
+			name:       "short body with invalid UTF-8",
+			status:     http.StatusForbidden,
+			body:       "denied \xff",
+			wantDenied: true,
+			wantText:   "denied",
 		},
 		{
 			name:     "other api failure",
@@ -151,6 +163,27 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantText) {
 				t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
 			}
+			if !utf8.ValidString(err.Error()) {
+				t.Fatalf("error %q is not valid UTF-8; Postgres rejects it in the run record", err)
+			}
 		})
+	}
+}
+
+// A denial whose text reads like Gazelle's not-found reply must still stop the
+// lookup, not count as a hash miss.
+func TestSearchByHashKeepsAccessDenied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"failure","error":"bad parameters"}`))
+	}))
+	defer server.Close()
+
+	c, err := NewClient("redacted.sh", server.URL, "key")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.SearchByHash(t.Context(), "abc"); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("SearchByHash error = %v, want ErrAccessDenied", err)
 	}
 }

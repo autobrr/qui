@@ -287,11 +287,12 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
 			text = ajaxErr.Error
 		}
-		// The run history stores this text; an HTML error page must not flood it.
-		// ToValidUTF8 drops a rune the cut split, which Postgres would reject.
+		// The run history stores this text: cap an HTML error page, and drop
+		// invalid UTF-8 (a rune the cut split, too), which Postgres rejects.
 		if len(text) > 200 {
-			text = strings.ToValidUTF8(text[:200], "")
+			text = text[:200]
 		}
+		text = strings.ToValidUTF8(text, "")
 		return body, resp.StatusCode, fmt.Errorf("%w: status %d: %s", ErrAccessDenied, resp.StatusCode, text)
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -337,6 +338,9 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 	params.Set("hash", strings.ToUpper(hash))
 
 	resp, err := c.ajax(ctx, "torrent", params)
+	if errors.Is(err, ErrAccessDenied) {
+		return nil, err
+	}
 	if err != nil {
 		// Gazelle uses "bad parameters" for not-found. Treat as miss.
 		lower := strings.ToLower(err.Error())
