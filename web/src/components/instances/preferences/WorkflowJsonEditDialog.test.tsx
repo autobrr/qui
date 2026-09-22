@@ -9,13 +9,14 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Automation } from "@/types"
 
 const mocks = vi.hoisted(() => ({
+  translation: { t: (key: string) => key, i18n: { t: (key: string) => key } },
   updateAutomation: vi.fn(),
   toastSuccess: vi.fn(),
 }))
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
-  useTranslation: () => ({ t: (key: string) => key, i18n: { t: (key: string) => key } }),
+  useTranslation: () => mocks.translation,
 }))
 vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess } }))
 vi.mock("@/lib/api", () => ({ api: { updateAutomation: mocks.updateAutomation } }))
