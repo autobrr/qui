@@ -4,7 +4,7 @@
  */
 
 import { RSSRunItem } from "@/components/cross-seed/RssRunItem"
-import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
+import { AutoResumeSwitch, SourceFilterFields, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +37,6 @@ import {
 } from "@/hooks/useCrossSeedSettings"
 import { DEFAULT_RSS_INTERVAL_MINUTES, MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManualRunCooldown"
 import { api } from "@/lib/api"
-import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { normalizeNumberList } from "@/lib/cross-seed-utils"
 import type { CrossSeedAutomationSettings, CrossSeedRun } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
@@ -206,26 +205,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
     [enabledIndexers]
   )
 
-  const sourceTagNames = useMemo(() => sourceMetadata?.tags ?? [], [sourceMetadata])
-
-  const sourceCategorySelectOptions = useMemo(
-    () => buildCategorySelectOptions(
-      sourceMetadata?.categories ?? {},
-      form.rssSourceCategories,
-      form.rssSourceExcludeCategories
-    ),
-    [form.rssSourceCategories, form.rssSourceExcludeCategories, sourceMetadata?.categories]
-  )
-
-  const sourceTagSelectOptions = useMemo(
-    () => buildTagSelectOptions(
-      sourceTagNames,
-      form.rssSourceTags,
-      form.rssSourceExcludeTags
-    ),
-    [sourceTagNames, form.rssSourceTags, form.rssSourceExcludeTags]
-  )
-
   const groupedRuns = useMemo(() => {
     const result = {
       scheduled: [] as CrossSeedRun[],
@@ -262,8 +241,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
       totalRuns: runs.length,
     }
   }, [runs])
-
-  const hasTargetsSelected = form.targetInstanceIds.length > 0
 
   return (
     <>
@@ -363,73 +340,23 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3">
-              <Label>{t("automation.includeCategories")}</Label>
-              <MultiSelect
-                options={sourceCategorySelectOptions}
-                selected={form.rssSourceCategories}
-                onChange={values => setForm(prev => ({ ...prev, rssSourceCategories: values }))}
-                placeholder={
-                  hasTargetsSelected ? sourceCategorySelectOptions.length ? t("automation.allCategories") : t("automation.typeToAddCategories") : t("automation.selectInstancesToLoadCategories")
-                }
-                creatable
-                disabled={!hasTargetsSelected}
-              />
-              <p className="text-xs text-muted-foreground">
-                {form.rssSourceCategories.length === 0 ? t("automation.allCategoriesIncluded") : t("automation.selectedCategoriesMatched", { count: form.rssSourceCategories.length })}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Label>{t("automation.includeTags")}</Label>
-              <MultiSelect
-                options={sourceTagSelectOptions}
-                selected={form.rssSourceTags}
-                onChange={values => setForm(prev => ({ ...prev, rssSourceTags: values }))}
-                placeholder={
-                  hasTargetsSelected ? sourceTagSelectOptions.length ? t("automation.allTags") : t("automation.typeToAddTags") : t("automation.selectInstancesToLoadTags")
-                }
-                creatable
-                disabled={!hasTargetsSelected}
-              />
-              <p className="text-xs text-muted-foreground">
-                {form.rssSourceTags.length === 0 ? t("automation.allTagsIncluded") : t("automation.selectedTagsMatched", { count: form.rssSourceTags.length })}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3">
-              <Label>{t("automation.excludeCategories")}</Label>
-              <MultiSelect
-                options={sourceCategorySelectOptions}
-                selected={form.rssSourceExcludeCategories}
-                onChange={values => setForm(prev => ({ ...prev, rssSourceExcludeCategories: values }))}
-                placeholder={hasTargetsSelected ? t("automation.none") : t("automation.selectInstancesToLoadCategories")}
-                creatable
-                disabled={!hasTargetsSelected}
-              />
-              <p className="text-xs text-muted-foreground">
-                {form.rssSourceExcludeCategories.length === 0 ? t("automation.noCategoriesExcluded") : t("automation.categoriesSkipped", { count: form.rssSourceExcludeCategories.length })}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Label>{t("automation.excludeTags")}</Label>
-              <MultiSelect
-                options={sourceTagSelectOptions}
-                selected={form.rssSourceExcludeTags}
-                onChange={values => setForm(prev => ({ ...prev, rssSourceExcludeTags: values }))}
-                placeholder={hasTargetsSelected ? t("automation.none") : t("automation.selectInstancesToLoadTags")}
-                creatable
-                disabled={!hasTargetsSelected}
-              />
-              <p className="text-xs text-muted-foreground">
-                {form.rssSourceExcludeTags.length === 0 ? t("automation.noTagsExcluded") : t("automation.tagsSkipped", { count: form.rssSourceExcludeTags.length })}
-              </p>
-            </div>
-          </div>
+          <SourceFilterFields
+            filters={{
+              categories: form.rssSourceCategories,
+              tags: form.rssSourceTags,
+              excludeCategories: form.rssSourceExcludeCategories,
+              excludeTags: form.rssSourceExcludeTags,
+            }}
+            onChange={filters => setForm(prev => ({
+              ...prev,
+              rssSourceCategories: filters.categories,
+              rssSourceTags: filters.tags,
+              rssSourceExcludeCategories: filters.excludeCategories,
+              rssSourceExcludeTags: filters.excludeTags,
+            }))}
+            metadata={sourceMetadata}
+            disabled={form.targetInstanceIds.length === 0}
+          />
 
           <div className="grid gap-4 md:grid-cols-2">
             <SourceTagsField
