@@ -153,18 +153,21 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			_, err = c.SearchByFilename(t.Context(), "track")
-			if err == nil {
-				t.Fatal("expected an error")
-			}
-			if got := errors.Is(err, ErrAccessDenied); got != tt.wantDenied {
-				t.Fatalf("errors.Is(err, ErrAccessDenied) = %v, want %v (err: %v)", got, tt.wantDenied, err)
-			}
-			if !strings.Contains(err.Error(), tt.wantText) {
-				t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
-			}
-			if !utf8.ValidString(err.Error()) {
-				t.Fatalf("error %q is not valid UTF-8; Postgres rejects it in the run record", err)
+			_, searchErr := c.SearchByFilename(t.Context(), "track")
+			_, downloadErr := c.DownloadTorrent(t.Context(), 1)
+			for _, err := range []error{searchErr, downloadErr} {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if got := errors.Is(err, ErrAccessDenied); got != tt.wantDenied {
+					t.Fatalf("errors.Is(err, ErrAccessDenied) = %v, want %v (err: %v)", got, tt.wantDenied, err)
+				}
+				if !strings.Contains(err.Error(), tt.wantText) {
+					t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
+				}
+				if !utf8.ValidString(err.Error()) {
+					t.Fatalf("error %q is not valid UTF-8; Postgres rejects it in the run record", err)
+				}
 			}
 		})
 	}
