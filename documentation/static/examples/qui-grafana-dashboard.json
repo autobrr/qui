@@ -157,7 +157,7 @@
       ],
       "title": "qBittorrent",
       "type": "stat",
-      "description": "État de connexion à l'instance qBittorrent."
+      "description": "Connection status of the selected qBittorrent instance."
     },
     {
       "datasource": {
@@ -477,7 +477,7 @@
       ],
       "title": "Torrent errors",
       "type": "stat",
-      "description": "Nombre de torrents actuellement en erreur."
+      "description": "Number of torrents currently in an error state."
     },
     {
       "datasource": {
@@ -676,7 +676,7 @@
       ],
       "title": "Managed torrents",
       "type": "stat",
-      "description": "Somme des états exposés par Qui. Un torrent ne doit normalement appartenir qu'à un seul de ces états."
+      "description": "Sum of the torrent states exposed by Qui. A torrent should normally belong to only one of these states."
     },
     {
       "datasource": {
@@ -904,7 +904,7 @@
           "refId": "A",
           "editorMode": "code",
           "expr": "sum by (instance_name) (rate(qbittorrent_session_download_bytes{instance_name=~\"${instance_name:regex}\"}[$__rate_interval]))",
-          "legendFormat": "{{instance_name}} · download",
+          "legendFormat": "{{instance_name}} - download",
           "instant": false,
           "range": true
         },
@@ -912,14 +912,14 @@
           "refId": "B",
           "editorMode": "code",
           "expr": "sum by (instance_name) (rate(qbittorrent_session_upload_bytes{instance_name=~\"${instance_name:regex}\"}[$__rate_interval]))",
-          "legendFormat": "{{instance_name}} · upload",
+          "legendFormat": "{{instance_name}} - upload",
           "instant": false,
           "range": true
         }
       ],
       "title": "Transfer rate",
       "type": "timeseries",
-      "description": "Débits calculés à partir des compteurs de session qBittorrent."
+      "description": "Transfer rates calculated from the qBittorrent session counters."
     },
     {
       "datasource": {
@@ -1135,7 +1135,7 @@
       ],
       "title": "Tracker ratio",
       "type": "bargauge",
-      "description": "Ratio upload/download calculé par tracker."
+      "description": "Upload/download ratio calculated per tracker group."
     },
     {
       "datasource": {
@@ -1220,7 +1220,7 @@
       ],
       "title": "Tracker transfer totals",
       "type": "table",
-      "description": "Totaux courants upload/download par tracker. Les métriques sont cumulatives : une table est plus pertinente qu'une courbe temporelle.",
+      "description": "Current upload/download totals per tracker group. These metrics represent current cumulative values, so a table is more useful than a time-series chart.",
       "transformations": [
         {
           "id": "organize",
@@ -1435,7 +1435,7 @@
           "refId": "A",
           "editorMode": "code",
           "expr": "process_resident_memory_bytes and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} · RSS",
+          "legendFormat": "{{instance}} - RSS",
           "instant": false,
           "range": true
         },
@@ -1443,7 +1443,7 @@
           "refId": "B",
           "editorMode": "code",
           "expr": "go_memstats_heap_alloc_bytes and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} · Go heap",
+          "legendFormat": "{{instance}} - Go heap",
           "instant": false,
           "range": true
         }
@@ -1537,7 +1537,7 @@
           "refId": "A",
           "editorMode": "code",
           "expr": "rate(process_network_receive_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} · RX",
+          "legendFormat": "{{instance}} - RX",
           "instant": false,
           "range": true
         },
@@ -1545,7 +1545,7 @@
           "refId": "B",
           "editorMode": "code",
           "expr": "rate(process_network_transmit_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} · TX",
+          "legendFormat": "{{instance}} - TX",
           "instant": false,
           "range": true
         }
@@ -1694,7 +1694,7 @@
       ],
       "title": "DB wedged transactions",
       "type": "stat",
-      "description": "Doit rester à 0. Une valeur > 0 indique que Qui a détecté une transaction DB bloquée."
+      "description": "Should remain at 0. A value above 0 means Qui detected a wedged database transaction."
     },
     {
       "datasource": {
