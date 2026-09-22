@@ -363,6 +363,42 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts(), "a cancelled call must not drop the shared connection")
 }
 
+// A walk that is mid-tree when the connection drops finishes on the redialled
+// connection, because walk takes the client per directory (com6056, #2739).
+func TestWalkDir_SurvivesDroppedConnection(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	dir := t.TempDir()
+	// "a" holds more files than the walk channel buffers, so the walk is parked
+	// inside it when the connection drops, and "z" is still to be read.
+	for i := range 100 {
+		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
+	}
+	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+
+	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
+	require.NoError(t, err)
+	for range 3 {
+		<-ch
+	}
+
+	server.DropConnections()
+	require.Eventually(t, func() bool {
+		_, err := b.Stat(t.Context(), remotePath(dir))
+		return err == nil
+	}, 5*time.Second, 20*time.Millisecond)
+
+	sawLast := false
+	for entry := range ch {
+		require.NoError(t, entry.Err, entry.Path)
+		if entry.RelPath == path.Join("z", "last.txt") {
+			sawLast = true
+		}
+	}
+	assert.True(t, sawLast, "the walk reaches z on the redialled connection")
+}
+
 func TestStatfs(t *testing.T) {
 	t.Parallel()
 
