@@ -1645,7 +1645,7 @@ export function WorkflowsOverview({
       )}
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85dvh] flex flex-col">
+        <DialogContent className="md:max-w-4xl max-h-[85dvh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("preferences.workflowsOverview.importDialog.title")}</DialogTitle>
             <DialogDescription>

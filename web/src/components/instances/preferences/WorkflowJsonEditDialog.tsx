@@ -57,7 +57,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85dvh] flex flex-col">
+      <DialogContent className="md:max-w-4xl max-h-[85dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("preferences.workflowsOverview.editJsonDialog.title", { name: rule.name })}</DialogTitle>
           <DialogDescription>
