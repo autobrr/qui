@@ -95,6 +95,17 @@ Fix:
 - If you changed `sessionSecret` (or `QUI__SESSION_SECRET`), enter the keys again. qui cannot decrypt the old encrypted values.
 - For the best OPS/RED coverage, set **both** keys
 
+### "OPS rejected the API key or this IP" or "RED rejected the API key or this IP"
+
+The tracker refused a request. The API key is wrong, or the tracker banned the IP address of qui. The text after the colon comes from the tracker.
+
+When this happens, qui sends no more requests to that tracker for the rest of the search. It keeps searching the other Gazelle site and Torznab. It does not stamp the Gazelle cooldown for the torrents it could not check, so they stay eligible for the next run. The run history shows the message. If that tracker was the only source of the run, the run ends as failed.
+
+Fix:
+
+- Check the API key for that tracker, and enter it again if necessary.
+- If the tracker banned your IP, contact the tracker staff. qui does not retry.
+
 ### Only one key set
 
 This configuration works, but coverage is partial.

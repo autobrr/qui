@@ -8,6 +8,7 @@ package gazellemusic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -60,6 +61,11 @@ func blockLiveTrackerDials(t *http.Transport) {
 	}
 	t.DialContext = dialer.DialContext
 }
+
+// ErrAccessDenied means the tracker rejects every request from this client: the
+// API key is wrong or the tracker banned this IP. The wrapped message carries
+// the tracker's own text.
+var ErrAccessDenied = errors.New("rejected the API key or this IP")
 
 // sharedLimiters ensures we don't create one rate limiter per qBittorrent instance/client.
 // Rate limits are per tracker host and must be shared across the whole qui process.
@@ -275,6 +281,19 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read response from %s: %w", endpoint, err)
 	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		text := strings.TrimSpace(string(body))
+		var ajaxErr AjaxResponse
+		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
+			text = ajaxErr.Error
+		}
+		// The run history stores this text; an HTML error page must not flood it.
+		// ToValidUTF8 drops a rune the cut split, which Postgres would reject.
+		if len(text) > 200 {
+			text = strings.ToValidUTF8(text[:200], "")
+		}
+		return body, resp.StatusCode, fmt.Errorf("%w: status %d: %s", ErrAccessDenied, resp.StatusCode, text)
+	}
 	if resp.StatusCode != http.StatusOK {
 		// Keep body text; callers may log a short snippet.
 		return body, resp.StatusCode, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
@@ -296,6 +315,11 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	if resp.Status != "success" {
+		// Only the IP ban text has been seen from a real tracker; a bad key is
+		// expected as 401/403, which request handles.
+		if strings.Contains(strings.ToLower(resp.Error), "banned") {
+			return nil, fmt.Errorf("%w: %s", ErrAccessDenied, resp.Error)
+		}
 		return nil, fmt.Errorf("API error: %s", resp.Error)
 	}
 	return &resp, nil

@@ -2,8 +2,10 @@ package gazellemusic
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -89,4 +91,59 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	// 192.0.2.1 is TEST-NET-1 (RFC 5737), reserved for documentation. The guard
 	// fires before connect, so nothing leaves the machine either way.
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
+}
+
+func TestClientClassifiesAccessDenied(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		wantDenied bool
+		wantText   string
+	}{
+		{
+			name:       "ip ban body",
+			status:     http.StatusOK,
+			body:       `{"status":"failure","error":"Your IP address has been banned."}`,
+			wantDenied: true,
+			wantText:   "Your IP address has been banned.",
+		},
+		{
+			name:       "unauthorized",
+			status:     http.StatusUnauthorized,
+			body:       `{"status":"failure","error":"bad credentials"}`,
+			wantDenied: true,
+			wantText:   "bad credentials",
+		},
+		{
+			name:     "other api failure",
+			status:   http.StatusOK,
+			body:     `{"status":"failure","error":"rate limit exceeded"}`,
+			wantText: "rate limit exceeded",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			c, err := NewClient("redacted.sh", server.URL, "key")
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			_, err = c.SearchByFilename(t.Context(), "track")
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if got := errors.Is(err, ErrAccessDenied); got != tt.wantDenied {
+				t.Fatalf("errors.Is(err, ErrAccessDenied) = %v, want %v (err: %v)", got, tt.wantDenied, err)
+			}
+			if !strings.Contains(err.Error(), tt.wantText) {
+				t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
+			}
+		})
+	}
 }
