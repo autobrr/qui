@@ -678,6 +678,7 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
+		"SavePath":            torrent.SavePath,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
