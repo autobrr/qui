@@ -5,7 +5,8 @@ name: Build PR image
 # the ref it is dispatched on; only the build context is checked out from the
 # fork, so fork code never changes what runs with the repository token.
 # Premium themes are skipped: make themes-fetch would run the fork's Makefile
-# with THEMES_REPO_TOKEN.
+# with THEMES_REPO_TOKEN. Caches are restore-only: fork code runs before a
+# save, and release.yml restores the same keys.
 on:
   workflow_dispatch:
     inputs:
@@ -58,6 +59,7 @@ jobs:
         uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6.1.0
@@ -70,7 +72,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
