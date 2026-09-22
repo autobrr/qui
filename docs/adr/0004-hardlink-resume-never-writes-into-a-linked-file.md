@@ -14,7 +14,7 @@ A hardlink shares its bytes with the source torrent's file. When a linked file f
 - **Apply the gate to reflink adds.** Rejected: a reflink clone is copy-on-write, so a download into the clone never reaches the source.
 - **Block when the piece states cannot be read.** Rejected: an empty or failed read would make every boundary pack look mismatched. The entry retries on the next poll and the absolute timeout drops it paused, which still protects the source.
 - **Key the linked set by file index.** Rejected: qBittorrent drops pad files from its file list and renumbers, so metainfo indexes drift on hybrid and v2 torrents. The set is keyed by torrent path.
-- **Unlink the mismatched file and download it fresh.** Out of scope, #2687. The gate leaves the torrent paused and names the file.
+- **Unlink the mismatched file and download it fresh.** Done for season packs in #2687: the apply sets a demote hook on the queue entry, the gate refusal unlinks the file, and the pack rechecks again. The decision holds, because the file is no longer linked when the download starts. Cross-seed adds still leave the torrent paused and name the file.
 
 ## Consequences
 
