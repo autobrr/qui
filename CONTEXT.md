@@ -31,6 +31,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Manual match**: A cross-seed apply where the user chooses the target torrent. Candidate discovery and the category and content-type gates are bypassed; the recheck is the arbiter of a wrong pick. _Avoid_: forced match, pinned match.
 - **Numbering scheme**: How a TV release names its episode: seasoned (`S04E15`) or absolute (`- 81`, no season). A pair of releases that use the same scheme compare episode numbers directly. _Avoid_: anime numbering, episode format.
 - **Episode map**: The Sonarr-sourced triple (season, episode, absolute) for one release name. It lets one seasoned and one absolute release count as the same episode. Exists only when Sonarr names exactly one episode and that episode has an absolute number; otherwise there is no map and the pair falls back to size evidence. _Avoid_: Sonarr mapping, episode translation, absolute lookup.
+- **Gazelle-only run**: A library search with Torznab off; candidates come only from the OPS/RED APIs. Reached by the Torznab switch on the Library card, which applies to the next run and is not saved, never inferred from the indexer selection. Needs one Gazelle key. _Avoid_: Torznab-disabled run, forced Gazelle-only.
 
 ## Cross-seed link tree
 

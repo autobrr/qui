@@ -51,7 +51,7 @@ it.each(["unsafe_piece_boundary", "layout_mismatch"])("explains %s and links onl
   expect(ui.getByRole("button", { name: "manualCrossSeed.apply" }).hasAttribute("disabled")).toBe(true)
   const link = ui.queryByRole("link", { name: "manualCrossSeed.pack.reviewRules" })
   if (reason === "unsafe_piece_boundary") {
-    expect(link?.getAttribute("href")).toBe("/cross-seed?tab=rules")
+    expect(link?.getAttribute("href")).toBe("/cross-seed?tab=matching")
   } else {
     expect(link).toBeNull()
   }
