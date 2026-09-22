@@ -66,11 +66,11 @@ type automationSettingsRequest struct {
 	SeasonPackCategoryRules        []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
 	CategoryMappingRules           []models.CategoryMappingRule    `json:"categoryMappingRules"`
 	// Gazelle (OPS/RED) cross-seed settings.
-	GazelleEnabled       bool   `json:"gazelleEnabled"`
-	RedactedAPIKey       string `json:"redactedApiKey"`
-	OrpheusAPIKey        string `json:"orpheusApiKey"`
-	SeasonPackTVDBAPIKey string `json:"seasonPackTvdbApiKey"`
-	SeasonPackTVDBPIN    string `json:"seasonPackTvdbPin"`
+	GazelleEnabled       bool    `json:"gazelleEnabled"`
+	RedactedAPIKey       *string `json:"redactedApiKey"`
+	OrpheusAPIKey        *string `json:"orpheusApiKey"`
+	SeasonPackTVDBAPIKey *string `json:"seasonPackTvdbApiKey"`
+	SeasonPackTVDBPIN    *string `json:"seasonPackTvdbPin"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -409,14 +409,15 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
-	// GetSettings reports an undecryptable secret as "", and merging that back
-	// would clear the stored ciphertext. An unnamed secret keeps what is stored.
 	settings.RedactedAPIKey = patchSecret(patch.RedactedAPIKey)
 	settings.OrpheusAPIKey = patchSecret(patch.OrpheusAPIKey)
 	settings.SeasonPackTVDBAPIKey = patchSecret(patch.SeasonPackTVDBAPIKey)
 	settings.SeasonPackTVDBPIN = patchSecret(patch.SeasonPackTVDBPIN)
 }
 
+// patchSecret keeps the stored secret when the request leaves the field out.
+// GetSettings leaves out a secret it cannot decrypt, so a client that sends the
+// settings back would otherwise clear the stored ciphertext.
 func patchSecret(value *string) string {
 	if value == nil {
 		return domain.RedactedStr
@@ -1082,10 +1083,10 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackCategoryRules:        normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
 		CategoryMappingRules:           normalizeCategoryMappingRules(req.CategoryMappingRules),
 		GazelleEnabled:                 req.GazelleEnabled,
-		RedactedAPIKey:                 strings.TrimSpace(req.RedactedAPIKey),
-		OrpheusAPIKey:                  strings.TrimSpace(req.OrpheusAPIKey),
-		SeasonPackTVDBAPIKey:           strings.TrimSpace(req.SeasonPackTVDBAPIKey),
-		SeasonPackTVDBPIN:              strings.TrimSpace(req.SeasonPackTVDBPIN),
+		RedactedAPIKey:                 patchSecret(req.RedactedAPIKey),
+		OrpheusAPIKey:                  patchSecret(req.OrpheusAPIKey),
+		SeasonPackTVDBAPIKey:           patchSecret(req.SeasonPackTVDBAPIKey),
+		SeasonPackTVDBPIN:              patchSecret(req.SeasonPackTVDBPIN),
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)

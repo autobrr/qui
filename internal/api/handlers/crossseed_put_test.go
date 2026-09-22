@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -374,4 +375,25 @@ func TestAutomationSettingsPooledPartialCompletion(t *testing.T) {
 			require.Equal(t, tt.want, stored.PooledPartialCompletionEnabled)
 		})
 	}
+}
+
+func TestAutomationSettingsPutKeepsOmittedSecrets(t *testing.T) {
+	handler, store := newTestCrossSeedHandler(t)
+
+	for _, body := range []string{
+		`{"seasonPackCoverageThreshold":0.75,"redactedApiKey":"red","orpheusApiKey":"ops","seasonPackTvdbApiKey":"tvdb","seasonPackTvdbPin":"pin"}`,
+		`{"seasonPackCoverageThreshold":0.75,"orpheusApiKey":""}`,
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(body))
+		resp := httptest.NewRecorder()
+		handler.UpdateAutomationSettings(resp, req)
+		require.Equal(t, http.StatusOK, resp.Code)
+	}
+
+	stored, err := store.GetSettings(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, domain.RedactedStr, stored.RedactedAPIKey)
+	require.Empty(t, stored.OrpheusAPIKey)
+	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBAPIKey)
+	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBPIN)
 }
