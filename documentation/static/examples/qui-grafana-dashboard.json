@@ -24,6 +24,18 @@
     },
     {
       "type": "panel",
+      "id": "bargauge",
+      "name": "Bar gauge",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "piechart",
+      "name": "Pie chart",
+      "version": ""
+    },
+    {
+      "type": "panel",
       "id": "stat",
       "name": "Stat",
       "version": ""
@@ -57,7 +69,7 @@
       }
     ]
   },
-  "description": "Connection, transfer, tracker, and collection metrics from Qui.",
+  "description": "qBittorrent and Qui observability: connection, torrent states, transfer rates, tracker analytics, collection errors, and exporter runtime health.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -77,6 +89,7 @@
           },
           "mappings": [
             {
+              "type": "value",
               "options": {
                 "0": {
                   "color": "red",
@@ -88,8 +101,7 @@
                   "index": 1,
                   "text": "Connected"
                 }
-              },
-              "type": "value"
+              }
             }
           ],
           "thresholds": {
@@ -97,7 +109,7 @@
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "green",
@@ -109,10 +121,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 5
       },
       "id": 1,
       "options": {
@@ -135,16 +147,337 @@
       "pluginVersion": "12.0.0",
       "targets": [
         {
+          "refId": "A",
           "editorMode": "code",
           "expr": "qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}",
-          "instant": true,
           "legendFormat": "{{instance_name}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "qBittorrent",
+      "type": "stat",
+      "description": "État de connexion à l'instance qBittorrent."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "blue",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 3,
+        "h": 5
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_downloading{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Downloading",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Downloading",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 7,
+        "y": 0,
+        "w": 3,
+        "h": 5
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_seeding{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Seeding",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Seeding",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 0,
+        "w": 3,
+        "h": 5
+      },
+      "id": 20,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_paused{instance_name=~\"${instance_name:regex}\"})",
+          "instant": true,
+          "legendFormat": "Paused",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "qBittorrent connection",
+      "title": "Paused",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 13,
+        "y": 0,
+        "w": 3,
+        "h": 5
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_checking{instance_name=~\"${instance_name:regex}\"})",
+          "instant": true,
+          "legendFormat": "Checking",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Checking",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_error{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Errors",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Torrent errors",
+      "type": "stat",
+      "description": "Nombre de torrents actuellement en erreur."
     },
     {
       "datasource": {
@@ -175,12 +508,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 12,
-        "y": 0
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 5
       },
-      "id": 2,
+      "id": 22,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -204,12 +537,83 @@
           "editorMode": "code",
           "expr": "sum(sum_over_time(qbittorrent_scrape_errors_total{instance_name=~\"${instance_name:regex}\"}[5m])) or vector(0)",
           "instant": true,
-          "legendFormat": "Errors",
+          "legendFormat": "Collection errors (5m)",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Collection errors, last 5 minutes",
+      "title": "Collection errors (5m)",
+      "type": "stat",
+      "description": "Failed qBittorrent collection samples emitted by Qui during the last 5 minutes."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_alltime_upload_bytes{instance_name=~\"${instance_name:regex}\"}) / clamp_min(sum(qbittorrent_alltime_download_bytes{instance_name=~\"${instance_name:regex}\"}), 1)",
+          "legendFormat": "Ratio",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "All-time ratio",
       "type": "stat"
     },
     {
@@ -219,6 +623,209 @@
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_torrents_seeding{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_downloading{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_paused{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_checking{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_error{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Torrents",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Managed torrents",
+      "type": "stat",
+      "description": "Somme des états exposés par Qui. Un torrent ne doit normalement appartenir qu'à un seul de ces états."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 8,
+        "h": 5
+      },
+      "id": 8,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_alltime_download_bytes{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Downloaded",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_alltime_upload_bytes{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Uploaded",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "All-time transferred",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 5
+      },
+      "id": 9,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_session_download_bytes{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Downloaded",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "editorMode": "code",
+          "expr": "sum(qbittorrent_session_upload_bytes{instance_name=~\"${instance_name:regex}\"})",
+          "legendFormat": "Uploaded",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Session transferred",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
           "color": {
             "mode": "palette-classic"
           },
@@ -231,15 +838,15 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
@@ -247,7 +854,7 @@
             },
             "showPoints": "never",
             "showValues": false,
-            "spanNulls": false,
+            "spanNulls": true,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -256,35 +863,30 @@
               "mode": "off"
             }
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
+                "value": 0
               }
             ]
-          },
-          "unit": "Bps"
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 24,
         "x": 0,
-        "y": 6
+        "y": 10,
+        "w": 24,
+        "h": 9
       },
-      "id": 3,
+      "id": 7,
       "options": {
         "legend": {
           "calcs": [
-            "lastNotNull"
+            "lastNotNull",
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -299,22 +901,241 @@
       "pluginVersion": "12.0.0",
       "targets": [
         {
+          "refId": "A",
           "editorMode": "code",
           "expr": "sum by (instance_name) (rate(qbittorrent_session_download_bytes{instance_name=~\"${instance_name:regex}\"}[$__rate_interval]))",
-          "legendFormat": "{{instance_name}} download",
-          "range": true,
-          "refId": "A"
+          "legendFormat": "{{instance_name}} · download",
+          "instant": false,
+          "range": true
         },
         {
+          "refId": "B",
           "editorMode": "code",
           "expr": "sum by (instance_name) (rate(qbittorrent_session_upload_bytes{instance_name=~\"${instance_name:regex}\"}[$__rate_interval]))",
-          "legendFormat": "{{instance_name}} upload",
-          "range": true,
-          "refId": "B"
+          "legendFormat": "{{instance_name}} · upload",
+          "instant": false,
+          "range": true
         }
       ],
-      "title": "Session transfer rate",
-      "type": "timeseries"
+      "title": "Transfer rate",
+      "type": "timeseries",
+      "description": "Débits calculés à partir des compteurs de session qBittorrent."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 8,
+        "h": 9
+      },
+      "id": 10,
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "hideZeros": true,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "(sum by (tracker_name) (qbittorrent_tracker_torrents{instance_name=~\"${instance_name:regex}\"}) > 0)",
+          "legendFormat": "{{tracker_name}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Torrents by tracker",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 19,
+        "w": 8,
+        "h": 9
+      },
+      "id": 11,
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "hideZeros": true,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "(sum by (tracker_name) (qbittorrent_tracker_total_size_bytes{instance_name=~\"${instance_name:regex}\"}) > 0)",
+          "legendFormat": "{{tracker_name}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Content size by tracker",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 19,
+        "w": 8,
+        "h": 9
+      },
+      "id": 12,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "(sum by (tracker_name) (qbittorrent_tracker_uploaded_bytes{instance_name=~\"${instance_name:regex}\"}) / sum by (tracker_name) (qbittorrent_tracker_downloaded_bytes{instance_name=~\"${instance_name:regex}\"})) and on(tracker_name) (sum by (tracker_name) (qbittorrent_tracker_downloaded_bytes{instance_name=~\"${instance_name:regex}\"}) > 0)",
+          "legendFormat": "{{tracker_name}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Tracker ratio",
+      "type": "bargauge",
+      "description": "Ratio upload/download calculé par tracker."
     },
     {
       "datasource": {
@@ -331,83 +1152,610 @@
             "cellOptions": {
               "type": "auto"
             },
+            "footer": {
+              "reducers": []
+            },
             "inspect": false
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
-          },
-          "unit": "bytes"
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Transferred"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 10,
-        "w": 24,
         "x": 0,
-        "y": 16
+        "y": 28,
+        "w": 24,
+        "h": 9
       },
-      "id": 4,
+      "id": 13,
       "options": {
         "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
         "showHeader": true,
         "sortBy": [
           {
             "desc": true,
-            "displayName": "Value"
+            "displayName": "Transferred"
           }
         ]
       },
       "pluginVersion": "12.0.0",
       "targets": [
         {
+          "refId": "A",
           "editorMode": "code",
-          "expr": "label_replace(sum by (instance_name, tracker_name) (qbittorrent_tracker_uploaded_bytes{instance_name=~\"${instance_name:regex}\"}), \"direction\", \"uploaded\", \"instance_name\", \".*\") or label_replace(sum by (instance_name, tracker_name) (qbittorrent_tracker_downloaded_bytes{instance_name=~\"${instance_name:regex}\"}), \"direction\", \"downloaded\", \"instance_name\", \".*\")",
-          "format": "table",
-          "instant": true,
+          "expr": "label_replace(sum by (instance_name, tracker_name) (qbittorrent_tracker_downloaded_bytes{instance_name=~\"${instance_name:regex}\"}), \"direction\", \"Downloaded\", \"tracker_name\", \".*\") or label_replace(sum by (instance_name, tracker_name) (qbittorrent_tracker_uploaded_bytes{instance_name=~\"${instance_name:regex}\"}), \"direction\", \"Uploaded\", \"tracker_name\", \".*\")",
           "legendFormat": "__auto",
+          "instant": true,
           "range": false,
-          "refId": "A"
+          "format": "table"
         }
       ],
-      "title": "Current tracker totals",
+      "title": "Tracker transfer totals",
+      "type": "table",
+      "description": "Totaux courants upload/download par tracker. Les métriques sont cumulatives : une table est plus pertinente qu'une courbe temporelle.",
       "transformations": [
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
             },
             "indexByName": {
-              "instance_name": 0,
-              "tracker_name": 1,
-              "direction": 2,
+              "tracker_name": 0,
+              "direction": 1,
+              "instance_name": 2,
               "Value": 3
             },
             "renameByName": {
-              "Value": "Bytes",
+              "tracker_name": "Tracker",
               "direction": "Direction",
               "instance_name": "Instance",
-              "tracker_name": "Tracker"
+              "Value": "Transferred"
             }
           }
         }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 8,
+        "h": 8
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "(rate(process_cpu_seconds_total[$__rate_interval]) * 100) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "{{instance}}",
+          "instant": false,
+          "range": true
+        }
       ],
-      "type": "table"
+      "title": "Exporter CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 37,
+        "w": 8,
+        "h": 8
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "process_resident_memory_bytes and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "{{instance}} · RSS",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "editorMode": "code",
+          "expr": "go_memstats_heap_alloc_bytes and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "{{instance}} · Go heap",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "title": "Exporter memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 37,
+        "w": 8,
+        "h": 8
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "rate(process_network_receive_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "{{instance}} · RX",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "editorMode": "code",
+          "expr": "rate(process_network_transmit_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "{{instance}} · TX",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "title": "Exporter network",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 10,
+        "h": 6
+      },
+      "id": 17,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "go_goroutines and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "Goroutines",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "editorMode": "code",
+          "expr": "go_threads and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "OS threads",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "C",
+          "editorMode": "code",
+          "expr": "process_open_fds and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "Open FDs",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Runtime health",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 45,
+        "w": 7,
+        "h": 6
+      },
+      "id": 18,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "qui_db_wedged_transaction_total and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "Wedged tx",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "DB wedged transactions",
+      "type": "stat",
+      "description": "Doit rester à 0. Une valeur > 0 indique que Qui a détecté une transaction DB bloquée."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 17,
+        "y": 45,
+        "w": 7,
+        "h": 6
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "(time() - process_start_time_seconds) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
+          "legendFormat": "Uptime",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Exporter uptime",
+      "type": "stat"
     }
   ],
   "refresh": "30s",
@@ -446,7 +1794,7 @@
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-3h",
     "to": "now"
   },
   "timepicker": {},
@@ -456,3 +1804,4 @@
   "version": 0,
   "weekStart": ""
 }
+
