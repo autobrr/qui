@@ -80,7 +80,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
-import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
@@ -333,6 +333,11 @@ export function WorkflowsOverview({
   // Keep the shared SSE stream open so automation-activity events invalidate
   // the matching react-query keys; this replaces the idle activity polling.
   useActivityStream()
+
+  // Warm the JSON editor chunk so the Import and Edit dialogs rarely show the textarea fallback.
+  useEffect(() => {
+    void import("@/components/ui/json-editor-codemirror")
+  }, [])
 
   const reorderSensors = useSensors(
     useSensor(PointerSensor, {
