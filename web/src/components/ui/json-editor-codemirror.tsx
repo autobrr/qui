@@ -8,6 +8,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { linter } from "@codemirror/lint"
 import { tags } from "@lezer/highlight"
 import CodeMirror, { EditorView } from "@uiw/react-codemirror"
+import { useMemo } from "react"
 import type { JsonEditorProps } from "./json-editor"
 
 // Mapped to the qui CSS variables so the editor follows every theme; no stock theme package.
@@ -47,15 +48,19 @@ const quiHighlight = HighlightStyle.define([
 const parseLinter = jsonParseLinter()
 const jsonLint = linter((view) => parseLinter(view).map((d) => ({ ...d, to: view.state.doc.lineAt(d.from).to })))
 
-const extensions = [json(), jsonLint, quiTheme, syntaxHighlighting(quiHighlight)]
+const baseExtensions = [json(), jsonLint, quiTheme, syntaxHighlighting(quiHighlight)]
 
 export default function JsonEditorCodeMirror({ value, onChange, placeholder, "aria-label": ariaLabel }: JsonEditorProps) {
+  // The wrapper div takes stray props; the label must sit on .cm-content, the role="textbox" element.
+  const extensions = useMemo(
+    () => [...baseExtensions, EditorView.contentAttributes.of({ "aria-label": ariaLabel })],
+    [ariaLabel]
+  )
   return (
     <CodeMirror
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      aria-label={ariaLabel}
       theme="none"
       extensions={extensions}
       basicSetup={{ foldGutter: false, autocompletion: false }}

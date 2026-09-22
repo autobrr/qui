@@ -32,6 +32,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
   const [json, setJson] = useState(() => toExportJSON(toExportFormat(rule)))
+  const [error, setError] = useState<string | null>(null)
 
   const updateRule = useMutation({
     mutationFn: (payload: ReturnType<typeof toEditInput>) => api.updateAutomation(rule.instanceId, rule.id, payload),
@@ -41,14 +42,14 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
       onOpenChange(false)
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.editJsonDialog.saveFailed"))
+      setError(error instanceof Error ? error.message : t("preferences.workflowsOverview.editJsonDialog.saveFailed"))
     },
   })
 
   const handleSave = () => {
     const result = parseImportJSON(json)
     if (result.data === null) {
-      toast.error(t(result.error))
+      setError(t(result.error))
       return
     }
     updateRule.mutate(toEditInput(rule, result.data))
@@ -63,12 +64,16 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
             {t("preferences.workflowsOverview.editJsonDialog.description")}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0">
+        <div className="min-h-0 space-y-4">
           <JsonEditor
             aria-label={t("preferences.workflowsOverview.editJsonDialog.title", { name: rule.name })}
             value={json}
-            onChange={setJson}
+            onChange={(value) => {
+              setJson(value)
+              setError(null)
+            }}
           />
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

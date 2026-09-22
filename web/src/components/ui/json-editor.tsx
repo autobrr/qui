@@ -10,7 +10,7 @@ export interface JsonEditorProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
-  "aria-label"?: string
+  "aria-label": string
 }
 
 // CodeMirror is its own chunk; the plain textarea stands in while it loads.

@@ -1649,6 +1649,7 @@ export function WorkflowsOverview({
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <JsonEditor
+              aria-label={t("preferences.workflowsOverview.importDialog.title")}
               placeholder={t("preferences.workflowsOverview.importDialog.placeholder")}
               value={importJSON}
               onChange={(value) => {

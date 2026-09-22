@@ -10,7 +10,6 @@ import type { Automation } from "@/types"
 
 const mocks = vi.hoisted(() => ({
   updateAutomation: vi.fn(),
-  toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }))
 
@@ -18,7 +17,7 @@ vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({ t: (key: string) => key, i18n: { t: (key: string) => key } }),
 }))
-vi.mock("sonner", () => ({ toast: { error: mocks.toastError, success: mocks.toastSuccess } }))
+vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess } }))
 vi.mock("@/lib/api", () => ({ api: { updateAutomation: mocks.updateAutomation } }))
 vi.mock("@/components/ui/json-editor", () => ({
   JsonEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
@@ -80,7 +79,7 @@ describe("WorkflowJsonEditDialog", () => {
     fireEvent.click(screen.getByText("preferences.workflowsOverview.editJsonDialog.save"))
 
     expect(mocks.updateAutomation).not.toHaveBeenCalled()
-    expect(mocks.toastError).toHaveBeenCalledWith("preferences.workflowsOverview.importDialog.errors.invalidJson")
+    expect(screen.getByText("preferences.workflowsOverview.importDialog.errors.invalidJson")).toBeTruthy()
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(editor.value).toBe("{not json")
   })
@@ -116,7 +115,7 @@ describe("WorkflowJsonEditDialog", () => {
     fireEvent.change(editor, { target: { value: text } })
     fireEvent.click(screen.getByText("preferences.workflowsOverview.editJsonDialog.save"))
 
-    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("rule name already exists"))
+    await waitFor(() => expect(screen.getByText("rule name already exists")).toBeTruthy())
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(editor.value).toBe(text)
   })
