@@ -315,9 +315,9 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	if resp.Status != "success" {
-		// Only the IP ban text has been seen from a real tracker; a bad key is
-		// expected as 401/403, which request handles.
-		if strings.Contains(strings.ToLower(resp.Error), "banned") {
+		// Texts seen from OPS: "Your IP address has been banned." and, for a
+		// wrong key, "invalid token" with HTTP 200.
+		if lower := strings.ToLower(resp.Error); strings.Contains(lower, "banned") || lower == "invalid token" {
 			return nil, fmt.Errorf("%w: %s", ErrAccessDenied, resp.Error)
 		}
 		return nil, fmt.Errorf("API error: %s", resp.Error)

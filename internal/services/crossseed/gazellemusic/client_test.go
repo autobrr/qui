@@ -102,14 +102,21 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 		wantText   string
 	}{
 		{
-			name:       "ip ban body",
+			name:       "OPS ip ban",
 			status:     http.StatusOK,
 			body:       `{"status":"failure","error":"Your IP address has been banned."}`,
 			wantDenied: true,
 			wantText:   "Your IP address has been banned.",
 		},
 		{
-			name:       "unauthorized",
+			name:       "OPS wrong key",
+			status:     http.StatusOK,
+			body:       `{"status":"failure","error":"invalid token","info":{"source":"Orpheus","version":1}}`,
+			wantDenied: true,
+			wantText:   "invalid token",
+		},
+		{
+			name:       "RED wrong key",
 			status:     http.StatusUnauthorized,
 			body:       `{"status":"failure","error":"bad credentials"}`,
 			wantDenied: true,
