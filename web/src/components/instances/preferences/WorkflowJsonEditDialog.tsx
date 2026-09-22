@@ -64,7 +64,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
             {t("preferences.workflowsOverview.editJsonDialog.description")}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
           <JsonEditor
             aria-label={t("preferences.workflowsOverview.editJsonDialog.title", { name: rule.name })}
             value={json}
