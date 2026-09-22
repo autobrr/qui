@@ -1378,8 +1378,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const patchSettingsMutation = useMutation({
     mutationFn: (payload: CrossSeedAutomationSettingsPatch) => api.patchCrossSeedSettings(payload),
-    onSuccess: (data) => {
-      toast.success(t("toast.settingsUpdated"))
+    onSuccess: ({ warning, ...data }) => {
+      if (warning) {
+        toast.warning(t("toast.settingsSavedKeyUnchecked"))
+      } else {
+        toast.success(t("toast.settingsUpdated"))
+      }
       // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()

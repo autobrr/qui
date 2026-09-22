@@ -437,6 +437,7 @@
   },
   "toast": {
     "settingsUpdated": "Paramètres mis à jour",
+    "settingsSavedKeyUnchecked": "Paramètres enregistrés, mais qui n'a pas pu joindre le tracker pour vérifier la nouvelle clé API",
     "searchRunStarted": "Recherche démarrée",
     "searchRunCanceled": "Recherche annulée",
     "automationRunStarted": "Automatisation démarrée",

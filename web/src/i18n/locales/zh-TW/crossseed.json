@@ -430,6 +430,7 @@
   },
   "toast": {
     "settingsUpdated": "設定已更新",
+    "settingsSavedKeyUnchecked": "設定已儲存，但 qui 無法連線至 tracker 來檢查新的 API 金鑰",
     "searchRunStarted": "搜尋執行已開始",
     "searchRunCanceled": "搜尋執行已取消",
     "automationRunStarted": "自動化執行已開始",

@@ -430,6 +430,7 @@
   },
   "toast": {
     "settingsUpdated": "设置已更新",
+    "settingsSavedKeyUnchecked": "设置已保存，但 qui 无法连接 tracker 来检查新的 API 密钥",
     "searchRunStarted": "搜索运行已开始",
     "searchRunCanceled": "搜索运行已取消",
     "automationRunStarted": "自动化运行已开始",

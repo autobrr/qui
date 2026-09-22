@@ -437,6 +437,7 @@
   },
   "toast": {
     "settingsUpdated": "S'ha actualitzat la configuració",
+    "settingsSavedKeyUnchecked": "S'ha desat la configuració, però qui no ha pogut contactar amb el tracker per comprovar la nova clau API",
     "searchRunStarted": "S'ha iniciat l'execució de cerca",
     "searchRunCanceled": "S'ha cancel·lat l'execució de cerca",
     "automationRunStarted": "S'ha iniciat l'execució de l'automatització",

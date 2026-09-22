@@ -437,6 +437,7 @@
   },
   "toast": {
     "settingsUpdated": "Einstellungen aktualisiert",
+    "settingsSavedKeyUnchecked": "Einstellungen gespeichert, aber qui konnte den Tracker nicht erreichen, um den neuen API-Schlüssel zu prüfen",
     "searchRunStarted": "Suchlauf gestartet",
     "searchRunCanceled": "Suchlauf abgebrochen",
     "automationRunStarted": "Automatisierungslauf gestartet",

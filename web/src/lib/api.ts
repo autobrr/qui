@@ -1643,8 +1643,8 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
   }
 
-  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
-    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
+    return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
     })
