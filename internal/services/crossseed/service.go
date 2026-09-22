@@ -8397,6 +8397,10 @@ func (s *Service) searchGazelleMatches(
 		}
 
 		remoteRequestsMade = true
+		if clients.queried == nil {
+			clients.queried = make(map[string]struct{}, len(clients.byHost))
+		}
+		clients.queried[client.Host()] = struct{}{}
 		match, matchErr := findGazelleMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
 		if errors.Is(matchErr, gazellemusic.ErrAccessDenied) {
 			log.Warn().
@@ -8783,10 +8787,13 @@ type gazelleClientSet struct {
 	// returned. The set lives as long as one search, so a denied host gets no
 	// more requests in that search.
 	denied map[string]error
+	// queried holds each host the search sent a request to. A configured host
+	// can go unqueried: sources from OPS only ever target RED.
+	queried map[string]struct{}
 }
 
 // deniedMessage describes each tracker that rejected the key or the IP, for the
-// run record. allDenied reports that no configured tracker is left to search.
+// run record. allDenied reports that every tracker the search queried rejected it.
 func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
 	if c == nil || len(c.denied) == 0 {
 		return "", false
@@ -8796,7 +8803,7 @@ func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
 		lines = append(lines, c.byHost[host].SourceFlag()+" "+err.Error())
 	}
 	slices.Sort(lines)
-	return strings.Join(lines, "; "), len(c.denied) == len(c.byHost)
+	return strings.Join(lines, "; "), len(c.denied) == len(c.queried)
 }
 
 func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*gazelleClientSet, error) {

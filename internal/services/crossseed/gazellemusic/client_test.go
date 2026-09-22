@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestNewClient_SharesLimiterPerHost(t *testing.T) {
@@ -123,6 +124,13 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			wantText:   "bad credentials",
 		},
 		{
+			name:       "short body with invalid UTF-8",
+			status:     http.StatusForbidden,
+			body:       "denied \xff",
+			wantDenied: true,
+			wantText:   "denied",
+		},
+		{
 			name:     "other api failure",
 			status:   http.StatusOK,
 			body:     `{"status":"failure","error":"rate limit exceeded"}`,
@@ -151,6 +159,27 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantText) {
 				t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
 			}
+			if !utf8.ValidString(err.Error()) {
+				t.Fatalf("error %q is not valid UTF-8; Postgres rejects it in the run record", err)
+			}
 		})
+	}
+}
+
+// A denial whose text reads like Gazelle's not-found reply must still stop the
+// lookup, not count as a hash miss.
+func TestSearchByHashKeepsAccessDenied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"failure","error":"bad parameters"}`))
+	}))
+	defer server.Close()
+
+	c, err := NewClient("redacted.sh", server.URL, "key")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.SearchByHash(t.Context(), "abc"); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("SearchByHash error = %v, want ErrAccessDenied", err)
 	}
 }
