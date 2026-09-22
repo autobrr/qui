@@ -325,6 +325,13 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 	return &resp, nil
 }
 
+// CheckKey sends one cheap authenticated request. A wrong key or a banned IP
+// returns ErrAccessDenied.
+func (c *Client) CheckKey(ctx context.Context) error {
+	_, err := c.ajax(ctx, "index", nil)
+	return err
+}
+
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
 	params := url.Values{}
 	params.Set("hash", strings.ToUpper(hash))
