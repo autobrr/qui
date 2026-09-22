@@ -37,7 +37,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { JsonEditor } from "@/components/ui/json-editor"
+import { JsonEditor, preloadJsonEditor } from "@/components/ui/json-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -336,7 +336,7 @@ export function WorkflowsOverview({
 
   // Warm the JSON editor chunk so the Import and Edit dialogs rarely show the textarea fallback.
   useEffect(() => {
-    void import("@/components/ui/json-editor-codemirror")
+    void preloadJsonEditor()
   }, [])
 
   const reorderSensors = useSensors(

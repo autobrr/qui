@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useState } from "react"
 import { Textarea } from "./textarea"
 
 export interface JsonEditorProps {
@@ -14,9 +14,16 @@ export interface JsonEditorProps {
 }
 
 // CodeMirror is its own chunk; the plain textarea stands in while it loads.
-const JsonEditorCodeMirror = lazy(() => import("./json-editor-codemirror"))
+let loadedCodeMirror: typeof import("./json-editor-codemirror") | undefined
+// eslint-disable-next-line react-refresh/only-export-components
+export const preloadJsonEditor = () => import("./json-editor-codemirror").then((m) => (loadedCodeMirror = m))
+const JsonEditorCodeMirror = lazy(preloadJsonEditor)
 
 export function JsonEditor(props: JsonEditorProps) {
+  // lazy() suspends on first render even with the chunk cached; picked once per mount, as a switch would remount CodeMirror.
+  const [PreloadedEditor] = useState(() => loadedCodeMirror?.default)
+  if (PreloadedEditor) return <PreloadedEditor {...props} />
+
   return (
     <Suspense
       fallback={(
