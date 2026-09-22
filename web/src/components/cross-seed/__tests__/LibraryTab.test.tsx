@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
+  startRun: vi.fn(),
   getSearchSettings: vi.fn(() => Promise.resolve(mocks.searchSettings)),
 }))
 
@@ -49,6 +50,7 @@ vi.mock("@/lib/api", () => ({
     getTags: () => Promise.resolve([]),
     patchCrossSeedSearchSettings: mocks.patchSearch,
     patchCrossSeedSettings: mocks.patchSettings,
+    startCrossSeedSearchRun: mocks.startRun,
   },
 }))
 
@@ -135,7 +137,7 @@ describe("LibraryTab save", () => {
     expect(mocks.patchSettings).not.toHaveBeenCalled()
   })
 
-  it("reads a stale OPS/RED-only pick as every other indexer and saves it as all", async () => {
+  it("reads a stale OPS/RED-only pick as every other indexer and runs Torznab", async () => {
     // Saved before both Gazelle keys existed; the picker hides OPS/RED now, so nothing is left to show or store.
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
@@ -144,14 +146,13 @@ describe("LibraryTab save", () => {
       { id: 3, indexer_id: "other", name: "Other", base_url: "https://other.example.invalid", enabled: true },
     ]
     mocks.searchSettings.indexerIds = [1, 2]
-    mocks.patchSearch.mockResolvedValue(mocks.searchSettings)
-    mocks.patchSettings.mockResolvedValue(mocks.settings)
+    mocks.startRun.mockResolvedValue({ id: 1 })
     renderTab()
 
     expect(await screen.findByText("scan.indexers.helpAllEnabledNonOpsRedQueried")).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "rules.saveChanges" }))
+    fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
-    await waitFor(() => expect(mocks.patchSearch).toHaveBeenCalledTimes(1))
-    expect(mocks.patchSearch.mock.calls[0][0].indexerIds).toEqual([])
+    await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], disableTorznab: false })
   })
 })
