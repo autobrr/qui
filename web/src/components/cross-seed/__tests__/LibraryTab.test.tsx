@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
     seededSearchTags: ["cross-seed"],
     skipAutoResumeSeededSearch: false,
     gazelleEnabled: false,
+    orpheusApiKey: "",
+    redactedApiKey: "",
     seasonPackAutomationEnabled: false,
   },
   searchSettings: { instanceId: 1, categories: [], tags: [], indexerIds: [] as number[], intervalSeconds: 60, cooldownMinutes: 720 },
@@ -60,7 +62,7 @@ import { LibraryTab } from "../LibraryTab"
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  mocks.settings.gazelleEnabled = false
+  Object.assign(mocks.settings, { gazelleEnabled: false, orpheusApiKey: "", redactedApiKey: "" })
   mocks.searchSettings.indexerIds = []
   mocks.indexers = []
 })
@@ -137,7 +139,7 @@ describe("LibraryTab save", () => {
     expect(mocks.patchSettings).not.toHaveBeenCalled()
   })
 
-  it("reads a stale OPS/RED-only pick as every other indexer and runs Torznab", async () => {
+  it("does not start a Gazelle-only run from a stale OPS/RED-only pick", async () => {
     // Saved before both Gazelle keys existed; the picker hides OPS/RED now, so nothing is left to show or store.
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
