@@ -1735,8 +1735,9 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
-	// torznabSearched records that a candidate searched Torznab. Resolved
-	// indexers do not prove it: the filter or cooldown can skip every candidate.
+	// torznabSearched records that a Torznab indexer answered a candidate's
+	// search. Resolved indexers do not prove it: the filter or cooldown can
+	// skip every candidate.
 	torznabSearched bool
 
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
@@ -11415,9 +11416,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 
-	if !searchDisableTorznab {
-		state.torznabSearched = true
-	}
 	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
 	if searchCancel != nil {
 		defer searchCancel()
@@ -11431,6 +11429,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
+	// searchTorrentMatches can return before the Torznab search, so only an
+	// indexer that answered proves one ran.
+	if searchResp != nil && len(searchResp.CoveredIndexerIDs) > 0 {
+		state.torznabSearched = true
+	}
 	if s.automationStore != nil {
 		// Gazelle stamps per torrent only when its side needs no retry; see
 		// searchGazelleMatches. A failed lookup does not stamp, like a failed

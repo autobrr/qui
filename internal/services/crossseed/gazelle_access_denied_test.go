@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -121,4 +122,64 @@ func TestFinalizeSearchRun_GazelleDeniedWithUnsearchedTorznabFails(t *testing.T)
 	svc.finalizeSearchRun(state, false)
 
 	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
+}
+
+// searchTorrentMatches can return before the Torznab search, as when no
+// Torznab backend is set up. Only an indexer that answered counts as a
+// search, so a run whose Gazelle tracker is denied then fails.
+func TestSearchRunLoop_GazelleDeniedTorznabSearchDecidesStatus(t *testing.T) {
+	tests := []struct {
+		name    string
+		torznab bool
+		want    models.CrossSeedSearchRunStatus
+	}{
+		{name: "torznab skipped inside the search", want: models.CrossSeedSearchRunStatusFailed},
+		{name: "torznab indexer answered", torznab: true, want: models.CrossSeedSearchRunStatusSuccess},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gazelle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"status":"failure","error":"bad credentials"}`))
+			}))
+			t.Cleanup(gazelle.Close)
+
+			name := "Artist - Album (2024 WF)"
+			torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1.0, Size: 123, Tracker: "https://flacsfor.me/announce"}
+			svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-gazelle-denied-torznab", &hashFilteringSyncManager{
+				torrents:    []qbt.Torrent{torrent},
+				filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: {{Name: name + "/01 - Track One.flac", Size: 123}}},
+			})
+			findGazelleMatch = gazellemusic.FindMatch
+			client, err := gazellemusic.NewClient("orpheus.network", gazelle.URL, "ops-key")
+			require.NoError(t, err)
+			state.gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}
+			state.opts.DisableTorznab = false
+			state.resolvedTorznabIndexerIDs = []int{1}
+			// The cached filter state lets indexer 1 through the candidate pre-filter.
+			svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
+			svc.asyncFilteringCache.Set(asyncFilteringCacheKey(state.opts.InstanceID, torrent.Hash), &AsyncIndexerFilteringState{
+				CapabilitiesCompleted: true,
+				ContentCompleted:      true,
+				CapabilityIndexers:    []int{1},
+				FilteredIndexers:      []int{1},
+				contentType:           "music",
+			}, ttlcache.DefaultTTL)
+			if tt.torznab {
+				indexer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/rss+xml")
+					_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Tracker One</title></channel></rss>`))
+				}))
+				t.Cleanup(indexer.Close)
+				svc.jackettService = newJackettServiceWithIndexers([]*models.TorznabIndexer{
+					{ID: 1, Name: "Tracker One", BaseURL: indexer.URL, Backend: models.TorznabBackendNative, TimeoutSeconds: 5, Enabled: true},
+				})
+			}
+
+			runSearchLoopToCompletion(t, svc, state)
+
+			require.Equal(t, 1, state.run.Processed)
+			require.Equal(t, tt.want, state.run.Status)
+		})
+	}
 }
