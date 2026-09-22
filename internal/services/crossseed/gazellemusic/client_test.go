@@ -94,6 +94,8 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
 }
 
+// The ban and wrong-key rows copy the status and error text of real tracker
+// replies, captured in September 2026. Do not reword them.
 func TestClientClassifiesAccessDenied(t *testing.T) {
 	tests := []struct {
 		name       string
