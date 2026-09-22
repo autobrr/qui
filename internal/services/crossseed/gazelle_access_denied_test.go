@@ -75,6 +75,7 @@ func TestFinalizeSearchRun_GazelleAccessDeniedWithTorznabSucceeds(t *testing.T) 
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied", &hashFilteringSyncManager{})
 	state.opts.DisableTorznab = false
 	state.resolvedTorznabIndexerIDs = []int{1}
+	state.torznabSearched = true
 	state.gazelleClients.queried = map[string]struct{}{"orpheus.network": {}}
 	state.gazelleClients.denied = map[string]error{
 		"orpheus.network": fmt.Errorf("%w: status 401: bad credentials", gazellemusic.ErrAccessDenied),
@@ -104,4 +105,20 @@ func TestFinalizeSearchRun_GazelleOnlyQueriedTrackerDeniedFails(t *testing.T) {
 	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
 	require.NotNil(t, state.run.ErrorMessage)
 	require.Equal(t, "RED rejected the API key or this IP: status 401: bad credentials", *state.run.ErrorMessage)
+}
+
+// The filter or cooldown can skip Torznab for every candidate. Resolved
+// indexers then leave Gazelle as the only source the run searched.
+func TestFinalizeSearchRun_GazelleDeniedWithUnsearchedTorznabFails(t *testing.T) {
+	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied-torznab-skipped", &hashFilteringSyncManager{})
+	state.opts.DisableTorznab = false
+	state.resolvedTorznabIndexerIDs = []int{1}
+	state.gazelleClients.queried = map[string]struct{}{"orpheus.network": {}}
+	state.gazelleClients.denied = map[string]error{
+		"orpheus.network": fmt.Errorf("%w: status 401: bad credentials", gazellemusic.ErrAccessDenied),
+	}
+
+	svc.finalizeSearchRun(state, false)
+
+	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
 }

@@ -1735,6 +1735,9 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
+	// torznabSearched records that a candidate searched Torznab. Resolved
+	// indexers do not prove it: the filter or cooldown can skip every candidate.
+	torznabSearched bool
 
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
 	// This avoids repeated settings/key lookups for every candidate torrent.
@@ -10664,7 +10667,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 			deniedMsg = *state.run.ErrorMessage + "; " + deniedMsg
 		}
 		state.run.ErrorMessage = &deniedMsg
-		if allDenied && len(state.resolvedTorznabIndexerIDs) == 0 && state.run.Status == models.CrossSeedSearchRunStatusSuccess {
+		if allDenied && !state.torznabSearched && state.run.Status == models.CrossSeedSearchRunStatusSuccess {
 			state.run.Status = models.CrossSeedSearchRunStatusFailed
 		}
 	}
@@ -11412,6 +11415,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 
+	if !searchDisableTorznab {
+		state.torznabSearched = true
+	}
 	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
 	if searchCancel != nil {
 		defer searchCancel()
