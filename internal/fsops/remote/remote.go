@@ -147,6 +147,8 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		if ctx.Err() != nil {
 			return false
 		}
+		// The connection failed, not the directory: one Err entry ends the
+		// walk rather than repeating it for every directory left.
 		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
 		return false
 	}

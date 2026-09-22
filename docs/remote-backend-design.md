@@ -78,8 +78,8 @@ non-link strategies, which is the safe degradation.
 consumer; this backend is that consumer. pkg/sftp pipelines concurrent
 requests over the one session, and the exec path fills a batch with a single
 `xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. Re-add them in the
-PR that implements this backend.
+indexing (hundreds of thousands of lstats) survivable. They come back with
+the exec tier (3e, #2726), which is the first thing that can fill them.
 
 ## File Identity Over the Wire — DECIDED
 

@@ -34,6 +34,10 @@ const (
 	// idleTimeout closes a connection nobody has used for a while. It is what
 	// reclaims the connection of an instance that was deleted or left remote
 	// mode, since no caller comes back to tell the pool.
+	//
+	// ponytail: "used" means taken from the pool, so one call that alone runs
+	// past the limit is cut and redialed; an in-flight counter is the upgrade
+	// when the exec tier adds calls that long.
 	idleTimeout = 10 * time.Minute
 )
 
@@ -119,11 +123,7 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	}
 
 	if id := identityOf(inst); entry.id != id {
-		// A replaced pin (or a changed endpoint) is the only thing that clears
-		// a refusal, and it clears it with no persisted state of its own. New
-		// credentials against the same pin end the old session and forgive a
-		// failed dial, since the fix may be exactly what changed; the refusal
-		// stays, because credentials say nothing about the host key.
+		// Only a changed pin clears a refusal; see identity.
 		if entry.id.pin == id.pin && entry.refused() {
 			entry.disconnect()
 		} else {

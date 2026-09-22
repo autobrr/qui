@@ -71,10 +71,10 @@ func remotePath(elem ...string) string {
 	return filepath.ToSlash(filepath.Join(elem...))
 }
 
-func writeFile(t *testing.T, path, content string) {
+func writeFile(t *testing.T, name, content string) {
 	t.Helper()
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(name), 0o755))
+	require.NoError(t, os.WriteFile(name, []byte(content), 0o600))
 }
 
 func TestStat(t *testing.T) {
@@ -85,7 +85,9 @@ func TestStat(t *testing.T) {
 	file := remotePath(dir, "file.txt")
 	writeFile(t, file, "hello")
 	link := remotePath(dir, "link.txt")
-	require.NoError(t, os.Symlink(file, link))
+	if err := os.Symlink(file, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -167,7 +169,9 @@ func TestReadDir(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, remotePath(dir, "a.txt"), "a")
 	require.NoError(t, os.Mkdir(remotePath(dir, "sub"), 0o755))
-	require.NoError(t, os.Symlink(remotePath(dir, "a.txt"), remotePath(dir, "link.txt")))
+	if err := os.Symlink(remotePath(dir, "a.txt"), remotePath(dir, "link.txt")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
 
 	entries, err := b.ReadDir(t.Context(), remotePath(dir))
 	require.NoError(t, err)
@@ -268,7 +272,9 @@ func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {
 	b, _ := newBackend(t)
 	dir := t.TempDir()
 	writeFile(t, remotePath(dir, "target", "inside.txt"), "i")
-	require.NoError(t, os.Symlink(remotePath(dir, "target"), remotePath(dir, "link")))
+	if err := os.Symlink(remotePath(dir, "target"), remotePath(dir, "link")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -385,9 +391,11 @@ func TestStatfsResultUsesBavail(t *testing.T) {
 func TestStatfsWithoutStatvfsExtension(t *testing.T) {
 	// SetSFTPExtensions mutates a package global, so this test cannot run in
 	// parallel with the ones that need statvfs advertised.
+	// Restore whatever pkg/sftp advertised before, not a copy of today's list.
+	advertised := extensionNames(t)
 	require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com"))
 	t.Cleanup(func() {
-		require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com"))
+		require.NoError(t, sftp.SetSFTPExtensions(advertised...))
 	})
 
 	b, _ := newBackend(t)
@@ -556,4 +564,21 @@ func TestReconnectsAfterServerDropsConnection(t *testing.T) {
 		return err == nil
 	}, 5*time.Second, 20*time.Millisecond)
 	assert.Equal(t, 2, server.Accepts())
+}
+
+// extensionNames reads the extensions the in-process server currently
+// advertises, through a client, since pkg/sftp exposes no getter for its list.
+func extensionNames(t *testing.T) []string {
+	t.Helper()
+
+	b, _ := newBackend(t)
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	var names []string
+	for _, name := range []string{"hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com", "fsync@openssh.com"} {
+		if _, ok := client.HasExtension(name); ok {
+			names = append(names, name)
+		}
+	}
+	return names
 }

@@ -987,8 +987,8 @@ func (app *Application) runServer() {
 		os.Exit(1)
 	}
 
-	// The http server is done, so nothing is left to run a remote filesystem
-	// operation; os.Exit below means a defer would never have fired.
+	// Closed here because os.Exit below means a defer would never fire; a job
+	// still mid-operation gets ErrPoolClosed and ends with the process.
 	sshPool.Close()
 
 	// if err := srv.Shutdown(context.Background()); err != nil {
