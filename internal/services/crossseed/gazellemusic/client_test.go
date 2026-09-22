@@ -97,6 +97,8 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 // The ban and wrong-key rows copy the status and error text of real tracker
 // replies, captured in September 2026. Do not reword them.
 func TestClientClassifiesAccessDenied(t *testing.T) {
+	// The wrong-key rows are replies captured from the live trackers on
+	// 2026-09-22; the ban row is the OPS text from #2807. Do not edit them to fit code.
 	tests := []struct {
 		name       string
 		status     int
