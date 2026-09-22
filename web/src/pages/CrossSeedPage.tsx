@@ -91,11 +91,11 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <div className="flex flex-col gap-6 md:flex-row">
-        <nav className="hidden w-56 shrink-0 space-y-4 md:block" aria-label={t("pageTitle")}>
+        <nav className="hidden w-56 shrink-0 space-y-5 md:block" aria-label={t("pageTitle")}>
           {CROSS_SEED_NAV_GROUPS.map(group => (
             <div key={group.tabs[0]} className="space-y-1">
               {"labelKey" in group && (
-                <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(group.labelKey)}</p>
+                <p className="px-3 pb-1 text-sm font-semibold text-foreground">{t(group.labelKey)}</p>
               )}
               {group.tabs.map(tab => (
                 <button
@@ -104,7 +104,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   onClick={() => onTabChange(tab)}
                   aria-current={activeTab === tab ? "page" : undefined}
                   className={cn(
-                    "w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
+                    "w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors",
                     activeTab === tab ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
                   )}
                 >
