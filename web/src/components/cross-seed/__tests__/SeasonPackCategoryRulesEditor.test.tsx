@@ -12,7 +12,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
+import { SeasonPackCategoryRulesEditor } from "@/components/cross-seed/SeasonPackCategoryRulesEditor"
 import type { SeasonPackCategoryRule } from "@/types"
 
 describe("SeasonPackCategoryRulesEditor", () => {
