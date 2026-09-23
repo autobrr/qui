@@ -728,7 +728,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	sm.seedFallbackTrackerMappingFromMainData(instanceID, torrents, resolveMainData(syncManager, mainDataReadCached), started)
 
-	enriched, ok := client.refreshTrackers(refreshCtx, torrents)
+	enriched, fetchErr := client.refreshTrackers(refreshCtx, torrents)
 	if err := refreshCtx.Err(); err != nil {
 		log.Debug().
 			Err(err).
@@ -739,12 +739,13 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 	// Keep the previous snapshot rather than publish a library with no tracker data.
-	if !ok {
+	if fetchErr != nil {
 		log.Debug().
+			Err(fetchErr).
 			Int("instanceID", instanceID).
 			Int("torrentCount", len(torrents)).
 			Dur("elapsed", time.Since(started)).
-			Msg("Tracker health refresh fetch returned no data, keeping previous snapshot")
+			Msg("Tracker health refresh fetch failed, keeping previous snapshot")
 		return
 	}
 
