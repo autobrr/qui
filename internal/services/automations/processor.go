@@ -140,7 +140,7 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
-	MoveInvalidPath                  int // path failed to render or is relative
+	movePathWarned                   bool // one relative-path warning per rule per run
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
 	ExportToInstanceApplied          int
@@ -561,7 +561,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	resolvedPath, ok := renderPathTemplate(action.Path, torrent, state, evalCtx)
 	if !ok {
 		if stats != nil {
-			stats.MoveInvalidPath++
+			stats.MoveConditionNotMet++
 		}
 		return
 	}
@@ -574,7 +574,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	// every run.
 	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
 		// One warning per rule per run; stats is per rule per run.
-		if stats == nil || stats.MoveInvalidPath == 0 {
+		if stats == nil || !stats.movePathWarned {
 			ruleName := ""
 			if rule != nil {
 				ruleName = rule.Name
@@ -583,7 +583,8 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 				Msg("automations: skipping move, path is not absolute")
 		}
 		if stats != nil {
-			stats.MoveInvalidPath++
+			stats.movePathWarned = true
+			stats.MoveConditionNotMet++
 		}
 		return
 	}

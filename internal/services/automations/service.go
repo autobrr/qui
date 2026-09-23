@@ -2338,7 +2338,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("moveNoMatch", stats.MoveConditionNotMet).
 			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
 			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
-			Int("moveInvalidPath", stats.MoveInvalidPath).
 			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
 			Msg("automations: rule matched trackers but applied no actions")
 	}
