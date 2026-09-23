@@ -76,7 +76,7 @@ If the target tracker is down or returns an error, qui logs a warning, does not 
 
 ## Configuration
 
-UI: **Cross-Seed > [Rules](./rules.md) > Gazelle (OPS/RED)**
+UI: **Settings > Indexers > Gazelle (OPS/RED)**, below the Torznab indexers
 
 - Enable Gazelle matching
 - Set one or both API keys

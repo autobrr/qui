@@ -48,7 +48,6 @@
     "toggleDetails": "Mostra o amaga els detalls"
   },
   "rules": {
-    "title": "Regles",
     "reprocess": "Reprocessa",
     "reprocessTooltip": "Torna a comprovar tots els articles sense llegir amb les regles",
     "addRule": "Afegeix una regla",
