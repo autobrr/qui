@@ -1424,7 +1424,8 @@
         "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla."
       },
       "templateHelp": {
-        "intro": "Podporuje šablony Go:",
+        "absolutePath": "Musí jít o absolutní cestu. Hodnoty se vkládají do ní, například",
+        "intro": "Podporuje šablony Go.",
         "learnMore": "Další informace"
       },
       "freeSpace": {

@@ -1358,7 +1358,8 @@
         "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。"
       },
       "templateHelp": {
-        "intro": "支援 Go 範本：",
+        "absolutePath": "必須是絕對路徑。值要寫在路徑中，例如",
+        "intro": "支援 Go 範本。",
         "learnMore": "了解更多"
       },
       "freeSpace": {

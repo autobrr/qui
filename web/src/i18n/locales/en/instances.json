@@ -1388,7 +1388,8 @@
         "skipDescription": "Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions."
       },
       "templateHelp": {
-        "intro": "Supports Go templates:",
+        "absolutePath": "Must be an absolute path. Values go inside it, for example",
+        "intro": "Supports Go templates.",
         "learnMore": "Learn more"
       },
       "freeSpace": {

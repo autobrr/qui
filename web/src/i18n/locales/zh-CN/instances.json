@@ -1358,7 +1358,8 @@
         "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。"
       },
       "templateHelp": {
-        "intro": "支持 Go 模板：",
+        "absolutePath": "必须是绝对路径。值要写在路径中，例如",
+        "intro": "支持 Go 模板。",
         "learnMore": "了解更多"
       },
       "freeSpace": {

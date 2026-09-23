@@ -1388,7 +1388,8 @@
         "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola."
       },
       "templateHelp": {
-        "intro": "Supporta i template Go:",
+        "absolutePath": "Deve essere un percorso assoluto. I valori vanno al suo interno, ad esempio",
+        "intro": "Supporta i template Go.",
         "learnMore": "Scopri di più"
       },
       "freeSpace": {

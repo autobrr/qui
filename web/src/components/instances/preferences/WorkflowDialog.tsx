@@ -85,7 +85,7 @@ import type {
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -657,35 +657,14 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
 }
 
 // Mirrors the data map and FuncMap in resolveMovePath (internal/services/automations/processor.go).
-const PATH_TEMPLATE_SNIPPETS = [
-  "{{ .Name }}",
-  "{{ .Hash }}",
-  "{{ .Category }}",
-  "{{ .IsolationFolderName }}",
-  "{{ .Tracker }}",
-  "{{ sanitize .Name }}",
-]
+// Kept out of the locale strings: i18next would treat "{{ }}" as interpolation.
+const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
 
 const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
 const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
 
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
-
-  const pathTemplateHelp = (docsUrl: string) => (
-    <>
-      {t("preferences.workflowDialog.templateHelp.intro")}{" "}
-      {PATH_TEMPLATE_SNIPPETS.map((snippet, index) => (
-        <Fragment key={snippet}>
-          {index > 0 && ", "}
-          <code className="whitespace-nowrap">{snippet}</code>
-        </Fragment>
-      ))}{" "}
-      <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
-        {t("preferences.workflowDialog.templateHelp.learnMore")}
-      </a>
-    </>
-  )
 
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
@@ -805,6 +784,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     inputRef: freeSpacePathInputRef,
     listRef: freeSpaceListRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
+
+  const pathTemplateHelp = (docsUrl: string) => (
+    <>
+      {t("preferences.workflowDialog.templateHelp.absolutePath")}{" "}
+      <code className="whitespace-nowrap">{PATH_TEMPLATE_EXAMPLE}</code>
+      <br />
+      {t("preferences.workflowDialog.templateHelp.intro")}{" "}
+      <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+        {t("preferences.workflowDialog.templateHelp.learnMore")}
+      </a>
+    </>
+  )
 
   // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
   const dropdownContainerRef = useRef<HTMLDivElement>(null)

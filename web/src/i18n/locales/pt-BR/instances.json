@@ -1388,7 +1388,8 @@
         "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
       },
       "templateHelp": {
-        "intro": "Suporta modelos Go:",
+        "absolutePath": "Deve ser um caminho absoluto. Os valores vão dentro dele, por exemplo",
+        "intro": "Suporta modelos Go.",
         "learnMore": "Saiba mais"
       },
       "freeSpace": {

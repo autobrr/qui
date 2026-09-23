@@ -1382,7 +1382,8 @@
         "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas."
       },
       "templateHelp": {
-        "intro": "Supporte les modèles Go :",
+        "absolutePath": "Doit être un chemin absolu. Les valeurs s'insèrent dedans, par exemple",
+        "intro": "Supporte les modèles Go.",
         "learnMore": "En savoir plus"
       },
       "freeSpace": {

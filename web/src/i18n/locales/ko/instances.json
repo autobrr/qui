@@ -1358,7 +1358,8 @@
         "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다."
       },
       "templateHelp": {
-        "intro": "Go 템플릿을 지원합니다:",
+        "absolutePath": "절대 경로여야 합니다. 값은 경로 안에 넣습니다. 예:",
+        "intro": "Go 템플릿을 지원합니다.",
         "learnMore": "자세히 알아보기"
       },
       "freeSpace": {
