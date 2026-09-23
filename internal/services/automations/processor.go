@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
@@ -571,7 +572,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	// usually fails, and otherwise moves under its default or category save path.
 	// Either way the reported save path never matches, so the move would repeat
 	// every run.
-	if conditionMet && !pathutil.IsAbsoluteClientPath(resolvedPath) {
+	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
 		// One warning per rule per run; stats is per rule per run.
 		if stats == nil || stats.MoveInvalidPath == 0 {
 			ruleName := ""

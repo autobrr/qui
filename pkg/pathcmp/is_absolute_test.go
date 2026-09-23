@@ -1,11 +1,11 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package pathutil
+package pathcmp
 
 import "testing"
 
-func TestIsAbsoluteClientPath(t *testing.T) {
+func TestIsAbsolute(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -32,8 +32,8 @@ func TestIsAbsoluteClientPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			t.Parallel()
-			if got := IsAbsoluteClientPath(tt.path); got != tt.want {
-				t.Errorf("IsAbsoluteClientPath(%q) = %v, want %v", tt.path, got, tt.want)
+			if got := IsAbsolute(tt.path); got != tt.want {
+				t.Errorf("IsAbsolute(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
 	}

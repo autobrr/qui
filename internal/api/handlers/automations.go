@@ -21,7 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
-	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
 type AutomationHandler struct {
@@ -603,7 +603,7 @@ func validateMovePath(move *models.MoveAction) (string, error) {
 	}
 	// A conditional template can render nothing for the placeholder torrent and
 	// still be absolute for a real one; the run skips an empty render anyway.
-	if rendered == "" || pathutil.IsAbsoluteClientPath(rendered) {
+	if rendered == "" || pathcmp.IsAbsolute(rendered) {
 		return "", nil
 	}
 	msg := `Move path must be absolute, for example /data/archive or D:\Archive`

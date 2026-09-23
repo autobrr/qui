@@ -22,6 +22,14 @@ func IsWindowsDriveAbs(p string) bool {
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && p[1] == ':' && p[2] == '/'
 }
 
+// IsAbsolute reports whether p is absolute for a torrent client on any OS. qui
+// and qBittorrent can run on different OSes, so filepath.IsAbs would judge the
+// wrong host. A leading slash covers POSIX paths and UNC shares.
+func IsAbsolute(p string) bool {
+	p = strings.ReplaceAll(p, `\`, "/")
+	return strings.HasPrefix(p, "/") || IsWindowsDriveAbs(p)
+}
+
 // NormalizePath normalizes a file path for comparison by:
 // - Converting backslashes to forward slashes
 // - Removing trailing slashes (preserving Windows drive roots like C:/)
