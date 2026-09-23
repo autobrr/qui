@@ -21,8 +21,8 @@ function flattenKeys(obj, prefix = "") {
   return keys
 }
 
-// i18next v4 never looks up a `_plural` key, so the base renders its `_other` form
-// (or the English fallback) at every count.
+// i18next v4 never looks up a `_plural` key. The three that shipped sat beside an
+// unsuffixed base and no `_other`, so every count rendered the singular.
 export function findLegacyPluralKeys(localesRoot = defaultLocalesRoot) {
   const found = []
 
@@ -59,7 +59,7 @@ if (process.argv[1] === import.meta.filename) {
   for (const entry of found) {
     console.error(`- ${entry}`)
   }
-  console.error("\nThe pre-v4 _plural suffix no longer resolves. Use the CLDR suffixes")
+  console.error("\ni18next resolves no _plural key. Use the CLDR suffixes")
   console.error("(_one/_two/_few/_many/_other) that the locale's plural rules require.")
   process.exit(1)
 }

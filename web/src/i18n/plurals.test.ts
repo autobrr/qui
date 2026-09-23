@@ -63,7 +63,7 @@ async function findLeaks(locale: string, english: ResourceLanguage, translated: 
   const en = await createInstance("en", { en: english }, false)
   const app = await createInstance(locale, { en: english, [locale]: translated }, "en")
   // No English bundle and no fallback, so t() resolves only if the locale itself has a
-  // form for the count — including through an unsuffixed base key.
+  // form for the count, including through an unsuffixed base key.
   const inLanguage = await createInstance(locale, { [locale]: translated }, false)
 
   const leaks: string[] = []

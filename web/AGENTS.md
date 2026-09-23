@@ -89,7 +89,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
   - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and no count reaches one: item counts are whole numbers, and relative-time counts are floored in `src/lib/dateTimeUtils.ts`.
   - `uk` needs `_one`, `_few`, `_many` and `_other`.
 - A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
-- An unsuffixed base key beside the suffixed ones answers every category the locale omits.
+- An unsuffixed base key beside the suffixed ones answers every category the locale omits. Add it to English as well, or the locale's extra-keys check rejects it.
 - Never add the pre-v4 `_plural` suffix. i18next does not resolve it in any locale.
 - `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` renders every plural base through i18next with the app's fallback settings, and fails when a locale falls back to English.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
