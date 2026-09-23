@@ -86,7 +86,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - Plurals use the i18next v4 CLDR suffixes:
   - English needs `_one` and `_other`.
   - Chinese and Korean take `_other` alone.
-  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and every count is floored before the lookup.
+  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and no count reaches one: item counts are whole numbers, and relative-time counts are floored in `src/lib/dateTimeUtils.ts`.
   - `uk` needs `_one`, `_few`, `_many` and `_other`.
 - A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
 - An unsuffixed base key beside the suffixed ones answers every category the locale omits.
