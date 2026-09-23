@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Používáte Deluge, rTorrent nebo Transmission? <docs>Přejděte na qBittorrent pomocí našeho migračního nástroje</docs>",
   "card": {
     "status": {
       "disabled": "Vypnuto",
