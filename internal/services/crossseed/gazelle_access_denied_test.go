@@ -38,7 +38,7 @@ func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 			Name:     name,
 			Progress: 1.0,
 			Size:     246,
-			Tracker:  "https://flacsfor.me/announce",
+			Tracker:  "https://flacsfor.me",
 		}
 		torrents = append(torrents, torrent)
 		// Two files, so a lookup that ignored the rejection would search twice.
@@ -145,7 +145,7 @@ func TestSearchRunLoop_GazelleDeniedTorznabSearchDecidesStatus(t *testing.T) {
 			t.Cleanup(gazelle.Close)
 
 			name := "Artist - Album (2024 WF)"
-			torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1.0, Size: 123, Tracker: "https://flacsfor.me/announce"}
+			torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1.0, Size: 123, Tracker: "https://flacsfor.me"}
 			svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-gazelle-denied-torznab", &hashFilteringSyncManager{
 				torrents:    []qbt.Torrent{torrent},
 				filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: {{Name: name + "/01 - Track One.flac", Size: 123}}},

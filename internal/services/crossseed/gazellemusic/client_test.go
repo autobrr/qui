@@ -94,11 +94,9 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
 }
 
-// The ban and wrong-key rows copy the status and error text of real tracker
-// replies, captured in September 2026. Do not reword them.
+// The ban and wrong-key rows copy real tracker replies (wrong keys captured
+// 2026-09-22, the ban from #2807). Do not edit them to fit the code.
 func TestClientClassifiesAccessDenied(t *testing.T) {
-	// The wrong-key rows are replies captured from the live trackers on
-	// 2026-09-22; the ban row is the OPS text from #2807. Do not edit them to fit code.
 	tests := []struct {
 		name       string
 		status     int
@@ -139,6 +137,12 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 			status:   http.StatusOK,
 			body:     `{"status":"failure","error":"rate limit exceeded"}`,
 			wantText: "rate limit exceeded",
+		},
+		{
+			name:     "other api failure that says banned",
+			status:   http.StatusOK,
+			body:     `{"status":"failure","error":"This format is banned."}`,
+			wantText: "This format is banned.",
 		},
 	}
 	for _, tt := range tests {

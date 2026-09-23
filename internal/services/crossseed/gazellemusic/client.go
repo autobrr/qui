@@ -324,11 +324,10 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 	return &resp, nil
 }
 
-// isAccessDeniedText matches the texts OPS sends with HTTP 200:
-// "Your IP address has been banned." and, for a wrong key, "invalid token".
+// isAccessDeniedText matches the texts OPS sends with HTTP 200 for an IP ban
+// and a wrong key. The RED ban text is unknown until a user reports it.
 func isAccessDeniedText(text string) bool {
-	lower := strings.ToLower(text)
-	return strings.Contains(lower, "banned") || lower == "invalid token"
+	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {

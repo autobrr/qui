@@ -8366,6 +8366,11 @@ func (s *Service) searchGazelleMatches(
 			continue
 		}
 
+		if clients.denied[client.Host()] != nil {
+			gazelleLookupCompleted = false
+			continue
+		}
+
 		if !exportAttempted && s.syncManager != nil {
 			exportAttempted = true
 			exported, _, _, exportErr := s.syncManager.ExportTorrent(ctx, instanceID, sourceTorrent.Hash)
@@ -8393,11 +8398,6 @@ func (s *Service) searchGazelleMatches(
 					continue
 				}
 			}
-		}
-
-		if clients.denied[client.Host()] != nil {
-			gazelleLookupCompleted = false
-			continue
 		}
 
 		remoteRequestsMade = true
