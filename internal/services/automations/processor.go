@@ -681,7 +681,14 @@ func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAc
 }
 
 func inSavePath(torrent qbt.Torrent, savePath string) bool {
-	return normalizePath(torrent.SavePath) == normalizePath(savePath)
+	current := normalizePath(torrent.SavePath)
+	target := normalizePath(savePath)
+	// A leading // is a UNC prefix only when the client reports paths that way;
+	// POSIX qBittorrent cleans //downloads/done to /downloads/done.
+	if strings.HasPrefix(target, "//") && !strings.HasPrefix(current, "//") {
+		target = target[1:]
+	}
+	return current == target
 }
 
 // renderPathTemplate renders a Move or Export save path template for torrent; ok

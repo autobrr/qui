@@ -56,6 +56,7 @@ func TestAutomationValidatePayload_MovePath(t *testing.T) {
 		{path: "  /data/{{ .Category }}  ", enabled: true},
 		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
 		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
+		{path: `{{ if eq .Category "tv" }}/data/tv{{ end }}`, enabled: true},
 		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
 		{path: "archive", enabled: false},
 		{path: "{{ .Category }}/done", enabled: false},
@@ -99,6 +100,27 @@ func TestAutomationValidatePayload_MovePath(t *testing.T) {
 			require.Zero(t, status)
 		})
 	}
+}
+
+func TestAutomationValidatePayload_MovePathSkippedWhenRuleDisabled(t *testing.T) {
+	// A rule saved before the move path checks existed must stay editable, so
+	// WorkflowsOverview can still toggle it off.
+	handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+	disabled := false
+	payload := &AutomationPayload{
+		Name:           "Legacy rule",
+		TrackerPattern: "*",
+		Enabled:        &disabled,
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
+		},
+	}
+
+	status, message, err := handler.validatePayload(t.Context(), 1, payload)
+
+	require.NoError(t, err)
+	require.Zero(t, status)
+	require.Empty(t, message)
 }
 
 func TestAutomationDryRunNow(t *testing.T) {

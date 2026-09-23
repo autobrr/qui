@@ -457,6 +457,8 @@ func TestMoveRequiresAbsolutePath(t *testing.T) {
 		// qBittorrent reports a previous "/downloads//done" move as "/downloads/done".
 		{name: "double slash already applied by qBittorrent", path: "/downloads//done", savePath: "/downloads/done"},
 		{name: "unc double backslash already applied", path: `\\nas\media\\done`, savePath: `\\nas\media\done`},
+		// qBittorrent on Linux reports //downloads/done as /downloads/done.
+		{name: "leading double slash already applied by posix qBittorrent", path: "//downloads/done", savePath: "/downloads/done"},
 		{name: "posix absolute", path: "/data/archive", savePath: "/downloads", wantMove: true, wantTarget: "/data/archive"},
 		{name: "windows drive", path: `D:\Archive\{{ .Category }}`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `D:\Archive\tv`},
 		{name: "windows forward slashes", path: "D:/Archive", savePath: "C:/Downloads", wantMove: true, wantTarget: "D:/Archive"},
@@ -485,6 +487,29 @@ func TestMoveRequiresAbsolutePath(t *testing.T) {
 
 			require.Equal(t, tt.wantMove, state.shouldMove)
 			require.Equal(t, tt.wantTarget, state.movePath)
+		})
+	}
+}
+
+func TestInSavePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		savePath string
+		target   string
+		want     bool
+	}{
+		{name: "same path", savePath: "/downloads/done", target: "/downloads/done", want: true},
+		{name: "different path", savePath: "/downloads", target: "/downloads/done"},
+		// POSIX qBittorrent reports //downloads/done as /downloads/done.
+		{name: "leading double slash against posix save path", savePath: "/downloads/done", target: "//downloads/done", want: true},
+		{name: "unc save path keeps both slashes", savePath: `\\nas\media\done`, target: `\\nas\media\done`, want: true},
+		{name: "unc save path against posix target", savePath: `\\nas\media\done`, target: "/nas/media/done"},
+		{name: "unc target against unc save path with repeats", savePath: `\\nas\media\done`, target: `\\nas\media\\done`, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, inSavePath(qbt.Torrent{SavePath: tt.savePath}, tt.target))
 		})
 	}
 }

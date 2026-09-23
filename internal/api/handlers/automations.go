@@ -392,9 +392,13 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	// Checks that only apply when the workflow is enabled: a disabled rule saved
+	// before these checks existed must still be editable.
 	isEnabled := payload.Enabled == nil || *payload.Enabled
 	if isEnabled {
+		if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
+			return http.StatusBadRequest, msg, err
+		}
 		if regexErrs := collectConditionRegexErrors(payload.Conditions); len(regexErrs) > 0 {
 			// Return the first error with a helpful message
 			firstErr := regexErrs[0]
@@ -431,10 +435,6 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	}
 
 	if msg, err := validateTagDeleteFromClientConfig(payload.Conditions); err != nil {
-		return http.StatusBadRequest, msg, err
-	}
-
-	if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
 		return http.StatusBadRequest, msg, err
 	}
 
@@ -587,7 +587,8 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 
 // validateMovePath renders the move path for a placeholder torrent and rejects
 // it unless the result is absolute. Branches the placeholder does not take are
-// still checked per torrent when the rule runs.
+// still checked per torrent when the rule runs. Callers skip it for a disabled
+// rule, so an older rule with a relative path can still be toggled off.
 func validateMovePath(move *models.MoveAction) (string, error) {
 	if move == nil || !move.Enabled {
 		return "", nil
@@ -600,7 +601,9 @@ func validateMovePath(move *models.MoveAction) (string, error) {
 	if err != nil {
 		return fmt.Sprintf("Invalid move path template: %v", err), err
 	}
-	if pathutil.IsAbsoluteClientPath(rendered) {
+	// A conditional template can render nothing for the placeholder torrent and
+	// still be absolute for a real one; the run skips an empty render anyway.
+	if rendered == "" || pathutil.IsAbsoluteClientPath(rendered) {
 		return "", nil
 	}
 	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
