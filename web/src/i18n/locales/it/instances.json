@@ -1387,7 +1387,7 @@
         "aboutSkipping": "Informazioni sull'ignorare lo spostamento se esistono cross-seed",
         "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola.",
         "errors": {
-          "mustBeAbsolute": "Usa un percorso assoluto, ad esempio /data/archive o D:\\Archive."
+          "mustBeAbsolute": "Deve essere un percorso assoluto, ad esempio /data/archive o D:\\Archive."
         }
       },
       "freeSpace": {

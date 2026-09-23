@@ -1387,7 +1387,7 @@
         "aboutSkipping": "About skipping move if cross-seeds exist",
         "skipDescription": "Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.",
         "errors": {
-          "mustBeAbsolute": "Use an absolute path, for example /data/archive or D:\\Archive."
+          "mustBeAbsolute": "Must be an absolute path, for example /data/archive or D:\\Archive."
         }
       },
       "freeSpace": {

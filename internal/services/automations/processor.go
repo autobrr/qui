@@ -567,9 +567,10 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
-	// qBittorrent checks a relative path against its working directory and then
-	// moves under its default or category save path, so the save path never matches
-	// and the move would repeat every run.
+	// qBittorrent creates the folder under its own working directory, which
+	// usually fails, and otherwise moves under its default or category save path.
+	// Either way the reported save path never matches, so the move would repeat
+	// every run.
 	if conditionMet && !pathutil.IsAbsoluteClientPath(resolvedPath) {
 		// One warning per rule per run; stats is per rule per run.
 		if stats == nil || stats.MoveInvalidPath == 0 {
@@ -681,14 +682,7 @@ func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAc
 }
 
 func inSavePath(torrent qbt.Torrent, savePath string) bool {
-	current := normalizePath(torrent.SavePath)
-	target := normalizePath(savePath)
-	// A leading // is a UNC prefix only when the client reports paths that way;
-	// POSIX qBittorrent cleans //downloads/done to /downloads/done.
-	if strings.HasPrefix(target, "//") && !strings.HasPrefix(current, "//") {
-		target = target[1:]
-	}
-	return current == target
+	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
 // renderPathTemplate renders a Move or Export save path template for torrent; ok

@@ -502,9 +502,13 @@ func TestInSavePath(t *testing.T) {
 		{name: "different path", savePath: "/downloads", target: "/downloads/done"},
 		// POSIX qBittorrent reports //downloads/done as /downloads/done.
 		{name: "leading double slash against posix save path", savePath: "/downloads/done", target: "//downloads/done", want: true},
-		{name: "unc save path keeps both slashes", savePath: `\\nas\media\done`, target: `\\nas\media\done`, want: true},
-		{name: "unc save path against posix target", savePath: `\\nas\media\done`, target: "/nas/media/done"},
+		{name: "unc save path and target", savePath: `\\nas\media\done`, target: `\\nas\media\done`, want: true},
+		// A UNC prefix collapses, so a share and a local path with the same tail
+		// compare equal. Cross-seed's normalizer has always done this.
+		{name: "unc save path against posix target with same tail", savePath: `\\nas\media\done`, target: "/nas/media/done", want: true},
 		{name: "unc target against unc save path with repeats", savePath: `\\nas\media\done`, target: `\\nas\media\\done`, want: true},
+		{name: "dot segment qBittorrent resolves", savePath: "/downloads/done", target: "/downloads/./done", want: true},
+		{name: "parent segment qBittorrent resolves", savePath: "/downloads/done", target: "/downloads/other/../done", want: true},
 	}
 
 	for _, tt := range tests {

@@ -1357,7 +1357,7 @@
         "aboutSkipping": "关于辅种存在时跳过移动",
         "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。",
         "errors": {
-          "mustBeAbsolute": "请使用绝对路径，例如 /data/archive 或 D:\\Archive。"
+          "mustBeAbsolute": "必须是绝对路径，例如 /data/archive 或 D:\\Archive。"
         }
       },
       "freeSpace": {

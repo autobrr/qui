@@ -1049,7 +1049,7 @@
         "aboutSkipping": "Sobre l'omissió del trasllat quan hi ha cross-seed",
         "skipDescription": "Omet el trasllat si hi ha qualsevol altre torrent del mateix grup de cross-seed que no compleixi les condicions de la regla. Si no, es mouran tots els cross-seed, encara que no coincideixin amb les condicions de la regla.",
         "errors": {
-          "mustBeAbsolute": "Fes servir un camí absolut, per exemple /data/archive o D:\\Archive."
+          "mustBeAbsolute": "Ha de ser un camí absolut, per exemple /data/archive o D:\\Archive."
         }
       },
       "footer": {

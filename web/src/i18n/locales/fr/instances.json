@@ -1381,7 +1381,7 @@
         "aboutSkipping": "À propos du saut de déplacement",
         "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas.",
         "errors": {
-          "mustBeAbsolute": "Utilisez un chemin absolu, par exemple /data/archive ou D:\\Archive."
+          "mustBeAbsolute": "Doit être un chemin absolu, par exemple /data/archive ou D:\\Archive."
         }
       },
       "freeSpace": {

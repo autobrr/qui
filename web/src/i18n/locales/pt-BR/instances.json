@@ -1387,7 +1387,7 @@
         "aboutSkipping": "Sobre pular cross-seeds",
         "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos.",
         "errors": {
-          "mustBeAbsolute": "Use um caminho absoluto, por exemplo /data/archive ou D:\\Archive."
+          "mustBeAbsolute": "Precisa ser um caminho absoluto, por exemplo /data/archive ou D:\\Archive."
         }
       },
       "freeSpace": {

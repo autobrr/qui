@@ -1423,7 +1423,7 @@
         "aboutSkipping": "O přeskakování přesunu, když existují křížová sdílení",
         "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla.",
         "errors": {
-          "mustBeAbsolute": "Použijte absolutní cestu, například /data/archive nebo D:\\Archive."
+          "mustBeAbsolute": "Musí to být absolutní cesta, například /data/archive nebo D:\\Archive."
         }
       },
       "freeSpace": {

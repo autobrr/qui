@@ -1357,7 +1357,7 @@
         "aboutSkipping": "關於輔種存在時跳過移動",
         "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。",
         "errors": {
-          "mustBeAbsolute": "請使用絕對路徑，例如 /data/archive 或 D:\\Archive。"
+          "mustBeAbsolute": "必須是絕對路徑，例如 /data/archive 或 D:\\Archive。"
         }
       },
       "freeSpace": {

@@ -1387,7 +1387,7 @@
         "aboutSkipping": "Über das Überspringen des Verschiebens, wenn Cross-Seeds vorhanden sind",
         "skipDescription": "Überspringt das Verschieben, wenn es weitere Torrents in derselben Cross-Seed-Gruppe gibt, die nicht auf die Bedingungen der Regel passen. Andernfalls werden alle Cross-Seeds verschoben, auch wenn sie nicht von den Bedingungen der Regel erfasst werden.",
         "errors": {
-          "mustBeAbsolute": "Verwende einen absoluten Pfad, zum Beispiel /data/archive oder D:\\Archive."
+          "mustBeAbsolute": "Muss ein absoluter Pfad sein, zum Beispiel /data/archive oder D:\\Archive."
         }
       },
       "freeSpace": {

@@ -586,7 +586,7 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 }
 
 // validateMovePath renders the move path for a placeholder torrent and rejects
-// it unless the result is absolute. Branches the placeholder does not take are
+// it unless the result is absolute or empty. Branches the placeholder does not take are
 // still checked per torrent when the rule runs. Callers skip it for a disabled
 // rule, so an older rule with a relative path can still be toggled off.
 func validateMovePath(move *models.MoveAction) (string, error) {

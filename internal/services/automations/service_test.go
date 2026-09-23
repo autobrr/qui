@@ -719,10 +719,15 @@ func TestNormalizePath(t *testing.T) {
 		},
 		{name: "posix double slash", input: "/a//b", want: "/a/b"},
 		{name: "posix triple slash and trailing slash", input: "/a///b/", want: "/a/b"},
-		{name: "posix triple leading slash is not unc", input: "///data///done", want: "/data/done"},
+		{name: "posix triple leading slash", input: "///data///done", want: "/data/done"},
 		{name: "windows double backslash", input: `C:\a\\b`, want: "c:/a/b"},
-		{name: "unc share keeps leading slashes", input: `\\server\share\\x`, want: "//server/share/x"},
-		{name: "unc share already normalized", input: `\\server\share\x`, want: "//server/share/x"},
+		{name: "windows drive root keeps its slash", input: `C:\`, want: "c:/"},
+		{name: "filesystem root", input: "/", want: "/"},
+		{name: "dot segment", input: "/a/./b", want: "/a/b"},
+		{name: "parent segment", input: "/a/b/../c", want: "/a/c"},
+		// A UNC prefix collapses, like cross-seed: a share and a local path with
+		// the same tail compare equal.
+		{name: "unc share", input: `\\server\share\\x`, want: "/server/share/x"},
 	}
 
 	for _, tc := range tests {
