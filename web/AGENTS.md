@@ -10,7 +10,7 @@ Frontend and i18n rules for work under `web/`.
 - Organize React modules by feature within `web/src/{pages,routes,components}`.
 - File names should be descriptive, e.g. `torrent-table.tsx`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
-- Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
+- Frontend tests: Vitest + React Testing Library. A test lives in a `__tests__/` folder in the directory of the code it covers (`components/cross-seed/__tests__/`), or as `*.test.tsx` beside the file in directories that still do that. One directory uses one of the two.
 - Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
 - Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
 - Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
@@ -20,7 +20,7 @@ Frontend and i18n rules for work under `web/`.
 
 ## Frontend Tests
 
-- Colocate `*.test.ts(x)` specs with the change. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
+- Keep `*.test.ts(x)` specs in the directory of the change, in its `__tests__/` folder where one exists. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
 - Vitest runs with `globals: false` + jsdom. There **is** a setup file (`web/src/test/setup.ts`), but it only runs the MSW server lifecycle:
   - Import test globals explicitly: `import { describe, it, expect, vi } from "vitest"`; use `render` / `renderHook` / `act` from `@testing-library/react`.
   - **Nothing auto-cleans the DOM or mocks.** Add `afterEach(cleanup)` in files where more than one test renders, and call `cleanup()` or `unmount()` yourself between two `render` calls inside the same test. Add `afterEach(() => vi.restoreAllMocks())` when a test spies on a global such as `Storage.prototype.setItem`. RTL registers its own cleanup only when a global `afterEach` exists, and `globals: false` removes it; `restoreMocks` is not set either. Without this a second `render` leaves the first in the DOM and `getBy*` throws "Found multiple elements".

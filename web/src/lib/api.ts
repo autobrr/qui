@@ -34,6 +34,7 @@ import type {
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
   DiscScanRun,
   ManualAssembleRequest,
@@ -139,6 +140,21 @@ import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 
 const API_BASE = getApiBaseUrl()
+
+// The backend FilterOptions has no expandedCategories field. The sidebar keeps
+// categories as the user's selection and expandedCategories as the subcategory
+// expansion, so the wire gets the expanded list under categories (ADR 0010).
+function serializeFilters(filters: TorrentFilters | null | undefined): TorrentFilters | undefined {
+  if (!filters) {
+    return undefined
+  }
+  const { expandedCategories, expandedExcludeCategories, ...rest } = filters
+  return {
+    ...rest,
+    categories: expandedCategories ?? filters.categories,
+    excludeCategories: expandedExcludeCategories ?? filters.excludeCategories,
+  }
+}
 
 const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<number, string> | undefined => {
   if (!excluded) {
@@ -876,7 +892,7 @@ class ApiClient {
     if (params.sort) searchParams.set("sort", params.sort)
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
-    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
@@ -911,7 +927,7 @@ class ApiClient {
         sort: stream.sort,
         order: stream.order,
         search: stream.search ?? "",
-        filters: stream.filters ?? null,
+        filters: serializeFilters(stream.filters) ?? null,
       }))
       params.set("streams", JSON.stringify(normalized))
     }
@@ -954,7 +970,7 @@ class ApiClient {
           targets: params.targets,
           selectAll: params.selectAll,
           search: params.search,
-          filters: params.filters,
+          filters: serializeFilters(params.filters),
           excludeHashes: params.excludeHashes,
           excludeTargets: params.excludeTargets,
           instanceIds: params.instanceIds,
@@ -981,7 +997,7 @@ class ApiClient {
     if (params.sort) searchParams.set("sort", params.sort)
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
-    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
@@ -1116,7 +1132,7 @@ class ApiClient {
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, filters: serializeFilters(data.filters) }),
     })
   }
 
@@ -1672,6 +1688,13 @@ class ApiClient {
 
   async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
     return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
+  }
+
+  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
   }
 
   async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {

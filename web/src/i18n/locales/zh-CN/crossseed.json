@@ -10,41 +10,33 @@
     "linkSuffix": "以添加或启用索引器。"
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 自动化",
-      "description": "使用你的规则自动轮询 Tracker RSS 订阅源。",
-      "nextRun": "下次运行",
-      "manualTrigger": "手动触发",
-      "lastRun": "上次运行",
-      "cooldown": "冷却 {{display}}",
-      "ready": "就绪",
-      "disabled": "已禁用",
-      "noRunsYet": "尚无运行记录",
-      "disabledUpper": "已禁用"
-    },
     "seededSearch": {
-      "title": "做种搜索",
-      "description": "深度扫描你已做种的种子以回填缺失项。",
-      "instance": "实例",
-      "recentRuns": "最近的运行",
-      "now": "现在",
-      "running": "运行中...",
-      "idle": "空闲",
       "gazelleFullDescription": "Gazelle 会对每个源种子检查 RED/OPS。Torznab 查询已选择的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 会对每个源种子检查已配置的站点。Torznab 查询已选择的索引器。",
       "noGazelleDescription": "没有 Gazelle，所有匹配依赖 Torznab 索引器。"
     }
   },
   "tabs": {
-    "auto": "自动",
-    "scan": "扫描",
-    "dirScan": "目录扫描",
-    "rules": "规则",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "completion": "完成",
+    "library": "库",
+    "directories": "目录",
+    "season-packs": "季包",
+    "matching": "匹配规则",
+    "categories": "分类与标签",
+    "after-injection": "注入后",
     "blocklist": "屏蔽列表"
+  },
+  "nav": {
+    "sources": "来源",
+    "matching": "匹配",
+    "injection": "注入"
   },
   "automation": {
     "title": "RSS 自动化",
     "description": "按固定间隔轮询 Tracker RSS 订阅源，并自动添加匹配的辅种。",
+    "nextRun": "下次运行: {{date}}",
     "enableSwitch": "启用 RSS 自动化",
     "intervalLabel": "RSS 运行间隔（分钟）",
     "intervalTooltip": "自动化每次运行时会处理每个已启用 Torznab 索引器的完整订阅源。最小间隔为 {{min}} 分钟，以避免对索引器造成过多请求。",
@@ -97,15 +89,22 @@
     "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "scheduledUpper": "定时",
     "runDisabledAlreadyRunning": "自动化运行已在进行中。",
     "runDisabledCooldown": "手动运行的间隔限制为 {{minutes}} 分钟。请在 {{remaining}} 后重试。"
   },
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "筛选当 autobrr 调用 /apply Webhook 端点时需要检查的本地种子。",
-    "emptyFiltersNote": "空筛选器表示检查所有种子。如果同时配置了分类和标签筛选器，种子必须同时匹配两者。",
-    "saveFilters": "保存 Webhook 筛选器"
+    "emptyFiltersNote": "空筛选器表示检查所有种子。如果同时配置了分类和标签筛选器，种子必须同时匹配两者。"
+  },
+  "completion": {
+    "title": "完成时",
+    "description": "下载完成后触发的搜索所添加的交叉做种的标签和自动恢复设置。请在下方按实例开启该搜索。"
+  },
+  "sourceCard": {
+    "crossSeedTags": "交叉做种标签",
+    "autoResume": "注入后自动恢复",
+    "autoResumeHelp": "关闭时，添加的种子将保持暂停以供检查。"
   },
   "scan": {
     "title": "做种库扫描",
@@ -164,19 +163,16 @@
     "runSummary": "{{runs}} 次运行 • +{{added}} 个交叉做种",
     "runSummaryWithFailures": "{{runs}} 次运行 • +{{added}} 个交叉做种 • {{failed}} 失败",
     "searchNeedsTorznabUnlessGazelle": "做种搜索需要 Torznab 索引器（除非你仅通过 Gazelle 扫描 OPS/RED）。",
-    "scannedProgress": "已扫描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 个候选",
     "failedCount": "{{count}} 个失败",
     "runError": "错误：{{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "跳过 Torznab（仅限 Gazelle 选择）",
       "placeholderTorznabDisabledGazelleOnly": "Torznab 已禁用（仅限 Gazelle）",
       "placeholderTorznabDisabledEnableGazelle": "Torznab 已禁用（启用 Gazelle）",
       "placeholderAllEnabledNonOpsRed": "所有已启用的非 OPS/RED 索引器（留空表示全部）",
       "placeholderAllEnabled": "所有已启用的索引器（留空表示全部）",
       "placeholderOnlyOpsRedEnabled": "仅启用 OPS/RED（Gazelle）",
       "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
-      "helpTorznabSkippedGazelleOnly": "选定的 Torznab 索引器仅限 Gazelle (OPS/RED)。本次运行将仅限于 Gazelle。",
       "helpTorznabDisabledGazelleCheck": "Torznab 已禁用。Gazelle 将为每个源种子检查 RED/OPS。",
       "helpTorznabDisabledEnableGazelle": "Torznab 已禁用。启用 Gazelle (OPS/RED) 以在仅 Gazelle 模式下运行做种搜索。",
       "helpOnlyOpsRedEnabled": "仅启用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在检查 RED/OPS。",
@@ -188,20 +184,15 @@
       "helpSelectedQueried_other": "将仅查询 {{count}} 个选定的索引器。"
     },
     "gazelleStatus": {
-      "loading": "Gazelle：加载中",
       "disabled": "Gazelle：已禁用",
       "enabledOpsRed": "Gazelle：已启用（已设置 OPS+RED 密钥）",
       "enabledOpsMissingRed": "Gazelle：已启用（已设置 OPS 密钥，缺少 RED）",
       "enabledRedMissingOps": "Gazelle：已启用（已设置 RED 密钥，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已启用（缺少密钥）"
     },
-    "noInstanceSelected": "未选择实例",
-    "instanceFallback": "实例 {{id}}",
     "noMessageProvided": "未提供消息"
   },
   "rules": {
-    "title": "辅种规则",
-    "description": "适用于所有辅种操作的设置。",
     "hardlinkReflink": "硬链接 / 引用链接模式",
     "noActiveInstances": "没有活跃的实例。请先添加实例。",
     "hardlinkDescription": "为辅种创建硬链接或引用链接（写时复制）文件树。每个实例可独立配置。基础目录必须与实例的下载路径位于同一文件系统。",
@@ -225,11 +216,6 @@
     "fallbackDescription": "如果 {{mode}} 失败（例如不同文件系统），则回退到使用现有文件的常规模式。",
     "saveChanges": "保存更改",
     "noLocalAccess": "无本地访问权限",
-    "sections": {
-      "matching": "匹配",
-      "organization": "组织方式",
-      "afterInjection": "注入后"
-    },
     "seasonPack": {
       "title": "季度包",
       "description": "当 autobrr 抓取季度包时，qui 会检查你是否已有足够的本地数据来注入它，然后让 qBittorrent 下载仍然缺失的内容。",
@@ -274,19 +260,6 @@
           "hdtv": "HDTV"
         }
       }
-    },
-    "gazelle": {
-      "title": "Gazelle（OPS/RED）",
-      "description": "启用对 Orpheus 和 Redacted 的直接 API 匹配。这与 Torznab 并行运行；OPS/RED Torznab 索引器将被忽略。",
-      "enableMatching": "启用 Gazelle 匹配",
-      "enableDescription": "应用于所有源种子。如果可能，qui 还会通过 Gazelle 检查 RED/OPS。",
-      "redactedApiKey": "Redacted API 密钥",
-      "orpheusApiKey": "Orpheus API 密钥",
-      "pasteRedKey": "粘贴 RED API 密钥",
-      "pasteOpsKey": "粘贴 OPS API 密钥",
-      "enableToConfigure": "启用后进行配置",
-      "redDescription": "用于 redacted.sh 查询。粘贴以替换，清空以移除。",
-      "opsDescription": "用于 orpheus.network 查询。粘贴以替换，清空以移除。"
     },
     "matching": {
       "title": "单集",
@@ -335,16 +308,12 @@
     "tagging": {
       "title": "标签",
       "description": "配置根据发现方式应用于辅种的标签。",
-      "rssAutomationTags": "RSS 自动化标签",
       "selectRssTags": "选择 RSS 自动化的标签",
       "rssTagsDescription": "通过 RSS 订阅源自动化添加的种子所应用的标签。",
-      "seededSearchTags": "做种搜索标签",
       "selectSeededTags": "选择做种搜索的标签",
       "seededTagsDescription": "通过做种搜索添加的种子所应用的标签。",
-      "completionSearchTags": "完成搜索标签",
       "selectCompletionTags": "选择完成搜索的标签",
       "completionTagsDescription": "通过完成触发搜索添加的种子所应用的标签。",
-      "webhookTags": "Webhook 标签",
       "selectWebhookTags": "选择 Webhook/apply 的标签",
       "webhookTagsDescription": "通过 /apply Webhook（例如 autobrr）添加的种子所应用的标签。",
       "inheritSourceTags": "继承源种子标签",
@@ -355,19 +324,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "季度包标签",
       "selectSeasonPackTags": "选择标签…",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "注入后行为",
       "description": "控制辅种成功注入后的操作。",
-      "autoResumeNote": "注入后自动继续（关闭时种子将保持暂停以供审查）",
-      "rss": "RSS",
-      "seededSearch": "做种搜索",
       "seededSearchDescription": "自动继续做种搜索和对话框注入的种子",
-      "completion": "完成",
-      "webhookLabel": "Webhook",
       "webhookDescription": "自动继续 /apply Webhook 种子",
       "pooledPartialCompletion": "自动汇集包含额外数据的种子",
       "pooledPartialCompletionDescription": "使用现有的自动开始最大下载量，并为每个相关辅种池协调一个下载任务，以处理辅种中的额外文件。",
@@ -389,7 +352,10 @@
       "cachedSearches": "{{count}} 次缓存搜索",
       "lastUsed": "上次使用 {{timestamp}}"
     },
-    "saveGlobalSettings": "保存全局辅种设置"
+    "tabDescriptions": {
+      "matching": "决定 qui 为所有来源添加哪些候选的规则。",
+      "categories": "qui 为每个新交叉做种设置的分类和标签。"
+    }
   },
   "seasonPackRuns": {
     "title": "最近的季度包运行",
@@ -708,19 +674,6 @@
       "description": "这将移除扫描目录及其运行历史。已添加的种子不会受到影响。",
       "cancel": "取消",
       "delete": "删除"
-    },
-    "statusLabelsUpper": {
-      "queued": "排队中",
-      "scanning": "扫描中",
-      "searching": "搜索中",
-      "injecting": "注入中",
-      "success": "成功",
-      "failed": "失败",
-      "added": "已添加",
-      "canceled": "已取消",
-      "running": "运行中",
-      "partial": "部分成功",
-      "pending": "等待中"
     }
   }
 }

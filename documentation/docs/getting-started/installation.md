@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-title: Install qui
+title: Install qui, the web UI for qBittorrent
 sidebar_label: Installation
 description: Install qui on Linux with one command, download the binary for Linux, macOS, or Windows, or run the Docker image.
 ---

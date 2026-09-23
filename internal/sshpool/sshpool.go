@@ -119,7 +119,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 
 	var presented ssh.PublicKey
 	var first sync.Once
-	var algorithms []string
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		// x/crypto runs this on every key exchange, and a server may start a
 		// rekey at any time — including while the probe is using the
@@ -134,11 +133,8 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		}
 		return matchKey(key, pinned)
 	}
-	if pinned != nil {
-		algorithms = hostKeyAlgorithms(pinned)
-	}
 
-	client, err := d.dial(ctx, inst, callback, algorithms)
+	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(pinned))
 	if err != nil {
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
@@ -213,16 +209,31 @@ func matchKey(presented, expected ssh.PublicKey) error {
 // list decides which host key the server offers: a host holding several keys
 // would otherwise present one we never pinned and read as a mismatch. A pinned
 // RSA key negotiates under the SHA-2 signature names, so all three come first
-// for it. The remaining algorithms stay allowed so a host that genuinely
-// changed key type reports as a mismatch the user can act on, rather than as a
-// failed negotiation nobody can interpret. Verification is the callback's byte
-// comparison either way.
-func hostKeyAlgorithms(key ssh.PublicKey) []string {
-	algorithms := []string{key.Type()}
-	if key.Type() == ssh.KeyAlgoRSA {
-		algorithms = []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+// for it. First contact has no pinned key and leads with ed25519, so a host
+// holding several keys pins its strongest one. The remaining algorithms stay
+// allowed so a host that genuinely changed key type reports as a mismatch the
+// user can act on, rather than as a failed negotiation nobody can interpret.
+// Verification is the callback's byte comparison either way.
+//
+// The list is never left empty. x/crypto's default applies then, and it admits
+// SHA-1 ssh-rsa, ssh-dss and their certificate forms. No pinned dial admits
+// those, apart from ssh-rsa for a pinned RSA key, so the policy would be
+// loosest at the one moment the host is unverified and the user is being asked
+// to trust it for good.
+func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
+	switch {
+	case pinned == nil:
+		return preferHostKeyAlgorithms(ssh.KeyAlgoED25519)
+	case pinned.Type() == ssh.KeyAlgoRSA:
+		return preferHostKeyAlgorithms(ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA)
 	}
+	return preferHostKeyAlgorithms(pinned.Type())
+}
 
+// preferHostKeyAlgorithms puts preferred at the front of the host-key
+// algorithms x/crypto considers secure.
+func preferHostKeyAlgorithms(preferred ...string) []string {
+	algorithms := slices.Clone(preferred)
 	for _, algorithm := range ssh.SupportedAlgorithms().HostKeys {
 		if !slices.Contains(algorithms, algorithm) {
 			algorithms = append(algorithms, algorithm)
