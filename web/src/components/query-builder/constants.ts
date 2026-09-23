@@ -233,7 +233,8 @@ export const HARDLINK_SCOPE_VALUES = [
 ];
 
 // Content types from release parsing. Mirrors releases.ContentTypes in
-// pkg/releases/content_type.go; keep the two lists in the same order.
+// pkg/releases/content_type.go, which constants.test.ts enforces. A rule-forceable
+// subset of the same values lives in crossseed/CategoryMappingRulesEditor.tsx.
 export const CONTENT_TYPE_VALUES = [
   { value: "movie", label: "Movie" },
   { value: "tv", label: "TV" },
@@ -505,7 +506,7 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
 export function getTranslatedContentTypes(t: TFunction): { value: string; label: string }[] {
   return CONTENT_TYPE_VALUES.map((contentType) => ({
     value: contentType.value,
-    label: t(`queryBuilder.contentTypes.${contentType.value}`, { defaultValue: contentType.label }),
+    label: t(`common:contentTypeLabels.${contentType.value}`, { defaultValue: contentType.label }),
   }));
 }
 

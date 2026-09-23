@@ -32,7 +32,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
-    "customContentType": "{{value}} (невідомий тип вмісту)",
+    "customContentType": "{{value}} (не підтримується)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -221,18 +221,6 @@
       "error": "Помилка",
       "tracker_error": "Помилка трекера",
       "unreachable": "Недоступний"
-    },
-    "contentTypes": {
-      "movie": "Фільм",
-      "tv": "Серіал",
-      "music": "Музика",
-      "audiobook": "Аудіокнига",
-      "book": "Книга",
-      "comic": "Комікс",
-      "game": "Гра",
-      "app": "Застосунок",
-      "adult": "Для дорослих",
-      "unknown": "Невідомо"
     }
   }
 }

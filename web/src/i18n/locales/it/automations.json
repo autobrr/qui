@@ -34,7 +34,7 @@
     "false": "Falso",
     "selectCategory": "Seleziona una categoria",
     "uncategorized": "Senza categoria",
-    "customContentType": "{{value}} (tipo di contenuto non riconosciuto)",
+    "customContentType": "{{value}} (non supportato)",
     "regexEnabled": "Regex abilitata",
     "enableRegex": "Abilita regex",
     "selectField": "Seleziona un campo",
@@ -211,18 +211,6 @@
       "error": "Errore",
       "tracker_error": "Errore tracker",
       "unreachable": "Irraggiungibile"
-    },
-    "contentTypes": {
-      "movie": "Film",
-      "tv": "Serie TV",
-      "music": "Musica",
-      "audiobook": "Audiolibro",
-      "book": "Libro",
-      "comic": "Fumetto",
-      "game": "Gioco",
-      "app": "App",
-      "adult": "Adulti",
-      "unknown": "Sconosciuto"
     },
     "durationUnits": {
       "minutes": "minuti",

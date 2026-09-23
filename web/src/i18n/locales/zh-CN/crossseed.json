@@ -596,18 +596,6 @@
       "partial": "部分成功",
       "pending": "等待中"
     },
-    "contentTypeLabels": {
-      "movie": "电影",
-      "tv": "电视剧",
-      "music": "音乐",
-      "audiobook": "有声书",
-      "book": "图书",
-      "comic": "漫画",
-      "game": "游戏",
-      "app": "应用",
-      "adult": "成人",
-      "unknown": "未知"
-    },
     "linkModeLabels": {
       "regular": "常规",
       "hardlink": "硬链接",

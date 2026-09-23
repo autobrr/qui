@@ -737,18 +737,6 @@
       "cancel": "Скасувати",
       "delete": "Видалити"
     },
-    "contentTypeLabels": {
-      "movie": "Фільм",
-      "tv": "Серіал",
-      "music": "Музика",
-      "audiobook": "Аудіокнига",
-      "book": "Книга",
-      "comic": "Комікс",
-      "game": "Гра",
-      "app": "Застосунок",
-      "adult": "Для дорослих",
-      "unknown": "Невідомо"
-    },
     "linkModeLabels": {
       "regular": "Звичайний",
       "hardlink": "Жорстке посилання",

@@ -34,7 +34,7 @@
     "false": "거짓",
     "selectCategory": "카테고리 선택",
     "uncategorized": "분류 없음",
-    "customContentType": "{{value}} (알 수 없는 콘텐츠 유형)",
+    "customContentType": "{{value}} (지원되지 않음)",
     "regexEnabled": "정규식 활성화됨",
     "enableRegex": "정규식 활성화",
     "selectField": "필드 선택",
@@ -211,18 +211,6 @@
       "error": "오류",
       "tracker_error": "트래커 오류",
       "unreachable": "접속 불가"
-    },
-    "contentTypes": {
-      "movie": "영화",
-      "tv": "TV",
-      "music": "음악",
-      "audiobook": "오디오북",
-      "book": "도서",
-      "comic": "만화",
-      "game": "게임",
-      "app": "앱",
-      "adult": "성인",
-      "unknown": "알 수 없음"
     },
     "durationUnits": {
       "minutes": "분",

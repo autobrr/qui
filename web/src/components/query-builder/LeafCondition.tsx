@@ -265,10 +265,10 @@ export function LeafCondition({
   const contentTypeOptions = isContentTypeEqualityOperator ? getTranslatedContentTypes(t) : [];
   // The evaluator ignores case, so a saved "TV" selects "tv". Any other saved value stays
   // selected as a flagged option, because rewriting it would change what the rule matches.
-  const contentTypeValue =
-    contentTypeOptions.find((option) => option.value === condition.value?.toLowerCase())?.value ?? condition.value ?? "";
-  const isCustomContentType =
-    contentTypeValue !== "" && !contentTypeOptions.some((option) => option.value === contentTypeValue);
+  const savedContentType = condition.value ?? "";
+  const knownContentType = contentTypeOptions.find((option) => option.value === savedContentType.toLowerCase());
+  const contentTypeValue = knownContentType?.value ?? savedContentType;
+  const isCustomContentType = contentTypeValue !== "" && !knownContentType;
 
   const getCategoryDisplayValue = (): string => {
     if (condition.field === "CATEGORY" && !condition.value) {

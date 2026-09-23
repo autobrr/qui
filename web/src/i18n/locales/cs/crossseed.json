@@ -729,18 +729,6 @@
       "cancel": "Zrušit",
       "delete": "Odstranit"
     },
-    "contentTypeLabels": {
-      "movie": "Film",
-      "tv": "Seriál",
-      "music": "Hudba",
-      "audiobook": "Audiokniha",
-      "book": "Kniha",
-      "comic": "Komiks",
-      "game": "Hra",
-      "app": "Aplikace",
-      "adult": "Pro dospělé",
-      "unknown": "Neznámé"
-    },
     "linkModeLabels": {
       "regular": "Běžný",
       "hardlink": "Hardlink",

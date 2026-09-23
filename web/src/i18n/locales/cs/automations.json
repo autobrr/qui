@@ -32,7 +32,7 @@
     "false": "Nepravda",
     "selectCategory": "Vybrat kategorii",
     "uncategorized": "Nekategorizované",
-    "customContentType": "{{value}} (neznámý typ obsahu)",
+    "customContentType": "{{value}} (nepodporováno)",
     "regexEnabled": "Regex zapnuto",
     "enableRegex": "Povolit regex",
     "selectField": "Vybrat pole",
@@ -221,18 +221,6 @@
       "error": "Chyba",
       "tracker_error": "Chyba trackeru",
       "unreachable": "Nedostupné"
-    },
-    "contentTypes": {
-      "movie": "Film",
-      "tv": "Seriál",
-      "music": "Hudba",
-      "audiobook": "Audiokniha",
-      "book": "Kniha",
-      "comic": "Komiks",
-      "game": "Hra",
-      "app": "Aplikace",
-      "adult": "Pro dospělé",
-      "unknown": "Neznámé"
     }
   }
 }

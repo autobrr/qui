@@ -34,7 +34,7 @@
     "false": "否",
     "selectCategory": "選擇分類",
     "uncategorized": "未分類",
-    "customContentType": "{{value}}（未知的內容類型）",
+    "customContentType": "{{value}}（不支援）",
     "regexEnabled": "正規表示式已啟用",
     "enableRegex": "啟用正規表示式",
     "selectField": "選擇欄位",
@@ -211,18 +211,6 @@
       "error": "錯誤",
       "tracker_error": "Tracker 錯誤",
       "unreachable": "無法存取"
-    },
-    "contentTypes": {
-      "movie": "電影",
-      "tv": "電視劇",
-      "music": "音樂",
-      "audiobook": "有聲書",
-      "book": "圖書",
-      "comic": "漫畫",
-      "game": "遊戲",
-      "app": "應用",
-      "adult": "成人",
-      "unknown": "未知"
     },
     "durationUnits": {
       "minutes": "分鐘",

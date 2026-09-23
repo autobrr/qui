@@ -34,7 +34,7 @@
     "false": "否",
     "selectCategory": "选择分类",
     "uncategorized": "未分类",
-    "customContentType": "{{value}}（未知的内容类型）",
+    "customContentType": "{{value}}（不支持）",
     "regexEnabled": "正则表达式已启用",
     "enableRegex": "启用正则表达式",
     "selectField": "选择字段",
@@ -211,18 +211,6 @@
       "error": "错误",
       "tracker_error": "Tracker 错误",
       "unreachable": "无法访问"
-    },
-    "contentTypes": {
-      "movie": "电影",
-      "tv": "电视剧",
-      "music": "音乐",
-      "audiobook": "有声书",
-      "book": "图书",
-      "comic": "漫画",
-      "game": "游戏",
-      "app": "应用",
-      "adult": "成人",
-      "unknown": "未知"
     },
     "durationUnits": {
       "minutes": "分钟",

@@ -33,7 +33,7 @@
     "false": "Fals",
     "selectCategory": "Selecciona una categoria",
     "uncategorized": "Sense categoria",
-    "customContentType": "{{value}} (no és un tipus de contingut conegut)",
+    "customContentType": "{{value}} (no admès)",
     "regexEnabled": "Regex activada",
     "enableRegex": "Activa la regex",
     "selectField": "Selecciona un camp",
@@ -210,18 +210,6 @@
       "error": "Error",
       "tracker_error": "Error del tracker",
       "unreachable": "Inaccessible"
-    },
-    "contentTypes": {
-      "movie": "Pel·lícula",
-      "tv": "TV",
-      "music": "Música",
-      "audiobook": "Audiollibre",
-      "book": "Llibre",
-      "comic": "Còmic",
-      "game": "Joc",
-      "app": "Aplicació",
-      "adult": "Adults",
-      "unknown": "Desconegut"
     },
     "durationUnits": {
       "minutes": "minuts",
