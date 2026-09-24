@@ -2523,13 +2523,13 @@ func waitForPostAddRecheckReady(
 	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
 	defer cancel()
 
-	// A wait that ends on a failed or slow sync never saw the torrent's state, so
-	// the error names the sync. %v keeps a sync deadline from reading as the
-	// caller's own cancellation in BulkAction.
-	var syncCause string
+	// A wait that ends on a failed sync never saw the torrent's state, so the
+	// error names the sync.
+	var lastSyncErr error
 	notReady := func() error {
-		if syncCause != "" {
-			return fmt.Errorf("%w: %s", errPostAddRecheckNotReady, syncCause)
+		if lastSyncErr != nil {
+			// %v, not %w: a wrapped sync deadline would read as the caller's own cancellation in BulkAction.
+			return fmt.Errorf("%w: last sync failed: %v", errPostAddRecheckNotReady, lastSyncErr) //nolint:errorlint // see above
 		}
 		return errPostAddRecheckNotReady
 	}
@@ -2549,22 +2549,13 @@ func waitForPostAddRecheckReady(
 		}
 
 		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
-		syncErr := syncManager.Sync(syncCtx)
+		lastSyncErr = syncManager.Sync(syncCtx)
 		cancel()
-		switch {
-		case syncErr != nil:
-			syncCause = fmt.Sprintf("last sync failed: %v", syncErr)
-		case overallCtx.Err() != nil:
-			// A sync that joins a stalled shared sync can return after the budget.
-			syncCause = "last sync outlasted the wait"
-		default:
-			syncCause = ""
-		}
 		if err := waitErr(); err != nil {
 			return err
 		}
-		if syncErr != nil {
-			log.Trace().Err(syncErr).Int("instanceID", instanceID).
+		if lastSyncErr != nil {
+			log.Trace().Err(lastSyncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
 		} else if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
 			return nil

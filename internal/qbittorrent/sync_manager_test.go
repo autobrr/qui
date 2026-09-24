@@ -1070,17 +1070,15 @@ func TestWaitForPostAddRecheckReadyNamesFailedSync(t *testing.T) {
 	require.Equal(t, 0, syncer.mapCalls)
 }
 
-func TestWaitForPostAddRecheckReadyNamesSlowSync(t *testing.T) {
+func TestWaitForPostAddRecheckReadyNamesStalledSync(t *testing.T) {
 	t.Parallel()
 
-	// A sync that ignores its deadline, like one joined to a stalled shared sync.
-	syncer := &bulkActionRetrySyncer{syncDelay: 30 * time.Millisecond}
+	syncer := &bulkActionRetrySyncer{blockSyncUntilDone: true}
 
 	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 3, time.Millisecond, 10*time.Millisecond)
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
-	require.ErrorContains(t, err, "last sync outlasted the wait")
-	require.Equal(t, 1, syncer.syncCalls)
+	require.ErrorContains(t, err, "last sync failed: context deadline exceeded")
 }
 
 func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
@@ -1871,7 +1869,6 @@ type bulkActionRetrySyncer struct {
 	syncCalls          int
 	mapCalls           int
 	blockSyncUntilDone bool
-	syncDelay          time.Duration
 }
 
 func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
@@ -1880,7 +1877,6 @@ func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	time.Sleep(s.syncDelay)
 	if len(s.mapsAfterSync) > 0 {
 		index := min(s.syncCalls-1, len(s.mapsAfterSync)-1)
 		s.currentMap = s.mapsAfterSync[index]
