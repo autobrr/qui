@@ -11,6 +11,7 @@ import { InstancePreferencesDialog } from "@/components/instances/preferences/In
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
@@ -1471,6 +1472,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           {activeTab === "indexers" && (
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <IndexersPage withContainer={false} />
+              <GazelleSettingsCard />
             </SettingsScrollPanel>
           )}
 

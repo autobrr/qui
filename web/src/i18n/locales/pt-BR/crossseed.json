@@ -10,41 +10,33 @@
     "linkSuffix": "para adicionar ou ativar um."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automação RSS",
-      "description": "Sondagem automática dos feeds RSS dos trackers usando suas regras.",
-      "nextRun": "Próxima execução",
-      "manualTrigger": "Acionamento manual",
-      "lastRun": "Última execução",
-      "cooldown": "Espera {{display}}",
-      "ready": "Pronto",
-      "disabled": "Desativado",
-      "noRunsYet": "Nenhuma execução ainda",
-      "disabledUpper": "DESATIVADO"
-    },
     "seededSearch": {
-      "title": "Busca de torrents semeados",
-      "description": "Varredura profunda dos torrents que você já semeia para preencher lacunas.",
-      "instance": "Instância",
-      "recentRuns": "Execuções recentes",
-      "now": "Agora",
-      "running": "Executando...",
-      "idle": "Ocioso",
       "gazelleFullDescription": "O Gazelle verifica RED/OPS para cada torrent de origem. O Torznab consulta indexadores selecionados não OPS/RED.",
       "gazellePartialDescription": "O Gazelle verifica sites configurados para cada torrent de origem. O Torznab consulta indexadores selecionados.",
       "noGazelleDescription": "Sem o Gazelle, todas as correspondências dependem dos indexadores Torznab."
     }
   },
   "tabs": {
-    "auto": "Auto",
-    "scan": "Buscar",
-    "dirScan": "Scanner Dir",
-    "rules": "Regras",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "completion": "Conclusão",
+    "library": "Biblioteca",
+    "directories": "Diretórios",
+    "season-packs": "Season packs",
+    "matching": "Regras de correspondência",
+    "categories": "Categorias e tags",
+    "after-injection": "Pós-injeção",
     "blocklist": "Lista de Bloqueios"
+  },
+  "nav": {
+    "sources": "Fontes",
+    "matching": "Correspondência",
+    "injection": "Injeção"
   },
   "automation": {
     "title": "Automação RSS",
     "description": "Sonda feeds RSS de trackers em um intervalo fixo e adiciona cross-seeds correspondentes automaticamente.",
+    "nextRun": "Próxima execução: {{date}}",
     "enableSwitch": "Ativar automação RSS",
     "intervalLabel": "Intervalo de execução RSS (minutos)",
     "intervalTooltip": "A automação processa o feed completo de cada indexador Torznab ativado a cada execução. O intervalo mínimo é de {{min}} minutos para evitar sobrecarregar os indexadores.",
@@ -97,15 +89,22 @@
     "runError": "Erro: {{message}}",
     "runSummary": "{{runs}} execuções • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execuções • +{{added}} • {{failed}} falharam",
-    "scheduledUpper": "AGENDADO",
     "runDisabledAlreadyRunning": "Uma execução da automação já está em andamento.",
     "runDisabledCooldown": "As execuções manuais são limitadas a um intervalo de {{minutes}} minutos. Tente novamente em {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtre quais torrents locais são considerados quando o autobrr chama o endpoint webhook /apply.",
-    "emptyFiltersNote": "Filtros vazios significam que todos os torrents são verificados. Se você configurar filtros de categoria e tag, os torrents devem corresponder a ambos.",
-    "saveFilters": "Salvar filtros de webhook"
+    "emptyFiltersNote": "Filtros vazios significam que todos os torrents são verificados. Se você configurar filtros de categoria e tag, os torrents devem corresponder a ambos."
+  },
+  "completion": {
+    "title": "Ao concluir",
+    "description": "Tags e retomada automática para cross-seeds adicionados pela busca que roda após um download concluído. Ative a busca por instância abaixo."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Tags de cross-seed",
+    "autoResume": "Retomar automaticamente após a injeção",
+    "autoResumeHelp": "Quando desligado, os torrents adicionados ficam pausados para revisão."
   },
   "scan": {
     "title": "Busca na Biblioteca",
@@ -165,19 +164,16 @@
     "runSummary": "{{runs}} execuções • +{{added}} cross-seeds",
     "runSummaryWithFailures": "{{runs}} execuções • +{{added}} cross-seeds • {{failed}} falharam",
     "searchNeedsTorznabUnlessGazelle": "A Busca de Torrents Semeados precisa de indexadores Torznab (a menos que você esteja apenas varrendo OPS/RED via Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} varridos",
     "torrentsCount": "{{count}} candidatos",
     "failedCount": "{{count}} falharam",
     "runError": "Erro: {{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "Torznab ignorado (seleção apenas Gazelle)",
       "placeholderTorznabDisabledGazelleOnly": "Torznab desativado (apenas Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab desativado (ativar Gazelle)",
       "placeholderAllEnabledNonOpsRed": "Todos os indexadores não-OPS/RED ativados (deixe em branco para todos)",
       "placeholderAllEnabled": "Todos os indexadores ativados (deixe em branco para todos)",
       "placeholderOnlyOpsRedEnabled": "Apenas OPS/RED ativados (Gazelle)",
       "placeholderNoTorznabConfigured": "Nenhum indexador Torznab configurado",
-      "helpTorznabSkippedGazelleOnly": "Os indexadores Torznab selecionados são apenas Gazelle (OPS/RED). Esta execução será apenas Gazelle.",
       "helpTorznabDisabledGazelleCheck": "Torznab desativado. Gazelle verificará RED/OPS para cada torrent de origem.",
       "helpTorznabDisabledEnableGazelle": "Torznab desativado. Ative o Gazelle (OPS/RED) para executar a Busca de Torrents Semeados no modo apenas Gazelle.",
       "helpOnlyOpsRedEnabled": "Apenas indexadores Torznab OPS/RED estão ativados. Torznab não contribui aqui; Gazelle ainda verifica RED/OPS.",
@@ -191,20 +187,15 @@
       "helpSelectedQueried_other": "Apenas {{count}} indexadores selecionados serão consultados."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: carregando",
       "disabled": "Gazelle: desativado",
       "enabledOpsRed": "Gazelle: ativado (chaves OPS+RED configuradas)",
       "enabledOpsMissingRed": "Gazelle: ativado (chave OPS configurada, RED ausente)",
       "enabledRedMissingOps": "Gazelle: ativado (chave RED configurada, OPS ausente)",
       "enabledKeysMissing": "Gazelle: ativado (chaves ausentes)"
     },
-    "noInstanceSelected": "Nenhuma instância selecionada",
-    "instanceFallback": "Instância {{id}}",
     "noMessageProvided": "Nenhuma mensagem fornecida"
   },
   "rules": {
-    "title": "Regras Cross-Seed",
-    "description": "Configurações que se aplicam a todas as operações de cross-seed.",
     "hardlinkReflink": "Modo Hardlink / Reflink",
     "noActiveInstances": "Nenhuma instância ativa. Adicione instâncias primeiro.",
     "hardlinkDescription": "Crie árvores de arquivos hardlinked ou reflinked (cópia na gravação) para cross-seeds. Cada instância pode ser configurada independentemente. O diretório base deve estar no mesmo sistema de arquivos que os caminhos de download da instância.",
@@ -228,11 +219,6 @@
     "fallbackDescription": "Se o {{mode}} falhar (ex: sistemas de arquivos diferentes), retorne ao modo regular usando os arquivos existentes.",
     "saveChanges": "Salvar Alterações",
     "noLocalAccess": "Sem acesso local",
-    "sections": {
-      "matching": "Correspondência",
-      "organization": "Organização",
-      "afterInjection": "Pós-injeção"
-    },
     "seasonPack": {
       "title": "Pacotes de Temporada (Season packs)",
       "description": "Quando o autobrr captura um pacote de temporada, o qui verifica se você já tem dados locais suficientes para injetá-lo e depois permite que o qBittorrent baixe tudo o que ainda estiver faltando.",
@@ -277,19 +263,6 @@
           "hdtv": "HDTV"
         }
       }
-    },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Ative a correspondência direta via API com Orpheus e Redacted. Funciona em conjunto com o Torznab; indexadores Torznab OPS/RED são ignorados.",
-      "enableMatching": "Ativar correspondência Gazelle",
-      "enableDescription": "Aplica-se a todos os torrents de origem. Se possível, o qui também verifica o RED/OPS via Gazelle.",
-      "redactedApiKey": "Chave API Redacted",
-      "orpheusApiKey": "Chave API Orpheus",
-      "pasteRedKey": "Cole a chave API do RED",
-      "pasteOpsKey": "Cole a chave API do OPS",
-      "enableToConfigure": "Ativar para configurar",
-      "redDescription": "Usado para pesquisas no redacted.sh. Cole para substituir; limpe para remover.",
-      "opsDescription": "Usado para pesquisas no orpheus.network. Cole para substituir; limpe para remover."
     },
     "matching": {
       "title": "Episódios",
@@ -338,16 +311,12 @@
     "tagging": {
       "title": "Tags (Marcação)",
       "description": "Configure as tags aplicadas a torrents cross-seed com base em como foram descobertos.",
-      "rssAutomationTags": "Tags de Automação RSS",
       "selectRssTags": "Selecione tags para automação RSS",
       "rssTagsDescription": "Tags aplicadas a torrents adicionados via automação de feed RSS.",
-      "seededSearchTags": "Tags de Busca Semeada",
       "selectSeededTags": "Selecione tags para busca semeada",
       "seededTagsDescription": "Tags aplicadas a torrents adicionados via busca de torrents semeados.",
-      "completionSearchTags": "Tags de Busca por Conclusão",
       "selectCompletionTags": "Selecione tags para busca por conclusão",
       "completionTagsDescription": "Tags aplicadas a torrents adicionados via busca acionada por conclusão.",
-      "webhookTags": "Tags de Webhook",
       "selectWebhookTags": "Selecione tags para webhook/apply",
       "webhookTagsDescription": "Tags aplicadas a torrents adicionados via webhook /apply (ex: autobrr).",
       "inheritSourceTags": "Herdar tags do torrent de origem",
@@ -358,19 +327,13 @@
       "tagCompletion": "conclusão",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Tags de pacote de temporada",
       "selectSeasonPackTags": "Selecionar tags...",
       "tagSeasonPack": "pacote-temporada"
     },
     "postInjection": {
       "title": "Comportamento Pós-Injeção",
       "description": "Controle o que acontece após os torrents de cross-seed serem injetados com sucesso.",
-      "autoResumeNote": "Retomada automática após injeção (quando desativado, os torrents ficam pausados para revisão)",
-      "rss": "RSS",
-      "seededSearch": "Busca Semeada",
       "seededSearchDescription": "Retomar torrents injetados por diálogo e busca semeada automaticamente",
-      "completion": "Conclusão",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Retomar torrents do webhook /apply automaticamente",
       "pooledPartialCompletion": "Agrupar automaticamente torrents com dados extras",
       "pooledPartialCompletionDescription": "Usa o valor máximo de download para início automático existente e coordena um downloader por pool de cross-seeds relacionados para lidar com arquivos extras nos cross-seeds.",
@@ -392,7 +355,10 @@
       "cachedSearches": "{{count}} buscas em cache",
       "lastUsed": "Último uso {{timestamp}}"
     },
-    "saveGlobalSettings": "Salvar configurações globais de cross-seed"
+    "tabDescriptions": {
+      "matching": "Regras que decidem quais candidatos o qui adiciona, para todas as fontes.",
+      "categories": "A categoria e as tags que o qui atribui a cada novo cross-seed."
+    }
   },
   "seasonPackRuns": {
     "title": "Execuções recentes de pacote de temporada",
@@ -731,19 +697,6 @@
       "description": "Isto removerá o diretório de busca e seu histórico. Torrents já adicionados não serão afetados.",
       "cancel": "Cancelar",
       "delete": "Excluir"
-    },
-    "statusLabelsUpper": {
-      "queued": "NA FILA",
-      "scanning": "VARRENDO",
-      "searching": "PROCURANDO",
-      "injecting": "INJETANDO",
-      "success": "SUCESSO",
-      "failed": "FALHA",
-      "added": "ADICIONADO",
-      "canceled": "CANCELADO",
-      "running": "EXECUTANDO",
-      "partial": "PARCIAL",
-      "pending": "PENDENTE"
     }
   }
 }

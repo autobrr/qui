@@ -12,7 +12,7 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.0
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20260924043035-075a839f216e
 	github.com/autobrr/go-torrent v1.1.1
 	github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a
 	github.com/avast/retry-go v3.0.0+incompatible
@@ -40,7 +40,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ulikunitz/xz v0.5.16
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/image v0.45.0
 	golang.org/x/net v0.58.0
 	golang.org/x/oauth2 v0.36.0
@@ -57,7 +57,6 @@ require (
 require (
 	code.gitea.io/sdk/gitea v0.23.2 // indirect
 	github.com/42wim/httpsig v1.2.4 // indirect
-	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
