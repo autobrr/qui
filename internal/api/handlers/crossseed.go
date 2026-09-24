@@ -945,9 +945,14 @@ type automationSettingsSaveResponse struct {
 }
 
 // checkGazelleKeys sends one request with each new OPS or RED key. A key the
-// tracker rejects is an error. A tracker that does not answer must not block
-// the save, so that case is a warning.
+// tracker rejects is an error. Any other failure must not block the save, so
+// that case is a warning.
 func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *models.CrossSeedAutomationSettings) (string, error) {
+	// The card resends a typed key on every save, so a banned user must still
+	// be able to turn Gazelle off.
+	if !settings.GazelleEnabled {
+		return "", nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
@@ -970,7 +975,7 @@ func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *model
 		}
 		if err != nil {
 			log.Warn().Err(err).Str("host", site.host).Msg("Could not check the Gazelle API key")
-			warnings = append(warnings, fmt.Sprintf("Saved, but qui could not check the %s API key. The log has the details.", client.SourceFlag()))
+			warnings = append(warnings, fmt.Sprintf("qui could not check the %s API key. The log has the details.", client.SourceFlag()))
 		}
 	}
 	return strings.Join(warnings, "; "), nil

@@ -417,7 +417,7 @@
   },
   "toast": {
     "settingsUpdated": "Налаштування оновлено",
-    "settingsSavedKeyUnchecked": "Налаштування збережено, але qui не вдалося зв'язатися з трекером, щоб перевірити новий ключ API",
+    "settingsSavedKeyUnchecked": "Налаштування збережено, але qui не вдалося перевірити новий ключ API",
     "searchRunStarted": "Запуск пошуку розпочато",
     "searchRunCanceled": "Запуск пошуку скасовано",
     "automationRunStarted": "Запуск автоматизації розпочато",

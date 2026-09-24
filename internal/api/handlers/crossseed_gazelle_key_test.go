@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		wantStatus   int
 		wantRequests int32
 		wantText     string
+		host         string // stored key to read; "" means orpheus.network
 		wantStored   string
 	}{
 		{
@@ -42,7 +44,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		{
 			name:         "rejected key fails the save",
 			method:       http.MethodPatch,
-			body:         `{"orpheusApiKey":"bad-key"}`,
+			body:         `{"gazelleEnabled":true,"orpheusApiKey":"bad-key"}`,
 			reply:        rejected,
 			wantStatus:   http.StatusBadRequest,
 			wantRequests: 1,
@@ -51,11 +53,38 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		{
 			name:         "rejected key fails a put",
 			method:       http.MethodPut,
-			body:         `{"seasonPackCoverageThreshold":0.75,"redactedApiKey":"bad-key"}`,
+			body:         `{"seasonPackCoverageThreshold":0.75,"gazelleEnabled":true,"redactedApiKey":"bad-key"}`,
 			reply:        rejected,
 			wantStatus:   http.StatusBadRequest,
 			wantRequests: 1,
 			wantText:     "RED rejected the API key or this IP",
+			host:         "redacted.sh",
+		},
+		{
+			name:         "one rejected key saves neither key",
+			method:       http.MethodPatch,
+			body:         `{"gazelleEnabled":true,"redactedApiKey":"bad-key","orpheusApiKey":"good-key"}`,
+			reply:        rejected,
+			wantStatus:   http.StatusBadRequest,
+			wantRequests: 1,
+			wantText:     "RED rejected the API key or this IP",
+		},
+		{
+			name:       "disabled gazelle saves without a check",
+			method:     http.MethodPatch,
+			body:       `{"gazelleEnabled":false,"orpheusApiKey":"bad-key"}`,
+			reply:      rejected,
+			wantStatus: http.StatusOK, // the store hides keys while gazelle is off
+		},
+		{
+			name:         "other tracker failure saves with a warning",
+			method:       http.MethodPatch,
+			body:         `{"gazelleEnabled":true,"orpheusApiKey":"good-key"}`,
+			reply:        `{"status":"failure","error":"rate limit exceeded"}`,
+			wantStatus:   http.StatusOK,
+			wantRequests: 1,
+			wantText:     "could not check the OPS API key",
+			wantStored:   "good-key",
 		},
 		{
 			name:       "tracker down saves with a warning",
@@ -68,7 +97,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		{
 			name:       "placeholder and empty keys send no request",
 			method:     http.MethodPatch,
-			body:       `{"orpheusApiKey":"<redacted>","redactedApiKey":""}`,
+			body:       `{"gazelleEnabled":true,"orpheusApiKey":"<redacted>","redactedApiKey":""}`,
 			reply:      rejected,
 			wantStatus: http.StatusOK,
 		},
@@ -111,7 +140,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 			}
 			require.Contains(t, body.Error+body.Warning, tt.wantText)
 
-			key, _, err := store.GetDecryptedGazelleAPIKey(t.Context(), "orpheus.network")
+			key, _, err := store.GetDecryptedGazelleAPIKey(t.Context(), cmp.Or(tt.host, "orpheus.network"))
 			require.NoError(t, err)
 			require.Equal(t, tt.wantStored, key)
 		})

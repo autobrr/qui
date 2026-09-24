@@ -396,7 +396,7 @@
   },
   "toast": {
     "settingsUpdated": "설정이 업데이트되었습니다",
-    "settingsSavedKeyUnchecked": "설정이 저장되었지만 qui가 트래커에 연결하여 새 API 키를 확인하지 못했습니다",
+    "settingsSavedKeyUnchecked": "설정이 저장되었지만 qui가 새 API 키를 확인하지 못했습니다",
     "searchRunStarted": "검색 실행이 시작되었습니다",
     "searchRunCanceled": "검색 실행이 취소되었습니다",
     "automationRunStarted": "자동화 실행이 시작되었습니다",

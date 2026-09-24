@@ -49,7 +49,7 @@ export function usePatchCrossSeedSettings() {
     mutationFn: (payload: CrossSeedAutomationSettingsPatch) => api.patchCrossSeedSettings(payload),
     onSuccess: ({ warning, ...data }) => {
       if (warning) {
-        toast.warning(t("toast.settingsSavedKeyUnchecked"))
+        toast.warning(t("toast.settingsSavedKeyUnchecked"), { description: warning })
       } else {
         toast.success(t("toast.settingsUpdated"))
       }

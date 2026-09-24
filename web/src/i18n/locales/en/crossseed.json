@@ -403,7 +403,7 @@
   },
   "toast": {
     "settingsUpdated": "Settings updated",
-    "settingsSavedKeyUnchecked": "Settings saved, but qui could not reach the tracker to check the new API key",
+    "settingsSavedKeyUnchecked": "Settings saved, but qui could not check the new API key",
     "searchRunStarted": "Search run started",
     "searchRunCanceled": "Search run canceled",
     "automationRunStarted": "Automation run started",

@@ -412,7 +412,7 @@
   },
   "toast": {
     "settingsUpdated": "Nastavení aktualizována",
-    "settingsSavedKeyUnchecked": "Nastavení uloženo, ale qui se nepodařilo spojit s trackerem a ověřit nový klíč API",
+    "settingsSavedKeyUnchecked": "Nastavení uloženo, ale qui nemohl ověřit nový klíč API",
     "searchRunStarted": "Hledání spuštěno",
     "searchRunCanceled": "Hledání zrušeno",
     "automationRunStarted": "Automatizace spuštěna",
