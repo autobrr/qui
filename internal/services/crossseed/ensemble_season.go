@@ -230,7 +230,6 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		searchReq.Season = searchQuery.Season
 	}
 
-	state.torznabSearched = true
 	resp, err := s.searchOnce(searchCtx, searchReq)
 	if err != nil {
 		if ctx.Err() != nil {
