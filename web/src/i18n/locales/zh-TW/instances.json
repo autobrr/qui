@@ -1,4 +1,5 @@
 {
+  "migrationHint": "正在使用 Deluge、rTorrent 或 Transmission？<docs>使用我們的遷移工具遷移到 qBittorrent</docs>",
   "card": {
     "status": {
       "disabled": "已停用",

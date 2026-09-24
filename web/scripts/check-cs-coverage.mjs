@@ -149,6 +149,33 @@ function checkMissingKeys(enFlat, csFlat, namespace) {
 // these suffixes is a valid extra key when English has the same plural base.
 const csOnlyPluralSuffixes = ["_few", "_many"]
 
+function englishPluralBases(enFlat) {
+  const bases = new Set()
+
+  for (const key of enFlat.keys()) {
+    if (!key.endsWith("_one")) continue
+    const base = key.slice(0, -4)
+    if (enFlat.has(`${base}_other`)) {
+      bases.add(base)
+    }
+  }
+
+  return bases
+}
+
+// Without _few, counts 2-4 render English; an unsuffixed cs key answers them instead.
+// checkMissingKeys already requires _one and _other, and _many stays optional.
+function checkPluralForms(enFlat, csFlat, namespace) {
+  const errors = []
+
+  for (const base of englishPluralBases(enFlat)) {
+    if (csFlat.has(base) || csFlat.has(`${base}_few`)) continue
+    errors.push(`${namespace}.${base}_few`)
+  }
+
+  return errors
+}
+
 function checkExtraKeys(enFlat, csFlat, namespace) {
   const errors = []
 
@@ -305,6 +332,7 @@ if (!fs.existsSync(csRoot)) {
 const errors = {
   missingKeys: [],
   extraKeys: [],
+  pluralForms: [],
   interpolation: [],
   htmlTags: [],
   emptyStrings: [],
@@ -346,6 +374,7 @@ for (const ns of namespaces) {
 
   errors.missingKeys.push(...checkMissingKeys(enFlat, csFlat, ns))
   errors.extraKeys.push(...checkExtraKeys(enFlat, csFlat, ns))
+  errors.pluralForms.push(...checkPluralForms(enFlat, csFlat, ns))
   errors.interpolation.push(...checkInterpolation(enFlat, csFlat, ns))
   errors.htmlTags.push(...checkHtmlTags(enFlat, csFlat, ns))
   errors.emptyStrings.push(...checkEmptyStrings(csFlat, ns))
@@ -382,6 +411,7 @@ if (totalErrors > 0) {
   console.log("ERRORS:\n")
   printSection("Missing Keys", errors.missingKeys, "error")
   printSection("Extra Keys", errors.extraKeys, "error")
+  printSection("Plural Forms", errors.pluralForms, "error")
   printSection("Interpolation", errors.interpolation, "error")
   printSection("HTML Tags", errors.htmlTags, "error")
   printSection("Empty Strings", errors.emptyStrings, "error")

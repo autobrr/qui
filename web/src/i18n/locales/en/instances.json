@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Using Deluge, rTorrent, or Transmission? <docs>Migrate to qBittorrent with our migration tool</docs>",
   "card": {
     "status": {
       "disabled": "Disabled",

@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Deluge, rTorrent 또는 Transmission을 사용 중이신가요? <docs>마이그레이션 도구로 qBittorrent로 옮기세요</docs>",
   "card": {
     "status": {
       "disabled": "비활성화됨",
