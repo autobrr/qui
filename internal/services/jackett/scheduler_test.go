@@ -1333,7 +1333,8 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 			<-laterDone
 
 			assert.Empty(t, firstDone, "timed-out task reported completion twice")
-			assert.Len(t, rec.statuses(), 3)
+			// OnComplete starts before Record runs, so laterDone can arrive first.
+			require.Eventually(t, func() bool { return len(rec.statuses()) == 3 }, time.Second, 5*time.Millisecond)
 		})
 	}
 }
