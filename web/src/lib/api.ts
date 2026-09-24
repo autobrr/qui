@@ -34,6 +34,7 @@ import type {
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
   DiscScanRun,
   ManualAssembleRequest,
@@ -1643,8 +1644,8 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
   }
 
-  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
-    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
+    return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
     })
@@ -1687,6 +1688,13 @@ class ApiClient {
 
   async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
     return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
+  }
+
+  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
   }
 
   async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {

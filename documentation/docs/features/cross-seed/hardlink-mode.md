@@ -37,12 +37,12 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - If qui cannot create a hardlink (due to missing local access, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
 - If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. Filesystem fallback uses a full recheck. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
 - If qBittorrent returns an unsafe file path, qui rejects the cross-seed without regular-mode fallback. This applies to hardlink and reflink modes.
-- When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Rules > Safety & validation** is off (the default).
+- When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is off (the default).
 - qui categorizes hardlinked torrents with your existing cross-seed category rules (category affix, indexer name, or custom category). The hardlink preset only affects the on-disk folder layout.
 
 ## Directory layout
 
-Configure in **Cross-Seed > Rules > Hardlink / Reflink Mode**, then expand the instance:
+Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then expand the instance:
 
 - **Base directories**: paths on the qui host where qui creates link trees. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory organization** preset:
@@ -64,7 +64,7 @@ For the `flat` preset, qui always uses an isolation folder to keep each torrent'
 ## How to enable
 
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
-2. In **Cross-Seed > Rules > Hardlink / Reflink Mode**, expand the instance you want to configure.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand the instance you want to configure.
 3. Set the **Cross-seed mode** to **Hardlink**.
 4. Set **Base directories**:
    - Single filesystem: `/mnt/data/cross-seed`
@@ -74,11 +74,11 @@ For the `flat` preset, qui always uses an isolation folder to keep each torrent'
 
 ## Pause behavior
 
-By default, hardlink-added torrents start seeding immediately because `skip_checking=true` sets them to 100%. If you want hardlink-added torrents to stay paused, disable the "Auto-resume after injection" toggle for your cross-seed source under **Cross-Seed > Rules > Post-injection behavior**.
+By default, hardlink-added torrents start seeding immediately because `skip_checking=true` sets them to 100%. If you want hardlink-added torrents to stay paused, disable the "Auto-resume after injection" toggle for your cross-seed source on the source's tab (**RSS**, **Webhook**, **Completion**, or **Library**).
 
 When hardlink or reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
 
-When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [Rules](./rules.md#max-auto-start-download)).
+When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [After injection](./rules.md#max-auto-start-download)).
 
 ### Linked files that fail a recheck
 
@@ -96,11 +96,11 @@ If hardlink or reflink mode falls back to regular mode for a partial or non-perf
 
 ### Pooled Partial Completion
 
-Enable **Automatically pool torrents with extra data** under Cross-Seed → Rules → Hardlink / Reflink Mode. The checkbox controls one global setting, remains available regardless of the per-instance mode selections, is off by default, and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
+Enable **Automatically pool torrents with extra data** under Cross-Seed → After injection → Hardlink / Reflink Mode. The checkbox controls one global setting, remains available regardless of the per-instance mode selections, is off by default, and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
 
 qui groups related members persistently by their original source torrent identity, not category, release name, save path, or the latest match. Each member keeps the managed link-tree root chosen when it was added, and unfinished work resumes after a qui restart.
 
-After each recheck, **Max auto-start download** under Rules → After injection → Post-injection behavior determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
+After each recheck, **Max auto-start download** under Cross-Seed → After injection determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
 
 Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
 
@@ -189,7 +189,7 @@ Reflinks use copy-on-write semantics:
 ### How to enable reflink mode
 
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
-2. In **Cross-Seed > Rules > Hardlink / Reflink Mode**, expand the instance you want to configure.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand the instance you want to configure.
 3. Set the **Cross-seed mode** to **Reflink (copy-on-write)**.
 4. Set **Base directories**:
    - Single filesystem: `/mnt/data/cross-seed`
