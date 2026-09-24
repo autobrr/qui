@@ -1,5 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -47,4 +48,20 @@ test("accepts CLDR suffixes and keys that merely contain the word plural", (t) =
   })
 
   assert.deepEqual(findLegacyPluralKeys(root), [])
+})
+
+test("exits 1 when run against a locale tree with a _plural key", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qui-legacy-plural-cli-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  fs.mkdirSync(path.join(root, "scripts"))
+  const script = path.join(root, "scripts", "check-legacy-plural-keys.mjs")
+  fs.copyFileSync(new URL("./check-legacy-plural-keys.mjs", import.meta.url), script)
+  fs.mkdirSync(path.join(root, "src", "i18n", "locales", "en"), { recursive: true })
+  fs.writeFileSync(path.join(root, "src", "i18n", "locales", "en", "common.json"), JSON.stringify({ items_plural: "{{count}} items" }))
+
+  const result = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+  assert.ifError(result.error)
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(result.stderr, /- en\/common\.json: items_plural\n/)
 })

@@ -98,6 +98,16 @@ describe("plural leak detection", () => {
     expect(await findLeaks("cs", english, cs)).toEqual([])
   })
 
+  it("checks a base that English carries as unsuffixed + _other", async () => {
+    const bareEnglish = { common: { items: "{{count}} item", items_other: "{{count}} items" } }
+    const it = { common: { items_one: "{{count}} elemento" } }
+
+    expect(await findLeaks("it", bareEnglish, it)).toEqual([
+      "common:items@0", "common:items@2", "common:items@3", "common:items@4",
+      "common:items@5", "common:items@11", "common:items@21", "common:items@101",
+    ])
+  })
+
   it("reports an omitted _one where the locale has the category", async () => {
     const it = { common: { items_other: "{{count}} elementi" } }
 
