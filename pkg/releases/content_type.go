@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
 
 // ContentTypeInfo contains all information about a torrent's detected content type.

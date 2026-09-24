@@ -505,6 +505,46 @@ func TestSafeTorrentRelativeFilePath(t *testing.T) {
 	}
 }
 
+func TestProcessLinkMode_RejectsUnsafeCandidatePathsWithoutFallback(t *testing.T) {
+	for _, mode := range []string{"hardlink", "reflink"} {
+		t.Run(mode, func(t *testing.T) {
+			for _, name := range []string{
+				"../video.mkv",
+				"folder/../../video.mkv",
+				"/video.mkv",
+				`\video.mkv`,
+				"C:/video.mkv",
+				"C:video.mkv",
+				`\\host\share\video.mkv`,
+				"//host/share/video.mkv",
+			} {
+				t.Run(name, func(t *testing.T) {
+					service := &Service{
+						instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
+							1: {ID: 1, UseHardlinks: true, UseReflinks: true, FallbackToRegularMode: true},
+						}},
+					}
+					process := service.processHardlinkMode
+					if mode == "reflink" {
+						process = service.processReflinkMode
+					}
+					result := process(t.Context(), CrossSeedCandidate{InstanceID: 1},
+						nil, "hash", "", "Synthetic.Release", &CrossSeedRequest{}, &qbt.Torrent{}, "exact",
+						qbt.TorrentFiles{{Name: "Synthetic.Release/video.mkv", Size: 5}},
+						qbt.TorrentFiles{{Name: "Synthetic.Release/safe.mkv", Size: 3}, {Name: name, Size: 5}},
+						&qbt.TorrentProperties{SavePath: t.TempDir()}, "", "")
+
+					require.True(t, result.Used)
+					require.False(t, result.Success)
+					require.False(t, result.FallbackToRegular)
+					require.Equal(t, mode+"_error", result.Result.Status)
+					require.Contains(t, result.Result.Message, "Unsafe candidate file path")
+				})
+			}
+		})
+	}
+}
+
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{

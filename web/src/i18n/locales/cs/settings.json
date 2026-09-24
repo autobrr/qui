@@ -931,6 +931,20 @@
       "unknown": "Neznámé"
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Povolit přímé shodování API proti Orpheus a Redacted. Toto běží paralelně s Torznab; OPS/RED Torznab indexery jsou ignorovány.",
+    "enableMatching": "Povolit shodování Gazelle",
+    "enableDescription": "Použije se na všechny zdrojové torrenty. Pokud je to možné, qui také kontroluje RED/OPS přes Gazelle.",
+    "redactedApiKey": "Redacted API klíč",
+    "orpheusApiKey": "Orpheus API klíč",
+    "pasteRedKey": "Vložit RED API klíč",
+    "pasteOpsKey": "Vložit OPS API klíč",
+    "enableToConfigure": "Povolit konfiguraci",
+    "redDescription": "Použito pro redacted.sh hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "opsDescription": "Použito pro orpheus.network hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "save": "Uložit"
+  },
   "searchCache": {
     "title": "Vyhledávací mezipaměť",
     "description": "Vyhledávací výsledky z Torznab indexerů.",

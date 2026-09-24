@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Du nutzt Deluge, rTorrent oder Transmission? <docs>Mit unserem Migrationstool zu qBittorrent wechseln</docs>",
   "card": {
     "status": {
       "disabled": "Deaktiviert",
@@ -697,6 +698,7 @@
       "runDryRunNow": "Probelauf jetzt starten",
       "duplicate": "Duplizieren",
       "copyTo": "Kopieren nach...",
+      "editJSON": "Als JSON bearbeiten",
       "exportJSON": "JSON exportieren",
       "dragToReorder": "Zum Umsortieren des Workflows ziehen",
       "actions": {
@@ -788,11 +790,25 @@
         "title": "Workflow importieren",
         "description": "Füge ein Workflow-JSON zum Importieren ein. Der Workflow wird deaktiviert erstellt und ans Ende angehängt.",
         "placeholder": "Workflow-JSON einfügen...",
-        "invalidImportData": "Ungültige Importdaten",
         "importFailed": "Workflow konnte nicht importiert werden",
         "cancel": "Abbrechen",
         "importing": "Wird importiert...",
-        "import": "Importieren"
+        "import": "Importieren",
+        "errors": {
+          "invalidJson": "Ungültiges JSON-Format",
+          "notObject": "Ein JSON-Objekt wird erwartet",
+          "missingName": "Feld 'name' fehlt oder ist ungültig",
+          "missingConditions": "Feld 'conditions' fehlt oder ist ungültig",
+          "missingTracker": "Entweder 'trackerDomains' (Array aus Strings) oder 'trackerPattern' muss angegeben werden"
+        }
+      },
+      "editJsonDialog": {
+        "title": "„{{name}}“ als JSON bearbeiten",
+        "description": "Bearbeite das Workflow-JSON. Der Workflow behält seinen Aktivierungsstatus und seine Position.",
+        "saveFailed": "Workflow konnte nicht gespeichert werden",
+        "cancel": "Abbrechen",
+        "saving": "Wird gespeichert...",
+        "save": "Speichern"
       },
       "toast": {
         "workflowDeleted": "Workflow gelöscht",
@@ -808,6 +824,7 @@
         "createdWorkflow": "\"{{name}}\" erstellt",
         "copiedWorkflow": "\"{{name}}\" nach {{instance}} kopiert",
         "importedWorkflow": "\"{{name}}\" importiert",
+        "updatedWorkflow": "„{{name}}“ aktualisiert",
         "createFailed": "Workflow konnte nicht erstellt werden",
         "reorderFailed": "Workflows konnten nicht umsortiert werden",
         "exportedTorrents": "{{count}} Torrents nach CSV exportiert",
@@ -1611,10 +1628,6 @@
       },
       "trackerMatchInclude": "Einschließen",
       "trackerMatchExclude": "Ausschließen"
-    },
-    "shareLimit": {
-      "global": "Global",
-      "unlimited": "Unbegrenzt"
     }
   },
   "backups": {

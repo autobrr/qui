@@ -48,7 +48,7 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil)
+	handler := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil)
 	router := chi.NewRouter()
 	router.Get("/api/instances/{instanceID}/capabilities", handler.GetInstanceCapabilities)
 

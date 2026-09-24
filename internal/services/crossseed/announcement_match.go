@@ -66,7 +66,7 @@ func (s *Service) classifyAnnouncementSource(
 
 	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source, rawInput.Source.release)
 	rawInput.Source = sourceView
-	decision := s.classifySearchCandidate(rawInput)
+	decision := s.matcher().classifySearchCandidate(rawInput)
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
@@ -87,11 +87,11 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	}
 
 	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
-	decision := s.classifySearchCandidate(input)
+	decision := s.matcher().classifySearchCandidate(input)
 	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
-		s.hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		relaxed, _ := s.withRelaxedDifferenceNeutralized(input, "checksum")
-		decision = s.classifySearchCandidate(relaxed)
+		s.matcher().hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
+		relaxed, _ := s.matcher().withRelaxedDifferenceNeutralized(input, "checksum")
+		decision = s.matcher().classifySearchCandidate(relaxed)
 	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
@@ -132,7 +132,7 @@ func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipR
 	input.CandidateSize = input.SourceSize
 	input.RescueTitleMismatches = false
 	input = s.normalizeUnknownSizePreflightIdentity(input)
-	decision := s.classifySearchCandidate(input)
+	decision := s.matcher().classifySearchCandidate(input)
 	if !allowsUnknownSizePreflight(decision, skipRecheck) {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected

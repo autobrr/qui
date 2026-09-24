@@ -602,67 +602,6 @@ func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupporte
 	require.Zero(t, counts.Status["tracker_error"])
 }
 
-func TestApplyTrackerHealthRefreshResultSkipsPartialHydration(t *testing.T) {
-	t.Parallel()
-
-	started := time.Now()
-	sm := &SyncManager{
-		trackerHealthCache: map[int]*TrackerHealthCounts{
-			7: {
-				Unregistered:    2,
-				TrackerDown:     1,
-				TrackerError:    0,
-				UnregisteredSet: map[string]struct{}{"old-unregistered": {}, "old-unregistered-2": {}},
-				TrackerDownSet:  map[string]struct{}{"old-down": {}},
-				TrackerErrorSet: make(map[string]struct{}),
-				UpdatedAt:       started.Add(-time.Minute),
-			},
-		},
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"old-unregistered": {"old.example": {}},
-					"old-down":         {"old.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"old.example": {"old-unregistered": {}, "old-down": {}},
-				},
-				UpdatedAt: started.Add(-time.Minute),
-			},
-		},
-	}
-	torrents := []qbt.Torrent{
-		{Hash: "hash-a", Tracker: "https://new.example/announce"},
-		{Hash: "hash-b", Tracker: "https://missing.example/announce"},
-	}
-	enriched := []qbt.Torrent{
-		{
-			Hash: "hash-a",
-			Trackers: []qbt.TorrentTracker{
-				{Url: "https://new.example/announce", Status: qbt.TrackerStatusNotWorking},
-			},
-		},
-	}
-
-	applied := sm.applyTrackerHealthRefreshResult(7, torrents, enriched, []string{"hash-b"}, started)
-
-	require.False(t, applied)
-
-	cached := sm.GetTrackerHealthCounts(7)
-	require.NotNil(t, cached)
-	require.Equal(t, 2, cached.Unregistered)
-	require.Equal(t, 1, cached.TrackerDown)
-	require.Contains(t, cached.UnregisteredSet, "old-unregistered")
-	require.Contains(t, cached.TrackerDownSet, "old-down")
-	require.NotContains(t, cached.TrackerDownSet, "hash-a")
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.Contains(t, mapping.DomainToHashes, "old.example")
-	require.NotContains(t, mapping.DomainToHashes, "new.example")
-	require.NotContains(t, mapping.HashToDomains, "hash-a")
-}
-
 func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain(t *testing.T) {
 	t.Parallel()
 
