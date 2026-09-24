@@ -1735,8 +1735,9 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
-	// torznabSearched records that a candidate searched Torznab. Resolved
-	// indexers do not prove it: the filter or cooldown can skip every candidate.
+	// torznabSearched records that a Torznab indexer answered a candidate's
+	// search. Resolved indexers do not prove it: the filter or cooldown can
+	// skip every candidate.
 	torznabSearched bool
 
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
@@ -8365,6 +8366,11 @@ func (s *Service) searchGazelleMatches(
 			continue
 		}
 
+		if clients.denied[client.Host()] != nil {
+			gazelleLookupCompleted = false
+			continue
+		}
+
 		if !exportAttempted && s.syncManager != nil {
 			exportAttempted = true
 			exported, _, _, exportErr := s.syncManager.ExportTorrent(ctx, instanceID, sourceTorrent.Hash)
@@ -8392,11 +8398,6 @@ func (s *Service) searchGazelleMatches(
 					continue
 				}
 			}
-		}
-
-		if clients.denied[client.Host()] != nil {
-			gazelleLookupCompleted = false
-			continue
 		}
 
 		remoteRequestsMade = true
@@ -9385,7 +9386,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
-	searchResp, coveredIndexerIDs, err := gatherer.gather(ctx, waitCtx, gatherIn)
+	searchResp, coveredIndexerIDs, torznabAnswered, err := gatherer.gather(ctx, waitCtx, gatherIn)
 	if err != nil {
 		return torznabFailed(err)
 	}
@@ -9571,6 +9572,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Partial:           searchResp.Partial,
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
+			TorznabAnswered:   torznabAnswered,
 			QueryDegraded:     queryDegraded,
 			DecisionTrace:     buildDecisionTrace(0, 0),
 		}, gazelleLookupCompleted, remoteRequestsMade, nil
@@ -9605,6 +9607,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Partial:           searchResp.Partial,
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
+		TorznabAnswered:   torznabAnswered,
 		QueryDegraded:     queryDegraded,
 		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
 	}, gazelleLookupCompleted, remoteRequestsMade, nil
@@ -11415,9 +11418,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 
-	if !searchDisableTorznab {
-		state.torznabSearched = true
-	}
 	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
 	if searchCancel != nil {
 		defer searchCancel()
@@ -11431,6 +11431,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
+	// searchTorrentMatches can return before the Torznab search, so only an
+	// indexer that answered proves one ran.
+	if searchResp != nil && searchResp.TorznabAnswered {
+		state.torznabSearched = true
+	}
 	if s.automationStore != nil {
 		// Gazelle stamps per torrent only when its side needs no retry; see
 		// searchGazelleMatches. A failed lookup does not stamp, like a failed

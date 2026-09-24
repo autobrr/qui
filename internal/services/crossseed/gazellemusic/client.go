@@ -316,9 +316,7 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	if resp.Status != "success" {
-		// Texts seen from OPS: "Your IP address has been banned." and, for a
-		// wrong key, "invalid token" with HTTP 200.
-		if lower := strings.ToLower(resp.Error); strings.Contains(lower, "banned") || lower == "invalid token" {
+		if isAccessDeniedText(resp.Error) {
 			return nil, fmt.Errorf("%w: %s", ErrAccessDenied, resp.Error)
 		}
 		return nil, fmt.Errorf("API error: %s", resp.Error)
@@ -331,6 +329,12 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 func (c *Client) CheckKey(ctx context.Context) error {
 	_, err := c.ajax(ctx, "index", nil)
 	return err
+}
+
+// isAccessDeniedText matches the texts OPS sends with HTTP 200 for an IP ban
+// and a wrong key. The RED ban text is unknown until a user reports it.
+func isAccessDeniedText(text string) bool {
+	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
@@ -425,6 +429,9 @@ func (c *Client) DownloadTorrent(ctx context.Context, torrentID int64) ([]byte, 
 	if !looksLikeTorrentPayload(body) {
 		var ajaxErr AjaxResponse
 		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
+			if isAccessDeniedText(ajaxErr.Error) {
+				return nil, fmt.Errorf("%w: %s", ErrAccessDenied, ajaxErr.Error)
+			}
 			return nil, fmt.Errorf("download failed: %s", ajaxErr.Error)
 		}
 		return nil, fmt.Errorf("downloaded data appears invalid (size=%d)", len(body))

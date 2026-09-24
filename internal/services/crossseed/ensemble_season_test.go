@@ -365,16 +365,16 @@ func TestProcessEnsembleSeasonCandidate_NoIndexers(t *testing.T) {
 	require.Equal(t, "no eligible indexers", state.run.Results[len(state.run.Results)-1].Message)
 }
 
-// An ensemble search is a Torznab search, so a Gazelle denial elsewhere in the
-// run must not mark the run failed as if Gazelle was its only source.
-func TestProcessEnsembleSeasonCandidate_RecordsTorznabSearch(t *testing.T) {
+// A failed ensemble search reached no indexer, so it must not count as a
+// Torznab source that keeps a Gazelle-denied run from failing.
+func TestProcessEnsembleSeasonCandidate_FailedSearchIsNotTorznabSearch(t *testing.T) {
 	t.Parallel()
 	service, state, _ := newEnsembleSearchState(t, "crossseed-ensemble-torznab-searched", nil, true)
 	service.jackettService = jackett.NewService(&failingListIndexerStore{failingEnabledIndexerStore{err: errors.New("unreachable")}})
 
 	torrent := &qbt.Torrent{Hash: "season:show title:s01", Name: "Show Title S01", Progress: 1.0}
 	_, _ = service.processEnsembleSeasonCandidate(t.Context(), state, torrent, time.Now().UTC())
-	require.True(t, state.torznabSearched)
+	require.False(t, state.torznabSearched)
 }
 
 // packSearchResult builds a torznab search result for a season pack candidate.
