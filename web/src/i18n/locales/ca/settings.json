@@ -928,6 +928,20 @@
       }
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Activa la coincidència directa per API contra Orpheus i Redacted. Funciona en paral·lel amb Torznab; els indexadors de Torznab d'OPS/RED s'ignoren.",
+    "enableMatching": "Activa la coincidència amb Gazelle",
+    "enableDescription": "S'aplica a tots els torrents d'origen. Si és possible, qui també comprova RED/OPS mitjançant Gazelle.",
+    "redactedApiKey": "Clau API de Redacted",
+    "orpheusApiKey": "Clau API d'Orpheus",
+    "pasteRedKey": "Enganxa la clau API de RED",
+    "pasteOpsKey": "Enganxa la clau API d'OPS",
+    "enableToConfigure": "Activa-ho per configurar-ho",
+    "redDescription": "Es fa servir per a les consultes a redacted.sh. Enganxa-hi un valor per substituir-la; buida-la per eliminar-la.",
+    "opsDescription": "Es fa servir per a les consultes a orpheus.network. Enganxa-hi un valor per substituir-la; buida-la per eliminar-la.",
+    "save": "Desa"
+  },
   "searchCache": {
     "title": "Memòria cau de cerca",
     "description": "Resultats de cerca desats a la memòria cau dels indexadors de Torznab.",

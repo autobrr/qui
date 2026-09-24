@@ -33,9 +33,7 @@ func NewService(tvdbAPIKey, tvdbPIN string) *Service {
 
 	if tvdbAPIKey != "" {
 		s.tvdb = newTVDBProvider(tvdbAPIKey, tvdbPIN)
-		log.Info().Msg("metadata: TVDB provider enabled")
-	} else {
-		log.Info().Msg("metadata: TVDB not configured, using TVMaze only")
+		log.Debug().Msg("metadata: TVDB provider enabled")
 	}
 
 	return s

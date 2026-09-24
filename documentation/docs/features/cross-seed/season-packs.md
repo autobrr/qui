@@ -31,7 +31,7 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
 
 ## Automatic Assembly
 
-qui also assembles season packs without autobrr webhooks. To turn this on, enable **Assemble season packs automatically** in **Cross-Seed > Rules > Season packs**. The switch is off by default and operates independently of the webhook feature.
+qui also assembles season packs without autobrr webhooks. To turn this on, enable **Assemble season packs automatically** in **Cross-Seed > Season packs**. The switch is off by default and operates independently of the webhook feature.
 
 If the switch is on, qui diverts a season pack into the assembly pipeline when all of these conditions are true:
 
@@ -82,11 +82,11 @@ For an episode to count toward coverage, it must:
 
 Mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
-The default threshold is **75%**. Change it in **Cross-Seed > Rules > Season packs** in the qui UI.
+The default threshold is **75%**. Change it in **Cross-Seed > Season packs** in the qui UI.
 
 ## Matching settings
 
-These settings affect only season-pack checks and applies. They do not change normal cross-seed matching in the Rules tab.
+These settings affect only season-pack checks and applies. They do not change normal cross-seed matching in Matching rules.
 
 The defaults match common seasonpackarr expectations.
 
@@ -125,7 +125,7 @@ If automatic recheck or resume queueing cannot start, qui reports `automatic rec
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
-In hardlink mode, qui can also apply piece-boundary protection to incomplete packs. If pending files share torrent pieces with linked episode files and the **Piece boundary safety check** in **Cross-Seed > Rules > Safety & validation** is enabled, qui blocks the apply. This check is off by default. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
+In hardlink mode, qui can also apply piece-boundary protection to incomplete packs. If pending files share torrent pieces with linked episode files and the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is enabled, qui blocks the apply. This check is off by default. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
 
 ## Prerequisites
 
@@ -141,11 +141,11 @@ See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
 ### 1. Enable season packs in qui
 
-- Go to **Cross-Seed > Rules > Season packs**
+- Go to **Cross-Seed > Season packs**
 - Enable the feature
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for better episode count accuracy. qui uses TVMaze as a free fallback without any configuration.
-- Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category. Then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule to the category that Sonarr monitors on its qBittorrent download client (for example, route `1080p` to `tv-hd` and `2160p` to `tv-uhd`). Sonarr picks up the assembled pack and imports it. If Sonarr uses hardlinks and the library sits on the same filesystem, the same on-disk bytes back both the library and every seeded episode. If a category does not exist yet, qui creates it on demand. qui leaves existing categories untouched. If no rule matches and you set no fallback, season packs use the global Category Mode configured under **Cross-Seed > Rules > Categories**.
+- Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category. Then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule to the category that Sonarr monitors on its qBittorrent download client (for example, route `1080p` to `tv-hd` and `2160p` to `tv-uhd`). Sonarr picks up the assembled pack and imports it. If Sonarr uses hardlinks and the library sits on the same filesystem, the same on-disk bytes back both the library and every seeded episode. If a category does not exist yet, qui creates it on demand. qui leaves existing categories untouched. If no rule matches and you set no fallback, season packs use the global Category Mode configured under **Cross-Seed > Categories and tags > Categories**.
 
 #### Category routing
 
@@ -289,10 +289,10 @@ The `/runs` endpoint accepts an optional `limit` query parameter (default 20, ma
 When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` that points to the linked tree
-- Applies the **Season pack tags** configured in **Cross-Seed > Rules > Tagging**
+- Applies the **Cross-seed tags** configured in **Cross-Seed > Season packs**
 - Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, or a hardlinked file fails the recheck on a piece it does not share with a pending file, the torrent remains paused for manual review.
 - Resolves the category in this order:
-  - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
+  - The category from the matching **Category routing** rule under **Cross-Seed > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
   - The **Anything else** fallback category, if set.
   - The global cross-seed category rules (custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise the category of the matched episode).
 - Creates the resolved category on the target instance if the category does not exist.
@@ -308,7 +308,7 @@ If `instanceIds` is omitted or contains multiple instances:
 
 ## Activity
 
-Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Rules > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+Each check request, apply request, and automatic assembly attempt records a season-pack run. qui stores the most recent 200 runs. Recent runs appear in **Cross-Seed > Season packs**. The panel displays the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
 
 You can also query recent runs directly:
 
@@ -326,7 +326,7 @@ Start with autobrr:
 
 Then check qui:
 
-- Open **Cross-Seed > Rules > Season packs** and locate the row for the torrent name.
+- Open **Cross-Seed > Season packs** and locate the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
 - If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 
