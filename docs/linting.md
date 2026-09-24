@@ -5,7 +5,8 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 ## Commands
 
 - `make precommit`: fmt + gofix changed files + lint changed files.
-- `make lint`: lint changed files only.
+- `make lint`: lint changed Go files only. The frontend half runs the full `pnpm lint`, so any
+  frontend error anywhere fails it.
 - `make lint-json`: write lint output to `lint-report.json`.
 - `make fmt`: gofmt + frontend eslint fix on changed files.
 - `make gofix-changed`: apply `go fix` on changed Go files only.
