@@ -86,11 +86,21 @@ function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
           </div>
         </div>
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({
-        gazelleEnabled,
-        redactedApiKey: changedSecret(redactedApiKey, settings.redactedApiKey),
-        orpheusApiKey: changedSecret(orpheusApiKey, settings.orpheusApiKey),
-      })} label={t("gazelle.save")} />
+      <SaveFooter
+        pending={patchSettings.isPending}
+        onSave={() => patchSettings.mutate({
+          gazelleEnabled,
+          redactedApiKey: changedSecret(redactedApiKey, settings.redactedApiKey),
+          orpheusApiKey: changedSecret(orpheusApiKey, settings.orpheusApiKey),
+        }, {
+          // Take the placeholders back, so the next save does not check a saved key again.
+          onSuccess: (data) => {
+            setRedactedApiKey(data.redactedApiKey ?? "")
+            setOrpheusApiKey(data.orpheusApiKey ?? "")
+          },
+        })}
+        label={t("gazelle.save")}
+      />
     </Card>
   )
 }

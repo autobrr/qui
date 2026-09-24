@@ -1166,6 +1166,18 @@ qui does not support Path on server on Windows, and Free Space always uses qBitt
 
 qui groups torrents by action value and sends them to qBittorrent in batches of up to 50 hashes per API call.
 
+## Rules as JSON
+
+A rule can move as JSON. The rule menu has two entries, and the **Import** button sits above the rule list:
+
+- **Export JSON** copies the rule to the clipboard.
+- **Edit as JSON** opens the rule's JSON in an editor. Save updates the rule in place. The rule keeps its enabled state and its position in the list.
+- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list.
+
+The JSON carries the name, the tracker fields, the conditions, the sorting config, the free space source, the interval, dry-run, and notify. It does not carry the id, the instance id, the enabled state, or the sort order. The export omits `intervalSeconds` at the default 15 minutes, `dryRun` when off, and `notify` when on; when you remove one of these keys, the rule goes back to that default.
+
+The editor highlights the JSON and underlines syntax errors as you type. Save runs the same checks as Import. When qui rejects the JSON, the editor stays open with your text.
+
 ## Activity log
 
 qui logs every automation action with:

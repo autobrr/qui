@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -21,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -30,6 +32,7 @@ type CrossSeedHandler struct {
 	completionStore    *models.InstanceCrossSeedCompletionStore
 	instanceStore      *models.InstanceStore
 	seasonPackRunStore *models.SeasonPackRunStore
+	gazelleBaseURL     string // tests point the Gazelle key check at a stub tracker
 }
 
 var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
@@ -936,6 +939,50 @@ func mapCrossSeedErrorStatus(err error) int {
 	}
 }
 
+// automationSettingsSaveResponse is the saved settings plus a warning when qui
+// could not check a Gazelle API key.
+type automationSettingsSaveResponse struct {
+	*models.CrossSeedAutomationSettings
+	WarningResponse
+}
+
+// checkGazelleKeys sends one request with each new OPS or RED key. A key the
+// tracker rejects is an error. Any other failure must not block the save, so
+// that case is a warning.
+func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *models.CrossSeedAutomationSettings) (string, error) {
+	// The card resends a typed key on every save, so a banned user must still
+	// be able to turn Gazelle off.
+	if !settings.GazelleEnabled {
+		return "", nil
+	}
+	var warnings []string
+	for _, site := range []struct{ host, key string }{
+		{"redacted.sh", settings.RedactedAPIKey},
+		{"orpheus.network", settings.OrpheusAPIKey},
+	} {
+		// The form sends a stored key back as the placeholder.
+		if site.key == "" || domain.IsRedactedString(site.key) {
+			continue
+		}
+		client, err := gazellemusic.NewClient(site.host, h.gazelleBaseURL, site.key)
+		if err != nil {
+			return "", err
+		}
+		// Each tracker gets its own cap, so a hung RED cannot leave OPS unchecked.
+		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = client.CheckKey(checkCtx)
+		cancel()
+		if errors.Is(err, gazellemusic.ErrAccessDenied) {
+			return "", fmt.Errorf("%s %w", client.SourceFlag(), err)
+		}
+		if err != nil {
+			log.Warn().Err(err).Str("host", site.host).Msg("Could not check the Gazelle API key")
+			warnings = append(warnings, fmt.Sprintf("qui could not check the %s API key. The log has the details.", client.SourceFlag()))
+		}
+	}
+	return strings.Join(warnings, "; "), nil
+}
+
 // GetAutomationSettings returns scheduler configuration.
 // GetAutomationSettings godoc
 // @Summary Get cross-seed automation settings
@@ -965,7 +1012,7 @@ func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.
 // @Accept json
 // @Produce json
 // @Param request body automationSettingsRequest true "Automation settings"
-// @Success 200 {object} models.CrossSeedAutomationSettings
+// @Success 200 {object} automationSettingsSaveResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
@@ -1089,6 +1136,12 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackTVDBPIN:              patchSecret(req.SeasonPackTVDBPIN),
 	}
 
+	warning, err := h.checkGazelleKeys(r.Context(), settings)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -1101,7 +1154,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 // PatchAutomationSettings merges updates into the existing cross-seed configuration.
@@ -1112,7 +1165,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 // @Accept json
 // @Produce json
 // @Param request body automationSettingsPatchRequest true "Automation settings fields to update"
-// @Success 200 {object} models.CrossSeedAutomationSettings
+// @Success 200 {object} automationSettingsSaveResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
@@ -1215,6 +1268,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		return
 	}
 
+	warning, err := h.checkGazelleKeys(r.Context(), &merged)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -1227,7 +1286,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 // GetAutomationStatus returns scheduler state and latest run metadata.
