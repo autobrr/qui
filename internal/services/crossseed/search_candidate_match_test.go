@@ -18,7 +18,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -94,7 +94,7 @@ func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T
 	require.NotEmpty(t, candidate.Sum)
 	require.NotEqual(t, source.Source, candidate.Source)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: source, rawName: sourceName},
 		Candidate:        namedRelease{release: candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -240,13 +240,13 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, strictReason := service.releasesMatchWithReasonAndNamesAndTitles(
+	strict, strictReason := service.matcher().releasesMatchWithReasonAndNamesAndTitles(
 		&source, &candidate, sourceName, candidateName, nil, nil, false,
 	)
 	require.False(t, strict)
 	require.NotEmpty(t, strictReason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -274,7 +274,7 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       sourceSize,
@@ -300,7 +300,7 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
@@ -323,12 +323,12 @@ func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, reason := service.releasesMatchWithReasonAndNames(
+	strict, reason := service.matcher().releasesMatchWithReasonAndNames(
 		&source, &candidate, sourceName, candidateName, false,
 	)
 	require.True(t, strict, "candidate-only metadata already passes strict search matching: %s", reason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: &source, rawName: sourceName},
 		Candidate:     namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:    size,
@@ -369,7 +369,7 @@ func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
 	require.Empty(t, existingRelease.Group)
 	require.Empty(t, downloadedRelease.Group)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
@@ -414,7 +414,7 @@ func TestFindCandidatesSourceChecksumReplayRejectsDownloadedGroup(t *testing.T) 
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -463,7 +463,7 @@ func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) 
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
@@ -505,7 +505,7 @@ func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testin
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -549,7 +549,7 @@ func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -561,13 +561,13 @@ func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T
 	require.Empty(t, decision.RelaxedDifferences)
 
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
+	reverseMatch, reverseReason := service.matcher().releasesMatchWithReasonAndNames(
 		downloadedRelease, existingRelease, downloadedName, existingName, false,
 	)
 	require.False(t, reverseMatch)
 	require.Equal(t, checksumMismatchReason, reverseReason,
 		"the reverse comparison would hide the new codec difference behind the checksum")
-	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
+	originalMatch, originalReason := service.matcher().releasesMatchWithReasonAndNames(
 		existingRelease, downloadedRelease, existingName, downloadedName, false,
 	)
 	require.False(t, originalMatch)
@@ -638,7 +638,7 @@ func TestFindCandidatesRejectsAdvertisedCodecDrift(t *testing.T) {
 			searchedRelease := service.releaseCache.Parse(tt.searchedName)
 			require.Empty(t, existingRelease.Codec)
 			require.NotEmpty(t, searchedRelease.Codec)
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
 				Candidate:     namedRelease{release: searchedRelease, rawName: tt.searchedName},
 				SourceSize:    size,
@@ -681,7 +681,7 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceTitles:  []string{"Money Heist"},
@@ -726,7 +726,7 @@ func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *tes
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -736,13 +736,13 @@ func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *tes
 	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
 
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
+	originalMatch, originalReason := service.matcher().releasesMatchWithReasonAndNames(
 		existingRelease, downloadedRelease, existingName, downloadedName, false,
 	)
 	require.False(t, originalMatch)
 	require.Equal(t, checksumMismatchReason, originalReason,
 		"the search-orientation comparison would hide the new codec difference behind the checksum")
-	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
+	reverseMatch, reverseReason := service.matcher().releasesMatchWithReasonAndNames(
 		downloadedRelease, existingRelease, downloadedName, existingName, false,
 	)
 	require.False(t, reverseMatch)
@@ -781,7 +781,7 @@ func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -824,7 +824,7 @@ func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	searchedRelease := service.releaseCache.Parse(searchedName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
 		SourceSize:    size,
@@ -861,9 +861,9 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		Candidate: namedRelease{release: &searched},
 	}
 
-	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
+	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
 	require.ElementsMatch(t, []string{"collection", "variant"}, observed)
-	used, ok, reason := service.validateExactSizeFallback(input, "collection mismatch", observed)
+	used, ok, reason := service.matcher().validateExactSizeFallback(input, "collection mismatch", observed)
 	require.True(t, ok, reason)
 	require.ElementsMatch(t, []string{"collection", "variant"}, used,
 		"normalizing the shared Collection field must not hide the independent IMAX rule")
@@ -871,7 +871,7 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 	downloaded := searched
 	downloaded.Collection = ""
 	input.Candidate.release = &downloaded
-	used, ok, reason = service.validateExactSizeFallback(input, "IMAX", used)
+	used, ok, reason = service.matcher().validateExactSizeFallback(input, "IMAX", used)
 	require.True(t, ok, reason)
 	require.Equal(t, []string{"variant"}, used,
 		"apply may spend the variant authority that search independently established")
@@ -896,14 +896,14 @@ func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) 
 		Candidate: namedRelease{release: &candidate},
 	}
 
-	strict, reason := service.releasesMatchWithReason(source, &candidate, false)
+	strict, reason := service.matcher().releasesMatchWithReason(source, &candidate, false)
 	require.False(t, strict)
 	require.Equal(t, "collection mismatch", reason)
 
-	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
+	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
 	require.Contains(t, observed, "collection",
 		"the observation key must use the same Collection field as strict matching")
-	used, ok, reason := service.validateExactSizeFallback(input, reason, observed)
+	used, ok, reason := service.matcher().validateExactSizeFallback(input, reason, observed)
 	require.True(t, ok, reason)
 	require.Equal(t, []string{"collection"}, used)
 }
@@ -931,14 +931,14 @@ func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	searchMatch, searchReason := service.releasesMatchWithReason(existingRelease, downloadedRelease, false)
+	searchMatch, searchReason := service.matcher().releasesMatchWithReason(existingRelease, downloadedRelease, false)
 	require.False(t, searchMatch)
 	require.Equal(t, "IMAX", searchReason)
-	applyMatch, applyReason := service.releasesMatchWithReason(downloadedRelease, existingRelease, false)
+	applyMatch, applyReason := service.matcher().releasesMatchWithReason(downloadedRelease, existingRelease, false)
 	require.False(t, applyMatch)
 	require.Equal(t, "HYBRID", applyReason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
@@ -1001,7 +1001,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			downloadedRelease := service.releaseCache.Parse(tt.downloadedName)
 			require.NotEqual(t, existingRelease.Sum == "", downloadedRelease.Sum == "")
 
-			strict, reason := service.releasesMatchWithReasonAndNames(
+			strict, reason := service.matcher().releasesMatchWithReasonAndNames(
 				existingRelease, downloadedRelease, tt.existingName, tt.downloadedName, false,
 			)
 			require.Equal(t, tt.searchStrict, strict, reason)
@@ -1009,7 +1009,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 				require.Equal(t, checksumMismatchReason, reason)
 			}
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
 				Candidate:     namedRelease{release: downloadedRelease, rawName: tt.downloadedName},
 				SourceSize:    size,
@@ -1028,7 +1028,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 				require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
 			}
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
-			require.NotEmpty(t, service.getMatchTypeFromTitle(
+			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
 				tt.downloadedName, tt.existingName, downloadedRelease, existingRelease, existingFiles,
 			), "the fixture must pass file validation once the release gate is replayed")
 
@@ -1075,7 +1075,7 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           tt.source,
 				Candidate:        tt.candidate,
 				SourceSize:       1_424_466_789,
@@ -1121,7 +1121,7 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 			source := rls.ParseString(tt.source)
 			candidate := rls.ParseString(candidateName)
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: tt.source},
 				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       tt.sourceSize,
@@ -1166,7 +1166,7 @@ func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) 
 			source := rls.ParseString(tt.source)
 			candidate := rls.ParseString(tt.candidate)
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:                 namedRelease{release: &source, rawName: tt.source},
 				Candidate:              namedRelease{release: &candidate, rawName: tt.candidate},
 				SourceSize:             size,
@@ -1198,24 +1198,24 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 	require.Equal(t, "Title rescue · full check required", decision.MatchReason)
 
 	input.RescueTitleMismatches = false
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.matcher().classifySearchCandidate(input).Accepted)
 
 	input.RescueTitleMismatches = true
 	input.CandidateSize--
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.matcher().classifySearchCandidate(input).Accepted)
 
 	input.CandidateSize = size
 	differentGroup := candidate
 	differentGroup.Group = "OTHER"
 	input.Candidate.release = &differentGroup
-	rejected := service.classifySearchCandidate(input)
+	rejected := service.matcher().classifySearchCandidate(input)
 	require.False(t, rejected.Accepted)
 	require.Equal(t, "group mismatch", rejected.RejectReason)
 }
@@ -1244,12 +1244,12 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 
-	ok, reason := service.validateGroupSiteAndChecksum(&source, &candidate, false)
+	ok, reason := service.matcher().validateGroupSiteAndChecksum(&source, &candidate, false)
 	require.False(t, ok, "strict matcher must keep rejecting the missing group")
 	require.Equal(t, "group mismatch", reason)
 }
@@ -1262,14 +1262,14 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 	require.NotEmpty(t, source.Sum)
 	require.Empty(t, bare.Sum)
 
-	ok, reason := service.releasesMatchExceptTitleWithReason(&source, &bare, false)
+	ok, reason := service.matcher().releasesMatchExceptTitleWithReason(&source, &bare, false)
 	require.True(t, ok, "reason: %s", reason)
 
-	ok, reason = service.releasesMatchExceptTitleWithReason(&source, &conflicting, false)
+	ok, reason = service.matcher().releasesMatchExceptTitleWithReason(&source, &conflicting, false)
 	require.False(t, ok)
 	require.Equal(t, "checksum mismatch", reason)
 
-	ok, reason = service.validateGroupSiteAndChecksum(&source, &bare, false)
+	ok, reason = service.matcher().validateGroupSiteAndChecksum(&source, &bare, false)
 	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
 	require.Equal(t, "checksum mismatch", reason)
 }
@@ -1313,7 +1313,7 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	candidate := rls.ParseString(candidateName)
 	sourceTitles := []string{"Money Heist"}
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     sourceTitles,
@@ -1358,7 +1358,7 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.SourceTitles)
 	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.RelaxedDifferences)
 
-	rejected := service.classifySearchCandidate(searchCandidateInput{
+	rejected := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &source, rawName: sourceName},
 		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     []string{"Unrelated Show"},
@@ -1393,7 +1393,7 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: sourceName},
 				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       test.sourceSize,
@@ -1434,7 +1434,7 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 				source.Sum = "AAAAAAAA"
 			}
 			test.mutate(&candidate)
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: source.Title},
 				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
@@ -1498,7 +1498,7 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			source.Year, source.Month, source.Day = test.sourceYear, test.sourceMonth, test.sourceDay
 			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:           namedRelease{release: &source, rawName: source.Title},
 				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
@@ -1527,7 +1527,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("different episode is relaxed and recorded", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:           namedRelease{release: &source, rawName: source.Title},
 			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
@@ -1542,7 +1542,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("forbidden season pack from episode", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:                 namedRelease{release: &source, rawName: source.Title},
 			Candidate:              namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:             size,
@@ -1559,7 +1559,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		candidate := source
 		candidate.Type = rls.Music
 		candidate.Collection = "ATVP"
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 			Source:           namedRelease{release: &source, rawName: source.Title},
 			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
@@ -2125,7 +2125,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	}
 	sourceRelease := rls.ParseString(existingName)
 	targetRelease := rls.ParseString(targetName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           namedRelease{release: &sourceRelease, rawName: existingName},
 		Candidate:        namedRelease{release: &targetRelease, rawName: targetName},
 		SourceSize:       torrentSize,

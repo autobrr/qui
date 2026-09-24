@@ -242,6 +242,9 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))
 		return false, err
 	}
+	if len(resp.CoveredIndexerIDs) > 0 {
+		state.torznabSearched = true
+	}
 
 	if s.automationStore != nil {
 		if histErr := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); histErr != nil {

@@ -231,7 +231,7 @@ interface TorrentTableOptimizedProps {
   instanceId: number
   instanceIds?: number[]
   readOnly?: boolean
-  filters?: TorrentFilters
+  filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
@@ -448,20 +448,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
 
-  // Memoized so the `?? []` fallback cannot mint a fresh array per render:
-  // these feed fetchTorrentField, whose identity anchors the shared row
-  // menu bundle.
-  const effectiveIncludedCategories = useMemo(
-    () => filters?.expandedCategories ?? filters?.categories ?? [],
-    [filters]
-  )
-  const effectiveExcludedCategories = useMemo(
-    () => filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? [],
-    [filters]
-  )
-
   const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
   const isVisibilitySettled = isHiddenDelayed || isVisible
+
+  // The list request; in cross-seed mode combinedFiltersExpr is the hash
+  // expression alone, unlike selectAllFilters which always joins the column filters.
+  const listFilters = useMemo(
+    () => ({ ...filters, expr: combinedFiltersExpr || undefined }),
+    [filters, combinedFiltersExpr]
+  )
 
   // Fetch torrents data with backend sorting
   const {
@@ -495,19 +490,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     pollingEnabled: isVisibilitySettled,
     instanceIds,
     search: effectiveSearch,
-    filters: {
-      status: filters?.status || [],
-      excludeStatus: filters?.excludeStatus || [],
-      categories: effectiveIncludedCategories,
-      excludeCategories: effectiveExcludedCategories,
-      tags: filters?.tags || [],
-      excludeTags: filters?.excludeTags || [],
-      trackers: filters?.trackers || [],
-      excludeTrackers: filters?.excludeTrackers || [],
-      expandedCategories: filters?.expandedCategories,
-      expandedExcludeCategories: filters?.expandedExcludeCategories,
-      expr: combinedFiltersExpr || undefined,
-    },
+    filters: listFilters,
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -675,10 +658,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [isLoading, torrents.length])
 
   const hasSidebarFilters = useMemo(() => {
-    if (!filters) {
-      return false
-    }
-
     const {
       status = [],
       excludeStatus = [],
@@ -899,6 +878,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
     columnFiltersExpr,
+    clientSideFiltering: isCrossSeedFiltering,
     filters,
     stats,
     totalCount,
@@ -1010,25 +990,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       sort: activeSortField,
       order: activeSortOrder,
       search: effectiveSearch,
-      filters: {
-        status: filters?.status || [],
-        excludeStatus: filters?.excludeStatus || [],
-        categories: effectiveIncludedCategories,
-        excludeCategories: effectiveExcludedCategories,
-        tags: filters?.tags || [],
-        excludeTags: filters?.excludeTags || [],
-        trackers: filters?.trackers || [],
-        excludeTrackers: filters?.excludeTrackers || [],
-        expandedCategories: filters?.expandedCategories,
-        expandedExcludeCategories: filters?.expandedExcludeCategories,
-        expr: combinedFiltersExpr || undefined,
-      },
+      // The scope is only read without an explicit selection, so this is the
+      // select-all set: column filters AND expr, like a bulk action (#1925).
+      filters: selectAllFilters,
       excludeHashes: selectAllExcludeHashes,
       excludeTargets: selectAllExcludedTargets,
     }
     const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
-  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  }, [instanceId, selectAllFilters, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1146,7 +1116,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Wrapper functions to adapt hook handlers to component needs
   const {
-    normalizedSelectionFilters,
     contextClientMeta,
     runAction,
     handleExportWrapper,
@@ -1192,7 +1161,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     selectAllFilters,
     selectAllExcludeHashes,
     selectAllExcludedTargets,
-    filters,
     effectiveSearch,
     activeSortField,
     activeSortOrder,
@@ -1986,7 +1954,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           handleReannounceWrapper={handleReannounceWrapper}
           handleTmmConfirmWrapper={handleTmmConfirmWrapper}
           proceedToLocationDialog={proceedToLocationDialog}
-          normalizedSelectionFilters={normalizedSelectionFilters}
+          selectAllFilters={selectAllFilters}
           contextClientMeta={contextClientMeta}
           isAllSelected={isAllSelected}
           effectiveSelectionCount={effectiveSelectionCount}

@@ -1,6 +1,6 @@
 ---
 sidebar_position: 11
-title: Tracker icons
+title: Tracker icons for qBittorrent torrents in qui
 sidebar_label: Tracker Icons
 description: How qui fetches and caches tracker favicons, where it stores them, and how to add icons manually or preload a bundle.
 ---

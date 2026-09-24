@@ -10,41 +10,33 @@
     "linkSuffix": "하여 추가하거나 활성화하세요."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 자동화",
-      "description": "규칙을 사용하여 트래커 RSS 피드를 자동으로 폴링합니다.",
-      "nextRun": "다음 실행",
-      "manualTrigger": "수동 트리거",
-      "lastRun": "마지막 실행",
-      "cooldown": "대기 시간 {{display}}",
-      "ready": "준비됨",
-      "disabled": "비활성화됨",
-      "disabledUpper": "비활성화됨",
-      "noRunsYet": "아직 실행 없음"
-    },
     "seededSearch": {
-      "title": "시드 중인 토렌트 검색",
-      "description": "이미 시드 중인 토렌트를 깊이 스캔하여 빈틈을 채웁니다.",
-      "instance": "인스턴스",
-      "recentRuns": "최근 실행",
-      "now": "지금",
-      "running": "실행 중...",
-      "idle": "대기",
       "gazelleFullDescription": "Gazelle은 모든 소스 토렌트에 대해 RED/OPS를 확인합니다. Torznab은 선택한 OPS/RED 이외의 인덱서를 쿼리합니다.",
       "gazellePartialDescription": "Gazelle은 모든 소스 토렌트에 대해 구성된 사이트를 확인합니다. Torznab은 선택한 인덱서를 쿼리합니다.",
       "noGazelleDescription": "Gazelle 없이는 모든 일치가 Torznab 인덱서에 의존합니다."
     }
   },
   "tabs": {
-    "auto": "자동",
-    "scan": "스캔",
-    "dirScan": "디렉터리 스캔",
-    "rules": "규칙",
+    "rss": "RSS",
+    "webhook": "웹훅",
+    "completion": "완료",
+    "library": "라이브러리",
+    "directories": "디렉터리",
+    "season-packs": "시즌 팩",
+    "matching": "매칭 규칙",
+    "categories": "카테고리 및 태그",
+    "after-injection": "주입 후",
     "blocklist": "차단 목록"
+  },
+  "nav": {
+    "sources": "소스",
+    "matching": "매칭",
+    "injection": "주입"
   },
   "automation": {
     "title": "RSS 자동화",
     "description": "고정된 간격으로 트래커 RSS 피드를 폴링하고 일치하는 cross-seed를 자동으로 추가합니다.",
+    "nextRun": "다음 실행: {{date}}",
     "enableSwitch": "RSS 자동화 활성화",
     "intervalLabel": "RSS 실행 간격(분)",
     "intervalTooltip": "자동화는 실행할 때마다 활성화된 모든 Torznab 인덱서의 전체 피드를 처리합니다. 인덱서에 과부하를 주지 않도록 최소 간격은 {{min}}분입니다.",
@@ -83,7 +75,6 @@
     "noRunsYet": "아직 실행 없음",
     "noRunsRecorded": "아직 기록된 RSS 자동화 실행이 없습니다.",
     "scheduled": "예약됨",
-    "scheduledUpper": "예약됨",
     "manual": "수동",
     "other": "기타",
     "dryRun": "모의 실행",
@@ -104,8 +95,16 @@
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "autobrr가 /apply 웹훅 엔드포인트를 호출할 때 고려되는 로컬 토렌트를 필터링합니다.",
-    "emptyFiltersNote": "필터가 비어 있으면 모든 토렌트가 확인됩니다. 카테고리와 태그 필터를 모두 구성하면 토렌트가 둘 다 일치해야 합니다.",
-    "saveFilters": "웹훅 필터 저장"
+    "emptyFiltersNote": "필터가 비어 있으면 모든 토렌트가 확인됩니다. 카테고리와 태그 필터를 모두 구성하면 토렌트가 둘 다 일치해야 합니다."
+  },
+  "completion": {
+    "title": "완료 시",
+    "description": "다운로드 완료 후 검색이 추가한 크로스 시드의 태그와 자동 재개 설정입니다. 아래에서 인스턴스별로 검색을 켭니다."
+  },
+  "sourceCard": {
+    "crossSeedTags": "크로스 시드 태그",
+    "autoResume": "주입 후 자동 재개",
+    "autoResumeHelp": "끄면 추가된 토렌트는 검토를 위해 일시 정지 상태로 유지됩니다."
   },
   "scan": {
     "title": "라이브러리 스캔",
@@ -164,19 +163,16 @@
     "runSummary": "{{runs}}회 실행 • +{{added}} 크로스시드",
     "runSummaryWithFailures": "{{runs}}회 실행 • +{{added}} 크로스시드 • {{failed}}개 실패",
     "searchNeedsTorznabUnlessGazelle": "시드 중인 토렌트 검색에는 Torznab 인덱서가 필요합니다(Gazelle을 통해 OPS/RED만 스캔하는 경우 제외).",
-    "scannedProgress": "{{processed}}/{{total}} 스캔됨",
     "torrentsCount": "후보 {{count}}개",
     "failedCount": "실패 {{count}}개",
     "runError": "오류: {{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "Torznab 건너뜀(Gazelle 전용 선택)",
       "placeholderTorznabDisabledGazelleOnly": "Torznab 비활성화됨(Gazelle 전용)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab 비활성화됨(Gazelle 활성화 필요)",
       "placeholderAllEnabledNonOpsRed": "활성화된 모든 비-OPS/RED 인덱서(모두 선택 시 비워둠)",
       "placeholderAllEnabled": "활성화된 모든 인덱서(모두 선택 시 비워둠)",
       "placeholderOnlyOpsRedEnabled": "OPS/RED만 활성화됨(Gazelle)",
       "placeholderNoTorznabConfigured": "구성된 Torznab 인덱서 없음",
-      "helpTorznabSkippedGazelleOnly": "선택된 Torznab 인덱서가 Gazelle(OPS/RED) 전용입니다. 이 실행은 Gazelle 전용이 됩니다.",
       "helpTorznabDisabledGazelleCheck": "Torznab이 비활성화되었습니다. Gazelle이 모든 소스 토렌트에 대해 RED/OPS를 확인합니다.",
       "helpTorznabDisabledEnableGazelle": "Torznab이 비활성화되었습니다. Gazelle 전용 모드에서 시드 중인 토렌트 검색을 실행하려면 Gazelle(OPS/RED)을 활성화하십시오.",
       "helpOnlyOpsRedEnabled": "OPS/RED Torznab 인덱서만 활성화되었습니다. 여기서는 Torznab이 사용되지 않으며 Gazelle이 RED/OPS를 계속 확인합니다.",
@@ -188,20 +184,15 @@
       "helpSelectedQueried_other": "선택된 인덱서 {{count}}개만 쿼리합니다."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: 로딩 중",
       "disabled": "Gazelle: 비활성화됨",
       "enabledOpsRed": "Gazelle: 활성화됨(OPS+RED 키 설정됨)",
       "enabledOpsMissingRed": "Gazelle: 활성화됨(OPS 키 설정됨, RED 없음)",
       "enabledRedMissingOps": "Gazelle: 활성화됨(RED 키 설정됨, OPS 없음)",
       "enabledKeysMissing": "Gazelle: 활성화됨(키 없음)"
     },
-    "noInstanceSelected": "선택된 인스턴스 없음",
-    "instanceFallback": "인스턴스 {{id}}",
     "noMessageProvided": "제공된 메시지 없음"
   },
   "rules": {
-    "title": "Cross-Seed 규칙",
-    "description": "모든 cross-seed 작업에 적용되는 설정입니다.",
     "hardlinkReflink": "하드링크 / 리플링크 모드",
     "noActiveInstances": "활성 인스턴스가 없습니다. 먼저 인스턴스를 추가하세요.",
     "hardlinkDescription": "cross-seed를 위해 하드링크 또는 리플링크(쓰기 시 복사) 파일 트리를 생성합니다. 각 인스턴스를 독립적으로 구성할 수 있습니다. 기본 디렉터리는 인스턴스의 다운로드 경로와 동일한 파일시스템에 있어야 합니다.",
@@ -225,11 +216,6 @@
     "fallbackDescription": "{{mode}}이(가) 실패하면(예: 다른 파일시스템) 기존 파일을 사용하여 일반 모드로 대체합니다.",
     "saveChanges": "변경 사항 저장",
     "noLocalAccess": "로컬 접근 없음",
-    "sections": {
-      "matching": "일치",
-      "organization": "구성",
-      "afterInjection": "주입 후"
-    },
     "seasonPack": {
       "title": "시즌 팩",
       "description": "autobrr가 시즌 팩을 가져오면, qui는 이를 주입하기에 충분한 로컬 데이터가 이미 있는지 확인한 다음, 아직 누락된 항목을 qBittorrent이 다운로드하도록 합니다.",
@@ -274,19 +260,6 @@
           "hdtv": "HDTV"
         }
       }
-    },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Orpheus 및 Redacted에 대한 직접 API 일치를 활성화합니다. 이는 Torznab과 함께 실행되며, OPS/RED Torznab 인덱서는 무시됩니다.",
-      "enableMatching": "Gazelle 일치 활성화",
-      "enableDescription": "모든 소스 토렌트에 적용됩니다. 가능한 경우 qui는 Gazelle을 통해 RED/OPS도 확인합니다.",
-      "redactedApiKey": "Redacted API 키",
-      "orpheusApiKey": "Orpheus API 키",
-      "pasteRedKey": "RED API 키 붙여 넣기",
-      "pasteOpsKey": "OPS API 키 붙여 넣기",
-      "enableToConfigure": "구성하려면 활성화",
-      "redDescription": "redacted.sh 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요.",
-      "opsDescription": "orpheus.network 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요."
     },
     "matching": {
       "title": "에피소드",
@@ -335,16 +308,12 @@
     "tagging": {
       "title": "태그 지정",
       "description": "cross-seed 토렌트가 발견된 방식에 따라 적용되는 태그를 구성합니다.",
-      "rssAutomationTags": "RSS 자동화 태그",
       "selectRssTags": "RSS 자동화 태그 선택",
       "rssTagsDescription": "RSS 피드 자동화를 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "seededSearchTags": "시드 검색 태그",
       "selectSeededTags": "시드 검색 태그 선택",
       "seededTagsDescription": "시드 중인 토렌트 검색을 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "completionSearchTags": "완료 검색 태그",
       "selectCompletionTags": "완료 검색 태그 선택",
       "completionTagsDescription": "완료 트리거 검색을 통해 추가된 토렌트에 적용되는 태그입니다.",
-      "webhookTags": "웹훅 태그",
       "selectWebhookTags": "웹훅/적용 태그 선택",
       "webhookTagsDescription": "/apply 웹훅(예: autobrr)을 통해 추가된 토렌트에 적용되는 태그입니다.",
       "inheritSourceTags": "소스 토렌트 태그 상속",
@@ -355,19 +324,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "시즌 팩 태그",
       "selectSeasonPackTags": "태그 선택...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "주입 후 동작",
       "description": "cross-seed 토렌트가 성공적으로 주입된 후의 동작을 제어합니다.",
-      "autoResumeNote": "주입 후 자동 재개(꺼져 있으면 검토를 위해 토렌트가 일시 정지된 상태로 유지)",
-      "rss": "RSS",
-      "seededSearch": "시드 검색",
       "seededSearchDescription": "시드 검색 및 대화 상자로 주입된 토렌트를 자동으로 재개",
-      "completion": "완료",
-      "webhookLabel": "웹훅",
       "webhookDescription": "/apply 웹훅 토렌트를 자동으로 재개",
       "pooledPartialCompletion": "추가 데이터가 있는 토렌트 자동 풀링",
       "pooledPartialCompletionDescription": "기존 자동 시작 최대 다운로드 값을 사용하고 교차 시드의 추가 파일을 처리하기 위해 관련 교차 시드 풀마다 하나의 다운로드 작업을 조정합니다.",
@@ -389,7 +352,10 @@
       "cachedSearches": "캐시된 검색 {{count}}개",
       "lastUsed": "마지막 사용 {{timestamp}}"
     },
-    "saveGlobalSettings": "전역 cross-seed 설정 저장"
+    "tabDescriptions": {
+      "matching": "모든 소스에 대해 qui가 어떤 후보를 추가할지 결정하는 규칙입니다.",
+      "categories": "qui가 새 크로스시드마다 지정하는 카테고리와 태그입니다."
+    }
   },
   "seasonPackRuns": {
     "title": "최근 시즌 팩 실행",
@@ -430,6 +396,7 @@
   },
   "toast": {
     "settingsUpdated": "설정이 업데이트되었습니다",
+    "settingsSavedKeyUnchecked": "설정이 저장되었지만 qui가 새 API 키를 확인하지 못했습니다",
     "searchRunStarted": "검색 실행이 시작되었습니다",
     "searchRunCanceled": "검색 실행이 취소되었습니다",
     "automationRunStarted": "자동화 실행이 시작되었습니다",
@@ -584,19 +551,6 @@
       "resetFailed": "파일을 재설정하지 못했습니다: {{error}}"
     },
     "statusLabels": {
-      "queued": "대기 중",
-      "scanning": "스캔 중",
-      "searching": "검색 중",
-      "injecting": "주입 중",
-      "success": "성공",
-      "failed": "실패",
-      "added": "추가됨",
-      "canceled": "취소됨",
-      "running": "실행 중",
-      "partial": "부분 성공",
-      "pending": "보류 중"
-    },
-    "statusLabelsUpper": {
       "queued": "대기 중",
       "scanning": "스캔 중",
       "searching": "검색 중",

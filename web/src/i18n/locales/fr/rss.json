@@ -48,7 +48,6 @@
     "toggleDetails": "Basculer les détails"
   },
   "rules": {
-    "title": "Règles",
     "reprocess": "Retraiter",
     "reprocessTooltip": "Revérifier tous les articles non lus par rapport aux règles",
     "addRule": "Ajouter une règle",

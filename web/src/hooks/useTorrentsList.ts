@@ -12,6 +12,7 @@ import { api } from "@/lib/api"
 import { applyStreamDelta, mergeStreamedCrossInstanceFirstPage, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
+import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type {
   AppPreferences,
   CrossInstanceTorrent,
@@ -261,10 +262,7 @@ export function useTorrentsList(
     )
   }, [])
 
-  // Detect if this is cross-seed filtering based on expression content
-  const isCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
-  }, [filters?.expr])
+  const isCrossSeedFiltering = isCrossSeedExpr(filters?.expr)
   const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
 
   const instanceIdsKey = useMemo(

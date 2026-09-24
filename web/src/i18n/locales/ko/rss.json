@@ -48,7 +48,6 @@
     "toggleDetails": "세부 정보 전환"
   },
   "rules": {
-    "title": "규칙",
     "reprocess": "재처리",
     "reprocessTooltip": "읽지 않은 모든 기사를 규칙에 따라 다시 확인합니다",
     "addRule": "규칙 추가",
