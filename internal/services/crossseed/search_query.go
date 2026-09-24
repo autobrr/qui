@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
 
 type SearchQuery struct {

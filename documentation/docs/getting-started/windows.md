@@ -1,6 +1,6 @@
 ---
 sidebar_position: 4
-title: Run qui on Windows
+title: Run qui on Windows as a scheduled task
 sidebar_label: Windows
 description: Install qui on Windows and run it in the background as a scheduled task.
 ---

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
@@ -416,6 +417,64 @@ func TestHasUnsafeIgnoredExtras(t *testing.T) {
 		require.False(t, unsafe)
 		require.True(t, result.Safe)
 	})
+}
+
+func TestHasUnsafeUnmaterializedSourcePieces(t *testing.T) {
+	const pieceLength = int64(16)
+
+	// The main file ends on a piece boundary in the aligned torrent and
+	// mid-piece in the straddling one; the extra file follows it either way.
+	sourceFilesFor := func(mainLen int) qbt.TorrentFiles {
+		return qbt.TorrentFiles{
+			{Name: "test-root/a-main.mkv", Size: int64(mainLen)},
+			{Name: "test-root/b-extra.nfo", Size: 11},
+		}
+	}
+	infoFor := func(t *testing.T, mainLen int) *metainfo.Info {
+		torrentData := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
+			"a-main.mkv":  bytes.Repeat([]byte("M"), mainLen),
+			"b-extra.nfo": bytes.Repeat([]byte("E"), 11),
+		})
+		_, info := mustLoadTorrent(t, torrentData)
+		return &info
+	}
+
+	tests := []struct {
+		name       string
+		mainLen    int
+		candidates func(source qbt.TorrentFiles) qbt.TorrentFiles
+		wantUnsafe bool
+		wantReason string
+	}{
+		{
+			name:       "all source files materialized",
+			mainLen:    48,
+			candidates: func(source qbt.TorrentFiles) qbt.TorrentFiles { return source },
+			wantReason: "no unmaterialized files",
+		},
+		{
+			name:       "unmaterialized file on its own piece",
+			mainLen:    48,
+			candidates: func(source qbt.TorrentFiles) qbt.TorrentFiles { return source[:1] },
+		},
+		{
+			name:       "unmaterialized file shares a piece with a materialized file",
+			mainLen:    53,
+			candidates: func(source qbt.TorrentFiles) qbt.TorrentFiles { return source[:1] },
+			wantUnsafe: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := sourceFilesFor(tt.mainLen)
+			unsafe, result := HasUnsafeUnmaterializedSourcePieces(infoFor(t, tt.mainLen), source, tt.candidates(source))
+			require.Equal(t, tt.wantUnsafe, unsafe)
+			require.Equal(t, !tt.wantUnsafe, result.Safe)
+			if tt.wantReason != "" {
+				require.Equal(t, tt.wantReason, result.Reason)
+			}
+		})
+	}
 }
 
 // TestDifferentPieceLengthsAffectSafety proves that the safety logic depends on

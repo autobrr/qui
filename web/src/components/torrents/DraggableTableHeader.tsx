@@ -71,8 +71,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const isTrackerIconHeader = column.id === "tracker_icon"
   const isStatusIconHeader = column.id === "status_icon"
   const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
-  // Match cell padding: compact columns use px-0, others use px-2 (dense) or px-3 (normal)
-  const headerPadding = isCompactHeader ? "px-0" : (viewMode === "dense" ? "px-2" : "px-3")
 
   const {
     attributes,
@@ -115,7 +113,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
       className="group overflow-hidden"
     >
       <div
-        className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
+        className={`${viewMode === "dense" ? "px-2 h-7 text-xs" : "px-3 h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
         } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
         }`}
         onClick={event => {

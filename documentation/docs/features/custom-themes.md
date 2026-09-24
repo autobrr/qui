@@ -1,6 +1,6 @@
 ---
 sidebar_position: 12
-title: Custom themes for qui
+title: Custom CSS themes for the qBittorrent web UI
 sidebar_label: Custom Themes
 description: Sideload your own CSS theme from a directory on disk with a premium license, with a design token reference and a Refresh button that loads edited files without a restart.
 ---

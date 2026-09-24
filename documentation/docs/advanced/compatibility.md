@@ -58,3 +58,11 @@ The **hybrid** and **v2** torrent format options require a qBittorrent build tha
 ### "Too many active torrent creation tasks" error
 
 qBittorrent limits the number of concurrent torrent creation tasks. If you see a **409 Conflict** error with this message, wait for your existing creation tasks to finish before you start new ones. Monitor active tasks in the torrent creation task list.
+
+### Download of a created torrent fails with "Failed to download torrent file"
+
+The creation task is **Finished**, but the download shows this error. The qui log shows `status code: 409: unexpected status code`. The cause is the qBittorrent option **Delete .torrent files afterwards** (Options > Downloads).
+
+With **Add to qBittorrent** enabled, qBittorrent writes the created file to disk and adds the torrent from that file. When **Delete .torrent files afterwards** is enabled, qBittorrent deletes the file after it adds the torrent. This applies to the temporary file that qBittorrent uses when **Save .torrent to** is empty, and to a file at a path that you set. The download fails because the file no longer exists. qBittorrent does not log this error.
+
+Disable **Delete .torrent files afterwards** in qBittorrent, or disable **Add to qBittorrent** in the creator dialog and add the downloaded file yourself.

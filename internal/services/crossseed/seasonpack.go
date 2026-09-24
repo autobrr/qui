@@ -17,7 +17,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -595,7 +595,7 @@ func (s *Service) planSeasonPack(
 
 	planBuild, err := buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		destDir, localFiles, seasonPackNormalizer(s), prep.settings, prep.aliasTitles,
+		destDir, localFiles, normalizerForService(s), prep.settings, prep.aliasTitles,
 	)
 	if err != nil {
 		return nil, episodes, err
@@ -814,15 +814,6 @@ func findInstance(instances []*models.Instance, id int) *models.Instance {
 	return nil
 }
 
-func seasonPackNormalizer(s *Service) *stringutils.Normalizer[string, string] {
-	if s != nil && s.stringNormalizer != nil {
-		return s.stringNormalizer
-	}
-	// Shared singleton: see normalizerForService - a fresh normalizer
-	// leaks a never-terminating ttlcache goroutine.
-	return stringutils.DefaultNormalizer
-}
-
 // parseSeasonPackEpisodePayload parses a torrent-internal episode file into a release,
 // enriched from the torrent-level release. seasonlessOrigin reports whether the file
 // name itself carried no season (Series 0 before enrichment), i.e. it was
@@ -888,7 +879,7 @@ type packEpisodeOrigin struct {
 // satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
 func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
-	normalizer := seasonPackNormalizer(nil)
+	normalizer := normalizerForService(nil)
 
 	minSeasonlessEpisode := -1
 	for _, f := range files {
@@ -958,7 +949,7 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 // (from Sonarr) and are only added to the source (pack) side, matching the
 // search path: expanding the candidate side would let an unrelated show whose title
 // happens to equal one of the pack's aliases match by accident.
-func (s *Service) seasonPackReleasesMatchWithReason(
+func (m matcher) seasonPackReleasesMatchWithReason(
 	source *rls.Release,
 	candidate *rls.Release,
 	findIndividualEpisodes bool,
@@ -993,7 +984,7 @@ func (s *Service) seasonPackReleasesMatchWithReason(
 	// Run the standard field matcher first so the most informative reason (e.g. a title
 	// mismatch for an unrelated show) surfaces before the season-pack-specific variant and
 	// source gates. This changes only which reason is reported first, not the outcome.
-	if ok, reason := s.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, "", "", sourceAliasTitles, nil, findIndividualEpisodes); !ok {
+	if ok, reason := m.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, "", "", sourceAliasTitles, nil, findIndividualEpisodes); !ok {
 		return false, reason
 	}
 	if !seasonPackNonPackVariantsMatch(&sourceCopy, &candidateCopy) {
@@ -1189,10 +1180,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	aliasTitles []string,
 ) map[episodeIdentity][]episodeMatch {
 	candidates := make(map[episodeIdentity][]episodeMatch)
-	matcher := s
-	if matcher.stringNormalizer == nil {
-		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
-	}
+	m := s.matcher()
 
 	// logFiltered emits the field that filtered an episode candidate. It is the grep
 	// target the season-pack troubleshooting docs point users at. The loop below reads
@@ -1273,7 +1261,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			}
 		}
 
-		if ok, reason := matcher.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
+		if ok, reason := m.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
 			logFiltered(torrent.Name, reason)
 			continue
 		}
@@ -1333,9 +1321,9 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 		return nil, nil, fmt.Errorf("load matched episode files: %w", err)
 	}
 
-	normalizer := seasonPackNormalizer(s)
+	m := s.matcher()
+	normalizer := m.normalizer()
 	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
-	matcher := &Service{stringNormalizer: normalizer}
 	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
 	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
 	ids := sortedEpisodeCandidateIDs(candidates)
@@ -1371,7 +1359,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				lastErr = fmt.Errorf("%w: file size mismatch for %s: pack declares %d bytes, local file is %d bytes", errLayoutMismatch, expectedFile.file.Name, expectedFile.file.Size, localFile.size)
 				continue
 			}
-			if ok, reason := matcher.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !candidate.manual && !ok {
+			if ok, reason := m.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !candidate.manual && !ok {
 				reject(candidate, "release_mismatch")
 				lastErr = fmt.Errorf("%w: release mismatch for %s: %s", errLayoutMismatch, expectedFile.file.Name, reason)
 				continue
@@ -1556,7 +1544,7 @@ func buildSeasonPackPlan(
 		RootDir: destDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
-	matcher := &Service{stringNormalizer: normalizer}
+	m := matcher{stringNormalizer: normalizer}
 	build := &seasonPackPlanBuild{
 		plan:              plan,
 		packDir:           packDir,
@@ -1583,7 +1571,7 @@ func buildSeasonPackPlan(
 		if localFile.size != pf.Size {
 			continue
 		}
-		if ok, _ := matcher.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !localFile.manual && !ok {
+		if ok, _ := m.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !localFile.manual && !ok {
 			continue
 		}
 

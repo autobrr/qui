@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Використовуєте Deluge, rTorrent або Transmission? <docs>Перейдіть на qBittorrent за допомогою нашого інструмента міграції</docs>",
   "card": {
     "status": {
       "disabled": "Вимкнено",
@@ -701,6 +702,7 @@
       "runDryRunNow": "Запустити тестовий запуск зараз",
       "duplicate": "Дублювати",
       "copyTo": "Копіювати в...",
+      "editJSON": "Редагувати як JSON",
       "exportJSON": "Експортувати JSON",
       "dragToReorder": "Перетягніть, щоб змінити порядок робочого процесу",
       "actions": {
@@ -826,11 +828,25 @@
         "title": "Робочий процес імпорту",
         "description": "Вставте робочий цикл JSON для імпорту. Робочий процес буде створено вимкненим і додано в кінець.",
         "placeholder": "Процес вставлення JSON...",
-        "invalidImportData": "Недійсні дані імпорту",
         "importFailed": "Не вдалося імпортувати робочий процес",
         "cancel": "Скасувати",
         "importing": "Імпорт...",
-        "import": "Імпорт"
+        "import": "Імпорт",
+        "errors": {
+          "invalidJson": "Недійсний формат JSON",
+          "notObject": "Очікується об'єкт JSON",
+          "missingName": "Поле 'name' відсутнє або недійсне",
+          "missingConditions": "Поле 'conditions' відсутнє або недійсне",
+          "missingTracker": "Потрібно вказати 'trackerDomains' (масив рядків) або 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Редагувати «{{name}}» як JSON",
+        "description": "Відредагуйте JSON робочого процесу. Робочий процес зберігає стан увімкнення та позицію.",
+        "saveFailed": "Не вдалося зберегти робочий процес",
+        "cancel": "Скасувати",
+        "saving": "Збереження...",
+        "save": "Зберегти"
       },
       "toast": {
         "workflowDeleted": "Робочий процес видалено",
@@ -846,6 +862,7 @@
         "createdWorkflow": "Створено \"{{name}}\"",
         "copiedWorkflow": "Скопійовано \"{{name}}\" у {{instance}}",
         "importedWorkflow": "Імпортований \"{{name}}\"",
+        "updatedWorkflow": "«{{name}}» оновлено",
         "createFailed": "Не вдалося створити робочий процес",
         "reorderFailed": "Не вдалося змінити порядок робочих процесів",
         "exportedTorrents": "Експортовано {{count}} торентів до CSV",
@@ -1674,10 +1691,6 @@
       },
       "trackerMatchInclude": "Включати",
       "trackerMatchExclude": "Виключити"
-    },
-    "shareLimit": {
-      "global": "Глобальний",
-      "unlimited": "Без обмежень"
     }
   },
   "backups": {

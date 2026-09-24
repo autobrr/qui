@@ -49,6 +49,16 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 				return
 			}
 
+			// A cookie rides along on cross-site form posts; a custom header
+			// does not. Reserve cookie writes for the qui web UI.
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+				if r.Header.Get("X-Requested-With") == "" {
+					http.Error(w, "Missing X-Requested-With header", http.StatusForbidden)
+					return
+				}
+			}
+
 			username := sessionManager.GetString(r.Context(), "username")
 			ctx := context.WithValue(r.Context(), ctxkeys.Username, username)
 			r = r.WithContext(ctx)

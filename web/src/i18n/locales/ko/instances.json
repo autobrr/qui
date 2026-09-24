@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Deluge, rTorrent 또는 Transmission을 사용 중이신가요? <docs>마이그레이션 도구로 qBittorrent로 옮기세요</docs>",
   "card": {
     "status": {
       "disabled": "비활성화됨",
@@ -695,6 +696,7 @@
       "runDryRunNow": "지금 모의 실행",
       "duplicate": "복제",
       "copyTo": "복사 대상...",
+      "editJSON": "JSON으로 편집",
       "exportJSON": "JSON 내보내기",
       "dragToReorder": "드래그하여 워크플로 순서 변경",
       "actions": {
@@ -769,11 +771,25 @@
         "title": "워크플로 가져오기",
         "description": "가져올 워크플로 JSON을 붙여 넣으세요. 워크플로는 비활성화된 상태로 생성되어 끝에 추가됩니다.",
         "placeholder": "워크플로 JSON 붙여 넣기...",
-        "invalidImportData": "잘못된 가져오기 데이터",
         "importFailed": "워크플로를 가져오지 못했습니다",
         "cancel": "취소",
         "importing": "가져오는 중...",
-        "import": "가져오기"
+        "import": "가져오기",
+        "errors": {
+          "invalidJson": "잘못된 JSON 형식",
+          "notObject": "JSON 객체가 필요합니다",
+          "missingName": "'name' 필드가 없거나 잘못되었습니다",
+          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다",
+          "missingTracker": "'trackerDomains'(문자열 배열) 또는 'trackerPattern'을 지정해야 합니다"
+        }
+      },
+      "editJsonDialog": {
+        "title": "\"{{name}}\" JSON으로 편집",
+        "description": "워크플로 JSON을 편집합니다. 워크플로는 활성화 상태와 위치를 유지합니다.",
+        "saveFailed": "워크플로를 저장하지 못했습니다",
+        "cancel": "취소",
+        "saving": "저장 중...",
+        "save": "저장"
       },
       "toast": {
         "workflowDeleted": "워크플로가 삭제되었습니다",
@@ -789,6 +805,7 @@
         "createdWorkflow": "\"{{name}}\"을(를) 생성했습니다",
         "copiedWorkflow": "\"{{name}}\"을(를) {{instance}}(으)로 복사했습니다",
         "importedWorkflow": "\"{{name}}\"을(를) 가져왔습니다",
+        "updatedWorkflow": "\"{{name}}\" 업데이트됨",
         "createFailed": "워크플로를 생성하지 못했습니다",
         "reorderFailed": "워크플로 순서를 변경하지 못했습니다",
         "exportedTorrents": "토렌트 {{count}}개를 CSV로 내보냈습니다",
@@ -1584,10 +1601,6 @@
       },
       "trackerMatchInclude": "포함",
       "trackerMatchExclude": "제외"
-    },
-    "shareLimit": {
-      "global": "전역",
-      "unlimited": "무제한"
     }
   },
   "backups": {

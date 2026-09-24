@@ -259,11 +259,6 @@ type InstanceError struct {
 	OccurredAt   string `json:"occurredAt"` // ISO8601 string for JSON
 }
 
-type TorrentTarget struct {
-	InstanceID int
-	Hash       string
-}
-
 // TorrentResponse contains a page of torrent rows plus sidebar, instance, and
 // qBittorrent metadata for the same view. Preferences use a tri-state JSON
 // contract: omitted means leave any existing frontend cache unchanged, a value
@@ -410,7 +405,14 @@ type SyncManager struct {
 	trackerHealthMu      sync.RWMutex
 	trackerHealthCache   map[int]*TrackerHealthCounts
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
+	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
 	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
+	// qBittorrent reports "updating" right after an announce, so a kicked pass
+	// waits the settle delay after the latest kick for the outcome to land. Kicked
+	// passes are full-library rebuilds, so they are rate-limited; the ticker still
+	// catches anything a burst coalesces away.
+	trackerHealthKickSettle   time.Duration
+	trackerHealthKickInterval time.Duration
 
 	// Validated tracker mapping cache - avoids stale MainData.Trackers entries.
 	// trackerMappingGen moves on every mapping write, for any instance, so
@@ -474,7 +476,10 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		fileFetchMaxConcurrent:    16,
 		trackerHealthCache:        make(map[int]*TrackerHealthCounts),
 		trackerHealthCancel:       make(map[int]context.CancelFunc),
+		trackerHealthKick:         make(map[int]chan struct{}),
 		trackerHealthRefresh:      60 * time.Second,
+		trackerHealthKickSettle:   3 * time.Second,
+		trackerHealthKickInterval: 10 * time.Second,
 		validatedTrackerMapping:   make(map[int]*ValidatedTrackerMapping),
 		trackerDisplayNameCache:   ttlcache.New[string, map[string]string](ttlcache.SetDefaultTTL(60 * time.Second)),
 	}
@@ -606,9 +611,24 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 	// Use context.Background() to ensure the background loop isn't tied to any request lifetime
 	refreshCtx, cancel := context.WithCancel(context.Background())
 	sm.trackerHealthCancel[instanceID] = cancel
+	kick := make(chan struct{}, 1)
+	sm.trackerHealthKick[instanceID] = kick
 	sm.trackerHealthMu.Unlock()
 
-	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID)
+	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick)
+}
+
+// KickTrackerHealthRefresh asks the instance's health loop for an early pass, so a
+// reannounce shows on the badge without waiting for the next tick.
+func (sm *SyncManager) KickTrackerHealthRefresh(instanceID int) {
+	sm.trackerHealthMu.RLock()
+	kick := sm.trackerHealthKick[instanceID]
+	sm.trackerHealthMu.RUnlock()
+
+	select {
+	case kick <- struct{}{}:
+	default:
+	}
 }
 
 // StopTrackerHealthRefresh stops the background tracker health refresh for an instance.
@@ -620,11 +640,12 @@ func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
 		cancel()
 		delete(sm.trackerHealthCancel, instanceID)
 	}
+	delete(sm.trackerHealthKick, instanceID)
 	delete(sm.trackerHealthCache, instanceID)
 }
 
 // trackerHealthRefreshLoop runs in the background and periodically refreshes tracker health counts.
-func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int) {
+func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int, kick <-chan struct{}) {
 	log.Debug().Int("instanceID", instanceID).Msg("Starting tracker health refresh loop")
 
 	// Do an initial refresh immediately
@@ -633,12 +654,22 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 	ticker := time.NewTicker(sm.trackerHealthRefresh)
 	defer ticker.Stop()
 
+	// Kicks that arrive while a kicked pass is pending join it and push it out,
+	// so every kick gets the full settle delay.
+	kickTimer := time.NewTimer(0)
+	kickTimer.Stop()
+	var lastKicked time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
 			return
 		case <-ticker.C:
+			sm.refreshTrackerHealthCounts(ctx, instanceID)
+		case <-kick:
+			kickTimer.Reset(max(sm.trackerHealthKickSettle, time.Until(lastKicked.Add(sm.trackerHealthKickInterval))))
+		case <-kickTimer.C:
+			lastKicked = time.Now()
 			sm.refreshTrackerHealthCounts(ctx, instanceID)
 		}
 	}
@@ -697,15 +728,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	sm.seedFallbackTrackerMappingFromMainData(instanceID, torrents, resolveMainData(syncManager, mainDataReadCached), started)
 
-	// Enrich torrents with tracker data
-	enriched, _, remaining := sm.enrichTorrentsWithTrackerData(refreshCtx, client, torrents, nil)
-	if len(remaining) > 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("failedToEnrich", len(remaining)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Some torrents failed tracker enrichment during health refresh")
-	}
+	enriched, fetchErr := client.refreshTrackers(refreshCtx, torrents)
 	if err := refreshCtx.Err(); err != nil {
 		log.Debug().
 			Err(err).
@@ -715,29 +738,24 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 			Msg("Tracker health refresh stopped before full hydration completed")
 		return
 	}
-
-	if !sm.applyTrackerHealthRefreshResult(instanceID, torrents, enriched, remaining, started) {
+	// Keep the previous snapshot rather than publish a library with no tracker data.
+	if fetchErr != nil {
+		log.Debug().
+			Err(fetchErr).
+			Int("instanceID", instanceID).
+			Int("torrentCount", len(torrents)).
+			Dur("elapsed", time.Since(started)).
+			Msg("Tracker health refresh fetch failed, keeping previous snapshot")
 		return
 	}
 
+	sm.applyTrackerHealthRefreshResult(instanceID, torrents, enriched, started)
 	sm.notifyTrackerHealthUpdated(instanceID)
 }
 
-// applyTrackerHealthRefreshResult promotes a fully hydrated tracker-health pass
-// into the shared cache and validated mapping. It returns false when hydration is
-// partial so callers do not replace a complete previous snapshot with incomplete
-// tracker counts or domain mappings.
-func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents, enriched []qbt.Torrent, remaining []string, started time.Time) bool {
-	if len(remaining) > 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("failedToEnrich", len(remaining)).
-			Int("totalTorrents", len(torrents)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Skipping tracker health cache and mapping update after partial hydration")
-		return false
-	}
-
+// applyTrackerHealthRefreshResult promotes a hydrated tracker-health pass
+// into the shared cache and validated mapping.
+func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents, enriched []qbt.Torrent, started time.Time) {
 	// Build health counts and hash sets
 	counts := &TrackerHealthCounts{
 		UnregisteredSet: make(map[string]struct{}),
@@ -805,7 +823,6 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents,
 		Msg("Refreshed tracker health counts and validated tracker mapping")
 
 	sm.setValidatedTrackerMappingWithMetrics(instanceID, mapping, len(torrents), started, "hydrated")
-	return true
 }
 
 // notifyTrackerHealthUpdated wakes stream subscribers after tracker health cache writes.
@@ -1914,140 +1931,6 @@ type TorrentFieldResponse struct {
 	Total  int      `json:"total"`
 }
 
-// GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name), "tags", "magnet_uri".
-// excludeHashes and excludeTargets remove specific torrents from the result.
-func (sm *SyncManager) GetTorrentField(
-	ctx context.Context,
-	instanceID int,
-	field, sort, order, search string,
-	filters FilterOptions,
-	excludeHashes []string,
-	excludeTargets []TorrentTarget,
-) (*TorrentFieldResponse, error) {
-	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build exclusion set
-	var excluded map[string]struct{}
-	if len(excludeHashes) > 0 {
-		excluded = make(map[string]struct{}, len(excludeHashes))
-		for _, h := range excludeHashes {
-			normalized := normalizeTorrentFieldHash(h)
-			if normalized != "" {
-				excluded[normalized] = struct{}{}
-			}
-		}
-	}
-
-	var excludedTargets map[string]struct{}
-	if len(excludeTargets) > 0 {
-		excludedTargets = make(map[string]struct{}, len(excludeTargets))
-		for _, target := range excludeTargets {
-			if target.InstanceID != instanceID {
-				continue
-			}
-			normalized := normalizeTorrentFieldHash(target.Hash)
-			if normalized != "" {
-				excludedTargets[normalized] = struct{}{}
-			}
-		}
-	}
-
-	values := make([]string, 0, len(response.Torrents))
-	for _, t := range response.Torrents {
-		if torrentFieldHashExcluded(excluded, excludedTargets, t.Hash, t.InfohashV1, t.InfohashV2) {
-			continue
-		}
-
-		var v string
-		switch field {
-		case "name":
-			v = t.Name
-		case "hash":
-			v = canonicalizeHash(t.InfohashV1)
-			if v == "" {
-				candidate := canonicalizeHash(t.Hash)
-				v2 := canonicalizeHash(t.InfohashV2)
-				if candidate != "" && (v2 == "" || v2 != candidate) {
-					v = candidate
-				} else if v2 != "" {
-					v = v2
-				}
-			}
-		case "full_path":
-			// Normalize backslashes from Windows qBittorrent instances
-			savePath := strings.ReplaceAll(t.SavePath, "\\", "/")
-			if savePath != "" && t.Name != "" {
-				if strings.HasSuffix(savePath, "/") {
-					v = savePath + t.Name
-				} else {
-					v = savePath + "/" + t.Name
-				}
-			}
-		case "tags":
-			v = t.Tags
-		case "magnet_uri":
-			v = strings.TrimSpace(t.Torrent.MagnetURI)
-		}
-		if field == "tags" || v != "" {
-			values = append(values, v)
-		}
-	}
-
-	return &TorrentFieldResponse{
-		Values: values,
-		Total:  len(values),
-	}, nil
-}
-
-func normalizeTorrentFieldHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
-func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
-	candidates := []string{
-		hash,
-		infohashV1,
-		infohashV2,
-		canonicalizeHash(hash),
-		canonicalizeHash(infohashV1),
-		canonicalizeHash(infohashV2),
-	}
-	seen := make(map[string]struct{}, len(candidates))
-	var variants []string
-	for _, candidate := range candidates {
-		normalized := normalizeTorrentFieldHash(candidate)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		variants = append(variants, normalized)
-	}
-	return variants
-}
-
-func torrentFieldHashExcluded(excluded, excludedTargets map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
-	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
-		if excluded != nil {
-			if _, skip := excluded[candidate]; skip {
-				return true
-			}
-		}
-		if excludedTargets != nil {
-			if _, skip := excludedTargets[candidate]; skip {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
 func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]CrossInstanceTorrentView, error) {
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
@@ -2586,8 +2469,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		}
 		err = client.RecheckCtx(recheckCtx, canonicalHashes)
 	case "reannounce":
-		// No cache update needed - no visible state change
 		err = client.ReAnnounceTorrentsCtx(ctx, canonicalHashes)
+		if err == nil {
+			sm.KickTrackerHealthRefresh(instanceID)
+		}
 	case "increasePriority":
 		err = client.IncreasePriorityCtx(ctx, canonicalHashes)
 	case "decreasePriority":
@@ -6904,14 +6789,14 @@ func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
 	return nil
 }
 
-// GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
-func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, withMetadata bool) (any, error) {
+// GetDirectoryContentCtx lists the entries inside a directory that match mode (for autocomplete).
+func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, mode qbt.DirectoryContentMode, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	content, err := client.GetDirectoryContentCtx(ctx, dirPath, withMetadata)
+	content, err := client.ListDirectoryCtx(ctx, dirPath, mode, withMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get directory contents: %w", err)
 	}

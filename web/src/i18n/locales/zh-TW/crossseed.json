@@ -10,41 +10,33 @@
     "linkSuffix": "以新增或啟用索引器。"
   },
   "overview": {
-    "rssAutomation": {
-      "title": "RSS 自動化",
-      "description": "使用您的規則自動輪詢 Tracker RSS 訂閱源。",
-      "nextRun": "下次執行",
-      "manualTrigger": "手動觸發",
-      "lastRun": "上次執行",
-      "cooldown": "冷卻 {{display}}",
-      "ready": "就緒",
-      "disabled": "已停用",
-      "noRunsYet": "尚無執行記錄",
-      "disabledUpper": "已停用"
-    },
     "seededSearch": {
-      "title": "做種搜尋",
-      "description": "深度掃描您已做種的種子以回填缺失項。",
-      "instance": "實例",
-      "recentRuns": "最近的執行",
-      "now": "現在",
-      "running": "執行中...",
-      "idle": "空閒",
       "gazelleFullDescription": "Gazelle 會對每個源種子檢查 RED/OPS。Torznab 查詢已選擇的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 會對每個源種子檢查已配置的站點。Torznab 查詢已選擇的索引器。",
       "noGazelleDescription": "沒有 Gazelle，所有匹配依賴 Torznab 索引器。"
     }
   },
   "tabs": {
-    "auto": "自動",
-    "scan": "掃描",
-    "dirScan": "目錄掃描",
-    "rules": "規則",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "completion": "完成",
+    "library": "媒體庫",
+    "directories": "目錄",
+    "season-packs": "季包",
+    "matching": "比對規則",
+    "categories": "分類與標籤",
+    "after-injection": "注入後",
     "blocklist": "封鎖清單"
+  },
+  "nav": {
+    "sources": "來源",
+    "matching": "比對",
+    "injection": "注入"
   },
   "automation": {
     "title": "RSS 自動化",
     "description": "按固定間隔輪詢 Tracker RSS 訂閱源，並自動新增匹配的輔種。",
+    "nextRun": "下次執行: {{date}}",
     "enableSwitch": "啟用 RSS 自動化",
     "intervalLabel": "RSS 執行間隔（分鐘）",
     "intervalTooltip": "自動化每次執行時會處理每個已啟用 Torznab 索引器的完整訂閱源。最小間隔為 {{min}} 分鐘，以避免對索引器造成過多請求。",
@@ -97,15 +89,22 @@
     "runError": "錯誤：{{message}}",
     "runSummary": "{{runs}} 次執行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次執行 - +{{added}} - {{failed}} 次失敗",
-    "scheduledUpper": "排程",
     "runDisabledAlreadyRunning": "自動化執行已在進行中。",
     "runDisabledCooldown": "手動執行的間隔限制為 {{minutes}} 分鐘。請在 {{remaining}} 後重試。"
   },
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "篩選當 autobrr 呼叫 /apply Webhook 端點時需要檢查的本機種子。",
-    "emptyFiltersNote": "空篩選器表示檢查所有種子。如果同時配置了分類和標籤篩選器，種子必須同時匹配兩者。",
-    "saveFilters": "儲存 Webhook 篩選器"
+    "emptyFiltersNote": "空篩選器表示檢查所有種子。如果同時配置了分類和標籤篩選器，種子必須同時匹配兩者。"
+  },
+  "completion": {
+    "title": "完成時",
+    "description": "下載完成後觸發的搜尋所新增的交叉做種的標籤與自動恢復設定。請在下方依實例開啟該搜尋。"
+  },
+  "sourceCard": {
+    "crossSeedTags": "交叉做種標籤",
+    "autoResume": "注入後自動恢復",
+    "autoResumeHelp": "關閉時，新增的種子會保持暫停以供檢查。"
   },
   "scan": {
     "title": "做種庫掃描",
@@ -164,19 +163,16 @@
     "runSummary": "{{runs}} 次執行 • +{{added}} 個交叉做種",
     "runSummaryWithFailures": "{{runs}} 次執行 • +{{added}} 個交叉做種 • {{failed}} 失敗",
     "searchNeedsTorznabUnlessGazelle": "做種搜尋需要 Torznab 索引器（除非您僅透過 Gazelle 掃描 OPS/RED）。",
-    "scannedProgress": "已掃描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 個候選",
     "failedCount": "{{count}} 個失敗",
     "runError": "錯誤：{{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "跳過 Torznab（僅限 Gazelle 選擇）",
       "placeholderTorznabDisabledGazelleOnly": "Torznab 已停用（僅限 Gazelle）",
       "placeholderTorznabDisabledEnableGazelle": "Torznab 已停用（啟用 Gazelle）",
       "placeholderAllEnabledNonOpsRed": "所有已啟用的非 OPS/RED 索引器（留空表示全部）",
       "placeholderAllEnabled": "所有已啟用的索引器（留空表示全部）",
       "placeholderOnlyOpsRedEnabled": "僅啟用 OPS/RED（Gazelle）",
       "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
-      "helpTorznabSkippedGazelleOnly": "選定的 Torznab 索引器僅限 Gazelle (OPS/RED)。本次執行將僅限於 Gazelle。",
       "helpTorznabDisabledGazelleCheck": "Torznab 已停用。Gazelle 將為每個源種子檢查 RED/OPS。",
       "helpTorznabDisabledEnableGazelle": "Torznab 已停用。啟用 Gazelle (OPS/RED) 以在僅 Gazelle 模式下執行做種搜尋。",
       "helpOnlyOpsRedEnabled": "僅啟用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在檢查 RED/OPS。",
@@ -188,20 +184,15 @@
       "helpSelectedQueried_other": "將僅查詢 {{count}} 個選定的索引器。"
     },
     "gazelleStatus": {
-      "loading": "Gazelle：載入中",
       "disabled": "Gazelle：已停用",
       "enabledOpsRed": "Gazelle：已啟用（已設定 OPS+RED 金鑰）",
       "enabledOpsMissingRed": "Gazelle：已啟用（已設定 OPS 金鑰，缺少 RED）",
       "enabledRedMissingOps": "Gazelle：已啟用（已設定 RED 金鑰，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已啟用（缺少金鑰）"
     },
-    "noInstanceSelected": "未選擇實例",
-    "instanceFallback": "實例 {{id}}",
     "noMessageProvided": "未提供訊息"
   },
   "rules": {
-    "title": "輔種規則",
-    "description": "適用於所有輔種操作的設定。",
     "hardlinkReflink": "硬連結 / 引用連結模式",
     "noActiveInstances": "沒有活躍的實例。請先新增實例。",
     "hardlinkDescription": "為輔種建立硬連結或引用連結（寫時複製）檔案樹。每個實例可獨立配置。基礎目錄必須與實例的下載路徑位於同一檔案系統。",
@@ -225,11 +216,6 @@
     "fallbackDescription": "如果 {{mode}} 失敗（例如不同檔案系統），則回退到使用現有檔案的一般模式。",
     "saveChanges": "儲存更改",
     "noLocalAccess": "無本機存取權限",
-    "sections": {
-      "matching": "匹配",
-      "organization": "組織方式",
-      "afterInjection": "注入後"
-    },
     "seasonPack": {
       "title": "季度包",
       "description": "當 autobrr 抓取季度包時，qui 會檢查您是否已有足夠的本機資料來注入它，然後讓 qBittorrent 下載仍然缺失的內容。",
@@ -274,19 +260,6 @@
           "hdtv": "HDTV"
         }
       }
-    },
-    "gazelle": {
-      "title": "Gazelle（OPS/RED）",
-      "description": "啟用對 Orpheus 和 Redacted 的直接 API 匹配。這與 Torznab 並行執行；OPS/RED Torznab 索引器將被忽略。",
-      "enableMatching": "啟用 Gazelle 匹配",
-      "enableDescription": "應用於所有源種子。如果可能，qui 還會透過 Gazelle 檢查 RED/OPS。",
-      "redactedApiKey": "Redacted API 金鑰",
-      "orpheusApiKey": "Orpheus API 金鑰",
-      "pasteRedKey": "貼上 RED API 金鑰",
-      "pasteOpsKey": "貼上 OPS API 金鑰",
-      "enableToConfigure": "啟用後進行配置",
-      "redDescription": "用於 redacted.sh 查詢。貼上以替換，清空以移除。",
-      "opsDescription": "用於 orpheus.network 查詢。貼上以替換，清空以移除。"
     },
     "matching": {
       "title": "單集",
@@ -335,16 +308,12 @@
     "tagging": {
       "title": "標籤",
       "description": "配置根據發現方式應用於輔種的標籤。",
-      "rssAutomationTags": "RSS 自動化標籤",
       "selectRssTags": "選擇 RSS 自動化的標籤",
       "rssTagsDescription": "透過 RSS 訂閱源自動化新增的種子所應用的標籤。",
-      "seededSearchTags": "做種搜尋標籤",
       "selectSeededTags": "選擇做種搜尋的標籤",
       "seededTagsDescription": "透過做種搜尋新增的種子所應用的標籤。",
-      "completionSearchTags": "完成搜尋標籤",
       "selectCompletionTags": "選擇完成搜尋的標籤",
       "completionTagsDescription": "透過完成觸發搜尋新增的種子所應用的標籤。",
-      "webhookTags": "Webhook 標籤",
       "selectWebhookTags": "選擇 Webhook/apply 的標籤",
       "webhookTagsDescription": "透過 /apply Webhook（例如 autobrr）新增的種子所應用的標籤。",
       "inheritSourceTags": "繼承源種子標籤",
@@ -355,19 +324,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "季度包標籤",
       "selectSeasonPackTags": "選擇標籤…",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "注入後行為",
       "description": "控制輔種成功注入後的操作。",
-      "autoResumeNote": "注入後自動繼續（關閉時種子將保持暫停以供審查）",
-      "rss": "RSS",
-      "seededSearch": "做種搜尋",
       "seededSearchDescription": "自動繼續做種搜尋和對話方塊注入的種子",
-      "completion": "完成",
-      "webhookLabel": "Webhook",
       "webhookDescription": "自動繼續 /apply Webhook 種子",
       "pooledPartialCompletion": "自動彙集包含額外資料的種子",
       "pooledPartialCompletionDescription": "使用現有的自動開始最大下載量，並為每個相關輔種池協調一個下載任務，以處理輔種中的額外檔案。",
@@ -389,7 +352,10 @@
       "cachedSearches": "{{count}} 次快取搜尋",
       "lastUsed": "上次使用 {{timestamp}}"
     },
-    "saveGlobalSettings": "儲存全域輔種設定"
+    "tabDescriptions": {
+      "matching": "決定 qui 為所有來源加入哪些候選的規則。",
+      "categories": "qui 為每個新交叉做種設定的分類和標籤。"
+    }
   },
   "seasonPackRuns": {
     "title": "最近的季度包執行",
@@ -430,6 +396,7 @@
   },
   "toast": {
     "settingsUpdated": "設定已更新",
+    "settingsSavedKeyUnchecked": "設定已儲存，但 qui 無法檢查新的 API 金鑰",
     "searchRunStarted": "搜尋執行已開始",
     "searchRunCanceled": "搜尋執行已取消",
     "automationRunStarted": "自動化執行已開始",
@@ -720,19 +687,6 @@
       "description": "這將移除掃描目錄及其執行歷史。已新增的種子不會受到影響。",
       "cancel": "取消",
       "delete": "刪除"
-    },
-    "statusLabelsUpper": {
-      "queued": "排隊中",
-      "scanning": "掃描中",
-      "searching": "搜尋中",
-      "injecting": "注入中",
-      "success": "成功",
-      "failed": "失敗",
-      "added": "已新增",
-      "canceled": "已取消",
-      "running": "執行中",
-      "partial": "部分成功",
-      "pending": "等待中"
     }
   }
 }

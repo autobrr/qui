@@ -934,6 +934,20 @@
       "unknown": "Невідомо"
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Увімкніть пряме зіставлення через API з Orpheus та Redacted. Це працює разом з Torznab; Torznab індексатори OPS/RED ігноруються.",
+    "enableMatching": "Увімкнути зіставлення Gazelle",
+    "enableDescription": "Застосовується до всіх вихідних торентів. Якщо можливо, qui також перевіряє RED/OPS через Gazelle.",
+    "redactedApiKey": "API ключ Redacted",
+    "orpheusApiKey": "API ключ Orpheus",
+    "pasteRedKey": "Вставте API ключ RED",
+    "pasteOpsKey": "Вставте API ключ OPS",
+    "enableToConfigure": "Увімкніть для налаштування",
+    "redDescription": "Використовується для пошуку на redacted.sh. Вставте для заміни; очистіть для видалення.",
+    "opsDescription": "Використовується для пошуку на orpheus.network. Вставте для заміни; очистіть для видалення.",
+    "save": "Зберегти"
+  },
   "searchCache": {
     "title": "Кеш пошуку",
     "description": "Кешовані результати пошуку від індексаторів Torznab.",

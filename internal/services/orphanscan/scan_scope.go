@@ -69,7 +69,7 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 
 	// Categories inherit from the default save path, so it is needed whenever
 	// they are. One preferences read covers both.
-	prefs, err := s.getAppPreferences(ctx, instanceID)
+	prefs, err := s.sync.GetAppPreferences(ctx, instanceID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
 	}
@@ -86,7 +86,7 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 		// Only category resolution needs the nesting state, and on qBittorrent
 		// before 5.2 answering it costs a second preferences read.
 		var useSubcategories bool
-		useSubcategories, err = s.subcategoriesEnabled(ctx, instanceID)
+		useSubcategories, err = s.sync.SubcategoriesEnabled(ctx, instanceID)
 		if err != nil {
 			return nil, nil, err
 		}

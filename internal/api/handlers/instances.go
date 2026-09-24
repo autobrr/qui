@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/sshpool"
 )
 
 type InstancesHandler struct {
@@ -30,9 +31,10 @@ type InstancesHandler struct {
 	clientPool      *internalqbittorrent.ClientPool
 	syncManager     *internalqbittorrent.SyncManager
 	reannounceSvc   *reannounce.Service
+	sshDialer       *sshpool.Dialer
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore:   instanceStore,
 		reannounceStore: reannounceStore,
@@ -40,6 +42,7 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 		clientPool:      clientPool,
 		syncManager:     syncManager,
 		reannounceSvc:   svc,
+		sshDialer:       sshDialer,
 	}
 }
 
@@ -266,6 +269,11 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
 				IsActive:                 instances[i].IsActive,
+				SSHHost:                  instances[i].SSHHost,
+				SSHPort:                  instances[i].SSHPort,
+				SSHUsername:              instances[i].SSHUsername,
+				SSHHostKeyPinned:         instances[i].SSHHostKeyEncrypted != "",
+				FilesystemMode:           string(models.FilesystemAccessMode(instances[i])),
 				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
@@ -317,6 +325,11 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		ConnectionStatus:         connectionStatus,
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
+		SSHHost:                  instance.SSHHost,
+		SSHPort:                  instance.SSHPort,
+		SSHUsername:              instance.SSHUsername,
+		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
 
 		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
@@ -359,6 +372,11 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
 		ConnectionStatus:         connectionStatus,
+		SSHHost:                  instance.SSHHost,
+		SSHPort:                  instance.SSHPort,
+		SSHUsername:              instance.SSHUsername,
+		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
 	}
 }
 
@@ -481,6 +499,11 @@ type InstanceResponse struct {
 	ConnectionStatus         string                            `json:"connectionStatus,omitempty"`
 	SortOrder                int                               `json:"sortOrder"`
 	IsActive                 bool                              `json:"isActive"`
+	SSHHost                  string                            `json:"sshHost,omitempty"`
+	SSHPort                  int                               `json:"sshPort,omitempty"`
+	SSHUsername              string                            `json:"sshUsername,omitempty"`
+	SSHHostKeyPinned         bool                              `json:"sshHostKeyPinned"`
+	FilesystemMode           string                            `json:"filesystemMode"`
 	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
 }
 
