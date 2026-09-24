@@ -6,8 +6,6 @@ github.com/CAFxX/httpcompression v0.0.9 h1:0ue2X8dOLEpxTm8tt+OdHcgA+gbDge0OqFQWG
 github.com/CAFxX/httpcompression v0.0.9/go.mod h1:XX8oPZA+4IDcfZ0A71Hz0mZsv/YJOgYygkFhizVPilM=
 github.com/Hellseher/go-shellquote v0.1.0 h1:T9+VA5gQ25+QAFNyKpCXsxc1zrrUk3vC2utC70DN4qA=
 github.com/Hellseher/go-shellquote v0.1.0/go.mod h1:t4xAP6TrFpgvp/U7szp27rYrXXVu9yn3WhNylBvnfb8=
-github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
-github.com/Masterminds/semver v1.5.0/go.mod h1:MB6lktGJrhw8PrUyiEoblNEGEQ+RzHPF078ddwwvV3Y=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/alexedwards/scs/v2 v2.9.0 h1:xa05mVpwTBm1iLeTMNFfAWpKUm4fXAW7CeAViqBVS90=
@@ -23,8 +21,8 @@ github.com/autobrr/go-cache v1.0.0-rc1 h1:xqghz7o+4jvTOlyFq08JflUFps7eF9REdIjGka
 github.com/autobrr/go-cache v1.0.0-rc1/go.mod h1:4dDdnZll98Xuz/ebmGALBeK3DiLXmJd7fwUSEWsw/l0=
 github.com/autobrr/go-mediainfo v0.8.0 h1:XzsjHvBOlGx2BnwYCqwCOIJsmrFy4BJb0jgoB2qKuR0=
 github.com/autobrr/go-mediainfo v0.8.0/go.mod h1:P3LGxIPznO2TLKV/e58YgN0/ozP5pLCAncFzsdxMDcY=
-github.com/autobrr/go-qbittorrent v1.19.0 h1:gjR34fXbfsoAzlZ0TXJ6u4ARZN31v1oxgmbLIqyohlg=
-github.com/autobrr/go-qbittorrent v1.19.0/go.mod h1:5uSG7nI6+dvhjvywkxzqooBAH1RDZxGtoRacDRfOtTQ=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20260924043035-075a839f216e h1:sW3pLS9EUeaoluJSX6MNdsdU39xyL0Q2Z5JGlriQG64=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20260924043035-075a839f216e/go.mod h1:Jsh0yVU63y7pso92y/r9krHxwBi6KB1cu6Z9dxTe+J8=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
 github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a h1:Xj2gx7IEZrnJu1ya7SBu9W5JvzvAfFVQsfFbTq4WDYc=
