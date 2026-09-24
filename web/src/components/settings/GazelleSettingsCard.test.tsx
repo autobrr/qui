@@ -65,6 +65,23 @@ describe("GazelleSettingsCard save", () => {
     })
   })
 
+  it("replaces a saved key with the placeholder from the response", async () => {
+    mocks.patchSettings.mockResolvedValue({ ...mocks.settings, gazelleEnabled: true, redactedApiKey: "<redacted>" })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <GazelleSettingsCard />
+      </QueryClientProvider>
+    )
+    const save = await screen.findByRole("button", { name: "gazelle.save" })
+
+    fireEvent.click(screen.getByRole("switch", { name: "gazelle.enableMatching" }))
+    fireEvent.change(screen.getByLabelText("gazelle.redactedApiKey"), { target: { value: "red-key" } })
+    fireEvent.click(save)
+
+    await waitFor(() => expect(screen.getByLabelText("gazelle.redactedApiKey")).toHaveProperty("value", "<redacted>"))
+  })
+
   it("warns with the server text when qui could not check the key", async () => {
     mocks.patchSettings.mockResolvedValue({ ...mocks.settings, warning: "qui could not check the RED API key." })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
