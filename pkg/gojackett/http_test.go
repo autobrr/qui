@@ -67,8 +67,29 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 		require.Error(t, err)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-	// One idle keep-alive connection is reuse, not a leak.
-	require.LessOrEqual(t, len(open), 1)
+	// The server sees each client close a moment after the call returns.
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(open) == 0
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// A 5xx body that never ends must not hold the caller until the client timeout.
+func TestRetryDoReturnsOn5xxWithoutReadingBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("partial"))
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{Host: server.URL})
+	start := time.Now()
+	_, err := client.GetTorrentsCtx(t.Context(), "tracker", map[string]string{})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 5*time.Second, "drained a 5xx body until the client timeout")
 }

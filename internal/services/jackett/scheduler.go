@@ -712,6 +712,9 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	case <-execCtx.Done():
 		s.reportTaskComplete(item, nil, nil, execCtx.Err())
 		reported = true
+		// The job may be done while the slot stays held; the activity panel
+		// refreshes only on this signal.
+		s.publishActivity(activity.KindIndexerActivity)
 		s.awaitDetachedExec(task, done)
 	}
 }

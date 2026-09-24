@@ -1272,6 +1272,8 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 			defer s.Stop()
 			rec := &recordingHistoryRecorder{}
 			s.historyRecorder = rec
+			pub := &recordingPublisher{}
+			s.setActivityPublisher(pub)
 
 			first := &models.TorznabIndexer{ID: 1, Name: "stuck"}
 			other := &models.TorznabIndexer{ID: 2, Name: "other"}
@@ -1297,6 +1299,10 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("timed-out task did not report completion before its exec returned")
 			}
+			// Enqueue published one signal; the timeout must publish another so the
+			// activity panel drops the finished job while exec is still blocked.
+			require.Eventually(t, func() bool { return pub.counts()[activity.KindIndexerActivity] >= 2 },
+				time.Second, 5*time.Millisecond)
 
 			started := make(chan int, 2)
 			laterDone := make(chan struct{}, 2)

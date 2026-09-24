@@ -143,7 +143,8 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 			if resp.StatusCode < 500 {
 				return err
 			} else if resp.StatusCode >= 500 {
-				drainAndClose(resp.Body)
+				// Close without draining: a large or endless error body would hold the caller.
+				resp.Body.Close()
 				return retry.Unrecoverable(errors.New("unrecoverable status: %v", resp.StatusCode))
 			}
 		}
