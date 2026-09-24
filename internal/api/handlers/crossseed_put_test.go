@@ -397,3 +397,58 @@ func TestAutomationSettingsPutKeepsOmittedSecrets(t *testing.T) {
 	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBAPIKey)
 	require.Equal(t, domain.RedactedStr, stored.SeasonPackTVDBPIN)
 }
+
+func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "crossseed-secret-change")
+	oldKey := make([]byte, 32)
+	newKey := make([]byte, 32)
+	newKey[0] = 1
+	oldStore, err := models.NewCrossSeedStore(db, oldKey)
+	require.NoError(t, err)
+	newStore, err := models.NewCrossSeedStore(db, newKey)
+	require.NoError(t, err)
+
+	_, err = oldStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:       true,
+		RedactedAPIKey:       "red",
+		OrpheusAPIKey:        "ops",
+		SeasonPackTVDBAPIKey: "tvdb",
+		SeasonPackTVDBPIN:    "pin",
+	})
+	require.NoError(t, err)
+
+	handler := &CrossSeedHandler{service: crossseed.NewServiceWithAutomationStore(newStore)}
+	patch := func(body string) {
+		t.Helper()
+		req := httptest.NewRequestWithContext(ctx, http.MethodPatch, "/api/cross-seed/settings", strings.NewReader(body))
+		resp := httptest.NewRecorder()
+		handler.PatchAutomationSettings(resp, req)
+		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	}
+
+	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.
+	patch(`{"runIntervalMinutes":240}`)
+	for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
+		key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, want, key)
+	}
+	tvdbKey, tvdbPin, err := oldStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "tvdb", tvdbKey)
+	require.Equal(t, "pin", tvdbPin)
+
+	// A new secret drops the kept ones that no longer decrypt, so the old PIN cannot block the new key.
+	patch(`{"seasonPackTvdbApiKey":"new-tvdb"}`)
+	tvdbKey, tvdbPin, err = newStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "new-tvdb", tvdbKey)
+	require.Empty(t, tvdbPin)
+	for _, host := range []string{"redacted.sh", "orpheus.network"} {
+		_, ok, err := newStore.GetDecryptedGazelleAPIKey(ctx, host)
+		require.NoError(t, err)
+		require.False(t, ok)
+	}
+}

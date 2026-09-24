@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -865,6 +867,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		}
 	}
 
+	wroteNew := false
 	redactedAPIKeyEncrypted := ""
 	v := strings.TrimSpace(settings.RedactedAPIKey)
 	switch v {
@@ -879,6 +882,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			return nil, fmt.Errorf("encrypt redacted api key: %w", encErr)
 		}
 		redactedAPIKeyEncrypted = enc
+		wroteNew = true
 	}
 
 	orpheusAPIKeyEncrypted := ""
@@ -895,6 +899,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			return nil, fmt.Errorf("encrypt orpheus api key: %w", encErr)
 		}
 		orpheusAPIKeyEncrypted = enc
+		wroteNew = true
 	}
 
 	seasonPackTVDBAPIKeyEncrypted := ""
@@ -911,6 +916,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			return nil, fmt.Errorf("encrypt tvdb api key: %w", encErr)
 		}
 		seasonPackTVDBAPIKeyEncrypted = enc
+		wroteNew = true
 	}
 
 	seasonPackTVDBPINEncrypted := ""
@@ -927,6 +933,30 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			return nil, fmt.Errorf("encrypt tvdb pin: %w", encErr)
 		}
 		seasonPackTVDBPINEncrypted = enc
+		wroteNew = true
+	}
+
+	// A new secret is encrypted under the current key, so restoring an old
+	// sessionSecret can no longer bring every secret back. Drop the kept secrets
+	// that do not decrypt: a stale TVDB PIN would block a new TVDB key.
+	if wroteNew {
+		for _, secret := range []struct {
+			column string
+			value  *string
+		}{
+			{"redacted_api_key_encrypted", &redactedAPIKeyEncrypted},
+			{"orpheus_api_key_encrypted", &orpheusAPIKeyEncrypted},
+			{"season_pack_tvdb_api_key_encrypted", &seasonPackTVDBAPIKeyEncrypted},
+			{"season_pack_tvdb_pin_encrypted", &seasonPackTVDBPINEncrypted},
+		} {
+			if *secret.value == "" {
+				continue
+			}
+			if _, err := s.decrypt(*secret.value); err != nil {
+				log.Warn().Err(err).Str("column", secret.column).Msg("Deleting a stored cross-seed secret that does not decrypt, most likely because sessionSecret changed")
+				*secret.value = ""
+			}
+		}
 	}
 
 	query := `
