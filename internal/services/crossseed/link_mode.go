@@ -622,13 +622,17 @@ func (s *Service) processLinkMode(
 			// and which are missing (extras to download)
 			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
 			recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
-			switch {
-			case recheckErr != nil:
+			recheckPending := recheckErr != nil
+			if recheckPending {
 				log.Warn().
 					Err(recheckErr).
 					Int("instanceID", candidate.InstanceID).
 					Str("torrentHash", torrentHash).
+					Bool("skipAutoResume", req.SkipAutoResume).
 					Msg(logPrefix + "failed to trigger recheck after add")
+			}
+			switch {
+			case recheckPending && req.SkipAutoResume:
 				statusMsg += " - recheck failed, manual intervention required"
 			case req.SkipAutoResume:
 				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
@@ -644,6 +648,7 @@ func (s *Service) processLinkMode(
 					Int("instanceID", candidate.InstanceID).
 					Str("torrentHash", torrentHash).
 					Int("extraFiles", totalFiles-linkedFiles).
+					Bool("recheckPending", recheckPending).
 					Msg(logPrefix + "queuing torrent for recheck resume")
 				var linkedPaths map[string]struct{}
 				if mode.linkedPathsForResume {
@@ -652,13 +657,16 @@ func (s *Service) processLinkMode(
 				queueErr := error(nil)
 				switch {
 				case verifyBeforeSeed:
-					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
+					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash, recheckPending)
 				case recheckPolicy.requireComplete:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths, recheckPending)
 				default:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, mode.recoverMissingFilesWithResume, linkedPaths)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, mode.recoverMissingFilesWithResume, linkedPaths, recheckPending)
 				}
-				if queueErr != nil {
+				switch {
+				case queueErr != nil && recheckPending:
+					statusMsg += " - recheck failed and auto-resume queue full, manual intervention required"
+				case queueErr != nil:
 					statusMsg += " - auto-resume queue full, manual resume required"
 				}
 			}

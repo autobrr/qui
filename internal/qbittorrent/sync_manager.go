@@ -100,7 +100,7 @@ func trackerHealthRefreshLevel(elapsed time.Duration) zerolog.Level {
 	return zerolog.DebugLevel
 }
 
-var errPostAddRecheckNotReady = errors.New("torrent still checking resume data after post-add wait")
+var errPostAddRecheckNotReady = errors.New("torrent not ready for recheck after post-add wait")
 
 type bulkActionTorrentSyncer interface {
 	Sync(ctx context.Context) error
@@ -2523,12 +2523,22 @@ func waitForPostAddRecheckReady(
 	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
 	defer cancel()
 
+	// A wait that ends on a failed or slow sync never saw the torrent's state, so
+	// the error names the sync. %v keeps a sync deadline from reading as the
+	// caller's own cancellation in BulkAction.
+	var syncCause string
+	notReady := func() error {
+		if syncCause != "" {
+			return fmt.Errorf("%w: %s", errPostAddRecheckNotReady, syncCause)
+		}
+		return errPostAddRecheckNotReady
+	}
 	waitErr := func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := overallCtx.Err(); err != nil {
-			return errPostAddRecheckNotReady
+			return notReady()
 		}
 		return nil
 	}
@@ -2541,6 +2551,15 @@ func waitForPostAddRecheckReady(
 		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
 		syncErr := syncManager.Sync(syncCtx)
 		cancel()
+		switch {
+		case syncErr != nil:
+			syncCause = fmt.Sprintf("last sync failed: %v", syncErr)
+		case overallCtx.Err() != nil:
+			// A sync that joins a stalled shared sync can return after the budget.
+			syncCause = "last sync outlasted the wait"
+		default:
+			syncCause = ""
+		}
 		if err := waitErr(); err != nil {
 			return err
 		}
@@ -2552,7 +2571,7 @@ func waitForPostAddRecheckReady(
 		}
 
 		if attempt == maxAttempts {
-			return errPostAddRecheckNotReady
+			return notReady()
 		}
 
 		log.Trace().Int("instanceID", instanceID).Int("attempt", attempt).
@@ -2565,7 +2584,7 @@ func waitForPostAddRecheckReady(
 		}
 	}
 
-	return errPostAddRecheckNotReady
+	return notReady()
 }
 
 func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time.Duration) time.Duration {

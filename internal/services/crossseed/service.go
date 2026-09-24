@@ -485,6 +485,9 @@ type pendingResume struct {
 	hash       string
 	// monitorOnly observes a full recheck without ever resuming the torrent.
 	monitorOnly bool
+	// recheckPending marks a post-add recheck that failed; the worker sends it
+	// once qBittorrent answers again.
+	recheckPending bool
 	// verificationRequired marks an ambiguous search match that must not trust
 	// qBittorrent's optimistic pre-check completion state. The WebUI API exposes
 	// no recheck generation, so the worker observes checking, then a 100% result.
@@ -6385,6 +6388,7 @@ func (s *Service) processCrossSeedCandidate(
 		(!req.SkipRecheck || !renameOnlyAlignment)
 	needsRecheck := verifyBeforeSeed || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
+	autoResumeQueued := false
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
@@ -6395,14 +6399,20 @@ func (s *Service) processCrossSeedCandidate(
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
 		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
+		recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
+		recheckPending := recheckErr != nil
+		if recheckPending {
 			log.Warn().
-				Err(err).
+				Err(recheckErr).
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to trigger recheck after add, skipping auto-resume")
+				Bool("skipAutoResume", req.SkipAutoResume).
+				Msg("Failed to trigger recheck after add")
+		}
+		switch {
+		case recheckPending && req.SkipAutoResume:
 			result.Message += " - recheck failed, manual intervention required"
-		} else if req.SkipAutoResume {
+		case req.SkipAutoResume:
 			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
@@ -6410,25 +6420,31 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Msg("Skipping auto-resume per user settings (recheck triggered)")
 			result.Message += " - auto-resume skipped per settings"
-		} else {
+		default:
 			// Queue for background resume. Verification-required, disc-layout, and
 			// link-mode filesystem fallback torrents must reach 100% first.
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Bool("forceRecheck", forceRecheck).
+				Bool("recheckPending", recheckPending).
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
 			switch {
 			case verifyBeforeSeed:
-				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash)
+				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash, recheckPending)
 			case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil, recheckPending)
 			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil, recheckPending)
 			}
-			if queueErr != nil {
+			switch {
+			case queueErr != nil && recheckPending:
+				result.Message += " - recheck failed and auto-resume queue full, manual intervention required"
+			case queueErr != nil:
 				result.Message += " - auto-resume queue full, manual resume required"
+			default:
+				autoResumeQueued = true
 			}
 		}
 	} else if startPaused && alignmentSucceeded {
@@ -6476,7 +6492,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("crossCategory", crossCategory).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasExtraFiles", hasExtraFiles)
-	if needsRecheckAndResume {
+	if autoResumeQueued {
 		logEvent.Msg("Successfully added cross-seed torrent (auto-resume pending)")
 	} else {
 		logEvent.Msg("Successfully added cross-seed torrent")
@@ -6531,23 +6547,26 @@ func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, t
 
 // queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
 // fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
-func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}) error {
+// recheckPending marks an entry whose post-add recheck failed; the worker sends it.
+func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}, recheckPending bool) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:                    instanceID,
 		hash:                          hash,
 		budgetBytes:                   &budgetBytes,
 		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
 		linkedPaths:                   linkedPaths,
+		recheckPending:                recheckPending,
 	})
 }
 
-func (s *Service) queueVerificationRecheckResume(instanceID int, hash string) error {
+func (s *Service) queueVerificationRecheckResume(instanceID int, hash string, recheckPending bool) error {
 	budgetBytes := int64(0)
 	return s.queuePendingResume(&pendingResume{
 		instanceID:           instanceID,
 		hash:                 hash,
 		budgetBytes:          &budgetBytes,
 		verificationRequired: true,
+		recheckPending:       recheckPending,
 	})
 }
 
@@ -6847,6 +6866,10 @@ func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[strin
 }
 
 func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
+	if req.recheckPending {
+		return s.sendPendingRecheck(instanceID, hash, req, torrent.State)
+	}
+
 	progress := torrent.Progress
 	state := torrent.State
 
@@ -7090,6 +7113,39 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
+// sendPendingRecheck retries a post-add recheck that failed. Until it lands the
+// torrent's progress is a skip_checking guess, so the entry is not evaluated.
+func (s *Service) sendPendingRecheck(instanceID int, hash string, req *pendingResume, state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only checking states change the send
+	case qbt.TorrentStateCheckingResumeData:
+		// Same order as the post-add wait: recheck only after resume data is validated.
+		return true
+	case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl:
+		// The failed call reached qBittorrent after all; a second recheck would restart it.
+		req.recheckPending = false
+		return true
+	}
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "recheck")
+	cancel()
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Deferred post-add recheck failed, will retry")
+		return true
+	}
+	req.recheckPending = false
+	// Verification timing counts from the recheck, not from the failed add.
+	req.addedAt = time.Now()
+	log.Info().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Msg("Sent deferred post-add recheck")
+	return true
+}
+
 // recordBlockedResume appends the hardlink gate verdict to the season pack history.
 func (s *Service) recordBlockedResume(req *pendingResume) {
 	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
@@ -7222,7 +7278,10 @@ func (s *Service) recheckResumeWorker() {
 			for key, req := range pending {
 				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
 					message := "Recheck resume absolute timeout reached, removing from queue"
-					if req.verificationRequired && !req.sawChecking {
+					switch {
+					case req.recheckPending:
+						message = "Deferred post-add recheck was never accepted, torrent left paused for manual review"
+					case req.verificationRequired && !req.sawChecking:
 						message = "Verification recheck transition was not observed, torrent left paused for manual review"
 					}
 					log.Warn().
@@ -7271,6 +7330,11 @@ func (s *Service) recheckResumeWorker() {
 					key := recheckResumeKey(instanceID, hash)
 					req := pending[key]
 					torrent, found := torrentByHash[normalizeHash(hash)]
+					if !found && req.recheckPending {
+						// A stalled qBittorrent can hide a fresh add from the cache;
+						// dropping it here would leave it stopped for good.
+						continue
+					}
 					if !found {
 						log.Debug().
 							Int("instanceID", instanceID).
