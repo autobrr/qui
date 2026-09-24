@@ -217,6 +217,10 @@ backend domain end to end.
   flow; it is persisted and enforced only after the user confirms it (or
   it matches a preconfigured fingerprint). No connection is trusted for
   real operations before that. `InsecureIgnoreHostKey` is forbidden.
+  First contact offers only `ssh.SupportedAlgorithms().HostKeys`,
+  ed25519 first. A host that signs only with SHA-1 `ssh-rsa` or
+  `ssh-dss` cannot be pinned, and `ssh-test` reports the failed
+  negotiation.
 - What gets pinned is the marshaled public key and its algorithm, not a
   display string; later connects put the pinned key's algorithms first in
   `HostKeyAlgorithms` (a multi-key host offers the key the client prefers,

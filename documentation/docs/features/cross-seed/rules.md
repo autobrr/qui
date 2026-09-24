@@ -1,15 +1,17 @@
 ---
 sidebar_position: 2
 title: Cross-seed matching rules
-sidebar_label: Rules
-description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, season pack threshold, category naming, source tags, and auto-start limits."
+sidebar_label: Matching rules
+description: "Rules that decide which cross-seed candidates qui adds: matching, search categories, category naming, source tags, and auto-start limits."
 ---
 
-# Cross-Seed Rules
+# Cross-seed matching rules
 
-Configure matching behavior in the **Rules** tab on the Cross-Seed page.
+The settings that apply to every cross-seed source sit in three sections of the Cross-Seed page: **Matching rules**, **Categories and tags**, and **After injection**. Settings that belong to one source, such as its tags, live on that source's tab: **RSS**, **Webhook**, **Completion**, **Library**, or **Season packs**.
 
 ## Matching
+
+These settings sit in **Matching rules**.
 
 - **Cross-seed episodes from packs**: If enabled, season packs also match individual episodes. If disabled, season packs only match other season packs. qui adds episodes with AutoTMM disabled to prevent save path conflicts.
 - **Skip recheck**: If enabled, qui skips any cross-seed that requires a recheck. This includes renamed paths, extra files, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes.
@@ -51,8 +53,8 @@ In both examples, the torrent is in a category that you control. A rule on that 
 
 ### Add a rule
 
-1. Open the **Rules** tab on the Cross-Seed page.
-2. Find **Search category rules** under the **Matching** heading.
+1. Open **Matching rules** on the Cross-Seed page.
+2. Find **Search category rules**.
 3. Select **Add rule**.
 4. Select or type one or more qBittorrent categories.
 5. Select the content type in the **search as** list.
@@ -75,15 +77,13 @@ Manual search, Library Scan, completion search, RSS matching, and autobrr matchi
 Audiobook and Music request the same categories from indexers, and both send an artist and an album parameter. Only the text of the search query differs.
 :::
 
-## Season Pack Threshold
+## Season packs
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. qui gets season episode totals from Sonarr first. If Sonarr cannot resolve the release, qui uses TVDB or TVMaze. If torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. qui adds incomplete packs paused and rechecks them. When the recheck reports progress close to the share of bytes qui linked, qui resumes the pack. If progress lands well below that share, the links failed and the pack stays paused for manual review. Configure this in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
-
-Season-pack matching rules live in **Rules > Season packs** and affect every season pack flow: the autobrr webhook, automatic assembly, and library search runs.
+Season pack settings have their own **Season packs** tab. See [Season Packs](./season-packs.md).
 
 ## Categories
 
-These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
+These modes sit in **Categories and tags**. They set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
 Choose one of four mutually exclusive category modes:
 
@@ -127,19 +127,23 @@ Uses a fixed category name for all cross-seeds (for example `cross-seed`). qui a
 
 ## Source Tagging
 
-Configure the tags that qui applies to cross-seed torrents, based on the discovery method:
+Each source tab has a **Cross-seed tags** field for the torrents that source adds. The default is `cross-seed` for every source.
 
-| Tag Setting | Description | Default |
-|-------------|-------------|---------|
-| RSS Automation Tags | Torrents added via RSS feed polling | `["cross-seed"]` |
-| Seeded Search Tags | Torrents added via seeded torrent search | `["cross-seed"]` |
-| Completion Search Tags | Torrents added via completion-triggered search | `["cross-seed"]` |
-| Webhook Tags | Torrents added via `/apply` webhook | `["cross-seed"]` |
-| Inherit source torrent tags | Also copy tags from the matched source torrent | - |
+| Source | Where |
+|--------|-------|
+| RSS automation | **RSS** tab |
+| `/apply` webhook | **Webhook** tab, "Webhook / autobrr" card |
+| Completion-triggered search | **Completion** tab, "On completion" card |
+| Library Scan | **Library** tab |
+| Season packs | **Season packs** tab |
+
+**Inherit source torrent tags** in **Categories and tags** also copies the tags of the matched source torrent. It applies to every source.
+
+The **RSS**, **Webhook**, **Completion**, and **Library** tabs each have an **Auto-resume after injection** switch. When it is off, torrents from that source stay paused for review.
 
 ## Max Auto-Start Download
 
-After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
+This limit sits in **After injection**. After a recheck, qui reads how much data the new cross-seed still lacks. If the missing data is at or below **Max auto-start download** (default: 50 MiB), qui starts the torrent. Torrents that lack more data stay paused for manual review. Set 0 to start only fully complete torrents.
 
 If only ignorable files are missing (samples, `.nfo`, subtitles, and similar sidecar files), qui starts the torrent anyway. This exception has a fixed 200 MiB ceiling.
 
@@ -147,7 +151,7 @@ This limit applies to new cross-seed additions from RSS, seeded search, completi
 
 ## External Program
 
-qui can run an external program after it injects a cross-seed torrent.
+In **After injection**, qui can run an external program after it injects a cross-seed torrent.
 
 ## Category Behavior Details
 

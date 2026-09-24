@@ -6,11 +6,13 @@
 import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
+import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
@@ -639,6 +641,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
             <DialogDescription>
               {t("instances.addDialog.description")}
             </DialogDescription>
+            <MigrationHint />
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0">
             <InstanceForm
@@ -1471,6 +1474,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           {activeTab === "indexers" && (
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <IndexersPage withContainer={false} />
+              <GazelleSettingsCard />
             </SettingsScrollPanel>
           )}
 

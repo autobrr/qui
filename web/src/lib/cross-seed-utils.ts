@@ -194,3 +194,15 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     upspeed: 0,
   }
 }
+
+export function normalizeStringList(values: string[]): string[] {
+  return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
+}
+
+export function normalizeNumberList(values: Array<string | number>): number[] {
+  return Array.from(new Set(
+    values
+      .map(value => Number(value))
+      .filter(value => !Number.isNaN(value) && value > 0)
+  ))
+}

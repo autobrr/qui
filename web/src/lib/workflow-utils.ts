@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Automation, AutomationInput, ActionConditions, SortingConfig } from "@/types"
+import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
 
 export type TrackerMatchMode = "include" | "exclude" | "mixed"
 
@@ -18,6 +18,7 @@ export interface WorkflowExport {
   trackerPattern: string
   trackerDomains: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig
   intervalSeconds?: number
   dryRun?: boolean
@@ -41,6 +42,10 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
     trackerDomains,
     conditions: workflow.conditions,
     sortingConfig: workflow.sortingConfig,
+  }
+
+  if (workflow.freeSpaceSource) {
+    exported.freeSpaceSource = workflow.freeSpaceSource
   }
 
   // Only include intervalSeconds if it differs from default
@@ -113,26 +118,43 @@ export function fromImportFormat(
   data: WorkflowExport,
   existingNames: string[]
 ): AutomationInput {
-  const trackerDomains = data.trackerDomains ?? []
-  const trackerPattern = deriveTrackerPattern(trackerDomains, data.trackerPattern)
-
-  const input: AutomationInput = {
+  return {
     name: generateUniqueName(data.name, existingNames),
-    trackerPattern,
+    enabled: false, // Always start disabled
+    ...importedFields(data),
+  }
+}
+
+/** Update payload for "Edit as JSON": the JSON supplies every exported field, the rule keeps enabled and sortOrder. */
+export function toEditInput(rule: Automation, data: WorkflowExport): AutomationInput {
+  return {
+    name: data.name,
+    enabled: rule.enabled,
+    sortOrder: rule.sortOrder,
+    ...importedFields(data),
+  }
+}
+
+type ImportedFields = Omit<AutomationInput, "name" | "enabled" | "sortOrder">
+
+function importedFields(data: WorkflowExport): ImportedFields {
+  const trackerDomains = data.trackerDomains ?? []
+  const fields: ImportedFields = {
+    trackerPattern: deriveTrackerPattern(trackerDomains, data.trackerPattern),
     trackerDomains,
     conditions: data.conditions,
+    freeSpaceSource: data.freeSpaceSource,
     sortingConfig: data.sortingConfig,
-    enabled: false, // Always start disabled
     dryRun: data.dryRun ?? false,
     notify: data.notify ?? true,
   }
 
   // Include intervalSeconds if specified and differs from default
   if (data.intervalSeconds && data.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
-    input.intervalSeconds = data.intervalSeconds
+    fields.intervalSeconds = data.intervalSeconds
   }
 
-  return input
+  return fields
 }
 
 /**
@@ -179,30 +201,30 @@ export function generateUniqueName(baseName: string, existingNames: string[]): s
   return `${cleanBase} (copy ${Date.now()})`
 }
 
-/**
- * Validates import JSON and returns either the parsed WorkflowExport or an error message.
- */
+const IMPORT_ERROR_KEYS = "preferences.workflowsOverview.importDialog.errors"
+
+/** Validates import JSON; the error is an `instances` i18n key for the caller to translate. */
 export function parseImportJSON(jsonString: string): { data: WorkflowExport; error: null } | { data: null; error: string } {
   let parsed: unknown
   try {
     parsed = JSON.parse(jsonString)
   } catch {
-    return { data: null, error: "Invalid JSON format" }
+    return { data: null, error: `${IMPORT_ERROR_KEYS}.invalidJson` }
   }
 
   if (typeof parsed !== "object" || parsed === null) {
-    return { data: null, error: "Expected a JSON object" }
+    return { data: null, error: `${IMPORT_ERROR_KEYS}.notObject` }
   }
 
   const obj = parsed as Record<string, unknown>
 
   // Validate required fields
   if (typeof obj.name !== "string" || obj.name.trim() === "") {
-    return { data: null, error: "Missing or invalid 'name' field" }
+    return { data: null, error: `${IMPORT_ERROR_KEYS}.missingName` }
   }
 
   if (typeof obj.conditions !== "object" || obj.conditions === null) {
-    return { data: null, error: "Missing or invalid 'conditions' field" }
+    return { data: null, error: `${IMPORT_ERROR_KEYS}.missingConditions` }
   }
 
   // Validate tracker fields
@@ -211,7 +233,7 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
   const hasValidTrackerPattern = typeof obj.trackerPattern === "string"
 
   if (!hasValidTrackerDomains && !hasValidTrackerPattern) {
-    return { data: null, error: "Must specify either 'trackerDomains' (array of strings) or 'trackerPattern'" }
+    return { data: null, error: `${IMPORT_ERROR_KEYS}.missingTracker` }
   }
 
   // Build the export data
@@ -220,12 +242,17 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
     trackerPattern: hasValidTrackerPattern ? (obj.trackerPattern as string) : "",
     trackerDomains: hasValidTrackerDomains ? (obj.trackerDomains as string[]) : [],
     conditions: obj.conditions as ActionConditions,
+    freeSpaceSource: obj.freeSpaceSource as FreeSpaceSource | undefined,
     sortingConfig: obj.sortingConfig as SortingConfig | undefined,
   }
 
   // Optional intervalSeconds
   if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
     data.intervalSeconds = obj.intervalSeconds
+  }
+
+  if (typeof obj.dryRun === "boolean") {
+    data.dryRun = obj.dryRun
   }
 
   if (typeof obj.notify === "boolean") {
