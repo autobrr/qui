@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { formatBytes } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedSearchDecisionTrace,
@@ -212,7 +212,7 @@ const CrossSeedDialogComponent = ({
     }
     const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap)
     try {
-      await navigator.clipboard.writeText(report)
+      await copyTextToClipboard(report)
       toast.success(t("crossSeedDialog.trace.copied"))
     } catch {
       toast.error(t("crossSeedDialog.trace.copyFailed"))

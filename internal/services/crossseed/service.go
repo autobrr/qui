@@ -1735,6 +1735,10 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
+	// torznabSearched records that a Torznab indexer answered a candidate's
+	// search. Resolved indexers do not prove it: the filter or cooldown can
+	// skip every candidate.
+	torznabSearched bool
 
 	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
 	// This avoids repeated settings/key lookups for every candidate torrent.
@@ -8362,6 +8366,11 @@ func (s *Service) searchGazelleMatches(
 			continue
 		}
 
+		if clients.denied[client.Host()] != nil {
+			gazelleLookupCompleted = false
+			continue
+		}
+
 		if !exportAttempted && s.syncManager != nil {
 			exportAttempted = true
 			exported, _, _, exportErr := s.syncManager.ExportTorrent(ctx, instanceID, sourceTorrent.Hash)
@@ -8392,7 +8401,23 @@ func (s *Service) searchGazelleMatches(
 		}
 
 		remoteRequestsMade = true
+		if clients.queried == nil {
+			clients.queried = make(map[string]struct{}, len(clients.byHost))
+		}
+		clients.queried[client.Host()] = struct{}{}
 		match, matchErr := findGazelleMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
+		if errors.Is(matchErr, gazellemusic.ErrAccessDenied) {
+			log.Warn().
+				Err(matchErr).
+				Str("targetHost", targetHost).
+				Msg("[CROSSSEED-GAZELLE] Tracker rejects every request; skipping it for the rest of the search")
+			if clients.denied == nil {
+				clients.denied = make(map[string]error, 1)
+			}
+			clients.denied[client.Host()] = matchErr
+			gazelleLookupCompleted = false
+			continue
+		}
 		if matchErr != nil {
 			log.Warn().
 				Err(matchErr).
@@ -8762,6 +8787,27 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 type gazelleClientSet struct {
 	byHost map[string]*gazellemusic.Client
+	// denied holds, per host, the gazellemusic.ErrAccessDenied that tracker
+	// returned. The set lives as long as one search, so a denied host gets no
+	// more requests in that search.
+	denied map[string]error
+	// queried holds each host the search sent a request to. A configured host
+	// can go unqueried: sources from OPS only ever target RED.
+	queried map[string]struct{}
+}
+
+// deniedMessage describes each tracker that rejected the key or the IP, for the
+// run record. allDenied reports that every tracker the search queried rejected it.
+func (c *gazelleClientSet) deniedMessage() (message string, allDenied bool) {
+	if c == nil || len(c.denied) == 0 {
+		return "", false
+	}
+	lines := make([]string, 0, len(c.denied))
+	for host, err := range c.denied {
+		lines = append(lines, c.byHost[host].SourceFlag()+" "+err.Error())
+	}
+	slices.Sort(lines)
+	return strings.Join(lines, "; "), len(c.denied) == len(c.queried)
 }
 
 func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*gazelleClientSet, error) {
@@ -9340,7 +9386,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
-	searchResp, coveredIndexerIDs, err := gatherer.gather(ctx, waitCtx, gatherIn)
+	searchResp, coveredIndexerIDs, torznabAnswered, err := gatherer.gather(ctx, waitCtx, gatherIn)
 	if err != nil {
 		return torznabFailed(err)
 	}
@@ -9526,6 +9572,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Partial:           searchResp.Partial,
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
+			TorznabAnswered:   torznabAnswered,
 			QueryDegraded:     queryDegraded,
 			DecisionTrace:     buildDecisionTrace(0, 0),
 		}, gazelleLookupCompleted, remoteRequestsMade, nil
@@ -9560,6 +9607,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Partial:           searchResp.Partial,
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
+		TorznabAnswered:   torznabAnswered,
 		QueryDegraded:     queryDegraded,
 		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
 	}, gazelleLookupCompleted, remoteRequestsMade, nil
@@ -10617,6 +10665,15 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	} else {
 		state.run.Status = models.CrossSeedSearchRunStatusSuccess
 	}
+	if deniedMsg, allDenied := state.gazelleClients.deniedMessage(); deniedMsg != "" {
+		if state.run.ErrorMessage != nil {
+			deniedMsg = *state.run.ErrorMessage + "; " + deniedMsg
+		}
+		state.run.ErrorMessage = &deniedMsg
+		if allDenied && !state.torznabSearched && state.run.Status == models.CrossSeedSearchRunStatusSuccess {
+			state.run.Status = models.CrossSeedSearchRunStatusFailed
+		}
+	}
 	if s.searchState == state {
 		s.searchState.currentCandidate = nil
 	}
@@ -11374,6 +11431,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
+	// searchTorrentMatches can return before the Torznab search, so only an
+	// indexer that answered proves one ran.
+	if searchResp != nil && searchResp.TorznabAnswered {
+		state.torznabSearched = true
+	}
 	if s.automationStore != nil {
 		// Gazelle stamps per torrent only when its side needs no retry; see
 		// searchGazelleMatches. A failed lookup does not stamp, like a failed
