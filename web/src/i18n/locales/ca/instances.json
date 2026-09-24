@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Fas servir Deluge, rTorrent o Transmission? <docs>Migra a qBittorrent amb la nostra eina de migració</docs>",
   "card": {
     "status": {
       "disabled": "Desactivada",
@@ -732,6 +733,7 @@
       "runDryRunNow": "Fes una execució de prova ara",
       "duplicate": "Duplica",
       "copyTo": "Copia a...",
+      "editJSON": "Edita com a JSON",
       "exportJSON": "Exporta a JSON",
       "dragToReorder": "Arrossega per reordenar el workflow",
       "actions": {
@@ -823,11 +825,25 @@
         "title": "Importa un workflow",
         "description": "Enganxa el JSON d'un workflow per importar-lo. El workflow es crearà desactivat i s'afegirà al final.",
         "placeholder": "Enganxa el JSON del workflow...",
-        "invalidImportData": "Dades d'importació no vàlides",
         "importFailed": "No s'ha pogut importar el workflow",
         "cancel": "Cancel·la",
         "importing": "S'està important...",
-        "import": "Importa"
+        "import": "Importa",
+        "errors": {
+          "invalidJson": "Format JSON no vàlid",
+          "notObject": "S'espera un objecte JSON",
+          "missingName": "Falta el camp 'name' o no és vàlid",
+          "missingConditions": "Falta el camp 'conditions' o no és vàlid",
+          "missingTracker": "Cal indicar 'trackerDomains' (llista de cadenes) o 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Edita «{{name}}» com a JSON",
+        "description": "Edita el JSON del workflow. El workflow conserva l'estat d'activació i la posició.",
+        "saveFailed": "No s'ha pogut desar el workflow",
+        "cancel": "Cancel·la",
+        "saving": "S'està desant...",
+        "save": "Desa"
       },
       "toast": {
         "workflowDeleted": "S'ha eliminat el workflow",
@@ -843,6 +859,7 @@
         "createdWorkflow": "S'ha creat \"{{name}}\"",
         "copiedWorkflow": "S'ha copiat \"{{name}}\" a {{instance}}",
         "importedWorkflow": "S'ha importat \"{{name}}\"",
+        "updatedWorkflow": "S'ha actualitzat «{{name}}»",
         "createFailed": "No s'ha pogut crear el workflow",
         "reorderFailed": "No s'han pogut reordenar els workflows",
         "exportedTorrents": "S'han exportat {{count}} torrents a CSV",

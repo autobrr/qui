@@ -48,7 +48,6 @@
     "toggleDetails": "Alternar detalhes"
   },
   "rules": {
-    "title": "Regras",
     "reprocess": "Reprocessar",
     "reprocessTooltip": "Verificar novamente todos os artigos não lidos em relação às regras",
     "addRule": "Adicionar Regra",
