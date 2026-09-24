@@ -953,9 +953,6 @@ func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *model
 	if !settings.GazelleEnabled {
 		return "", nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
 	var warnings []string
 	for _, site := range []struct{ host, key string }{
 		{"redacted.sh", settings.RedactedAPIKey},
@@ -969,7 +966,10 @@ func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *model
 		if err != nil {
 			return "", err
 		}
-		err = client.CheckKey(ctx)
+		// Each tracker gets its own cap, so a hung RED cannot leave OPS unchecked.
+		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = client.CheckKey(checkCtx)
+		cancel()
 		if errors.Is(err, gazellemusic.ErrAccessDenied) {
 			return "", fmt.Errorf("%s %w", client.SourceFlag(), err)
 		}
