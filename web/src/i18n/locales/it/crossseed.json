@@ -146,6 +146,7 @@
     "results": "Risultati:",
     "resultsDetail": "{{added}} con cross-seed / {{skipped}} ignorati / {{failed}} non riusciti",
     "crossSeedsAdded": "Cross-seed aggiunti:",
+    "crossSeedsAddedBadge_one": "+{{count}} cross-seed",
     "crossSeedsAddedBadge_other": "+{{count}} cross-seed",
     "dueCandidatesHelp": "Un candidato in attesa è un torrent, o un gruppo di stagione, che ha ancora bisogno di una ricerca. Il cooldown e la cronologia di ricerca per indexer ritirano i candidati, quindi gli stessi filtri danno un totale più piccolo a ogni esecuzione successiva.",
     "started": "Avviato:",
