@@ -9,14 +9,6 @@ import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
 import type { TFunction } from "i18next"
 import * as constants from "./constants"
-import {
-  CAPABILITY_REASONS,
-  CONDITION_FIELDS,
-  FIELD_GROUPS,
-  getCapabilityReason,
-  getFieldGroupLabel,
-  getFieldLabel
-} from "./constants"
 
 afterEach(async () => {
   await changeLanguage("en")
@@ -26,8 +18,8 @@ describe("getCapabilityReason", () => {
   it("renders the automations translation, not the English constant", async () => {
     await changeLanguage("de")
 
-    expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
-    expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(constants.getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
+    expect(constants.getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
   })
 })
 
@@ -41,23 +33,26 @@ describe("query-builder translation keys", () => {
       return options?.defaultValue ?? key
     }) as TFunction
 
-    for (const field of Object.keys(CONDITION_FIELDS)) {
-      getFieldLabel(field, recordingT)
+    const fields = Object.keys(constants.CONDITION_FIELDS)
+    for (const field of fields) {
+      constants.getFieldLabel(field, recordingT)
     }
-    for (const group of FIELD_GROUPS) {
-      getFieldGroupLabel(group.label, recordingT)
+    for (const group of constants.FIELD_GROUPS) {
+      constants.getFieldGroupLabel(group.label, recordingT)
     }
-    for (const capability of Object.keys(CAPABILITY_REASONS) as (keyof typeof CAPABILITY_REASONS)[]) {
-      getCapabilityReason(capability, recordingT)
+    for (const capability of Object.keys(constants.CAPABILITY_REASONS) as (keyof typeof constants.CAPABILITY_REASONS)[]) {
+      constants.getCapabilityReason(capability, recordingT)
     }
+
     const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>
-      name.startsWith("getTranslated") && typeof value === "function" ? [value as (...args: never[]) => unknown] : []
+      name.startsWith("getTranslated") && typeof value === "function" ? [[name, value] as const] : []
     )
     // Fails when a module change hides the helpers, instead of passing with nothing checked.
     expect(translatedHelpers.length).toBeGreaterThanOrEqual(5)
-    for (const helper of translatedHelpers) {
-      if (helper.length === 2) {
-        for (const field of Object.keys(CONDITION_FIELDS)) {
+    for (const [name, helper] of translatedHelpers) {
+      // A future per-field helper throws here rather than being skipped quietly.
+      if (name.endsWith("ForField")) {
+        for (const field of fields) {
           (helper as (field: string, t: TFunction) => unknown)(field, recordingT)
         }
       } else {
@@ -67,6 +62,6 @@ describe("query-builder translation keys", () => {
 
     const missing = [...requested].filter((key) => !i18n.exists(key, { ns: "automations", lng: "en" }))
     expect(missing).toEqual([])
-    expect(requested.size).toBeGreaterThan(Object.keys(CONDITION_FIELDS).length)
+    expect(requested.size).toBeGreaterThan(fields.length)
   })
 })
