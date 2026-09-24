@@ -2523,8 +2523,6 @@ func waitForPostAddRecheckReady(
 	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
 	defer cancel()
 
-	// A wait that ends on a failed sync never saw the torrent's state, so the
-	// error names the sync.
 	var lastSyncErr error
 	notReady := func() error {
 		if lastSyncErr != nil {

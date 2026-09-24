@@ -1070,17 +1070,6 @@ func TestWaitForPostAddRecheckReadyNamesFailedSync(t *testing.T) {
 	require.Equal(t, 0, syncer.mapCalls)
 }
 
-func TestWaitForPostAddRecheckReadyNamesStalledSync(t *testing.T) {
-	t.Parallel()
-
-	syncer := &bulkActionRetrySyncer{blockSyncUntilDone: true}
-
-	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 3, time.Millisecond, 10*time.Millisecond)
-
-	require.ErrorIs(t, err, errPostAddRecheckNotReady)
-	require.ErrorContains(t, err, "last sync failed: context deadline exceeded")
-}
-
 func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -1114,6 +1103,7 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.NotErrorIs(t, err, context.DeadlineExceeded, "a sync deadline must not read as caller cancellation")
+	require.ErrorContains(t, err, "last sync failed: context deadline exceeded")
 	require.Equal(t, 1, syncer.syncCalls)
 	require.Equal(t, 0, syncer.mapCalls)
 }
