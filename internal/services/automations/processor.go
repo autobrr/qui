@@ -58,6 +58,10 @@ type torrentDesiredState struct {
 	shouldReannounce bool
 	reannounceRule   ruleRef
 
+	// Queue position (last rule wins): models.QueuePositionTop/Bottom, empty when unset
+	queuePosition     string
+	queuePositionRule ruleRef
+
 	// Auto management (last rule wins)
 	shouldAutoManage bool
 	autoManageValue  bool // true = enable ATM, false = disable ATM
@@ -126,6 +130,8 @@ type ruleRunStats struct {
 	RecheckConditionNotMet           int
 	ReannounceApplied                int
 	ReannounceConditionNotMet        int
+	QueuePositionApplied             int
+	QueuePositionConditionNotMet     int
 	AutoManageApplied                int
 	AutoManageConditionNotMet        int
 	TagConditionMet                  int
@@ -149,7 +155,7 @@ func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.QueuePositionApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -475,6 +481,22 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryGroupID = groupID
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
+		}
+	}
+
+	// Queue position (last rule wins). Priority 0 means qBittorrent has the torrent outside the queue (finished).
+	if conditions.QueuePosition != nil && conditions.QueuePosition.Enabled && torrent.Priority > 0 {
+		shouldApply := conditions.QueuePosition.Condition == nil ||
+			EvaluateConditionWithContext(conditions.QueuePosition.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.QueuePositionApplied++
+			}
+			state.queuePosition = conditions.QueuePosition.Position
+			state.queuePositionRule = ruleRef{id: rule.ID, name: rule.Name}
+		} else if stats != nil {
+			stats.QueuePositionConditionNotMet++
 		}
 	}
 
@@ -821,6 +843,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldResume ||
 		state.shouldRecheck ||
 		state.shouldReannounce ||
+		state.queuePosition != "" ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||

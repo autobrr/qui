@@ -68,6 +68,8 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionResumed:             "Resumed torrents",
 	models.ActivityActionRechecked:           "Rechecked torrents",
 	models.ActivityActionReannounced:         "Reannounced torrents",
+	models.ActivityActionQueueTopped:         "Moved to top of queue",
+	models.ActivityActionQueueBottomed:       "Moved to bottom of queue",
 	models.ActivityActionMoved:               "Moved torrents",
 	models.ActivityActionExportedToInstance:  "Export to instance",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
@@ -2331,6 +2333,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("resumeNoMatch", stats.ResumeConditionNotMet).
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
+			Int("queuePositionNoMatch", stats.QueuePositionConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
 			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
@@ -2380,6 +2383,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeRuleByHash := make(map[string]ruleRef)
 	recheckRuleByHash := make(map[string]ruleRef)
 	reannounceRuleByHash := make(map[string]ruleRef)
+	queuePositionRuleByHash := make(map[string]ruleRef)
 	autoManageRuleByHash := make(map[string]ruleRef)
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
@@ -2387,6 +2391,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
+
+	var queueMoves []queueMoveInput
 
 	// External program execution tracking
 	var programExecutions []pendingProgramExec
@@ -2718,6 +2724,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			reannounceRuleByHash[hash] = state.reannounceRule
 		}
 
+		// Queue position - planned after the loop, where the whole move set is known
+		if state.queuePosition != "" {
+			queueMoves = append(queueMoves, queueMoveInput{Hash: hash, TargetPosition: state.queuePosition, CurrentPriority: torrent.Priority})
+			queuePositionRuleByHash[hash] = state.queuePositionRule
+		}
+
 		// Auto management
 		if state.shouldAutoManage {
 			if state.autoManageValue {
@@ -2851,6 +2863,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	var queueTopBatches, queueBottomBatches [][]string
+	if len(queueMoves) > 0 {
+		queueTopBatches, queueBottomBatches = s.planQueuePositionMoves(ctx, instanceID, queueMoves, torrents)
+	}
+
 	if dryRun {
 		activities := s.recordDryRunActivities(
 			ctx,
@@ -2862,6 +2879,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			resumeHashes,
 			recheckHashes,
 			reannounceHashes,
+			slices.Concat(queueTopBatches...),
+			slices.Concat(queueBottomBatches...),
 			append(autoManageEnableHashes, autoManageDisableHashes...),
 			tagChanges,
 			categoryBatches,
@@ -3187,6 +3206,56 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
 			} else if s.activityRuns != nil {
 				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute queue position moves; batches must go out in planned order to keep relative order
+	for _, move := range []struct {
+		batches        [][]string
+		bulkAction     string
+		activityAction string
+	}{
+		{queueTopBatches, "topPriority", models.ActivityActionQueueTopped},
+		{queueBottomBatches, "bottomPriority", models.ActivityActionQueueBottomed},
+	} {
+		movedHashes := make([]string, 0)
+		for _, batch := range move.batches {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, move.bulkAction); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Str("action", move.bulkAction).Msg("automations: queue position action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Str("action", move.bulkAction).Msg("automations: moved torrents in queue")
+				movedHashes = append(movedHashes, batch...)
+			}
+		}
+		if len(movedHashes) == 0 {
+			continue
+		}
+
+		detailsJSON, _ := json.Marshal(map[string]any{"count": len(movedHashes)})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     move.activityAction,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, len(movedHashes))
+		summary.recordRuleCounts(
+			move.activityAction,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(movedHashes, queuePositionRuleByHash),
+		)
+		summary.addTorrentSamples(collectTorrentNamesForHashes(movedHashes, torrentByHash), 3)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record queue position activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(movedHashes, torrentByHash, s.syncManager)
 				if len(items) > 0 {
 					s.activityRuns.Put(activityID, instanceID, items)
 				}
@@ -5053,6 +5122,9 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac.Reannounce != nil && ac.Reannounce.Enabled {
 		conds = append(conds, ac.Reannounce.Condition)
 	}
+	if ac.QueuePosition != nil && ac.QueuePosition.Enabled {
+		conds = append(conds, ac.QueuePosition.Condition)
+	}
 	if ac.AutoManagement != nil {
 		conds = append(conds, ac.AutoManagement.Condition)
 	}
@@ -5463,6 +5535,8 @@ func (s *Service) recordDryRunActivities(
 	resumeHashes []string,
 	recheckHashes []string,
 	reannounceHashes []string,
+	queueTopHashes []string,
+	queueBottomHashes []string,
 	autoManageHashes []string,
 	tagChanges map[string]*tagChange,
 	categoryBatches map[string][]string,
@@ -5588,6 +5662,8 @@ func (s *Service) recordDryRunActivities(
 		{action: models.ActivityActionResumed, hashes: resumeHashes},
 		{action: models.ActivityActionRechecked, hashes: recheckHashes},
 		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
+		{action: models.ActivityActionQueueTopped, hashes: queueTopHashes},
+		{action: models.ActivityActionQueueBottomed, hashes: queueBottomHashes},
 		{action: models.ActivityActionAutoManaged, hashes: autoManageHashes},
 	} {
 		if len(a.hashes) == 0 {

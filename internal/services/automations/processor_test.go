@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"fmt"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -2578,4 +2579,83 @@ func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
 	completed := qbt.Torrent{CompletionOn: 1699990000}
 	require.InDelta(t, float64(1699990000), getNumericFieldValue(completed, models.FieldCompletionOn, evalCtx), 0)
 	require.InDelta(t, float64(10000), getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, completed), 0)
+}
+
+func TestProcessTorrents_QueuePosition(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	queueRule := func(id int, position string, cond *models.RuleCondition) *models.Automation {
+		return &models.Automation{
+			ID:             id,
+			Enabled:        true,
+			Name:           fmt.Sprintf("Queue Rule %d", id),
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				QueuePosition: &models.QueuePositionAction{Enabled: true, Position: position, Condition: cond},
+			},
+		}
+	}
+	ratioAbove := &models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1.0"}
+
+	tests := []struct {
+		name         string
+		torrent      qbt.Torrent
+		rules        []*models.Automation
+		wantPosition string
+		wantRuleID   int
+		wantApplied  int
+		wantNotMet   int
+	}{
+		{
+			name:         "last rule wins",
+			torrent:      qbt.Torrent{Hash: "abc", Priority: 3},
+			rules:        []*models.Automation{queueRule(1, models.QueuePositionTop, nil), queueRule(2, models.QueuePositionBottom, nil)},
+			wantPosition: models.QueuePositionBottom,
+			wantRuleID:   2,
+			wantApplied:  2,
+		},
+		{
+			name:         "condition met sets target",
+			torrent:      qbt.Torrent{Hash: "abc", Priority: 3, Ratio: 2},
+			rules:        []*models.Automation{queueRule(1, models.QueuePositionTop, ratioAbove)},
+			wantPosition: models.QueuePositionTop,
+			wantRuleID:   1,
+			wantApplied:  1,
+		},
+		{
+			name:       "condition not met leaves no target",
+			torrent:    qbt.Torrent{Hash: "abc", Priority: 3, Ratio: 0.5},
+			rules:      []*models.Automation{queueRule(1, models.QueuePositionTop, ratioAbove)},
+			wantNotMet: 1,
+		},
+		{
+			name:    "torrent without a queue position gets no target",
+			torrent: qbt.Torrent{Hash: "abc", Priority: 0},
+			rules:   []*models.Automation{queueRule(1, models.QueuePositionTop, nil)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stats := make(map[int]*ruleRunStats)
+			states := processTorrents([]qbt.Torrent{tt.torrent}, tt.rules, nil, sm, nil, stats, nil)
+
+			applied, notMet := 0, 0
+			for _, s := range stats {
+				applied += s.QueuePositionApplied
+				notMet += s.QueuePositionConditionNotMet
+			}
+			require.Equal(t, tt.wantApplied, applied)
+			require.Equal(t, tt.wantNotMet, notMet)
+
+			state, ok := states[tt.torrent.Hash]
+			if tt.wantPosition == "" {
+				require.False(t, ok, "expected no state")
+				return
+			}
+			require.True(t, ok, "expected state")
+			require.Equal(t, tt.wantPosition, state.queuePosition)
+			require.Equal(t, tt.wantRuleID, state.queuePositionRule.id)
+		})
+	}
 }

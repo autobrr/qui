@@ -534,6 +534,25 @@ Force reannounce matching torrents.
 - You can combine this action with other actions.
 - Supports an optional condition override, as other actions do.
 
+### Queue position
+
+Move matching torrents to the top or the bottom of the qBittorrent download queue.
+
+| Position | Description |
+| --- | --- |
+| `top` | Move matches to the top of the queue, so qBittorrent starts them first |
+| `bottom` | Move matches to the bottom of the queue, so qBittorrent starts them last |
+
+- Only torrents that are still downloading move. Finished torrents have no queue position, so the action skips them.
+- Moved torrents keep their order relative to each other.
+- If the matches already sit at the top (or the bottom) of the queue, qui sends nothing.
+- You can combine this action with other actions.
+- If multiple rules set a queue position for the same torrent, the **last matching rule** (by sort order) wins.
+
+The action needs torrent queueing. Turn it on in the instance settings, on the **Queue** tab, with **Enable Queueing**. While queueing is off, the rule editor disables this action, and qui refuses to save a rule that has it.
+
+If you turn queueing off after you save the rule, the rule still runs its other actions. qui skips only the queue move on each run and does not log it as a failure.
+
 ### Delete
 
 Remove torrents from qBittorrent. **Delete must be standalone.** You cannot combine it with other actions.
@@ -1086,7 +1105,7 @@ qui sends an API call only when the torrent's current setting differs from the t
 ### Processing order
 
 - **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
-- **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
+- **Last rule wins** for speed limits, share limits, category, queue position, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
 ### Free Space condition behavior

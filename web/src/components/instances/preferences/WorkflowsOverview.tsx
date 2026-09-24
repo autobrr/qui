@@ -174,6 +174,8 @@ function formatAction(action: AutomationActivity["action"]): string {
     resumed: "resume",
     rechecked: "recheck",
     reannounced: "reannounce",
+    queue_topped: "queueTop",
+    queue_bottomed: "queueBottom",
     auto_managed: "autoManagement",
     moved: "move",
     external_program: "externalProgram",
@@ -253,6 +255,15 @@ function formatReannouncedSummary(details: AutomationActivity["details"], outcom
   return i18n.t(outcome === "dry-run" ? `${s}.reannouncedDryRun` : `${s}.reannounced`, { ns: "instances", count })
 }
 
+function formatQueueMovedSummary(details: AutomationActivity["details"], action: "queue_topped" | "queue_bottomed", outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const s = "preferences.workflowsOverview.summary"
+  if (action === "queue_topped") {
+    return i18n.t(outcome === "dry-run" ? `${s}.queueToppedDryRun` : `${s}.queueTopped`, { ns: "instances", count })
+  }
+  return i18n.t(outcome === "dry-run" ? `${s}.queueBottomedDryRun` : `${s}.queueBottomed`, { ns: "instances", count })
+}
+
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
   const s = "preferences.workflowsOverview.summary"
@@ -305,6 +316,8 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "resumed",
   "rechecked",
   "reannounced",
+  "queue_topped",
+  "queue_bottomed",
   "auto_managed",
   "moved",
   "exported_to_instance",
@@ -828,6 +841,8 @@ export function WorkflowsOverview({
     resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
     rechecked: "bg-orange-500/10 text-orange-500 border-orange-500/20",
     reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
+    queue_topped: "bg-pink-500/10 text-pink-500 border-pink-500/20",
+    queue_bottomed: "bg-stone-500/10 text-stone-500 border-stone-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
@@ -1252,6 +1267,10 @@ export function WorkflowsOverview({
                                         ) : event.action === "reannounced" ? (
                                           <span className="font-medium text-sm block">
                                             {formatReannouncedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "queue_topped" || event.action === "queue_bottomed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatQueueMovedSummary(event.details, event.action, event.outcome)}
                                           </span>
                                         ) : event.action === "moved" ? (
                                           <span className="font-medium text-sm block">
