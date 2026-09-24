@@ -42,36 +42,33 @@ function pluralKeysOf(english: ResourceLanguage): string[] {
   })
 }
 
-async function createInstance(lng: string, bundles: Record<string, ResourceLanguage>, fallbackLng: string | false): Promise<i18n> {
+// Holds one locale and nothing else, so t() and exists() answer from that locale alone.
+// The app's own instance bundles English and falls back to it, which is the behaviour
+// under test and the reason this one must not have it.
+async function localeOnlyInstance(lng: string, translated: ResourceLanguage): Promise<i18n> {
   const instance = i18next.createInstance()
-  // Copies the fallback settings from src/i18n/index.ts, not its plugins or postProcess.
   await instance.init({
-    resources: bundles,
+    resources: { [lng]: translated },
     lng,
-    fallbackLng,
+    fallbackLng: false,
     defaultNS: "common",
-    ns: Object.keys(bundles.en ?? bundles[lng]),
+    ns: Object.keys(translated),
     interpolation: { escapeValue: false },
   })
   return instance
 }
 
-// A count leaks when nothing in the locale answers it, so i18next serves the English
-// resource. Each hit is confirmed against the English rendering before it is reported,
-// which is what separates a real fallback from a translation that merely reads the same.
+// A count leaks when the locale itself cannot answer it: the app bundles English and
+// falls back to it, so whatever the locale cannot resolve is served from English. Asking
+// what the locale *has*, never what it says, is what keeps a translation that happens to
+// read like English out of the report.
 async function findLeaks(locale: string, english: ResourceLanguage, translated: ResourceLanguage): Promise<string[]> {
-  const en = await createInstance("en", { en: english }, false)
-  const app = await createInstance(locale, { en: english, [locale]: translated }, "en")
-  // No English bundle and no fallback, so t() resolves only if the locale itself has a
-  // form for the count, including through an unsuffixed base key.
-  const inLanguage = await createInstance(locale, { [locale]: translated }, false)
+  const inLanguage = await localeOnlyInstance(locale, translated)
 
   const leaks: string[] = []
   for (const key of pluralKeysOf(english)) {
     for (const count of COUNTS) {
-      if (inLanguage.exists(key, { count })) continue
-      if (app.t(key, { count }) !== en.t(key, { count })) continue
-      leaks.push(`${key}@${count}`)
+      if (!inLanguage.exists(key, { count })) leaks.push(`${key}@${count}`)
     }
   }
 
@@ -113,7 +110,9 @@ describe("plural leak detection", () => {
     expect(await findLeaks("ko", english, ko)).toEqual([])
   })
 
-  it("does not report a translation that reads the same as English", async () => {
+  // Pins that the check never compares rendered text: this locale has every form it
+  // needs, and the fact that they read like English must not put it in the report.
+  it("ignores a locale whose text matches English", async () => {
     const it = { common: { items_one: "{{count}} item", items_other: "{{count}} items" } }
 
     expect(await findLeaks("it", english, it)).toEqual([])
