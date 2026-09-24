@@ -6410,10 +6410,8 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add")
 		}
 		switch {
-		case recheckPending && req.SkipAutoResume:
-			result.Message += " - recheck failed, manual intervention required"
 		case req.SkipAutoResume:
-			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
+			result.Message += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
@@ -6570,24 +6568,25 @@ func (s *Service) queueVerificationRecheckResume(instanceID int, hash string, re
 	})
 }
 
-func (s *Service) queueTitleRescueMonitor(instanceID int, hash string) error {
-	budgetBytes := int64(0)
-	return s.queuePendingResume(&pendingResume{
+// skipResumeMonitorSuffix queues a monitor for a SkipAutoResume add that is a
+// title rescue or whose recheck failed, and returns a status suffix when the
+// monitor queue is full.
+func (s *Service) skipResumeMonitorSuffix(titleRescue, recheckPending bool, instanceID int, hash string) string {
+	if !titleRescue && !recheckPending {
+		return ""
+	}
+	err := s.queuePendingResume(&pendingResume{
 		instanceID:           instanceID,
 		hash:                 hash,
 		monitorOnly:          true,
-		verificationRequired: true,
-		budgetBytes:          &budgetBytes,
+		verificationRequired: titleRescue,
+		budgetBytes:          new(int64),
+		recheckPending:       recheckPending,
 	})
-}
-
-// titleRescueMonitorSuffix queues the verification monitor for a title-rescue
-// add and returns a status suffix when the monitor queue is full.
-func (s *Service) titleRescueMonitorSuffix(titleRescue bool, instanceID int, hash string) string {
-	if !titleRescue {
-		return ""
-	}
-	if err := s.queueTitleRescueMonitor(instanceID, hash); err != nil {
+	if err != nil {
+		if recheckPending {
+			return " - recheck failed and monitor queue full, manual intervention required"
+		}
 		return " - verification monitor queue full, manual review required"
 	}
 	return ""
@@ -6931,7 +6930,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
-				Msg("Title rescue recheck completed at 100%; torrent left paused per settings")
+				Msg("Monitored recheck completed at 100%; torrent left paused per settings")
 			return false
 		}
 		if progress > 0 || req.sawChecking {
@@ -6940,7 +6939,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Str("hash", hash).
 				Float64("progress", progress).
 				Int64("amountLeft", torrent.AmountLeft).
-				Msg("Title rescue recheck completed below 100%; torrent left paused for manual review")
+				Msg("Monitored recheck completed below 100%; torrent left paused for manual review")
 			return false
 		}
 		return true
@@ -7122,7 +7121,9 @@ func (s *Service) sendPendingRecheck(instanceID int, hash string, req *pendingRe
 		return true
 	case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl:
 		// The failed call reached qBittorrent after all; a second recheck would restart it.
+		// Count it as a seen piece check so a later restart trips the interruption guard.
 		req.recheckPending = false
+		req.sawChecking = true
 		return true
 	}
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)

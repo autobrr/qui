@@ -632,10 +632,8 @@ func (s *Service) processLinkMode(
 					Msg(logPrefix + "failed to trigger recheck after add")
 			}
 			switch {
-			case recheckPending && req.SkipAutoResume:
-				statusMsg += " - recheck failed, manual intervention required"
 			case req.SkipAutoResume:
-				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
+				statusMsg += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, torrentHash)
 				// User requested to skip auto-resume - leave paused after recheck
 				log.Debug().
 					Int("instanceID", candidate.InstanceID).

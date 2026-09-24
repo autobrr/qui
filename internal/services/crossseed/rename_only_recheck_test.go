@@ -311,6 +311,64 @@ func TestProcessCrossSeedCandidate_FailedRecheckIsQueuedAndResumed(t *testing.T)
 	}
 }
 
+func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNotResumed(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1}
+	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
+	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+	newHash := "newhash"
+	service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+	sync := &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: context.DeadlineExceeded}
+	service.syncManager = sync
+	service.recheckResumeChan = make(chan *pendingResume, 1)
+
+	req := &CrossSeedRequest{SkipAutoResume: true}
+	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+
+	require.True(t, result.Success, "message: %s", result.Message)
+	require.NotContains(t, result.Message, "manual intervention required")
+	require.Len(t, service.recheckResumeChan, 1)
+	entry := <-service.recheckResumeChan
+	require.True(t, entry.recheckPending)
+	require.True(t, entry.monitorOnly)
+
+	sync.recheckErr = nil
+	torrent := qbt.Torrent{Hash: newHash, State: qbt.TorrentStateStoppedUp, Progress: 1}
+	require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+
+	torrent.State = qbt.TorrentStateCheckingUp
+	require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+
+	torrent.State = qbt.TorrentStateStoppedUp
+	require.False(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+	require.Equal(t, []string{"recheck:" + newHash}, renameSync.bulkActions)
+}
+
+// A piece check seen while the deferred recheck is pending proves the failed call
+// landed. A qBittorrent restart after it must still block the fast resume.
+func TestProcessPendingRecheckResumeDeferredCheckThenRestartDoesNotResume(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{syncManager: sync}
+	budget := int64(0)
+	entry := &pendingResume{instanceID: 1, hash: "abc", budgetBytes: &budget, recheckPending: true, verificationRequired: true}
+	entry.addedAt = time.Now().Add(-time.Hour)
+
+	torrent := qbt.Torrent{Hash: "abc", State: qbt.TorrentStateCheckingUp, Progress: 0.3}
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+
+	torrent.State, torrent.Progress = qbt.TorrentStateCheckingResumeData, 1
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+
+	torrent.State = qbt.TorrentStateStoppedUp
+	for range recheckResumeStablePolls + 1 {
+		require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+	}
+	require.Empty(t, sync.bulkActions)
+}
+
 func TestProcessPendingRecheckResumeHoldsDeferredRecheckDuringResumeDataCheck(t *testing.T) {
 	t.Parallel()
 
