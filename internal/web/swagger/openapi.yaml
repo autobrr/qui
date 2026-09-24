@@ -3916,9 +3916,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                  - type: object
+                    properties:
+                      warning:
+                        type: string
+                        description: Set when qui saved a new OPS or RED API key but could not check it with the tracker
         '400':
-          description: Invalid request body
+          description: Invalid request body, or the tracker rejected a new OPS or RED API key
         '500':
           description: Failed to update automation settings
     patch:
@@ -3938,9 +3944,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                  - type: object
+                    properties:
+                      warning:
+                        type: string
+                        description: Set when qui saved a new OPS or RED API key but could not check it with the tracker
         '400':
-          description: Invalid request body
+          description: Invalid request body, or the tracker rejected a new OPS or RED API key
         '500':
           description: Failed to update automation settings
 

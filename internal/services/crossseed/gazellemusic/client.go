@@ -324,6 +324,13 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 	return &resp, nil
 }
 
+// CheckKey sends one cheap authenticated request. A wrong key or a banned IP
+// returns ErrAccessDenied.
+func (c *Client) CheckKey(ctx context.Context) error {
+	_, err := c.ajax(ctx, "index", nil)
+	return err
+}
+
 // isAccessDeniedText matches the texts OPS sends with HTTP 200 for an IP ban
 // and a wrong key. The RED ban text is unknown until a user reports it.
 func isAccessDeniedText(text string) bool {

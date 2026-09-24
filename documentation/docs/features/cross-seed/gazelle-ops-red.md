@@ -99,7 +99,9 @@ Fix:
 
 The tracker refused a request. The API key is wrong, or the tracker banned the IP address of qui. The text after the colon comes from the tracker.
 
-When this happens, qui sends no more requests to that tracker for the rest of the search. It keeps searching the other Gazelle site and Torznab. It does not stamp the Gazelle cooldown for the torrents it could not check, so they stay eligible for the next run. The run history shows the message. If that tracker was the only source of the run, the run ends as failed.
+qui checks a new key when you save it. It sends one request to the tracker. If the tracker refuses the key, qui does not save the settings and shows this message. If the check fails for another reason, for example the tracker does not answer or is rate limiting, qui saves the key and shows a warning that it could not check the key. qui does not check a key while Gazelle matching is off.
+
+A ban can also start after you saved the key. When the tracker refuses a request during a search, qui sends no more requests to that tracker for the rest of the search. It keeps searching the other Gazelle site and Torznab. It does not stamp the Gazelle cooldown for the torrents it could not check, so they stay eligible for the next run. The run history shows the message. If that tracker was the only source of the run, the run ends as failed.
 
 Fix:
 
