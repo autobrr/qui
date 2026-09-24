@@ -78,12 +78,11 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	readerStmtsCache := newStmtCache()
 
 	db := &DB{
-		writerConn:      writerConn,
-		readerPool:      readerPool,
-		writerStmts:     writerStmtsCache,
-		readerStmts:     readerStmtsCache,
-		dialect:         DialectPostgres,
-		serializeWrites: false,
+		writerConn:  writerConn,
+		readerPool:  readerPool,
+		writerStmts: writerStmtsCache,
+		readerStmts: readerStmtsCache,
+		dialect:     DialectPostgres,
 	}
 
 	if err := db.migratePostgres(); err != nil {

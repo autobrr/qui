@@ -1256,3 +1256,78 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 		t.Fatalf("queued order after reversed pushes = %v, want %v", gotQueued, wantQueued)
 	}
 }
+
+// A timed-out task keeps its indexer and worker slot until its exec returns,
+// so an exec that ignores its context cannot pile up goroutines (#2817).
+func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		late func() ([]Result, []int, error)
+	}{
+		{name: "late result", late: func() ([]Result, []int, error) { return []Result{{Title: "late"}}, []int{1}, nil }},
+		{name: "late panic", late: func() ([]Result, []int, error) { panic("late panic") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSearchScheduler(nil, 1)
+			defer s.Stop()
+			rec := &recordingHistoryRecorder{}
+			s.historyRecorder = rec
+
+			first := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+			other := &models.TorznabIndexer{ID: 2, Name: "other"}
+			release := make(chan struct{})
+			firstDone := make(chan error, 2)
+
+			_, err := s.Submit(context.Background(), SubmitRequest{
+				Indexers:         []*models.TorznabIndexer{first},
+				ExecutionTimeout: 20 * time.Millisecond,
+				ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+					<-release
+					return tc.late()
+				},
+				Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+					firstDone <- err
+				}},
+			})
+			require.NoError(t, err)
+
+			select {
+			case err := <-firstDone:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(time.Second):
+				t.Fatal("timed-out task did not report completion before its exec returned")
+			}
+
+			started := make(chan int, 2)
+			laterDone := make(chan struct{}, 2)
+			for _, idx := range []*models.TorznabIndexer{first, other} {
+				_, err := s.Submit(context.Background(), SubmitRequest{
+					Indexers: []*models.TorznabIndexer{idx},
+					ExecFn: func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+						started <- idxs[0].ID
+						return nil, nil, nil
+					},
+					Callbacks: JobCallbacks{OnComplete: func(uint64, *models.TorznabIndexer, []Result, []int, error) {
+						laterDone <- struct{}{}
+					}},
+				})
+				require.NoError(t, err)
+			}
+
+			select {
+			case id := <-started:
+				t.Fatalf("indexer %d started while the timed-out exec still held the slot", id)
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			close(release)
+			got := []int{<-started, <-started}
+			assert.ElementsMatch(t, []int{1, 2}, got)
+			<-laterDone
+			<-laterDone
+
+			assert.Empty(t, firstDone, "timed-out task reported completion twice")
+			assert.Len(t, rec.statuses(), 3)
+		})
+	}
+}
