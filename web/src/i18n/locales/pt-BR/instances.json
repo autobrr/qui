@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Usa Deluge, rTorrent ou Transmission? <docs>Migre para o qBittorrent com nossa ferramenta de migração</docs>",
   "card": {
     "status": {
       "disabled": "Desativado",
@@ -697,6 +698,7 @@
       "runDryRunNow": "Rodar simulação agora",
       "duplicate": "Duplicar",
       "copyTo": "Copiar para...",
+      "editJSON": "Editar como JSON",
       "exportJSON": "Exportar JSON",
       "dragToReorder": "Arraste para reordenar",
       "actions": {
@@ -788,11 +790,25 @@
         "title": "Importar Workflow",
         "description": "Cole o JSON do workflow. Ele será criado como desativado.",
         "placeholder": "JSON...",
-        "invalidImportData": "Formato inválido",
         "importFailed": "Falha ao importar",
         "cancel": "Cancelar",
         "importing": "Importando...",
-        "import": "Importar"
+        "import": "Importar",
+        "errors": {
+          "invalidJson": "Formato JSON inválido",
+          "notObject": "Esperado um objeto JSON",
+          "missingName": "Campo 'name' ausente ou inválido",
+          "missingConditions": "Campo 'conditions' ausente ou inválido",
+          "missingTracker": "Informe 'trackerDomains' (lista de strings) ou 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Editar \"{{name}}\" como JSON",
+        "description": "Edite o JSON do workflow. O workflow mantém o estado de ativação e a posição.",
+        "saveFailed": "Falha ao salvar o workflow",
+        "cancel": "Cancelar",
+        "saving": "Salvando...",
+        "save": "Salvar"
       },
       "toast": {
         "workflowDeleted": "Workflow excluído",
@@ -808,6 +824,7 @@
         "createdWorkflow": "Criado \"{{name}}\"",
         "copiedWorkflow": "Copiado \"{{name}}\" para {{instance}}",
         "importedWorkflow": "Importado \"{{name}}\"",
+        "updatedWorkflow": "\"{{name}}\" atualizado",
         "createFailed": "Falha ao criar",
         "reorderFailed": "Falha ao reordenar",
         "exportedTorrents": "Exportados {{count}} para CSV",
@@ -1616,10 +1633,6 @@
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"
-    },
-    "shareLimit": {
-      "global": "Do Servidor",
-      "unlimited": "Infinito"
     }
   },
   "backups": {

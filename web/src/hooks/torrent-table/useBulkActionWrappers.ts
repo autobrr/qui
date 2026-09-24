@@ -45,7 +45,6 @@ export interface UseBulkActionWrappersParams {
   selectAllExcludeHashes: string[] | undefined
   selectAllExcludedTargets: TorrentActionTarget[]
   // Filter / search / sort context
-  filters?: TorrentFilters
   effectiveSearch: string
   activeSortField: string
   activeSortOrder: "asc" | "desc"
@@ -93,7 +92,6 @@ export function useBulkActionWrappers({
   selectAllFilters,
   selectAllExcludeHashes,
   selectAllExcludedTargets,
-  filters,
   effectiveSearch,
   activeSortField,
   activeSortOrder,
@@ -114,19 +112,6 @@ export function useBulkActionWrappers({
     excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
     excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
   }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
-  const normalizedSelectionFilters = useMemo(() => {
-    const sourceFilters = selectAllFilters ?? filters
-    if (!sourceFilters) {
-      return undefined
-    }
-
-    return {
-      ...sourceFilters,
-      categories: sourceFilters.expandedCategories ?? sourceFilters.categories ?? [],
-      excludeCategories: sourceFilters.expandedExcludeCategories ?? sourceFilters.excludeCategories ?? [],
-    }
-  }, [selectAllFilters, filters])
-
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
     totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
@@ -155,7 +140,7 @@ export function useBulkActionWrappers({
       torrents: torrentsForSelection,
       isAllSelected,
       totalSelected: effectiveSelectionCount,
-      filters: selectAllFilters ?? filters,
+      filters: selectAllFilters,
       search: effectiveSearch,
       excludeHashes: selectAllExcludeHashes,
       excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
@@ -168,7 +153,6 @@ export function useBulkActionWrappers({
     isAllSelected,
     effectiveSelectionCount,
     selectAllFilters,
-    filters,
     effectiveSearch,
     selectAllExcludeHashes,
     selectAllExcludedTargets,
@@ -204,7 +188,7 @@ export function useBulkActionWrappers({
     await handleDelete(
       hashesToDelete,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       deleteClientMeta
@@ -218,7 +202,6 @@ export function useBulkActionWrappers({
     deleteCrossSeeds,
     effectiveSearch,
     selectAllExcludeHashes,
-    filters,
     handleDelete,
     instanceId,
     isAllSelected,
@@ -231,41 +214,41 @@ export function useBulkActionWrappers({
       comment,
       contextHashes,
       isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleSetComment, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetComment, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleTagsWrapper = useCallback((plan: Parameters<TorrentActions["handleUpdateTags"]>[0]) => {
     handleUpdateTags(
       plan,
       contextHashes,
       isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleUpdateTags, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleUpdateTags, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
       category,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => {
     const usingSelectAll = isAllSelected
-    const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
+    const resolvedFilters = usingSelectAll ? selectAllFilters : undefined
     const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
     const resolvedExclusions = usingSelectAll ? selectAllExcludeHashes : undefined
     const clientHashes = hashes.length > 0 ? hashes : selectedHashes
@@ -289,7 +272,6 @@ export function useBulkActionWrappers({
     handleSetCategory,
     isAllSelected,
     selectAllFilters,
-    filters,
     effectiveSearch,
     selectAllExcludeHashes,
     selectAllExcludedTargets,
@@ -302,12 +284,12 @@ export function useBulkActionWrappers({
       location,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleRenameTorrentWrapper = useCallback(async (name: string) => {
     const hash = contextHashes[0]
@@ -333,34 +315,34 @@ export function useBulkActionWrappers({
     handleRecheck(
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleReannounceWrapper = useCallback(() => {
     handleReannounce(
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleTmmConfirmWrapper = useCallback(() => {
     handleTmmConfirm(
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -375,14 +357,14 @@ export function useBulkActionWrappers({
       inactiveSeedingTimeLimit,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta,
       shareLimitAction,
       shareLimitsMode
     )
-  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetSpeedLimitsWrapper = useCallback((
     uploadLimit: number,
@@ -393,12 +375,12 @@ export function useBulkActionWrappers({
       downloadLimit,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      selectAllFilters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
     setDropPayload(payload)
@@ -410,7 +392,6 @@ export function useBulkActionWrappers({
   }, [setDropPayload])
 
   return {
-    normalizedSelectionFilters,
     contextClientMeta,
     runAction,
     handleExportWrapper,

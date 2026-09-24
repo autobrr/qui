@@ -1,4 +1,5 @@
 {
+  "migrationHint": "正在使用 Deluge、rTorrent 或 Transmission？<docs>使用我们的迁移工具迁移到 qBittorrent</docs>",
   "card": {
     "status": {
       "disabled": "已禁用",
@@ -695,6 +696,7 @@
       "runDryRunNow": "立即模拟运行",
       "duplicate": "复制",
       "copyTo": "复制到...",
+      "editJSON": "以 JSON 编辑",
       "exportJSON": "导出 JSON",
       "dragToReorder": "拖拽以重新排序工作流",
       "actions": {
@@ -769,11 +771,25 @@
         "title": "导入工作流",
         "description": "粘贴工作流 JSON 以导入。工作流将以禁用状态创建并追加到末尾。",
         "placeholder": "粘贴工作流 JSON...",
-        "invalidImportData": "导入数据无效",
         "importFailed": "导入工作流失败",
         "cancel": "取消",
         "importing": "导入中...",
-        "import": "导入"
+        "import": "导入",
+        "errors": {
+          "invalidJson": "JSON 格式无效",
+          "notObject": "需要一个 JSON 对象",
+          "missingName": "缺少或无效的 'name' 字段",
+          "missingConditions": "缺少或无效的 'conditions' 字段",
+          "missingTracker": "必须指定 'trackerDomains'（字符串数组）或 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "以 JSON 编辑“{{name}}”",
+        "description": "编辑工作流 JSON。工作流保持其启用状态和位置。",
+        "saveFailed": "保存工作流失败",
+        "cancel": "取消",
+        "saving": "保存中...",
+        "save": "保存"
       },
       "toast": {
         "workflowDeleted": "工作流已删除",
@@ -789,6 +805,7 @@
         "createdWorkflow": "已创建\"{{name}}\"",
         "copiedWorkflow": "已将\"{{name}}\"复制到 {{instance}}",
         "importedWorkflow": "已导入\"{{name}}\"",
+        "updatedWorkflow": "已更新“{{name}}”",
         "createFailed": "创建工作流失败",
         "reorderFailed": "重新排序工作流失败",
         "exportedTorrents": "已导出 {{count}} 个种子到 CSV",
@@ -1586,10 +1603,6 @@
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除"
-    },
-    "shareLimit": {
-      "global": "全局",
-      "unlimited": "无限制"
     }
   },
   "backups": {

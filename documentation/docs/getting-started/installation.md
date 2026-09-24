@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-title: Install qui
+title: Install qui, the web UI for qBittorrent
 sidebar_label: Installation
 description: Install qui on Linux with one command, download the binary for Linux, macOS, or Windows, or run the Docker image.
 ---
@@ -67,3 +67,5 @@ If you installed qui to `/usr/local/bin` with `sudo`, run `sudo qui update`. If 
 2. Create your account
 3. Add your qBittorrent instances
 4. Manage your torrents
+
+Create the account before you expose qui to the Internet, and read [Sessions](../configuration/reference.md#sessions) before you put qui behind HTTPS.

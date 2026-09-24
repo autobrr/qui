@@ -223,13 +223,19 @@ deps:
 	go mod download
 	cd $(WEB_DIR) && pnpm install
 
+# Demo build of the frontend for the landing page (documentation/static/demo)
+docs-demo:
+	@echo "Building the landing page demo..."
+	cd $(WEB_DIR) && pnpm install && pnpm build:demo
+	rm -rf documentation/static/demo && cp -r $(WEB_DIR)/dist-demo documentation/static/demo
+
 # Documentation development server
-docs-dev:
+docs-dev: docs-demo
 	@echo "Starting documentation development server..."
 	cd documentation && pnpm start
 
 # Build documentation
-docs-build:
+docs-build: docs-demo
 	@echo "Building documentation..."
 	cd documentation && pnpm build
 
