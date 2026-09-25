@@ -18,7 +18,7 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
-import { unitLabel } from "@/lib/unit-format"
+import { type ByteUnit, BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type { CrossInstanceTorrent, Torrent, TorznabSearchResult } from "@/types"
 
 export interface ColumnFilter {
@@ -144,6 +144,8 @@ function escapeExprValue(value: string): string {
 // would miss the lookup and put NaN into the filter expression. Only the label is
 // localized, and it is built on call rather than frozen at import, so it follows a
 // language switch.
+// Which rungs the dropdowns offer, not a second copy of the ladder: PiB is left out because
+// nobody filters at that size, which is a different reason from why speeds stop at TiB/s.
 const FILTER_UNIT_LADDER: SizeUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
 
 export function getSizeUnitOptions(): { value: SizeUnit; label: string }[] {
@@ -155,20 +157,9 @@ export function getSpeedUnitOptions(): { value: SpeedUnit; label: string }[] {
 }
 
 export function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
-  const k = 1024
-  const unitMultipliers: Record<SizeUnit | SpeedUnit, number> = {
-    B: 1,
-    KiB: k,
-    MiB: k ** 2,
-    GiB: k ** 3,
-    TiB: k ** 4,
-    "B/s": 1,
-    "KiB/s": k,
-    "MiB/s": k ** 2,
-    "GiB/s": k ** 3,
-    "TiB/s": k ** 4,
-  }
-  return Math.floor(value * unitMultipliers[unit])
+  // A speed unit is its size unit per second, so both ladders share one set of magnitudes.
+  const sizeUnit = (unit.endsWith("/s") ? unit.slice(0, -2) : unit) as ByteUnit
+  return Math.floor(value * BYTES_PER_UNIT[sizeUnit])
 }
 
 function convertDateToTimestamp(dateStr: string): number {

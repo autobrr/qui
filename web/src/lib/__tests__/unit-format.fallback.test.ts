@@ -14,7 +14,7 @@ import { formatBytes } from "@/lib/utils"
 import { describe, expect, it } from "vitest"
 
 const byteUnits = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const
-const bitRateUnits = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"] as const
+const bitUnits = ["b", "Kb", "Mb", "Gb", "Tb"] as const
 
 describe("unit-format without i18next initialised", () => {
   it("falls back to the same strings the en locale carries", () => {
@@ -24,14 +24,14 @@ describe("unit-format without i18next initialised", () => {
     for (const unit of byteUnits) {
       expect(unitLabel(unit)).toBe(commonEn.dataUnits.byte[unit])
     }
-    for (const unit of bitRateUnits) {
-      expect(unitLabel(unit)).toBe(commonEn.dataUnits.bitrate[unit])
+    for (const unit of bitUnits) {
+      expect(unitLabel(unit)).toBe(commonEn.dataUnits.bit[unit])
     }
   })
 
   it("covers every unit the en locale declares, with nothing left over", () => {
     expect(Object.keys(commonEn.dataUnits.byte)).toEqual([...byteUnits])
-    expect(Object.keys(commonEn.dataUnits.bitrate)).toEqual([...bitRateUnits])
+    expect(Object.keys(commonEn.dataUnits.bit)).toEqual([...bitUnits])
   })
 
   it("applies the per-second wrapper", () => {

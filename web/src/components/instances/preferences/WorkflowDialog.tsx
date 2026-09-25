@@ -67,7 +67,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
-import { unitLabel } from "@/lib/unit-format"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
   ActionConditions,
   Automation,
@@ -104,12 +104,15 @@ interface WorkflowDialogProps {
   onSuccess?: () => void
 }
 
-// Speed units for display - storage is always KiB/s. The value is the multiplier and is
-// never localized; built on call so the label follows a language switch.
-const getSpeedLimitUnits = () => [
-  { value: 1, label: unitLabel("KiB", true) },
-  { value: 1024, label: unitLabel("MiB", true) },
-]
+// qBittorrent stores these limits in KiB/s, so each value is that unit's size relative to KiB.
+// The value is never localized; the label is, and is built on call to follow a language switch.
+const SPEED_LIMIT_LADDER = ["KiB", "MiB"] as const
+
+const getSpeedLimitUnits = () =>
+  SPEED_LIMIT_LADDER.map((unit) => ({
+    value: BYTES_PER_UNIT[unit] / BYTES_PER_UNIT.KiB,
+    label: unitLabel(unit, true),
+  }))
 
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "Original", labelKey: "preferences.workflowDialog.contentLayout.original" },

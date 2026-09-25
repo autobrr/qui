@@ -1748,7 +1748,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
                         >
                           <ArrowUpDown className="h-3 w-3" />
-                          <span>{speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mbps")}</span>
+                          <span>{speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>

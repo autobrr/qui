@@ -9,7 +9,8 @@ import commonFr from "@/i18n/locales/fr/common.json"
 import commonKo from "@/i18n/locales/ko/common.json"
 import commonUk from "@/i18n/locales/uk/common.json"
 import { getSizeUnitOptions, getSpeedUnitOptions, convertSizeToBytes } from "@/lib/column-filter-utils"
-import { formatValueWithUnit, unitLabel } from "@/lib/unit-format"
+import { type ByteUnit, BYTES_PER_UNIT, formatValueWithUnit, unitLabel } from "@/lib/unit-format"
+import { getPieceSizeOptions } from "@/components/torrents/piece-size"
 import { formatBytes } from "@/lib/utils"
 import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import i18next from "i18next"
@@ -74,6 +75,15 @@ describe("English output is unchanged", () => {
     }
   })
 
+  it("composes the English bit rate from one mechanism", async () => {
+    await i18next.changeLanguage("en")
+    // "Mbps" does not decompose into a unit plus a rate, so it used to need its own table of
+    // complete strings beside the byte ladder's perSecond rule. One rule now serves both.
+    expect(formatSpeedWithUnit(1572864, "bits")).toBe("12.6 Mb/s")
+    expect(unitLabel("Mb", true)).toBe("Mb/s")
+    expect(unitLabel("Mb")).toBe("Mb")
+  })
+
   it("leaves grouping off, so four-digit values keep no separator", async () => {
     await i18next.changeLanguage("en")
     // 1000..1023.99 of a unit stays in that unit, so four digits are ordinary, not an edge
@@ -114,6 +124,34 @@ describe("localized units", () => {
     await i18next.changeLanguage("fr")
     expect(formatBytes(0)).toBe("0 o")
     expect(formatSpeedWithUnit(0, "bytes")).toBe("0 o/s")
+  })
+})
+
+describe("derived labels", () => {
+  it("renders every piece size from the byte count it already stores", async () => {
+    await i18next.changeLanguage("en")
+    const labels = getPieceSizeOptions().map((option) => option.label)
+    expect(labels).toEqual([
+      "Auto (recommended)",
+      "16 KiB", "32 KiB", "64 KiB", "128 KiB", "256 KiB", "512 KiB",
+      "1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB",
+    ])
+    await i18next.changeLanguage("fr")
+    expect(getPieceSizeOptions()[1].label).toBe("16 Kio")
+  })
+
+  it("keeps the filter multipliers in step with the ladder", async () => {
+    // convertSizeToBytes reads BYTES_PER_UNIT, so a wrong magnitude there would silently
+    // change what a saved filter matches rather than fail to resolve.
+    expect(BYTES_PER_UNIT.B).toBe(1)
+    expect(BYTES_PER_UNIT.KiB).toBe(1024)
+    expect(BYTES_PER_UNIT.PiB).toBe(1024 ** 5)
+    for (const { value } of getSizeUnitOptions()) {
+      expect(convertSizeToBytes(1, value)).toBe(BYTES_PER_UNIT[value])
+    }
+    for (const { value } of getSpeedUnitOptions()) {
+      expect(convertSizeToBytes(1, value)).toBe(BYTES_PER_UNIT[value.replace("/s", "") as ByteUnit])
+    }
   })
 })
 

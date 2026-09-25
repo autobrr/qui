@@ -200,12 +200,12 @@
       "TiB": "TiB",
       "PiB": "PiB"
     },
-    "bitrate": {
-      "bps": "bit/s",
-      "Kbps": "kbit/s",
-      "Mbps": "Mbit/s",
-      "Gbps": "Gbit/s",
-      "Tbps": "Tbit/s"
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
     },
     "perSecond": "{{unit}}/s",
     "valueWithUnit": "{{value}} {{unit}}"

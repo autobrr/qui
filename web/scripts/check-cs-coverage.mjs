@@ -277,6 +277,9 @@ function classifyUntranslated(key, value) {
   if (/^[\w+.-]+:\/\//.test(value)) return "url"
   if (/^[*?[\]{}|\\^$.,;:!@#%&()=<>_+\-\w\s]+$/.test(value) && /[*?|\\]/.test(value)) return "pattern"
   if (/placeholder/i.test(key) || /example/i.test(key)) return "example"
+  // A rate suffix such as "{{unit}}/s" is the same string in most locales; a locale that does
+  // write its own (uk "{{unit}}/с") differs from English and never reaches this classifier.
+  if (/^\s*\/\s*(s|min|h|d)\s*$/.test(value.replace(/\{\{[^}]*\}\}/g, ""))) return "rate"
   if (passthroughTerms.has(value)) return "technical"
 
   // Check if composed of technical terms + connectors
@@ -293,6 +296,7 @@ const untranslatedReasons = {
   pattern: "glob / regex / filter pattern",
   example: "example value / placeholder",
   technical: "technical term",
+  rate: "rate suffix",
 }
 
 function checkUntranslated(enFlat, csFlat, namespace) {

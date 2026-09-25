@@ -25,7 +25,7 @@ import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
-import { unitLabel } from "@/lib/unit-format";
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   WRAPPING_BETWEEN_FIELDS,
@@ -58,19 +58,16 @@ function detectDurationUnit(secs: number): number {
   return 60;
 }
 
-// In both lists the value is the byte multiplier and stays numeric; only the label is
-// localized, and it is built on call so it follows a language switch.
-const getSpeedInputUnits = () => [
-  { value: 1, label: unitLabel("B", true) },
-  { value: 1024, label: unitLabel("KiB", true) },
-  { value: 1024 * 1024, label: unitLabel("MiB", true) },
-];
+// The value is the byte multiplier and stays numeric; only the label is localized, and it is
+// built on call so it follows a language switch.
+const SPEED_INPUT_LADDER = ["B", "KiB", "MiB"] as const;
+const BYTES_INPUT_LADDER = ["MiB", "GiB", "TiB"] as const;
 
-const getBytesInputUnits = () => [
-  { value: 1024 * 1024, label: unitLabel("MiB") },
-  { value: 1024 * 1024 * 1024, label: unitLabel("GiB") },
-  { value: 1024 * 1024 * 1024 * 1024, label: unitLabel("TiB") },
-];
+const getSpeedInputUnits = () =>
+  SPEED_INPUT_LADDER.map((unit) => ({ value: BYTES_PER_UNIT[unit], label: unitLabel(unit, true) }));
+
+const getBytesInputUnits = () =>
+  BYTES_INPUT_LADDER.map((unit) => ({ value: BYTES_PER_UNIT[unit], label: unitLabel(unit) }));
 
 // Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
 const MiB = 1024 * 1024;

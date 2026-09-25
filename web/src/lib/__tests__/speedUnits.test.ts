@@ -148,33 +148,33 @@ describe("formatSpeedWithUnit - bytes mode scaling and decimals", () => {
 
 describe("formatSpeedWithUnit - bits mode scaling and decimals", () => {
   it("multiplies bytes by 8 and scales with decimal k=1000", () => {
-    // 125 bytes/s -> 1000 bits/s -> 1 Kbps
-    expect(formatSpeedWithUnit(125, "bits")).toBe("1 Kbps")
-    // 125000 bytes/s -> 1,000,000 bits/s -> 1 Mbps
-    expect(formatSpeedWithUnit(125000, "bits")).toBe("1 Mbps")
-    // 1 byte/s -> 8 bps
-    expect(formatSpeedWithUnit(1, "bits")).toBe("8 bps")
+    // 125 bytes/s -> 1000 bits/s -> 1 Kb/s
+    expect(formatSpeedWithUnit(125, "bits")).toBe("1 Kb/s")
+    // 125000 bytes/s -> 1,000,000 bits/s -> 1 Mb/s
+    expect(formatSpeedWithUnit(125000, "bits")).toBe("1 Mb/s")
+    // 1 byte/s -> 8 b/s
+    expect(formatSpeedWithUnit(1, "bits")).toBe("8 b/s")
   })
 
   it("applies the bits-mode decimals rule across all branches (>=100 -> 0, >=10 -> 1, else 2)", () => {
-    // 1937.5 bytes/s -> 15500 bps -> 15.5 Kbps (value ~15.5 -> 1 decimal)
-    expect(formatSpeedWithUnit(1937.5, "bits")).toBe("15.5 Kbps")
-    // 32000 bytes/s -> 256000 bps -> 256 Kbps (value 256 -> 0 decimals)
-    expect(formatSpeedWithUnit(32000, "bits")).toBe("256 Kbps")
-    // 156.25 bytes/s -> 1250 bps -> 1.25 Kbps (value <10 -> 2 decimals)
-    expect(formatSpeedWithUnit(156.25, "bits")).toBe("1.25 Kbps")
+    // 1937.5 bytes/s -> 15500 b/s -> 15.5 Kb/s (value ~15.5 -> 1 decimal)
+    expect(formatSpeedWithUnit(1937.5, "bits")).toBe("15.5 Kb/s")
+    // 32000 bytes/s -> 256000 b/s -> 256 Kb/s (value 256 -> 0 decimals)
+    expect(formatSpeedWithUnit(32000, "bits")).toBe("256 Kb/s")
+    // 156.25 bytes/s -> 1250 b/s -> 1.25 Kb/s (value <10 -> 2 decimals)
+    expect(formatSpeedWithUnit(156.25, "bits")).toBe("1.25 Kb/s")
   })
 
-  it("uses 'X Ybps' with a space in non-compact mode", () => {
+  it("uses 'X Yb/s' with a space in non-compact mode", () => {
     const out = formatSpeedWithUnit(125000000, "bits")
-    expect(out).toBe("1 Gbps")
+    expect(out).toBe("1 Gb/s")
     expect(out).toContain(" ")
   })
 
   it("bits-mode suffixes are identical for compact and non-compact (only zero short-circuit differs)", () => {
     // The compact flag must NOT change the suffix in bits mode.
-    expect(formatSpeedWithUnit(125, "bits", true)).toBe("1 Kbps")
-    expect(formatSpeedWithUnit(125, "bits", false)).toBe("1 Kbps")
+    expect(formatSpeedWithUnit(125, "bits", true)).toBe("1 Kb/s")
+    expect(formatSpeedWithUnit(125, "bits", false)).toBe("1 Kb/s")
   })
 })
 
@@ -184,9 +184,9 @@ describe("formatSpeedWithUnit - clamping to the largest unit", () => {
     expect(out.endsWith("TiB/s")).toBe(true)
   })
 
-  it("never indexes past Tbps for extremely large bit inputs", () => {
+  it("never indexes past Tb/s for extremely large bit inputs", () => {
     const out = formatSpeedWithUnit(1e18, "bits")
-    expect(out.endsWith("Tbps")).toBe(true)
+    expect(out.endsWith("Tb/s")).toBe(true)
   })
 })
 
@@ -194,7 +194,7 @@ describe("formatSpeedWithUnit - non-positive / non-finite short-circuit", () => 
   it("returns the zero string for 0, negative, NaN and Infinity (non-compact)", () => {
     for (const v of [0, -1, -Infinity, Infinity, NaN]) {
       expect(formatSpeedWithUnit(v, "bytes")).toBe("0 B/s")
-      expect(formatSpeedWithUnit(v, "bits")).toBe("0 bps")
+      expect(formatSpeedWithUnit(v, "bits")).toBe("0 b/s")
     }
   })
 
@@ -214,8 +214,8 @@ describe("formatSpeedWithUnit - sub-unit rounding underflow", () => {
   })
 
   it("returns the zero string for a tiny positive bits value that rounds to 0", () => {
-    // 0.0001 bytes -> 0.0008 bps, rounds to 0 at 2 decimals.
-    expect(formatSpeedWithUnit(0.0001, "bits")).toBe("0 bps")
+    // 0.0001 bytes -> 0.0008 b/s, rounds to 0 at 2 decimals.
+    expect(formatSpeedWithUnit(0.0001, "bits")).toBe("0 b/s")
     expect(formatSpeedWithUnit(0.0001, "bits", true)).toBe("0")
   })
 })

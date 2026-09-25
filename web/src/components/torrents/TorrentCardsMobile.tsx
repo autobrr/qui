@@ -2135,7 +2135,7 @@ export function TorrentCardsMobile({
               >
                 <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
-                  {speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mbps")}
+                  {speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}
                 </span>
               </button>
             </div>

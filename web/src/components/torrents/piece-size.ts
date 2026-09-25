@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { formatValueWithUnit } from "@/lib/unit-format"
+import { formatBytes } from "@/lib/utils"
 
 export const TorrentPieceSize = {
   Auto: "0",
@@ -25,24 +25,13 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
-// Built on call, not frozen at import: the unit in each label is localized, and a
-// module-level array would resolve it before i18next loads a language.
-export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] => [
-  { value: TorrentPieceSize.Auto, label: "Auto (recommended)" },
-  { value: TorrentPieceSize.KiB16, label: formatValueWithUnit(16, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.KiB32, label: formatValueWithUnit(32, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.KiB64, label: formatValueWithUnit(64, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.KiB128, label: formatValueWithUnit(128, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.KiB256, label: formatValueWithUnit(256, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.KiB512, label: formatValueWithUnit(512, "KiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB1, label: formatValueWithUnit(1, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB2, label: formatValueWithUnit(2, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB4, label: formatValueWithUnit(4, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB8, label: formatValueWithUnit(8, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB16, label: formatValueWithUnit(16, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB32, label: formatValueWithUnit(32, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB64, label: formatValueWithUnit(64, "MiB", { fractionDigits: 0 }) },
-  { value: TorrentPieceSize.MiB128, label: formatValueWithUnit(128, "MiB", { fractionDigits: 0 }) },
-]
+// Each value is already the piece size in bytes, so the label is derived rather than repeated.
+// Built on call, not frozen at import: the unit is localized and a module-level array would
+// resolve it before i18next loads a language.
+export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] =>
+  Object.values(TorrentPieceSize).map((value) => ({
+    value,
+    label: value === TorrentPieceSize.Auto ? "Auto (recommended)" : formatBytes(Number(value)),
+  }))
 
 export type PieceSizeOption = ReturnType<typeof getPieceSizeOptions>[number]

@@ -193,12 +193,12 @@
       "TiB": "TiB",
       "PiB": "PiB"
     },
-    "bitrate": {
-      "bps": "bps",
-      "Kbps": "Kbps",
-      "Mbps": "Mbps",
-      "Gbps": "Gbps",
-      "Tbps": "Tbps"
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
     },
     "perSecond": "{{unit}}/s",
     "valueWithUnit": "{{value}} {{unit}}"

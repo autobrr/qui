@@ -99,9 +99,8 @@ function shouldTrackText(text, relaxed = false) {
   // CSS/UI variant names and common non-UI return values (before the relaxed
   // lowercase check so these are always filtered regardless of context)
   if (/^(?:default|secondary|destructive|outline|ghost|link|muted|accent|primary)$/.test(text)) return false
-  // Product names, technical terms, and other non-translatable tokens. Byte and speed
-  // units are NOT here: they are localized through common.json's dataUnits block, so a
-  // hardcoded "KiB" or "Mbps" in a component is a defect the checker should report.
+  // Product names and technical terms. Byte and speed units are deliberately absent: they are
+  // localized, so a hardcoded "KiB" is a defect to report.
   // Must be checked before the ALL_CAPS / lowercase-word gates below, because
   // those gates return true in relaxed mode for short caps or longer lowercase
   // words, which would incorrectly flag entries like "RSS" or "autobrr".
@@ -412,11 +411,9 @@ export function walkFiles(rootDir) {
   return files.sort()
 }
 
-// Holds the English fallback ladders for the localized byte and speed units, so its unit
-// literals are locale data, not untranslated UI. src/lib/__tests__/unit-format.fallback.test.ts
-// pins every entry to the en locale value, which is the guard this exemption trades against.
-// Exempted here and not in shouldScanFile, because find-unused-i18n-keys.mjs shares walkFiles
-// and needs to see this file: it is where every dataUnits key is referenced.
+// Holds the English fallback ladders; unit-format.fallback.test.ts pins each to its en value.
+// Not in shouldScanFile: find-unused-i18n-keys.mjs shares walkFiles and must still see this
+// file, which is where every dataUnits key is referenced.
 const HARDCODED_CHECK_EXEMPT_FILES = new Set(["src/lib/unit-format.ts"])
 
 function isExemptFromHardcodedCheck(filePath) {

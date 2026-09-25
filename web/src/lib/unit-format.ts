@@ -14,10 +14,37 @@
 import i18next from "i18next"
 
 export type ByteUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB" | "PiB"
-export type BitRateUnit = "bps" | "Kbps" | "Mbps" | "Gbps" | "Tbps"
+export type BitUnit = "b" | "Kb" | "Mb" | "Gb" | "Tb"
 
-const BYTE_UNITS: ByteUnit[] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-const BIT_RATE_UNITS: BitRateUnit[] = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"]
+/** How many bytes each unit is: the one place the ladder's magnitudes are written down. */
+export const BYTES_PER_UNIT: Record<ByteUnit, number> = {
+  B: 1,
+  KiB: 1024,
+  MiB: 1024 ** 2,
+  GiB: 1024 ** 3,
+  TiB: 1024 ** 4,
+  PiB: 1024 ** 5,
+}
+
+/** Size ladder, smallest first. Speeds stop at TiB/s, which no transfer will ever reach. */
+export const BYTE_LADDER = Object.keys(BYTES_PER_UNIT) as ByteUnit[]
+export const BYTE_SPEED_LADDER = BYTE_LADDER.slice(0, -1)
+export const BIT_LADDER: BitUnit[] = ["b", "Kb", "Mb", "Gb", "Tb"]
+
+/**
+ * Picks the largest unit that keeps the value at or above 1 and scales it to that unit.
+ * qBittorrent reports an unknown size as -1, and log of a negative is NaN, so a non-finite
+ * exponent falls back to the bottom of the ladder and the NaN still shows.
+ */
+export function scaleToUnit<T extends string>(
+  value: number,
+  ladder: readonly T[],
+  base: number
+): { value: number; unit: T } {
+  const exponent = Math.floor(Math.log(value) / Math.log(base))
+  const index = Number.isFinite(exponent) ? Math.min(Math.max(exponent, 0), ladder.length - 1) : 0
+  return { value: value / Math.pow(base, index), unit: ladder[index] }
+}
 
 // English fallbacks, needed because an uninitialised i18next t() returns undefined even when
 // given a defaultValue (measured on i18next 26.4.2). This file is exempt from the
@@ -32,20 +59,20 @@ const ENGLISH_BYTE_UNITS: Record<ByteUnit, string> = {
   PiB: "PiB",
 }
 
-const ENGLISH_BIT_RATE_UNITS: Record<BitRateUnit, string> = {
-  bps: "bps",
-  Kbps: "Kbps",
-  Mbps: "Mbps",
-  Gbps: "Gbps",
-  Tbps: "Tbps",
+const ENGLISH_BIT_UNITS: Record<BitUnit, string> = {
+  b: "b",
+  Kb: "Kb",
+  Mb: "Mb",
+  Gb: "Gb",
+  Tb: "Tb",
 }
 
 const ENGLISH_PER_SECOND = "{{unit}}/s"
 const ENGLISH_VALUE_WITH_UNIT = "{{value}} {{unit}}"
 const JOIN_KEY = "dataUnits.valueWithUnit"
 
-function isBitRateUnit(unit: ByteUnit | BitRateUnit): unit is BitRateUnit {
-  return unit in ENGLISH_BIT_RATE_UNITS
+function isBitUnit(unit: ByteUnit | BitUnit): unit is BitUnit {
+  return unit in ENGLISH_BIT_UNITS
 }
 
 /**
@@ -59,7 +86,8 @@ function isBitRateUnit(unit: ByteUnit | BitRateUnit): unit is BitRateUnit {
 interface UnitLabels {
   byte: Record<ByteUnit, string>
   byteRate: Record<ByteUnit, string>
-  bitRate: Record<BitRateUnit, string>
+  bit: Record<BitUnit, string>
+  bitRate: Record<BitUnit, string>
   join: string
 }
 
@@ -89,19 +117,23 @@ function translate(key: string, fallback: string, options?: Record<string, unkno
   return i18next.t(key, { ns: "common", ...options }) ?? fallback
 }
 
+function perSecondForm(symbol: string): string {
+  return translate("dataUnits.perSecond", ENGLISH_PER_SECOND.replace("{{unit}}", symbol), { unit: symbol })
+}
+
 function buildLabels(): UnitLabels {
   const byte = {} as Record<ByteUnit, string>
   const byteRate = {} as Record<ByteUnit, string>
-  for (const unit of BYTE_UNITS) {
+  for (const unit of BYTE_LADDER) {
     byte[unit] = translate(`dataUnits.byte.${unit}`, ENGLISH_BYTE_UNITS[unit])
-    byteRate[unit] = translate("dataUnits.perSecond", ENGLISH_PER_SECOND.replace("{{unit}}", byte[unit]), {
-      unit: byte[unit],
-    })
+    byteRate[unit] = perSecondForm(byte[unit])
   }
 
-  const bitRate = {} as Record<BitRateUnit, string>
-  for (const unit of BIT_RATE_UNITS) {
-    bitRate[unit] = translate(`dataUnits.bitrate.${unit}`, ENGLISH_BIT_RATE_UNITS[unit])
+  const bit = {} as Record<BitUnit, string>
+  const bitRate = {} as Record<BitUnit, string>
+  for (const unit of BIT_LADDER) {
+    bit[unit] = translate(`dataUnits.bit.${unit}`, ENGLISH_BIT_UNITS[unit])
+    bitRate[unit] = perSecondForm(bit[unit])
   }
 
   // getResource, not t(), because t() would interpolate and hand back a filled string with the
@@ -114,7 +146,7 @@ function buildLabels(): UnitLabels {
       i18next.getResource("en", "common", JOIN_KEY)) as string | undefined)
     : undefined
 
-  return { byte, byteRate, bitRate, join: rawJoin ?? ENGLISH_VALUE_WITH_UNIT }
+  return { byte, byteRate, bit, bitRate, join: rawJoin ?? ENGLISH_VALUE_WITH_UNIT }
 }
 
 function unitLabels(): UnitLabels {
@@ -146,12 +178,11 @@ function numberFormatter(fractionDigits: number): Intl.NumberFormat {
 
 /**
  * The localized symbol for a unit: "KiB" is "Kio" in French and "КіБ" in Ukrainian.
- * `perSecond` gives the locale's rate form ("Kio/s", "КіБ/с"); bit-rate units already carry
- * the rate in the symbol, so it does nothing for them.
+ * `perSecond` gives the locale's rate form, and applies to both ladders: "Kio/s", "Mbit/s".
  */
-export function unitLabel(unit: ByteUnit | BitRateUnit, perSecond = false): string {
+export function unitLabel(unit: ByteUnit | BitUnit, perSecond = false): string {
   const resolved = unitLabels()
-  if (isBitRateUnit(unit)) return resolved.bitRate[unit]
+  if (isBitUnit(unit)) return perSecond ? resolved.bitRate[unit] : resolved.bit[unit]
   return perSecond ? resolved.byteRate[unit] : resolved.byte[unit]
 }
 
@@ -167,7 +198,7 @@ export function unitLabel(unit: ByteUnit | BitRateUnit, perSecond = false): stri
  */
 export function formatValueWithUnit(
   value: number,
-  unit: ByteUnit | BitRateUnit,
+  unit: ByteUnit | BitUnit,
   opts: { fractionDigits?: number; perSecond?: boolean; compact?: boolean } = {}
 ): string {
   const { fractionDigits = 2, perSecond = false, compact = false } = opts
