@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -368,23 +369,12 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
 	}
 
-	// Check if torrent is blocklisted or already exists on any eligible instance.
-	// This runs before tree creation: by addSeasonPack the link tree exists.
+	// The exists check runs on blocked instances too, so a blocked copy is never
+	// duplicated elsewhere. Runs before tree creation: by addSeasonPack the tree exists.
 	hashes := collectHashes(prep.meta)
+	unblocked := make([]*models.Instance, 0, len(prep.eligible))
+	blockedID := 0
 	for _, inst := range prep.eligible {
-		if s.blocklistStore != nil {
-			if _, blocked, err := s.blocklistStore.FindBlocked(ctx, inst.ID, hashes); err != nil {
-				message := fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", inst.ID, err)
-				s.recordApplyRun(ctx, req.TorrentName, "blocklist_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
-				return &SeasonPackApplyResponse{Reason: "blocklist_check_failed", Message: message}, nil
-			} else if blocked {
-				s.recordApplyRun(ctx, req.TorrentName, "blocked", "", inst.ID, 0, prep.totalEpisodes, 0, "")
-				return &SeasonPackApplyResponse{
-					Reason:  "blocked",
-					Message: fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", inst.ID),
-				}, nil
-			}
-		}
 		if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, hashes); err != nil {
 			message := fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, err)
 			s.recordApplyRun(ctx, req.TorrentName, "existing_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
@@ -399,7 +389,26 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 				Message: fmt.Sprintf("torrent already exists on instance %d", inst.ID),
 			}, nil
 		}
+		if s.blocklistStore != nil {
+			if _, blocked, err := s.blocklistStore.FindBlocked(ctx, inst.ID, hashes); err != nil {
+				message := fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", inst.ID, err)
+				s.recordApplyRun(ctx, req.TorrentName, "blocklist_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
+				return &SeasonPackApplyResponse{Reason: "blocklist_check_failed", Message: message}, nil
+			} else if blocked {
+				blockedID = cmp.Or(blockedID, inst.ID)
+				continue
+			}
+		}
+		unblocked = append(unblocked, inst)
 	}
+	if len(unblocked) == 0 {
+		s.recordApplyRun(ctx, req.TorrentName, "blocked", "", blockedID, 0, prep.totalEpisodes, 0, "")
+		return &SeasonPackApplyResponse{
+			Reason:  "blocked",
+			Message: fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedID),
+		}, nil
+	}
+	prep.eligible = unblocked
 
 	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
 	if err != nil {

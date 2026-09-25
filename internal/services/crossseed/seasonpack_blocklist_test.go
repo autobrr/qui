@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -165,4 +166,52 @@ func TestCrossSeed_SeasonPackDiversionHonorsBlocklist(t *testing.T) {
 			}
 		})
 	}
+}
+
+// addUnblockedInstanceB adds instance 2 with the same episodes as instance 1
+// and no blocklist entry.
+func addUnblockedInstanceB(t *testing.T, f *blockedPackFixture) {
+	t.Helper()
+	instB := &models.Instance{
+		ID: 2, Name: "B", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	f.svc.instanceStore.(*fakeInstanceStore).instances[instB.ID] = instB
+	fsm := f.sm.fakeSyncManager
+	torrents := slices.Clone(fsm.all[1])
+	fsm.all[instB.ID] = torrents
+	fsm.cached[instB.ID] = buildCrossInstanceViews(instB, torrents)
+}
+
+func TestApplySeasonPackWebhook_BlockedOnOneInstanceAppliesOnAnother(t *testing.T) {
+	f := newBlockedPackFixture(t, true)
+	addUnblockedInstanceB(t, f)
+
+	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+		TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1, 2},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Applied, "%+v", resp)
+	require.Len(t, f.sm.addCalls, 1)
+	require.Equal(t, 2, f.sm.addCalls[0].instanceID)
+}
+
+func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
+	f := newBlockedPackFixture(t, true)
+	addUnblockedInstanceB(t, f)
+	torrentBytes, err := base64.StdEncoding.DecodeString(f.torrentData)
+	require.NoError(t, err)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+	fsm := f.sm.fakeSyncManager
+	fsm.all[1] = append(fsm.all[1], qbt.Torrent{Hash: meta.HashV1, Name: f.packName, Progress: 1})
+
+	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+		TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1, 2},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "already_exists", resp.Reason, "%+v", resp)
+	require.Empty(t, f.sm.addCalls)
 }
