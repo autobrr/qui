@@ -158,4 +158,12 @@ Use the per-instance blocklist to stop qui from injecting specific infohashes ag
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
 
+The blocklist applies to these add paths:
+
+- Cross-seed applies from search, RSS, completion, autobrr, and a manual match with one target
+- [Dir Scan](./dir-scan.md)
+- Season pack assembly from the [apply webhook](./season-packs.md#4-configure-the-apply-action) and from [automatic assembly](./season-packs.md#automatic-assembly)
+
+A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
+
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
