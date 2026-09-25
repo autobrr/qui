@@ -79,7 +79,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 ## Translation Rules
 
-- **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) into JSX, or into the option tables that JSX renders.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`. `scripts/find-hardcoded-i18n-literals.mjs` checks `label`/`reason`-style properties in `.ts` modules too, so an exported list of labels is no way around this.
+- **Never hardcode user-facing text or raw backend values (e.g. `run.status`), in JSX or in the option tables JSX renders.** Create an `i18n` key in the relevant namespace and render it with `t()`.
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
