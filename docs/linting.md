@@ -12,7 +12,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 - `make gofix-changed`: apply `go fix` on changed Go files only.
 - `make gofix-check-changed`: check `go fix` drift on changed Go files only.
 
-Frontend lint covers `web/src`, the config files at the web root, and `web/scripts/*.mjs`. The
+Frontend lint covers `web/src`, the config files at the web root, and `web/scripts/**/*.mjs`. The
 scripts run under Node, so they get the recommended rules and Node globals, not the React or
 stylistic rules.
 
