@@ -25,6 +25,7 @@ import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
+import { unitLabel } from "@/lib/unit-format";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   WRAPPING_BETWEEN_FIELDS,
@@ -57,16 +58,18 @@ function detectDurationUnit(secs: number): number {
   return 60;
 }
 
-const SPEED_INPUT_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
+// In both lists the value is the byte multiplier and stays numeric; only the label is
+// localized, and it is built on call so it follows a language switch.
+const getSpeedInputUnits = () => [
+  { value: 1, label: unitLabel("B", true) },
+  { value: 1024, label: unitLabel("KiB", true) },
+  { value: 1024 * 1024, label: unitLabel("MiB", true) },
 ];
 
-const BYTES_INPUT_UNITS = [
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
+const getBytesInputUnits = () => [
+  { value: 1024 * 1024, label: unitLabel("MiB") },
+  { value: 1024 * 1024 * 1024, label: unitLabel("GiB") },
+  { value: 1024 * 1024 * 1024 * 1024, label: unitLabel("TiB") },
 ];
 
 // Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
@@ -612,7 +615,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {BYTES_INPUT_UNITS.map((u) => (
+                {getBytesInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -787,7 +790,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SPEED_INPUT_UNITS.map((u) => (
+                {getSpeedInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -812,7 +815,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {BYTES_INPUT_UNITS.map((u) => (
+                {getBytesInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>

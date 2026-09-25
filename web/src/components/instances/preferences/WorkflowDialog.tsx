@@ -67,6 +67,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
+import { unitLabel } from "@/lib/unit-format"
 import type {
   ActionConditions,
   Automation,
@@ -103,10 +104,11 @@ interface WorkflowDialogProps {
   onSuccess?: () => void
 }
 
-// Speed units for display - storage is always KiB/s
-const SPEED_LIMIT_UNITS = [
-  { value: 1, label: "KiB/s" },
-  { value: 1024, label: "MiB/s" },
+// Speed units for display - storage is always KiB/s. The value is the multiplier and is
+// never localized; built on call so the label follows a language switch.
+const getSpeedLimitUnits = () => [
+  { value: 1, label: unitLabel("KiB", true) },
+  { value: 1024, label: unitLabel("MiB", true) },
 ]
 
 const CONTENT_LAYOUT_OPTIONS = [
@@ -2876,7 +2878,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -2950,7 +2952,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { formatValueWithUnit } from "@/lib/unit-format"
+
 export const TorrentPieceSize = {
   Auto: "0",
   KiB16: "16384",
@@ -23,22 +25,24 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
-export const pieceSizeOptions = [
+// Built on call, not frozen at import: the unit in each label is localized, and a
+// module-level array would resolve it before i18next loads a language.
+export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] => [
   { value: TorrentPieceSize.Auto, label: "Auto (recommended)" },
-  { value: TorrentPieceSize.KiB16, label: "16 KiB" },
-  { value: TorrentPieceSize.KiB32, label: "32 KiB" },
-  { value: TorrentPieceSize.KiB64, label: "64 KiB" },
-  { value: TorrentPieceSize.KiB128, label: "128 KiB" },
-  { value: TorrentPieceSize.KiB256, label: "256 KiB" },
-  { value: TorrentPieceSize.KiB512, label: "512 KiB" },
-  { value: TorrentPieceSize.MiB1, label: "1 MiB" },
-  { value: TorrentPieceSize.MiB2, label: "2 MiB" },
-  { value: TorrentPieceSize.MiB4, label: "4 MiB" },
-  { value: TorrentPieceSize.MiB8, label: "8 MiB" },
-  { value: TorrentPieceSize.MiB16, label: "16 MiB" },
-  { value: TorrentPieceSize.MiB32, label: "32 MiB" },
-  { value: TorrentPieceSize.MiB64, label: "64 MiB" },
-  { value: TorrentPieceSize.MiB128, label: "128 MiB" },
-] as const
+  { value: TorrentPieceSize.KiB16, label: formatValueWithUnit(16, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.KiB32, label: formatValueWithUnit(32, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.KiB64, label: formatValueWithUnit(64, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.KiB128, label: formatValueWithUnit(128, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.KiB256, label: formatValueWithUnit(256, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.KiB512, label: formatValueWithUnit(512, "KiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB1, label: formatValueWithUnit(1, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB2, label: formatValueWithUnit(2, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB4, label: formatValueWithUnit(4, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB8, label: formatValueWithUnit(8, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB16, label: formatValueWithUnit(16, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB32, label: formatValueWithUnit(32, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB64, label: formatValueWithUnit(64, "MiB", { fractionDigits: 0 }) },
+  { value: TorrentPieceSize.MiB128, label: formatValueWithUnit(128, "MiB", { fractionDigits: 0 }) },
+]
 
-export type PieceSizeOption = (typeof pieceSizeOptions)[number]
+export type PieceSizeOption = ReturnType<typeof getPieceSizeOptions>[number]

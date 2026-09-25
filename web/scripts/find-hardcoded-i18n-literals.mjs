@@ -91,8 +91,6 @@ function shouldTrackText(text, relaxed = false) {
   if (/^https?:\/\//.test(text)) return false
   // Duration abbreviation compounds: "<1s", "5m 30s", "2h 15m", "m s", "h m", "< 1m"
   if (/^[<>]?\s*\d*\s*[dhms](?:\s+\d*\s*[dhms])?$/.test(text)) return false
-  // Size format fallbacks: "0 B", "10 KB", etc.
-  if (/^\d+\s+[KMGT]?i?B$/.test(text)) return false
   // JSON / code example patterns in placeholders
   if (/^\{[\s\S]*:[\s\S]*\}$/.test(text)) return false
   if (!/[A-Za-z]/.test(text)) return false
@@ -101,11 +99,13 @@ function shouldTrackText(text, relaxed = false) {
   // CSS/UI variant names and common non-UI return values (before the relaxed
   // lowercase check so these are always filtered regardless of context)
   if (/^(?:default|secondary|destructive|outline|ghost|link|muted|accent|primary)$/.test(text)) return false
-  // Units, product names, technical terms, and other non-translatable tokens.
+  // Product names, technical terms, and other non-translatable tokens. Byte and speed
+  // units are NOT here: they are localized through common.json's dataUnits block, so a
+  // hardcoded "KiB" or "Mbps" in a component is a defect the checker should report.
   // Must be checked before the ALL_CAPS / lowercase-word gates below, because
   // those gates return true in relaxed mode for short caps or longer lowercase
   // words, which would incorrectly flag entries like "RSS" or "autobrr".
-  if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|Mbps|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
+  if (/^(?:[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
   // ALL_CAPS constants -- but in relaxed mode, flag short UI words like "ALL"
   if (/^[A-Z0-9_]+$/.test(text)) {
     return relaxed && text.length >= 3
@@ -412,8 +412,21 @@ export function walkFiles(rootDir) {
   return files.sort()
 }
 
+// Holds the English fallback ladders for the localized byte and speed units, so its unit
+// literals are locale data, not untranslated UI. src/lib/__tests__/unit-format.fallback.test.ts
+// pins every entry to the en locale value, which is the guard this exemption trades against.
+// Exempted here and not in shouldScanFile, because find-unused-i18n-keys.mjs shares walkFiles
+// and needs to see this file: it is where every dataUnits key is referenced.
+const HARDCODED_CHECK_EXEMPT_FILES = new Set(["src/lib/unit-format.ts"])
+
+function isExemptFromHardcodedCheck(filePath) {
+  const relativePath = path.relative(webRoot, filePath).replaceAll(path.sep, "/")
+  return HARDCODED_CHECK_EXEMPT_FILES.has(relativePath)
+}
+
 export function findHardcodedStringsInFiles(files) {
   return files.flatMap((filePath) => {
+    if (isExemptFromHardcodedCheck(filePath)) return []
     const source = fs.readFileSync(filePath, "utf8")
     return findHardcodedStringsInSource(source, filePath)
   })
