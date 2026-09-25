@@ -18,7 +18,7 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
-import { type ByteUnit, BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type { CrossInstanceTorrent, Torrent, TorznabSearchResult } from "@/types"
 
 export interface ColumnFilter {
@@ -156,10 +156,14 @@ export function getSpeedUnitOptions(): { value: SpeedUnit; label: string }[] {
   return FILTER_UNIT_LADDER.map((unit) => ({ value: `${unit}/s`, label: unitLabel(unit, true) }))
 }
 
+// A speed filter is its size filter per second, so both spellings resolve to the same
+// magnitude. The "/s" is part of the stored SpeedUnit value, not something this layer chooses.
+const FILTER_UNIT_BYTES: Record<SizeUnit | SpeedUnit, number> = Object.fromEntries(
+  FILTER_UNIT_LADDER.flatMap((unit) => [[unit, BYTES_PER_UNIT[unit]], [`${unit}/s`, BYTES_PER_UNIT[unit]]])
+) as Record<SizeUnit | SpeedUnit, number>
+
 export function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
-  // A speed unit is its size unit per second, so both ladders share one set of magnitudes.
-  const sizeUnit = (unit.endsWith("/s") ? unit.slice(0, -2) : unit) as ByteUnit
-  return Math.floor(value * BYTES_PER_UNIT[sizeUnit])
+  return Math.floor(value * FILTER_UNIT_BYTES[unit])
 }
 
 function convertDateToTimestamp(dateStr: string): number {

@@ -13,23 +13,34 @@
 // every component, because lib/utils.ts imports this module and also exports cn().
 import i18next from "i18next"
 
-export type ByteUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB" | "PiB"
-export type BitUnit = "b" | "Kb" | "Mb" | "Gb" | "Tb"
-
-/** How many bytes each unit is: the one place the ladder's magnitudes are written down. */
-export const BYTES_PER_UNIT: Record<ByteUnit, number> = {
+/** How many bytes each unit is: the one place the ladder is written down. */
+export const BYTES_PER_UNIT = {
   B: 1,
   KiB: 1024,
   MiB: 1024 ** 2,
   GiB: 1024 ** 3,
   TiB: 1024 ** 4,
   PiB: 1024 ** 5,
+} as const
+
+// The bit ladder is only ever a speed, so it stops where BYTE_SPEED_LADDER does rather than
+// where BYTE_LADDER does. A Pb/s rung would be a key in eleven locale files that can never render.
+export const BIT_LADDER = ["b", "Kb", "Mb", "Gb", "Tb"] as const
+
+export type ByteUnit = keyof typeof BYTES_PER_UNIT
+export type BitUnit = (typeof BIT_LADDER)[number]
+
+// Derived from the ladder rather than listed again; a Set because unitLabel is on the
+// per-cell render path.
+const BIT_UNITS: ReadonlySet<string> = new Set(BIT_LADDER)
+
+function isBitUnit(unit: ByteUnit | BitUnit): unit is BitUnit {
+  return BIT_UNITS.has(unit)
 }
 
 /** Size ladder, smallest first. Speeds stop at TiB/s, which no transfer will ever reach. */
 export const BYTE_LADDER = Object.keys(BYTES_PER_UNIT) as ByteUnit[]
 export const BYTE_SPEED_LADDER = BYTE_LADDER.slice(0, -1)
-export const BIT_LADDER: BitUnit[] = ["b", "Kb", "Mb", "Gb", "Tb"]
 
 /**
  * Picks the largest unit that keeps the value at or above 1 and scales it to that unit.
@@ -46,34 +57,13 @@ export function scaleToUnit<T extends string>(
   return { value: value / Math.pow(base, index), unit: ladder[index] }
 }
 
-// English fallbacks, needed because an uninitialised i18next t() returns undefined even when
-// given a defaultValue (measured on i18next 26.4.2). This file is exempt from the
-// hardcoded-literal checker for these; unit-format.fallback.test.ts pins every entry to the
-// matching en locale value, which is the guard that exemption is traded against.
-const ENGLISH_BYTE_UNITS: Record<ByteUnit, string> = {
-  B: "B",
-  KiB: "KiB",
-  MiB: "MiB",
-  GiB: "GiB",
-  TiB: "TiB",
-  PiB: "PiB",
-}
-
-const ENGLISH_BIT_UNITS: Record<BitUnit, string> = {
-  b: "b",
-  Kb: "Kb",
-  Mb: "Mb",
-  Gb: "Gb",
-  Tb: "Tb",
-}
+// An uninitialised i18next t() returns undefined even when given a defaultValue (measured on
+// i18next 26.4.2), so every lookup needs a fallback. Each unit's own key is its English form,
+// which unit-format.fallback.test.ts pins against the en locale.
 
 const ENGLISH_PER_SECOND = "{{unit}}/s"
 const ENGLISH_VALUE_WITH_UNIT = "{{value}} {{unit}}"
 const JOIN_KEY = "dataUnits.valueWithUnit"
-
-function isBitUnit(unit: ByteUnit | BitUnit): unit is BitUnit {
-  return unit in ENGLISH_BIT_UNITS
-}
 
 /**
  * Every locale-dependent string these formatters need, resolved once per language.
@@ -125,14 +115,14 @@ function buildLabels(): UnitLabels {
   const byte = {} as Record<ByteUnit, string>
   const byteRate = {} as Record<ByteUnit, string>
   for (const unit of BYTE_LADDER) {
-    byte[unit] = translate(`dataUnits.byte.${unit}`, ENGLISH_BYTE_UNITS[unit])
+    byte[unit] = translate(`dataUnits.byte.${unit}`, unit)
     byteRate[unit] = perSecondForm(byte[unit])
   }
 
   const bit = {} as Record<BitUnit, string>
   const bitRate = {} as Record<BitUnit, string>
   for (const unit of BIT_LADDER) {
-    bit[unit] = translate(`dataUnits.bit.${unit}`, ENGLISH_BIT_UNITS[unit])
+    bit[unit] = translate(`dataUnits.bit.${unit}`, unit)
     bitRate[unit] = perSecondForm(bit[unit])
   }
 
