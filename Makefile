@@ -187,11 +187,11 @@ gofix-check-changed:
 		rm -f "$$tmp"; \
 		echo "go fix check clean."
 
-# Local pre-commit gate (changed files only)
+# Local pre-commit gate: fmt and gofix on changed files, then lint
 precommit: fmt gofix-changed lint
 	@echo "Pre-commit checks passed."
 
-# Lint code (changed files only - fast feedback for AI iteration)
+# Lint new Go issues since the develop merge-base, then all frontend files
 lint:
 	@echo "Linting changed Go code..."
 	golangci-lint run --new-from-merge-base=develop --timeout=5m
