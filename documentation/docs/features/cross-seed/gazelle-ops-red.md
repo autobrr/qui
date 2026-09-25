@@ -92,7 +92,7 @@ Fix:
 
 - Enable Gazelle
 - Set at least one API key
-- If you changed `sessionSecret` (or `QUI__SESSION_SECRET`), qui cannot decrypt the stored keys, and the key fields show as empty. Put the old `sessionSecret` back to use the stored keys again, or enter the keys again. When you save a new key, qui deletes the stored keys that it cannot decrypt.
+- If you changed `sessionSecret` (or `QUI__SESSION_SECRET`), qui cannot decrypt the stored keys, and the key fields show as empty. Put the old `sessionSecret` back to use the stored keys again, or enter the keys again.
 - For the best OPS/RED coverage, set **both** keys
 
 ### "OPS rejected the API key or this IP" or "RED rejected the API key or this IP"

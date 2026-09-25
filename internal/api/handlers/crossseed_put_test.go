@@ -427,28 +427,32 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	}
 
+	requireOldGazelleKeys := func() {
+		t.Helper()
+		for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
+			key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, want, key)
+		}
+	}
+
 	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.
 	patch(`{"runIntervalMinutes":240}`)
-	for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
-		key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, want, key)
-	}
+	requireOldGazelleKeys()
 	tvdbKey, tvdbPin, err := oldStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "tvdb", tvdbKey)
 	require.Equal(t, "pin", tvdbPin)
 
-	// A new secret drops the kept ones that no longer decrypt, so the old PIN cannot block the new key.
+	// The old PIN cannot block a new key, and the new key deletes no other secret.
 	patch(`{"seasonPackTvdbApiKey":"new-tvdb"}`)
 	tvdbKey, tvdbPin, err = newStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "new-tvdb", tvdbKey)
 	require.Empty(t, tvdbPin)
-	for _, host := range []string{"redacted.sh", "orpheus.network"} {
-		_, ok, err := newStore.GetDecryptedGazelleAPIKey(ctx, host)
-		require.NoError(t, err)
-		require.False(t, ok)
-	}
+	requireOldGazelleKeys()
+	settings, err := oldStore.GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, domain.RedactedStr, settings.SeasonPackTVDBPIN)
 }
