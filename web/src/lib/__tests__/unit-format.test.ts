@@ -117,6 +117,24 @@ describe("localized units", () => {
   })
 })
 
+describe("the cached join template", () => {
+  it("carries both placeholders in every locale, so filling it with a plain replace is safe", async () => {
+    // formatValueWithUnit fills this template itself instead of paying i18next interpolation
+    // per call. That is only safe while every locale writes both placeholders; a translator who
+    // dropped one would silently lose the number or the unit.
+    const locales = import.meta.glob<{ dataUnits: { valueWithUnit: string } }>(
+      "../../i18n/locales/*/common.json",
+      { eager: true, import: "default" }
+    )
+    const paths = Object.keys(locales)
+    expect(paths.length).toBe(11)
+    for (const [path, common] of Object.entries(locales)) {
+      expect(common.dataUnits.valueWithUnit, path).toContain("{{value}}")
+      expect(common.dataUnits.valueWithUnit, path).toContain("{{unit}}")
+    }
+  })
+})
+
 describe("filter units keep their stored value", () => {
   it("localizes only the label, never the value", async () => {
     await i18next.changeLanguage("fr")
