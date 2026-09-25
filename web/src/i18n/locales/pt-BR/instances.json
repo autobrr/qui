@@ -1564,6 +1564,7 @@
           "noMatches": "Nenhuma correspondência",
           "exportedToInstance": "Exportar"
         },
+        "actionFallback": "Ação desconhecida ({{action}})",
         "summary": {
           "tagsChangedBoth": "Tags afetadas ({{added}} Inseridas | {{removed}} Excluídas)",
           "tagsAdded": "{{count}} Tag ganha",

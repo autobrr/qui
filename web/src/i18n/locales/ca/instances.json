@@ -1222,6 +1222,7 @@
           "noMatches": "Cap coincidència",
           "exportedToInstance": "Exporta a una instància"
         },
+        "actionFallback": "Acció desconeguda ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} s'etiquetarien i {{removed}} es desetiquetarien",
           "tagsAdded": "{{count}} s'etiquetaria",

@@ -1662,8 +1662,10 @@
     "error": "Chyba",
     "missingFiles": "Chybějící soubory",
     "checkingResumeData": "Kontrola obnovovacích dat",
-    "moving": "Přesouvání"
+    "moving": "Přesouvání",
+    "unknown": "Neznámý"
   },
+  "stateLabelFallback": "Nerozpoznáno ({{state}})",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

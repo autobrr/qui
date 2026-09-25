@@ -1564,6 +1564,7 @@
           "noMatches": "Nessuna corrispondenza",
           "exportedToInstance": "Esporta verso istanza"
         },
+        "actionFallback": "Azione sconosciuta ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} verrebbero taggati, {{removed}} verrebbero rimossi dai tag",
           "tagsAdded": "{{count}} verrebbe taggato",

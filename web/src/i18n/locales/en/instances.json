@@ -1564,6 +1564,7 @@
           "noMatches": "No matches",
           "exportedToInstance": "Export to instance"
         },
+        "actionFallback": "Unknown action ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} would be tagged, {{removed}} would be untagged",
           "tagsAdded": "{{count}} would be tagged",

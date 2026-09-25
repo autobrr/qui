@@ -1725,8 +1725,10 @@
     "error": "Помилка",
     "missingFiles": "Відсутні файли",
     "checkingResumeData": "Перевірка даних відновлення",
-    "moving": "Переміщення"
+    "moving": "Переміщення",
+    "unknown": "Невідомо"
   },
+  "stateLabelFallback": "Нерозпізнано ({{state}})",
   "details": {
     "failedToUpdatePriorities": "Не вдалося оновити пріоритети файлів",
     "failedToRenameFile": "Не вдалося перейменувати файл",

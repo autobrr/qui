@@ -1607,8 +1607,10 @@
     "error": "Error",
     "missingFiles": "Missing Files",
     "checkingResumeData": "Checking Resume Data",
-    "moving": "Moving"
+    "moving": "Moving",
+    "unknown": "Unknown"
   },
+  "stateLabelFallback": "Unrecognized ({{state}})",
   "details": {
     "failedToUpdatePriorities": "Failed to update file priorities",
     "failedToRenameFile": "Failed to rename file",

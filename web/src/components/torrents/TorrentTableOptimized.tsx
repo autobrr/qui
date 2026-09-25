@@ -36,6 +36,7 @@ import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
 import { useTable } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import type { TFunction } from "i18next"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { torrentTableFeatures, type TorrentRow, type TorrentTableColumnDef } from "./tanstackTableFeatures"
@@ -178,7 +179,8 @@ type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
+  // Only the ids are read and this runs every render, so a real translator would do 36 lookups for nothing.
+  const cols = createColumns({ incognitoMode: false }, ((key: string) => key) as unknown as TFunction)
   const order = cols.map(columnDefId).filter((v): v is string => typeof v === "string")
 
   const trackerIconIndex = order.indexOf("tracker_icon")

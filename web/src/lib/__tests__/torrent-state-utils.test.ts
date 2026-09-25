@@ -3,43 +3,61 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import i18n, { changeLanguage } from "@/i18n"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import type { TFunction } from "i18next"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
+
+const t = i18n.getFixedT(null, "torrents")
+
+afterEach(async () => {
+  await changeLanguage("en")
+})
 
 describe("getStateLabel", () => {
-  it("returns the English fallback when no translator is provided", () => {
-    expect(getStateLabel("uploading")).toBe("Seeding")
-    expect(getStateLabel("stalledUP")).toBe("Seeding")
-    expect(getStateLabel("stoppedUP")).toBe("Completed")
-    expect(getStateLabel("stoppedDL")).toBe("Stopped")
+  it("renders a known state from the locale file", () => {
+    expect(getStateLabel("uploading", t)).toBe("Seeding")
+    expect(getStateLabel("stoppedDL", t)).toBe("Stopped")
+    expect(getStateLabel("forcedDL", t)).toBe("(F) Downloading")
   })
 
-  it("passes through unknown states unchanged", () => {
-    expect(getStateLabel("someFutureState")).toBe("someFutureState")
+  it("treats qBittorrent's own unknown state as a label", () => {
+    expect(getStateLabel("unknown", t)).toBe("Unknown")
   })
 
-  it("translates known states through the i18n key with the English fallback as defaultValue", () => {
-    const t = vi.fn(() => "做种中") as unknown as TFunction
+  // Listed, not derived from the JSON: a derived list loses a state the moment the file does.
+  const QBITTORRENT_STATES = [
+    "downloading", "metaDL", "allocating", "stalledDL", "queuedDL", "checkingDL", "forcedDL",
+    "uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP",
+    "pausedDL", "pausedUP", "stoppedDL", "stoppedUP",
+    "error", "missingFiles", "checkingResumeData", "moving", "unknown",
+  ]
 
-    expect(getStateLabel("uploading", t)).toBe("做种中")
-    expect(t).toHaveBeenCalledWith("stateLabels.uploading", { defaultValue: "Seeding" })
+  it("resolves every state qBittorrent documents", () => {
+    const unresolved = QBITTORRENT_STATES.filter((state) => {
+      const label = getStateLabel(state, t)
+      return label === `stateLabels.${state}` || label === "" || label.startsWith("Unrecognized (")
+    })
+
+    expect(unresolved).toEqual([])
   })
 
-  it("uses the key derived from the raw qBittorrent state, not the friendly label", () => {
-    const t = vi.fn((_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? "") as unknown as TFunction
+  it.each(["common:nav.dashboard", "tableColumns.unregistered", "a.b", ""])(
+    "does not let %j reach the key path", (state) => {
+      expect(getStateLabel(state, t)).toBe(`Unrecognized (${state})`)
+    }
+  )
 
-    getStateLabel("stalledUP", t)
-    expect(t).toHaveBeenCalledWith("stateLabels.stalledUP", { defaultValue: "Seeding" })
+  it("names an undocumented state through the fallback, keeping the raw state visible", () => {
+    const label = getStateLabel("someFutureState", t)
 
-    getStateLabel("forcedDL", t)
-    expect(t).toHaveBeenCalledWith("stateLabels.forcedDL", { defaultValue: "(F) Downloading" })
+    expect(label).toBe("Unrecognized (someFutureState)")
+    expect(label).toContain("someFutureState")
+    expect(label).not.toBe("someFutureState")
   })
 
-  it("falls back to the defaultValue for unknown states when a translator is provided", () => {
-    const t = vi.fn((_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? "") as unknown as TFunction
+  it("translates the fallback, not just the known states", async () => {
+    await changeLanguage("de")
 
-    expect(getStateLabel("someFutureState", t)).toBe("someFutureState")
-    expect(t).toHaveBeenCalledWith("stateLabels.someFutureState", { defaultValue: "someFutureState" })
+    expect(getStateLabel("someFutureState", t)).toBe("Nicht erkannt (someFutureState)")
   })
 })

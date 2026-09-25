@@ -1624,6 +1624,7 @@
           "noMatches": "Немає збігів",
           "exportedToInstance": "Експорт в екземпляр"
         },
+        "actionFallback": "Невідома дія ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} буде позначено, {{removed}} буде не позначено",
           "tagsAdded": "{{count}} буде позначено тегами",

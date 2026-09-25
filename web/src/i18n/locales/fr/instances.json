@@ -1558,6 +1558,7 @@
           "noMatches": "Aucune correspondance",
           "exportedToInstance": "Exporter vers l'instance"
         },
+        "actionFallback": "Action inconnue ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} seraient tagués, {{removed}} seraient détagués",
           "tagsAdded": "{{count}} serait(ent) tagué(s)",

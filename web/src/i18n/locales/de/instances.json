@@ -1564,6 +1564,7 @@
           "noMatches": "Keine Treffer",
           "exportedToInstance": "In Instanz exportieren"
         },
+        "actionFallback": "Unbekannte Aktion ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} würden getaggt, {{removed}} würden entfernt",
           "tagsAdded": "{{count}} würde getaggt",
