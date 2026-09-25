@@ -6,6 +6,7 @@
 // Speed units utilities for toggling between B/s and bps display
 
 import { useClientSetting } from "@/lib/client-settings"
+import { type BitRateUnit, type ByteUnit, formatValueWithUnit } from "@/lib/unit-format"
 
 // Speed unit types
 export type SpeedUnit = "bytes" | "bits"
@@ -24,6 +25,12 @@ export function useSpeedUnits(): [SpeedUnit, (unit: SpeedUnit) => void] {
   })
 }
 
+const BYTE_RATE_LADDER: ByteUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
+const BIT_RATE_LADDER: BitRateUnit[] = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"]
+
+// Narrower values get more decimals so a speed column stays the same width.
+const speedDecimals = (value: number): number => (value >= 100 ? 0 : value >= 10 ? 1 : 2)
+
 // Format speed with unit preference
 export function formatSpeedWithUnit(
   bytesPerSecond: number,
@@ -32,36 +39,34 @@ export function formatSpeedWithUnit(
 ): string {
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
     if (compact) return "0"
-    return unit === "bits" ? "0 bps" : "0 B/s"
+    return unit === "bits" ? formatValueWithUnit(0, "bps") : formatValueWithUnit(0, "B", { perSecond: true })
   }
 
   if (unit === "bits") {
     // Convert bytes to bits (multiply by 8)
     const bitsPerSecond = bytesPerSecond * 8
     const k = 1000 // Use decimal for bits (standard networking convention)
-    const sizes = compact ? ["bps", "Kbps", "Mbps", "Gbps", "Tbps"] : ["bps", "Kbps", "Mbps", "Gbps", "Tbps"]
     const rawIndex = Math.log(bitsPerSecond) / Math.log(k)
-    const i = Math.min(sizes.length - 1, Math.max(0, Math.floor(rawIndex)))
+    const i = Math.min(BIT_RATE_LADDER.length - 1, Math.max(0, Math.floor(rawIndex)))
     const value = bitsPerSecond / Math.pow(k, i)
-    const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2
-    const formatted = Number(value.toFixed(decimals))
-    if (formatted === 0) {
-      return compact ? "0" : "0 bps"
+    const decimals = speedDecimals(value)
+    if (Number(value.toFixed(decimals)) === 0) {
+      return compact ? "0" : formatValueWithUnit(0, "bps")
     }
-    return `${formatted} ${sizes[i]}`
+    // The bit-rate symbols carry the rate already ("Mbps", "Mbit/s"), so compact changes
+    // nothing here beyond the zero above — as it did before units were localized.
+    return formatValueWithUnit(value, BIT_RATE_LADDER[i], { fractionDigits: decimals })
   } else {
     // Use existing bytes format
     const k = 1024
-    const sizes = compact ? ["B", "KiB", "MiB", "GiB", "TiB"] : ["B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s"]
     const rawIndex = Math.log(bytesPerSecond) / Math.log(k)
-    const i = Math.min(sizes.length - 1, Math.max(0, Math.floor(rawIndex)))
+    const i = Math.min(BYTE_RATE_LADDER.length - 1, Math.max(0, Math.floor(rawIndex)))
     const value = bytesPerSecond / Math.pow(k, i)
-    const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2
-    const formatted = Number(value.toFixed(decimals))
-    if (formatted === 0) {
+    const decimals = speedDecimals(value)
+    if (Number(value.toFixed(decimals)) === 0) {
       if (compact) return "0"
-      return "0 B/s"
+      return formatValueWithUnit(0, "B", { perSecond: true })
     }
-    return `${formatted}${compact ? "" : " "}${sizes[i]}`
+    return formatValueWithUnit(value, BYTE_RATE_LADDER[i], { fractionDigits: decimals, perSecond: true, compact })
   }
 }

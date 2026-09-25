@@ -198,6 +198,25 @@
       "year_other": "{{count}} let"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bitrate": {
+      "bps": "bit/s",
+      "Kbps": "kbit/s",
+      "Mbps": "Mbit/s",
+      "Gbps": "Gbit/s",
+      "Tbps": "Tbit/s"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "Podpořit qui",
     "description": "Už máte motivy a chcete pomoci ještě víc? Vše v qui už je vaše. Předplatné neodemyká funkce, financuje čas věnovaný jejich vývoji.",

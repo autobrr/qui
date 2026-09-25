@@ -191,6 +191,25 @@
       "year_other": "{{count}} ans"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "o",
+      "KiB": "Kio",
+      "MiB": "Mio",
+      "GiB": "Gio",
+      "TiB": "Tio",
+      "PiB": "Pio"
+    },
+    "bitrate": {
+      "bps": "bit/s",
+      "Kbps": "kbit/s",
+      "Mbps": "Mbit/s",
+      "Gbps": "Gbit/s",
+      "Tbps": "Tbit/s"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "Soutenir qui",
     "description": "Vous avez déjà les thèmes et vous voulez aider davantage ? Tout dans qui est déjà à vous. Un abonnement ne débloque aucune fonctionnalité, il finance le temps consacré à leur développement.",

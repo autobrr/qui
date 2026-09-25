@@ -184,6 +184,25 @@
       "year_other": "{{count}} 年"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bitrate": {
+      "bps": "bps",
+      "Kbps": "Kbps",
+      "Mbps": "Mbps",
+      "Gbps": "Gbps",
+      "Tbps": "Tbps"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "支持 qui",
     "description": "已经有主题了，还想再出一份力？qui 的一切已经属于你。订阅不会解锁功能，它资助的是开发这些功能所投入的时间。",

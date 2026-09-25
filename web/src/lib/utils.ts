@@ -5,6 +5,7 @@
 
 import type { Automation } from "@/types"
 import { getTrackerTokens } from "@/lib/workflow-utils"
+import { type ByteUnit, formatValueWithUnit } from "@/lib/unit-format"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -12,12 +13,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+const BYTE_LADDER: ByteUnit[] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
+
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B"
+  if (bytes === 0) return formatValueWithUnit(0, "B")
   const k = 1024
-  const sizes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+  const exponent = Math.floor(Math.log(bytes) / Math.log(k))
+  // qBittorrent reports an unknown size as -1, and log of a negative is NaN. Before units
+  // were localized that fell off the ladder and printed "NaN undefined"; now it would print
+  // the raw i18n key, so the index falls back to bytes and the NaN still shows.
+  const i = Number.isFinite(exponent) ? Math.min(Math.max(exponent, 0), BYTE_LADDER.length - 1) : 0
+  return formatValueWithUnit(bytes / Math.pow(k, i), BYTE_LADDER[i])
 }
 
 export function formatBytesOrFallback(bytes: number, fallback: string): string {

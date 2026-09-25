@@ -184,6 +184,25 @@
       "year_other": "{{count}}년"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bitrate": {
+      "bps": "bps",
+      "Kbps": "Kbps",
+      "Mbps": "Mbps",
+      "Gbps": "Gbps",
+      "Tbps": "Tbps"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}}{{unit}}"
+  },
   "support": {
     "title": "qui 후원하기",
     "description": "이미 테마를 갖고 계시고 더 돕고 싶으신가요? qui의 모든 기능은 이미 여러분의 것입니다. 구독은 기능을 잠금 해제하지 않고, 개발에 들어가는 시간을 지원합니다.",
