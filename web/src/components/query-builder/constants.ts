@@ -6,11 +6,8 @@
 import type { TFunction } from "i18next";
 import type { ConditionField } from "@/types";
 
-// scripts/find-hardcoded-i18n-literals.mjs skips this file, because its tables hold English
-// only as a t() defaultValue. So a new table needs an exported getTranslated*(t) helper
-// (getTranslated*ForField(field, t) for a per-field one) and its keys under queryBuilder in
-// en/automations.json: constants.test.ts calls every such helper and fails on a key missing
-// from en. A table rendered raw is exempt from both, and ships English in every locale.
+// find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
+// A table rendered raw, instead of through a getTranslated* helper, ships English unnoticed.
 
 // Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
 // past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
