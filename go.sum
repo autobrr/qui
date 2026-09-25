@@ -21,8 +21,8 @@ github.com/autobrr/go-cache v1.0.0-rc1 h1:xqghz7o+4jvTOlyFq08JflUFps7eF9REdIjGka
 github.com/autobrr/go-cache v1.0.0-rc1/go.mod h1:4dDdnZll98Xuz/ebmGALBeK3DiLXmJd7fwUSEWsw/l0=
 github.com/autobrr/go-mediainfo v0.8.0 h1:XzsjHvBOlGx2BnwYCqwCOIJsmrFy4BJb0jgoB2qKuR0=
 github.com/autobrr/go-mediainfo v0.8.0/go.mod h1:P3LGxIPznO2TLKV/e58YgN0/ozP5pLCAncFzsdxMDcY=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20260924044044-5cc0834c1939 h1:yR0m8pLyVrtpMSmWWWb/JmL5nQLN2Oun4uzsEztoRYA=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20260924044044-5cc0834c1939/go.mod h1:Jsh0yVU63y7pso92y/r9krHxwBi6KB1cu6Z9dxTe+J8=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20260925170010-56d86b8cb4da h1:LScYi4sqzV247vgXLB2soa64JhI3yaCE989zFG+ek88=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20260925170010-56d86b8cb4da/go.mod h1:Jsh0yVU63y7pso92y/r9krHxwBi6KB1cu6Z9dxTe+J8=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
 github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a h1:Xj2gx7IEZrnJu1ya7SBu9W5JvzvAfFVQsfFbTq4WDYc=

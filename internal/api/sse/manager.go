@@ -2019,7 +2019,9 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 				return
 			case <-timer.C:
 				// Pass the loop ctx so a cancelled/restarted loop (e.g. backoff change
-				// or shutdown) aborts an in-flight sync instead of running to completion.
+				// or shutdown) stops waiting at once. The shared go-qbittorrent sync
+				// does not stop: it runs until it ends or reaches its own deadline, and
+				// the next loop joins it while it runs.
 				m.forceSync(ctx, instanceID)
 
 				if ctx.Err() != nil {
