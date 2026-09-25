@@ -6,6 +6,9 @@ package handlers
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -223,4 +226,19 @@ func TestApplyAutomationSettingsPatch_SeasonPackCategory(t *testing.T) {
 	if existing.SeasonPackCategory != "tv-uhd" {
 		t.Fatalf("expected trimmed seasonPackCategory, got %q", existing.SeasonPackCategory)
 	}
+}
+
+func TestApplyAutomationSettingsPatch_KeepsStoredSecretsUnlessNamed(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{}
+	patch := automationSettingsPatchRequest{
+		Enabled:       new(true),
+		OrpheusAPIKey: new(""),
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	require.Equal(t, domain.RedactedStr, existing.RedactedAPIKey)
+	require.Empty(t, existing.OrpheusAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBPIN)
 }
