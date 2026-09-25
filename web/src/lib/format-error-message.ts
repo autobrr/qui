@@ -12,8 +12,9 @@ export function formatErrorMessage(error: string | undefined): string {
   const normalized = error.trim()
   if (!normalized) return i18n.t("errors.unknown", { ns: "common" })
 
+  // Every prefix ends in a space and `normalized` is trimmed, so a match always
+  // leaves at least one character behind: the result cannot come back empty.
   const cleaned = normalized.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
-  if (!cleaned) return i18n.t("errors.unknown", { ns: "common" })
 
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }

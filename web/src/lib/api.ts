@@ -1074,7 +1074,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      let errorMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status }) ?? `HTTP error! status: ${response.status}`
+      // Stays English: AddTorrentDialog.tsx:550 prefix-matches this text to tell
+      // "the server sent no message" from a real one, and shows its own hint instead.
+      let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
         errorMessage = errorData.error || errorData.message || errorMessage
