@@ -354,12 +354,6 @@ export function getOperatorsForField(field: string) {
   return baseOperators;
 }
 
-export const SPEED_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
-];
-
 // Capability types for disabling fields/states in query builder
 export type CapabilityKey = "trackerHealth" | "localFilesystemAccess"
 
