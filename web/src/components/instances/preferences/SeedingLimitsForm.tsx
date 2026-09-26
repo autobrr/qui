@@ -92,6 +92,8 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
 
   return (
     <PreferencesFormShell
+      // step sets the arrow increment; qBittorrent can store a ratio off that grid, which must still save
+      noValidate
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()

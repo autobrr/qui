@@ -49,6 +49,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   updatePreferences.mockClear()
+  hookResult.preferences.max_ratio = 25
 })
 
 function renderForm() {
@@ -71,6 +72,15 @@ describe("SeedingLimitsForm share ratio", () => {
     fireEvent.submit(form)
 
     await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 25 })))
+  })
+
+  it("saves a stored ratio off the 0.05 step grid", async () => {
+    hookResult.preferences.max_ratio = 10.33
+    renderForm()
+
+    ratioInput().closest("form")!.requestSubmit()
+
+    await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 10.33 })))
   })
 
   it("keeps a typed ratio above the input's default max", async () => {
