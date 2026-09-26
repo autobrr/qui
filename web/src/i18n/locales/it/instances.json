@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Usi Deluge, rTorrent o Transmission? <docs>Migra a qBittorrent con il nostro strumento di migrazione</docs>",
   "card": {
     "status": {
       "disabled": "Disabilitato",
@@ -697,6 +698,7 @@
       "runDryRunNow": "Esegui un dry run ora",
       "duplicate": "Duplica",
       "copyTo": "Copia in...",
+      "editJSON": "Modifica come JSON",
       "exportJSON": "Esporta JSON",
       "dragToReorder": "Trascina per riordinare il workflow",
       "actions": {
@@ -788,11 +790,25 @@
         "title": "Importa workflow",
         "description": "Incolla un workflow JSON da importare. Il workflow verrà creato disabilitato e aggiunto alla fine.",
         "placeholder": "Incolla il workflow JSON...",
-        "invalidImportData": "Dati di importazione non validi",
         "importFailed": "Importazione del workflow non riuscita",
         "cancel": "Annulla",
         "importing": "Importazione in corso...",
-        "import": "Importa"
+        "import": "Importa",
+        "errors": {
+          "invalidJson": "Formato JSON non valido",
+          "notObject": "È atteso un oggetto JSON",
+          "missingName": "Campo 'name' mancante o non valido",
+          "missingConditions": "Campo 'conditions' mancante o non valido",
+          "missingTracker": "Specifica 'trackerDomains' (array di stringhe) oppure 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Modifica \"{{name}}\" come JSON",
+        "description": "Modifica il JSON del workflow. Il workflow mantiene lo stato di abilitazione e la posizione.",
+        "saveFailed": "Salvataggio del workflow non riuscito",
+        "cancel": "Annulla",
+        "saving": "Salvataggio...",
+        "save": "Salva"
       },
       "toast": {
         "workflowDeleted": "Workflow eliminato",
@@ -808,6 +824,7 @@
         "createdWorkflow": "Creato \"{{name}}\"",
         "copiedWorkflow": "Copiato \"{{name}}\" su {{instance}}",
         "importedWorkflow": "Importato \"{{name}}\"",
+        "updatedWorkflow": "\"{{name}}\" aggiornato",
         "createFailed": "Creazione del workflow non riuscita",
         "reorderFailed": "Riordino dei workflow non riuscito",
         "exportedTorrents": "{{count}} torrent esportati in CSV",

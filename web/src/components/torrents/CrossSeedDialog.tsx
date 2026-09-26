@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { formatBytes } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedSearchDecisionTrace,
@@ -212,7 +212,7 @@ const CrossSeedDialogComponent = ({
     }
     const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap)
     try {
-      await navigator.clipboard.writeText(report)
+      await copyTextToClipboard(report)
       toast.success(t("crossSeedDialog.trace.copied"))
     } catch {
       toast.error(t("crossSeedDialog.trace.copyFailed"))
@@ -262,7 +262,7 @@ const CrossSeedDialogComponent = ({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 {sourceTorrent?.contentType && (
                   <Badge variant="secondary" className="h-5 text-xs font-normal capitalize">
-                    {t(`crossseed:dirScan.contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
+                    {t(`common:contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
                   </Badge>
                 )}
                 {sourceTorrent?.category && <span>{t("crossSeedDialog.category", { category: sourceTorrent.category })}</span>}

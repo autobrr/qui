@@ -928,6 +928,20 @@
       }
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Activer la correspondance API directe avec Orpheus et Redacted. Fonctionne en parallèle avec Torznab ; les indexeurs Torznab OPS/RED sont ignorés.",
+    "enableMatching": "Activer la correspondance Gazelle",
+    "enableDescription": "S'applique à tous les torrents sources. Si possible, qui vérifie également RED/OPS via Gazelle.",
+    "redactedApiKey": "Clé API Redacted",
+    "orpheusApiKey": "Clé API Orpheus",
+    "pasteRedKey": "Coller la clé API RED",
+    "pasteOpsKey": "Coller la clé API OPS",
+    "enableToConfigure": "Activer pour configurer",
+    "redDescription": "Utilisé pour les recherches sur redacted.sh. Coller pour remplacer ; effacer pour supprimer.",
+    "opsDescription": "Utilisé pour les recherches sur orpheus.network. Coller pour remplacer ; effacer pour supprimer.",
+    "save": "Enregistrer"
+  },
   "searchCache": {
     "title": "Cache de recherche",
     "description": "Résultats de recherche en cache provenant des indexeurs Torznab.",
