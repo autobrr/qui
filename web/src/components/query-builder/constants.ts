@@ -234,7 +234,7 @@ export const HARDLINK_SCOPE_VALUES = [
 
 // Content types from release parsing. Mirrors releases.ContentTypes in
 // pkg/releases/content_type.go, which constants.test.ts enforces. A rule-forceable
-// subset of the same values lives in crossseed/CategoryMappingRulesEditor.tsx.
+// subset of the same values lives in cross-seed/CategoryMappingRulesEditor.tsx.
 export const CONTENT_TYPE_VALUES = [
   { value: "movie", label: "Movie" },
   { value: "tv", label: "TV" },
