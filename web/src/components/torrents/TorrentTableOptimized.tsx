@@ -177,7 +177,8 @@ function columnDefId(col: TorrentTableColumnDef): string | null {
 type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
-function getDefaultColumnOrder(): string[] {
+// eslint-disable-next-line react-refresh/only-export-components
+export function getDefaultColumnOrder(): string[] {
   const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
   const order = cols.map(columnDefId).filter((v): v is string => typeof v === "string")
 
