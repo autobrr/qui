@@ -1,12 +1,13 @@
 ---
 sidebar_position: 14
-title: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, torrent creation, export, MediaInfo, and BDInfo.
+title: Manage torrents in qui
+sidebar_label: Torrent Management
+description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management
 
-qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
 
 ## Tags and categories
 
@@ -24,6 +25,10 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 ### Subcategories
 
 qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
+
+## Exclude a filter
+
+Click a status, category, tag, or tracker in the filter sidebar to show only the torrents that match it. Ctrl+click the same item (Cmd+click on macOS) to exclude it instead. The list then shows the torrents that do not match. On a touch screen, press and hold the item for the same result. Click it again to clear the exclusion.
 
 ## Clear filters
 
@@ -67,13 +72,21 @@ A view stores the sidebar filter selection only. It does not include search text
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
 
+## Table columns
+
+**Toggle columns** in the table toolbar shows or hides columns. Drag the handle next to a column in that menu to change its position, or drag a column header directly.
+
+Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
+
+Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
+
 ## Torrent creator
 
 The **Create torrent** button opens the creator dialog. On desktop it is in the header. On phones it is the **Create** button in the bottom bar. It creates a new `.torrent` file from a file or folder on the qBittorrent server. The button appears only when the instance supports torrent creation, which requires qBittorrent 5.0 or newer (WebUI API 2.11.2).
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| Source Path | Full path on the qBittorrent server. Suggestions appear as you type. | Required |
+| Source Path | Full path to a file or folder on the qBittorrent server. Folders and files appear as suggestions while you type. | Required |
 | Private torrent | Disables DHT, PEX, and local peer discovery | On |
 | Trackers | Pick from active trackers or enter one URL per line | - |
 | Comment | Free-text comment stored in the torrent | - |
@@ -92,7 +105,7 @@ Hybrid and v2 formats require a qBittorrent build with libtorrent 2. On a libtor
 
 ### Creation tasks
 
-The **Torrent Creation Tasks** list in the header shows every creation job with its status: Queued, Running, Finished, or Failed. Running tasks show a progress bar. While tasks run, the list refreshes every 2 seconds. From a finished task, you can download the `.torrent` file or delete the task.
+The **Torrent Creation Tasks** list in the header shows every creation job with its status: Queued, Running, Finished, or Failed. Running tasks show a progress bar. While tasks run, the list refreshes every 2 seconds. From a finished task, you can download the `.torrent` file or delete the task. If the download fails with the qBittorrent option **Delete .torrent files afterwards** enabled, see [Troubleshooting](../advanced/compatibility.md#download-of-a-created-torrent-fails-with-failed-to-download-torrent-file).
 
 ## Torrent export
 

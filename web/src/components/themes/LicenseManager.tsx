@@ -24,7 +24,6 @@ import {
 } from "@/hooks/useLicense"
 import { withBasePath } from "@/lib/base-url"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
-import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
@@ -73,11 +72,6 @@ export function LicenseManager({
   const deleteLicense = useDeleteLicense()
   const primaryLicense = licenses?.[0]
   const hasStoredLicense = Boolean(primaryLicense)
-  const provider = primaryLicense?.provider ?? "dodo"
-  const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
-  const selectedPortalUrl = (selectedLicense?.provider ?? provider) === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar"? t("themes.license.providers.polarPortal"): t("themes.license.providers.dodoPortal")
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
@@ -300,23 +294,7 @@ export function LicenseManager({
                   <div className="space-y-2">
                     <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
                       <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                      {provider === "polar" ? (
-                        <span>
-                          {t("themes.license.invalid.polarPrefix")}{" "}
-                          <a
-                            href={portalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:no-underline inline-flex items-center gap-0.5"
-                          >
-                            {portalUrl.replace("https://", "")}
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                          {t("themes.license.invalid.polarSuffix")}
-                        </span>
-                      ) : (
-                        <span>{t("themes.license.invalid.dodo")}</span>
-                      )}
+                      <span>{t("themes.license.invalid.dodo")}</span>
                     </div>
                     <Button
                       size="sm"
@@ -379,12 +357,12 @@ export function LicenseManager({
               <div className="text-sm text-muted-foreground">
                 {t("themes.license.deleteDialog.recoverPrefix")}{" "}
                 <a
-                  href={selectedPortalUrl}
+                  href={DODO_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  {selectedPortalLabel}
+                  {t("themes.license.providers.dodoPortal")}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
@@ -460,14 +438,6 @@ export function LicenseManager({
                   {t("themes.license.addDialog.recoverKey")}
                 </a>
               </Button>
-              <a
-                href={POLAR_PORTAL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-muted-foreground hover:underline sm:mr-auto"
-              >
-                {t("themes.license.providers.legacyPolarPortal")}
-              </a>
 
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button

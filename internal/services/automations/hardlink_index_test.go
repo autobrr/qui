@@ -719,19 +719,59 @@ func TestGetHardlinkIndex_CanceledFinalScanIsNotCached(t *testing.T) {
 		Backend: localbackend.NewBackend(),
 		cancel:  cancel,
 	}
-	rig := newHardlinkIndexRig(t, "hardlink-index-cancel", backend, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"name":"one.mkv"},{"name":"two.mkv"}]`))
-	})
+	const instanceID = 901
+	service := newHardlinkIndexService(t, instanceID, backend, qbt.TorrentFiles{{Name: "one.mkv"}, {Name: "two.mkv"}})
 	torrents := []qbt.Torrent{{Hash: hash, SavePath: dir}}
 
-	rig.service.GetHardlinkIndex(scanCtx, rig.instanceID, torrents)
+	service.GetHardlinkIndex(scanCtx, instanceID, torrents)
 	require.ErrorIs(t, scanCtx.Err(), context.Canceled)
 
-	require.Equal(t, HardlinkScopeNone, rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents).ScopeByHash[hash])
+	require.Equal(t, HardlinkScopeNone, service.GetHardlinkIndex(t.Context(), instanceID, torrents).ScopeByHash[hash])
+}
+
+// fakeFilesReader answers every hash with the same file list and holds no
+// cross-instance torrents.
+type fakeFilesReader struct{ files qbt.TorrentFiles }
+
+func (f fakeFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		out[hash] = f.files
+	}
+	return out, nil
+}
+
+func (fakeFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+type stubInstanceGetter struct{}
+
+func (stubInstanceGetter) Get(_ context.Context, id int) (*models.Instance, error) {
+	return &models.Instance{ID: id, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}, nil
+}
+
+// newHardlinkIndexService wires a Service over a fake files reader and a local
+// backend, with the hardlink index cache cleared for instanceID.
+func newHardlinkIndexService(t *testing.T, instanceID int, backend fsops.Backend, files qbt.TorrentFiles) *Service {
+	t.Helper()
+	clearHardlinkIndex := func() {
+		globalHardlinkIndexCache.mu.Lock()
+		delete(globalHardlinkIndexCache.indices, instanceID)
+		globalHardlinkIndexCache.mu.Unlock()
+	}
+	clearHardlinkIndex()
+	t.Cleanup(clearHardlinkIndex)
+	return &Service{
+		filesReader: fakeFilesReader{files: files},
+		backendPool: fsops.NewPool(stubInstanceGetter{}, backend),
+	}
 }
 
 // hardlinkIndexRig is a Service wired to a stub qBittorrent over HTTP, a real
 // SyncManager with the real files cache on a test SQLite, and a local backend.
+// Only the tests that pin the files-cache age contract need it; the others use
+// newHardlinkIndexService.
 type hardlinkIndexRig struct {
 	service    *Service
 	instanceID int
@@ -780,11 +820,90 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 
 	return &hardlinkIndexRig{
 		service: &Service{
-			syncManager: syncManager,
+			filesReader: syncManager,
 			backendPool: fsops.NewPool(instanceStore, backend),
 		},
 		instanceID: instance.ID,
 		db:         db,
+	}
+}
+
+func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
+	const instanceID = 902
+	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
+	dir := t.TempDir()
+	torrents := []qbt.Torrent{
+		{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SavePath: filepath.Join(dir, "a")},
+		{Hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SavePath: filepath.Join(dir, "b")},
+	}
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	require.Empty(t, index.ScopeByHash)
+	rule := &models.Automation{
+		ID: 1, Enabled: true, TrackerPattern: "*",
+		Conditions: &ActionConditions{Delete: &DeleteAction{
+			Enabled: true,
+			Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+			Condition: &RuleCondition{
+				Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeOutsideQBitTorrent, Negate: true,
+			},
+		}},
+	}
+	evalCtx := &EvalContext{InstanceHasLocalAccess: true, HardlinkScopeByHash: index.ScopeByHash}
+	require.Empty(t, processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil))
+
+	// Known unlinked torrents still match the same delete rule.
+	for _, torrent := range torrents {
+		index.ScopeByHash[torrent.Hash] = HardlinkScopeNone
+	}
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	require.Len(t, states, len(torrents))
+	for _, torrent := range torrents {
+		require.True(t, states[torrent.Hash].shouldDelete)
+	}
+}
+
+func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
+	const instanceID = 903
+	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
+	dir := t.TempDir()
+	const unknown = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const stale = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	const readable = "cccccccccccccccccccccccccccccccccccccccc"
+	torrents := []qbt.Torrent{
+		{Hash: unknown, SavePath: filepath.Join(dir, "unknown"), Category: "movies"},
+		{Hash: stale, SavePath: filepath.Join(dir, "stale")},
+		{Hash: readable, SavePath: filepath.Join(dir, "readable")},
+	}
+	createFile(t, filepath.Join(torrents[1].SavePath, "data.bin"))
+	createFile(t, filepath.Join(torrents[2].SavePath, "data.bin"))
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	require.NotContains(t, index.ScopeByHash, unknown)
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[stale])
+	require.NoError(t, os.Remove(filepath.Join(torrents[1].SavePath, "data.bin")))
+	torrentByHash := map[string]qbt.Torrent{unknown: torrents[0], stale: torrents[1], readable: torrents[2]}
+	deleteHashes := map[string][]string{DeleteModeWithFiles: {unknown, stale, readable}}
+	pending := map[string]pendingDeletion{unknown: {ruleID: 1}, stale: {ruleID: 1}, readable: {ruleID: 1}}
+	scope := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeNone}
+	category := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
+	rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: scope}}}
+	rules := map[int]*models.Automation{1: rule}
+
+	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	require.Equal(t, map[string]string{unknown: "hardlink scope unknown", stale: "files no longer readable"}, blocked)
+
+	// An independent OR match still requires verification when the rule uses hardlink data.
+	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
+	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasLocalAccess: true}, 0))
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	require.Contains(t, blocked, unknown)
+
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, deleteHashes, pending, rules)
+	require.Len(t, blocked, len(torrents))
+
+	// Rules without hardlink data do not need a scope or a filesystem rescan.
+	rule.Conditions.Delete.Condition = category
+	for _, index := range []*HardlinkIndex{index, nil} {
+		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules))
 	}
 }
 

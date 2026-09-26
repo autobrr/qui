@@ -2,7 +2,7 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="data:," data-dynamic-favicon="svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" data-dynamic-favicon="svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -14,6 +14,13 @@
     <script>
       /* Anti-FOUC: Apply theme immediately before render */
       (function() {
+        try {
+          // Spreadsheet disguise: the static icon is the qui logo, so blank it until useDynamicFavicon draws the sheet grid.
+          var cachedTheme = JSON.parse(localStorage.getItem('theme-cache') || 'null');
+          if (cachedTheme && (cachedTheme.id === 'spreadsheet' || cachedTheme.id === 'spreadsheet-classic')) {
+            document.querySelector('link[data-dynamic-favicon="svg"]').href = 'data:,';
+          }
+        } catch (e) {}
         try {
           // Check if current theme is lightOnly (e.g., Napster)
           var isLightOnly = localStorage.getItem('theme-light-only') === 'true';

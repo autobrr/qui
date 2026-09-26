@@ -10,4 +10,9 @@ var (
 	// ErrNoFilesystemAccess is returned by the NoopBackend for instances that
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
+
+	// ErrRemoteBackendNotImplemented is returned by Pool.GetBackend for an
+	// instance that resolves to remote filesystem access: the SSH backend does
+	// not exist yet, which is a different answer from "not configured".
+	ErrRemoteBackendNotImplemented = errors.New("remote filesystem backend is not implemented")
 )

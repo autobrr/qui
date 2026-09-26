@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -62,7 +63,7 @@ func newContentPathMediaInfoRequest(t *testing.T, instanceID int, contentPath st
 func TestGetContentPathMediaInfo_ReturnsServerErrorWithoutInstanceStore(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandlerForTesting(nil, nil)
+	handler := &TorrentsHandler{}
 	rec := httptest.NewRecorder()
 	req := newContentPathMediaInfoRequest(t, 1, "folder/file.bin")
 
@@ -75,7 +76,7 @@ func TestGetContentPathMediaInfo_ReturnsServerErrorWithoutInstanceStore(t *testi
 func TestGetContentPathMediaInfo_RejectsInvalidInstanceID(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandlerForTesting(nil, nil)
+	handler := &TorrentsHandler{}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/instances/not-an-int/mediainfo?contentPath=folder%2Ffile.bin", nil)
 	routeCtx := chi.NewRouteContext()
@@ -190,7 +191,7 @@ func TestGetContentPathMediaInfo_ReturnsErrorWhenPreferencesUnavailable(t *testi
 	t.Parallel()
 
 	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
-	handler := &TorrentsHandler{instanceStore: instanceStore}
+	handler := &TorrentsHandler{instanceStore: instanceStore, torrentAdder: &mockMediaInfoPreferencesAdder{prefsErr: errors.New("qbittorrent down")}}
 
 	rec := httptest.NewRecorder()
 	req := newContentPathMediaInfoRequest(t, instanceID, "folder/file.bin")

@@ -505,7 +505,7 @@ func TestCrossSeedPartialPoolHardlinkRollbackTransitionIsAtomic(t *testing.T) {
 	require.Nil(t, member.Files[1].SourceFileID)
 }
 
-func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
+func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgresIntegration(t *testing.T) {
 	db := testdb.NewMigratedPostgres(t, "partial-pool-concurrent-claims")
 	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
 	ctx := t.Context()
@@ -551,7 +551,7 @@ func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
 	require.Equal(t, 1, claimedCount, "all concurrent indexer members share one downloader owner")
 }
 
-func TestCrossSeedPartialPoolConcurrentRegistrationBlocksClaimPostgres(t *testing.T) {
+func TestCrossSeedPartialPoolConcurrentRegistrationBlocksClaimPostgresIntegration(t *testing.T) {
 	db := testdb.NewMigratedPostgres(t, "partial-pool-registration-claim")
 	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
 	ctx := t.Context()

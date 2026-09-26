@@ -48,7 +48,6 @@
     "toggleDetails": "切换详情"
   },
   "rules": {
-    "title": "规则",
     "reprocess": "重新处理",
     "reprocessTooltip": "对所有未读文章重新检查规则",
     "addRule": "添加规则",

@@ -104,10 +104,10 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 	}
 }
 
-func TestCacheFilesBatchAcrossQueryBatches(t *testing.T) {
+func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
-	forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 		svc := NewService(db)
 		hashes := make([]string, 801)
 		files := make(map[string]qbt.TorrentFiles, len(hashes))

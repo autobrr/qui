@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -882,5 +883,33 @@ func TestDiscUnitFromParentMarker_CaseVariantSiblingsDoNotShareCache(t *testing.
 
 	if u, l := unitFor(upper), unitFor(lower); u == l {
 		t.Fatalf("distinct disc directories must not share a unit path: %q", u)
+	}
+}
+
+func TestWalkScanRoot_PermissionError(t *testing.T) {
+	for _, atRoot := range []bool{true, false} {
+		name := "child remains skipped"
+		if atRoot {
+			name = "unreadable root fails"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			errorPath := filepath.Join(root, "unreadable-child")
+			if atRoot {
+				errorPath = root
+			}
+			backend := &fakeWalkBackend{
+				Backend: newTestBackend(),
+				entries: []fsops.WalkEntry{{Path: errorPath, Err: fs.ErrPermission}},
+			}
+			_, _, err := walkScanRoot(t.Context(), root, NewTorrentFileMap(), nil, 0, 0, backend)
+			if atRoot {
+				if !errors.Is(err, fs.ErrPermission) {
+					t.Fatalf("expected root permission error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("child permission error must remain skipped: %v", err)
+			}
+		})
 	}
 }

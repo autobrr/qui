@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: API
-description: Authenticate against the qui API with API keys.
+title: qui REST API and API keys
+sidebar_label: API
+description: Authenticate against the qui REST API with API keys, and browse every endpoint in the built-in Swagger UI.
 ---
 
 # API overview
@@ -22,6 +23,10 @@ Include your API key in the `X-API-Key` header:
 curl -H "X-API-Key: YOUR_API_KEY_HERE" \
   http://localhost:7476/api/instances
 ```
+
+## Session cookies
+
+The session cookie is for the qui web UI. Use an API key for scripts. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
 
 ## Torrent updates
 

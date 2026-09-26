@@ -1,7 +1,8 @@
 ---
 sidebar_position: 6
-title: autobrr Integration
-description: Send autobrr announces to the qui cross-seed webhook.
+title: Cross-seed autobrr announces with qui
+sidebar_label: autobrr Integration
+description: Point autobrr at the qui webhook so every announce is checked for a cross-seed match in real time.
 ---
 
 # autobrr Integration
@@ -200,7 +201,7 @@ Use these filters when:
 Exclude filters take precedence over include filters. Tag matching is case-sensitive. If you configure both category and tag include filters, a torrent must pass both checks. It must match at least one allowed category and at least one allowed tag.
 :::
 
-Configure in qui UI: **Cross-Seed → Auto → Webhook / autobrr**
+Configure in qui UI: **Cross-Seed > Webhook**
 
 ## Season Pack Webhook
 

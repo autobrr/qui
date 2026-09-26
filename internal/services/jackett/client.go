@@ -4,6 +4,7 @@
 package jackett
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog/log"
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
@@ -26,6 +28,9 @@ import (
 )
 
 const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
+
+// ErrInvalidTorrentPayload identifies a response that does not parse as torrent metainfo.
+var ErrInvalidTorrentPayload = errors.New("torrent download returned a web page or other non-torrent response")
 
 // DownloadError represents an HTTP error during torrent download.
 // It preserves the status code for rate-limit detection and retry logic.
@@ -461,6 +466,13 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 	}
 	if int64(len(data)) > maxTorrentDownloadBytes {
 		return nil, fmt.Errorf("torrent download exceeded %d bytes limit", maxTorrentDownloadBytes)
+	}
+	mi, parseErr := metainfo.Load(bytes.NewReader(data))
+	if parseErr == nil {
+		_, parseErr = mi.UnmarshalInfo()
+	}
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w (Content-Type: %q)", ErrInvalidTorrentPayload, resp.Header.Get("Content-Type"))
 	}
 
 	return data, nil

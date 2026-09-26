@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -21,6 +22,12 @@ type recheckResumeSyncManager struct {
 	filesByHash             map[string]qbt.TorrentFiles
 	filesErr                error
 	filesCalls              int
+	pieceStates             []qbt.PieceState
+	pieceStatesErr          error
+}
+
+func (m *recheckResumeSyncManager) GetTorrentPieceStates(context.Context, int, string) ([]qbt.PieceState, error) {
+	return m.pieceStates, m.pieceStatesErr
 }
 
 func (m *recheckResumeSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -607,7 +614,7 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95)
+	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95, nil, nil)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
@@ -1435,3 +1442,180 @@ func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {
 }
 
 var _ qbittorrentSync = (*recheckResumeSyncManager)(nil)
+
+// TestProcessPendingRecheckResumeHardlinkLinkedFileGate covers the hardlink
+// resume gate: a linked file that rechecks below 100% blocks the resume unless
+// every failed piece straddles a pending file.
+func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
+	t.Parallel()
+
+	// E01 and E02 are linked, E03 is pending. Piece 15 sits inside E02 alone.
+	insideFiles := qbt.TorrentFiles{
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+		{Name: "Show.S01/Show.S01E03.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{20, 29}},
+	}
+	insidePieces := make([]qbt.PieceState, 30)
+	for i := range insidePieces {
+		insidePieces[i] = qbt.PieceStateAlreadyDownloaded
+	}
+	insidePieces[15] = qbt.PieceStateNotDownloadYet
+	for i := 20; i < 30; i++ {
+		insidePieces[i] = qbt.PieceStateNotDownloadYet
+	}
+
+	// E02 shares piece 20 with pending E03; that piece is the only failure.
+	straddleFiles := qbt.TorrentFiles{
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0.95, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 20}},
+		{Name: "Show.S01/Show.S01E03.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{20, 29}},
+	}
+	straddlePieces := make([]qbt.PieceState, 30)
+	for i := range straddlePieces {
+		straddlePieces[i] = qbt.PieceStateAlreadyDownloaded
+	}
+	for i := 20; i < 30; i++ {
+		straddlePieces[i] = qbt.PieceStateNotDownloadYet
+	}
+
+	// An empty file reports [start, start-1]; it occupies no piece and must not
+	// excuse a neighbour. E01 fails its last piece, an empty pending file follows
+	// at [10,9], and another sits at offset zero as [0,-1].
+	emptyFiles := qbt.TorrentFiles{
+		{Name: "Show.S01/zero.txt", Progress: 1, Priority: 1, Size: 0, PieceRange: []int{0, -1}},
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+		{Name: "Show.S01/empty.txt", Progress: 1, Priority: 1, Size: 0, PieceRange: []int{10, 9}},
+		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+	}
+	emptyPieces := make([]qbt.PieceState, 20)
+	for i := range emptyPieces {
+		emptyPieces[i] = qbt.PieceStateAlreadyDownloaded
+	}
+	for i := 9; i < 20; i++ {
+		emptyPieces[i] = qbt.PieceStateNotDownloadYet
+	}
+	// Keyed by path: qBittorrent drops pad files from its list and renumbers indexes.
+	linked := map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}, "Show.S01/Show.S01E02.mkv": {}}
+
+	tests := []struct {
+		name        string
+		threshold   float64
+		budget      *int64
+		linked      map[string]struct{}
+		files       qbt.TorrentFiles
+		pieces      []qbt.PieceState
+		pieceErr    error
+		wantResume  bool
+		wantKeep    bool
+		wantBlocked string
+	}{
+		{
+			name:        "threshold mode mismatched linked file stays paused",
+			threshold:   0.6,
+			linked:      linked,
+			files:       insideFiles,
+			pieces:      insidePieces,
+			wantBlocked: "Show.S01/Show.S01E02.mkv",
+		},
+		{
+			name:        "budget mode mismatched linked file stays paused",
+			budget:      new(int64(50 << 20)),
+			linked:      linked,
+			files:       insideFiles,
+			pieces:      insidePieces,
+			wantBlocked: "Show.S01/Show.S01E02.mkv",
+		},
+		{
+			name:       "reflink entry keeps the current rules",
+			threshold:  0.6,
+			files:      insideFiles,
+			pieces:     insidePieces,
+			wantResume: true,
+			wantKeep:   true,
+		},
+		{
+			name:       "failed piece straddling a pending file still resumes",
+			threshold:  0.6,
+			linked:     linked,
+			files:      straddleFiles,
+			pieces:     straddlePieces,
+			wantResume: true,
+			wantKeep:   true,
+		},
+		{
+			name:        "empty pending files excuse no piece",
+			threshold:   0.6,
+			linked:      map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}},
+			files:       emptyFiles,
+			pieces:      emptyPieces,
+			wantBlocked: "Show.S01/Show.S01E01.mkv",
+		},
+		{
+			name:      "no piece states retries instead of blocking a boundary pack",
+			threshold: 0.6,
+			linked:    linked,
+			files:     straddleFiles,
+			wantKeep:  true,
+		},
+		{
+			name:      "piece state fetch error retries instead of dropping",
+			threshold: 0.6,
+			linked:    linked,
+			files:     straddleFiles,
+			pieceErr:  errors.New("boom"),
+			wantKeep:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sync := &recheckResumeSyncManager{
+				filesByHash:    map[string]qbt.TorrentFiles{"hash1": tt.files},
+				pieceStates:    tt.pieces,
+				pieceStatesErr: tt.pieceErr,
+			}
+			store := &stubSeasonPackRunStore{}
+			service := &Service{
+				syncManager:        sync,
+				recheckResumeCtx:   context.Background(),
+				seasonPackRunStore: store,
+			}
+			pending := &pendingResume{
+				instanceID:  1,
+				hash:        "hash1",
+				threshold:   tt.threshold,
+				budgetBytes: tt.budget,
+				linkedPaths: tt.linked,
+				blockedRun:  &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+				addedAt:     time.Now(),
+				sawChecking: true,
+			}
+			torrent := qbt.Torrent{
+				Hash:       "hash1",
+				Progress:   0.66,
+				AmountLeft: 30 << 20,
+				State:      qbt.TorrentStatePausedDl,
+			}
+
+			keep := service.processPendingRecheckResume(1, "hash1", pending, torrent)
+
+			require.Equal(t, tt.wantKeep, keep)
+			if tt.wantResume {
+				require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+			} else {
+				require.Empty(t, sync.bulkActions)
+			}
+			require.Equal(t, tt.wantBlocked, pending.blockedLinkedFile)
+			if tt.wantBlocked == "" {
+				require.Empty(t, store.runs)
+				return
+			}
+			require.Len(t, store.runs, 1)
+			require.Equal(t, "failed", store.runs[0].Status)
+			require.Equal(t, "linked_file_mismatch", store.runs[0].Reason)
+			require.Equal(t, "Linked file "+tt.wantBlocked+" does not match the torrent, left paused to protect the source", store.runs[0].Message)
+		})
+	}
+}

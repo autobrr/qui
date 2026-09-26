@@ -757,6 +757,10 @@ const (
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 	FieldCrossSeedTags          ConditionField = "CROSS_SEED_TAGS"
 
+	// Season pack fields
+	FieldSeasonPackStatus            ConditionField = "SEASON_PACK_STATUS"
+	FieldSeasonPackStatusAnyInstance ConditionField = "SEASON_PACK_STATUS_ANY_INSTANCE"
+
 	// System time fields
 	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
 	FieldSystemMinute    ConditionField = "SYSTEM_MINUTE"
@@ -786,6 +790,22 @@ func (f ConditionField) IsNumeric() bool {
 	}
 }
 
+// WrapsBetween reports whether a BETWEEN range on this field wraps when the
+// minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
+// hour means the night that crosses midnight. A wrapped range stops before its
+// maximum, see matchesBetween. SYSTEM_DAY and SYSTEM_YEAR do not wrap: a month
+// boundary depends on the month length, and years do not cycle.
+//
+//nolint:exhaustive // Only cyclic clock fields belong here.
+func (f ConditionField) WrapsBetween() bool {
+	switch f {
+	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
+		return true
+	default:
+		return false
+	}
+}
+
 //nolint:exhaustive // Only sortable string fields belong here.
 func (f ConditionField) IsString() bool {
 	switch f {
@@ -807,6 +827,13 @@ const (
 	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // Links outside the torrent set (stored: outside only; condition: also matches "both")
 	HardlinkScopeBoth               = "both"                // Links both inside and outside the torrent set
 	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"  // Condition-only: linked to other torrents, even if also outside (#1177)
+)
+
+// Season pack status values. Empty when the name parses without exactly one season.
+const (
+	SeasonPackStatusPack     = "pack"     // A whole single season
+	SeasonPackStatusPacked   = "packed"   // An episode whose season pack of the same release is in the client
+	SeasonPackStatusUnpacked = "unpacked" // An episode with no such pack
 )
 
 // ConditionOperator represents operators for comparing field values.
@@ -961,7 +988,7 @@ type TagAction struct {
 // CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
 	Enabled           bool   `json:"enabled"`
-	Category          string `json:"category"`                    // Target category name
+	Category          string `json:"category"`                    // Empty clears the category
 	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
 	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent

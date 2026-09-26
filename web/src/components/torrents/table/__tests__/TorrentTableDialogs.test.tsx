@@ -76,7 +76,7 @@ function makeProps(overrides: Partial<TorrentTableDialogsProps> = {}): TorrentTa
     handleSetLocationWrapper: vi.fn(), handleRenameTorrentWrapper: vi.fn(), handleRenameFileWrapper: vi.fn(),
     handleRenameFolderWrapper: vi.fn(), handleRecheckWrapper: vi.fn(), handleReannounceWrapper: vi.fn(),
     handleTmmConfirmWrapper: vi.fn(), proceedToLocationDialog: vi.fn(),
-    normalizedSelectionFilters: undefined,
+    selectAllFilters: undefined,
     contextClientMeta: { clientHashes: [], totalSelected: 0, actionTargets: [], excludeTargets: undefined },
     effectiveSelectionCount: 0, deleteDialogTotalSize: 0, deleteDialogFormattedSize: "0 B",
     selectAllExcludeHashes: undefined, selectAllExcludedTargets: [],

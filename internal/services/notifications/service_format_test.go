@@ -176,3 +176,21 @@ func TestFormatEventAutomationsActionsAppliedKeepsSamplesForNotifiarrAPI(t *test
 	require.Contains(t, message, "Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
 	require.Contains(t, message, "Samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
 }
+
+func TestFormatEventPartialOrphanScan(t *testing.T) {
+	t.Parallel()
+	event := Event{
+		Type:                 EventOrphanScanCompleted,
+		InstanceName:         "Test instance",
+		OrphanScanRunID:      12,
+		OrphanScanPartial:    true,
+		OrphanScanFilesFound: 1,
+		ErrorMessage:         "Partial scan: /data/missing is unavailable. Automatic cleanup is disabled for partial scans.",
+	}
+	title, message := (&Service{}).formatEvent(t.Context(), event, true)
+	require.Equal(t, "Orphan scan partial", title)
+	require.Contains(t, message, "Orphans found: 1")
+	require.Contains(t, message, "Warning:")
+	require.Contains(t, message, "/data/missing")
+	require.Contains(t, message, "Automatic cleanup is disabled")
+}

@@ -24,6 +24,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // src/demo imports the built-in theme CSS from internal/themes/assets.
+  server: {
+    fs: {
+      allow: [path.resolve(__dirname, "..")],
+    },
+  },
   test: {
     environment: "jsdom",
     globals: false,

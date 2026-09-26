@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: Metrics
-description: Prometheus metrics endpoint and the Grafana dashboard.
+title: Prometheus metrics for qui and qBittorrent
+sidebar_label: Metrics
+description: Expose Prometheus metrics for the qui process and every qBittorrent instance, and import the Grafana dashboard.
 ---
 
 # Prometheus metrics
@@ -12,7 +13,7 @@ If you do not configure basic authentication, the metrics server accepts every r
 
 ## Enable metrics
 
-qui disables metrics by default. Enable them in the configuration file or with environment variables.
+qui disables metrics by default. Enable them in the [configuration file](../configuration/reference.md) or with [environment variables](../configuration/environment.md).
 
 ### Configuration file
 
@@ -85,7 +86,7 @@ Tracker metrics describe torrents that remain in qBittorrent. qui does not store
 
 qui assigns a torrent's full transfer totals to each tracker group associated with that torrent. Do not sum tracker groups to calculate unique instance traffic.
 
-If you configure a customization display name, the `tracker_name` label uses that name. Otherwise, it uses the tracker domain. Included secondary domains contribute to their configured group.
+If you configure a [tracker customization](../features/tracker-customizations.md) display name, the `tracker_name` label uses that name. Otherwise, it uses the tracker domain. Included secondary domains contribute to their configured group.
 
 ## PromQL examples
 
@@ -161,9 +162,11 @@ This query includes disabled instances. Monitor the Prometheus `up{job="qui"}` m
 
 [Download the qui Grafana dashboard](/examples/qui-grafana-dashboard.json), then import the JSON file in Grafana. Select the Prometheus data source that scrapes qui.
 
-The dashboard has an instance filter and four panels:
+The dashboard has an instance filter and these panel groups:
 
-- qBittorrent connection status
-- session upload and download rates
-- current tracker upload and download totals
-- collection errors during the last five minutes
+- Status: qBittorrent connection, torrent counts by state, torrent errors, and collection errors during the last five minutes.
+- Transfer: all-time ratio, all-time and session totals, and session upload and download rates.
+- Trackers: torrent count, content size, ratio, and upload and download totals for each tracker group.
+- qui process: CPU, memory, goroutines, threads, open files, wedged database transactions, and uptime.
+
+A torrent can be in more than one tracker group, so the tracker panels can add up to more than the whole instance. The process panels show only the qui process that exports the selected instances.

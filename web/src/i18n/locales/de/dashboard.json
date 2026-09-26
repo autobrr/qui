@@ -31,13 +31,6 @@
       "performance": "Geseedet"
     }
   },
-  "speedLimits": {
-    "title": "Geschwindigkeitsbegrenzungen",
-    "download": "Download",
-    "upload": "Upload",
-    "current": "Aktuell: {{speed}}",
-    "unlimited": "Unbegrenzt"
-  },
   "instanceCard": {
     "loadingStats": "Statistiken werden geladen...",
     "failedToLoadStats": "Statistiken konnten nicht geladen werden",
@@ -186,8 +179,8 @@
       "invalidDomains": "Ungültiger Eintrag: domains muss ein nicht-leeres Array sein",
       "invalidJson": "Ungültiges JSON",
       "newCount": "{{count}} neu",
-      "conflictCount": "{{count}} Konflikt",
-      "conflictCount_plural": "{{count}} Konflikte",
+      "conflictCount_one": "{{count}} Konflikt",
+      "conflictCount_other": "{{count}} Konflikte",
       "unchangedCount": "{{count}} unverändert",
       "resolveConflicts": "Konflikte auflösen",
       "conflictsWith": "Konflikt mit: {{name}}",
@@ -206,8 +199,8 @@
       "deleteFailed": "Tracker-Anpassung konnte nicht gelöscht werden",
       "failedToImport": "Import fehlgeschlagen: {{names}}",
       "importedAndSkipped": "{{imported}} importiert, {{skipped}} übersprungen",
-      "importedCount": "{{count}} Anpassung importiert",
-      "importedCount_plural": "{{count}} Anpassungen importiert",
+      "importedCount_one": "{{count}} Anpassung importiert",
+      "importedCount_other": "{{count}} Anpassungen importiert",
       "noCustomizationsImported": "Keine Anpassungen importiert"
     }
   },

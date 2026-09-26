@@ -48,7 +48,6 @@
     "toggleDetails": "Přepnout detaily"
   },
   "rules": {
-    "title": "Pravidla",
     "reprocess": "Znovu zpracovat",
     "reprocessTooltip": "Zkontrolujte všechny nepřečtené články podle pravidel",
     "addRule": "Přidat pravidlo",

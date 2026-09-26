@@ -68,6 +68,9 @@ type OrphanScanSettingsPayload struct {
 	MaxFilesPerRun      *int     `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  *bool    `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles *int     `json:"autoCleanupMaxFiles"`
+	ScanDefaultSavePath *bool    `json:"scanDefaultSavePath"`
+	ScanCategoryPaths   *bool    `json:"scanCategoryPaths"`
+	DeleteAbandonedDirs *bool    `json:"deleteAbandonedDirs"`
 }
 
 // GetSettings returns the orphan scan settings for an instance.
@@ -101,6 +104,9 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
+			ScanDefaultSavePath: defaults.ScanDefaultSavePath,
+			ScanCategoryPaths:   defaults.ScanCategoryPaths,
+			DeleteAbandonedDirs: defaults.DeleteAbandonedDirs,
 		}
 	}
 
@@ -145,6 +151,9 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
+			ScanDefaultSavePath: defaults.ScanDefaultSavePath,
+			ScanCategoryPaths:   defaults.ScanCategoryPaths,
+			DeleteAbandonedDirs: defaults.DeleteAbandonedDirs,
 		}
 	}
 
@@ -197,6 +206,16 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		settings.AutoCleanupMaxFiles = *payload.AutoCleanupMaxFiles
+	}
+	if payload.ScanDefaultSavePath != nil {
+		settings.ScanDefaultSavePath = *payload.ScanDefaultSavePath
+	}
+	if payload.ScanCategoryPaths != nil {
+		settings.ScanCategoryPaths = *payload.ScanCategoryPaths
+	}
+	settings.ScanCategoryPaths = settings.ScanDefaultSavePath && settings.ScanCategoryPaths
+	if payload.DeleteAbandonedDirs != nil {
+		settings.DeleteAbandonedDirs = *payload.DeleteAbandonedDirs
 	}
 
 	// Validate and normalize ignore paths

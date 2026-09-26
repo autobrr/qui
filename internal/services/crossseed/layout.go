@@ -4,8 +4,8 @@
 package crossseed
 
 import (
-	"path/filepath"
-	"strconv"
+	"path"
+	"regexp"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -23,25 +23,7 @@ const (
 	LayoutArchives TorrentLayout = "archives"
 )
 
-var archiveExtensions = buildArchiveExtensionSet()
-
-func buildArchiveExtensionSet() map[string]struct{} {
-	exts := map[string]struct{}{
-		".rar": {},
-		".zip": {},
-		".7z":  {},
-	}
-	for i := 0; i <= 99; i++ {
-		suffix := ""
-		if i < 10 {
-			suffix = ".r0" + strconv.Itoa(i)
-		} else {
-			suffix = ".r" + strconv.Itoa(i)
-		}
-		exts[suffix] = struct{}{}
-	}
-	return exts
-}
+var rarVolumeSuffix = regexp.MustCompile(`(?i)\.[r-z][0-9]{2}$`)
 
 // classifyTorrentLayout inspects the largest non-ignored file inside a torrent
 // to determine whether the content is stored as archives (.rar/.r00/etc.) or as
@@ -75,6 +57,10 @@ func classifyTorrentLayout(files qbt.TorrentFiles, normalizer *stringutils.Norma
 }
 
 func isArchiveFilename(nameLower string) bool {
+	if rarVolumeSuffix.MatchString(nameLower) {
+		return true
+	}
+
 	// Handle multi-part suffixes (e.g. .tar.gz) by checking against known
 	// suffix list before falling back to simple extension matching.
 	archiveSuffixes := []string{
@@ -89,8 +75,8 @@ func isArchiveFilename(nameLower string) bool {
 		}
 	}
 
-	ext := filepath.Ext(nameLower)
-	if _, ok := archiveExtensions[ext]; ok {
+	switch path.Ext(nameLower) {
+	case ".rar", ".zip", ".7z":
 		return true
 	}
 

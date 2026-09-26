@@ -532,6 +532,9 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 			max_files_per_run INTEGER NOT NULL DEFAULT 0,
 			auto_cleanup_enabled INTEGER NOT NULL DEFAULT 0,
 			auto_cleanup_max_files INTEGER NOT NULL DEFAULT 0,
+			scan_default_save_path INTEGER NOT NULL DEFAULT 0,
+			scan_category_paths INTEGER NOT NULL DEFAULT 0,
+			delete_abandoned_dirs INTEGER NOT NULL DEFAULT 0,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
@@ -548,6 +551,7 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 			folders_deleted INTEGER NOT NULL DEFAULT 0,
 			bytes_reclaimed INTEGER NOT NULL DEFAULT 0,
 			truncated INTEGER NOT NULL DEFAULT 0,
+			partial INTEGER NOT NULL DEFAULT 0,
 			error_message TEXT,
 			started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			completed_at TIMESTAMP
@@ -555,26 +559,30 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO orphan_scan_settings
-			(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
+			(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files, scan_default_save_path, scan_category_paths, delete_abandoned_dirs)
 		VALUES
-			(1, 1, 120, '[]', 24, 'modified_desc', 100, 1, 25)
+			(1, 1, 120, '[]', 24, 'modified_desc', 100, 1, 25, 1, 1, 1)
 	`)
 	mustExec(t, db, `
 		INSERT INTO orphan_scan_runs
-			(instance_id, status, triggered_by, scan_paths, files_found, files_deleted, folders_deleted, bytes_reclaimed, truncated)
+			(instance_id, status, triggered_by, scan_paths, files_found, files_deleted, folders_deleted, bytes_reclaimed, truncated, partial)
 		VALUES
-			(1, 'completed', 'manual', '[]', 10, 5, 1, 1024, 1)
+			(1, 'completed', 'manual', '[]', 10, 5, 1, 1024, 1, 1)
 	`)
 
 	store := NewOrphanScanStore(&capturingQuerier{db: db})
-	settings, err := store.GetSettings(context.Background(), 1)
+	settings, err := store.GetSettings(t.Context(), 1)
 	require.NoError(t, err)
 	require.True(t, settings.Enabled)
 	require.True(t, settings.AutoCleanupEnabled)
+	require.True(t, settings.ScanDefaultSavePath)
+	require.True(t, settings.ScanCategoryPaths)
+	require.True(t, settings.DeleteAbandonedDirs)
 
-	run, err := store.GetRun(context.Background(), 1)
+	run, err := store.GetRun(t.Context(), 1)
 	require.NoError(t, err)
 	require.True(t, run.Truncated)
+	require.True(t, run.Partial)
 }
 
 func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {

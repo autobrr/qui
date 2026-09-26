@@ -337,11 +337,6 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	}
 	payload.Conditions.Normalize()
 
-	// Validate category action has a category name
-	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
-		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
-	}
-
 	// Validate export to instance action
 	if payload.Conditions.ExportToInstance != nil && payload.Conditions.ExportToInstance.Enabled {
 		if payload.Conditions.ExportToInstance.TargetInstanceID <= 0 {

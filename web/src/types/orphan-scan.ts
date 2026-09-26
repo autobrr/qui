@@ -30,6 +30,9 @@ export interface OrphanScanSettings {
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
+  scanDefaultSavePath: boolean
+  scanCategoryPaths: boolean
+  deleteAbandonedDirs: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -43,6 +46,9 @@ export interface OrphanScanSettingsUpdate {
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number
+  scanDefaultSavePath?: boolean
+  scanCategoryPaths?: boolean
+  deleteAbandonedDirs?: boolean
 }
 
 export interface OrphanScanRun {
@@ -56,6 +62,7 @@ export interface OrphanScanRun {
   foldersDeleted: number
   bytesReclaimed: number
   truncated: boolean
+  partial?: boolean
   errorMessage?: string | null
   startedAt: string
   completedAt?: string | null
@@ -66,6 +73,7 @@ export interface OrphanScanFile {
   runId: number
   filePath: string
   fileSize: number
+  isAbandonedDir: boolean
   modifiedAt?: string | null
   status: OrphanScanFileStatus
   errorMessage?: string | null

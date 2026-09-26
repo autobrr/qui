@@ -444,9 +444,7 @@
       "managementTitle": "Gestion de Licence",
       "managementDescription": "Gérez votre licence et l'accès premium",
       "providers": {
-        "dodoPortal": "Portail Dodo",
-        "polarPortal": "Portail Polar",
-        "legacyPolarPortal": "Ancien portail Polar"
+        "dodoPortal": "Portail Dodo"
       },
       "status": {
         "unlockTitle": "Débloquer les Thèmes Premium",
@@ -479,8 +477,6 @@
         "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Cette licence n'est pas active sur cette machine. Cliquez sur ré-activer. Si vous atteignez la limite d'activation, désactivez-la sur l'autre machine ou gérez vos activations via",
-        "polarSuffix": ".",
         "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, désactivez-la d'abord sur la machine actuellement active."
       },
       "actions": {
@@ -931,6 +927,20 @@
         "episode": "Épisode"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Activer la correspondance API directe avec Orpheus et Redacted. Fonctionne en parallèle avec Torznab ; les indexeurs Torznab OPS/RED sont ignorés.",
+    "enableMatching": "Activer la correspondance Gazelle",
+    "enableDescription": "S'applique à tous les torrents sources. Si possible, qui vérifie également RED/OPS via Gazelle.",
+    "redactedApiKey": "Clé API Redacted",
+    "orpheusApiKey": "Clé API Orpheus",
+    "pasteRedKey": "Coller la clé API RED",
+    "pasteOpsKey": "Coller la clé API OPS",
+    "enableToConfigure": "Activer pour configurer",
+    "redDescription": "Utilisé pour les recherches sur redacted.sh. Coller pour remplacer ; effacer pour supprimer.",
+    "opsDescription": "Utilisé pour les recherches sur orpheus.network. Coller pour remplacer ; effacer pour supprimer.",
+    "save": "Enregistrer"
   },
   "searchCache": {
     "title": "Cache de recherche",

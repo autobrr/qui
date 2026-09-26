@@ -1065,10 +1065,6 @@
       "label": "Peers",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "Peer sperren",
-      "description": "Bist du sicher, dass du {{address}} sperren möchtest?"
-    },
     "banPeerPermanent": {
       "title": "Peer dauerhaft sperren",
       "description": "Bist du sicher, dass du diesen Peer dauerhaft sperren möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
@@ -1495,7 +1491,7 @@
       "title": "Torrents durchsuchen",
       "description": "Suche nach Name, Kategorie oder Tags. Unterstützt Glob-Muster wie *.mkv oder *1080p*.",
       "placeholder": "Torrents durchsuchen...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
     },
     "shareLimit": {
@@ -1526,6 +1522,10 @@
     "descending": "absteigend",
     "sortDirection": "{{direction}} sortieren",
     "toggleColumns": "Spalten umschalten",
+    "stretchMode": "Spalte Name auf die Tabellenbreite strecken",
+    "scrollMode": "Breite der Spalte Name selbst festlegen und seitlich scrollen",
+    "stretchInactive": "Pausiert, weil die sichtbaren Spalten die Tabelle bereits füllen",
+    "reorderColumn": "Ziehen, um {{column}} neu anzuordnen",
     "tableAriaLabel": "Torrent-Tabelle"
   },
   "sort": {

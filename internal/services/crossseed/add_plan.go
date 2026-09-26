@@ -5,7 +5,7 @@ package crossseed
 
 import (
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
 
 type addPlanLayoutRank int

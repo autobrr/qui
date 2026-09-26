@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"sort"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
@@ -24,6 +23,8 @@ const (
 	deleteDispositionSkippedInUse
 	deleteDispositionSkippedMissing
 	deleteDispositionSkippedIgnored
+	deleteDispositionSkippedNotEmpty
+	deleteDispositionSkippedNotDirectory
 )
 
 // withinScanRoot checks that target is an absolute path strictly below scanRoot.
@@ -198,55 +199,44 @@ func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap
 	return deleteDispositionDeleted, nil
 }
 
-// safeDeleteEmptyDir removes a directory only if empty. Never recursive.
-func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) error {
+// safeDeleteEmptyDir removes a previewed directory. A directory that is not
+// empty now, or is no longer a directory, is reported as skipped rather than
+// failed: a file inside it that the run kept is the usual reason, and nothing
+// went wrong. Remove still refuses a non-empty directory, so the check before it
+// only decides how the outcome is reported.
+func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) (deleteDisposition, error) {
 	if err := withinScanRoot(scanRoot, target); err != nil {
-		return err
+		return 0, err
 	}
 
-	// Remove on a directory only succeeds if it's empty
-	err := backend.Remove(ctx, target, fsops.RemoveOptions{})
+	info, err := backend.Lstat(ctx, target)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil // Already gone
+		return deleteDispositionSkippedMissing, nil
 	}
-	return err
-}
-
-func collectCandidateDirsForCleanup(files []string, scanRoots []string, ignorePaths []string) []string {
-	candidates := make(map[string]struct{})
-	for _, filePath := range files {
-		scanRoot := findScanRoot(filePath, scanRoots)
-		if scanRoot == "" {
-			continue
-		}
-		normScanRoot := normalizePath(scanRoot)
-
-		dir := filepath.Clean(filepath.Dir(filePath))
-		for normalizePath(dir) != normScanRoot {
-			if dir == "." || dir == string(filepath.Separator) {
-				break
-			}
-			if isIgnoredPath(dir, ignorePaths) {
-				break
-			}
-			candidates[dir] = struct{}{}
-
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
+	if err != nil {
+		return 0, err
+	}
+	if !info.IsDir {
+		return deleteDispositionSkippedNotDirectory, nil
 	}
 
-	ordered := make([]string, 0, len(candidates))
-	for dir := range candidates {
-		ordered = append(ordered, dir)
+	entries, err := backend.ReadDir(ctx, target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return deleteDispositionSkippedMissing, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if len(entries) > 0 {
+		return deleteDispositionSkippedNotEmpty, nil
 	}
 
-	sort.Slice(ordered, func(i, j int) bool {
-		return len(ordered[i]) > len(ordered[j])
-	})
-
-	return ordered
+	err = backend.Remove(ctx, target, fsops.RemoveOptions{})
+	if errors.Is(err, fs.ErrNotExist) {
+		return deleteDispositionSkippedMissing, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return deleteDispositionDeleted, nil
 }

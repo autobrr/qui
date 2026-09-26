@@ -22,7 +22,7 @@ func TestValidateLicense_MissingStoredLicenseReturns404(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "licenses-validate-handler")
 
 	repo := database.NewLicenseRepo(db)
-	service := license.NewLicenseService(repo, nil, nil, t.TempDir())
+	service := license.NewLicenseService(repo, nil, t.TempDir())
 
 	handler := NewLicenseHandler(service)
 

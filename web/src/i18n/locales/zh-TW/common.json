@@ -48,7 +48,7 @@
     "globPattern": "Glob 模式...",
     "smartSearchTitle": "智慧搜尋功能：",
     "smartSearchGlob": "Glob 模式：",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "模糊匹配：",
     "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
     "smartSearchDots": "自動處理點號、底線和方括號",
@@ -117,6 +117,18 @@
     "unknown": "未知",
     "trackerError": "Tracker 錯誤",
     "unreachable": "無法連線"
+  },
+  "contentTypeLabels": {
+    "movie": "電影",
+    "tv": "電視劇",
+    "music": "音樂",
+    "audiobook": "有聲書",
+    "book": "圖書",
+    "comic": "漫畫",
+    "game": "遊戲",
+    "app": "應用",
+    "adult": "成人",
+    "unknown": "未知"
   },
   "themeToggle": {
     "changeTheme": "切換主題",

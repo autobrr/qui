@@ -1,7 +1,8 @@
 ---
 sidebar_position: 8
-title: External Programs
-description: Launch scripts or applications from the torrent context menu.
+title: Launch external programs from qui
+sidebar_label: External Programs
+description: Run scripts or desktop applications from the torrent context menu, with path mapping and torrent metadata as arguments.
 ---
 
 # External Programs
@@ -10,7 +11,7 @@ Launch scripts or desktop applications from the torrent context menu. Each progr
 
 ## Security: allow list
 
-Define an allow list in `config.toml` so qui executes only trusted paths:
+Define an allow list in [`config.toml`](../configuration/reference.md) so qui executes only trusted paths:
 
 ```toml
 externalProgramAllowList = [
@@ -156,7 +157,7 @@ The response contains a `results` array with per-hash `success` flags and option
 
 ## Automation integration
 
-When torrents match configured conditions, automation rules trigger external programs.
+When torrents match configured conditions, [automation rules](./automations.md) trigger external programs. Cross-seed [rules](./cross-seed/rules.md) can also run a program after qui adds a cross-seed torrent.
 
 ### Setting up automation triggers
 

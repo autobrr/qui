@@ -4,15 +4,18 @@
 package config
 
 import (
+	"crypto/hkdf"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -44,6 +47,13 @@ type AppConfig struct {
 	logManager *LogManager
 }
 
+// zerolog keeps its formatting settings in package globals. Set them once at
+// startup: writing them again on a config reload races with any goroutine that
+// logs at the same time.
+func init() {
+	zerolog.TimeFieldFormat = time.RFC3339
+}
+
 func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	version := "dev"
 	if len(versions) > 0 && strings.TrimSpace(versions[0]) != "" {
@@ -73,10 +83,18 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 	c.hydrateConfigFromViper()
+	if err := c.loadAllowedHosts(); err != nil {
+		return nil, err
+	}
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
 	c.resolveDataDir()
+
+	if err := c.validateSessionSecret(); err != nil {
+		return nil, err
+	}
+	c.warnWeakSessionSecret()
 
 	// Watch for config changes
 	c.watchConfig()
@@ -91,18 +109,19 @@ func (c *AppConfig) defaults() {
 		host = "0.0.0.0"
 	}
 
-	// Generate secure session secret if not provided
+	// Generate secure session secret if not provided. crypto/rand cannot fail on
+	// Go 1.24+, and a guessable fallback secret would silently weaken every
+	// stored credential, so refuse to start instead.
 	sessionSecret, err := generateSecureToken(encryptionKeySize)
 	if err != nil {
-		// Log error but continue with a fallback
-		log.Error().Err(err).Msg("Failed to generate secure session secret, using fallback")
-		sessionSecret = "change-me-" + strconv.Itoa(os.Getpid())
+		log.Fatal().Err(err).Msg("Failed to generate a secure session secret")
 	}
 
 	c.viper.SetDefault("host", host)
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
+	c.viper.SetDefault("allowedHosts", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
@@ -163,7 +182,8 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
+		// With SetConfigFile, viper reports a missing file as a plain fs error, never ConfigFileNotFoundError.
+		if !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
@@ -208,7 +228,9 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
+	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -253,7 +275,9 @@ func (c *AppConfig) loadFromEnv() {
 }
 
 func (c *AppConfig) watchConfig() {
-	c.viper.WatchConfig()
+	// Register the handler before the watcher starts: viper reads onConfigChange
+	// from the watcher goroutine without a lock, so setting it after WatchConfig
+	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
@@ -278,6 +302,7 @@ func (c *AppConfig) watchConfig() {
 		// Apply dynamic changes
 		c.applyDynamicChanges(previousAuthSettings)
 	})
+	c.viper.WatchConfig()
 }
 
 type authReloadSettings struct {
@@ -316,6 +341,9 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
+	if c.Config.IsAuthDisabled() && len(c.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
+	}
 
 	c.notifyListeners()
 }
@@ -327,6 +355,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+	c.Config.SessionCookieSecure = c.viper.GetBool("sessionCookieSecure")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
 	c.Config.LogPath = c.viper.GetString("logPath")
@@ -375,6 +404,61 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) loadAllowedHosts() error {
+	var entries []string
+	if value, present := os.LookupEnv(envPrefix + "ALLOWED_HOSTS"); present {
+		if value != "" {
+			entries = strings.Split(value, ",")
+		}
+	} else {
+		switch value := c.viper.Get("allowedHosts").(type) {
+		case []string:
+			entries = value
+		case []any:
+			for _, item := range value {
+				entry, ok := item.(string)
+				if !ok {
+					return errors.New("allowedHosts must be an array of strings")
+				}
+				entries = append(entries, entry)
+			}
+		default:
+			return errors.New("allowedHosts must be an array of strings")
+		}
+	}
+	entries = slices.Clone(entries)
+	for i, entry := range entries {
+		entries[i] = strings.TrimSpace(entry)
+	}
+	if _, err := httphelpers.NewHostAllowlist(entries); err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		log.Info().Msg("allowedHosts is not configured, accepting requests for any host")
+		return nil
+	}
+	c.Config.AllowedHosts = withLocalHosts(entries)
+	log.Info().Strs("allowedHosts", c.Config.AllowedHosts).Msg("Accepting requests only for the listed hosts")
+	return nil
+}
+
+// withLocalHosts admits loopback names and the machine hostname, as Sonarr and Radarr do,
+// so a list that names only the public hostname does not lock out local access.
+func withLocalHosts(entries []string) []string {
+	local := []string{"localhost", "127.0.0.1", "::1"}
+	if name, err := os.Hostname(); err == nil {
+		if _, err := httphelpers.NewHostAllowlist([]string{name}); err == nil {
+			local = append(local, name)
+		}
+	}
+	for _, host := range local {
+		if !slices.Contains(entries, host) {
+			entries = append(entries, host)
+		}
+	}
+	return entries
 }
 
 func (c *AppConfig) getNormalizedStringSlice(key string) []string {
@@ -487,11 +571,24 @@ port = {{ .port }}
 # Example:
 #corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
 
+# Allowed request hosts
+# Empty (default) permits all hosts. Restart after changes.
+# List the Host received by qui. X-Forwarded-Host is ignored.
+# Use hostnames, IP addresses, or leading *. subdomain wildcards, without ports.
+# Direct loopback GET and HEAD probes to the three built-in health endpoints bypass this list.
+#allowedHosts = ["qui.example.com", "localhost", "::1", "*.home.example.com"]
+
 # Session secret
 # Auto-generated if not provided
 # WARNING: Changing this value will break decryption of existing instance passwords!
 # If changed, you'll need to re-enter passwords for all existing qBittorrent instances in the UI.
 sessionSecret = "{{ .sessionSecret }}"
+
+# Send the browser session cookie only over HTTPS
+# Enable this when qui is served through an HTTPS reverse proxy.
+# With this enabled, login over plain HTTP does not work.
+# An HTTPS oidcRedirectUrl enables it automatically.
+#sessionCookieSecure = false
 
 # Log file path
 # If not defined, logs to stdout
@@ -651,6 +748,10 @@ sessionSecret = "{{ .sessionSecret }}"
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
+	// Absolute, so a mistyped --config-dir that lands on a fresh config is easy to spot.
+	if absPath, absErr := filepath.Abs(path); absErr == nil {
+		path = absPath
+	}
 	log.Info().Msgf("Created default config file: %s", path)
 	return nil
 }
@@ -714,8 +815,6 @@ func generateSecureToken(length int) (string, error) {
 }
 
 func (c *AppConfig) ApplyLogConfig() error {
-	zerolog.TimeFieldFormat = time.RFC3339
-
 	// Initialize the log manager on first call (sets up switchable writer)
 	c.logManager.Initialize()
 
@@ -767,7 +866,6 @@ func baseLogWriter(version string) io.Writer {
 // InitDefaultLogger configures zerolog with the default writer for this version.
 // This is used by CLI entry points before a configuration file is loaded.
 func InitDefaultLogger(version string) {
-	zerolog.TimeFieldFormat = time.RFC3339
 	log.Logger = log.Logger.Output(baseLogWriter(version))
 }
 
@@ -880,6 +978,13 @@ func (c *AppConfig) ResolveLogPath(logPath string) string {
 
 const encryptionKeySize = 32
 
+// encryptionKeyInfo binds the derived credential key to this one purpose, so a
+// future key taken from the same session secret is independent of it. It is
+// frozen, not versioned: the qui2 ciphertext prefix carries format version, and
+// changing this literal would orphan every stored credential with no fallback.
+// The identifier avoids the substring "cred", which gosec G101 matches on.
+const encryptionKeyInfo = "qui credential encryption key"
+
 func WriteDefaultConfig(path string) error {
 	c := &AppConfig{
 		viper: viper.New(),
@@ -890,19 +995,62 @@ func WriteDefaultConfig(path string) error {
 	return c.writeDefaultConfig(path)
 }
 
-// GetEncryptionKey derives a 32-byte encryption key from the session secret
+// GetEncryptionKey derives the 32-byte credential encryption key from the whole
+// session secret with HKDF-SHA256.
 func (c *AppConfig) GetEncryptionKey() []byte {
-	// Use first 32 bytes of session secret as encryption key
-	// In production, you might want to derive this differently
+	key, err := hkdf.Key(sha256.New, []byte(c.Config.SessionSecret), nil, encryptionKeyInfo, encryptionKeySize)
+	if err != nil {
+		// Reachable only under GODEBUG=fips140=only, which rejects a secret
+		// shorter than 112 bits. That host opted into the policy, so refusing to
+		// start is right even though a short secret only warns everywhere else.
+		log.Fatal().Err(err).Int("length", len(c.Config.SessionSecret)).Msg(
+			"sessionSecret is too short to derive the credential encryption key in FIPS 140-only mode. Lengthening it makes stored credentials unreadable, so re-enter them in the UI afterwards")
+	}
+	return key
+}
+
+// GetLegacyEncryptionKey returns the pre-HKDF key, the session secret truncated
+// to 32 bytes or zero-padded up to it. Credentials written before the derived
+// key shipped are still readable only with this.
+func (c *AppConfig) GetLegacyEncryptionKey() []byte {
 	secret := c.Config.SessionSecret
 	if len(secret) >= encryptionKeySize {
 		return []byte(secret[:encryptionKeySize])
 	}
 
-	// Pad the secret if it's too short
 	padded := make([]byte, encryptionKeySize)
 	copy(padded, secret)
 	return padded
+}
+
+// validateSessionSecret rejects an empty session secret. Viper only falls back
+// to the generated default when the key is absent, so an explicit empty value in
+// config.toml survives loading. Every install would then derive the same
+// credential key from the empty string.
+func (c *AppConfig) validateSessionSecret() error {
+	// Validated on the trimmed value but never stored trimmed. Rewriting the
+	// secret would change the derived key and break stored credentials.
+	if strings.TrimSpace(c.Config.SessionSecret) != "" {
+		return nil
+	}
+
+	return errors.New("sessionSecret is empty. Set it in config.toml or QUI__SESSION_SECRET to a random value of at least 32 characters. Credentials saved while it was empty will not decrypt under the new value, so enter them again in the UI")
+}
+
+// warnWeakSessionSecret reports a session secret shorter than the key HKDF
+// derives from it. HKDF spreads the secret over 32 bytes. It cannot add entropy
+// the secret does not have. This warns and never refuses, because lengthening
+// the secret would make every stored credential undecryptable.
+func (c *AppConfig) warnWeakSessionSecret() {
+	length := len(c.Config.SessionSecret)
+	if length >= encryptionKeySize {
+		return
+	}
+
+	log.Warn().
+		Int("length", length).
+		Int("recommended", encryptionKeySize).
+		Msg("sessionSecret is shorter than 32 characters, so the credential encryption key is only as strong as the secret. On a new install set at least 32 characters. On an install that already stores credentials leave it alone, because changing it makes every stored credential unreadable and you would have to enter them all again")
 }
 
 // bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed

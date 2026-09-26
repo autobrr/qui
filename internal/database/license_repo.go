@@ -37,13 +37,12 @@ func rollbackTx(tx rollbacker) {
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name,  status, activated_at, expires_at,
-		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
+		       last_validated, provider, dodo_instance_id, username, created_at, updated_at
 		FROM licenses
 		WHERE license_key = ?
 	`
 
 	license := &models.ProductLicense{}
-	var activationID sql.Null[string]
 	var provider sql.Null[string]
 	var dodoInstanceID sql.Null[string]
 
@@ -57,9 +56,6 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		&license.LastValidated,
 		&provider,
 		&dodoInstanceID,
-		&license.PolarCustomerID,
-		&license.PolarProductID,
-		&activationID,
 		&license.Username,
 		&license.CreatedAt,
 		&license.UpdatedAt,
@@ -74,7 +70,6 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 
 	license.Provider = provider.V
 	license.DodoInstanceID = dodoInstanceID.V
-	license.PolarActivationID = activationID.V
 
 	return license, nil
 }
@@ -83,7 +78,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name, status, activated_at, expires_at,
-		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
+		       last_validated, provider, dodo_instance_id, username, created_at, updated_at
 		FROM licenses
 		ORDER BY created_at DESC
 	`
@@ -98,7 +93,6 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 	for rows.Next() {
 		license := &models.ProductLicense{}
 
-		var activationID sql.Null[string]
 		var provider sql.Null[string]
 		var dodoInstanceID sql.Null[string]
 
@@ -112,9 +106,6 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			&license.LastValidated,
 			&provider,
 			&dodoInstanceID,
-			&license.PolarCustomerID,
-			&license.PolarProductID,
-			&activationID,
 			&license.Username,
 			&license.CreatedAt,
 			&license.UpdatedAt,
@@ -125,7 +116,6 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 
 		license.Provider = provider.V
 		license.DodoInstanceID = dodoInstanceID.V
-		license.PolarActivationID = activationID.V
 
 		licenses = append(licenses, license)
 	}
@@ -200,8 +190,8 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 
 	query := `
 		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at,
-		                           last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                           last_validated, provider, dodo_instance_id, username, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = tx.ExecContext(ctx, query,
@@ -213,9 +203,6 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		license.LastValidated,
 		stringToNullString(license.Provider),
 		stringToNullString(license.DodoInstanceID),
-		license.PolarCustomerID,
-		license.PolarProductID,
-		license.PolarActivationID,
 		license.Username,
 		license.CreatedAt,
 		license.UpdatedAt,
@@ -292,7 +279,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 
 	query := `
 		UPDATE licenses
-		SET provider = ?, dodo_instance_id = ?, polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
+		SET provider = ?, dodo_instance_id = ?,
 		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
 		WHERE id = ?
 	`
@@ -300,9 +287,6 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 	_, err = tx.ExecContext(ctx, query,
 		stringToNullString(license.Provider),
 		stringToNullString(license.DodoInstanceID),
-		license.PolarActivationID,
-		license.PolarCustomerID,
-		license.PolarProductID,
 		license.ActivatedAt,
 		timeToNullTime(license.ExpiresAt),
 		time.Now(),

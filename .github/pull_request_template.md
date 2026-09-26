@@ -4,9 +4,20 @@
 
 Fixes # (issue)
 
+## Behaviour change
+
+<!--- Name each change existing users get without doing anything: a saved rule, setting, or API value that now matches or means something else. Say what they must do. Delete this section if there is none. --->
+
 ## How has this been tested?
 
 <!--- Only manual or live verification that CI cannot do. Delete this section if CI covers everything. --->
+
+## Performance
+
+<!--- Follow AGENTS.md#mandatory-performance-checks.
+      Include before/after measurements and a conclusion for changes that can affect performance.
+      Describe the workload and measurement method, or link to the results.
+      If no performance risk applies, explain why. Keep this section. --->
 
 ## Screenshots (for UI changes)
 
@@ -18,6 +29,7 @@ Fixes # (issue)
 
 - [ ] My PR title follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) format (it becomes the squashed commit message)
 - [ ] If this changes the database schema, I have added migrations for both SQLite and PostgreSQL
+- [ ] I completed the [mandatory performance checks](https://github.com/autobrr/qui/blob/develop/AGENTS.md#mandatory-performance-checks) and recorded the outcome in Performance
 
 ## AI disclosure
 

@@ -35,7 +35,6 @@ function makeParams(overrides: Partial<UseBulkActionWrappersParams> = {}): UseBu
     selectAllFilters: undefined,
     selectAllExcludeHashes: undefined,
     selectAllExcludedTargets: [],
-    filters: undefined,
     effectiveSearch: "query",
     activeSortField: "added_on",
     activeSortOrder: "desc",
@@ -65,7 +64,7 @@ describe("useBulkActionWrappers — argument forwarding", () => {
     )
   })
 
-  it("forwards the comment + normalized filters to handleSetComment", () => {
+  it("forwards the comment + select-all filters to handleSetComment", () => {
     const params = makeParams()
     const { result } = render(params)
     act(() => result.current.handleSetCommentWrapper("hello"))

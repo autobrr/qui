@@ -1,7 +1,8 @@
 ---
 sidebar_position: 2
-title: Seedbox Installers
-description: One-line installers for popular seedbox providers.
+title: Install qui on a seedbox
+sidebar_label: Seedbox Installers
+description: One-line qui installers for Ultra.cc, Whatbox, Feral, Seedhost, Bytesized, and HostingByDesign.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -9,7 +10,7 @@ import TabItem from '@theme/TabItem';
 
 # Seedbox installers
 
-One-line installers for popular seedbox providers. Each script configures qui for the provider's environment.
+One-line installers for popular seedbox providers. Each script configures qui for the provider's environment. If your provider is not listed, follow the [manual install](./installation.md) and set a [base URL](../configuration/base-url.md) if you run qui under a subpath.
 
 <Tabs>
   <TabItem value="feral" label="Feral" default>

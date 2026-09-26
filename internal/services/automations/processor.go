@@ -455,7 +455,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	}
 
 	// Category (last rule wins - just set desired, service will filter no-ops)
-	if conditions.Category != nil && conditions.Category.Enabled && conditions.Category.Category != "" {
+	if conditions.Category != nil && conditions.Category.Enabled {
 		shouldApply := conditions.Category.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
 

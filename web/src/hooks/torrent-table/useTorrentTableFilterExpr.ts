@@ -4,6 +4,7 @@
  */
 
 import { columnFiltersToExpr, type ColumnFilter } from "@/lib/column-filter-utils"
+import { combineFilterExpr, isCrossSeedExpr } from "@/lib/torrent-filters"
 import type { TorrentFilters } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react"
@@ -23,7 +24,7 @@ export interface TorrentTableFilterExpr {
   effectiveSearch: string
   columnFiltersExpr: string | null
   combinedFiltersExpr: string | null | undefined
-  isDoingCrossSeedFiltering: boolean | undefined
+  isDoingCrossSeedFiltering: boolean
   lastUserAction: UserAction | null
   setLastUserAction: Dispatch<SetStateAction<UserAction | null>>
 }
@@ -33,11 +34,9 @@ export interface TorrentTableFilterExpr {
  * (`?q=`, already debounced by the header input), the column-filter-to-expr
  * conversion, the cross-seed detection, and the combined backend expression.
  *
- * The `combinedFiltersExpr` cross-seed early-return is load-bearing (regression
- * #1925): in cross-seed mode the column filters are applied client-side by
- * TanStack Table, so they must NOT be folded into the backend expression. This
- * is deliberately DIFFERENT from `selectAllFilters` (bulk-action targeting),
- * which always combines column filters with `filters.expr`. Keep them divergent.
+ * The cross-seed early return is the one deliberate difference from
+ * `selectAllFilters`, which always combines (#1925); both are pinned in their
+ * hook tests.
  */
 export function useTorrentTableFilterExpr({
   filters,
@@ -61,29 +60,15 @@ export function useTorrentTableFilterExpr({
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
-  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
-  const isDoingCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
-  }, [filters?.expr])
+  const isDoingCrossSeedFiltering = isCrossSeedExpr(filters?.expr)
 
-  // Combine column filters with any existing filter expression
-  // For cross-seed filtering, we'll apply column filters client-side only
+  // In cross-seed mode the column filters are applied client-side by TanStack
+  // Table, so the backend gets the hash expression alone.
   const combinedFiltersExpr = useMemo(() => {
-    const columnExpr = columnFiltersExpr
-    const filterExpr = filters?.expr
-
-    // If we're doing cross-seed filtering, don't send column filters to backend
-    // They will be applied client-side by TanStack Table (along with sorting)
     if (isDoingCrossSeedFiltering) {
-      return filterExpr // Only use the cross-seed expression for backend
+      return filters?.expr
     }
-
-    // For regular filtering, combine column filters with existing filters
-    if (columnExpr && filterExpr) {
-      const combined = `(${columnExpr}) && (${filterExpr})`
-      return combined
-    }
-    return columnExpr || filterExpr
+    return combineFilterExpr(columnFiltersExpr, filters?.expr)
   }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
 
   // Detect user-initiated changes

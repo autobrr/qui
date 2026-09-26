@@ -1,7 +1,8 @@
 ---
 sidebar_position: 3
-title: Instance Settings
-description: Configure qBittorrent instance connections in qui.
+title: Add qBittorrent instances to qui
+sidebar_label: Instance Settings
+description: Connect one or more qBittorrent instances to qui, with connection settings, local filesystem access, incognito mode, and qBittorrent preferences.
 ---
 
 # Instance Settings

@@ -38,7 +38,7 @@ func RequireAuthDisabledIPAllowlist(cfg *domain.Config) func(http.Handler) http.
 				return
 			}
 
-			if addr.IsLoopback() && isBuiltInHealthEndpoint(r.URL.Path) {
+			if addr.IsLoopback() && isBuiltInHealthEndpoint(r.URL.EscapedPath()) {
 				next.ServeHTTP(w, r)
 				return
 			}

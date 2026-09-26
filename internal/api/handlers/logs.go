@@ -36,11 +36,10 @@ func NewLogsHandler(appConfig *config.AppConfig) *LogsHandler {
 	}
 }
 
-// Routes registers the log routes on the provided router.
+// Routes registers log settings and file routes; the server groups log streaming with the other SSE routes.
 func (h *LogsHandler) Routes(r chi.Router) {
 	r.Get("/log-settings", h.GetLogSettings)
 	r.Put("/log-settings", h.UpdateLogSettings)
-	r.Get("/logs/stream", h.StreamLogs)
 	r.Get("/logs/files", h.ListLogFiles)
 	r.Get("/logs/files/{filename}", h.DownloadLogFile)
 }

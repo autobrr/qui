@@ -48,7 +48,7 @@
     "globPattern": "Glob 패턴...",
     "smartSearchTitle": "스마트 검색 기능:",
     "smartSearchGlob": "Glob 패턴:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "유사 일치:",
     "smartSearchFuzzyExample": "\"breaking bad\"로 \"Breaking.Bad\"를 찾습니다",
     "smartSearchDots": "점, 밑줄, 대괄호를 처리합니다",
@@ -117,6 +117,18 @@
     "unknown": "알 수 없음",
     "trackerError": "트래커 오류",
     "unreachable": "도달할 수 없음"
+  },
+  "contentTypeLabels": {
+    "movie": "영화",
+    "tv": "TV",
+    "music": "음악",
+    "audiobook": "오디오북",
+    "book": "도서",
+    "comic": "만화",
+    "game": "게임",
+    "app": "앱",
+    "adult": "성인",
+    "unknown": "알 수 없음"
   },
   "themeToggle": {
     "changeTheme": "테마 변경",

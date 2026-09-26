@@ -1014,10 +1014,6 @@
       "label": "節點",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "封鎖節點",
-      "description": "確定要封鎖 {{address}} 嗎？"
-    },
     "banPeerPermanent": {
       "title": "永久封鎖節點",
       "description": "確定要永久封鎖此節點嗎？此操作無法復原。",
@@ -1432,7 +1428,7 @@
       "title": "搜尋種子",
       "description": "按名稱、分類或標籤搜尋。支援 glob 模式，如 *.mkv 或 *1080p*。",
       "placeholder": "搜尋種子...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
     "shareLimit": {
@@ -1463,6 +1459,10 @@
     "descending": "降序",
     "sortDirection": "{{direction}}排序",
     "toggleColumns": "切換列顯示",
+    "stretchMode": "延展名稱欄位以填滿表格",
+    "scrollMode": "自行設定名稱欄位寬度並橫向捲動",
+    "stretchInactive": "已暫停，因為可見欄位已填滿表格",
+    "reorderColumn": "拖曳以重新排序 {{column}}",
     "tableAriaLabel": "種子表格"
   },
   "tableColumns": {

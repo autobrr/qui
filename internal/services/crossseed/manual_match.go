@@ -259,7 +259,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		// read-only save path shows what the add will actually do.
 		// ponytail: plain parsed releases approximate the apply's release view.
 		if linkMode && overlap > 0 &&
-			s.getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
+			s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
 			effectiveSavePath = effectiveFor(torrent)
 		}
 		proposals = append(proposals, ManualMatchProposal{

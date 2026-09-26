@@ -48,7 +48,7 @@
     "globPattern": "Pattern glob...",
     "smartSearchTitle": "Funzionalità di ricerca intelligente:",
     "smartSearchGlob": "Pattern glob:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Corrispondenza approssimativa:",
     "smartSearchFuzzyExample": "\"breaking bad\" trova \"Breaking.Bad\"",
     "smartSearchDots": "Gestisce punti, trattini bassi e parentesi quadre",
@@ -117,6 +117,18 @@
     "unknown": "Sconosciuto",
     "trackerError": "Errore del tracker",
     "unreachable": "Irraggiungibile"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Serie TV",
+    "music": "Musica",
+    "audiobook": "Audiolibro",
+    "book": "Libro",
+    "comic": "Fumetto",
+    "game": "Gioco",
+    "app": "App",
+    "adult": "Adulti",
+    "unknown": "Sconosciuto"
   },
   "themeToggle": {
     "changeTheme": "Cambia tema",

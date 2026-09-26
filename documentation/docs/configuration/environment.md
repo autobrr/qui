@@ -1,7 +1,8 @@
 ---
 sidebar_position: 2
-title: Environment Variables
-description: Configure qui with environment variables.
+title: Configure qui with environment variables
+sidebar_label: Environment Variables
+description: Every QUI__ environment variable, what it overrides in config.toml, and how to use it in Docker.
 ---
 
 # Environment Variables
@@ -31,6 +32,7 @@ QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com  # O
 ```bash
 QUI__SESSION_SECRET_FILE=...  # Path to file containing secret. Takes precedence over QUI__SESSION_SECRET
 QUI__SESSION_SECRET=...       # Auto-generated if not set
+QUI__SESSION_COOKIE_SECURE=false  # Set to true behind an HTTPS reverse proxy
 ```
 
 ## Logging

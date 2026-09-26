@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/pkg/releases"
 )

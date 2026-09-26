@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -32,9 +32,9 @@ func TestNormalizerForService_ReusesSharedSingleton(t *testing.T) {
 }
 
 func TestReleasesMatch_DoesNotLeakGoroutines(t *testing.T) {
-	// Service with nil stringNormalizer: this is the path that previously
+	// matcher with nil stringNormalizer: this is the path that previously
 	// allocated and leaked a ttlcache goroutine on every comparison.
-	s := &Service{}
+	s := matcher{}
 
 	source := rls.ParseString("Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GROUP")
 	candidate := rls.ParseString("Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GROUP")
