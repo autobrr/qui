@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -233,4 +234,14 @@ func disableBenchmarkLogs(b *testing.B) {
 	b.Cleanup(func() {
 		log.Logger = original
 	})
+}
+
+// Two tests that start in the same clock tick must not claim the same schema.
+func TestSchemaNamesDifferWithinOneClockTick(t *testing.T) {
+	now := time.Now()
+	first := testSchemaName("filesmanager", now)
+	second := testSchemaName("filesmanager", now)
+	if first == second {
+		t.Fatalf("schema names collide: %s", first)
+	}
 }
