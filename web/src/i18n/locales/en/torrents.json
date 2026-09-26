@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} selected - Bulk actions available",
+    "ariaLabel_one": "{{count}} torrent selected - Bulk actions available",
+    "ariaLabel_other": "{{count}} torrents selected - Bulk actions available",
     "resume": "Resume",
     "pause": "Pause",
     "forceRecheck": "Force Recheck",
@@ -680,22 +681,28 @@
     "deleteEmptyCategories": {
       "title": "Remove Empty Categories",
       "noEmpty": "There are no empty categories to remove.",
-      "confirm": "Are you sure you want to remove {{count}} empty categor{{plural}}? This action cannot be undone.",
+      "confirm_one": "Are you sure you want to remove {{count}} empty category? This action cannot be undone.",
+      "confirm_other": "Are you sure you want to remove {{count}} empty categories? This action cannot be undone.",
       "cancel": "Cancel",
-      "remove": "Remove {{count}} Categor{{plural}}",
+      "remove_one": "Remove {{count}} Category",
+      "remove_other": "Remove {{count}} Categories",
       "toast": {
-        "success": "Removed {{count}} empty categor{{plural}}",
+        "success_one": "Removed {{count}} empty category",
+        "success_other": "Removed {{count}} empty categories",
         "error": "Failed to remove empty categories"
       }
     },
     "deleteUnusedTags": {
       "title": "Delete Unused Tags",
       "noUnused": "There are no unused tags to delete.",
-      "confirm": "Are you sure you want to delete {{count}} unused tag{{plural}}? This action cannot be undone.",
+      "confirm_one": "Are you sure you want to delete {{count}} unused tag? This action cannot be undone.",
+      "confirm_other": "Are you sure you want to delete {{count}} unused tags? This action cannot be undone.",
       "cancel": "Cancel",
-      "delete": "Delete {{count}} Tag{{plural}}",
+      "delete_one": "Delete {{count}} Tag",
+      "delete_other": "Delete {{count}} Tags",
       "toast": {
-        "success": "Deleted {{count}} unused tag{{plural}}",
+        "success_one": "Deleted {{count}} unused tag",
+        "success_other": "Deleted {{count}} unused tags",
         "error": "Failed to delete unused tags"
       }
     }
@@ -721,7 +728,8 @@
     "contentFilteringInProgress": "Content Filtering In Progress",
     "analyzingContent": "Analyzing existing content...",
     "smartFilteringActive": "Smart Filtering Active",
-    "indexersFiltered": "{{count}} indexer{{plural}} filtered",
+    "indexersFiltered_one": "{{count}} indexer filtered",
+    "indexersFiltered_other": "{{count}} indexers filtered",
     "contentFilteringDescription": "Checking your existing torrents to find duplicates and exclude redundant trackers. This helps avoid downloading the same content multiple times.",
     "excludedDescription": "You already seed this release from these trackers, so they're excluded from the search.",
     "noContentDuplicates": "Content filtering completed. No duplicate content found on your enabled trackers.",
@@ -1055,7 +1063,8 @@
       "fileRenameFailed": "Failed to rename file",
       "folderRenamed": "Folder renamed successfully",
       "folderRenameFailed": "Failed to rename folder",
-      "deletedTorrents": "Deleted {{count}} torrent{{plural}}",
+      "deletedTorrents_one": "Deleted {{count}} torrent",
+      "deletedTorrents_other": "Deleted {{count}} torrents",
       "deletedTorrent": "Deleted torrent: {{name}}",
       "deleteFailed": "Failed to delete: {{error}}"
     },
@@ -1263,7 +1272,8 @@
     "url": "URL",
     "noHttpSources": "No HTTP sources",
     "searchUrls": "Search URLs...",
-    "httpSources": "{{count}} HTTP source{{plural}}",
+    "httpSources_one": "{{count}} HTTP source",
+    "httpSources_other": "{{count}} HTTP sources",
     "filteredCount": "{{filtered}} of {{total}}",
     "copyUrl": "Copy URL",
     "toast": {
@@ -1282,7 +1292,8 @@
     "expandAll": "Expand All",
     "collapseAll": "Collapse All",
     "searchFiles": "Search files...",
-    "fileCount": "{{count}} file{{plural}}",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
     "filteredCount": "{{filtered}} of {{total}}",
     "noFiles": "No files",
     "headers": {

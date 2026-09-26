@@ -15,7 +15,7 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "已选择 {{count}} 个种子 - 可进行批量操作",
+    "ariaLabel_other": "已选择 {{count}} 个种子 - 可进行批量操作",
     "resume": "继续",
     "pause": "暂停",
     "forceRecheck": "强制重新校验",
@@ -632,22 +632,22 @@
     "deleteEmptyCategories": {
       "title": "移除空分类",
       "noEmpty": "没有可移除的空分类。",
-      "confirm": "确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
+      "confirm_other": "确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
       "cancel": "取消",
-      "remove": "移除 {{count}} 个分类",
+      "remove_other": "移除 {{count}} 个分类",
       "toast": {
-        "success": "已移除 {{count}} 个空分类",
+        "success_other": "已移除 {{count}} 个空分类",
         "error": "移除空分类失败"
       }
     },
     "deleteUnusedTags": {
       "title": "删除未使用的标签",
       "noUnused": "没有可删除的未使用标签。",
-      "confirm": "确定要删除 {{count}} 个未使用的标签吗？此操作无法撤销。",
+      "confirm_other": "确定要删除 {{count}} 个未使用的标签吗？此操作无法撤销。",
       "cancel": "取消",
-      "delete": "删除 {{count}} 个标签",
+      "delete_other": "删除 {{count}} 个标签",
       "toast": {
-        "success": "已删除 {{count}} 个未使用的标签",
+        "success_other": "已删除 {{count}} 个未使用的标签",
         "error": "删除未使用的标签失败"
       }
     }
@@ -673,7 +673,7 @@
     "contentFilteringInProgress": "内容筛选进行中",
     "analyzingContent": "正在分析现有内容...",
     "smartFilteringActive": "智能筛选已启用",
-    "indexersFiltered": "{{count}} 个索引器已筛选",
+    "indexersFiltered_other": "{{count}} 个索引器已筛选",
     "contentFilteringDescription": "正在检查您现有的种子以查找重复项并排除冗余的 Tracker。这有助于避免多次下载相同内容。",
     "excludedDescription": "您已从这些 Tracker 做种此版本，因此它们已被排除在搜索之外。",
     "noContentDuplicates": "内容筛选完成。在您启用的 Tracker 上未发现重复内容。",
@@ -1004,7 +1004,7 @@
       "fileRenameFailed": "重命名文件失败",
       "folderRenamed": "文件夹重命名成功",
       "folderRenameFailed": "重命名文件夹失败",
-      "deletedTorrents": "已删除 {{count}} 个种子",
+      "deletedTorrents_other": "已删除 {{count}} 个种子",
       "deletedTorrent": "已删除种子：{{name}}",
       "deleteFailed": "删除失败：{{error}}"
     },
@@ -1204,7 +1204,7 @@
     "url": "URL",
     "noHttpSources": "无 HTTP 来源",
     "searchUrls": "搜索 URL...",
-    "httpSources": "{{count}} 个 HTTP 来源",
+    "httpSources_other": "{{count}} 个 HTTP 来源",
     "filteredCount": "{{filtered}}/{{total}}",
     "copyUrl": "复制 URL",
     "toast": {
@@ -1223,7 +1223,7 @@
     "expandAll": "全部展开",
     "collapseAll": "全部折叠",
     "searchFiles": "搜索文件...",
-    "fileCount": "{{count}} 个文件",
+    "fileCount_other": "{{count}} 个文件",
     "filteredCount": "{{filtered}}/{{total}}",
     "noFiles": "无文件",
     "headers": {

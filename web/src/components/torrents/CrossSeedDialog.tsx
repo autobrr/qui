@@ -371,7 +371,7 @@ const CrossSeedDialogComponent = ({
                       <>
                         <span className="font-medium">{t("crossSeedDialog.smartFilteringActive")}</span>
                         <Badge variant="secondary" className="text-xs">
-                          {t("crossSeedDialog.indexersFiltered", { count: excludedIndexerEntries.length, plural: excludedIndexerEntries.length === 1 ? "" : "s" })}
+                          {t("crossSeedDialog.indexersFiltered", { count: excludedIndexerEntries.length })}
                         </Badge>
                       </>
                     )}
