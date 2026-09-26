@@ -26,7 +26,6 @@ type ContentTypeInfo struct {
 	SearchType   string   // "search", "movie", "tvsearch", "music", "book"
 	RequiredCaps []string // Required indexer capabilities
 	IsMusic      bool     // Helper flag for music-related content
-	MediaType    string   // Detected media format (e.g., "cd", "dvd-video", "bluray")
 }
 
 // audioFileExtensions lists the extensions of standalone audio content for the
@@ -122,7 +121,7 @@ func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles)
 	return DetermineContentType(release)
 }
 
-// DetermineContentType analyzes a release and returns comprehensive content type information
+// DetermineContentType classifies a release with pkg/releases and adds the Torznab search parameters.
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	return torznabContentTypeInfo(releases.DetermineContentType(release))
 }
@@ -171,7 +170,6 @@ func classifyReleaseAs(release *rls.Release, releaseType rls.Type) ContentTypeIn
 func torznabContentTypeInfo(classified releases.ContentTypeInfo) ContentTypeInfo {
 	info := ContentTypeInfo{
 		ContentType: string(classified.ContentType),
-		MediaType:   classified.MediaType,
 	}
 	switch classified.ContentType {
 	case releases.ContentTypeMovie:
