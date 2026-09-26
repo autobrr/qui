@@ -970,3 +970,70 @@ func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
 	}
 }
+
+// A writer queued behind the write lock returns when its context ends instead of
+// waiting for the lock holder (#2817).
+func TestWriterLockWaitHonorsContext(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	_, err = holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
+	require.NoError(t, err)
+
+	// This writer takes the write lock and then waits in busy_timeout on the exclusive lock.
+	blockerDone := make(chan error, 1)
+	go func() {
+		_, err := db.ExecContext(t.Context(), "INSERT INTO string_pool (value) VALUES (?)", "blocker")
+		blockerDone <- err
+	}()
+	require.Eventually(t, func() bool { return len(db.writerSem) == 1 }, time.Second, 5*time.Millisecond)
+
+	const insert = "INSERT INTO string_pool (value) VALUES (?)"
+	for name, write := range map[string]func(context.Context) error{
+		"ExecContext": func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, insert, "exec")
+			return err
+		},
+		"QueryContext": func(ctx context.Context) error {
+			rows, err := db.QueryContext(ctx, insert+" RETURNING id", "query")
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return rows.Err()
+		},
+		"QueryRowContext": func(ctx context.Context) error {
+			var id int64
+			return db.QueryRowContext(ctx, insert+" RETURNING id", "row").Scan(&id)
+		},
+		"BeginTx": func(ctx context.Context) error {
+			tx, err := db.BeginTx(ctx, nil)
+			if err == nil {
+				_ = tx.Rollback()
+			}
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			err := write(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Less(t, time.Since(start), time.Second, "waited for the lock holder instead of the context")
+		})
+	}
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, <-blockerDone)
+}

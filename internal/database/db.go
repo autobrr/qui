@@ -11,11 +11,11 @@
 //   - ExecContext: Routes writes to writerConn, reads to readerPool
 //   - QueryContext: Routes writes to writerConn, reads to readerPool
 //   - QueryRowContext: Routes writes to writerConn, reads to readerPool
-//   - BeginTx (write): Uses writerConn, fully serialized by writerMu mutex
+//   - BeginTx (write): Uses writerConn, fully serialized by the writerSem lock
 //   - BeginTx (read-only): Uses readerPool (concurrent)
 //   - WAL mode allows concurrent readers during writes
 //
-// The single writer connection + writerMu mutex eliminates both SQLITE_BUSY errors
+// The single writer connection + writerSem lock eliminates both SQLITE_BUSY errors
 // and "cannot start a transaction within a transaction" errors by fully serializing
 // all write transactions. Only one write transaction can be active at a time.
 //
@@ -76,19 +76,19 @@ var migrationsFS embed.FS
 
 // reader/writer fields on DB
 type DB struct {
-	writerConn      *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
-	readerPool      *sql.DB                            // Read-only connection pool for concurrent reads
-	writerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
-	readerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
-	stmtMu          sync.RWMutex                       // Protects stmt caches during Close and cache ops
-	dialect         Dialect
-	serializeWrites bool
+	writerConn  *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
+	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
+	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
+	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	dialect     Dialect
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
 	// and fails immediately with "cannot start a transaction within a transaction"
-	// This mutex ensures write transactions are properly serialized
-	writerMu sync.Mutex
+	// This lock ensures write transactions are properly serialized. It is a channel
+	// so a waiter can give up when its context ends. Nil when writes are not serialized.
+	writerSem chan struct{}
 
 	// Metrics for string pool cache performance
 	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
@@ -265,7 +265,7 @@ type Tx struct {
 	db         *DB
 	ctx        context.Context // context from BeginTx, used for commit/rollback
 	isWriteTx  bool            // true if this is a write transaction that needs serialized commit
-	unlockFn   func()          // function to unlock writerMu when transaction completes (write tx only)
+	unlockFn   func()          // function to release writerSem when transaction completes (write tx only)
 	unlockOnce sync.Once       // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
@@ -405,15 +405,15 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	return stmt.QueryRowContext(ctx, args...)
 }
 
-// Commit commits the transaction and releases the writer mutex if this is a write transaction.
+// Commit commits the transaction and releases the write lock if this is a write transaction.
 // Also promotes any transaction-prepared statements to the DB cache for future use.
-// On failure, the transaction remains active - caller must call Rollback() to release the mutex.
+// On failure, the transaction remains active - caller must call Rollback() to release the write lock.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
 	if err == nil {
 		// Commit succeeded - promote statements to cache
 		t.promoteStatementsToCache()
-		// Release mutex only on successful commit (for write transactions)
+		// Release the write lock only on successful commit (for write transactions)
 		if t.unlockFn != nil {
 			t.unlockOnce.Do(t.unlockFn)
 		}
@@ -421,13 +421,13 @@ func (t *Tx) Commit() error {
 	return err
 }
 
-// Rollback rolls back the transaction and releases the writer mutex if this is a write transaction.
-// Always releases the mutex since the transaction is done (either rolled back successfully,
+// Rollback rolls back the transaction and releases the write lock if this is a write transaction.
+// Always releases the write lock since the transaction is done (either rolled back successfully,
 // or already closed from a prior failed commit returning ErrTxDone).
 // Does NOT promote statements to cache since the transaction failed.
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
-	// Always release mutex - transaction is done regardless of rollback result
+	// Always release the write lock - transaction is done regardless of rollback result
 	if t.unlockFn != nil {
 		t.unlockOnce.Do(t.unlockFn)
 	}
@@ -671,12 +671,12 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	db := &DB{
-		writerConn:      writerConn,
-		readerPool:      readerPool,
-		writerStmts:     newStmtCache(),
-		readerStmts:     newStmtCache(),
-		dialect:         DialectSQLite,
-		serializeWrites: true,
+		writerConn:  writerConn,
+		readerPool:  readerPool,
+		writerStmts: newStmtCache(),
+		readerStmts: newStmtCache(),
+		dialect:     DialectSQLite,
+		writerSem:   make(chan struct{}, 1),
 	}
 
 	// Run migrations with writer connection
@@ -1044,10 +1044,10 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		return execWithRetry(ctx, db, query, args, execResult{})
 	}
 
-	if db.serializeWrites {
-		db.writerMu.Lock()
-		defer db.writerMu.Unlock()
+	if err := db.lockWriter(ctx); err != nil {
+		return nil, err
 	}
+	defer db.unlockWriter()
 
 	return execWithRetry(ctx, db, query, args, execResult{})
 }
@@ -1059,10 +1059,10 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		return execWithRetry(ctx, db, query, args, queryRows{})
 	}
 
-	if db.serializeWrites {
-		db.writerMu.Lock()
-		defer db.writerMu.Unlock()
+	if err := db.lockWriter(ctx); err != nil {
+		return nil, err
 	}
+	defer db.unlockWriter()
 
 	return execWithRetry(ctx, db, query, args, queryRows{})
 }
@@ -1070,13 +1070,36 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	if isWriteQuery(query) && db.serializeWrites {
-		db.writerMu.Lock()
+	if isWriteQuery(query) {
+		if db.lockWriter(ctx) != nil {
+			// sql.DB checks ctx before it takes a connection, so this row
+			// carries ctx.Err() and the query does not run.
+			return db.writerConn.QueryRowContext(ctx, db.bindQuery(query), args...)
+		}
 		row := db.queryRowUnlocked(ctx, query, args...)
-		db.writerMu.Unlock()
+		db.unlockWriter()
 		return row
 	}
 	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+// lockWriter takes the write lock, or returns ctx.Err() if ctx ends first.
+func (db *DB) lockWriter(ctx context.Context) error {
+	if db.writerSem == nil {
+		return nil
+	}
+	select {
+	case db.writerSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (db *DB) unlockWriter() {
+	if db.writerSem != nil {
+		<-db.writerSem
+	}
 }
 
 func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
@@ -1172,7 +1195,7 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 //
 // CONCURRENCY MODEL:
 // - Read-only transactions use the reader pool (concurrent)
-// - Write transactions use the single writer connection (serialized via mutex + SQLite)
+// - Write transactions use the single writer connection (serialized via the write lock + SQLite)
 // - WAL mode allows concurrent readers during write transactions
 //
 // STATEMENT CACHING STRATEGY:
@@ -1202,20 +1225,20 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 //
 // GUARANTEES:
 // - ExecContext: Sequential execution through single writer connection, no partial writes visible
-// - BeginTx (write): ACID properties, full transaction isolation, serialized via mutex + single writer connection
+// - BeginTx (write): ACID properties, full transaction isolation, serialized via the write lock + single writer connection
 // - BeginTx (read-only): ACID properties, concurrent with writes
-// - All write operations: Serialized through mutex + single writer connection (no "transaction within transaction" errors)
+// - All write operations: Serialized through the write lock + single writer connection (no "transaction within transaction" errors)
 //
 // LIMITATIONS:
-// - Write transactions are serialized (one at a time) due to mutex + single writer connection
+// - Write transactions are serialized (one at a time) due to the write lock + single writer connection
 // - Long-running write transactions will block other write transactions
 // - Use read-only transactions when possible to avoid blocking writes
 //
 // NOTE ON SERIALIZATION:
 // SQLite with SetMaxOpenConns=1 does NOT properly queue BeginTx calls - it fails immediately
-// with "cannot start a transaction within a transaction" instead of waiting. The writerMu
-// mutex serializes write transactions for their ENTIRE lifetime (BeginTx through Commit/Rollback)
-// to prevent this error. The mutex is released only when the transaction completes (Commit or Rollback).
+// with "cannot start a transaction within a transaction" instead of waiting. The writerSem
+// lock serializes write transactions for their ENTIRE lifetime (BeginTx through Commit/Rollback)
+// to prevent this error. The lock is released only when the transaction completes (Commit or Rollback).
 // This means write transactions are fully serialized, but that's acceptable since SQLite can only
 // handle one write transaction at a time anyway.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
@@ -1223,7 +1246,7 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 	isReadOnly := opts != nil && opts.ReadOnly
 
 	if isReadOnly {
-		// Read-only transactions use the reader pool (no mutex needed, unlimited concurrency)
+		// Read-only transactions use the reader pool (no lock needed, unlimited concurrency)
 		tx, err := db.readerPool.BeginTx(ctx, opts)
 		if err != nil {
 			return nil, err
@@ -1231,17 +1254,15 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: false, unlockFn: nil}, nil
 	}
 
-	// Write transactions: Lock mutex for the ENTIRE transaction lifetime.
-	// The mutex will be unlocked by Commit() or Rollback().
-	if db.serializeWrites {
-		db.writerMu.Lock()
+	// Write transactions: Lock for the ENTIRE transaction lifetime.
+	// The lock will be released by Commit() or Rollback().
+	if err := db.lockWriter(ctx); err != nil {
+		return nil, err
 	}
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		if db.serializeWrites {
-			db.writerMu.Unlock()
-		}
+		db.unlockWriter()
 		if isSQLiteNestedTxErr(err) {
 			// This indicates a bug: a previous transaction failed to rollback properly,
 			// leaving the connection wedged. Log with stack trace to help diagnose.
@@ -1255,17 +1276,13 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
+	// Pass unlock function to Tx so it can release the lock on Commit/Rollback
 	return &Tx{
 		tx:        tx,
 		db:        db,
 		ctx:       ctx,
 		isWriteTx: true,
-		unlockFn: func() {
-			if db.serializeWrites {
-				db.writerMu.Unlock()
-			}
-		},
+		unlockFn:  db.unlockWriter,
 	}, nil
 }
 

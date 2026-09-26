@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/activity"
 )
@@ -291,6 +293,7 @@ type taskItem struct {
 	created  time.Time
 	index    int
 	started  time.Time // When execution began (for duration tracking)
+	detached bool      // exec ran detachedExecWarnAfter past its deadline; guarded by s.mu
 }
 
 type taskHeap []*taskItem
@@ -603,8 +606,19 @@ func (s *searchScheduler) dispatchTasks() {
 		}
 
 		// Check if indexer already has in-flight task
-		if _, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
-			blocked = append(blocked, item)
+		if running, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
+			if !running.detached {
+				blocked = append(blocked, item)
+				continue
+			}
+			// Fail fast: the stuck exec can hold the indexer until restart.
+			item.started = time.Now()
+			taskCompleted = true
+			err := fmt.Errorf("indexer %s is still running a timed-out search", item.task.indexer.Name)
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
 			continue
 		}
 
@@ -649,36 +663,29 @@ func (s *searchScheduler) dispatchTasks() {
 	}
 }
 
+// executeTask reports completion on the first of the exec result or the end of
+// its context, but keeps the indexer and worker slot until exec returns. An exec
+// that ignores its context otherwise frees the slot for another one that blocks
+// the same way, and goroutines pile up without limit (#2817).
 func (s *searchScheduler) executeTask(item *taskItem) {
 	task := item.task
-	var panicked bool
-	var requestCompleted bool
+	reported := false
 
 	defer func() {
-		if !requestCompleted {
-			s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+		if !reported {
+			err := fmt.Errorf("scheduler worker panic: %v", recover())
+			s.reportTaskComplete(item, nil, nil, err)
 		}
 
-		if r := recover(); r != nil {
-			panicked = true
-			err := fmt.Errorf("scheduler worker panic: %v", r)
-			s.mu.Lock()
-			historyRecorded := s.handleTaskCompleteLocked(item, nil, nil, err)
-			delete(s.inFlight, task.indexer.ID)
-			if task.isRSS {
-				delete(s.pendingRSS, task.indexer.ID)
-			}
-			s.mu.Unlock()
-
-			// A task finished (via panic recovery), changing the scheduler's visible
-			// activity. Emitted after releasing the lock, mirroring the success path.
-			s.publishActivity(activity.KindIndexerActivity)
-			if historyRecorded {
-				s.publishActivity(activity.KindSearchHistory)
-			}
+		s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+		s.mu.Lock()
+		delete(s.inFlight, task.indexer.ID)
+		if task.isRSS {
+			delete(s.pendingRSS, task.indexer.ID)
 		}
+		s.mu.Unlock()
+		s.publishActivity(activity.KindIndexerActivity)
 
-		// Release worker
 		<-s.workerPool
 
 		// Notify loop - may unblock other tasks
@@ -710,38 +717,60 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		done <- taskExecResult{results: results, coverage: coverage, err: err}
 	}()
 
-	var (
-		results  []Result
-		coverage []int
-		err      error
-	)
 	select {
 	case result := <-done:
-		results = result.results
-		coverage = result.coverage
-		err = result.err
+		s.reportTaskComplete(item, result.results, result.coverage, result.err)
+		reported = true
 	case <-execCtx.Done():
-		err = execCtx.Err()
-	}
-	s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
-	requestCompleted = true
-
-	// Handle completion (only if we didn't panic)
-	if !panicked {
-		s.mu.Lock()
-		historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
-		delete(s.inFlight, task.indexer.ID)
-		if task.isRSS {
-			delete(s.pendingRSS, task.indexer.ID)
-		}
-		s.mu.Unlock()
-
-		// A task finished, changing the scheduler's visible activity. Published
-		// after releasing the lock so the publisher never blocks the scheduler.
+		s.reportTaskComplete(item, nil, nil, execCtx.Err())
+		reported = true
+		// The job may be done while the slot stays held; the activity panel
+		// refreshes only on this signal.
 		s.publishActivity(activity.KindIndexerActivity)
-		if historyRecorded {
-			s.publishActivity(activity.KindSearchHistory)
-		}
+		s.awaitDetachedExec(item, done)
+	}
+}
+
+// detachedExecWarnAfter is how long a timed-out exec may keep running before
+// the scheduler logs it as stuck and fails the tasks queued for its indexer.
+var detachedExecWarnAfter = 30 * time.Second
+
+// awaitDetachedExec waits for an exec whose context has ended and drops its
+// late result. The caller already got the context error.
+func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExecResult) {
+	timer := time.NewTimer(detachedExecWarnAfter)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+	}
+	s.mu.Lock()
+	item.detached = true
+	s.mu.Unlock()
+	// Wake the loop: a queued task with no deadline and no pacing wait has no
+	// retry timer, so it would wait for the stuck exec otherwise.
+	select {
+	case s.completeCh <- struct{}{}:
+	default:
+	}
+	log.Warn().
+		Int("indexerID", item.task.indexer.ID).
+		Str("indexer", item.task.indexer.Name).
+		Dur("pastDeadline", detachedExecWarnAfter).
+		Msg("Torznab search still running after its context ended; indexer slot stays held and its queued searches fail until it returns")
+	<-done
+}
+
+// reportTaskComplete delivers the task outcome to the caller and search history.
+func (s *searchScheduler) reportTaskComplete(item *taskItem, results []Result, coverage []int, err error) {
+	s.mu.Lock()
+	historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
+	s.mu.Unlock()
+
+	// Published after releasing the lock so the publisher never blocks the scheduler.
+	if historyRecorded {
+		s.publishActivity(activity.KindSearchHistory)
 	}
 }
 
