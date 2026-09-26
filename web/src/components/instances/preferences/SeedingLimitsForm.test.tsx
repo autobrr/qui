@@ -37,7 +37,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 beforeEach(() => {
-  // Radix tooltip measures through ResizeObserver, which jsdom lacks.
+  // Radix Switch sizes its hidden form input through ResizeObserver, which jsdom lacks.
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
     unobserve() {}
@@ -73,12 +73,13 @@ describe("SeedingLimitsForm share ratio", () => {
     await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 25 })))
   })
 
-  it("keeps a typed ratio above 10", () => {
+  it("keeps a typed ratio above the input's default max", async () => {
     renderForm()
 
-    fireEvent.change(ratioInput(), { target: { value: "150.5" } })
+    fireEvent.change(ratioInput(), { target: { value: "2000000.5" } })
 
-    expect(ratioInput().value).toBe("150.5")
+    fireEvent.submit(ratioInput().closest("form")!)
+    await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 2000000.5 })))
   })
 
   it("stores -1 when the field is cleared", async () => {
