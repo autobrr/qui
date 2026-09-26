@@ -3599,7 +3599,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
                             <FieldHelp>
-                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
+                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .SavePath }}"}</code>, <code>{"{{ .Tracker }}"}</code>
                             </FieldHelp>
                           </Label>
                           <Input

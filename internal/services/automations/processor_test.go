@@ -719,6 +719,17 @@ func TestResolveMovePath_Template(t *testing.T) {
 	require.Equal(t, "/data/movies", resolved)
 }
 
+func TestResolveMovePath_SourceSavePath(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Movie.2024",
+		SavePath: "/downloads/movies",
+	}
+	resolved, ok := resolveMovePath("{{.SavePath}}/archive", torrent, nil, nil)
+	require.True(t, ok)
+	require.Equal(t, "/downloads/movies/archive", resolved)
+}
+
 func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
