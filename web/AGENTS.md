@@ -71,7 +71,7 @@ Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.t
 
 1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
+3. Add the locale to `localeRules` in `scripts/check-locale-coverage.mjs`, which checks every locale and takes one as its argument. Write its plural categories out by hand; do not read them off CLDR, which lists categories no reachable count selects.
 4. Run `pnpm check:i18n`.
 5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
 

@@ -4,13 +4,25 @@ import path from "node:path"
 const webRoot = path.resolve(import.meta.dirname, "..")
 const localesRoot = path.join(webRoot, "src", "i18n", "locales")
 const enRoot = path.join(localesRoot, "en")
-const supportedLocales = ["fr", "de", "it", "ko", "pt-BR", "ca"]
-const locale = process.argv[2]
-if (!supportedLocales.includes(locale)) {
-  console.error(`Unknown locale "${locale}". Use one of: ${supportedLocales.join(", ")}`)
-  process.exit(1)
+
+// Plural rules are written out per locale, never derived from CLDR: i18next resolves a category a
+// locale lacks against English instead of against another category, and the categories a locale
+// actually needs are narrower than CLDR lists. ko has no `one` at all; cs `many` covers decimals
+// only, which every count is floored past; fr/it/ca/pt-BR `many` fires at exact millions alone.
+// `hasOne: false` lets a locale omit `_one`; a required category is satisfied by an unsuffixed
+// catch-all key, which i18next answers every category with.
+const localeRules = {
+  fr: {},
+  de: {},
+  it: {},
+  ko: { hasOne: false },
+  "pt-BR": {},
+  ca: {},
+  cs: { pluralForms: { few: "required", many: "optional" } },
+  uk: { pluralForms: { few: "required", many: "required" } },
+  "zh-CN": { hasOne: false, cjk: true },
+  "zh-TW": { hasOne: false, cjk: true },
 }
-const localeRoot = path.join(localesRoot, locale)
 
 const namespaces = [
   "common",
@@ -42,6 +54,10 @@ const passthroughTerms = new Set([
   "AM", "PM", "N/A", "I/O",
   "GPL-2.0-or-later",
 ])
+
+// {{plural}} carries an English "s"/"ies" suffix, so a translation has no use for it. PR #2784
+// converts those strings to real plural keys; this set goes with the last call site.
+const englishOnlyVars = new Set(["plural"])
 
 // ---------------------------------------------------------------------------
 // Utility functions
@@ -81,6 +97,18 @@ function extractHtmlTags(str) {
   return tags
 }
 
+function containsCJK(str) {
+  return /[一-鿿㐀-䶿]/.test(str)
+}
+
+function stripInterpolation(str) {
+  return str.replace(/\{\{[^}]+\}\}/g, "")
+}
+
+function stripHtmlTags(str) {
+  return str.replace(/<\/?[^>]+>/g, "")
+}
+
 function isPassthroughValue(value) {
   if (value.length <= 4) return true
   if (passthroughTerms.has(value)) return true
@@ -107,27 +135,46 @@ function hasBOM(buffer) {
     && buffer[2] === 0xBF
 }
 
+// Bases English pluralizes. Only these require plural forms from a locale, and only these make a
+// locale-only `_few`/`_many` key legitimate rather than a leftover.
+function englishPluralBases(enFlat) {
+  const bases = new Set()
+
+  for (const key of enFlat.keys()) {
+    if (!key.endsWith("_one")) continue
+    const base = key.slice(0, -"_one".length)
+    if (enFlat.has(`${base}_other`)) {
+      bases.add(base)
+    }
+  }
+
+  return bases
+}
+
+// The English key a locale key is compared against: itself, or the `_other` form behind a category
+// English does not have, so a cs `_few` value is still checked for placeholders and markup.
+function comparableEnKey(key, enFlat, rule) {
+  if (enFlat.has(key)) return key
+
+  for (const category of Object.keys(rule.pluralForms ?? {})) {
+    const suffix = `_${category}`
+    if (!key.endsWith(suffix)) continue
+    const base = key.slice(0, -suffix.length)
+    if (enFlat.has(`${base}_other`)) return `${base}_other`
+  }
+
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Check functions
 // ---------------------------------------------------------------------------
 
-function checkMissingKeys(enFlat, localeFlat, namespace) {
+function checkMissingKeys(enFlat, localeFlat, namespace, rule, pluralBases) {
   const errors = []
 
-  // Find English plural bases with both _one and _other forms.
-  const v4PluralBases = new Set()
-  for (const key of enFlat.keys()) {
-    if (key.endsWith("_one")) {
-      const base = key.slice(0, -4)
-      if (enFlat.has(`${base}_other`)) {
-        v4PluralBases.add(base)
-      }
-    }
-  }
-
   for (const [key, value] of enFlat) {
-    // Permit a locale to omit _one when English also has _other.
-    if (key.endsWith("_one") && v4PluralBases.has(key.slice(0, -4))) {
+    if (rule.hasOne === false && key.endsWith("_one") && pluralBases.has(key.slice(0, -"_one".length))) {
       continue
     }
 
@@ -140,80 +187,71 @@ function checkMissingKeys(enFlat, localeFlat, namespace) {
   return errors
 }
 
-function checkExtraKeys(enFlat, localeFlat, namespace) {
+function checkExtraKeys(enFlat, localeFlat, namespace, rule, pluralBases) {
   const errors = []
 
   for (const key of localeFlat.keys()) {
-    if (!enFlat.has(key)) {
-      // Permit an extra _other when English has _one.
-      if (key.endsWith("_other") && enFlat.has(`${key.slice(0, -6)}_one`)) {
-        continue
-      }
+    if (enFlat.has(key)) continue
 
-      errors.push(`${namespace}.${key}`)
+    const enKey = comparableEnKey(key, enFlat, rule)
+    if (enKey && pluralBases.has(enKey.slice(0, -"_other".length))) continue
+
+    errors.push(`${namespace}.${key}`)
+  }
+
+  return errors
+}
+
+// Without its required categories a locale renders English at those counts, which reads as a working
+// translation. checkMissingKeys already covers the categories English itself has.
+function checkPluralForms(localeFlat, namespace, rule, pluralBases) {
+  const errors = []
+
+  for (const [category, requirement] of Object.entries(rule.pluralForms ?? {})) {
+    if (requirement !== "required") continue
+
+    for (const base of pluralBases) {
+      if (localeFlat.has(base) || localeFlat.has(`${base}_${category}`)) continue
+      errors.push(`${namespace}.${base}_${category}`)
     }
   }
 
   return errors
 }
 
-// Permit translations to omit placeholders used only for English grammar.
-const localeSpecificVars = new Set(["plural"])
-
-function checkInterpolation(enFlat, localeFlat, namespace) {
+function checkInterpolation(enValue, localeValue, key, namespace, locale) {
   const errors = []
+  const enVars = extractInterpolationVars(enValue)
+  const localeVars = extractInterpolationVars(localeValue)
 
-  for (const [key, enValue] of enFlat) {
-    const localeValue = localeFlat.get(key)
-    if (!localeValue) continue
-
-    const enVars = extractInterpolationVars(enValue)
-    const localeVars = extractInterpolationVars(localeValue)
-
-    for (const v of enVars) {
-      if (localeSpecificVars.has(v)) continue
-      if (!localeVars.has(v)) {
-        errors.push(`${namespace}.${key}: missing {{${v}}} in ${locale}`)
-      }
+  for (const v of enVars) {
+    if (englishOnlyVars.has(v)) continue
+    if (!localeVars.has(v)) {
+      errors.push(`${namespace}.${key}: missing {{${v}}} in ${locale}`)
     }
+  }
+
+  for (const v of localeVars) {
+    if (enVars.has(v)) continue
+    errors.push(`${namespace}.${key}: extra {{${v}}} not in en`)
   }
 
   return errors
 }
 
-function checkHtmlTags(enFlat, localeFlat, namespace) {
-  const errors = []
+function checkHtmlTags(enValue, localeValue, key, namespace) {
+  const enTags = extractHtmlTags(enValue).sort()
+  const localeTags = extractHtmlTags(localeValue).sort()
 
-  for (const [key, enValue] of enFlat) {
-    const localeValue = localeFlat.get(key)
-    if (!localeValue) continue
+  if (enTags.join(",") === localeTags.join(",")) return []
 
-    const enTags = extractHtmlTags(enValue).sort()
-    const localeTags = extractHtmlTags(localeValue).sort()
+  const missing = enTags.filter((t) => !localeTags.includes(t))
+  const extra = localeTags.filter((t) => !enTags.includes(t))
+  const parts = []
+  if (missing.length) parts.push(`missing <${missing.join(">, <")}>`)
+  if (extra.length) parts.push(`extra <${extra.join(">, <")}>`)
 
-    if (enTags.join(",") !== localeTags.join(",")) {
-      const missing = enTags.filter((t) => !localeTags.includes(t))
-      const extra = localeTags.filter((t) => !enTags.includes(t))
-      const parts = []
-      if (missing.length) parts.push(`missing <${missing.join(">, <")}>`)
-      if (extra.length) parts.push(`extra <${extra.join(">, <")}>`)
-      errors.push(`${namespace}.${key}: ${parts.join(", ")}`)
-    }
-  }
-
-  return errors
-}
-
-function checkEmptyStrings(localeFlat, namespace) {
-  const errors = []
-
-  for (const [key, value] of localeFlat) {
-    if (value === "") {
-      errors.push(`${namespace}.${key}`)
-    }
-  }
-
-  return errors
+  return [`${namespace}.${key}: ${parts.join(", ")}`]
 }
 
 function checkEncoding(filePath) {
@@ -279,81 +317,92 @@ function checkUntranslated(enFlat, localeFlat, namespace) {
   return { explained, unexplained }
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
+function checkUnneededOneForms(localeFlat, namespace, locale) {
+  const warnings = []
 
-if (!fs.existsSync(localeRoot)) {
-  console.log(`${locale} locale directory not found, skipping coverage check.`)
-  process.exit(0)
+  for (const key of localeFlat.keys()) {
+    if (key.endsWith("_one")) {
+      warnings.push(`${namespace}.${key}: ${locale} does not need _one variant (only _other)`)
+    }
+  }
+
+  return warnings
 }
 
-const errors = {
-  missingKeys: [],
-  extraKeys: [],
-  interpolation: [],
-  htmlTags: [],
-  emptyStrings: [],
-  encoding: [],
+function checkTextLength(enFlat, localeFlat, namespace, locale) {
+  const warnings = []
+
+  for (const [key, enValue] of enFlat) {
+    const localeValue = localeFlat.get(key)
+    if (!localeValue || localeValue === enValue) continue
+
+    const enClean = stripHtmlTags(stripInterpolation(enValue)).trim()
+    const localeClean = stripHtmlTags(stripInterpolation(localeValue)).trim()
+
+    if (enClean.length < 8) continue
+
+    if (localeClean.length > enClean.length * 1.5) {
+      const ratio = Math.round((localeClean.length / enClean.length) * 100)
+      warnings.push(`${namespace}.${key}: ${locale} is ${ratio}% of en length (${localeClean.length} vs ${enClean.length} chars)`)
+    }
+  }
+
+  return warnings
 }
 
-const warnings = {
-  untranslatedUnexplained: [],
-  untranslatedExplained: [],
+function checkPunctuation(localeFlat, namespace) {
+  const warnings = []
+
+  const halfToFull = {
+    ",": "，",
+    ";": "；",
+    "!": "！",
+    "?": "？",
+    ":": "：",
+  }
+
+  for (const [key, value] of localeFlat) {
+    if (!containsCJK(value)) continue
+
+    // Strip interpolation and HTML before checking punctuation.
+    const cleaned = stripHtmlTags(stripInterpolation(value))
+
+    for (const [half, full] of Object.entries(halfToFull)) {
+      if (cleaned.includes(half)) {
+        warnings.push(`${namespace}.${key}: half-width "${half}" should be "${full}"`)
+      }
+    }
+  }
+
+  return warnings
 }
 
-for (const ns of namespaces) {
+// English is the same for every locale, so a run over all of them parses each namespace once.
+const englishCache = new Map()
+
+function loadEnglish(ns) {
+  let english = englishCache.get(ns)
+  if (english) return english
+
   const enPath = path.join(enRoot, `${ns}.json`)
-  const localePath = path.join(localeRoot, `${ns}.json`)
-
   if (!fs.existsSync(enPath)) {
-    errors.missingKeys.push(`${ns}: English locale file missing`)
-    continue
+    english = { missing: true }
+  } else {
+    try {
+      const flat = flattenKeys(JSON.parse(fs.readFileSync(enPath, "utf8")))
+      english = { flat, pluralBases: englishPluralBases(flat) }
+    } catch {
+      english = { unparsable: true }
+    }
   }
 
-  if (!fs.existsSync(localePath)) {
-    errors.missingKeys.push(`${ns}: ${locale} locale file missing`)
-    continue
-  }
-
-  errors.encoding.push(...checkEncoding(localePath))
-
-  let enData, localeData
-  try {
-    enData = JSON.parse(fs.readFileSync(enPath, "utf8"))
-    localeData = JSON.parse(fs.readFileSync(localePath, "utf8"))
-  } catch {
-    errors.encoding.push(`${ns}: failed to parse JSON, skipping checks`)
-    continue
-  }
-
-  const enFlat = flattenKeys(enData)
-  const localeFlat = flattenKeys(localeData)
-
-  errors.missingKeys.push(...checkMissingKeys(enFlat, localeFlat, ns))
-  errors.extraKeys.push(...checkExtraKeys(enFlat, localeFlat, ns))
-  errors.interpolation.push(...checkInterpolation(enFlat, localeFlat, ns))
-  errors.htmlTags.push(...checkHtmlTags(enFlat, localeFlat, ns))
-  errors.emptyStrings.push(...checkEmptyStrings(localeFlat, ns))
-
-  const untranslated = checkUntranslated(enFlat, localeFlat, ns)
-  warnings.untranslatedUnexplained.push(...untranslated.unexplained)
-  warnings.untranslatedExplained.push(...untranslated.explained)
+  englishCache.set(ns, english)
+  return english
 }
 
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
-
-const totalErrors = Object.values(errors).reduce((sum, arr) => sum + arr.length, 0)
-const totalWarnings = Object.values(warnings).reduce((sum, arr) => sum + arr.length, 0)
-
-if (totalErrors === 0 && totalWarnings === 0) {
-  console.log(`${locale} translation coverage: all checks passed.`)
-  process.exit(0)
-}
-
-console.log(`=== ${locale} Translation Coverage Report ===\n`)
 
 function printSection(label, items, severity) {
   if (items.length === 0) return
@@ -364,32 +413,159 @@ function printSection(label, items, severity) {
   console.log()
 }
 
-if (totalErrors > 0) {
-  console.log("ERRORS:\n")
-  printSection("Missing Keys", errors.missingKeys, "error")
-  printSection("Extra Keys", errors.extraKeys, "error")
-  printSection("Interpolation", errors.interpolation, "error")
-  printSection("HTML Tags", errors.htmlTags, "error")
-  printSection("Empty Strings", errors.emptyStrings, "error")
-  printSection("Encoding", errors.encoding, "error")
+function report(locale, errors, warnings) {
+  const totalErrors = Object.values(errors).reduce((sum, arr) => sum + arr.length, 0)
+  const totalWarnings = Object.values(warnings).reduce((sum, arr) => sum + arr.length, 0)
+
+  if (totalErrors === 0 && totalWarnings === 0) {
+    console.log(`${locale} translation coverage: all checks passed.`)
+    return totalErrors
+  }
+
+  console.log(`=== ${locale} Translation Coverage Report ===\n`)
+
+  if (totalErrors > 0) {
+    console.log("ERRORS:\n")
+    printSection("Missing Keys", errors.missingKeys, "error")
+    printSection("Extra Keys", errors.extraKeys, "error")
+    printSection("Plural Forms", errors.pluralForms, "error")
+    printSection("Interpolation", errors.interpolation, "error")
+    printSection("HTML Tags", errors.htmlTags, "error")
+    printSection("Empty Strings", errors.emptyStrings, "error")
+    printSection("Encoding", errors.encoding, "error")
+  }
+
+  if (totalWarnings > 0) {
+    console.log("WARNINGS:\n")
+    printSection("Untranslated (needs review)", warnings.untranslatedUnexplained, "warning")
+    printSection("Untranslated (kept intentionally - paths, URLs, patterns, examples, technical/community terms)", warnings.untranslatedExplained, "warning")
+    printSection("Plural Forms", warnings.pluralForms, "warning")
+    printSection("Text Length", warnings.textLength, "warning")
+    printSection("Punctuation", warnings.punctuation, "warning")
+  }
+
+  const errorParts = Object.entries(errors)
+    .map(([key, arr]) => `${key}: ${arr.length}`)
+    .join(", ")
+  const warnParts = Object.entries(warnings)
+    .map(([key, arr]) => `${key}: ${arr.length}`)
+    .join(", ")
+
+  console.log("=== Summary ===")
+  console.log(`  Errors:   ${totalErrors} (${errorParts})`)
+  console.log(`  Warnings: ${totalWarnings} (${warnParts})`)
+  console.log(`  Result:   ${totalErrors > 0 ? "FAIL" : "PASS (warnings only)"}`)
+
+  return totalErrors
 }
 
-if (totalWarnings > 0) {
-  console.log("WARNINGS:\n")
-  printSection("Untranslated (needs review)", warnings.untranslatedUnexplained, "warning")
-  printSection("Untranslated (kept intentionally - paths, URLs, patterns, examples, technical/community terms)", warnings.untranslatedExplained, "warning")
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+function checkLocale(locale) {
+  const rule = localeRules[locale]
+  const localeRoot = path.join(localesRoot, locale)
+
+  // A configured locale without a directory is a misconfiguration, not a locale still being added.
+  if (!fs.existsSync(localeRoot)) {
+    console.error(`${locale} locale directory not found: ${localeRoot}`)
+    return 1
+  }
+
+  const errors = {
+    missingKeys: [],
+    extraKeys: [],
+    pluralForms: [],
+    interpolation: [],
+    htmlTags: [],
+    emptyStrings: [],
+    encoding: [],
+  }
+
+  const warnings = {
+    untranslatedUnexplained: [],
+    untranslatedExplained: [],
+    pluralForms: [],
+    textLength: [],
+    punctuation: [],
+  }
+
+  for (const ns of namespaces) {
+    const localePath = path.join(localeRoot, `${ns}.json`)
+    const english = loadEnglish(ns)
+
+    if (english.missing) {
+      errors.missingKeys.push(`${ns}: English locale file missing`)
+      continue
+    }
+
+    if (!fs.existsSync(localePath)) {
+      errors.missingKeys.push(`${ns}: ${locale} locale file missing`)
+      continue
+    }
+
+    errors.encoding.push(...checkEncoding(localePath))
+
+    let localeData
+    try {
+      if (english.unparsable) throw new Error("english")
+      localeData = JSON.parse(fs.readFileSync(localePath, "utf8"))
+    } catch {
+      errors.encoding.push(`${ns}: failed to parse JSON, skipping checks`)
+      continue
+    }
+
+    const { flat: enFlat, pluralBases } = english
+    const localeFlat = flattenKeys(localeData)
+
+    errors.missingKeys.push(...checkMissingKeys(enFlat, localeFlat, ns, rule, pluralBases))
+    errors.extraKeys.push(...checkExtraKeys(enFlat, localeFlat, ns, rule, pluralBases))
+    errors.pluralForms.push(...checkPluralForms(localeFlat, ns, rule, pluralBases))
+
+    for (const [key, localeValue] of localeFlat) {
+      if (localeValue === "") {
+        errors.emptyStrings.push(`${ns}.${key}`)
+        continue
+      }
+
+      const enKey = comparableEnKey(key, enFlat, rule)
+      if (!enKey) continue
+
+      const enValue = enFlat.get(enKey)
+      errors.interpolation.push(...checkInterpolation(enValue, localeValue, key, ns, locale))
+      errors.htmlTags.push(...checkHtmlTags(enValue, localeValue, key, ns))
+    }
+
+    const untranslated = checkUntranslated(enFlat, localeFlat, ns)
+    warnings.untranslatedUnexplained.push(...untranslated.unexplained)
+    warnings.untranslatedExplained.push(...untranslated.explained)
+
+    if (rule.hasOne === false) {
+      warnings.pluralForms.push(...checkUnneededOneForms(localeFlat, ns, locale))
+    }
+
+    if (rule.cjk) {
+      warnings.textLength.push(...checkTextLength(enFlat, localeFlat, ns, locale))
+      warnings.punctuation.push(...checkPunctuation(localeFlat, ns))
+    }
+  }
+
+  return report(locale, errors, warnings) > 0 ? 1 : 0
 }
 
-const errorParts = Object.entries(errors)
-  .map(([key, arr]) => `${key}: ${arr.length}`)
-  .join(", ")
-const warnParts = Object.entries(warnings)
-  .map(([key, arr]) => `${key}: ${arr.length}`)
-  .join(", ")
+const requested = process.argv[2]
+const supportedLocales = Object.keys(localeRules)
 
-console.log("=== Summary ===")
-console.log(`  Errors:   ${totalErrors} (${errorParts})`)
-console.log(`  Warnings: ${totalWarnings} (${warnParts})`)
-console.log(`  Result:   ${totalErrors > 0 ? "FAIL" : "PASS (warnings only)"}`)
+if (requested !== undefined && !supportedLocales.includes(requested)) {
+  console.error(`Unknown locale "${requested}". Use one of: ${supportedLocales.join(", ")}`)
+  process.exit(1)
+}
 
-process.exit(totalErrors > 0 ? 1 : 0)
+const locales = requested === undefined ? supportedLocales : [requested]
+let failed = 0
+for (const locale of locales) {
+  failed += checkLocale(locale)
+}
+
+process.exit(failed > 0 ? 1 : 0)
