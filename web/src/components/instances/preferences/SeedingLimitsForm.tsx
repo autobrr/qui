@@ -92,6 +92,8 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
 
   return (
     <PreferencesFormShell
+      // step sets the arrow increment; qBittorrent can store a ratio off that grid, which must still save
+      noValidate
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
@@ -134,7 +136,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
                     value={(field.state.value as number) ?? 2.0}
                     onChange={field.handleChange}
                     min={-1}
-                    max={10}
+                    max={Number.MAX_SAFE_INTEGER} // qBittorrent has no upper limit; the input defaults to 999999
                     step="0.05"
                     description={t("preferences.seedingLimits.maxShareRatioDescription")}
                     allowUnlimited={true}
