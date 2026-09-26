@@ -30,12 +30,6 @@
     },
     {
       "type": "panel",
-      "id": "piechart",
-      "name": "Pie chart",
-      "version": ""
-    },
-    {
-      "type": "panel",
       "id": "stat",
       "name": "Stat",
       "version": ""
@@ -581,7 +575,7 @@
       "gridPos": {
         "x": 0,
         "y": 5,
-        "w": 4,
+        "w": 8,
         "h": 5
       },
       "id": 5,
@@ -615,68 +609,6 @@
       ],
       "title": "All-time ratio",
       "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 4,
-        "y": 5,
-        "w": 4,
-        "h": 5
-      },
-      "id": 6,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.0.0",
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "sum(qbittorrent_torrents_seeding{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_downloading{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_paused{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_checking{instance_name=~\"${instance_name:regex}\"}) + sum(qbittorrent_torrents_error{instance_name=~\"${instance_name:regex}\"})",
-          "legendFormat": "Torrents",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "title": "Managed torrents",
-      "type": "stat",
-      "description": "Sum of the torrent states exposed by Qui. A torrent should normally belong to only one of these states."
     },
     {
       "datasource": {
@@ -952,20 +884,12 @@
       },
       "id": 10,
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
-        },
-        "pieType": "donut",
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "top",
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -973,11 +897,9 @@
           "fields": "",
           "values": false
         },
-        "tooltip": {
-          "hideZeros": true,
-          "mode": "single",
-          "sort": "none"
-        }
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
       "pluginVersion": "12.0.0",
       "targets": [
@@ -991,7 +913,8 @@
         }
       ],
       "title": "Torrents by tracker",
-      "type": "piechart"
+      "type": "bargauge",
+      "description": "A torrent with trackers in more than one group counts in each group, so the bars can add up to more than the torrents in qBittorrent."
     },
     {
       "datasource": {
@@ -1024,20 +947,12 @@
       },
       "id": 11,
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
-        },
-        "pieType": "donut",
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "top",
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1045,11 +960,9 @@
           "fields": "",
           "values": false
         },
-        "tooltip": {
-          "hideZeros": true,
-          "mode": "single",
-          "sort": "none"
-        }
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
       "pluginVersion": "12.0.0",
       "targets": [
@@ -1063,7 +976,8 @@
         }
       ],
       "title": "Content size by tracker",
-      "type": "piechart"
+      "type": "bargauge",
+      "description": "Content shared by torrents in different tracker groups counts in each group, so the bars can add up to more than the data on disk."
     },
     {
       "datasource": {
@@ -1109,7 +1023,7 @@
         "maxVizHeight": 300,
         "minVizHeight": 16,
         "minVizWidth": 8,
-        "namePlacement": "left",
+        "namePlacement": "top",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -1315,7 +1229,7 @@
       "gridPos": {
         "x": 0,
         "y": 37,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "id": 14,
@@ -1407,9 +1321,9 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 37,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "id": 15,
@@ -1449,108 +1363,6 @@
         }
       ],
       "title": "Exporter memory",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 18,
-            "gradientMode": "opacity",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 37,
-        "w": 8,
-        "h": 8
-      },
-      "id": 16,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "12.0.0",
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "rate(process_network_receive_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} - RX",
-          "instant": false,
-          "range": true
-        },
-        {
-          "refId": "B",
-          "editorMode": "code",
-          "expr": "rate(process_network_transmit_bytes_total[$__rate_interval]) and on(instance, job) (max by (instance, job) (qbittorrent_instance_connection_status{instance_name=~\"${instance_name:regex}\"}))",
-          "legendFormat": "{{instance}} - TX",
-          "instant": false,
-          "range": true
-        }
-      ],
-      "title": "Exporter network",
       "type": "timeseries"
     },
     {
