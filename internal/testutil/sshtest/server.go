@@ -50,6 +50,7 @@ type Server struct {
 	auths    int
 	accepts  int
 	channels int
+	live     map[*ssh.ServerConn]struct{}
 }
 
 // NewServer starts a server on 127.0.0.1 with hostKey and stops it when the
@@ -57,7 +58,7 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey()}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}}
 	config := &ssh.ServerConfig{
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
@@ -139,7 +140,13 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 	s.mu.Lock()
 	s.accepts++
+	s.live[sshConn] = struct{}{}
 	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.live, sshConn)
+		s.mu.Unlock()
+	}()
 
 	go ssh.DiscardRequests(reqs)
 
@@ -233,6 +240,21 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+}
+
+// DropConnections closes every live connection, the way a host that reboots or
+// an idle timeout that fires does, so a test can assert the client redials.
+func (s *Server) DropConnections() {
+	s.mu.Lock()
+	conns := make([]*ssh.ServerConn, 0, len(s.live))
+	for conn := range s.live {
+		conns = append(conns, conn)
+	}
+	s.mu.Unlock()
+
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
 }
 
 // DeadAddr returns a 127.0.0.1 address that was listening a moment ago and is

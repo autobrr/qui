@@ -78,8 +78,8 @@ non-link strategies, which is the safe degradation.
 consumer; this backend is that consumer. pkg/sftp pipelines concurrent
 requests over the one session, and the exec path fills a batch with a single
 `xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. Re-add them in the
-PR that implements this backend.
+indexing (hundreds of thousands of lstats) survivable. They come back with
+the exec tier (3e, #2726), which is the first thing that can fill them.
 
 ## File Identity Over the Wire — DECIDED
 
@@ -235,7 +235,9 @@ backend domain end to end.
   probe, nothing runs over
   that connection, and the way out is the replace route with its heavier
   confirmation, the same door a mismatch uses (an endpoint change drops the
-  pin as it always does, and takes first contact). An empty
+  pin as it always does, and takes first contact). A probe the connection
+  does not survive, whether the request was cancelled or the deadline
+  fired, is an error, never a partial capability report. An empty
   pin column is unpinned and takes the first-contact flow: there is no
   separate "was pinned" state, so a database writer who clears the column
   is not detected. What that buys them is a first-contact confirmation the
@@ -270,9 +272,35 @@ backend domain end to end.
 
 ## Connection Pool
 
-One pool keyed by instance: lazy dial, reconnect backoff 5s→60s with ±20%
-jitter, every operation ctx-cancellable. The sftp client and exec sessions
-share the one `x/crypto/ssh` connection. Concurrency comes from sftp
+One pool keyed by instance. Each instance gets one `x/crypto/ssh`
+connection with one sftp client on it, dialed lazily on the first
+operation. A keepalive goes out every 30s and
+the host has 15s to answer it; a silent host is closed, and the next
+caller redials. A dead sftp channel on a live transport is treated the
+same way as a dropped connection: the entry is cleared and the next caller
+redials. Opening the sftp subsystem is bounded by the dial timeout, so a
+host that accepts the handshake and then stalls the subsystem request
+fails the call instead of wedging the instance. A failed dial is memoised so a job touching hundreds of
+paths pays for one attempt: the retry delay starts at 5s, doubles to
+60s, and carries ±20% jitter so instances that went down together do not
+come back in lockstep.
+
+A host-key mismatch and an unreadable or missing pin are not retried at
+all — waiting does not make a wrong key right. That refusal is keyed on
+the stored pin ciphertext and lives only in memory: replacing the pin, or
+changing the host or port, changes the ciphertext and clears it (an
+endpoint change drops the pin, so the memo becomes an unpinned refusal
+until the key is confirmed again). Nothing
+about it is persisted. A connection is also keyed on the username and the
+key it authenticated with: new credentials against the same pin end the
+old session and forgive a failed dial, but keep a host-key refusal, since
+they say nothing about the host key. A refusal caused by a pin that would
+not decrypt outlives an out-of-band fix of the encryption key, since the
+ciphertext did not change; a restart clears it. A connection nobody has
+used for ten minutes is closed, which is how the pool lets go of an
+instance that was deleted or left remote mode.
+
+Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
 lifecycle to manage.
 
@@ -380,10 +408,25 @@ scratch directories and a temporarily added, uniquely tagged
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
-3. Remote backend: pool + SFTP implementation + capability probe (re-adds
-   batch methods), API endpoints, OpenAPI.
+3. Remote backend, in slices:
+   - 3a (#2722): one-shot dialing, host-key pinning, the capability probe
+     and the credential endpoints.
+   - 3b (#2723): the persistent connection pool and the SFTP backend's
+     read methods. Writes refuse with `fsops.ErrUnsupported`.
+   - 3c (#2724): path dialect on the backend and the callsite sweep.
+   - 3d (#2725): SFTP write operations.
+   - 3e (#2726): exec tier and batch methods; extends the pool to hand out
+     the ssh client for exec sessions.
 4. Frontend.
-5. Feature rollout per service, degraded-mode UX.
+5. Feature rollout per service, degraded-mode UX. Every consumer still
+   admits an instance on `HasLocalFilesystemAccess` rather than on its
+   filesystem mode: orphan scan (handler and service filters), automations
+   (free-space path source, missing-files condition, hardlink index),
+   dirscan, cross-seed (link mode, manual assemble, mediainfo, season pack,
+   partial pool) and the sync manager's hardlink base dir. Each lifts its
+   gate in its own slice, with the degraded-mode handling that service
+   needs, and the API-driven checks (free space, missing files, orphan
+   scan) become the field test of that slice.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.
