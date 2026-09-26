@@ -3365,3 +3365,54 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 	t.Logf("20 requests: expr filter %d bytes, hash filter %d bytes", exprBytes, hashBytes)
 	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
 }
+
+// Orphan scan deletes files that no torrent claims, so it must see a torrent
+// added after the last sync.
+func TestGetTorrentsFreshSeesTorrentAddedSinceLastSync(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	torrents, err := NewSyncManager(pool, nil).GetTorrentsFresh(ctx, inst.ID, qbt.TorrentFilterOptions{})
+	require.NoError(t, err)
+	hashes := make([]string, 0, len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, torrent.Hash)
+	}
+	require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
+}

@@ -1387,6 +1387,19 @@ func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter q
 	return syncManager.GetTorrents(filter), nil
 }
 
+// GetTorrentsFresh syncs before it reads. GetTorrents returns a stale cache
+// while it refreshes, so it can miss a torrent added since the last sync.
+func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := syncManager.Sync(ctx); err != nil {
+		return nil, fmt.Errorf("refresh maindata: %w", err)
+	}
+	return syncManager.GetTorrentsUnchecked(filter), nil
+}
+
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
 func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
 	if sm == nil || sm.clientPool == nil {
