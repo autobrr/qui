@@ -2815,7 +2815,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			default:
 				resolvedPath := state.exportToInstance.SavePath
 				if resolvedPath != "" {
-					if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
+					if resolved, ok := renderPathTemplate(resolvedPath, torrent, state, evalCtx); ok {
 						resolvedPath = resolved
 					} else {
 						log.Warn().

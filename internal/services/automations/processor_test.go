@@ -4,9 +4,13 @@
 package automations
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -438,6 +442,115 @@ func TestMovePathNormalization(t *testing.T) {
 	require.Empty(t, state.movePath)
 }
 
+func TestMoveRequiresAbsolutePath(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		savePath   string
+		wantMove   bool
+		wantTarget string
+	}{
+		// qBittorrent stored a previous "rel3/sub" move under its default save path.
+		{name: "relative path already applied by qBittorrent", path: "rel3/sub", savePath: "/downloads/rel3/sub"},
+		{name: "relative literal", path: "archive", savePath: "/downloads"},
+		{name: "template rendering relative", path: "{{ .Category }}/done", savePath: "/downloads"},
+		// qBittorrent reports a previous "/downloads//done" move as "/downloads/done".
+		{name: "double slash already applied by qBittorrent", path: "/downloads//done", savePath: "/downloads/done"},
+		{name: "unc double backslash already applied", path: `\\nas\media\\done`, savePath: `\\nas\media\done`},
+		// qBittorrent on Linux reports //downloads/done as /downloads/done.
+		{name: "leading double slash already applied by posix qBittorrent", path: "//downloads/done", savePath: "/downloads/done"},
+		{name: "posix absolute", path: "/data/archive", savePath: "/downloads", wantMove: true, wantTarget: "/data/archive"},
+		{name: "windows drive", path: `D:\Archive\{{ .Category }}`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `D:\Archive\tv`},
+		{name: "windows forward slashes", path: "D:/Archive", savePath: "C:/Downloads", wantMove: true, wantTarget: "D:/Archive"},
+		{name: "unc share", path: `\\nas\media\archive`, savePath: `C:\Downloads`, wantMove: true, wantTarget: `\\nas\media\archive`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrent := qbt.Torrent{Hash: "abc123", Name: "Show.S01", Category: "tv", SavePath: tt.savePath}
+			rule := &models.Automation{
+				ID:      1,
+				Enabled: true,
+				Name:    "Archive Rule",
+				Conditions: &models.ActionConditions{
+					Move: &models.MoveAction{Enabled: true, Path: tt.path},
+				},
+			}
+			state := &torrentDesiredState{
+				hash:        torrent.Hash,
+				name:        torrent.Name,
+				currentTags: make(map[string]struct{}),
+				tagActions:  make(map[string]string),
+			}
+
+			processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
+
+			require.Equal(t, tt.wantMove, state.shouldMove)
+			require.Equal(t, tt.wantTarget, state.movePath)
+		})
+	}
+}
+
+func TestInSavePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		savePath string
+		target   string
+		want     bool
+	}{
+		{name: "same path", savePath: "/downloads/done", target: "/downloads/done", want: true},
+		{name: "different path", savePath: "/downloads", target: "/downloads/done"},
+		// POSIX qBittorrent reports //downloads/done as /downloads/done.
+		{name: "leading double slash against posix save path", savePath: "/downloads/done", target: "//downloads/done", want: true},
+		{name: "unc save path and target", savePath: `\\nas\media\done`, target: `\\nas\media\done`, want: true},
+		// A UNC prefix collapses, so a share and a local path with the same tail
+		// compare equal. Cross-seed's normalizer has always done this.
+		{name: "unc save path against posix target with same tail", savePath: `\\nas\media\done`, target: "/nas/media/done", want: true},
+		{name: "unc target against unc save path with repeats", savePath: `\\nas\media\done`, target: `\\nas\media\\done`, want: true},
+		{name: "dot segment qBittorrent resolves", savePath: "/downloads/done", target: "/downloads/./done", want: true},
+		{name: "parent segment qBittorrent resolves", savePath: "/downloads/done", target: "/downloads/other/../done", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, inSavePath(qbt.Torrent{SavePath: tt.savePath}, tt.target))
+		})
+	}
+}
+
+func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&logs)
+	t.Cleanup(func() { log.Logger = previous })
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "Show.S01", Category: "tv", SavePath: "/downloads"},
+		{Hash: "b", Name: "Show.S02", Category: "tv", SavePath: "/downloads"},
+		{Hash: "c", Name: "Movie", Category: "movies", SavePath: "/downloads"},
+	}
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Relative",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{
+				Enabled:   true,
+				Path:      "{{ .Category }}/done",
+				Condition: &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: "tv"},
+			},
+		},
+	}
+	stats := map[int]*ruleRunStats{}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, qbittorrent.NewSyncManager(nil, nil), nil, stats, nil)
+
+	require.Empty(t, states)
+	require.Equal(t, 1, strings.Count(logs.String(), "path is not absolute"))
+	require.Equal(t, 3, stats[rule.ID].MoveConditionNotMet)
+}
+
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
@@ -697,41 +810,41 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
 }
 
-func TestResolveMovePath_Literal(t *testing.T) {
+func TestRenderPathTemplate_Literal(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Show.S01",
 		Category: "tv",
 	}
-	resolved, ok := resolveMovePath("/data/archive", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/archive", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/archive", resolved)
 }
 
-func TestResolveMovePath_Template(t *testing.T) {
+func TestRenderPathTemplate_Template(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Movie.2024",
 		Category: "movies",
 	}
-	resolved, ok := resolveMovePath("/data/{{.Category}}", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/{{.Category}}", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/movies", resolved)
 }
 
-func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
+func TestRenderPathTemplate_TemplateWithSanitize(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Movie/2024:Bad*Name",
 		Category: "movies",
 	}
-	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
+	resolved, ok := renderPathTemplate("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
 	expectedName := pathutil.SanitizePathSegment(torrent.Name)
 	require.Equal(t, "/data/"+expectedName, resolved)
 }
 
-func TestResolveMovePath_TrackerFallback(t *testing.T) {
+func TestRenderPathTemplate_TrackerFallback(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
 		Name:     "Show.S01",
@@ -740,7 +853,7 @@ func TestResolveMovePath_TrackerFallback(t *testing.T) {
 	state := &torrentDesiredState{
 		trackerDomains: []string{"tracker.example.com"},
 	}
-	resolved, ok := resolveMovePath("/data/{{.Tracker}}", torrent, state, nil)
+	resolved, ok := renderPathTemplate("/data/{{.Tracker}}", torrent, state, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/tracker.example.com", resolved)
 }

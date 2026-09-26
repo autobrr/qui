@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
 type AutomationHandler struct {
@@ -391,9 +392,13 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	// Checks that only apply when the workflow is enabled: a disabled rule saved
+	// before these checks existed must still be editable.
 	isEnabled := payload.Enabled == nil || *payload.Enabled
 	if isEnabled {
+		if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
+			return http.StatusBadRequest, msg, err
+		}
 		if regexErrs := collectConditionRegexErrors(payload.Conditions); len(regexErrs) > 0 {
 			// Return the first error with a helpful message
 			firstErr := regexErrs[0]
@@ -578,6 +583,34 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	}
 
 	return "", nil
+}
+
+// validateMovePath renders the move path for a placeholder torrent and rejects
+// it unless the result is absolute or empty. Branches the placeholder does not take are
+// still checked per torrent when the rule runs. Callers skip it for a disabled
+// rule, so an older rule with a relative path can still be toggled off.
+func validateMovePath(move *models.MoveAction) (string, error) {
+	if move == nil || !move.Enabled {
+		return "", nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" {
+		return "Move path is required", errors.New("move path required")
+	}
+	rendered, err := automations.RenderMovePathSample(path)
+	if err != nil {
+		return fmt.Sprintf("Invalid move path template: %v", err), err
+	}
+	// A conditional template can render nothing for the placeholder torrent and
+	// still be absolute for a real one; the run skips an empty render anyway.
+	if rendered == "" || pathcmp.IsAbsolute(rendered) {
+		return "", nil
+	}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
+	}
+	return msg, errors.New("move path must be absolute")
 }
 
 func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {

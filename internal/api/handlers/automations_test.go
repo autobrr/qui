@@ -39,6 +39,90 @@ func TestAutomationValidatePayload_Category(t *testing.T) {
 	}
 }
 
+func TestAutomationValidatePayload_MovePath(t *testing.T) {
+	const (
+		notAbsolute = "Move path must be absolute"
+		invalid     = "Invalid move path template"
+	)
+	tests := []struct {
+		path    string
+		enabled bool
+		wantMsg string
+	}{
+		{path: "/data/archive", enabled: true},
+		{path: `D:\Archive`, enabled: true},
+		{path: "D:/Archive", enabled: true},
+		{path: `\\nas\media\archive`, enabled: true},
+		{path: "  /data/{{ .Category }}  ", enabled: true},
+		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
+		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
+		{path: `{{ if eq .Category "tv" }}/data/tv{{ end }}`, enabled: true},
+		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
+		{path: "archive", enabled: false},
+		{path: "{{ .Category }}/done", enabled: false},
+		{path: "", enabled: false},
+		{path: "", enabled: true, wantMsg: "Move path is required"},
+		{path: "   ", enabled: true, wantMsg: "Move path is required"},
+		{path: "archive", enabled: true, wantMsg: notAbsolute},
+		{path: "rel/{{ .Category }}", enabled: true, wantMsg: `renders "rel/sample"`},
+		{path: "../archive", enabled: true, wantMsg: notAbsolute},
+		{path: "C:archive", enabled: true, wantMsg: notAbsolute},
+		{path: "{{ .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{.Category}}", enabled: true, wantMsg: `renders "sample"`},
+		{path: "{{- .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Name }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "/data/{{ .Unknown }}", enabled: true, wantMsg: invalid},
+		{path: "/data/{{ .Name", enabled: true, wantMsg: invalid},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+			payload := &AutomationPayload{
+				Name:           "Move rule",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Move:  &models.MoveAction{Enabled: tt.enabled, Path: tt.path},
+					Pause: &models.PauseAction{Enabled: true},
+				},
+			}
+
+			status, message, err := handler.validatePayload(t.Context(), 1, payload)
+			if tt.wantMsg != "" {
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, status)
+				require.Contains(t, message, tt.wantMsg)
+				return
+			}
+			require.NoError(t, err)
+			require.Zero(t, status)
+		})
+	}
+}
+
+func TestAutomationValidatePayload_MovePathSkippedWhenRuleDisabled(t *testing.T) {
+	// A rule saved before the move path checks existed must stay editable, so
+	// WorkflowsOverview can still toggle it off.
+	handler := NewAutomationHandler(nil, nil, nil, nil, nil)
+	disabled := false
+	payload := &AutomationPayload{
+		Name:           "Legacy rule",
+		TrackerPattern: "*",
+		Enabled:        &disabled,
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
+		},
+	}
+
+	status, message, err := handler.validatePayload(t.Context(), 1, payload)
+
+	require.NoError(t, err)
+	require.Zero(t, status)
+	require.Empty(t, message)
+}
+
 func TestAutomationDryRunNow(t *testing.T) {
 	newRequest := func(body string) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/api/instances/1/automations/dry-run", strings.NewReader(body))
