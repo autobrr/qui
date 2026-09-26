@@ -19,6 +19,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
 
+## Release classification
+
+- **Content type**: The kind of media a release name describes: movie, TV, music, audiobook, book, comic, game, app, adult, or unknown. Automations decide it from the name alone; cross-seed also corrects it with the torrent's file sizes. Courses and magazines have no content type of their own: they classify by season, episode, and year like any unrecognised name. An indexer search picks its categories from the query and IDs, which is not a content type. _Avoid_: category (a qBittorrent category is a different thing), media type (the disc format read from a RIAJ code).
+
 ## Cross-seed search
 
 - **Usable result**: A search hit that survives release and size filtering. Retry passes gate on usable results, never on raw hit counts. _Avoid_: Hit, raw result (when gating is meant).

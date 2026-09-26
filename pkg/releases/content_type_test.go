@@ -30,8 +30,8 @@ func TestDetermineContentType(t *testing.T) {
 		{name: "music", release: &rls.Release{Type: rls.Music}, want: ContentTypeMusic},
 		{name: "audiobook", release: &rls.Release{Type: rls.Audiobook}, want: ContentTypeAudiobook},
 		{name: "book", release: &rls.Release{Type: rls.Book}, want: ContentTypeBook},
-		{name: "education counts as book", release: &rls.Release{Type: rls.Education}, want: ContentTypeBook},
-		{name: "magazine counts as book", release: &rls.Release{Type: rls.Magazine}, want: ContentTypeBook},
+		{name: "education falls back", release: &rls.Release{Type: rls.Education}, want: ContentTypeUnknown},
+		{name: "magazine falls back", release: &rls.Release{Type: rls.Magazine, Year: 2021}, want: ContentTypeMovie},
 		{name: "comic", release: &rls.Release{Type: rls.Comic}, want: ContentTypeComic},
 		{name: "game", release: &rls.Release{Type: rls.Game}, want: ContentTypeGame},
 		{name: "app", release: &rls.Release{Type: rls.App}, want: ContentTypeApp},
@@ -64,6 +64,14 @@ func TestDetermineContentType(t *testing.T) {
 	for _, contentType := range ContentTypes {
 		assert.True(t, seen[contentType], "no case expects %q; drop it from ContentTypes or add a case here", contentType)
 	}
+}
+
+func TestClassifyAsSkipsMusicToVideoRescue(t *testing.T) {
+	t.Parallel()
+
+	release := &rls.Release{Type: rls.Music, Resolution: "1080p"}
+	assert.Equal(t, ContentTypeMovie, DetermineContentType(release).ContentType)
+	assert.Equal(t, ContentTypeMusic, ClassifyAs(release, release.Type).ContentType)
 }
 
 // The cases above cannot cover a branch nobody wrote a case for, and a named

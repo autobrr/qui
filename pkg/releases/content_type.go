@@ -240,6 +240,14 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	}
 
 	release = normalizeReleaseTypeForContent(release)
+	return ClassifyAs(release, release.Type)
+}
+
+// ClassifyAs classifies a release as if it parsed as releaseType. Unlike
+// DetermineContentType it skips the music-to-video rescue, so callers that
+// already know the type from other evidence keep it.
+func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
+	var info ContentTypeInfo
 
 	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {
@@ -258,7 +266,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		return info
 	}
 
-	switch release.Type {
+	switch releaseType {
 	case rls.Movie:
 		info.ContentType = ContentTypeMovie
 	case rls.Episode, rls.Series:
@@ -267,7 +275,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = ContentTypeMusic
 	case rls.Audiobook:
 		info.ContentType = ContentTypeAudiobook
-	case rls.Book, rls.Education, rls.Magazine:
+	case rls.Book:
 		info.ContentType = ContentTypeBook
 	case rls.Comic:
 		info.ContentType = ContentTypeComic
@@ -275,8 +283,9 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = ContentTypeGame
 	case rls.App:
 		info.ContentType = ContentTypeApp
-	case rls.Unknown:
-		// Fall back below.
+	case rls.Unknown, rls.Education, rls.Magazine:
+		// Courses and magazines have no content type of their own. Book would
+		// limit a cross-seed search to book indexers, so they fall back below.
 	}
 
 	// Fallback logic based on series/episode/year detection for unknown types.
