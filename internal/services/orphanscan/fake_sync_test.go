@@ -90,7 +90,7 @@ func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[strin
 	return f.getCategories(ctx, instanceID)
 }
 
-func (f *fakeSync) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+func (f *fakeSync) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
 	if f.subcategoriesEnabled == nil {
 		return false, errNotStubbed
 	}
