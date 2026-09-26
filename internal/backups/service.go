@@ -1420,8 +1420,8 @@ func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.Back
 		s.clearInstance(instanceID, run.ID)
 
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
-		// CleanupRun, not a bare run delete: item rows are tied to the instance
-		// now, so only this path drops rows a deleted run leaves uncovered.
+		// CleanupRun, not a bare run delete: an item row covers a range of runs,
+		// so only this path drops rows a deleted run leaves uncovered.
 		if err := s.store.CleanupRun(cleanupCtx, run.ID); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int64("runID", run.ID).Msg("Failed to remove canceled backup run")
 		}

@@ -756,9 +756,10 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		return err
 	}
 
-	// A deleted newest run leaves closed rows ending at its sequence number. Reusing
-	// that number would put those rows back into the next snapshot, so the next
-	// number must also clear every stored to_seq.
+	// Deleting the newest runs can leave closed rows whose to_seq is above every
+	// remaining run. A lower number would put those rows back into the next
+	// snapshot, so the next number is at least every stored to_seq. Reusing a
+	// deleted run's own number is safe: to_seq is exclusive.
 	var lastRunSeq, lastClosedSeq int64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT
@@ -1052,8 +1053,8 @@ func (s *BackupStore) lockInstanceItems(ctx context.Context, tx dbinterface.TxQu
 // run's snapshot. It takes the run id, instance id and the run's items_seq
 // twice; passing the run's values as constants lets the planner filter by
 // instance before it resolves strings. The first parameter is echoed back as
-// the run id because rows no longer store one, and BackupItem.RunID is part of
-// the JSON the API returns.
+// the run id: an item row covers a range of runs rather than belonging to one,
+// and BackupItem.RunID is part of the JSON the API returns.
 const snapshotItemsQuery = `
 		SELECT id, CAST(? AS BIGINT), torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
 		FROM instance_backup_items_view
@@ -1217,61 +1218,24 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 		return nil, sql.ErrNoRows
 	}
 
-	row := s.db.QueryRowContext(ctx, snapshotItemsQuery+`
+	rows, err := s.db.QueryContext(ctx, snapshotItemsQuery+`
 		  AND torrent_hash = ?
 		LIMIT 1
 	`, runID, instanceID, seq, seq, hash)
-
-	var item BackupItem
-	var category sql.NullString
-	var relPath sql.NullString
-	var infohashV1 sql.NullString
-	var infohashV2 sql.NullString
-	var tags sql.NullString
-	var blobPath sql.NullString
-	var savePath sql.NullString
-
-	if err := row.Scan(
-		&item.ID,
-		&item.RunID,
-		&item.TorrentHash,
-		&item.Name,
-		&category,
-		&item.SizeBytes,
-		&relPath,
-		&infohashV1,
-		&infohashV2,
-		&tags,
-		&blobPath,
-		&savePath,
-		&item.CreatedAt,
-	); err != nil {
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if category.Valid {
-		item.Category = &category.String
+	items, err := scanBackupItems(rows)
+	if err != nil {
+		return nil, err
 	}
-	if relPath.Valid {
-		item.ArchiveRelPath = &relPath.String
-	}
-	if infohashV1.Valid {
-		item.InfoHashV1 = &infohashV1.String
-	}
-	if infohashV2.Valid {
-		item.InfoHashV2 = &infohashV2.String
-	}
-	if tags.Valid {
-		item.Tags = &tags.String
-	}
-	if blobPath.Valid {
-		item.TorrentBlobPath = &blobPath.String
-	}
-	if savePath.Valid {
-		item.SavePath = &savePath.String
+	if len(items) == 0 {
+		return nil, sql.ErrNoRows
 	}
 
-	return &item, nil
+	return items[0], nil
 }
 
 func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
