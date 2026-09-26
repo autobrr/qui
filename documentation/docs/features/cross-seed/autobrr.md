@@ -201,7 +201,7 @@ Use these filters when:
 Exclude filters take precedence over include filters. Tag matching is case-sensitive. If you configure both category and tag include filters, a torrent must pass both checks. It must match at least one allowed category and at least one allowed tag.
 :::
 
-Configure in qui UI: **Cross-Seed → Auto → Webhook / autobrr**
+Configure in qui UI: **Cross-Seed > Webhook**
 
 ## Season Pack Webhook
 

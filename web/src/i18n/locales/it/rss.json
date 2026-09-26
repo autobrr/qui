@@ -48,7 +48,6 @@
     "toggleDetails": "Mostra/nascondi dettagli"
   },
   "rules": {
-    "title": "Regole",
     "reprocess": "Rielabora",
     "reprocessTooltip": "Riverifica tutti gli articoli non letti rispetto alle regole",
     "addRule": "Aggiungi regola",

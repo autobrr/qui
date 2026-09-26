@@ -17,6 +17,10 @@ export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/
  */
 export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
 
+// Omit an untouched secret: the backend shows an undecryptable key as "", and sending that "" back deletes it.
+export const changedSecret = (value: string, saved: string | undefined): string | undefined =>
+  value === (saved ?? "") ? undefined : value
+
 /**
  * Check if a path is inside a base directory.
  * Returns true if base is non-empty and path equals base or starts with base + "/".
@@ -193,4 +197,16 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     uploaded_session: 0,
     upspeed: 0,
   }
+}
+
+export function normalizeStringList(values: string[]): string[] {
+  return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
+}
+
+export function normalizeNumberList(values: Array<string | number>): number[] {
+  return Array.from(new Set(
+    values
+      .map(value => Number(value))
+      .filter(value => !Number.isNaN(value) && value > 0)
+  ))
 }

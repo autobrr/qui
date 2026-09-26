@@ -45,9 +45,6 @@ const passthroughTerms = new Set([
   "GPL-2.0-or-later",
 ])
 
-// i18next v4 CLDR plural suffixes.
-const pluralSuffixes = ["_zero", "_one", "_two", "_few", "_many", "_other"]
-
 // ---------------------------------------------------------------------------
 // Utility functions
 // ---------------------------------------------------------------------------
@@ -84,20 +81,6 @@ function extractHtmlTags(str) {
     tags.push(match[1].toLowerCase())
   }
   return tags
-}
-
-function getPluralSuffix(key) {
-  for (const suffix of pluralSuffixes) {
-    if (key.endsWith(suffix)) {
-      return suffix
-    }
-  }
-
-  if (key.endsWith("_plural")) {
-    return "_plural"
-  }
-
-  return null
 }
 
 function containsCJK(str) {

@@ -131,7 +131,7 @@ fmt:
 	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
 		if [ -n "$$gofiles" ]; then echo "$$gofiles" | xargs gofmt -w; fi
 	@echo "Formatting changed frontend code..."
-	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
+	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx|mjs)$$' || true); \
 		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
 
 # Apply go fix to changed Go files only
@@ -187,11 +187,11 @@ gofix-check-changed:
 		rm -f "$$tmp"; \
 		echo "go fix check clean."
 
-# Local pre-commit gate (changed files only)
+# Local pre-commit gate: fmt and gofix on changed files, then lint
 precommit: fmt gofix-changed lint
 	@echo "Pre-commit checks passed."
 
-# Lint code (changed files only - fast feedback for AI iteration)
+# Lint new Go issues since the develop merge-base, then all frontend files
 lint:
 	@echo "Linting changed Go code..."
 	golangci-lint run --new-from-merge-base=develop --timeout=5m

@@ -925,6 +925,20 @@
       }
     }
   },
+  "gazelle": {
+    "title": "Gazelle（OPS/RED）",
+    "description": "啟用對 Orpheus 和 Redacted 的直接 API 匹配。這與 Torznab 並行執行；OPS/RED Torznab 索引器將被忽略。",
+    "enableMatching": "啟用 Gazelle 匹配",
+    "enableDescription": "應用於所有源種子。如果可能，qui 還會透過 Gazelle 檢查 RED/OPS。",
+    "redactedApiKey": "Redacted API 金鑰",
+    "orpheusApiKey": "Orpheus API 金鑰",
+    "pasteRedKey": "貼上 RED API 金鑰",
+    "pasteOpsKey": "貼上 OPS API 金鑰",
+    "enableToConfigure": "啟用後進行配置",
+    "redDescription": "用於 redacted.sh 查詢。貼上以替換，清空以移除。",
+    "opsDescription": "用於 orpheus.network 查詢。貼上以替換，清空以移除。",
+    "save": "儲存"
+  },
   "searchCache": {
     "title": "搜尋快取",
     "description": "來自 Torznab 索引器的快取搜尋結果。",

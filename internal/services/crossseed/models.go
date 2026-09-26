@@ -316,6 +316,9 @@ type TorrentSearchResponse struct {
 	// stamp per-indexer search history; an indexer missing here was rate
 	// limited or failed a pass and stays eligible for the next run.
 	CoveredIndexerIDs []int `json:"-"`
+	// TorznabAnswered reports that an indexer answered some pass, even when a
+	// failed retry left CoveredIndexerIDs empty.
+	TorznabAnswered bool `json:"-"`
 	// DecisionTrace explains why the Torznab passes accepted or rejected
 	// candidates. Ephemeral diagnostics for the manual search dialog; unset
 	// when no Torznab search ran (Gazelle-only or failed searches).

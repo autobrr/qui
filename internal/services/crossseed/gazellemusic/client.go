@@ -8,6 +8,7 @@ package gazellemusic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -60,6 +61,11 @@ func blockLiveTrackerDials(t *http.Transport) {
 	}
 	t.DialContext = dialer.DialContext
 }
+
+// ErrAccessDenied means the tracker rejects every request from this client: the
+// API key is wrong or the tracker banned this IP. The wrapped message carries
+// the tracker's own text.
+var ErrAccessDenied = errors.New("rejected the API key or this IP")
 
 // sharedLimiters ensures we don't create one rate limiter per qBittorrent instance/client.
 // Rate limits are per tracker host and must be shared across the whole qui process.
@@ -275,6 +281,20 @@ func (c *Client) request(ctx context.Context, method, endpoint string, params ur
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read response from %s: %w", endpoint, err)
 	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		text := strings.TrimSpace(string(body))
+		var ajaxErr AjaxResponse
+		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
+			text = ajaxErr.Error
+		}
+		// The run history stores this text: cap an HTML error page, and drop
+		// invalid UTF-8 (a rune the cut split, too), which Postgres rejects.
+		if len(text) > 200 {
+			text = text[:200]
+		}
+		text = strings.ToValidUTF8(text, "")
+		return body, resp.StatusCode, fmt.Errorf("%w: status %d: %s", ErrAccessDenied, resp.StatusCode, text)
+	}
 	if resp.StatusCode != http.StatusOK {
 		// Keep body text; callers may log a short snippet.
 		return body, resp.StatusCode, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
@@ -296,9 +316,25 @@ func (c *Client) ajax(ctx context.Context, action string, params url.Values) (*A
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	if resp.Status != "success" {
+		if isAccessDeniedText(resp.Error) {
+			return nil, fmt.Errorf("%w: %s", ErrAccessDenied, resp.Error)
+		}
 		return nil, fmt.Errorf("API error: %s", resp.Error)
 	}
 	return &resp, nil
+}
+
+// CheckKey sends one cheap authenticated request. A wrong key or a banned IP
+// returns ErrAccessDenied.
+func (c *Client) CheckKey(ctx context.Context) error {
+	_, err := c.ajax(ctx, "index", nil)
+	return err
+}
+
+// isAccessDeniedText matches the texts OPS sends with HTTP 200 for an IP ban
+// and a wrong key. The RED ban text is unknown until a user reports it.
+func isAccessDeniedText(text string) bool {
+	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
@@ -306,6 +342,9 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 	params.Set("hash", strings.ToUpper(hash))
 
 	resp, err := c.ajax(ctx, "torrent", params)
+	if errors.Is(err, ErrAccessDenied) {
+		return nil, err
+	}
 	if err != nil {
 		// Gazelle uses "bad parameters" for not-found. Treat as miss.
 		lower := strings.ToLower(err.Error())
@@ -390,6 +429,9 @@ func (c *Client) DownloadTorrent(ctx context.Context, torrentID int64) ([]byte, 
 	if !looksLikeTorrentPayload(body) {
 		var ajaxErr AjaxResponse
 		if json.Unmarshal(body, &ajaxErr) == nil && ajaxErr.Error != "" {
+			if isAccessDeniedText(ajaxErr.Error) {
+				return nil, fmt.Errorf("%w: %s", ErrAccessDenied, ajaxErr.Error)
+			}
 			return nil, fmt.Errorf("download failed: %s", ajaxErr.Error)
 		}
 		return nil, fmt.Errorf("downloaded data appears invalid (size=%d)", len(body))

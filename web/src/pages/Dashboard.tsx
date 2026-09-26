@@ -5,6 +5,7 @@
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { MigrationHint } from "@/components/instances/MigrationHint"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -3313,6 +3314,7 @@ export function Dashboard() {
               </Button>
             </Link>
           </div>
+          <MigrationHint className="mt-10 sm:mt-12" />
         </Card>
       )}
     </div>

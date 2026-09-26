@@ -37,9 +37,9 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { JsonEditor, preloadJsonEditor } from "@/components/ui/json-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
@@ -79,13 +79,14 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
-import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
+import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 /**
@@ -333,6 +334,11 @@ export function WorkflowsOverview({
   // the matching react-query keys; this replaces the idle activity polling.
   useActivityStream()
 
+  // Warm the JSON editor chunk so the Import and Edit dialogs rarely show the textarea fallback.
+  useEffect(() => {
+    void preloadJsonEditor()
+  }, [])
+
   const reorderSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -402,6 +408,8 @@ export function WorkflowsOverview({
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
   })
+
+  const [jsonEdit, setJsonEdit] = useState<Automation | null>(null)
 
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -621,8 +629,8 @@ export function WorkflowsOverview({
     if (!importInstanceId) return
 
     const result = parseImportJSON(importJSON)
-    if (result.error || !result.data) {
-      setImportError(result.error ?? t("preferences.workflowsOverview.importDialog.invalidImportData"))
+    if (result.data === null) {
+      setImportError(t(result.error))
       return
     }
 
@@ -1015,6 +1023,7 @@ export function WorkflowsOverview({
                                     onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
+                                    onEditJson={() => setJsonEdit(rule)}
                                     onExport={() => handleExport(rule)}
                                     disableDrag={sortedRules.length < 2 || reorderRules.isPending}
                                   />
@@ -1631,8 +1640,12 @@ export function WorkflowsOverview({
         isInitialLoading={enableConfirm?.isInitialLoading ?? false}
       />
 
+      {jsonEdit && (
+        <WorkflowJsonEditDialog rule={jsonEdit} onOpenChange={(open) => !open && setJsonEdit(null)} />
+      )}
+
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogContent className="md:max-w-4xl max-h-[85dvh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("preferences.workflowsOverview.importDialog.title")}</DialogTitle>
             <DialogDescription>
@@ -1640,14 +1653,14 @@ export function WorkflowsOverview({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
-            <Textarea
+            <JsonEditor
+              aria-label={t("preferences.workflowsOverview.importDialog.title")}
               placeholder={t("preferences.workflowsOverview.importDialog.placeholder")}
               value={importJSON}
-              onChange={(e) => {
-                setImportJSON(e.target.value)
+              onChange={(value) => {
+                setImportJSON(value)
                 setImportError(null)
               }}
-              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
@@ -1691,6 +1704,7 @@ interface RulePreviewProps {
   onRunDryRun: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
+  onEditJson: () => void
   onExport: () => void
 }
 
@@ -1708,6 +1722,7 @@ function SortableRulePreview({
   onRunDryRun,
   onDuplicate,
   onCopyToInstance,
+  onEditJson,
   onExport,
   disableDrag,
 }: SortableRulePreviewProps) {
@@ -1742,6 +1757,7 @@ function SortableRulePreview({
         onRunDryRun={onRunDryRun}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
+        onEditJson={onEditJson}
         onExport={onExport}
         dragHandle={(
           <Button
@@ -1777,6 +1793,7 @@ function RulePreview({
   onRunDryRun,
   onDuplicate,
   onCopyToInstance,
+  onEditJson,
   onExport,
 }: RulePreviewProps) {
   const { t } = useTranslation("instances")
@@ -1956,6 +1973,10 @@ function RulePreview({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
+            <DropdownMenuItem onClick={onEditJson}>
+              <Braces className="h-4 w-4 mr-2" />
+              {t("preferences.workflowsOverview.editJSON")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onExport}>
               <Download className="h-4 w-4 mr-2" />
               {t("preferences.workflowsOverview.exportJSON")}
