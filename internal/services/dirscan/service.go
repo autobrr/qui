@@ -2084,7 +2084,7 @@ func (s *Service) tryMatchAndInject(
 
 	if s.blocklistStore != nil {
 		// Fails closed like the cross-seed path: an unreadable blocklist skips the match.
-		if _, blocked, err := s.blocklistStore.FindBlocked(ctx, dir.TargetInstanceID, []string{parsed.InfoHash}); err != nil {
+		if _, blocked, err := s.blocklistStore.FindBlocked(ctx, dir.TargetInstanceID, []string{parsed.InfoHash, parsed.InfoHashV2}); err != nil {
 			l.Warn().Err(err).Str("hash", parsed.InfoHash).Msg("dirscan: failed to check cross-seed blocklist, skipping match")
 			return nil
 		} else if blocked {

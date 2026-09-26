@@ -5,10 +5,10 @@ package dirscan
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/autobrr/go-torrent/metainfo"
@@ -23,8 +23,17 @@ import (
 func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 	t.Parallel()
 
-	for _, blocked := range []bool{true, false} {
-		t.Run(fmt.Sprintf("blocked=%v", blocked), func(t *testing.T) {
+	// A hybrid torrent carries both hashes, so one fixture covers a v1 and a v2 entry.
+	tests := []struct {
+		name      string
+		blockHash func(*ParsedTorrent) string
+	}{
+		{name: "not blocked"},
+		{name: "v1 blocked", blockHash: func(p *ParsedTorrent) string { return p.InfoHash }},
+		{name: "v2 blocked", blockHash: func(p *ParsedTorrent) string { return p.InfoHashV2 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
@@ -42,9 +51,19 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			require.NoError(t, err)
 
 			const name = "Example.Movie.2024.1080p.WEB-DL.x264-GRP.mkv"
-			torrentBytes := buildTorrentBytes(t, &metainfo.Info{Name: name, PieceLength: 16384, Length: 4})
+			torrentBytes := buildTorrentBytes(t, &metainfo.Info{
+				Name:        name,
+				PieceLength: 16384,
+				Length:      4,
+				Pieces:      []byte(strings.Repeat("p", 20)),
+				MetaVersion: 2,
+				FileTree: metainfo.FileTree{Dir: map[string]metainfo.FileTree{
+					name: {File: metainfo.FileTreeFile{Length: 4, PiecesRoot: strings.Repeat("r", 32)}},
+				}},
+			})
 			parsed, err := ParseTorrentBytes(torrentBytes)
 			require.NoError(t, err)
+			require.NotEmpty(t, parsed.InfoHashV2)
 
 			// A cache hit keeps the download off the network; the nil indexer store
 			// makes a miss panic instead of calling a real host.
@@ -55,8 +74,9 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			}))
 
 			blocklist := models.NewCrossSeedBlocklistStore(db)
+			blocked := tt.blockHash != nil
 			if blocked {
-				_, err = blocklist.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: parsed.InfoHash})
+				_, err = blocklist.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: tt.blockHash(parsed)})
 				require.NoError(t, err)
 			}
 
