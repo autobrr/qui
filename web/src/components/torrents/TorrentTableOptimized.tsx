@@ -178,8 +178,8 @@ type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
 // eslint-disable-next-line react-refresh/only-export-components
-export function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
+export function getDefaultColumnOrder(isUnifiedView: boolean): string[] {
+  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined, true, isUnifiedView)
   const order = cols.map(columnDefId).filter((v): v is string => typeof v === "string")
 
   const trackerIconIndex = order.indexOf("tracker_icon")
@@ -328,7 +328,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const getLeafColumnIds = useCallback(() => leafColumnIdsRef.current(), [])
   const { columnOrder, setColumnOrder, sensors, onDragEnd } = useColumnDnd({
     instanceId,
-    defaultColumnOrder: getDefaultColumnOrder(),
+    defaultColumnOrder: getDefaultColumnOrder(isUnifiedView),
     getLeafColumnIds,
   })
   // Column sizing with persistence

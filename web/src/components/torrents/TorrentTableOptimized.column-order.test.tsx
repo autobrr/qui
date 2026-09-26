@@ -12,7 +12,14 @@ import { torrentTableFeatures } from "./tanstackTableFeatures"
 import { createColumns } from "./TorrentTableColumns"
 import { getDefaultColumnOrder } from "./TorrentTableOptimized"
 
-// These tests pin today's layout, quirks included, so a later change shows up as a diff.
+const INSTANCE_ORDER = [
+  "select", "priority", "tracker_icon", "name", "size", "total_size", "progress", "status_icon", "state",
+  "num_seeds", "num_leechs", "dlspeed", "upspeed", "eta", "ratio", "popularity", "category", "tags",
+  "added_on", "completion_on", "tracker", "dl_limit", "up_limit", "downloaded", "uploaded",
+  "downloaded_session", "uploaded_session", "amount_left", "time_active", "seeding_time", "save_path",
+  "completed", "ratio_limit", "seen_complete", "last_activity", "availability", "infohash_v1",
+  "infohash_v2", "reannounce", "private",
+]
 
 afterEach(() => {
   cleanup()
@@ -20,19 +27,19 @@ afterEach(() => {
 })
 
 describe("getDefaultColumnOrder", () => {
-  it("returns the fresh-user layout", () => {
-    expect(getDefaultColumnOrder()).toEqual([
-      "select", "priority", "tracker_icon", "name", "size", "total_size", "progress", "status_icon", "state",
-      "num_seeds", "num_leechs", "dlspeed", "upspeed", "eta", "ratio", "popularity", "category", "tags",
-      "added_on", "completion_on", "tracker", "dl_limit", "up_limit", "downloaded", "uploaded",
-      "downloaded_session", "uploaded_session", "amount_left", "time_active", "seeding_time", "save_path",
-      "completed", "ratio_limit", "seen_complete", "last_activity", "availability", "infohash_v1",
-      "infohash_v2", "reannounce", "private",
-    ])
+  it("returns the fresh-user layout of an instance view", () => {
+    expect(getDefaultColumnOrder(false)).toEqual(INSTANCE_ORDER)
+  })
+
+  it("puts instance right after name in the unified view", () => {
+    const expected = [...INSTANCE_ORDER]
+    expected.splice(expected.indexOf("name") + 1, 0, "instance")
+
+    expect(getDefaultColumnOrder(true)).toEqual(expected)
   })
 
   it("gives a saved order that lacks status_icon the fresh-user slot", () => {
-    const defaultOrder = getDefaultColumnOrder()
+    const defaultOrder = getDefaultColumnOrder(false)
     window.localStorage.setItem("qui-column-order:1", JSON.stringify(defaultOrder.filter(id => id !== "status_icon")))
 
     const { result } = renderHook(() => usePersistedColumnOrder(defaultOrder, 1))
@@ -40,9 +47,18 @@ describe("getDefaultColumnOrder", () => {
     expect(result.current[0]).toEqual(defaultOrder)
   })
 
-  it("leaves instance out, so the unified view shows it last instead of after name", () => {
+  // Unified-view orders saved before instance joined the default have no instance id.
+  it("adds instance after name to a unified-view order saved without it", () => {
+    window.localStorage.setItem("qui-column-order:0", JSON.stringify(INSTANCE_ORDER))
+
+    const { result } = renderHook(() => usePersistedColumnOrder(getDefaultColumnOrder(true), 0))
+
+    expect(result.current[0]).toEqual(getDefaultColumnOrder(true))
+  })
+
+  it("renders the unified-view header in the default order", () => {
+    const defaultOrder = getDefaultColumnOrder(true)
     const columns = createColumns(false, undefined, "bytes", undefined, undefined, undefined, true, true)
-    const defaultOrder = getDefaultColumnOrder()
 
     const { result } = renderHook(() => useTable({
       features: torrentTableFeatures,
@@ -50,11 +66,7 @@ describe("getDefaultColumnOrder", () => {
       columns,
       state: { columnOrder: defaultOrder },
     }))
-    const definitionIds = columns.map(col => col.id ?? (col as { accessorKey?: string }).accessorKey)
-    const headerIds = result.current.getHeaderGroups()[0].headers.map(header => header.column.id)
 
-    expect(definitionIds.slice(2, 5)).toEqual(["name", "instance", "size"])
-    expect(defaultOrder).not.toContain("instance")
-    expect(headerIds).toEqual([...defaultOrder, "instance"])
+    expect(result.current.getHeaderGroups()[0].headers.map(header => header.column.id)).toEqual(defaultOrder)
   })
 })
