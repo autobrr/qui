@@ -134,7 +134,6 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
                     value={(field.state.value as number) ?? 2.0}
                     onChange={field.handleChange}
                     min={-1}
-                    max={10}
                     step="0.05"
                     description={t("preferences.seedingLimits.maxShareRatioDescription")}
                     allowUnlimited={true}
