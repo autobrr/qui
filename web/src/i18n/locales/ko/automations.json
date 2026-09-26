@@ -34,7 +34,7 @@
     "false": "거짓",
     "selectCategory": "카테고리 선택",
     "uncategorized": "분류 없음",
-    "customContentType": "{{value}} (알 수 없는 콘텐츠 유형)",
+    "customContentType": "{{value}} (지원되지 않음)",
     "regexEnabled": "정규식 활성화됨",
     "enableRegex": "정규식 활성화",
     "selectField": "필드 선택",
@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "동일 인스턴스에 Cross-seed 존재",
       "SEEDING_ON_SAME_INSTANCE": "동일 인스턴스에서 Cross-seed 시딩 중",
       "CROSS_SEED_TAGS": "크로스시드 태그",
+      "SEASON_PACK_STATUS": "시즌 팩 상태",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "시즌 팩 상태 (모든 인스턴스)",
       "HARDLINK_SCOPE": "하드링크 범위"
     },
     "fieldGroups": {
@@ -197,6 +199,11 @@
       "outside_qbittorrent": "qBittorrent 외부 (라이브러리/가져오기)",
       "both": "qBittorrent 내부 + 외부"
     },
+    "seasonPackStatuses": {
+      "pack": "시즌 팩",
+      "packed": "시즌 팩에 포함된 에피소드",
+      "unpacked": "시즌 팩이 없는 에피소드"
+    },
     "trackerStatuses": {
       "not_contacted": "접속 시도 안 함",
       "working": "정상",
@@ -204,18 +211,6 @@
       "error": "오류",
       "tracker_error": "트래커 오류",
       "unreachable": "접속 불가"
-    },
-    "contentTypes": {
-      "movie": "영화",
-      "tv": "TV",
-      "music": "음악",
-      "audiobook": "오디오북",
-      "book": "도서",
-      "comic": "만화",
-      "game": "게임",
-      "app": "앱",
-      "adult": "성인",
-      "unknown": "알 수 없음"
     },
     "durationUnits": {
       "minutes": "분",

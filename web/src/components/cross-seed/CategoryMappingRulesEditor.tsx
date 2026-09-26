@@ -73,7 +73,7 @@ export function CategoryMappingRulesEditor({
               <SelectContent>
                 {CONTENT_TYPE_OPTIONS.map(contentType => (
                   <SelectItem key={contentType} value={contentType}>
-                    {t(`dirScan.contentTypeLabels.${contentType}`)}
+                    {t(`common:contentTypeLabels.${contentType}`)}
                   </SelectItem>
                 ))}
               </SelectContent>

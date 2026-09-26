@@ -33,7 +33,7 @@
     "false": "Fals",
     "selectCategory": "Selecciona una categoria",
     "uncategorized": "Sense categoria",
-    "customContentType": "{{value}} (no és un tipus de contingut conegut)",
+    "customContentType": "{{value}} (no admès)",
     "regexEnabled": "Regex activada",
     "enableRegex": "Activa la regex",
     "selectField": "Selecciona un camp",
@@ -139,6 +139,8 @@
       "EXISTS_ON_SAME_INSTANCE": "El cross-seed existeix a la mateixa instància",
       "SEEDING_ON_SAME_INSTANCE": "El cross-seed està sembrant a la mateixa instància",
       "CROSS_SEED_TAGS": "Etiquetes dels cross-seed",
+      "SEASON_PACK_STATUS": "Estat del paquet de temporada",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Estat del paquet de temporada (qualsevol instància)",
       "HARDLINK_SCOPE": "Àmbit dels hardlinks"
     },
     "fieldGroups": {
@@ -196,6 +198,11 @@
       "outside_qbittorrent": "Fora de qBittorrent (biblioteca/importació)",
       "both": "Dins i fora de qBittorrent"
     },
+    "seasonPackStatuses": {
+      "pack": "Paquet de temporada",
+      "packed": "Episodi cobert per un paquet de temporada",
+      "unpacked": "Episodi sense paquet de temporada"
+    },
     "trackerStatuses": {
       "not_contacted": "No contactat",
       "working": "Funcionant",
@@ -203,18 +210,6 @@
       "error": "Error",
       "tracker_error": "Error del tracker",
       "unreachable": "Inaccessible"
-    },
-    "contentTypes": {
-      "movie": "Pel·lícula",
-      "tv": "TV",
-      "music": "Música",
-      "audiobook": "Audiollibre",
-      "book": "Llibre",
-      "comic": "Còmic",
-      "game": "Joc",
-      "app": "Aplicació",
-      "adult": "Adults",
-      "unknown": "Desconegut"
     },
     "durationUnits": {
       "minutes": "minuts",

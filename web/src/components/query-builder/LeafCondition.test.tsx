@@ -39,7 +39,7 @@ describe("LeafCondition content type value", () => {
 
   it("selects the known type for a saved value in another case", () => {
     renderCondition({ field: "CONTENT_TYPE", operator: "EQUAL", value: "TV" })
-    expect(comboboxTexts()).toContain("queryBuilder.contentTypes.tv")
+    expect(comboboxTexts()).toContain("common:contentTypeLabels.tv")
     expect(screen.queryByRole("textbox")).toBeNull()
   })
 

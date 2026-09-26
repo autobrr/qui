@@ -34,7 +34,7 @@
     "false": "否",
     "selectCategory": "选择分类",
     "uncategorized": "未分类",
-    "customContentType": "{{value}}（未知的内容类型）",
+    "customContentType": "{{value}}（不支持）",
     "regexEnabled": "正则表达式已启用",
     "enableRegex": "启用正则表达式",
     "selectField": "选择字段",
@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "辅种存在于同一实例",
       "SEEDING_ON_SAME_INSTANCE": "辅种在同一实例做种",
       "CROSS_SEED_TAGS": "交叉做种标签",
+      "SEASON_PACK_STATUS": "季包状态",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "季包状态（任意实例）",
       "HARDLINK_SCOPE": "硬链接范围"
     },
     "fieldGroups": {
@@ -197,6 +199,11 @@
       "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）",
       "both": "qBittorrent 内部 + 外部"
     },
+    "seasonPackStatuses": {
+      "pack": "季包",
+      "packed": "已被季包覆盖的剧集",
+      "unpacked": "没有季包的剧集"
+    },
     "trackerStatuses": {
       "not_contacted": "未联系",
       "working": "工作中",
@@ -204,18 +211,6 @@
       "error": "错误",
       "tracker_error": "Tracker 错误",
       "unreachable": "无法访问"
-    },
-    "contentTypes": {
-      "movie": "电影",
-      "tv": "电视剧",
-      "music": "音乐",
-      "audiobook": "有声书",
-      "book": "图书",
-      "comic": "漫画",
-      "game": "游戏",
-      "app": "应用",
-      "adult": "成人",
-      "unknown": "未知"
     },
     "durationUnits": {
       "minutes": "分钟",

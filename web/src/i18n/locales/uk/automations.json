@@ -32,7 +32,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
-    "customContentType": "{{value}} (невідомий тип вмісту)",
+    "customContentType": "{{value}} (не підтримується)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -135,6 +135,8 @@
       "EXISTS_ON_SAME_INSTANCE": "Крос-сід існує в тому ж екземплярі",
       "SEEDING_ON_SAME_INSTANCE": "Крос-сід роздається в тому ж екземплярі",
       "CROSS_SEED_TAGS": "Теги крос-сідів",
+      "SEASON_PACK_STATUS": "Статус сезонного паку",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Статус сезонного паку (будь-який інстанс)",
       "HARDLINK_SCOPE": "Область жорстких посилань",
       "TRACKER_STATUS": "Статус трекера",
       "TRACKER_MESSAGE": "Повідомлення трекера",
@@ -195,6 +197,11 @@
       "outside_qbittorrent": "Поза qBittorrent (бібліотека/імпорт)",
       "both": "Всередині + поза qBittorrent"
     },
+    "seasonPackStatuses": {
+      "pack": "Сезонний пак",
+      "packed": "Епізод, покритий сезонним паком",
+      "unpacked": "Епізод без сезонного паку"
+    },
     "durationUnits": {
       "minutes": "хвилин",
       "hours": "годин",
@@ -214,18 +221,6 @@
       "error": "Помилка",
       "tracker_error": "Помилка трекера",
       "unreachable": "Недоступний"
-    },
-    "contentTypes": {
-      "movie": "Фільм",
-      "tv": "Серіал",
-      "music": "Музика",
-      "audiobook": "Аудіокнига",
-      "book": "Книга",
-      "comic": "Комікс",
-      "game": "Гра",
-      "app": "Застосунок",
-      "adult": "Для дорослих",
-      "unknown": "Невідомо"
     }
   }
 }

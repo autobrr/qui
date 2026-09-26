@@ -10,41 +10,33 @@
     "linkSuffix": "pro přidání nebo zapnutí jednoho."
   },
   "overview": {
-    "rssAutomation": {
-      "title": "Automatizace RSS",
-      "description": "Automatické dotazování RSS vláken pomocí vašich pravidel.",
-      "nextRun": "Další spuštění",
-      "manualTrigger": "Manuální spuštění",
-      "lastRun": "Poslední spuštění",
-      "cooldown": "Vyčkávání {{display}}",
-      "ready": "Připraveno",
-      "disabled": "Vypnuto",
-      "noRunsYet": "Žádné spuštění",
-      "disabledUpper": "VYPNUTO"
-    },
     "seededSearch": {
-      "title": "Hledání torrentů, které již seedujete",
-      "description": "Hloubkové prohledání torrentů, které již seedujete, aby se našli chybějící torrenty.",
-      "instance": "Instance",
-      "recentRuns": "Nedávno spuštěná hledání",
-      "now": "Nyní",
-      "running": "Běží...",
-      "idle": "Neaktivní",
       "gazelleFullDescription": "Gazelle kontroluje RED/OPS pro každý torrent. Torznab dotazuje vybrané ne-OPS/RED indexery.",
       "gazellePartialDescription": "Gazelle kontroluje nakonfigurované stránky pro každý zdrojový torrent. Torznab dotazuje vybrané indexery.",
       "noGazelleDescription": "Bez Gazelle, všechny shody závisí na Torznab indexerech."
     }
   },
   "tabs": {
-    "auto": "Automatické",
-    "scan": "Hledání",
-    "dirScan": "Hledání v adresářích",
-    "rules": "Pravidla",
+    "rss": "RSS",
+    "webhook": "Webhook",
+    "completion": "Dokončení",
+    "library": "Knihovna",
+    "directories": "Adresáře",
+    "season-packs": "Season packy",
+    "matching": "Pravidla párování",
+    "categories": "Kategorie a tagy",
+    "after-injection": "Po vložení",
     "blocklist": "Blokované"
+  },
+  "nav": {
+    "sources": "Zdroje",
+    "matching": "Párování",
+    "injection": "Vložení"
   },
   "automation": {
     "title": "Automatizace RSS",
     "description": "Dotazování RSS feedů na pevně daném intervalu a automatické přidávání shod křížového sdílení.",
+    "nextRun": "Další spuštění: {{date}}",
     "enableSwitch": "Zapnout automatizaci RSS",
     "intervalLabel": "Interval RSS spuštění (minut)",
     "intervalTooltip": "Automatizace zpracovává celý feed z každého zapnutého Torznab indexeru při každém spuštění. Minimální interval je {{min}} minut, aby se nezatěžovaly indexery.",
@@ -97,15 +89,22 @@
     "runError": "Chyba: {{message}}",
     "runSummary": "{{runs}} spuštění • +{{added}}",
     "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo",
-    "scheduledUpper": "NAPLÁNOVÁNO",
     "runDisabledAlreadyRunning": "Spuštění automatizace již probíhá.",
     "runDisabledCooldown": "Ruční spuštění jsou omezena na interval {{minutes}} minut. Zkuste to znovu za {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
     "description": "Filtrování torrentů, které jsou považovány za lokální, když autobrr volá webhook /apply.",
-    "emptyFiltersNote": "Prázdné filtry znamenají, že jsou kontrolovány všechny torrenty. Pokud nastavíte obě filtry kategorie a štítku, torrenty musí odpovídat oběma.",
-    "saveFilters": "Uložit filtry webhooku"
+    "emptyFiltersNote": "Prázdné filtry znamenají, že jsou kontrolovány všechny torrenty. Pokud nastavíte obě filtry kategorie a štítku, torrenty musí odpovídat oběma."
+  },
+  "completion": {
+    "title": "Po dokončení",
+    "description": "Štítky a automatické obnovení pro cross-seedy, které přidá vyhledávání po dokončeném stahování. Vyhledávání zapněte níže pro každou instanci."
+  },
+  "sourceCard": {
+    "crossSeedTags": "Štítky cross-seedu",
+    "autoResume": "Automaticky obnovit po vložení",
+    "autoResumeHelp": "Pokud je vypnuto, přidané torrenty zůstanou pozastavené ke kontrole."
   },
   "scan": {
     "title": "Hledání ve sdílených",
@@ -166,19 +165,16 @@
     "runSummary": "{{runs}} běhů • +{{added}} cross-seedů",
     "runSummaryWithFailures": "{{runs}} běhů • +{{added}} cross-seedů • {{failed}} selhalo",
     "searchNeedsTorznabUnlessGazelle": "Hledání seedovaných torrentů vyžaduje Torznab indexery (kromě případu, kdy skenujete pouze OPS/RED přes Gazelle).",
-    "scannedProgress": "{{processed}}/{{total}} hledáno",
     "torrentsCount": "{{count}} kandidátů",
     "failedCount": "{{count}} selhalo",
     "runError": "Chyba: {{message}}",
     "indexers": {
-      "placeholderTorznabSkippedGazelleOnly": "Torznab přeskočen (výběr pouze Gazelle)",
       "placeholderTorznabDisabledGazelleOnly": "Torznab zakázán (pouze Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab zakázán (povolit Gazelle)",
       "placeholderAllEnabledNonOpsRed": "Všechny povolené ne-OPS/RED indexery (pro všechny nechte prázdné)",
       "placeholderAllEnabled": "Všechny povolené indexery (pro všechny nechte prázdné)",
       "placeholderOnlyOpsRedEnabled": "Povoleno pouze OPS/RED (Gazelle)",
       "placeholderNoTorznabConfigured": "Nenakonfigurovány žádné indexery Torznab",
-      "helpTorznabSkippedGazelleOnly": "Vybrané Torznab indexery jsou pouze Gazelle (OPS/RED). Toto spuštění bude pouze pro Gazelle.",
       "helpTorznabDisabledGazelleCheck": "Torznab zakázán. Gazelle bude u každého zdrojového torrentu kontrolovat RED/OPS.",
       "helpTorznabDisabledEnableGazelle": "Torznab zakázán. Povolte Gazelle (OPS/RED) pro spuštění hledání seedovaných torrentů v režimu pouze Gazelle.",
       "helpOnlyOpsRedEnabled": "Jsou povoleny pouze Torznab indexery OPS/RED. Torznab zde nijak nepřispívá; Gazelle stále kontroluje RED/OPS.",
@@ -196,20 +192,15 @@
       "helpSelectedQueried_other": "Bude dotázáno pouze {{count}} vybraných indexerů."
     },
     "gazelleStatus": {
-      "loading": "Gazelle: načítání",
       "disabled": "Gazelle: zakázáno",
       "enabledOpsRed": "Gazelle: povoleno (nastaveny klíče OPS+RED)",
       "enabledOpsMissingRed": "Gazelle: povoleno (nastaven klíč OPS, RED chybí)",
       "enabledRedMissingOps": "Gazelle: povoleno (nastaven klíč RED, OPS chybí)",
       "enabledKeysMissing": "Gazelle: povoleno (chybí klíče)"
     },
-    "noInstanceSelected": "Není vybrána žádná instance",
-    "instanceFallback": "Instance {{id}}",
     "noMessageProvided": "Nebyla poskytnuta žádná zpráva"
   },
   "rules": {
-    "title": "Pravidla křížového sdílení",
-    "description": "Nastavení, která se vztahují na všechna křížová sdílení.",
     "hardlinkReflink": "Hardlink / Reflink režim",
     "noActiveInstances": "Žádné aktivní instance. Přidejte nejprve instanci(e).",
     "hardlinkDescription": "Vytvořit hardlink (pevný odkaz) nebo reflink (kopírování při zápisu) soubory pro křížová sdílení. Každá instance může být nakonfigurována nezávisle. Základní adresář musí být na stejném souborovém systému jako cílové instance.",
@@ -233,11 +224,6 @@
     "fallbackDescription": "Pokud {{mode}} selže (např. různé souborové systémy), přepnout na standardní režim použitím existujících souborů.",
     "saveChanges": "Uložit změny",
     "noLocalAccess": "Žádný místní přístup",
-    "sections": {
-      "matching": "Shody",
-      "organization": "Organizace",
-      "afterInjection": "Po vložení"
-    },
     "seasonPack": {
       "title": "Celé sezóny",
       "description": "Když autobrr zachytí balík celé sezóny, qui zkontroluje, zda již máte dostatek místních dat a pak umožní qBittorrentu stáhnout vše, co stále chybí.",
@@ -282,19 +268,6 @@
           "hdtv": "HDTV"
         }
       }
-    },
-    "gazelle": {
-      "title": "Gazelle (OPS/RED)",
-      "description": "Povolit přímé shodování API proti Orpheus a Redacted. Toto běží paralelně s Torznab; OPS/RED Torznab indexery jsou ignorovány.",
-      "enableMatching": "Povolit shodování Gazelle",
-      "enableDescription": "Použije se na všechny zdrojové torrenty. Pokud je to možné, qui také kontroluje RED/OPS přes Gazelle.",
-      "redactedApiKey": "Redacted API klíč",
-      "orpheusApiKey": "Orpheus API klíč",
-      "pasteRedKey": "Vložit RED API klíč",
-      "pasteOpsKey": "Vložit OPS API klíč",
-      "enableToConfigure": "Povolit konfiguraci",
-      "redDescription": "Použito pro redacted.sh hledání. Vložit k nahrazení; vymazat k odstranění.",
-      "opsDescription": "Použito pro orpheus.network hledání. Vložit k nahrazení; vymazat k odstranění."
     },
     "matching": {
       "title": "Epizody",
@@ -343,16 +316,12 @@
     "tagging": {
       "title": "Tagování",
       "description": "Nastavte tagy (štítky), které se vztahují na křížová sdílení torrentů na základě toho, jak byly objeveny.",
-      "rssAutomationTags": "Tagy pro RSS automatizaci",
       "selectRssTags": "Vybrat tagy pro RSS automatizaci",
       "rssTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes automatizaci RSS vláken.",
-      "seededSearchTags": "Tagy pro hledání seedovaných torrentů",
       "selectSeededTags": "Vybrat tagy pro hledání seedovaných torrentů",
       "seededTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes hledání seedovaných torrentů.",
-      "completionSearchTags": "Tagy pro hledání dokončených torrentů",
       "selectCompletionTags": "Vybrat tagy pro hledání dokončených torrentů",
       "completionTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes hledání dokončených torrentů.",
-      "webhookTags": "Tagy pro webhook/apply",
       "selectWebhookTags": "Vybrat tagy pro webhook/apply",
       "webhookTagsDescription": "Tagy, které se vztahují na torrenty přidávané přes webhook/apply (např. autobrr).",
       "inheritSourceTags": "Zdědit tagy zdrojového torrentu",
@@ -363,19 +332,13 @@
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
       "tagAutobrr": "autobrr",
-      "seasonPackTags": "Tagy pro balíky celých sezón",
       "selectSeasonPackTags": "Vybrat tagy...",
       "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Chování po vložení",
       "description": "Kontrolujte, co se stane po úspěšném vložení křížového sdílení torrentů.",
-      "autoResumeNote": "Automatické obnovení po vložení (když je vypnuto, torrenty zůstanou pauznuté pro revizi)",
-      "rss": "RSS",
-      "seededSearch": "Hledání sdílených/seedovaných torrentů",
       "seededSearchDescription": "Obnovit hledání seedovaných torrentů a manuálně vložených torrentů automaticky",
-      "completion": "Dokončení",
-      "webhookLabel": "Webhook",
       "webhookDescription": "Obnovit /apply webhook torrentů automaticky",
       "pooledPartialCompletion": "Automaticky sdružovat torrenty s dodatečnými daty",
       "pooledPartialCompletionDescription": "Používá stávající maximální hodnotu stahování pro automatické spuštění a koordinuje jedno stahování pro každý související fond cross-seedů, aby zpracoval dodatečné soubory v cross-seedech.",
@@ -397,7 +360,10 @@
       "cachedSearches": "{{count}} hledání v cache",
       "lastUsed": "Poslední použití {{timestamp}}"
     },
-    "saveGlobalSettings": "Uložit globální nastavení křížového sdílení"
+    "tabDescriptions": {
+      "matching": "Pravidla, která rozhodují, které kandidáty qui přidá, pro všechny zdroje.",
+      "categories": "Kategorie a tagy, které qui přiřadí každému novému cross-seedu."
+    }
   },
   "seasonPackRuns": {
     "title": "Nedávno spuštěné balíky celých sezón",
@@ -446,6 +412,7 @@
   },
   "toast": {
     "settingsUpdated": "Nastavení aktualizována",
+    "settingsSavedKeyUnchecked": "Nastavení uloženo, ale qui nemohl ověřit nový klíč API",
     "searchRunStarted": "Hledání spuštěno",
     "searchRunCanceled": "Hledání zrušeno",
     "automationRunStarted": "Automatizace spuštěna",
@@ -729,35 +696,10 @@
       "cancel": "Zrušit",
       "delete": "Odstranit"
     },
-    "contentTypeLabels": {
-      "movie": "Film",
-      "tv": "Seriál",
-      "music": "Hudba",
-      "audiobook": "Audiokniha",
-      "book": "Kniha",
-      "comic": "Komiks",
-      "game": "Hra",
-      "app": "Aplikace",
-      "adult": "Pro dospělé",
-      "unknown": "Neznámé"
-    },
     "linkModeLabels": {
       "regular": "Běžný",
       "hardlink": "Hardlink",
       "reflink": "Reflink"
-    },
-    "statusLabelsUpper": {
-      "queued": "VE FRONTĚ",
-      "scanning": "SKENOVÁNÍ",
-      "searching": "HLEDÁNÍ",
-      "injecting": "VKLÁDÁNÍ",
-      "success": "ÚSPĚCH",
-      "failed": "SELHALO",
-      "added": "PŘIDÁNO",
-      "canceled": "ZRUŠENO",
-      "running": "BĚŽÍ",
-      "partial": "ČÁSTEČNĚ",
-      "pending": "ČEKÁ"
     }
   }
 }

@@ -34,7 +34,7 @@
     "false": "否",
     "selectCategory": "選擇分類",
     "uncategorized": "未分類",
-    "customContentType": "{{value}}（未知的內容類型）",
+    "customContentType": "{{value}}（不支援）",
     "regexEnabled": "正規表示式已啟用",
     "enableRegex": "啟用正規表示式",
     "selectField": "選擇欄位",
@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "輔種存在於同一實例",
       "SEEDING_ON_SAME_INSTANCE": "輔種在同一實例做種",
       "CROSS_SEED_TAGS": "交叉做種標籤",
+      "SEASON_PACK_STATUS": "季包狀態",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "季包狀態（任意實例）",
       "HARDLINK_SCOPE": "硬連結範圍"
     },
     "fieldGroups": {
@@ -197,6 +199,11 @@
       "outside_qbittorrent": "qBittorrent 外部（媒體庫/匯入）",
       "both": "qBittorrent 內部 + 外部"
     },
+    "seasonPackStatuses": {
+      "pack": "季包",
+      "packed": "已被季包涵蓋的劇集",
+      "unpacked": "沒有季包的劇集"
+    },
     "trackerStatuses": {
       "not_contacted": "未聯絡",
       "working": "工作中",
@@ -204,18 +211,6 @@
       "error": "錯誤",
       "tracker_error": "Tracker 錯誤",
       "unreachable": "無法存取"
-    },
-    "contentTypes": {
-      "movie": "電影",
-      "tv": "電視劇",
-      "music": "音樂",
-      "audiobook": "有聲書",
-      "book": "圖書",
-      "comic": "漫畫",
-      "game": "遊戲",
-      "app": "應用",
-      "adult": "成人",
-      "unknown": "未知"
     },
     "durationUnits": {
       "minutes": "分鐘",

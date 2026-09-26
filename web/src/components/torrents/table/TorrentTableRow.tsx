@@ -156,7 +156,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
           <div className="ss-row-gutter" aria-hidden="true">{virtualIndex + 1}</div>
         )}
         {row.getVisibleCells().map(cell => {
-          // Compact columns (tracker_icon, status_icon) use px-0 to match header
           const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"
           const isSelectColumn = cell.column.id === "select"
           return (
@@ -171,7 +170,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
                 "flex items-center overflow-hidden min-w-0",
                 // Select and compact columns are centered to match header
                 (isSelectColumn || isCompactColumn) && "justify-center",
-                isCompactColumn? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2"): (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
+                desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2"
               )}
             >
               {flexRender(

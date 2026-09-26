@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -217,7 +217,7 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 	}
 
 	// Index by release key for rls matching
-	release := s.parseReleaseName(view.Name)
+	release := s.matcher().parseReleaseName(view.Name)
 	title := normalizeLowerTrim(release.Title)
 	if title != "" {
 		key := makeReleaseKey(release)
@@ -287,7 +287,7 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 	}
 
 	// Strategy 3: Release metadata match
-	sourceRelease := s.parseReleaseName(source.Name)
+	sourceRelease := s.matcher().parseReleaseName(source.Name)
 	sourceTitle := normalizeLowerTrim(sourceRelease.Title)
 	if sourceTitle != "" {
 		key := makeReleaseKey(sourceRelease)
@@ -296,7 +296,7 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				match, reason := s.releasesMatchWithReason(sourceRelease, c.release, false)
+				match, reason := s.matcher().releasesMatchWithReason(sourceRelease, c.release, false)
 				logReleaseMatchDecision(
 					source.Name,
 					c.name,

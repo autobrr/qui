@@ -9,9 +9,9 @@ import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
   CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
-  CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
+  getCapabilityReason,
   type Capabilities,
   type DisabledField,
   type DisabledStateValue
@@ -234,16 +234,16 @@ function formatDryRunEventSummary(
   }
 }
 
-function getDisabledFields(capabilities: Capabilities): DisabledField[] {
+function getDisabledFields(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: CAPABILITY_REASONS[capability] }))
+    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t) }))
 }
 
-function getDisabledStateValues(capabilities: Capabilities): DisabledStateValue[] {
+function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
   return Object.entries(STATE_VALUE_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([value, capability]) => ({ value, reason: CAPABILITY_REASONS[capability] }))
+    .map(([value, capability]) => ({ value, reason: getCapabilityReason(capability, t) }))
 }
 
 const SIMPLE_SORT_FIELD_SET = new Set<ConditionField>([
@@ -2466,8 +2466,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 }
                               }}
                               categoryOptions={categoryOptions}
-                              disabledFields={getDisabledFields(fieldCapabilities)}
-                              disabledStateValues={getDisabledStateValues(fieldCapabilities)}
+                              disabledFields={getDisabledFields(fieldCapabilities, t)}
+                              disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                             />
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-muted-foreground">{t("preferences.workflowDialog.priority.addScore")}</span>
@@ -2548,8 +2548,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     }}
                     allowEmpty
                     categoryOptions={categoryOptions}
-                    disabledFields={getDisabledFields(fieldCapabilities)}
-                    disabledStateValues={getDisabledStateValues(fieldCapabilities)}
+                    disabledFields={getDisabledFields(fieldCapabilities, t)}
+                    disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
                   {formState.deleteEnabled && !formState.actionCondition && (

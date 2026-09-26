@@ -34,7 +34,7 @@
     "false": "Falsch",
     "selectCategory": "Kategorie auswählen",
     "uncategorized": "Ohne Kategorie",
-    "customContentType": "{{value}} (kein bekannter Inhaltstyp)",
+    "customContentType": "{{value}} (nicht unterstützt)",
     "regexEnabled": "Regex aktiviert",
     "enableRegex": "Regex aktivieren",
     "selectField": "Feld auswählen",
@@ -140,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "Cross-Seed existiert auf gleicher Instanz",
       "SEEDING_ON_SAME_INSTANCE": "Cross-Seed-Seeding auf gleicher Instanz",
       "CROSS_SEED_TAGS": "Cross-Seed-Tags",
+      "SEASON_PACK_STATUS": "Staffelpaket-Status",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Staffelpaket-Status (beliebige Instanz)",
       "HARDLINK_SCOPE": "Hardlink-Bereich"
     },
     "fieldGroups": {
@@ -197,6 +199,11 @@
       "outside_qbittorrent": "Außerhalb von qBittorrent (Bibliothek/Import)",
       "both": "Innerhalb + außerhalb von qBittorrent"
     },
+    "seasonPackStatuses": {
+      "pack": "Staffelpaket",
+      "packed": "Episode durch ein Staffelpaket abgedeckt",
+      "unpacked": "Episode ohne Staffelpaket"
+    },
     "trackerStatuses": {
       "not_contacted": "Nicht kontaktiert",
       "working": "Funktioniert",
@@ -204,18 +211,6 @@
       "error": "Fehler",
       "tracker_error": "Tracker-Fehler",
       "unreachable": "Nicht erreichbar"
-    },
-    "contentTypes": {
-      "movie": "Film",
-      "tv": "Serie",
-      "music": "Musik",
-      "audiobook": "Hörbuch",
-      "book": "Buch",
-      "comic": "Comic",
-      "game": "Spiel",
-      "app": "App",
-      "adult": "Erwachsenen",
-      "unknown": "Unbekannt"
     },
     "durationUnits": {
       "minutes": "Minuten",
