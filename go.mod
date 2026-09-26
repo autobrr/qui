@@ -12,7 +12,7 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.1-0.20260925170010-56d86b8cb4da
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20260926130105-7b98311f21f8
 	github.com/autobrr/go-torrent v1.1.1
 	github.com/autobrr/rls v0.9.1-0.20260919214848-7b8624b2d36a
 	github.com/avast/retry-go v3.0.0+incompatible

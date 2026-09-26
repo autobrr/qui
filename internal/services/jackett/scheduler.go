@@ -293,6 +293,7 @@ type taskItem struct {
 	created  time.Time
 	index    int
 	started  time.Time // When execution began (for duration tracking)
+	detached bool      // exec ran detachedExecWarnAfter past its deadline; guarded by s.mu
 }
 
 type taskHeap []*taskItem
@@ -605,8 +606,19 @@ func (s *searchScheduler) dispatchTasks() {
 		}
 
 		// Check if indexer already has in-flight task
-		if _, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
-			blocked = append(blocked, item)
+		if running, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
+			if !running.detached {
+				blocked = append(blocked, item)
+				continue
+			}
+			// Fail fast: the stuck exec can hold the indexer until restart.
+			item.started = time.Now()
+			taskCompleted = true
+			err := fmt.Errorf("indexer %s is still running a timed-out search", item.task.indexer.Name)
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
 			continue
 		}
 
@@ -715,17 +727,17 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		// The job may be done while the slot stays held; the activity panel
 		// refreshes only on this signal.
 		s.publishActivity(activity.KindIndexerActivity)
-		s.awaitDetachedExec(task, done)
+		s.awaitDetachedExec(item, done)
 	}
 }
 
 // detachedExecWarnAfter is how long a timed-out exec may keep running before
-// the scheduler logs it as stuck.
-const detachedExecWarnAfter = 30 * time.Second
+// the scheduler logs it as stuck and fails the tasks queued for its indexer.
+var detachedExecWarnAfter = 30 * time.Second
 
 // awaitDetachedExec waits for an exec whose context has ended and drops its
 // late result. The caller already got the context error.
-func (s *searchScheduler) awaitDetachedExec(task workerTask, done <-chan taskExecResult) {
+func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExecResult) {
 	timer := time.NewTimer(detachedExecWarnAfter)
 	defer timer.Stop()
 	select {
@@ -733,11 +745,20 @@ func (s *searchScheduler) awaitDetachedExec(task workerTask, done <-chan taskExe
 		return
 	case <-timer.C:
 	}
+	s.mu.Lock()
+	item.detached = true
+	s.mu.Unlock()
+	// Wake the loop: a queued task with no deadline and no pacing wait has no
+	// retry timer, so it would wait for the stuck exec otherwise.
+	select {
+	case s.completeCh <- struct{}{}:
+	default:
+	}
 	log.Warn().
-		Int("indexerID", task.indexer.ID).
-		Str("indexer", task.indexer.Name).
+		Int("indexerID", item.task.indexer.ID).
+		Str("indexer", item.task.indexer.Name).
 		Dur("pastDeadline", detachedExecWarnAfter).
-		Msg("Torznab search still running after its context ended; indexer slot stays held until it returns")
+		Msg("Torznab search still running after its context ended; indexer slot stays held and its queued searches fail until it returns")
 	<-done
 }
 
