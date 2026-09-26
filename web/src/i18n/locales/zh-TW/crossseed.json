@@ -563,18 +563,6 @@
       "partial": "部分成功",
       "pending": "等待中"
     },
-    "contentTypeLabels": {
-      "movie": "電影",
-      "tv": "電視劇",
-      "music": "音樂",
-      "audiobook": "有聲書",
-      "book": "圖書",
-      "comic": "漫畫",
-      "game": "遊戲",
-      "app": "應用",
-      "adult": "成人",
-      "unknown": "未知"
-    },
     "linkModeLabels": {
       "regular": "一般",
       "hardlink": "硬連結",
