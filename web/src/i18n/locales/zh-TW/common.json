@@ -64,6 +64,9 @@
     "allScope": "全部",
     "unified": "統一檢視"
   },
+  "titleBar": {
+    "speeds": "下載：{{download}} 上傳：{{upload}}"
+  },
   "unifiedScope": {
     "unified": "統一檢視",
     "collapseScope": "摺疊統一檢視",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "未找到結果。"
+  },
+  "errors": {
+    "unknown": "未知錯誤",
+    "httpStatus": "HTTP 錯誤！狀態：{{status}}",
+    "ssoHtmlResponse": "API 傳回了 HTML 回應而非 JSON。如果您位於 SSO 代理（Cloudflare Access、Pangolin 等）之後，請嘗試重新整理頁面或在新分頁中重新開啟該 URL。",
+    "torrentFileDownloadFailed": "下載種子檔案失敗：{{status}}"
   },
   "status": {
     "disabled": "已停用",

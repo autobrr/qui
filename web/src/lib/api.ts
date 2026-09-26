@@ -138,6 +138,9 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+// The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
+// English namespaces out of the entry chunk into eight extra initial requests.
+import i18n from "i18next"
 
 const API_BASE = getApiBaseUrl()
 
@@ -427,11 +430,7 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
     if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
       return new Promise<Response>(() => {})
     }
-    throw new Error(
-      "Received an HTML response instead of JSON from the API. " +
-      "If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), " +
-      "try refreshing the page or re-opening the URL in a new tab."
-    )
+    throw new Error(i18n.t("errors.ssoHtmlResponse", { ns: "common" }))
   }
 
   clearSSORecoveryGuard()
@@ -511,7 +510,7 @@ class ApiClient {
   }
 
   private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
-    const fallbackMessage = `HTTP error! status: ${response.status}`
+    const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
 
     try {
       const contentType = response.headers.get("content-type") || ""
@@ -1074,6 +1073,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      // Stays English: AddTorrentDialog.tsx:550 prefix-matches this text to tell
+      // "the server sent no message" from a real one, and shows its own hint instead.
       let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
@@ -1899,7 +1900,7 @@ class ApiClient {
     )
 
     if (!response.ok) {
-      throw new Error(`Failed to download torrent file: ${response.statusText}`)
+      throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }))
     }
 
     // Get filename from Content-Disposition header

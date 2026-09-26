@@ -64,6 +64,9 @@
     "allScope": "ALLE",
     "unified": "Vereinheitlicht"
   },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Vereinheitlicht",
     "collapseScope": "Vereinheitlichten Bereich einklappen",
@@ -107,6 +110,12 @@
   },
   "feedback": {
     "noResultsFound": "Keine Ergebnisse gefunden."
+  },
+  "errors": {
+    "unknown": "Unbekannter Fehler",
+    "httpStatus": "HTTP-Fehler! Status: {{status}}",
+    "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
+    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}"
   },
   "status": {
     "disabled": "Deaktiviert",
