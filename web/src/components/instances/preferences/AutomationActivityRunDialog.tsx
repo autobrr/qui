@@ -47,6 +47,8 @@ const ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
   resumed: "preferences.activityRunDialog.actionLabels.resumed",
   rechecked: "preferences.activityRunDialog.actionLabels.rechecked",
   reannounced: "preferences.activityRunDialog.actionLabels.reannounced",
+  queue_topped: "preferences.activityRunDialog.actionLabels.queue_topped",
+  queue_bottomed: "preferences.activityRunDialog.actionLabels.queue_bottomed",
   moved: "preferences.activityRunDialog.actionLabels.moved",
   external_program: "preferences.activityRunDialog.actionLabels.external_program",
   auto_managed: "preferences.activityRunDialog.actionLabels.auto_managed",

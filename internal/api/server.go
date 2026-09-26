@@ -375,7 +375,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.instanceStore,
 		s.seasonPackRunStore,
 	)
-	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService, s.syncManager)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	var dirScanHandler *handlers.DirScanHandler

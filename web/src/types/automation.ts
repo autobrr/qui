@@ -181,6 +181,12 @@ export interface ReannounceAction {
   condition?: RuleCondition
 }
 
+export interface QueuePositionAction {
+  enabled: boolean
+  position: "top" | "bottom"
+  condition?: RuleCondition
+}
+
 export interface AutoManagementAction {
   enabled: boolean
   condition?: RuleCondition
@@ -262,6 +268,7 @@ export interface ActionConditions {
   resume?: ResumeAction
   recheck?: RecheckAction
   reannounce?: ReannounceAction
+  queuePosition?: QueuePositionAction
   delete?: DeleteAction
   // Legacy single-tag action (still accepted for existing automations)
   tag?: TagAction
@@ -362,7 +369,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "queue_topped" | "queue_bottomed" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"

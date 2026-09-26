@@ -906,6 +906,7 @@ type ActionConditions struct {
 	Resume           *ResumeAction           `json:"resume,omitempty"`
 	Recheck          *RecheckAction          `json:"recheck,omitempty"`
 	Reannounce       *ReannounceAction       `json:"reannounce,omitempty"`
+	QueuePosition    *QueuePositionAction    `json:"queuePosition,omitempty"`
 	Delete           *DeleteAction           `json:"delete,omitempty"`
 	Tag              *TagAction              `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
 	Tags             []*TagAction            `json:"tags,omitempty"` // Preferred multi-tag actions
@@ -956,6 +957,30 @@ type RecheckAction struct {
 type ReannounceAction struct {
 	Enabled   bool           `json:"enabled"`
 	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// Queue positions accepted by QueuePositionAction.Position.
+const (
+	QueuePositionTop    = "top"
+	QueuePositionBottom = "bottom"
+)
+
+// QueuePositionAction moves matching downloading torrents to the top or bottom of the qBittorrent queue.
+type QueuePositionAction struct {
+	Enabled   bool           `json:"enabled"`
+	Position  string         `json:"position"` // QueuePositionTop or QueuePositionBottom
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// Validate checks that an enabled QueuePositionAction names a known position.
+func (a *QueuePositionAction) Validate() error {
+	if a == nil || !a.Enabled {
+		return nil
+	}
+	if a.Position != QueuePositionTop && a.Position != QueuePositionBottom {
+		return fmt.Errorf("queue position must be %q or %q", QueuePositionTop, QueuePositionBottom)
+	}
+	return nil
 }
 
 // AutoManagementAction configures automatic torrent management (ATM) with optional conditions.
@@ -1088,6 +1113,7 @@ func (ac *ActionConditions) IsEmpty() bool {
 		ac.Resume == nil &&
 		ac.Recheck == nil &&
 		ac.Reannounce == nil &&
+		ac.QueuePosition == nil &&
 		ac.Delete == nil &&
 		len(ac.TagActions()) == 0 &&
 		ac.Category == nil &&

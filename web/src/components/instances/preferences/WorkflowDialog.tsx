@@ -77,6 +77,7 @@ import type {
   GroupDefinition,
   GroupingConfig,
   PreviewView,
+  QueuePositionAction,
   RegexValidationError,
   RuleCondition,
   ScoreRule,
@@ -117,10 +118,10 @@ const CONTENT_LAYOUT_OPTIONS = [
 
 const CONTENT_LAYOUT_VALUES = CONTENT_LAYOUT_OPTIONS.map(o => o.value)
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "queuePosition" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "queuePosition", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
 
 const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   speedLimits: "preferences.workflowDialog.actions.speedLimits",
@@ -129,6 +130,7 @@ const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   resume: "preferences.workflowDialog.actions.resume",
   recheck: "preferences.workflowDialog.actions.recheck",
   reannounce: "preferences.workflowDialog.actions.reannounce",
+  queuePosition: "preferences.workflowDialog.actions.queuePosition",
   autoManagement: "preferences.workflowDialog.actions.autoManagement",
   delete: "preferences.workflowDialog.actions.delete",
   tag: "preferences.workflowDialog.actions.tag",
@@ -153,6 +155,8 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   resumed: "preferences.workflowDialog.dryRun.actions.resumed",
   rechecked: "preferences.workflowDialog.dryRun.actions.rechecked",
   reannounced: "preferences.workflowDialog.dryRun.actions.reannounced",
+  queue_topped: "preferences.workflowDialog.dryRun.actions.queueTopped",
+  queue_bottomed: "preferences.workflowDialog.dryRun.actions.queueBottomed",
   auto_managed: "preferences.workflowDialog.dryRun.actions.autoManaged",
   moved: "preferences.workflowDialog.dryRun.actions.moved",
   external_program: "preferences.workflowDialog.dryRun.actions.externalProgram",
@@ -219,6 +223,8 @@ function formatDryRunEventSummary(
     case "resumed":
     case "rechecked":
     case "reannounced":
+    case "queue_topped":
+    case "queue_bottomed":
     case "auto_managed":
     case "external_program":
     case "exported_to_instance":
@@ -458,6 +464,8 @@ type FormState = {
   resumeEnabled: boolean
   recheckEnabled: boolean
   reannounceEnabled: boolean
+  queuePositionEnabled: boolean
+  exprQueuePosition: QueuePositionAction["position"]
   autoManagementEnabled: boolean
   autoManageMode: "enable" | "disable"
   deleteEnabled: boolean
@@ -533,6 +541,8 @@ const emptyFormState: FormState = {
   resumeEnabled: false,
   recheckEnabled: false,
   reannounceEnabled: false,
+  queuePositionEnabled: false,
+  exprQueuePosition: "top",
   autoManagementEnabled: false,
   autoManageMode: "enable",
   deleteEnabled: false,
@@ -589,6 +599,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.resumeEnabled) actions.push("resume")
   if (state.recheckEnabled) actions.push("recheck")
   if (state.reannounceEnabled) actions.push("reannounce")
+  if (state.queuePositionEnabled) actions.push("queuePosition")
   if (state.autoManagementEnabled) actions.push("autoManagement")
   if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
@@ -717,6 +728,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
+  // Missing preferences (still loading or failed) count as on; the server check decides the save.
+  const queueingEnabled = metadata?.preferences?.queueing_enabled !== false
   const { data: targetMetadata, isLoading: targetMetadataLoading } = useInstanceMetadata(formState.exprExportTargetInstanceId ?? 0)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances, isLoading: instancesLoading, error: instancesError } = useInstances()
@@ -984,6 +997,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let resumeEnabled = false
         let recheckEnabled = false
         let reannounceEnabled = false
+        let queuePositionEnabled = false
+        let exprQueuePosition: FormState["exprQueuePosition"] = "top"
         let autoManagementEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
@@ -1067,6 +1082,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.resume?.condition
             ?? conditions.recheck?.condition
             ?? conditions.reannounce?.condition
+            ?? conditions.queuePosition?.condition
             ?? conditions.autoManagement?.condition
             ?? conditions.delete?.condition
             ?? conditions.tags?.[0]?.condition
@@ -1115,6 +1131,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
           if (conditions.reannounce?.enabled) {
             reannounceEnabled = true
+          }
+          if (conditions.queuePosition?.enabled) {
+            queuePositionEnabled = true
+            exprQueuePosition = conditions.queuePosition.position === "bottom" ? "bottom" : "top"
           }
           if (conditions.autoManagement != null) {
             autoManagementEnabled = true
@@ -1188,6 +1208,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           resumeEnabled,
           recheckEnabled,
           reannounceEnabled,
+          queuePositionEnabled,
+          exprQueuePosition,
           autoManagementEnabled,
           autoManageMode: conditions?.autoManagement?.enabled !== false ? "enable" : "disable",
           deleteEnabled,
@@ -1457,6 +1479,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.queuePositionEnabled) {
+      conditions.queuePosition = {
+        enabled: true,
+        position: input.exprQueuePosition,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.autoManagementEnabled) {
       conditions.autoManagement = {
         enabled: input.autoManageMode === "enable",
@@ -1655,6 +1684,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.resumeEnabled,
     formState.recheckEnabled,
     formState.reannounceEnabled,
+    formState.queuePositionEnabled,
     formState.autoManagementEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
@@ -2727,7 +2757,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             {t("preferences.workflowDialog.actions.addAction")}
                           </SelectTrigger>
                           <SelectContent>
-                            {availableActions.map(action => (
+                            {availableActions.map(action => action === "queuePosition" ? (
+                              <SelectItem key={action} value={action} disabled={!queueingEnabled}>
+                                {queueingEnabled ? t(ACTION_LABEL_KEYS[action]) : t("preferences.workflowDialog.actions.queuePositionNeedsQueueing")}
+                              </SelectItem>
+                            ) : (
                               <SelectItem key={action} value={action}>{t(ACTION_LABEL_KEYS[action])}</SelectItem>
                             ))}
                           </SelectContent>
@@ -2751,6 +2785,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             resumeEnabled: false,
                             recheckEnabled: false,
                             reannounceEnabled: false,
+                            queuePositionEnabled: false,
                             autoManagementEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
@@ -2782,6 +2817,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="resume">{t("preferences.workflowDialog.actions.resume")}</SelectItem>
                         <SelectItem value="recheck">{t("preferences.workflowDialog.actions.recheck")}</SelectItem>
                         <SelectItem value="reannounce">{t("preferences.workflowDialog.actions.reannounce")}</SelectItem>
+                        <SelectItem value="queuePosition" disabled={!queueingEnabled}>
+                          {queueingEnabled ? t("preferences.workflowDialog.actions.queuePosition") : t("preferences.workflowDialog.actions.queuePositionNeedsQueueing")}
+                        </SelectItem>
                         <SelectItem value="tag">{t("preferences.workflowDialog.actions.tag")}</SelectItem>
                         <SelectItem value="category">{t("preferences.workflowDialog.actions.category")}</SelectItem>
                         <SelectItem value="move">{t("preferences.workflowDialog.actions.move")}</SelectItem>
@@ -3176,6 +3214,42 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
+                      </div>
+                    )}
+                    {/* Queue position */}
+                    {formState.queuePositionEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">
+                            {t("preferences.workflowDialog.actions.queuePosition")}
+                            <FieldHelp>{t("preferences.workflowDialog.queuePosition.help")}</FieldHelp>
+                          </Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, queuePositionEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Select
+                          value={formState.exprQueuePosition}
+                          disabled={!queueingEnabled}
+                          onValueChange={(v) => setFormState(prev => ({ ...prev, exprQueuePosition: v as FormState["exprQueuePosition"] }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="top">{t("preferences.workflowDialog.queuePosition.top")}</SelectItem>
+                            <SelectItem value="bottom">{t("preferences.workflowDialog.queuePosition.bottom")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {!queueingEnabled && (
+                          <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.queuePosition.queueingDisabled")}</p>
+                        )}
                       </div>
                     )}
                     {/* Auto management */}
