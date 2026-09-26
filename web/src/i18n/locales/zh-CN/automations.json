@@ -111,6 +111,7 @@
       "RATIO": "分享率",
       "RATIO_LIMIT": "分享率限制",
       "MAX_RATIO": "最大分享率",
+      "UPLOADED_OVER_SIZE": "已上传 / 大小",
       "PROGRESS": "进度",
       "AVAILABILITY": "可用性",
       "POPULARITY": "热门度",
@@ -142,7 +143,8 @@
       "CROSS_SEED_TAGS": "交叉做种标签",
       "SEASON_PACK_STATUS": "季包状态",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "季包状态（任意实例）",
-      "HARDLINK_SCOPE": "硬链接范围"
+      "HARDLINK_SCOPE": "硬链接范围",
+      "HARDLINK_SCOPE_CROSS": "硬链接范围（跨实例）"
     },
     "fieldGroups": {
       "Identity": "标识",
@@ -187,6 +189,7 @@
       "stalled_downloading": "停滞下载",
       "errored": "错误",
       "tracker_down": "Tracker 离线",
+      "tracker_error": "Tracker 错误",
       "checking": "校验中",
       "checkingResumeData": "校验恢复数据",
       "moving": "移动中",

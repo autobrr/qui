@@ -1338,7 +1338,9 @@
         "conditional": "Podmíněné",
         "addScore": "Přidat skóre:",
         "addFieldMultiplier": "Přidat pole násobitele",
-        "addBonus": "Přidat bonus"
+        "addBonus": "Přidat bonus",
+        "notSupportedForSimpleSort": "Nepodporováno pro jednoduché řazení",
+        "notSupportedForScoreMultiplier": "Nepodporováno pro násobitele skóre"
       },
       "conditionsLabel": "Podmínky (volitelné)",
       "actions": {

@@ -12,7 +12,9 @@
     "generalSettings": "General Settings",
     "manageInstances": "Manage Instances",
     "appearance": "Appearance",
-    "instanceBackups": "Instance Backups"
+    "instanceBackups": "Instance Backups",
+    "backToSite": "Back to getqui.com",
+    "docs": "Docs"
   },
   "sidebar": {
     "instances": "Instances",
@@ -150,6 +152,15 @@
     "versionAvailable": "Version {{version}} is now available",
     "viewRelease": "View Release",
     "dismiss": "Dismiss"
+  },
+  "pwaUpdate": {
+    "reload": "Reload",
+    "waitingDescription": "Reload to apply the latest qui release.",
+    "activatedTitle": "qui updated",
+    "activatedDescription": "Reload when convenient to finish installing the latest release."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (server returned HTML error page)"
   },
   "notFound": {
     "title": "Oops! Lost in the swarm?",

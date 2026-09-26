@@ -138,6 +138,10 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+// The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled English
+// namespaces out of the entry chunk into eight extra initial requests. Until that init runs,
+// every t() below returns undefined, so each one keeps an English fallback.
+import i18n from "i18next"
 
 const API_BASE = getApiBaseUrl()
 
@@ -535,7 +539,7 @@ class ApiClient {
         // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
         if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
           // Don't show raw HTML to user, provide a readable message
-          return { message: `${fallbackMessage} (server returned HTML error page)` }
+          return { message: i18n.t("apiErrors.htmlErrorPage", { ns: "common", message: fallbackMessage }) ?? `${fallbackMessage} (server returned HTML error page)` }
         }
 
         // Plain text error

@@ -1302,7 +1302,9 @@
         "conditional": "Conditional",
         "addScore": "Add Score:",
         "addFieldMultiplier": "Add Field Multiplier",
-        "addBonus": "Add Bonus"
+        "addBonus": "Add Bonus",
+        "notSupportedForSimpleSort": "Not supported for simple sorting",
+        "notSupportedForScoreMultiplier": "Not supported for score multipliers"
       },
       "conditionsLabel": "Conditions (optional)",
       "actions": {

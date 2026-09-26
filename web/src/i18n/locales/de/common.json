@@ -12,7 +12,9 @@
     "generalSettings": "Allgemeine Einstellungen",
     "manageInstances": "Instanzen verwalten",
     "appearance": "Darstellung",
-    "instanceBackups": "Instanz-Backups"
+    "instanceBackups": "Instanz-Backups",
+    "backToSite": "Zurück zu getqui.com",
+    "docs": "Doku"
   },
   "sidebar": {
     "instances": "Instanzen",
@@ -150,6 +152,15 @@
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
     "viewRelease": "Release ansehen",
     "dismiss": "Verwerfen"
+  },
+  "pwaUpdate": {
+    "reload": "Neu laden",
+    "waitingDescription": "Neu laden, um die neueste qui-Version zu übernehmen.",
+    "activatedTitle": "qui wurde aktualisiert",
+    "activatedDescription": "Bei Gelegenheit neu laden, um die Installation der neuesten Version abzuschließen."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (Server hat eine HTML-Fehlerseite zurückgegeben)"
   },
   "notFound": {
     "title": "Hoppla! Im Schwarm verloren?",

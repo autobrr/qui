@@ -111,6 +111,7 @@
       "RATIO": "비율",
       "RATIO_LIMIT": "비율 제한",
       "MAX_RATIO": "최대 비율",
+      "UPLOADED_OVER_SIZE": "업로드됨 / 크기",
       "PROGRESS": "진행률",
       "AVAILABILITY": "가용성",
       "POPULARITY": "인기도",
@@ -142,7 +143,8 @@
       "CROSS_SEED_TAGS": "크로스시드 태그",
       "SEASON_PACK_STATUS": "시즌 팩 상태",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "시즌 팩 상태 (모든 인스턴스)",
-      "HARDLINK_SCOPE": "하드링크 범위"
+      "HARDLINK_SCOPE": "하드링크 범위",
+      "HARDLINK_SCOPE_CROSS": "하드링크 범위 (인스턴스 간)"
     },
     "fieldGroups": {
       "Identity": "식별",
@@ -187,6 +189,7 @@
       "stalled_downloading": "정체된 다운로드",
       "errored": "오류",
       "tracker_down": "트래커 다운",
+      "tracker_error": "트래커 오류",
       "checking": "확인 중",
       "checkingResumeData": "재개 데이터 확인 중",
       "moving": "이동 중",

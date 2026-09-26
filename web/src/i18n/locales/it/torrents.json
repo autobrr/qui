@@ -813,6 +813,26 @@
     "setConditions": "Imposta le condizioni per filtrare questa colonna",
     "operation": "Operazione",
     "selectOperation": "Seleziona un'operazione",
+    "operations": {
+      "equalTo": "Uguale a",
+      "notEqualTo": "Diverso da",
+      "greaterThan": "Maggiore di",
+      "greaterThanOrEqual": "Maggiore o uguale a",
+      "lessThan": "Minore di",
+      "lessThanOrEqual": "Minore o uguale a",
+      "between": "Tra",
+      "equals": "Uguale a",
+      "notEquals": "Diverso da",
+      "contains": "Contiene",
+      "doesNotContain": "Non contiene",
+      "startsWith": "Inizia con",
+      "endsWith": "Finisce con",
+      "on": "Il",
+      "after": "Dopo",
+      "before": "Prima",
+      "is": "È",
+      "isNot": "Non è"
+    },
     "value": "Valore",
     "from": "Da",
     "to": "A",
@@ -1531,7 +1551,16 @@
   "sort": {
     "label": "Ordina",
     "ascending": "crescente",
-    "descending": "decrescente"
+    "descending": "decrescente",
+    "options": {
+      "addedOn": "Aggiunti di recente",
+      "downloadLimit": "Limite di download",
+      "uploadLimit": "Limite di upload",
+      "sessionDownloaded": "Scaricato (Sessione)",
+      "sessionUploaded": "Caricato (Sessione)",
+      "lastSeenComplete": "Ultima volta visto completo",
+      "reannounceIn": "Riannuncia tra"
+    }
   },
   "tableColumns": {
     "selectAll": "Seleziona torrent",

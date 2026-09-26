@@ -6,6 +6,9 @@
 import type { TFunction } from "i18next";
 import type { ConditionField } from "@/types";
 
+// find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
+// A table rendered raw, instead of through a getTranslated* helper, ships English unnoticed.
+
 // Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
 // past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
 export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([
@@ -363,19 +366,6 @@ export function getOperatorsForField(field: string) {
 
   return baseOperators;
 }
-
-export const DURATION_UNITS = [
-  { value: 1, label: "seconds" },
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
-];
-
-export const SPEED_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
-];
 
 // Capability types for disabling fields/states in query builder
 export type CapabilityKey = "trackerHealth" | "localFilesystemAccess"

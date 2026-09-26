@@ -1302,7 +1302,9 @@
         "conditional": "Bedingt",
         "addScore": "Score hinzufügen:",
         "addFieldMultiplier": "Feld-Multiplikator hinzufügen",
-        "addBonus": "Bonus hinzufügen"
+        "addBonus": "Bonus hinzufügen",
+        "notSupportedForSimpleSort": "Nicht unterstützt für einfache Sortierung",
+        "notSupportedForScoreMultiplier": "Nicht unterstützt für Score-Multiplikatoren"
       },
       "conditionsLabel": "Bedingungen (optional)",
       "actions": {

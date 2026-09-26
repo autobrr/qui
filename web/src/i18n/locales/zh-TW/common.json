@@ -12,7 +12,9 @@
     "generalSettings": "一般設定",
     "manageInstances": "管理實例",
     "appearance": "外觀",
-    "instanceBackups": "實例備份"
+    "instanceBackups": "實例備份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文件"
   },
   "sidebar": {
     "instances": "實例",
@@ -150,6 +152,15 @@
     "versionAvailable": "版本 {{version}} 現已可用",
     "viewRelease": "檢視釋出",
     "dismiss": "關閉"
+  },
+  "pwaUpdate": {
+    "reload": "重新載入",
+    "waitingDescription": "重新載入以套用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}}（伺服器傳回了 HTML 錯誤頁面）"
   },
   "notFound": {
     "title": "迷路了？",

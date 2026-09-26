@@ -1272,7 +1272,9 @@
         "conditional": "条件",
         "addScore": "添加得分：",
         "addFieldMultiplier": "添加字段乘数",
-        "addBonus": "添加奖励分"
+        "addBonus": "添加奖励分",
+        "notSupportedForSimpleSort": "不支持简单排序",
+        "notSupportedForScoreMultiplier": "不支持得分乘数"
       },
       "conditionsLabel": "条件（可选）",
       "actions": {

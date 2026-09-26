@@ -909,6 +909,26 @@
     "setConditions": "Установіть умови для фільтрації цього стовпця",
     "operation": "Операція",
     "selectOperation": "Виберіть операцію",
+    "operations": {
+      "equalTo": "Дорівнює",
+      "notEqualTo": "Не дорівнює",
+      "greaterThan": "Більше ніж",
+      "greaterThanOrEqual": "Більше або дорівнює",
+      "lessThan": "Менше ніж",
+      "lessThanOrEqual": "Менше або дорівнює",
+      "between": "Між",
+      "equals": "Дорівнює",
+      "notEquals": "Не дорівнює",
+      "contains": "Містить",
+      "doesNotContain": "Не містить",
+      "startsWith": "Починається з",
+      "endsWith": "Закінчується на",
+      "on": "У день",
+      "after": "Після",
+      "before": "До",
+      "is": "Є",
+      "isNot": "Не є"
+    },
     "value": "Значення",
     "from": "Від",
     "to": "До",
@@ -1649,7 +1669,16 @@
   "sort": {
     "label": "Сортувати",
     "ascending": "висхідний",
-    "descending": "спадання"
+    "descending": "спадання",
+    "options": {
+      "addedOn": "Нещодавно додані",
+      "downloadLimit": "Ліміт завантаження",
+      "uploadLimit": "Ліміт вивантаження",
+      "sessionDownloaded": "Завантажено (сесія)",
+      "sessionUploaded": "Вивантажено (сесія)",
+      "lastSeenComplete": "Востаннє бачено повним",
+      "reannounceIn": "Повторне оголошення через"
+    }
   },
   "tableColumns": {
     "selectAll": "Вибрати торент",

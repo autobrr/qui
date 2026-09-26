@@ -1362,7 +1362,9 @@
         "conditional": "Умовний",
         "addScore": "Додати оцінку:",
         "addFieldMultiplier": "Додати множник поля",
-        "addBonus": "Додати бонус"
+        "addBonus": "Додати бонус",
+        "notSupportedForSimpleSort": "Не підтримується для простого сортування",
+        "notSupportedForScoreMultiplier": "Не підтримується для множників оцінки"
       },
       "conditionsLabel": "Умови (необов'язково)",
       "actions": {

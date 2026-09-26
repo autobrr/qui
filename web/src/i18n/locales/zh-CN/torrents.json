@@ -765,6 +765,26 @@
     "setConditions": "设置条件以筛选此列",
     "operation": "操作",
     "selectOperation": "选择操作",
+    "operations": {
+      "equalTo": "等于",
+      "notEqualTo": "不等于",
+      "greaterThan": "大于",
+      "greaterThanOrEqual": "大于或等于",
+      "lessThan": "小于",
+      "lessThanOrEqual": "小于或等于",
+      "between": "介于",
+      "equals": "等于",
+      "notEquals": "不等于",
+      "contains": "包含",
+      "doesNotContain": "不包含",
+      "startsWith": "开头为",
+      "endsWith": "结尾为",
+      "on": "当天",
+      "after": "晚于",
+      "before": "早于",
+      "is": "是",
+      "isNot": "不是"
+    },
     "value": "值",
     "from": "从",
     "to": "到",
@@ -1544,7 +1564,16 @@
   "sort": {
     "label": "排序",
     "ascending": "升序",
-    "descending": "降序"
+    "descending": "降序",
+    "options": {
+      "addedOn": "最近添加",
+      "downloadLimit": "下载限制",
+      "uploadLimit": "上传限制",
+      "sessionDownloaded": "已下载（本次会话）",
+      "sessionUploaded": "已上传（本次会话）",
+      "lastSeenComplete": "最近完成",
+      "reannounceIn": "重新汇报倒计时"
+    }
   },
   "details": {
     "failedToUpdatePriorities": "更新文件优先级失败",

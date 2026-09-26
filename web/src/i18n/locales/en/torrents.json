@@ -813,6 +813,26 @@
     "setConditions": "Set conditions to filter this column",
     "operation": "Operation",
     "selectOperation": "Select operation",
+    "operations": {
+      "equalTo": "Equal to",
+      "notEqualTo": "Not equal to",
+      "greaterThan": "Greater than",
+      "greaterThanOrEqual": "Greater than or equal",
+      "lessThan": "Less than",
+      "lessThanOrEqual": "Less than or equal",
+      "between": "Between",
+      "equals": "Equals",
+      "notEquals": "Not equals",
+      "contains": "Contains",
+      "doesNotContain": "Does not contain",
+      "startsWith": "Starts with",
+      "endsWith": "Ends with",
+      "on": "On",
+      "after": "After",
+      "before": "Before",
+      "is": "Is",
+      "isNot": "Is not"
+    },
     "value": "Value",
     "from": "From",
     "to": "To",
@@ -1531,7 +1551,16 @@
   "sort": {
     "label": "Sort",
     "ascending": "ascending",
-    "descending": "descending"
+    "descending": "descending",
+    "options": {
+      "addedOn": "Recently Added",
+      "downloadLimit": "Download Limit",
+      "uploadLimit": "Upload Limit",
+      "sessionDownloaded": "Session Downloaded",
+      "sessionUploaded": "Session Uploaded",
+      "lastSeenComplete": "Last Seen Complete",
+      "reannounceIn": "Reannounce In"
+    }
   },
   "tableColumns": {
     "selectAll": "Select torrent",

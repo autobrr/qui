@@ -765,6 +765,26 @@
     "setConditions": "이 열을 필터링할 조건을 설정하세요",
     "operation": "연산",
     "selectOperation": "연산 선택",
+    "operations": {
+      "equalTo": "같음",
+      "notEqualTo": "같지 않음",
+      "greaterThan": "초과",
+      "greaterThanOrEqual": "이상",
+      "lessThan": "미만",
+      "lessThanOrEqual": "이하",
+      "between": "범위",
+      "equals": "같음",
+      "notEquals": "같지 않음",
+      "contains": "포함",
+      "doesNotContain": "포함하지 않음",
+      "startsWith": "다음으로 시작",
+      "endsWith": "다음으로 끝남",
+      "on": "해당 날짜",
+      "after": "이후",
+      "before": "이전",
+      "is": "일치",
+      "isNot": "불일치"
+    },
     "value": "값",
     "from": "시작",
     "to": "끝",
@@ -1468,7 +1488,16 @@
   "sort": {
     "label": "정렬",
     "ascending": "오름차순",
-    "descending": "내림차순"
+    "descending": "내림차순",
+    "options": {
+      "addedOn": "최근 추가됨",
+      "downloadLimit": "다운로드 제한",
+      "uploadLimit": "업로드 제한",
+      "sessionDownloaded": "다운로드됨 (세션)",
+      "sessionUploaded": "업로드됨 (세션)",
+      "lastSeenComplete": "마지막 완전본 발견",
+      "reannounceIn": "재요청까지"
+    }
   },
   "tableColumns": {
     "selectAll": "토렌트 선택",

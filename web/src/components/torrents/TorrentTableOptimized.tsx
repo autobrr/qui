@@ -1392,7 +1392,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             >
                               {compactSortOptions.map(option => (
                                 <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
-                                  {option.label}
+                                  {t(option.labelKey)}
                                 </DropdownMenuRadioItem>
                               ))}
                             </DropdownMenuRadioGroup>

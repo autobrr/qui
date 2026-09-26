@@ -12,7 +12,9 @@
     "generalSettings": "Paramètres généraux",
     "manageInstances": "Gérer les instances",
     "appearance": "Apparence",
-    "instanceBackups": "Sauvegardes d'instances"
+    "instanceBackups": "Sauvegardes d'instances",
+    "backToSite": "Retour à getqui.com",
+    "docs": "Docs"
   },
   "sidebar": {
     "instances": "Instances",
@@ -150,6 +152,15 @@
     "versionAvailable": "La version {{version}} est maintenant disponible",
     "viewRelease": "Voir la version",
     "dismiss": "Fermer"
+  },
+  "pwaUpdate": {
+    "reload": "Recharger",
+    "waitingDescription": "Rechargez pour appliquer la dernière version de qui.",
+    "activatedTitle": "qui a été mis à jour",
+    "activatedDescription": "Rechargez quand cela vous convient pour terminer l'installation de la dernière version."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (le serveur a renvoyé une page d'erreur HTML)"
   },
   "notFound": {
     "title": "Oups ! Perdu dans l'essaim ?",

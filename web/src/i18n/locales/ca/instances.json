@@ -960,7 +960,9 @@
         "conditional": "Condicional",
         "addScore": "Afegeix puntuació:",
         "addFieldMultiplier": "Afegeix un multiplicador de camp",
-        "addBonus": "Afegeix una bonificació"
+        "addBonus": "Afegeix una bonificació",
+        "notSupportedForSimpleSort": "No compatible amb l'ordenació simple",
+        "notSupportedForScoreMultiplier": "No compatible amb els multiplicadors de puntuació"
       },
       "conditionsLabel": "Condicions (opcional)",
       "actions": {

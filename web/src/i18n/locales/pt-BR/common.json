@@ -12,7 +12,9 @@
     "generalSettings": "Configurações Gerais",
     "manageInstances": "Gerenciar Instâncias",
     "appearance": "Aparência",
-    "instanceBackups": "Backups de Instâncias"
+    "instanceBackups": "Backups de Instâncias",
+    "backToSite": "Voltar para getqui.com",
+    "docs": "Documentação"
   },
   "sidebar": {
     "instances": "Instâncias",
@@ -150,6 +152,15 @@
     "versionAvailable": "A versão {{version}} já está disponível",
     "viewRelease": "Ver Lançamento",
     "dismiss": "Dispensar"
+  },
+  "pwaUpdate": {
+    "reload": "Recarregar",
+    "waitingDescription": "Recarregue para aplicar a versão mais recente do qui.",
+    "activatedTitle": "qui atualizado",
+    "activatedDescription": "Recarregue quando for conveniente para concluir a instalação da versão mais recente."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (o servidor retornou uma página de erro HTML)"
   },
   "notFound": {
     "title": "Ops! Perdido no swarm?",

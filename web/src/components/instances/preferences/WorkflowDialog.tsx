@@ -310,11 +310,9 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
 
 const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for simple sorting" }))
 
 const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for score multipliers" }))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
   return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
@@ -659,6 +657,14 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
+  const simpleSortDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
+    return SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
+  const scoreMultiplierDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForScoreMultiplier")
+    return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
@@ -2339,7 +2345,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <FieldCombobox
                       value={formState.simpleSortField}
                       onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
-                      disabledFields={SIMPLE_SORT_DISABLED_FIELDS}
+                      disabledFields={simpleSortDisabledFields}
                     />
                     <div className="flex items-center border rounded-md">
                       <Button
@@ -2430,7 +2436,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
                               }}
-                              disabledFields={SCORE_MULTIPLIER_DISABLED_FIELDS}
+                              disabledFields={scoreMultiplierDisabledFields}
                             />
 
                             <span className="text-sm text-muted-foreground">x</span>

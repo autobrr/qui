@@ -1296,7 +1296,9 @@
         "conditional": "Conditionnel",
         "addScore": "Ajouter Score :",
         "addFieldMultiplier": "Ajouter Multiplicateur de champ",
-        "addBonus": "Ajouter Bonus"
+        "addBonus": "Ajouter Bonus",
+        "notSupportedForSimpleSort": "Non pris en charge pour le tri simple",
+        "notSupportedForScoreMultiplier": "Non pris en charge pour les multiplicateurs de score"
       },
       "conditionsLabel": "Conditions (facultatif)",
       "actions": {

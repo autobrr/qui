@@ -813,6 +813,26 @@
     "setConditions": "Définir les conditions pour cette colonne",
     "operation": "Opération",
     "selectOperation": "Sélectionner une opération",
+    "operations": {
+      "equalTo": "Égal à",
+      "notEqualTo": "Différent de",
+      "greaterThan": "Supérieur à",
+      "greaterThanOrEqual": "Supérieur ou égal à",
+      "lessThan": "Inférieur à",
+      "lessThanOrEqual": "Inférieur ou égal à",
+      "between": "Entre",
+      "equals": "Égal à",
+      "notEquals": "Différent de",
+      "contains": "Contient",
+      "doesNotContain": "Ne contient pas",
+      "startsWith": "Commence par",
+      "endsWith": "Se termine par",
+      "on": "Le",
+      "after": "Après",
+      "before": "Avant",
+      "is": "Est",
+      "isNot": "N'est pas"
+    },
     "value": "Valeur",
     "from": "De",
     "to": "À",
@@ -1531,7 +1551,16 @@
   "sort": {
     "label": "Tri",
     "ascending": "croissant",
-    "descending": "décroissant"
+    "descending": "décroissant",
+    "options": {
+      "addedOn": "Ajoutés récemment",
+      "downloadLimit": "Limite de téléchargement",
+      "uploadLimit": "Limite d'envoi",
+      "sessionDownloaded": "Téléchargé (Session)",
+      "sessionUploaded": "Envoyé (Session)",
+      "lastSeenComplete": "Vu complet pour la dernière fois",
+      "reannounceIn": "Réannonce dans"
+    }
   },
   "tableColumns": {
     "selectAll": "Sélectionner le torrent",

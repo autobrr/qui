@@ -119,33 +119,34 @@ export type DurationUnit =
   | "hours"
   | "days"
 
-export const NUMERIC_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "Equal to" },
-  { value: "ne", label: "Not equal to" },
-  { value: "gt", label: "Greater than" },
-  { value: "ge", label: "Greater than or equal" },
-  { value: "lt", label: "Less than" },
-  { value: "le", label: "Less than or equal" },
-  { value: "between", label: "Between" },
+// labelKey is a key in the torrents namespace.
+export const NUMERIC_OPERATIONS: { value: FilterOperation; labelKey: string }[] = [
+  { value: "eq", labelKey: "columnFilter.operations.equalTo" },
+  { value: "ne", labelKey: "columnFilter.operations.notEqualTo" },
+  { value: "gt", labelKey: "columnFilter.operations.greaterThan" },
+  { value: "ge", labelKey: "columnFilter.operations.greaterThanOrEqual" },
+  { value: "lt", labelKey: "columnFilter.operations.lessThan" },
+  { value: "le", labelKey: "columnFilter.operations.lessThanOrEqual" },
+  { value: "between", labelKey: "columnFilter.operations.between" },
 ]
 
-export const STRING_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "Equals" },
-  { value: "ne", label: "Not equals" },
-  { value: "contains", label: "Contains" },
-  { value: "notContains", label: "Does not contain" },
-  { value: "startsWith", label: "Starts with" },
-  { value: "endsWith", label: "Ends with" },
+export const STRING_OPERATIONS: { value: FilterOperation; labelKey: string }[] = [
+  { value: "eq", labelKey: "columnFilter.operations.equals" },
+  { value: "ne", labelKey: "columnFilter.operations.notEquals" },
+  { value: "contains", labelKey: "columnFilter.operations.contains" },
+  { value: "notContains", labelKey: "columnFilter.operations.doesNotContain" },
+  { value: "startsWith", labelKey: "columnFilter.operations.startsWith" },
+  { value: "endsWith", labelKey: "columnFilter.operations.endsWith" },
 ]
 
-export const DATE_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "On" },
-  { value: "gt", label: "After" },
-  { value: "lt", label: "Before" },
-  { value: "between", label: "Between" },
+export const DATE_OPERATIONS: { value: FilterOperation; labelKey: string }[] = [
+  { value: "eq", labelKey: "columnFilter.operations.on" },
+  { value: "gt", labelKey: "columnFilter.operations.after" },
+  { value: "lt", labelKey: "columnFilter.operations.before" },
+  { value: "between", labelKey: "columnFilter.operations.between" },
 ]
 
-export const BOOLEAN_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "Is" },
-  { value: "ne", label: "Is not" },
+export const BOOLEAN_OPERATIONS: { value: FilterOperation; labelKey: string }[] = [
+  { value: "eq", labelKey: "columnFilter.operations.is" },
+  { value: "ne", labelKey: "columnFilter.operations.isNot" },
 ]

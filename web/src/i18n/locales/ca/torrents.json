@@ -372,7 +372,16 @@
   "sort": {
     "label": "Ordena",
     "ascending": "ascendent",
-    "descending": "descendent"
+    "descending": "descendent",
+    "options": {
+      "addedOn": "Afegits recentment",
+      "downloadLimit": "Límit de baixada",
+      "uploadLimit": "Límit de pujada",
+      "sessionDownloaded": "Baixat (sessió)",
+      "sessionUploaded": "Pujat (sessió)",
+      "lastSeenComplete": "Vist complet per últim cop",
+      "reannounceIn": "Reanuncia d'aquí a"
+    }
   },
   "stateLabels": {
     "downloading": "Baixant",
@@ -859,6 +868,26 @@
     "setConditions": "Defineix condicions per filtrar aquesta columna",
     "operation": "Operació",
     "selectOperation": "Selecciona una operació",
+    "operations": {
+      "equalTo": "És igual a",
+      "notEqualTo": "No és igual a",
+      "greaterThan": "Més gran que",
+      "greaterThanOrEqual": "Més gran o igual que",
+      "lessThan": "Més petit que",
+      "lessThanOrEqual": "Més petit o igual que",
+      "between": "Entre",
+      "equals": "És igual a",
+      "notEquals": "No és igual a",
+      "contains": "Conté",
+      "doesNotContain": "No conté",
+      "startsWith": "Comença per",
+      "endsWith": "Acaba en",
+      "on": "El",
+      "after": "Després de",
+      "before": "Abans de",
+      "is": "És",
+      "isNot": "No és"
+    },
     "value": "Valor",
     "from": "De",
     "to": "A",

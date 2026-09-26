@@ -813,6 +813,26 @@
     "setConditions": "Bedingungen festlegen, um diese Spalte zu filtern",
     "operation": "Operation",
     "selectOperation": "Operation auswählen",
+    "operations": {
+      "equalTo": "Gleich",
+      "notEqualTo": "Ungleich",
+      "greaterThan": "Größer als",
+      "greaterThanOrEqual": "Größer oder gleich",
+      "lessThan": "Kleiner als",
+      "lessThanOrEqual": "Kleiner oder gleich",
+      "between": "Zwischen",
+      "equals": "Gleich",
+      "notEquals": "Ungleich",
+      "contains": "Enthält",
+      "doesNotContain": "Enthält nicht",
+      "startsWith": "Beginnt mit",
+      "endsWith": "Endet mit",
+      "on": "Am",
+      "after": "Nach",
+      "before": "Vor",
+      "is": "Ist",
+      "isNot": "Ist nicht"
+    },
     "value": "Wert",
     "from": "Von",
     "to": "Bis",
@@ -1531,7 +1551,16 @@
   "sort": {
     "label": "Sortieren",
     "ascending": "aufsteigend",
-    "descending": "absteigend"
+    "descending": "absteigend",
+    "options": {
+      "addedOn": "Zuletzt hinzugefügt",
+      "downloadLimit": "Download-Limit",
+      "uploadLimit": "Upload-Limit",
+      "sessionDownloaded": "Heruntergeladen (Sitzung)",
+      "sessionUploaded": "Hochgeladen (Sitzung)",
+      "lastSeenComplete": "Zuletzt vollständig gesehen",
+      "reannounceIn": "Reannounce in"
+    }
   },
   "tableColumns": {
     "selectAll": "Torrent auswählen",

@@ -1272,7 +1272,9 @@
         "conditional": "條件",
         "addScore": "新增得分：",
         "addFieldMultiplier": "新增欄位乘數",
-        "addBonus": "新增獎勵分"
+        "addBonus": "新增獎勵分",
+        "notSupportedForSimpleSort": "不支援簡單排序",
+        "notSupportedForScoreMultiplier": "不支援得分乘數"
       },
       "conditionsLabel": "條件（可選）",
       "actions": {

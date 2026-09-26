@@ -12,7 +12,9 @@
     "generalSettings": "Obecná nastavení",
     "manageInstances": "Spravovat instance",
     "appearance": "Vzhled",
-    "instanceBackups": "Zálohy instance"
+    "instanceBackups": "Zálohy instance",
+    "backToSite": "Zpět na getqui.com",
+    "docs": "Dokumentace"
   },
   "sidebar": {
     "instances": "Instance",
@@ -150,6 +152,15 @@
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
+  },
+  "pwaUpdate": {
+    "reload": "Znovu načíst",
+    "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",
+    "activatedTitle": "qui bylo aktualizováno",
+    "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (server vrátil chybovou stránku HTML)"
   },
   "notFound": {
     "title": "Ajeje! Ztratil jsi se?",

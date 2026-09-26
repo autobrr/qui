@@ -12,7 +12,9 @@
     "generalSettings": "Impostazioni generali",
     "manageInstances": "Gestisci istanze",
     "appearance": "Aspetto",
-    "instanceBackups": "Backup delle istanze"
+    "instanceBackups": "Backup delle istanze",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentazione"
   },
   "sidebar": {
     "instances": "Istanze",
@@ -150,6 +152,15 @@
     "versionAvailable": "La versione {{version}} è ora disponibile",
     "viewRelease": "Visualizza la release",
     "dismiss": "Ignora"
+  },
+  "pwaUpdate": {
+    "reload": "Ricarica",
+    "waitingDescription": "Ricarica per applicare l'ultima versione di qui.",
+    "activatedTitle": "qui è stato aggiornato",
+    "activatedDescription": "Ricarica quando preferisci per completare l'installazione dell'ultima versione."
+  },
+  "apiErrors": {
+    "htmlErrorPage": "{{message}} (il server ha restituito una pagina di errore HTML)"
   },
   "notFound": {
     "title": "Ops! Persi nello sciame?",

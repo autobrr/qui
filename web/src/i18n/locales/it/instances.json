@@ -1302,7 +1302,9 @@
         "conditional": "Condizionale",
         "addScore": "Aggiungi punteggio:",
         "addFieldMultiplier": "Aggiungi moltiplicatore di campo",
-        "addBonus": "Aggiungi bonus"
+        "addBonus": "Aggiungi bonus",
+        "notSupportedForSimpleSort": "Non supportato per l'ordinamento semplice",
+        "notSupportedForScoreMultiplier": "Non supportato per i moltiplicatori di punteggio"
       },
       "conditionsLabel": "Condizioni (facoltativo)",
       "actions": {
