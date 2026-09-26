@@ -983,7 +983,7 @@ func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
 		recheckResumeCtx:  context.Background(),
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
-	require.NoError(t, service.queueTitleRescueMonitor(1, "hash1"))
+	require.Empty(t, service.skipResumeMonitorSuffix(true, false, 1, "hash1"))
 	pending := <-service.recheckResumeChan
 
 	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{

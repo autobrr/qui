@@ -5,7 +5,11 @@ package crossseed
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -245,4 +249,195 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			require.Nil(t, sync.addTorrentOpts, "AddTorrent must not be called")
 		})
 	}
+}
+
+// failingRecheckSyncManager fails the recheck while recheckErr is set, the way a
+// stalled qBittorrent fails the post-add readiness wait (issue #2821).
+type failingRecheckSyncManager struct {
+	qbittorrentSync
+	recheckErr error
+}
+
+func (m *failingRecheckSyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	if action == "recheck" && m.recheckErr != nil {
+		return m.recheckErr
+	}
+	return m.qbittorrentSync.BulkAction(ctx, instanceID, hashes, action)
+}
+
+func TestProcessCrossSeedCandidate_FailedRecheckIsQueuedAndResumed(t *testing.T) {
+	t.Parallel()
+
+	for _, recheckErr := range []error{
+		errors.New("synthetic recheck failure"),
+		context.DeadlineExceeded,
+	} {
+		t.Run(recheckErr.Error(), func(t *testing.T) {
+			t.Parallel()
+
+			instance := &models.Instance{ID: 1}
+			sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
+			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			newHash := "newhash"
+			service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+			sync := &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: recheckErr}
+			service.syncManager = sync
+			service.recheckResumeChan = make(chan *pendingResume, 1)
+
+			req := &CrossSeedRequest{}
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+
+			require.True(t, result.Success, "message: %s", result.Message)
+			require.NotContains(t, result.Message, "manual intervention required")
+			require.Len(t, service.recheckResumeChan, 1)
+			entry := <-service.recheckResumeChan
+			require.True(t, entry.recheckPending)
+
+			// qBittorrent recovers. skip_checking reports 100% before any recheck,
+			// so the first poll must send the recheck, not resume.
+			sync.recheckErr = nil
+			torrent := qbt.Torrent{Hash: newHash, State: qbt.TorrentStateStoppedUp, Progress: 1}
+			require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+			require.Equal(t, []string{"recheck:" + newHash}, renameSync.bulkActions)
+			require.False(t, entry.recheckPending)
+
+			torrent.State = qbt.TorrentStateCheckingUp
+			require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+
+			torrent.State = qbt.TorrentStateStoppedUp
+			require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+			require.Equal(t, []string{"recheck:" + newHash, "resume:" + newHash}, renameSync.bulkActions)
+		})
+	}
+}
+
+func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNotResumed(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1}
+	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
+	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+	newHash := "newhash"
+	service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+	sync := &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: context.DeadlineExceeded}
+	service.syncManager = sync
+	service.recheckResumeChan = make(chan *pendingResume, 1)
+
+	req := &CrossSeedRequest{SkipAutoResume: true}
+	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil)
+
+	require.True(t, result.Success, "message: %s", result.Message)
+	require.NotContains(t, result.Message, "manual intervention required")
+	require.Len(t, service.recheckResumeChan, 1)
+	entry := <-service.recheckResumeChan
+	require.True(t, entry.recheckPending)
+	require.True(t, entry.monitorOnly)
+
+	sync.recheckErr = nil
+	torrent := qbt.Torrent{Hash: newHash, State: qbt.TorrentStateStoppedUp, Progress: 1}
+	require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+
+	torrent.State = qbt.TorrentStateCheckingUp
+	require.True(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+
+	torrent.State = qbt.TorrentStateStoppedUp
+	require.False(t, service.processPendingRecheckResume(1, newHash, entry, torrent))
+	require.Equal(t, []string{"recheck:" + newHash}, renameSync.bulkActions)
+}
+
+// A piece check seen while the deferred recheck is pending proves the failed call
+// landed. A qBittorrent restart after it must still block the fast resume.
+func TestProcessPendingRecheckResumeDeferredCheckThenRestartDoesNotResume(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{syncManager: sync}
+	budget := int64(0)
+	entry := &pendingResume{instanceID: 1, hash: "abc", budgetBytes: &budget, recheckPending: true, verificationRequired: true}
+	entry.addedAt = time.Now().Add(-time.Hour)
+
+	torrent := qbt.Torrent{Hash: "abc", State: qbt.TorrentStateCheckingUp, Progress: 0.3}
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+
+	torrent.State, torrent.Progress = qbt.TorrentStateCheckingResumeData, 1
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+
+	torrent.State = qbt.TorrentStateStoppedUp
+	for range recheckResumeStablePolls + 1 {
+		require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+	}
+	require.Empty(t, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumeHoldsDeferredRecheckDuringResumeDataCheck(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{syncManager: sync}
+	budget := int64(0)
+	entry := &pendingResume{instanceID: 1, hash: "abc", budgetBytes: &budget, recheckPending: true}
+
+	torrent := qbt.Torrent{Hash: "abc", State: qbt.TorrentStateCheckingResumeData, Progress: 1}
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+	require.Empty(t, sync.bulkActions)
+	require.True(t, entry.recheckPending)
+
+	// A piece check means the failed call reached qBittorrent; do not restart it.
+	torrent.State = qbt.TorrentStateCheckingUp
+	require.True(t, service.processPendingRecheckResume(1, "abc", entry, torrent))
+	require.Empty(t, sync.bulkActions)
+	require.False(t, entry.recheckPending)
+}
+
+// hiddenTorrentSyncManager hides the torrent from GetTorrents until shown, the
+// way a stalled qBittorrent leaves a fresh add out of the cache.
+type hiddenTorrentSyncManager struct {
+	*recheckResumeSyncManager
+	mu      sync.Mutex
+	torrent *qbt.Torrent
+}
+
+func (m *hiddenTorrentSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.torrent == nil {
+		return nil, nil
+	}
+	return []qbt.Torrent{*m.torrent}, nil
+}
+
+func (m *hiddenTorrentSyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.recheckResumeSyncManager.BulkAction(ctx, instanceID, hashes, action)
+}
+
+func TestRecheckResumeWorkerKeepsDeferredRecheckWhileTorrentHidden(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		sync := &hiddenTorrentSyncManager{recheckResumeSyncManager: &recheckResumeSyncManager{}}
+		service := &Service{
+			syncManager:       sync,
+			recheckResumeChan: make(chan *pendingResume, 1),
+			recheckResumeCtx:  ctx,
+		}
+		go service.recheckResumeWorker()
+		require.NoError(t, service.queueRecheckResumeWithBudget(1, "abc", 0, false, nil, true))
+
+		time.Sleep(3 * recheckPollInterval)
+		synctest.Wait()
+
+		sync.mu.Lock()
+		sync.torrent = &qbt.Torrent{Hash: "abc", State: qbt.TorrentStateStoppedUp, Progress: 1}
+		sync.mu.Unlock()
+		time.Sleep(recheckPollInterval)
+		synctest.Wait()
+
+		sync.mu.Lock()
+		defer sync.mu.Unlock()
+		require.Equal(t, []string{"recheck:abc"}, sync.bulkActions)
+	})
 }

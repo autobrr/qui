@@ -751,6 +751,69 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 	}
 }
 
+func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
+	for _, skipAutoResume := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skipAutoResume=%v", skipAutoResume), func(t *testing.T) {
+			tempDir := t.TempDir()
+			downloadsDir := filepath.Join(tempDir, "downloads")
+			require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Original"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
+
+			service := &Service{
+				instanceStore: &mockInstanceStore{
+					instances: map[int]*models.Instance{
+						1: {
+							ID:                       1,
+							Name:                     "qbt1",
+							HasLocalFilesystemAccess: true,
+							UseHardlinks:             true,
+							HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+						},
+					},
+				},
+				syncManager: &failingRecheckSyncManager{
+					qbittorrentSync: &rootlessSavePathSyncManager{},
+					recheckErr:      context.DeadlineExceeded,
+				},
+				recheckResumeChan: make(chan *pendingResume, 1),
+				recheckResumeCtx:  t.Context(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return models.DefaultCrossSeedAutomationSettings(), nil
+				},
+			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+
+			result := service.processHardlinkMode(
+				t.Context(),
+				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+				[]byte("torrent"),
+				"hash123",
+				"",
+				"Renamed",
+				&CrossSeedRequest{SkipAutoResume: skipAutoResume},
+				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+				"size",
+				qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+				qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+				&qbt.TorrentProperties{SavePath: downloadsDir},
+				"",
+				"",
+			)
+
+			require.True(t, result.Success, result.Result.Message)
+			require.NotContains(t, result.Result.Message, "manual intervention required")
+			select {
+			case pending := <-service.recheckResumeChan:
+				require.True(t, pending.recheckPending)
+				require.True(t, pending.verificationRequired)
+				require.Equal(t, skipAutoResume, pending.monitorOnly)
+			default:
+				require.Fail(t, "expected the failed recheck to be queued")
+			}
+		})
+	}
+}
+
 // A season, episode or group relaxed by the exact-size fallback rests on equal
 // reported sizes, so the link modes owe it the same full hash check a title rescue
 // gets.
