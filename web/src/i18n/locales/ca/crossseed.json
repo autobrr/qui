@@ -574,18 +574,6 @@
       "partial": "Parcial",
       "pending": "Pendent"
     },
-    "contentTypeLabels": {
-      "movie": "Pel·lícula",
-      "tv": "TV",
-      "music": "Música",
-      "audiobook": "Audiollibre",
-      "book": "Llibre",
-      "comic": "Còmic",
-      "game": "Joc",
-      "app": "Aplicació",
-      "adult": "Adults",
-      "unknown": "Desconegut"
-    },
     "linkModeLabels": {
       "regular": "Normal",
       "hardlink": "Hardlink",

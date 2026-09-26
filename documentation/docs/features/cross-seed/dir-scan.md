@@ -135,6 +135,7 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files presen
 
 - Files that are already part of a seeding torrent
 - Torrents whose infohash already exists in qBittorrent
+- Torrents whose infohash is on the target instance's [cross-seed blocklist](./overview.md#blocklist)
 
 This prevents redundant searches and duplicate additions.
 

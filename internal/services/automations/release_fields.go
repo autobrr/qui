@@ -27,7 +27,7 @@ func parsedTorrentRelease(t qbt.Torrent, ctx *EvalContext) *rls.Release {
 func torrentContentType(t qbt.Torrent, ctx *EvalContext) string {
 	r := parsedTorrentRelease(t, ctx)
 	info := releases.DetermineContentType(r)
-	return info.ContentType
+	return string(info.ContentType)
 }
 
 // torrentEffectiveName returns a stable-ish "item" identifier derived from the parsed title
