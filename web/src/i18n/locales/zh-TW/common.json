@@ -184,6 +184,25 @@
       "year_other": "{{count}} 年"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "支援 qui",
     "description": "已經有主題了，還想再出一份力？qui 的一切已經屬於您。訂閱不會解鎖功能，它資助的是開發這些功能所投入的時間。",

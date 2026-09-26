@@ -191,6 +191,25 @@
       "year_other": "{{count}} anys"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "Fes costat a qui",
     "description": "Ja tens els temes i vols fer-hi encara més un cop de mà? Tot el que hi ha a qui ja és teu. Una subscripció no desbloqueja funcions: finança el temps que es dedica a construir-les.",

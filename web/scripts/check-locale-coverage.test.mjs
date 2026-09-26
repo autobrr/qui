@@ -36,6 +36,8 @@ for (const locale of ["fr", "de", "it", "ko", "pt-BR", "ca"]) {
       tool: "qBittorrent",
       pathPlaceholder: "/path/to/files",
       review: "Untranslated sentence",
+      rateSuffix: "{{unit}}/s",
+      rateWords: "{{unit}} per second",
       extraVars: "Source",
     }
     const translated = {
@@ -47,6 +49,8 @@ for (const locale of ["fr", "de", "it", "ko", "pt-BR", "ca"]) {
       tool: "qBittorrent",
       pathPlaceholder: "/path/to/files",
       review: "Untranslated sentence",
+      rateSuffix: "{{unit}}/s",
+      rateWords: "{{unit}} per second",
       extraVars: "Cible {{extra}}",
     }
     fs.writeFileSync(enPath, JSON.stringify(english))
@@ -60,7 +64,11 @@ for (const locale of ["fr", "de", "it", "ko", "pt-BR", "ca"]) {
     }
 
     const valid = run(0)
-    assert.match(valid, /Warnings: 2 \(untranslatedUnexplained: 1, untranslatedExplained: 1\)/)
+    // rateSuffix is explained as a rate suffix; rateWords and review are not, which is what
+    // keeps the rule from swallowing a real finding.
+    assert.match(valid, /Warnings: 4 \(untranslatedUnexplained: 2, untranslatedExplained: 2\)/)
+    assert.match(valid, /rateSuffix: "\{\{unit\}\}\/s" \(rate suffix\)/)
+    assert.ok(!/rateWords.*\(rate suffix\)/.test(valid), valid)
 
     translated.nested = { message: "Bonjour", empty: "" }
     translated.extra = "Unexpected"

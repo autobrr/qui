@@ -69,6 +69,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
@@ -1747,7 +1748,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
                         >
                           <ArrowUpDown className="h-3 w-3" />
-                          <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                          <span>{speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>

@@ -67,6 +67,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
   ActionConditions,
   Automation,
@@ -103,11 +104,15 @@ interface WorkflowDialogProps {
   onSuccess?: () => void
 }
 
-// Speed units for display - storage is always KiB/s
-const SPEED_LIMIT_UNITS = [
-  { value: 1, label: "KiB/s" },
-  { value: 1024, label: "MiB/s" },
-]
+// qBittorrent stores these limits in KiB/s, so each value is that unit's size relative to KiB.
+// The value is never localized; the label is, and is built on call to follow a language switch.
+const SPEED_LIMIT_LADDER = ["KiB", "MiB"] as const
+
+const getSpeedLimitUnits = () =>
+  SPEED_LIMIT_LADDER.map((unit) => ({
+    value: BYTES_PER_UNIT[unit] / BYTES_PER_UNIT.KiB,
+    label: unitLabel(unit, true),
+  }))
 
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "Original", labelKey: "preferences.workflowDialog.contentLayout.original" },
@@ -2876,7 +2881,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -2950,7 +2955,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>

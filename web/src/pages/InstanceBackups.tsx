@@ -79,6 +79,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import { api } from "@/lib/api"
+import { formatBytes } from "@/lib/utils"
 import type {
   BackupCategorySnapshot,
   BackupRun,
@@ -2231,14 +2232,6 @@ function parseDate(value?: string | null): Date | undefined {
     return undefined
   }
   return parsed
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B"
-  const units = ["B", "KB", "MB", "GB", "TB"]
-  const order = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / Math.pow(1024, order)
-  return `${value.toFixed(value >= 10 || order === 0 ? 0 : 1)} ${units[order]}`
 }
 
 function formatDateSafe(value: string | null | undefined, formatter: (date: Date) => string): string {

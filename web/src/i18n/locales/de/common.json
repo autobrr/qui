@@ -191,6 +191,25 @@
       "year_other": "{{count}} Jahre"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "qui unterstützen",
     "description": "Hast du schon Designs und möchtest weiter helfen? Alles in qui gehört dir bereits. Ein Abo schaltet keine Funktionen frei, es finanziert die Zeit, die in ihre Entwicklung fließt.",
