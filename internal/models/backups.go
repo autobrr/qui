@@ -727,25 +727,10 @@ func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, 
 	return ids, nil
 }
 
-func (s *BackupStore) DeleteRun(ctx context.Context, runID int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
+// InsertItems records runID's snapshot. Torrents whose state matches the
+// instance's current rows extend those rows to this run without a write; only
+// new or changed torrents insert a row, and states the run no longer has are
+// closed at this run's sequence number.
 func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []BackupItem) error {
 	if len(items) == 0 {
 		return nil
@@ -761,6 +746,39 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	// Temporarily disable foreign key checks for massive performance boost
 	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
+	}
+
+	var instanceID int
+	if err := tx.QueryRowContext(ctx, "SELECT instance_id FROM instance_backup_runs WHERE id = ?", runID).Scan(&instanceID); err != nil {
+		return fmt.Errorf("failed to load backup run %d: %w", runID, err)
+	}
+	if err := s.lockInstanceItems(ctx, tx, instanceID); err != nil {
+		return err
+	}
+
+	// Deleting the newest runs can leave closed rows whose to_seq is above every
+	// remaining run. A lower number would put those rows back into the next
+	// snapshot, so the next number is at least every stored to_seq. Reusing a
+	// deleted run's own number is safe: to_seq is exclusive.
+	var lastRunSeq, lastClosedSeq int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COALESCE(MAX(items_seq), 0) FROM instance_backup_runs WHERE instance_id = ?),
+			(SELECT COALESCE(MAX(to_seq), 0) FROM instance_backup_items WHERE instance_id = ?)
+	`, instanceID, instanceID).Scan(&lastRunSeq, &lastClosedSeq); err != nil {
+		return fmt.Errorf("failed to read snapshot sequence for instance %d: %w", instanceID, err)
+	}
+	seq := max(lastRunSeq+1, lastClosedSeq)
+	res, err := tx.ExecContext(ctx, "UPDATE instance_backup_runs SET items_seq = ? WHERE id = ? AND items_seq IS NULL", seq, runID)
+	if err != nil {
+		return fmt.Errorf("failed to assign snapshot sequence to backup run %d: %w", runID, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		// Either the run committed items already, or it was deleted while this
+		// snapshot was being built.
+		return fmt.Errorf("backup run %d is gone or already has items", runID)
 	}
 
 	// Pre-deduplicate all strings before interning to minimize database operations
@@ -847,59 +865,213 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		return sql.NullInt64{Valid: false}
 	}
 
-	// Batch insert items with larger chunks for better performance
-	// SQLite SQLITE_MAX_VARIABLE_NUMBER is typically 32766 on modern systems
-	// but default is 999. Use 90 items * 11 params = 990 to stay safe
-	const chunkSize = 90
-	const paramsPerItem = 11
+	current, err := loadCurrentItemStates(ctx, tx, instanceID)
+	if err != nil {
+		return err
+	}
 
-	// Pre-build the query template for full chunks to avoid repeated string building in hot path.
-	// save_path is a plain TEXT column (not interned): cross-seed paths are unique
-	// per torrent and would only bloat string_pool, so it is written verbatim.
+	var inserts []backupItemState
+	for _, item := range items {
+		state := backupItemState{
+			TorrentHashID:     stringToID[item.TorrentHash],
+			NameID:            stringToID[item.Name],
+			CategoryID:        getID(item.Category),
+			SizeBytes:         item.SizeBytes,
+			ArchiveRelPathID:  getID(item.ArchiveRelPath),
+			InfoHashV1ID:      getID(item.InfoHashV1),
+			InfoHashV2ID:      getID(item.InfoHashV2),
+			TagsID:            getID(item.Tags),
+			TorrentBlobPathID: getID(item.TorrentBlobPath),
+			// save_path is a plain TEXT column (not interned): cross-seed paths are
+			// unique per torrent and would only bloat string_pool.
+			SavePath: nullString(item.SavePath),
+		}
+		if !current.take(state) {
+			inserts = append(inserts, state)
+		}
+	}
+
+	// SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999; stay under it.
+	const closeChunkSize = 900
+	closed := current.untaken()
+	for i := 0; i < len(closed); i += closeChunkSize {
+		chunk := closed[i:min(i+closeChunkSize, len(closed))]
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, seq)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE instance_backup_items SET to_seq = ? WHERE id IN "+buildInPlaceholders(len(chunk)), args...); err != nil {
+			return fmt.Errorf("failed to close backup item states: %w", err)
+		}
+	}
+
+	// 83 rows * 12 params = 996, under SQLite's 999 variable limit.
+	const insertChunkSize = 83
+	const insertParams = 12
+
 	queryTemplate := `INSERT INTO instance_backup_items (
-		run_id, torrent_hash_id, name_id, category_id, size_bytes,
+		instance_id, from_seq, torrent_hash_id, name_id, category_id, size_bytes,
 		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, save_path
 	) VALUES %s`
-	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, paramsPerItem, chunkSize)
+	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, insertParams, insertChunkSize)
 
-	for i := 0; i < len(items); i += chunkSize {
-		end := min(i+chunkSize, len(items))
-		chunk := items[i:end]
+	for i := 0; i < len(inserts); i += insertChunkSize {
+		chunk := inserts[i:min(i+insertChunkSize, len(inserts))]
 
-		// Use pre-built query for full chunks, build new one only for smaller final chunk
 		query := fullQuery
-		if len(chunk) < chunkSize {
-			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, paramsPerItem, len(chunk))
+		if len(chunk) < insertChunkSize {
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, insertParams, len(chunk))
 		}
 
-		args := make([]any, 0, len(chunk)*paramsPerItem)
-		for _, item := range chunk {
-			// Get IDs from the stringToID map for required fields
-			torrentHashID := stringToID[item.TorrentHash]
-			nameID := stringToID[item.Name]
-
+		args := make([]any, 0, len(chunk)*insertParams)
+		for _, st := range chunk {
 			args = append(args,
-				runID,
-				torrentHashID,
-				nameID,
-				getID(item.Category),
-				item.SizeBytes,
-				getID(item.ArchiveRelPath),
-				getID(item.InfoHashV1),
-				getID(item.InfoHashV2),
-				getID(item.Tags),
-				getID(item.TorrentBlobPath),
-				item.SavePath,
+				instanceID,
+				seq,
+				st.TorrentHashID,
+				st.NameID,
+				st.CategoryID,
+				st.SizeBytes,
+				st.ArchiveRelPathID,
+				st.InfoHashV1ID,
+				st.InfoHashV2ID,
+				st.TagsID,
+				st.TorrentBlobPathID,
+				st.SavePath,
 			)
 		}
 
-		_, err = tx.ExecContext(ctx, query, args...)
-		if err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("failed to batch insert items: %w", err)
 		}
 	}
 
 	return tx.Commit()
+}
+
+// backupItemState is one torrent's stored backup state. A run reuses a row only
+// when every field matches; checkEveryItemFieldIsVersioned catches a BackupItem
+// field that is not carried here.
+type backupItemState struct {
+	TorrentHashID     int64
+	NameID            int64
+	CategoryID        sql.NullInt64
+	SizeBytes         int64
+	ArchiveRelPathID  sql.NullInt64
+	InfoHashV1ID      sql.NullInt64
+	InfoHashV2ID      sql.NullInt64
+	TagsID            sql.NullInt64
+	TorrentBlobPathID sql.NullInt64
+	SavePath          sql.NullString
+}
+
+type currentItemRow struct {
+	id    int64
+	state backupItemState
+	taken bool
+}
+
+// currentItemStates holds an instance's open rows by torrent hash id. A hash
+// can have several open rows when an imported manifest listed it twice.
+type currentItemStates map[int64][]*currentItemRow
+
+func loadCurrentItemStates(ctx context.Context, tx dbinterface.TxQuerier, instanceID int) (currentItemStates, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id,
+		       infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, save_path
+		FROM instance_backup_items
+		WHERE instance_id = ? AND to_seq IS NULL
+	`, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load current backup items: %w", err)
+	}
+	defer rows.Close()
+
+	current := make(currentItemStates)
+	for rows.Next() {
+		row := &currentItemRow{}
+		st := &row.state
+		if err := rows.Scan(&row.id, &st.TorrentHashID, &st.NameID, &st.CategoryID, &st.SizeBytes, &st.ArchiveRelPathID,
+			&st.InfoHashV1ID, &st.InfoHashV2ID, &st.TagsID, &st.TorrentBlobPathID, &st.SavePath); err != nil {
+			return nil, err
+		}
+		current[st.TorrentHashID] = append(current[st.TorrentHashID], row)
+	}
+	return current, rows.Err()
+}
+
+// take marks an open row with exactly this state as reused and reports whether
+// one existed.
+func (c currentItemStates) take(state backupItemState) bool {
+	for _, row := range c[state.TorrentHashID] {
+		if !row.taken && row.state == state {
+			row.taken = true
+			return true
+		}
+	}
+	return false
+}
+
+func (c currentItemStates) untaken() []int64 {
+	var ids []int64
+	for _, rows := range c {
+		for _, row := range rows {
+			if !row.taken {
+				ids = append(ids, row.id)
+			}
+		}
+	}
+	return ids
+}
+
+func nullString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
+
+// backupItemsLockClass namespaces the per-instance advisory lock that
+// serializes snapshot commits and retention on Postgres.
+const backupItemsLockClass = 0x71756962
+
+// lockInstanceItems serializes item writes for one instance. Without it a
+// retention pass could delete an open row that a concurrent commit, not yet
+// visible to it, is reusing. SQLite already serializes all writes.
+func (s *BackupStore) lockInstanceItems(ctx context.Context, tx dbinterface.TxQuerier, instanceID int) error {
+	if dbinterface.DialectOf(s.db) != "postgres" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(CAST(? AS INTEGER), CAST(? AS INTEGER))", backupItemsLockClass, instanceID); err != nil {
+		return fmt.Errorf("failed to lock backup items for instance %d: %w", instanceID, err)
+	}
+	return nil
+}
+
+// snapshotItemsQuery selects the item rows whose sequence range covers one
+// run's snapshot. It takes the run id, instance id and the run's items_seq
+// twice; passing the run's values as constants lets the planner filter by
+// instance before it resolves strings. The first parameter is echoed back as
+// the run id: an item row covers a range of runs rather than belonging to one,
+// and BackupItem.RunID is part of the JSON the API returns.
+const snapshotItemsQuery = `
+		SELECT id, CAST(? AS BIGINT), torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
+		FROM instance_backup_items_view
+		WHERE instance_id = ? AND from_seq <= ? AND (to_seq IS NULL OR to_seq > ?)`
+
+// runSnapshot returns the instance and snapshot sequence of a run. ok is false
+// when the run does not exist or never committed items.
+func (s *BackupStore) runSnapshot(ctx context.Context, runID int64) (instanceID int, seq int64, ok bool, err error) {
+	var nullSeq sql.NullInt64
+	err = s.db.QueryRowContext(ctx, "SELECT instance_id, items_seq FROM instance_backup_runs WHERE id = ?", runID).Scan(&instanceID, &nullSeq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, false, nil
+	}
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return instanceID, nullSeq.Int64, nullSeq.Valid, nil
 }
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
@@ -908,17 +1080,26 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		orderByName = "LOWER(name)"
 	}
 
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
-		FROM instance_backup_items_view
-		WHERE run_id = ?
-		ORDER BY %s
-	`, orderByName), runID)
+	instanceID, seq, ok, err := s.runSnapshot(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []*BackupItem{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, snapshotItemsQuery+`
+		ORDER BY `+orderByName, runID, instanceID, seq, seq)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	return scanBackupItems(rows)
+}
+
+// scanBackupItems reads rows selected with snapshotItemsQuery's column list.
+func scanBackupItems(rows *sql.Rows) ([]*BackupItem, error) {
 	items := make([]*BackupItem, 0)
 
 	for rows.Next() {
@@ -971,11 +1152,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		items = append(items, &item)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
+	return items, rows.Err()
 }
 
 func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
@@ -990,9 +1167,8 @@ func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*
 
 	for i := 0; i < len(runIDs); i += chunkSize {
 		end := min(i+chunkSize, len(runIDs))
-		chunk := runIDs[i:end]
 
-		items, err := s.listItemsForRunsChunk(ctx, chunk)
+		items, err := s.listItemsForRunsChunk(ctx, runIDs[i:end])
 		if err != nil {
 			return nil, err
 		}
@@ -1003,9 +1179,9 @@ func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*
 }
 
 func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
-	orderByName := "name COLLATE NOCASE"
+	orderByName := "i.name COLLATE NOCASE"
 	if dbinterface.DialectOf(s.db) == "postgres" {
-		orderByName = "LOWER(name)"
+		orderByName = "LOWER(i.name)"
 	}
 
 	args := make([]any, len(runIDs))
@@ -1013,145 +1189,63 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 		args[i] = id
 	}
 
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
-		FROM instance_backup_items_view
-		WHERE run_id IN `+buildInPlaceholders(len(runIDs))+`
-		ORDER BY run_id, %s
-	`, orderByName), args...)
+	// One statement for the whole chunk: the per-run query of ListItems costs
+	// two round trips each, which on Postgres took 8x longer for 900 runs.
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT i.id, r.id, i.torrent_hash, i.name, i.category, i.size_bytes, i.archive_rel_path,
+		       i.infohash_v1, i.infohash_v2, i.tags, i.torrent_blob_path, i.save_path, i.created_at
+		FROM instance_backup_runs r
+		JOIN instance_backup_items_view i
+		  ON i.instance_id = r.instance_id
+		 AND i.from_seq <= r.items_seq
+		 AND (i.to_seq IS NULL OR i.to_seq > r.items_seq)
+		WHERE r.id IN `+buildInPlaceholders(len(runIDs))+`
+		ORDER BY r.id, `+orderByName, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	items := make([]*BackupItem, 0)
-
-	for rows.Next() {
-		var item BackupItem
-		var category sql.NullString
-		var relPath sql.NullString
-		var infohashV1 sql.NullString
-		var infohashV2 sql.NullString
-		var tags sql.NullString
-		var blobPath sql.NullString
-		var savePath sql.NullString
-		if err := rows.Scan(
-			&item.ID,
-			&item.RunID,
-			&item.TorrentHash,
-			&item.Name,
-			&category,
-			&item.SizeBytes,
-			&relPath,
-			&infohashV1,
-			&infohashV2,
-			&tags,
-			&blobPath,
-			&savePath,
-			&item.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		if category.Valid {
-			item.Category = &category.String
-		}
-		if relPath.Valid {
-			item.ArchiveRelPath = &relPath.String
-		}
-		if infohashV1.Valid {
-			item.InfoHashV1 = &infohashV1.String
-		}
-		if infohashV2.Valid {
-			item.InfoHashV2 = &infohashV2.String
-		}
-		if tags.Valid {
-			item.Tags = &tags.String
-		}
-		if blobPath.Valid {
-			item.TorrentBlobPath = &blobPath.String
-		}
-		if savePath.Valid {
-			item.SavePath = &savePath.String
-		}
-		items = append(items, &item)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
+	return scanBackupItems(rows)
 }
 
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
-		FROM instance_backup_items_view
-		WHERE run_id = ? AND torrent_hash = ?
-		LIMIT 1
-	`, runID, hash)
-
-	var item BackupItem
-	var category sql.NullString
-	var relPath sql.NullString
-	var infohashV1 sql.NullString
-	var infohashV2 sql.NullString
-	var tags sql.NullString
-	var blobPath sql.NullString
-	var savePath sql.NullString
-
-	if err := row.Scan(
-		&item.ID,
-		&item.RunID,
-		&item.TorrentHash,
-		&item.Name,
-		&category,
-		&item.SizeBytes,
-		&relPath,
-		&infohashV1,
-		&infohashV2,
-		&tags,
-		&blobPath,
-		&savePath,
-		&item.CreatedAt,
-	); err != nil {
+	instanceID, seq, ok, err := s.runSnapshot(ctx, runID)
+	if err != nil {
 		return nil, err
 	}
-
-	if category.Valid {
-		item.Category = &category.String
-	}
-	if relPath.Valid {
-		item.ArchiveRelPath = &relPath.String
-	}
-	if infohashV1.Valid {
-		item.InfoHashV1 = &infohashV1.String
-	}
-	if infohashV2.Valid {
-		item.InfoHashV2 = &infohashV2.String
-	}
-	if tags.Valid {
-		item.Tags = &tags.String
-	}
-	if blobPath.Valid {
-		item.TorrentBlobPath = &blobPath.String
-	}
-	if savePath.Valid {
-		item.SavePath = &savePath.String
+	if !ok {
+		return nil, sql.ErrNoRows
 	}
 
-	return &item, nil
+	rows, err := s.db.QueryContext(ctx, snapshotItemsQuery+`
+		  AND torrent_hash = ?
+		LIMIT 1
+	`, runID, instanceID, seq, seq, hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items, err := scanBackupItems(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return items[0], nil
 }
 
 func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT i.torrent_blob_path
-		FROM instance_backup_items_view i
-		JOIN instance_backup_runs r ON r.id = i.run_id
-		WHERE r.instance_id = ?
-		  AND i.torrent_hash = ?
-		  AND i.torrent_blob_path IS NOT NULL
-		ORDER BY i.created_at DESC
+		SELECT torrent_blob_path
+		FROM instance_backup_items_view
+		WHERE instance_id = ?
+		  AND torrent_hash = ?
+		  AND torrent_blob_path IS NOT NULL
+		ORDER BY from_seq DESC
 		LIMIT 1
 	`, instanceID, hash)
 
@@ -1784,14 +1878,90 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 		args[i] = id
 	}
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_items WHERE run_id IN "+buildInPlaceholders(len(runIDs)), args...)
+	lockRows, err := tx.QueryContext(ctx, "SELECT DISTINCT instance_id FROM instance_backup_runs WHERE id IN "+buildInPlaceholders(len(runIDs))+" ORDER BY instance_id", args...)
 	if err != nil {
+		return err
+	}
+	var instanceIDs []int
+	for lockRows.Next() {
+		var id int
+		if err := lockRows.Scan(&id); err != nil {
+			lockRows.Close()
+			return err
+		}
+		instanceIDs = append(instanceIDs, id)
+	}
+	lockRows.Close()
+	if err := lockRows.Err(); err != nil {
+		return err
+	}
+	// Ascending lock order keeps concurrent cleanups of several instances from deadlocking.
+	for _, instanceID := range instanceIDs {
+		if err := s.lockInstanceItems(ctx, tx, instanceID); err != nil {
+			return err
+		}
+	}
+
+	// Read snapshot bounds only under the lock: a run whose items were still
+	// committing has its items_seq by now, so its rows are not left behind.
+	type deletedSnapshots struct {
+		instanceID     int
+		minSeq, maxSeq sql.NullInt64
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT instance_id, MIN(items_seq), MAX(items_seq)
+		FROM instance_backup_runs
+		WHERE id IN `+buildInPlaceholders(len(runIDs))+`
+		GROUP BY instance_id
+	`, args...)
+	if err != nil {
+		return err
+	}
+	var deleted []deletedSnapshots
+	for rows.Next() {
+		var d deletedSnapshots
+		if err := rows.Scan(&d.instanceID, &d.minSeq, &d.maxSeq); err != nil {
+			rows.Close()
+			return err
+		}
+		deleted = append(deleted, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return err
 	}
 
 	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id IN "+buildInPlaceholders(len(runIDs)), args...)
 	if err != nil {
 		return err
+	}
+
+	// Item rows are shared between runs; drop only those no remaining run covers.
+	// Every row was covered before this delete, so only rows whose range overlaps
+	// a deleted snapshot need checking.
+	for _, d := range deleted {
+		if !d.minSeq.Valid {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM instance_backup_items
+			WHERE instance_id = ? AND to_seq IS NULL
+			  AND from_seq > (SELECT COALESCE(MAX(items_seq), 0) FROM instance_backup_runs WHERE instance_id = ?)
+		`, d.instanceID, d.instanceID); err != nil {
+			return fmt.Errorf("failed to delete uncovered backup items: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM instance_backup_items
+			WHERE instance_id = ? AND from_seq <= ? AND to_seq > ?
+			  AND NOT EXISTS (
+				SELECT 1 FROM instance_backup_runs r
+				WHERE r.instance_id = instance_backup_items.instance_id
+				  AND r.items_seq >= instance_backup_items.from_seq
+				  AND r.items_seq < instance_backup_items.to_seq
+			  )
+		`, d.instanceID, d.maxSeq.Int64, d.minSeq.Int64); err != nil {
+			return fmt.Errorf("failed to delete uncovered backup items: %w", err)
+		}
 	}
 
 	if err = tx.Commit(); err != nil {
