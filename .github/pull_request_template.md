@@ -4,6 +4,10 @@
 
 Fixes # (issue)
 
+## Behaviour change
+
+<!--- Name each change existing users get without doing anything: a saved rule, setting, or API value that now matches or means something else. Say what they must do. Delete this section if there is none. --->
+
 ## How has this been tested?
 
 <!--- Only manual or live verification that CI cannot do. Delete this section if CI covers everything. --->

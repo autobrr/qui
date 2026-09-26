@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -90,7 +90,7 @@ func TestSourcesCompatible(t *testing.T) {
 }
 
 func TestReleasesMatch_SourceCompatibility(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name        string

@@ -191,7 +191,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     showSuggestions: showSourcePathSuggestions,
     inputRef: sourcePathInputRef,
     listRef: sourcePathListRef,
-  } = usePathAutocomplete(setSourcePath, instanceId)
+  } = usePathAutocomplete(setSourcePath, instanceId, { includeFiles: true })
 
   const {
     suggestions: torrentFilePathSuggestions,

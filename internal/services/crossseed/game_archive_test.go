@@ -61,10 +61,10 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 func TestParseFileReleasePreservesTVStructure(t *testing.T) {
 	service := &Service{releaseCache: NewReleaseCache()}
 	for _, name := range []string{"Example.Show.S03E02-GRP.s01", "Example.Show.S03E02-GRP.mkv"} {
-		parsed := service.parseFileRelease(name)
+		parsed := service.matcher().parseFileRelease(name)
 		require.Equal(t, 3, parsed.Series, name)
 		require.Equal(t, 2, parsed.Episode, name)
 	}
 	// A torrent title ending in .S01 still names a season.
-	require.Equal(t, 1, service.parseReleaseName("Example.Show.S01").Series)
+	require.Equal(t, 1, service.matcher().parseReleaseName("Example.Show.S01").Series)
 }

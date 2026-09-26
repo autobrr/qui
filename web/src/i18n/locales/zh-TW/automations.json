@@ -29,10 +29,12 @@
     "selectState": "選擇狀態",
     "selectScope": "選擇範圍",
     "selectTrackerStatus": "選擇狀態",
+    "selectContentType": "選擇內容類型",
     "true": "是",
     "false": "否",
     "selectCategory": "選擇分類",
     "uncategorized": "未分類",
+    "customContentType": "{{value}}（不支援）",
     "regexEnabled": "正規表示式已啟用",
     "enableRegex": "啟用正規表示式",
     "selectField": "選擇欄位",
@@ -138,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "輔種存在於同一實例",
       "SEEDING_ON_SAME_INSTANCE": "輔種在同一實例做種",
       "CROSS_SEED_TAGS": "交叉做種標籤",
+      "SEASON_PACK_STATUS": "季包狀態",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "季包狀態（任意實例）",
       "HARDLINK_SCOPE": "硬連結範圍"
     },
     "fieldGroups": {
@@ -194,6 +198,11 @@
       "inside_qbittorrent": "qBittorrent 內部（即使同時連結到外部）",
       "outside_qbittorrent": "qBittorrent 外部（媒體庫/匯入）",
       "both": "qBittorrent 內部 + 外部"
+    },
+    "seasonPackStatuses": {
+      "pack": "季包",
+      "packed": "已被季包涵蓋的劇集",
+      "unpacked": "沒有季包的劇集"
     },
     "trackerStatuses": {
       "not_contacted": "未聯絡",

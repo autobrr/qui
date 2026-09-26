@@ -9,7 +9,7 @@ description: Scan local folders for content already on disk and cross-seed it to
 
 Directory Scanner (Dir Scan) scans local folders to find cross-seed opportunities for content already on disk. Library Scan queries the qBittorrent torrent list. Dir Scan works directly with files on the filesystem.
 
-Configure it in **Cross-Seed > Dir Scan**.
+Configure it in **Cross-Seed > Directories**.
 
 ## Requirements
 
@@ -117,7 +117,7 @@ For each configured scan directory, qui:
 :::note Categories + AutoTMM
 Dir Scan adds torrents with an explicit `savepath` to point qBittorrent at the existing files on disk. That forces **AutoTMM off** for Dir Scan injections.
 
-Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Rules category modes (affix / indexer / custom) do not apply to Dir Scan.
+Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Categories and tags category modes (affix / indexer / custom) do not apply to Dir Scan.
 
 If you later enable AutoTMM on an injected torrent, qBittorrent can relocate files based on its default save path and category rules.
 :::
@@ -135,6 +135,7 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files presen
 
 - Files that are already part of a seeding torrent
 - Torrents whose infohash already exists in qBittorrent
+- Torrents whose infohash is on the target instance's [cross-seed blocklist](./overview.md#blocklist)
 
 This prevents redundant searches and duplicate additions.
 
@@ -382,7 +383,7 @@ The UI shows the current phase and progress during active scans.
 
 ## Hardlink/Reflink Modes
 
-You configure each instance under **Cross-Seed > Rules > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
+You configure each instance under **Cross-Seed > After injection > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
 
 If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
 

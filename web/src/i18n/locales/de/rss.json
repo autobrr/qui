@@ -48,7 +48,6 @@
     "toggleDetails": "Details umschalten"
   },
   "rules": {
-    "title": "Regeln",
     "reprocess": "Neu verarbeiten",
     "reprocessTooltip": "Alle ungelesenen Artikel erneut gegen die Regeln prüfen",
     "addRule": "Regel hinzufügen",

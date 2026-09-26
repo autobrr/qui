@@ -49,7 +49,7 @@ qui provides several ways to find cross-seed opportunities:
 
 ### RSS Automation
 
-qui polls tracker RSS feeds on a schedule. Configure this in the **Auto** tab on the Cross-Seed page.
+qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the target instances and indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
 
 - **Run interval**: How often qui polls the feeds (minimum 30 minutes)
 - **Target instances**: The qBittorrent instances that receive cross-seeds
@@ -63,7 +63,7 @@ qui makes this comparison before it downloads the intended torrent file. RSS doe
 
 ### Library Scan
 
-Library Scan searches other trackers for torrents you already seed. Configure it in the **Scan** tab.
+Library Scan searches other trackers for torrents you already seed. Configure it in the **Library** tab. **Save** stores the settings without a run. **Start** stores them and starts a run.
 
 - **Source instance**: The qBittorrent instance to scan
 - **Categories/Tags**: Filter which torrents to include
@@ -85,7 +85,7 @@ Run this sparingly. The scan touches every matching torrent and queries Torznab 
 
 ### Auto-Search on Completion
 
-When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Auto** tab under "Auto-search on completion".
+When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Completion** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
 
 - **Categories/Tags**: Filter which completed torrents trigger searches
 - **Target indexers**: Limit completion searches to specific indexers (empty means all enabled)
@@ -137,7 +137,7 @@ The check first selects a complete matching pack alone, if one exists. Otherwise
 
 Before you add the pack, the check shows matched episodes, coverage, missing bytes, rejected targets, and the resolved destination. Coverage uses the episode files in your upload. No coverage threshold applies to manual assembly. Each selected torrent must be complete and provide one playable episode file with an exact size match. Manual selection bypasses title, source-filter, and numbering-scheme checks, but each file still needs a parsed episode identity.
 
-Piece boundary protection also applies to manual assembly in hardlink mode. It blocks the pack when selected and missing files share a data block. Downloading that block can change the original files through hardlinks. The warning links to Cross-seed > Rules, where you can review this protection under Safety & validation.
+Piece boundary protection also applies to manual assembly in hardlink mode. It blocks the pack when selected and missing files share a data block. Downloading that block can change the original files through hardlinks. The warning links to Cross-Seed > Matching rules, where you can review this protection under Safety & validation.
 
 qui adds the assembled pack paused and rechecks it. It resumes when verified progress reaches the linked byte fraction, with the assembly margin for piece boundaries. If a file moves between check and apply, qui drops that target, reports its name, and assembles the remaining files. Season pack run history records the matched count, coverage, and link mode.
 
@@ -157,5 +157,15 @@ Use the per-instance blocklist to stop qui from injecting specific infohashes ag
 
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
+
+The blocklist applies to these add paths:
+
+- Cross-seed applies from search, RSS, completion, autobrr, and a manual match with one target
+- [Dir Scan](./dir-scan.md)
+- Season pack assembly from the [apply webhook](./season-packs.md#4-configure-the-apply-action) and from [automatic assembly](./season-packs.md#automatic-assembly)
+
+An entry blocks the infohash only on its own instance. Season pack assembly can still use another eligible instance that has no entry.
+
+A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
 
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.

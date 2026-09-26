@@ -528,6 +528,14 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult = crossseed.CrossMatchResult
 
+// filesReader is the slice of the sync manager the hardlink index, the
+// missing-files check, the skipped-files check, and the any-instance season
+// pack set read. ADR 0005.
+type filesReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+}
+
 // CrossMatcher provides cross-seed torrent matching using content-aware
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
@@ -542,6 +550,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	filesReader               filesReader
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
@@ -586,6 +595,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		filesReader:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -1013,6 +1023,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Delete.Condition, torrents, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1579,6 +1590,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Category.Condition, torrents, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
@@ -2004,10 +2016,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	s.mu.RLock()
 	lastFSDelete := s.lastFreeSpaceDeleteAt[instanceID]
 	s.mu.RUnlock()
-	inFreeSpaceCooldown := !lastFSDelete.IsZero() && now.Sub(lastFSDelete) < freeSpaceDeleteCooldown
 
-	// If in cooldown, filter out delete rules that use FREE_SPACE
-	if inFreeSpaceCooldown {
+	// If in cooldown, filter out delete rules that use FREE_SPACE. A dry run deletes nothing, so it skips the cooldown.
+	if !dryRun && !lastFSDelete.IsZero() && now.Sub(lastFSDelete) < freeSpaceDeleteCooldown {
 		filtered := make([]*models.Automation, 0, len(eligibleRules))
 		for _, rule := range eligibleRules {
 			// Skip delete rules that use FREE_SPACE condition
@@ -2146,6 +2157,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
 	}
 
+	// On-demand season pack sets (only if rules use SEASON_PACK_STATUS*)
+	if rulesUseCondition(eligibleRules, FieldSeasonPackStatus) {
+		evalCtx.SeasonPackSet = buildSeasonPackSet(s.releaseParser, torrents)
+	}
+	if rulesUseCondition(eligibleRules, FieldSeasonPackStatusAnyInstance) {
+		evalCtx.SeasonPackSetAnyInstance = s.buildAnyInstanceSeasonPackSet(ctx)
+	}
+
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
@@ -2237,8 +2256,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.mu.Unlock()
 	}
 
-	// Skip checker for recently processed torrents
+	// Skip checker for recently processed torrents. A dry run never stamps this map, so it must not read it either.
 	skipCheck := func(hash string) bool {
+		if dryRun {
+			return false
+		}
 		s.mu.RLock()
 		ts, exists := instLastApplied[hash]
 		s.mu.RUnlock()

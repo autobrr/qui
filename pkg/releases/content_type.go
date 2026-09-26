@@ -7,15 +7,45 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
+
+// ContentType is a content type returned by DetermineContentType.
+type ContentType string
+
+const (
+	ContentTypeMovie     ContentType = "movie"
+	ContentTypeTV        ContentType = "tv"
+	ContentTypeMusic     ContentType = "music"
+	ContentTypeAudiobook ContentType = "audiobook"
+	ContentTypeBook      ContentType = "book"
+	ContentTypeComic     ContentType = "comic"
+	ContentTypeGame      ContentType = "game"
+	ContentTypeApp       ContentType = "app"
+	ContentTypeAdult     ContentType = "adult"
+	ContentTypeUnknown   ContentType = "unknown"
+)
+
+// ContentTypes lists every value DetermineContentType can return, in display order.
+// The automation rule editor mirrors it as CONTENT_TYPE_VALUES in
+// web/src/components/query-builder/constants.ts.
+var ContentTypes = []ContentType{
+	ContentTypeMovie,
+	ContentTypeTV,
+	ContentTypeMusic,
+	ContentTypeAudiobook,
+	ContentTypeBook,
+	ContentTypeComic,
+	ContentTypeGame,
+	ContentTypeApp,
+	ContentTypeAdult,
+	ContentTypeUnknown,
+}
 
 // ContentTypeInfo contains all information about a torrent's detected content type.
 type ContentTypeInfo struct {
-	// ContentType is one of: movie, tv, music, audiobook, book, comic, game, app, adult, unknown.
-	ContentType string
-	// MediaType is an optional detected media format (e.g. "cd", "dvd-video", "bluray").
-	MediaType string
+	// ContentType is one of ContentTypes.
+	ContentType ContentType
 }
 
 // normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
@@ -203,11 +233,19 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	var info ContentTypeInfo
 
 	if release == nil {
-		info.ContentType = "unknown"
+		info.ContentType = ContentTypeUnknown
 		return info
 	}
 
 	release = normalizeReleaseTypeForContent(release)
+	return ClassifyAs(release, release.Type)
+}
+
+// ClassifyAs classifies a release as if it parsed as releaseType. Unlike
+// DetermineContentType it skips the music-to-video rescue, so callers that
+// already know the type from other evidence keep it.
+func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
+	var info ContentTypeInfo
 
 	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {
@@ -217,32 +255,37 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 			if newTitle != "" {
 				newRelease := rls.ParseString(newTitle)
 				altInfo := DetermineContentType(&newRelease)
-				if altInfo.ContentType != "adult" {
+				if altInfo.ContentType != ContentTypeAdult {
 					return altInfo
 				}
 			}
 		}
-		info.ContentType = "adult"
+		info.ContentType = ContentTypeAdult
 		return info
 	}
 
-	switch release.Type {
+	switch releaseType {
 	case rls.Movie:
-		info.ContentType = "movie"
+		info.ContentType = ContentTypeMovie
 	case rls.Episode, rls.Series:
-		info.ContentType = "tv"
+		info.ContentType = ContentTypeTV
 	case rls.Music:
-		info.ContentType = "music"
+		info.ContentType = ContentTypeMusic
 	case rls.Audiobook:
-		info.ContentType = "audiobook"
-	case rls.Book, rls.Education, rls.Magazine:
-		info.ContentType = "book"
+		info.ContentType = ContentTypeAudiobook
+	case rls.Book, rls.Magazine:
+		info.ContentType = ContentTypeBook
 	case rls.Comic:
-		info.ContentType = "comic"
+		info.ContentType = ContentTypeComic
 	case rls.Game:
-		info.ContentType = "game"
+		info.ContentType = ContentTypeGame
 	case rls.App:
-		info.ContentType = "app"
+		info.ContentType = ContentTypeApp
+	case rls.Education:
+		// rls mixes video courses with book publishers here. Book would skip the
+		// courses and the year fallback would search them as movies, so they skip
+		// the fallback.
+		info.ContentType = ContentTypeUnknown
 	case rls.Unknown:
 		// Fall back below.
 	}
@@ -251,32 +294,25 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	if info.ContentType == "" {
 		switch {
 		case release.Series > 0 || release.Episode > 0:
-			info.ContentType = "tv"
+			info.ContentType = ContentTypeTV
 		case release.Year > 0:
-			info.ContentType = "movie"
+			info.ContentType = ContentTypeMovie
 		default:
-			info.ContentType = "unknown"
+			info.ContentType = ContentTypeUnknown
 		}
 	}
 
 	// Last resort: infer from RIAJ media type.
-	if info.ContentType == "unknown" {
-		info.MediaType = detectRIAJMediaType(release.Title)
-		if info.MediaType != "" {
-			switch info.MediaType {
-			case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio":
-				info.ContentType = "music"
-			case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
-				info.ContentType = "movie"
-			case "cd-rom", "dvd-music":
-				if info.MediaType == "dvd-music" {
-					info.ContentType = "music"
-				} else {
-					info.ContentType = "app"
-				}
-			case "ps-game":
-				info.ContentType = "game"
-			}
+	if info.ContentType == ContentTypeUnknown {
+		switch detectRIAJMediaType(release.Title) {
+		case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio", "dvd-music":
+			info.ContentType = ContentTypeMusic
+		case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
+			info.ContentType = ContentTypeMovie
+		case "cd-rom":
+			info.ContentType = ContentTypeApp
+		case "ps-game":
+			info.ContentType = ContentTypeGame
 		}
 	}
 

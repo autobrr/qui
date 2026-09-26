@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -409,8 +411,13 @@ func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, err
 	})
 }
 
+// apiKeyRedacted reports a stored secret as set only when qui can decrypt it.
+// The code that uses the secret reports the decrypt failure, so this path stays quiet.
 func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 	if strings.TrimSpace(encrypted) == "" {
+		return ""
+	}
+	if _, err := s.decrypt(encrypted); err != nil {
 		return ""
 	}
 	return domain.RedactedStr
@@ -719,9 +726,10 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 		}
 	}
 	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {
-		pin, err = s.decrypt(pinEnc.String)
-		if err != nil {
-			return "", "", fmt.Errorf("decrypt tvdb pin: %w", err)
+		// The UI cannot clear a PIN it shows as unset, so a stale PIN must not block a new key.
+		if pin, err = s.decrypt(pinEnc.String); err != nil {
+			log.Warn().Err(err).Msg("Ignoring the stored TVDB PIN: it does not decrypt, most likely because sessionSecret changed")
+			pin = ""
 		}
 	}
 	return apiKey, pin, nil

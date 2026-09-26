@@ -48,7 +48,6 @@
     "toggleDetails": "Toggle details"
   },
   "rules": {
-    "title": "Rules",
     "reprocess": "Reprocess",
     "reprocessTooltip": "Re-check all unread articles against rules",
     "addRule": "Add Rule",
