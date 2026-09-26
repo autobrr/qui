@@ -108,56 +108,14 @@ import {
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns } from "./TorrentTableColumns"
 import { TableColumnHeader } from "./table/TableColumnHeader"
 import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
+import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
 // Default values for persisted state hooks (module scope for stable references)
-const DEFAULT_COLUMN_VISIBILITY = {
-  priority: true,
-  status_icon: true,
-  tracker_icon: true,
-  name: true,
-  size: true,
-  total_size: false,
-  progress: true,
-  state: true,
-  num_seeds: true,
-  num_leechs: true,
-  dlspeed: true,
-  upspeed: true,
-  eta: true,
-  ratio: true,
-  popularity: true,
-  category: true,
-  tags: true,
-  added_on: true,
-  completion_on: false,
-  tracker: false,
-  dl_limit: false,
-  up_limit: false,
-  downloaded: false,
-  uploaded: false,
-  downloaded_session: false,
-  uploaded_session: false,
-  amount_left: false,
-  time_active: false,
-  seeding_time: false,
-  save_path: false,
-  completed: false,
-  ratio_limit: false,
-  seen_complete: false,
-  last_activity: false,
-  availability: false,
-  infohash_v1: false,
-  infohash_v2: false,
-  reannounce: false,
-  private: false,
-  instance: true,
-}
 const DEFAULT_COLUMN_SIZING = {}
 const STREAM_STATUS_TRANSITION_DELAY_MS = 800
 const NAME_COLUMN_MIN_WIDTH = 160
@@ -175,19 +133,6 @@ function columnDefId(col: TorrentTableColumnDef): string | null {
 }
 
 type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
-
-// Helper function to get default column order (module scope for stable reference)
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
-  const order = cols.map(columnDefId).filter((v): v is string => typeof v === "string")
-
-  const trackerIconIndex = order.indexOf("tracker_icon")
-  if (trackerIconIndex > -1 && trackerIconIndex !== 2) {
-    order.splice(2, 0, order.splice(trackerIconIndex, 1)[0])
-  }
-
-  return order
-}
 
 interface ExternalIPAddressProps {
   address?: string | null
@@ -313,21 +258,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
-  // These should be defined at module scope, not inside the component, to ensure stable references
-  // (If not already, move them to the top of the file)
-  // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
-
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
   const [stretchNameColumn, toggleStretchNameColumn] = usePersistedStretchMode(instanceId)
-  // Column order with persistence (get default order at runtime to avoid initialization order issues)
+  // Column order with persistence
   // Latest accessor for the table's leaf column ids — reassigned after the table
   // is created below; useColumnDnd reads it lazily at drag time.
   const leafColumnIdsRef = useRef<() => string[]>(() => [])
   const getLeafColumnIds = useCallback(() => leafColumnIdsRef.current(), [])
   const { columnOrder, setColumnOrder, sensors, onDragEnd } = useColumnDnd({
     instanceId,
-    defaultColumnOrder: getDefaultColumnOrder(),
+    defaultColumnOrder: isUnifiedView ? DEFAULT_UNIFIED_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
     getLeafColumnIds,
   })
   // Column sizing with persistence
