@@ -85,6 +85,7 @@ const mockedUseCapabilities = vi.mocked(useInstanceCapabilities)
 const DISCONNECTED: StreamState = {
   connected: false,
   initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -589,6 +590,16 @@ describe("useTorrentsList", () => {
     )
 
     await flush()
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    act(() => capturedOnMessage?.({
+      type: "init",
+      data: makeResponse({
+        torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+        total: 4,
+        hasMore: true,
+      }),
+    }))
+    await flush()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -977,6 +988,50 @@ describe("useTorrentsList", () => {
 
     expect(mockedApi.getTorrents).toHaveBeenCalled()
     expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["rest"])
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("uses REST fallback while retained stream data is stalled", async () => {
+    streamState = {
+      ...DISCONNECTED,
+      connected: true,
+      initialized: true,
+    }
+    let request = 0
+    mockedApi.getTorrents.mockImplementation(() => {
+      request += 1
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({
+          hash: request === 1 ? "initial-rest" : "fallback-rest",
+          name: request === 1 ? "initial REST" : "REST fallback",
+        })],
+        total: 1,
+        hasMore: false,
+      }))
+    })
+
+    const { result, rerender } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [makeTorrent({ hash: "stream", name: "retained stream row" })],
+          total: 1,
+          hasMore: false,
+        }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["stream"])
+
+    streamState = { ...streamState, dataStalled: true }
+    rerender()
+    await flush()
+
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(2)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["fallback-rest"])
     expect(result.current.isStreaming).toBe(false)
   })
 
@@ -1369,6 +1424,60 @@ describe("useTorrentsList", () => {
       expect.objectContaining({ page: 0 }),
       expect.any(AbortSignal)
     )
+  })
+
+  it("resumes loaded-window polling when the stream stalls", async () => {
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    const firstPage = makeResponse({
+      torrents: [makeTorrent({ hash: "a", state: "downloading" })],
+      total: 2,
+      hasMore: true,
+    })
+    let progress = 0.1
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => Promise.resolve(
+      params.page === 0 ? firstPage : makeResponse({
+        torrents: [makeTorrent({ hash: "b", state: "uploading", progress })],
+        total: 2,
+        hasMore: false,
+      })
+    ))
+    const { result, rerender, unmount } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    act(() => capturedOnMessage?.({ type: "init", data: firstPage }))
+    await flush()
+    await act(async () => { await vi.advanceTimersByTimeAsync(600) })
+    act(() => result.current.loadMore())
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
+    expect(result.current.torrents.find(t => t.hash === "b")?.progress).toBe(0.1)
+
+    mockedApi.getTorrents.mockClear()
+    await act(async () => { await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 2) })
+    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+
+    progress = 0.5
+    streamState = { ...streamState, dataStalled: true }
+    rerender()
+    await act(async () => { await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS) })
+    await flush()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    await flush()
+    expect(mockedApi.getTorrents.mock.calls.map(([, params]) => params.page).sort()).toEqual([0, 1])
+    expect(result.current.torrents.find(t => t.hash === "b")?.progress).toBe(0.5)
+
+    progress = 0.8
+    await act(async () => { await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS) })
+    await flush()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    await flush()
+    expect(result.current.torrents.find(t => t.hash === "b")?.progress).toBe(0.8)
+
+    streamState = { ...streamState, dataStalled: false }
+    rerender()
+    mockedApi.getTorrents.mockClear()
+    await act(async () => { await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 2) })
+    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+    expect(result.current.torrents.find(t => t.hash === "b")?.progress).toBe(0.8)
+    unmount()
   })
 
   it("does not poll page 0 once the stream is connected", async () => {
