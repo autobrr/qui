@@ -7,8 +7,6 @@ import { cleanup, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 import { usePersistedColumnOrder } from "./usePersistedColumnOrder"
 
-// These tests pin today's merge behaviour, quirks included, so a later change shows up as a diff.
-
 const KEY = "qui-column-order:1"
 
 // Shaped like the real default: select first, tracker_icon after priority, state before dlspeed.
@@ -56,11 +54,8 @@ describe("usePersistedColumnOrder", () => {
     expect(readOrder(saved)).toEqual(DEFAULT)
   })
 
-  // Each re-added anchor (priority, state, dlspeed) steers the columns re-added after it.
-  it("does not rebuild the default order from an empty saved order", () => {
-    expect(readOrder([])).toEqual([
-      "select", "priority", "status_icon", "tracker_icon", "name", "size", "progress", "state", "ratio", "upspeed", "dlspeed",
-    ])
+  it("rebuilds the default order from an empty saved order", () => {
+    expect(readOrder([])).toEqual(DEFAULT)
   })
 
   it("returns a complete saved order as saved, stale ids included", () => {
@@ -68,48 +63,28 @@ describe("usePersistedColumnOrder", () => {
     expect(readOrder(saved)).toEqual(saved)
   })
 
-  it("puts a missing column right after state", () => {
-    expect(readOrder(without(DEFAULT, "size"))).toEqual([
-      "select", "priority", "tracker_icon", "name", "progress", "status_icon", "state", "size", "dlspeed", "upspeed", "ratio",
+  it("puts a missing column right after its default predecessor, wherever the user moved it", () => {
+    const saved = ["select", "priority", "tracker_icon", "progress", "status_icon", "state", "dlspeed", "upspeed", "ratio", "name"]
+    expect(readOrder(saved)).toEqual([...saved, "size"])
+  })
+
+  it("keeps several missing columns in default order", () => {
+    const saved = ["ratio", "upspeed", "dlspeed", "state", "select", "priority", "tracker_icon", "progress"]
+    expect(readOrder(saved)).toEqual([
+      "ratio", "upspeed", "dlspeed", "state", "select", "priority", "tracker_icon", "name", "size", "progress", "status_icon",
     ])
   })
 
-  it("puts several missing columns after state in reverse default order", () => {
-    expect(readOrder(without(DEFAULT, "name", "size", "ratio"))).toEqual([
-      "select", "priority", "tracker_icon", "progress", "status_icon", "state", "ratio", "size", "name", "dlspeed", "upspeed",
-    ])
+  it("re-adds a missing select column first", () => {
+    expect(readOrder(without(DEFAULT, "select"))).toEqual(DEFAULT)
   })
 
-  it("re-adds a missing select column after state, not first", () => {
-    expect(readOrder(without(DEFAULT, "select"))).toEqual([
-      "priority", "tracker_icon", "name", "size", "progress", "status_icon", "state", "select", "dlspeed", "upspeed", "ratio",
-    ])
+  it("puts a missing status_icon where the default has it", () => {
+    expect(readOrder(without(DEFAULT, "status_icon"))).toEqual(DEFAULT)
   })
 
-  it.each([
-    ["state", without(DEFAULT, "size", "state"), ["select", "priority", "tracker_icon", "name", "progress", "status_icon", "dlspeed", "upspeed", "ratio", "size", "state"]],
-    ["dlspeed", without(DEFAULT, "size", "dlspeed"), ["select", "priority", "tracker_icon", "name", "progress", "status_icon", "state", "upspeed", "ratio", "size", "dlspeed"]],
-  ])("appends missing columns in default order when %s is not saved", (_anchor, saved, expected) => {
-    expect(readOrder(saved)).toEqual(expected)
-  })
-
-  it("puts a missing status_icon right after priority, not where the default has it", () => {
-    expect(readOrder(without(DEFAULT, "status_icon"))).toEqual([
-      "select", "priority", "status_icon", "tracker_icon", "name", "size", "progress", "state", "dlspeed", "upspeed", "ratio",
-    ])
-  })
-
-  it("puts both missing icon columns after priority in reverse default order", () => {
-    expect(readOrder(without(DEFAULT, "tracker_icon", "status_icon"))).toEqual([
-      "select", "priority", "status_icon", "tracker_icon", "name", "size", "progress", "state", "dlspeed", "upspeed", "ratio",
-    ])
-  })
-
-  it("appends a missing icon column when priority is in neither order", () => {
-    const defaultOrder = without(DEFAULT, "priority")
-    expect(readOrder(without(defaultOrder, "status_icon"), defaultOrder)).toEqual([
-      "select", "tracker_icon", "name", "size", "progress", "state", "dlspeed", "upspeed", "ratio", "status_icon",
-    ])
+  it("puts both missing icon columns where the default has them", () => {
+    expect(readOrder(without(DEFAULT, "tracker_icon", "status_icon"))).toEqual(DEFAULT)
   })
 
   it("does not write the merged order back to storage", () => {

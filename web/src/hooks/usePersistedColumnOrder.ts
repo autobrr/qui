@@ -15,29 +15,22 @@ function mergeWithDefaults(order: unknown, defaultOrder: ColumnOrderState): Colu
     return [...defaultOrder]
   }
 
-  const missingColumns = defaultOrder.filter(col => !order.includes(col))
-  if (missingColumns.length === 0) {
-    return [...order]
-  }
-
   const result = [...order]
 
-  missingColumns.forEach(columnId => {
-    if (columnId === "tracker_icon" || columnId === "status_icon") {
-      const priorityIndex = result.indexOf("priority")
-      if (priorityIndex !== -1) {
-        result.splice(priorityIndex + 1, 0, columnId)
-        return
+  // A missing column goes right after its nearest default-order predecessor, so several
+  // missing columns keep their default order and a column with no predecessor goes first.
+  defaultOrder.forEach((columnId, defaultIndex) => {
+    if (result.includes(columnId)) return
+
+    let insertAt = 0
+    for (let i = defaultIndex - 1; i >= 0; i--) {
+      const predecessorIndex = result.indexOf(defaultOrder[i])
+      if (predecessorIndex !== -1) {
+        insertAt = predecessorIndex + 1
+        break
       }
     }
-
-    const stateIndex = result.indexOf("state")
-    const dlspeedIndex = result.indexOf("dlspeed")
-    if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon" && columnId !== "status_icon") {
-      result.splice(stateIndex + 1, 0, columnId)
-    } else {
-      result.push(columnId)
-    }
+    result.splice(insertAt, 0, columnId)
   })
 
   return result

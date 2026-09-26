@@ -31,14 +31,13 @@ describe("getDefaultColumnOrder", () => {
     ])
   })
 
-  it("places status_icon differently for a fresh user and for a saved order that lacks it", () => {
+  it("gives a saved order that lacks status_icon the fresh-user slot", () => {
     const defaultOrder = getDefaultColumnOrder()
     window.localStorage.setItem("qui-column-order:1", JSON.stringify(defaultOrder.filter(id => id !== "status_icon")))
 
     const { result } = renderHook(() => usePersistedColumnOrder(defaultOrder, 1))
 
-    expect(defaultOrder.slice(6, 9)).toEqual(["progress", "status_icon", "state"])
-    expect(result.current[0].slice(0, 4)).toEqual(["select", "priority", "status_icon", "tracker_icon"])
+    expect(result.current[0]).toEqual(defaultOrder)
   })
 
   it("leaves instance out, so the unified view shows it last instead of after name", () => {
