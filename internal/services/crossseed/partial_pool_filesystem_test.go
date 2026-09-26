@@ -1681,6 +1681,16 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 }
 
 func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T) {
+	// Older qBittorrent reports a skip_checking add as complete before its first
+	// piece check; 5.2 reports missingFiles when an extra file is absent.
+	for _, targetState := range []qbt.TorrentState{qbt.TorrentStateStoppedUp, qbt.TorrentStateMissingFiles} {
+		t.Run(string(targetState), func(t *testing.T) {
+			testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t, targetState)
+		})
+	}
+}
+
+func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T, targetState qbt.TorrentState) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	baseDir := t.TempDir()
 	files := []struct {
@@ -1762,13 +1772,13 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 				snapshot.fileByIndex[index] = snapshot.files[index]
 			}
 		} else {
-			// qBittorrent can optimistically report a skip-checking add as
-			// complete before its first real piece check.
-			snapshot.torrent.Progress = 1
-			snapshot.torrent.State = qbt.TorrentStateStoppedUp
-			for index := range snapshot.files {
-				snapshot.files[index].Progress = 1
-				snapshot.fileByIndex[index] = snapshot.files[index]
+			snapshot.torrent.State = targetState
+			if targetState == qbt.TorrentStateStoppedUp {
+				snapshot.torrent.Progress = 1
+				for index := range snapshot.files {
+					snapshot.files[index].Progress = 1
+					snapshot.fileByIndex[index] = snapshot.files[index]
+				}
 			}
 		}
 		snapshots[member.ID] = snapshot
