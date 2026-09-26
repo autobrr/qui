@@ -8,18 +8,17 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 
-// api.ts reads its error strings from the bare i18next singleton, which returns
-// undefined until "@/i18n" initializes it. This file must NOT import "@/i18n",
-// so it holds the uninitialized case: every message here comes from the `??`
-// English fallback, not from a translation.
+// api.ts reads these messages from the i18next singleton that "@/i18n" initializes,
+// with no hardcoded English fallback: the English text lives in en/common.json only.
 
 afterEach(() => {
   sessionStorage.clear()
 })
 
-describe("api error strings without i18n initialized", () => {
-  it("falls back to English when an API endpoint answers with an SSO login page", async () => {
+describe("api error messages", () => {
+  it("explains an SSO login page returned by an API endpoint", async () => {
     server.use(
       http.get("*/api/instances", () => new HttpResponse("<!doctype html><html><body>Sign in</body></html>", {
         status: 200,
@@ -36,7 +35,7 @@ describe("api error strings without i18n initialized", () => {
     )
   })
 
-  it("falls back to English when a torrent file download fails", async () => {
+  it("names the status when a torrent file download fails", async () => {
     server.use(
       http.get("*/api/instances/:instanceId/torrent-creator/:taskID/file", () => new HttpResponse("nope", {
         status: 503,

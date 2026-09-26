@@ -430,8 +430,7 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
     if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
       return new Promise<Response>(() => {})
     }
-    throw new Error(i18n.t("errors.ssoHtmlResponse", { ns: "common" }) ??
-      "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.")
+    throw new Error(i18n.t("errors.ssoHtmlResponse", { ns: "common" }))
   }
 
   clearSSORecoveryGuard()
@@ -511,7 +510,7 @@ class ApiClient {
   }
 
   private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
-    const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status }) ?? `HTTP error! status: ${response.status}`
+    const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
 
     try {
       const contentType = response.headers.get("content-type") || ""
@@ -1901,8 +1900,7 @@ class ApiClient {
     )
 
     if (!response.ok) {
-      throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }) ??
-        `Failed to download torrent file: ${response.statusText}`)
+      throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }))
     }
 
     // Get filename from Content-Disposition header
