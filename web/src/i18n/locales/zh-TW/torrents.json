@@ -1539,8 +1539,10 @@
     "error": "錯誤",
     "missingFiles": "檔案丟失",
     "checkingResumeData": "檢查恢復資料中",
-    "moving": "移動中"
+    "moving": "移動中",
+    "unknown": "未知"
   },
+  "stateLabelFallback": "無法識別",
   "sort": {
     "label": "排序",
     "ascending": "升序",

@@ -1534,6 +1534,7 @@
           "noMatches": "일치 없음",
           "exportedToInstance": "인스턴스로 내보내기"
         },
+        "actionFallback": "알 수 없는 작업 ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}}개 태그될 예정, {{removed}}개 태그 해제될 예정",
           "tagsAdded": "{{count}}개 태그될 예정",

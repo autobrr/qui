@@ -1607,8 +1607,10 @@
     "error": "Errore",
     "missingFiles": "File mancanti",
     "checkingResumeData": "Verifica dei dati di ripresa",
-    "moving": "Spostamento"
+    "moving": "Spostamento",
+    "unknown": "Sconosciuto"
   },
+  "stateLabelFallback": "Non riconosciuto",
   "details": {
     "failedToUpdatePriorities": "Impossibile aggiornare le priorità dei file",
     "failedToRenameFile": "Impossibile rinominare il file",

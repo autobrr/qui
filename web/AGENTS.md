@@ -94,6 +94,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` asks i18next whether each locale can resolve every plural base at nine counts, and fails on the ones it cannot, since the app serves English for those.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
+- Translation fallbacks rely on the English locale only. Never hardcode one — not as `defaultValue: "English"`, not as `t(…) ?? "English"`. A computed key the checker cannot read falls back to another translated key (`defaultValue: t("…unknown")`), never to a raw backend value. A call that has to break this documents why in place.
 
 ## Torrent Details Note
 

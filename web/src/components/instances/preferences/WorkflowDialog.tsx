@@ -160,6 +160,9 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
 
+// Outside the map: an action of this name would otherwise claim its own fallback.
+const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
+
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
     const asNumber = typeof value === "number" ? value : Number(value)
@@ -4053,7 +4056,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? DRY_RUN_ACTION_FALLBACK_KEY, { action: event.action })}</p>
                             <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">

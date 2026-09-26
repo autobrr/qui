@@ -1600,6 +1600,7 @@
           "noMatches": "Žádné shody",
           "exportedToInstance": "Exportováno do instance"
         },
+        "actionFallback": "Neznámá akce ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} by byly otagovány, {{removed}} by byly odtagovány",
           "tagsAdded": "{{count}} by byly otagovány",
