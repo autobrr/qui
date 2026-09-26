@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   const t = (key: string) => key
   return {
     query: { data: undefined },
-    metadata: { data: undefined as { preferences: { queueing_enabled: boolean } } | undefined },
+    metadata: { data: undefined as { preferences?: { queueing_enabled: boolean } } | undefined },
     translation: { t, i18n: { t, language: "en" } },
     error: vi.fn(),
     preview: vi.fn(),
@@ -162,6 +162,18 @@ describe("WorkflowDialog queue position", () => {
 
     expect(screen.getByText(key("queuePosition.queueingDisabled"))).not.toBeNull()
     expect(selectTrigger(key("queuePosition.bottom")).hasAttribute("disabled")).toBe(true)
+    client.clear()
+  })
+
+  it("keeps the action usable while preferences are unknown", () => {
+    mocks.metadata.data = {}
+    const client = renderDialog({
+      ...rule,
+      conditions: { schemaVersion: "1", queuePosition: { enabled: true, position: "bottom" } },
+    })
+
+    expect(screen.queryByText(key("queuePosition.queueingDisabled"))).toBeNull()
+    expect(selectTrigger(key("queuePosition.bottom")).hasAttribute("disabled")).toBe(false)
     client.clear()
   })
 })

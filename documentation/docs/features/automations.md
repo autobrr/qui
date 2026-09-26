@@ -549,7 +549,7 @@ Move matching torrents to the top or the bottom of the qBittorrent download queu
 - You can combine this action with other actions.
 - If multiple rules set a queue position for the same torrent, the **last matching rule** (by sort order) wins.
 
-The action needs torrent queueing. Turn it on in the instance settings, on the **Queue** tab, with **Enable Queueing**. While queueing is off, the rule editor disables this action, and qui refuses to save a rule that has it.
+The action needs torrent queueing. Turn it on in the instance settings, on the **Queue** tab, with **Enable Queueing**. While queueing is off, the rule editor disables this action, and qui refuses to save an enabled rule with this action turned on. You can still turn such a rule off.
 
 If you turn queueing off after you save the rule, the rule still runs its other actions. qui skips only the queue move on each run and does not log it as a failure.
 

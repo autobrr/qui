@@ -728,7 +728,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
-  const queueingEnabled = metadata?.preferences?.queueing_enabled === true
+  // Missing preferences (still loading or failed) count as on; the server check decides the save.
+  const queueingEnabled = metadata?.preferences?.queueing_enabled !== false
   const { data: targetMetadata, isLoading: targetMetadataLoading } = useInstanceMetadata(formState.exprExportTargetInstanceId ?? 0)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances, isLoading: instancesLoading, error: instancesError } = useInstances()

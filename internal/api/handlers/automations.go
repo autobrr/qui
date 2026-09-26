@@ -437,7 +437,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, msg, err
 	}
 
-	if status, msg, err := h.validateQueuePositionAction(ctx, instanceID, payload.Conditions.QueuePosition); err != nil {
+	if status, msg, err := h.validateQueuePositionAction(ctx, instanceID, isEnabled, payload.Conditions.QueuePosition); err != nil {
 		return status, msg, err
 	}
 
@@ -497,14 +497,18 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	return 0, "", nil
 }
 
-// validateQueuePositionAction rejects an enabled queue position action while the instance has
-// qBittorrent queueing turned off, since every move would be a no-op.
-func (h *AutomationHandler) validateQueuePositionAction(ctx context.Context, instanceID int, action *models.QueuePositionAction) (int, string, error) {
+// validateQueuePositionAction rejects an enabled queue position action on an enabled rule while
+// the instance has qBittorrent queueing turned off, since every move would be a no-op. A disabled
+// rule skips the preference read so it can be turned off after queueing is.
+func (h *AutomationHandler) validateQueuePositionAction(ctx context.Context, instanceID int, ruleEnabled bool, action *models.QueuePositionAction) (int, string, error) {
 	if action == nil || !action.Enabled {
 		return 0, "", nil
 	}
 	if err := action.Validate(); err != nil {
 		return http.StatusBadRequest, "Queue position must be 'top' or 'bottom'", err
+	}
+	if !ruleEnabled {
+		return 0, "", nil
 	}
 
 	prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
