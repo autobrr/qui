@@ -32,6 +32,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
+    "customContentType": "{{value}} (не підтримується)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -215,6 +216,7 @@
       "localFilesystemAccess": "Потребує локального доступу до файлової системи"
     },
     "selectTrackerStatus": "Вибрати статус",
+    "selectContentType": "Вибрати тип вмісту",
     "trackerStatuses": {
       "not_contacted": "Не зв'язувалися",
       "working": "Працює",

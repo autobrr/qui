@@ -120,6 +120,18 @@
     "trackerError": "트래커 오류",
     "unreachable": "도달할 수 없음"
   },
+  "contentTypeLabels": {
+    "movie": "영화",
+    "tv": "TV",
+    "music": "음악",
+    "audiobook": "오디오북",
+    "book": "도서",
+    "comic": "만화",
+    "game": "게임",
+    "app": "앱",
+    "adult": "성인",
+    "unknown": "알 수 없음"
+  },
   "themeToggle": {
     "changeTheme": "테마 변경",
     "appearance": "테마",

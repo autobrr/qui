@@ -120,6 +120,18 @@
     "trackerError": "Tracker 錯誤",
     "unreachable": "無法連線"
   },
+  "contentTypeLabels": {
+    "movie": "電影",
+    "tv": "電視劇",
+    "music": "音樂",
+    "audiobook": "有聲書",
+    "book": "圖書",
+    "comic": "漫畫",
+    "game": "遊戲",
+    "app": "應用",
+    "adult": "成人",
+    "unknown": "未知"
+  },
   "themeToggle": {
     "changeTheme": "切換主題",
     "appearance": "外觀",

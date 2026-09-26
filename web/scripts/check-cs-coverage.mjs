@@ -94,14 +94,6 @@ function getPluralSuffix(key) {
 }
 
 
-function stripInterpolation(str) {
-  return str.replace(/\{\{[^}]+\}\}/g, "")
-}
-
-function stripHtmlTags(str) {
-  return str.replace(/<\/?[^>]+>/g, "")
-}
-
 function isPassthroughValue(value) {
   if (value.length <= 4) return true
   if (passthroughTerms.has(value)) return true

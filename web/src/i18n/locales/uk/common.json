@@ -120,6 +120,18 @@
     "trackerError": "Помилка трекера",
     "unreachable": "Недоступний"
   },
+  "contentTypeLabels": {
+    "movie": "Фільм",
+    "tv": "Серіал",
+    "music": "Музика",
+    "audiobook": "Аудіокнига",
+    "book": "Книга",
+    "comic": "Комікс",
+    "game": "Гра",
+    "app": "Застосунок",
+    "adult": "Для дорослих",
+    "unknown": "Невідомо"
+  },
   "themeToggle": {
     "changeTheme": "Змінити тему",
     "appearance": "Зовнішній вигляд",

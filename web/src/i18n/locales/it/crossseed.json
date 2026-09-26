@@ -682,18 +682,6 @@
       "cancel": "Annulla",
       "delete": "Elimina"
     },
-    "contentTypeLabels": {
-      "movie": "Film",
-      "tv": "Serie TV",
-      "music": "Musica",
-      "audiobook": "Audiolibro",
-      "book": "Libro",
-      "comic": "Fumetto",
-      "game": "Gioco",
-      "app": "App",
-      "adult": "Adulti",
-      "unknown": "Sconosciuto"
-    },
     "linkModeLabels": {
       "regular": "Normale",
       "hardlink": "Hardlink",
