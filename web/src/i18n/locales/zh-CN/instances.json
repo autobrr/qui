@@ -1240,7 +1240,7 @@
         "noOtherInstances": "没有其他可用实例。",
         "savePathLabel": "目标上的保存路径（可选）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。支持模板：",
+        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。",
         "categoryLabel": "目标上的分类（可选）",
         "selectTargetFirst": "请先选择目标实例",
         "loadingCategories": "正在加载分类...",
@@ -1373,6 +1373,11 @@
         "skipIfCrossSeedsDontMatch": "如果辅种不匹配规则条件则跳过",
         "aboutSkipping": "关于辅种存在时跳过移动",
         "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。"
+      },
+      "templateHelp": {
+        "absolutePath": "必须是绝对路径。值要写在路径中，例如",
+        "intro": "支持 Go 模板。",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空间来源",

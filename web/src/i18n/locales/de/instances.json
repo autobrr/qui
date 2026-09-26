@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Keine weiteren Instanzen verfügbar.",
         "savePathLabel": "Speicherpfad auf Ziel (optional)",
         "savePathPlaceholder": "z. B. /data/torrents",
-        "savePathHelp": "Übergeordnetes Verzeichnis für den Torrent-Inhalt. Leer lassen, um den Kategorie-Standard zu verwenden. Unterstützt Vorlagen:",
+        "savePathHelp": "Übergeordnetes Verzeichnis für den Torrent-Inhalt. Leer lassen, um den Kategorie-Standard zu verwenden.",
         "categoryLabel": "Kategorie auf Ziel (optional)",
         "selectTargetFirst": "Wähle zuerst eine Ziel-Instanz aus",
         "loadingCategories": "Kategorien werden geladen...",
@@ -1403,6 +1403,11 @@
         "skipIfCrossSeedsDontMatch": "Überspringen, wenn Cross-Seeds nicht auf die Bedingungen der Regel passen",
         "aboutSkipping": "Über das Überspringen des Verschiebens, wenn Cross-Seeds vorhanden sind",
         "skipDescription": "Überspringt das Verschieben, wenn es weitere Torrents in derselben Cross-Seed-Gruppe gibt, die nicht auf die Bedingungen der Regel passen. Andernfalls werden alle Cross-Seeds verschoben, auch wenn sie nicht von den Bedingungen der Regel erfasst werden."
+      },
+      "templateHelp": {
+        "absolutePath": "Muss ein absoluter Pfad sein. Werte stehen darin, zum Beispiel",
+        "intro": "Unterstützt Go-Vorlagen.",
+        "learnMore": "Mehr erfahren"
       },
       "freeSpace": {
         "title": "Quelle für freien Speicher",
