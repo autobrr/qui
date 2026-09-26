@@ -1542,7 +1542,7 @@
     "moving": "移動中",
     "unknown": "未知"
   },
-  "stateLabelFallback": "無法識別（{{state}}）",
+  "stateLabelFallback": "無法識別",
   "sort": {
     "label": "排序",
     "ascending": "升序",

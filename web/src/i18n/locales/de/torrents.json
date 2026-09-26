@@ -1610,7 +1610,7 @@
     "moving": "Wird verschoben",
     "unknown": "Unbekannt"
   },
-  "stateLabelFallback": "Nicht erkannt ({{state}})",
+  "stateLabelFallback": "Nicht erkannt",
   "details": {
     "failedToUpdatePriorities": "Dateiprioritäten konnten nicht aktualisiert werden",
     "failedToRenameFile": "Datei konnte nicht umbenannt werden",

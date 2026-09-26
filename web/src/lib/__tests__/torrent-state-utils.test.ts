@@ -35,7 +35,7 @@ describe("getStateLabel", () => {
   it("resolves every state qBittorrent documents", () => {
     const unresolved = QBITTORRENT_STATES.filter((state) => {
       const label = getStateLabel(state, t)
-      return label === `stateLabels.${state}` || label === "" || label.startsWith("Unrecognized (")
+      return label === `stateLabels.${state}` || label === "" || label === "Unrecognized"
     })
 
     expect(unresolved).toEqual([])
@@ -43,21 +43,20 @@ describe("getStateLabel", () => {
 
   it.each(["common:nav.dashboard", "tableColumns.unregistered", "a.b", ""])(
     "does not let %j reach the key path", (state) => {
-      expect(getStateLabel(state, t)).toBe(`Unrecognized (${state})`)
+      expect(getStateLabel(state, t)).toBe("Unrecognized")
     }
   )
 
-  it("names an undocumented state through the fallback, keeping the raw state visible", () => {
+  it("names an undocumented state through the fallback, without the raw value", () => {
     const label = getStateLabel("someFutureState", t)
 
-    expect(label).toBe("Unrecognized (someFutureState)")
-    expect(label).toContain("someFutureState")
-    expect(label).not.toBe("someFutureState")
+    expect(label).toBe("Unrecognized")
+    expect(label).not.toContain("someFutureState")
   })
 
   it("translates the fallback, not just the known states", async () => {
     await changeLanguage("de")
 
-    expect(getStateLabel("someFutureState", t)).toBe("Nicht erkannt (someFutureState)")
+    expect(getStateLabel("someFutureState", t)).toBe("Nicht erkannt")
   })
 })

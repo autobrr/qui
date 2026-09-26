@@ -1728,7 +1728,7 @@
     "moving": "Переміщення",
     "unknown": "Невідомо"
   },
-  "stateLabelFallback": "Нерозпізнано ({{state}})",
+  "stateLabelFallback": "Нерозпізнано",
   "details": {
     "failedToUpdatePriorities": "Не вдалося оновити пріоритети файлів",
     "failedToRenameFile": "Не вдалося перейменувати файл",

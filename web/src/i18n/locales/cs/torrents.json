@@ -1665,7 +1665,7 @@
     "moving": "Přesouvání",
     "unknown": "Neznámý"
   },
-  "stateLabelFallback": "Nerozpoznáno ({{state}})",
+  "stateLabelFallback": "Nerozpoznáno",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

@@ -1610,7 +1610,7 @@
     "moving": "Spostamento",
     "unknown": "Sconosciuto"
   },
-  "stateLabelFallback": "Non riconosciuto ({{state}})",
+  "stateLabelFallback": "Non riconosciuto",
   "details": {
     "failedToUpdatePriorities": "Impossibile aggiornare le priorità dei file",
     "failedToRenameFile": "Impossibile rinominare il file",
