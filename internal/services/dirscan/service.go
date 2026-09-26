@@ -70,6 +70,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
 	backendPool               *fsops.Pool
+	blocklistStore            *models.CrossSeedBlocklistStore
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -128,6 +129,7 @@ func NewService(
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 	notifier notifications.Notifier,
 	backendPool *fsops.Pool,
+	blocklistStore *models.CrossSeedBlocklistStore,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -156,6 +158,7 @@ func NewService(
 		trackerCustomizationStore: trackerCustomizationStore,
 		notifier:                  notifier,
 		backendPool:               backendPool,
+		blocklistStore:            blocklistStore,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
@@ -2077,6 +2080,17 @@ func (s *Service) tryMatchAndInject(
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
 		return nil
+	}
+
+	if s.blocklistStore != nil {
+		// Fails closed like the cross-seed path: an unreadable blocklist skips the match.
+		if _, blocked, err := s.blocklistStore.FindBlocked(ctx, dir.TargetInstanceID, []string{parsed.InfoHash, parsed.InfoHashV2}); err != nil {
+			l.Warn().Err(err).Str("hash", parsed.InfoHash).Msg("dirscan: failed to check cross-seed blocklist, skipping match")
+			return nil
+		} else if blocked {
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
+			return nil
+		}
 	}
 
 	// Check if this torrent already exists in qBittorrent
