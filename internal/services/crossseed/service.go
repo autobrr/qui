@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"math"
 	"net/url"
@@ -33,6 +34,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/autobrr/go-cache/ttlcache"
@@ -1389,9 +1391,11 @@ func normalizeTorrentRelativePath(name string) string {
 // forEachLocalTorrentFile resolves each torrent file under savePath and invokes fn
 // until fn returns false. It returns the first name that cannot be mapped to a path
 // under savePath at all: such a file can never yield link evidence, so callers with a
-// localMatchContext must fail closed instead of reporting "not linked". Any Lstat
-// failure or non-regular file is a silent skip, because partially downloaded
-// torrents are normal. A non-absolute savePath returns nil.
+// localMatchContext must fail closed instead of reporting "not linked". It also
+// returns the first Lstat failure other than a missing path, such as a permission
+// error, which hides link evidence the same way. A missing or non-regular file is a
+// silent skip, because partially downloaded torrents are normal. A non-absolute
+// savePath returns nil.
 func forEachLocalTorrentFile(
 	ctx context.Context,
 	backend fsops.Backend,
@@ -1404,24 +1408,31 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
-	var unresolvedErr error
+	var firstErr error
 	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(base, file.Name)
 		if !ok {
-			if unresolvedErr == nil {
-				unresolvedErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
 			}
 			continue
 		}
 		info, err := backend.Lstat(ctx, fullPath)
-		if err != nil || !info.Mode.IsRegular() {
+		if err != nil {
+			// ENOTDIR: a parent of the path is a file, so this file is missing too.
+			if firstErr == nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
+				firstErr = err
+			}
+			continue
+		}
+		if !info.Mode.IsRegular() {
 			continue
 		}
 		if !fn(file, fullPath, info) {
-			return unresolvedErr
+			return firstErr
 		}
 	}
-	return unresolvedErr
+	return firstErr
 }
 
 func resolveLocalTorrentFile(base, name string) (string, bool) {
