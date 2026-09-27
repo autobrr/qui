@@ -498,8 +498,10 @@ paths:
       description: |
         Execute an external program for one or more torrents.
 
-        The program is launched asynchronously, and this endpoint returns immediately after starting the process.
-        The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
+        The program runs asynchronously, and this endpoint returns immediately after qui queues it.
+        qui runs a limited number of programs at the same time, so the program can start up to 30 minutes later, or not start at all.
+        The activity log records the result.
+        The 'success' field in the response indicates whether qui queued the program, not whether it started or completed successfully.
 
         The program path and arguments are passed through variable substitution where placeholders
         like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
