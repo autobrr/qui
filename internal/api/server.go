@@ -70,6 +70,7 @@ type Server struct {
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
 	updateService                    *update.Service
+	updateAvailability               update.Availability
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -99,6 +100,8 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
+	shuttingDown <-chan struct{}
 }
 
 type Dependencies struct {
@@ -118,6 +121,7 @@ type Dependencies struct {
 	WebHandler                       *web.Handler
 	LicenseService                   *license.Service
 	UpdateService                    *update.Service
+	UpdateAvailability               update.Availability
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -157,6 +161,7 @@ func NewServer(deps *Dependencies) *Server {
 		streamManager.SetActivityHub(deps.ActivityHub)
 	}
 
+	streamsCtx, stopStreams := context.WithCancel(context.Background())
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -188,6 +193,7 @@ func NewServer(deps *Dependencies) *Server {
 		syncManager:                      deps.SyncManager,
 		licenseService:                   deps.LicenseService,
 		updateService:                    deps.UpdateService,
+		updateAvailability:               deps.UpdateAvailability,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -218,7 +224,10 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		shuttingDown:                     streamsCtx.Done(),
 	}
+	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
+	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
 }
@@ -358,7 +367,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
-	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -384,12 +393,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
-	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager, s.shuttingDown)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
-	logsHandler := handlers.NewLogsHandler(s.config)
+	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler

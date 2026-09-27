@@ -21,6 +21,7 @@ import (
 // RSSSSEHandler manages Server-Sent Events for RSS updates
 type RSSSSEHandler struct {
 	getRSSItems func(context.Context, int, bool) (qbt.RSSItems, error)
+	shutdown    <-chan struct{}
 
 	// Client management
 	mu      sync.RWMutex
@@ -59,10 +60,11 @@ type FeedsUpdatePayload struct {
 	Timestamp  int64           `json:"timestamp"`
 }
 
-// NewRSSSSEHandler creates a new RSS SSE handler
-func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager) *RSSSSEHandler {
+// NewRSSSSEHandler creates a new RSS SSE handler. Every stream ends when shutdown closes.
+func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager, shutdown <-chan struct{}) *RSSSSEHandler {
 	return &RSSSSEHandler{
 		getRSSItems: syncManager.GetRSSItems,
+		shutdown:    shutdown,
 		clients:     make(map[int]map[*rssSSEClient]struct{}),
 		pollers:     make(map[int]context.CancelFunc),
 	}
@@ -132,6 +134,8 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-client.done:
+			return
+		case <-h.shutdown:
 			return
 		case event := <-client.events:
 			if err := h.sendEvent(w, flusher, event); err != nil {
