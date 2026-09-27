@@ -153,7 +153,17 @@ Content-Type: application/json
 }
 ```
 
-The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget. It returns after qui spawns the processes.
+The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget. It returns after qui queues the programs. A program can start later. For more information, see [Execution limit](#execution-limit).
+
+## Execution limit
+
+qui runs at most 8 external programs at the same time. This limit applies to all instances, automations, cross-seed rules, and manual runs together. Other programs wait for a free slot, so a program can start later than its trigger.
+
+- A program that runs directly on Linux or macOS holds its slot until it exits.
+- A program that runs in a terminal window, and every program on Windows, holds its slot only while qui starts it.
+- At most 1000 programs can wait. When the queue is full, qui does not start the program and writes "not started: execution queue full" to the activity log.
+- A program that waits for more than 30 minutes does not start. qui writes "not started: execution limit reached" to the activity log.
+- When qui shuts down, it drops the programs that wait.
 
 ## Automation integration
 
@@ -205,5 +215,5 @@ qui logs success after the program starts, not when qui queues the task. If the 
 
 - **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
-- **Multiple torrents**: The program runs once per torrent. Make sure that your script handles concurrent executions or uses a lock.
+- **Multiple torrents**: The program runs once per torrent. Up to 8 runs can occur at the same time, so make sure that your script handles concurrent executions or uses a lock.
 - **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.

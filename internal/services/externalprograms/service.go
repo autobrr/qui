@@ -16,6 +16,9 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	shellquote "github.com/Hellseher/go-shellquote"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -30,11 +33,29 @@ import (
 // Success/failure is indicated via the Outcome field, following the same pattern as other actions.
 const ActivityActionExternalProgram = "external_program"
 
+const (
+	maxRunningPrograms = 8
+	maxWaitingPrograms = 1000
+	programWaitTimeout = 30 * time.Minute
+)
+
+var (
+	errExecutionQueueFull = errors.New("not started: execution queue full")
+	errExecutionLimitWait = errors.New("not started: execution limit reached")
+)
+
 // Service provides unified external program execution for all consumers.
 type Service struct {
 	programStore  *models.ExternalProgramStore
 	activityStore *models.AutomationActivityStore
 	config        *domain.Config
+
+	// slots is a process-wide counting semaphore; see executeAsync for how long a run holds one.
+	slots chan struct{}
+	// admitted counts runs that hold or wait for a slot.
+	admitted    atomic.Int32
+	maxWaiting  int32
+	waitTimeout time.Duration
 }
 
 // NewService creates a new external programs service.
@@ -48,6 +69,9 @@ func NewService(
 		programStore:  programStore,
 		activityStore: activityStore,
 		config:        config,
+		slots:         make(chan struct{}, maxRunningPrograms),
+		maxWaiting:    maxWaitingPrograms,
+		waitTimeout:   programWaitTimeout,
 	}
 }
 
@@ -100,17 +124,12 @@ func FailureResult(err error) ExecuteResult {
 }
 
 // Execute runs an external program asynchronously with the given torrent data.
-// It returns immediately after launching the program (fire-and-forget).
+// It returns immediately after admitting the program (fire-and-forget); the
+// program starts when a slot is free, or gives up after the wait timeout.
 //
 // The program can be provided in two ways:
 //   - By ID: Set ProgramID to fetch the program from the store
 //   - Directly: Set Program to use a pre-loaded program configuration
-//
-// WARNING: This function spawns processes without any rate limiting or process count limits.
-// Callers should be aware that rapid invocations (e.g., from automations matching many torrents)
-// can spawn a large number of concurrent processes. If the external program runs indefinitely
-// or takes a long time to complete, this can exhaust system resources. Consider implementing
-// caller-side throttling or ensuring the external programs exit promptly.
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 	// Validate request first
 	if err := req.Validate(); err != nil {
@@ -174,6 +193,12 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 	// Use background context since the command runs async and parent context may be cancelled
 	cmd := s.buildCommand(context.Background(), program, args)
 
+	if s.admitted.Add(1) > int32(cap(s.slots))+s.maxWaiting {
+		s.admitted.Add(-1)
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, errExecutionQueueFull.Error())
+		return FailureResult(errExecutionQueueFull)
+	}
+
 	// Log the command being executed
 	log.Debug().
 		Str("program", program.Name).
@@ -185,7 +210,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Execute in goroutine (fire-and-forget)
 	// Activity logging happens inside executeAsync after cmd.Start() succeeds
-	go s.executeAsync(cmd, program, req) //nolint:gosec // G118: external program runs past the request that queued it
+	go s.executeAsync(cmd, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
 	if program.UseTerminal {
@@ -195,15 +220,31 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 	return SuccessResult(message)
 }
 
-// executeAsync runs the command in a goroutine and handles process lifecycle.
+// executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
+// A direct run on Unix holds the slot until it exits; terminal runs and Windows runs
+// release it after the start, because qui can only wait on a launcher there.
 // Activity logging happens here after the command actually starts successfully.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
 	program *models.ExternalProgram,
 	req ExecuteRequest,
+	deadline time.Time,
 ) {
 	// Use background context for activity logging since parent context may be cancelled
 	ctx := context.Background()
+
+	select {
+	case s.slots <- struct{}{}:
+	case <-time.After(time.Until(deadline)):
+		s.admitted.Add(-1)
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, errExecutionLimitWait.Error())
+		return
+	}
+	release := sync.OnceFunc(func() {
+		<-s.slots
+		s.admitted.Add(-1)
+	})
+	defer release()
 
 	if runtime.GOOS == "windows" {
 		// Windows: Use Run() which waits for cmd.exe to complete
@@ -234,6 +275,10 @@ func (s *Service) executeAsync(
 			// Log failure activity
 			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
 			return
+		}
+
+		if program.UseTerminal {
+			release()
 		}
 
 		// Log success - the program has actually started

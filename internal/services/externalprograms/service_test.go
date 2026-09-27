@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestNewService(t *testing.T) {
@@ -1602,4 +1605,75 @@ func TestBuildCommand_Unix(t *testing.T) {
 		assert.NotNil(t, cmd)
 		assert.NotEmpty(t, cmd.Path)
 	})
+}
+
+func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("direct runs hold their slot only on Unix")
+	}
+
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "externalprograms-limit")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "test", "http://127.0.0.1:1", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	activityStore := models.NewAutomationActivityStore(db)
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "block.sh")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+d=$(dirname "$0")
+touch "$d/started-$1"
+while [ ! -e "$d/release" ]; do sleep 0.01; done
+`), 0o700))
+
+	s := NewService(nil, activityStore, &domain.Config{ExternalProgramAllowList: []string{dir}})
+	s.slots = make(chan struct{}, 2)
+	s.maxWaiting = 1
+
+	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}"}
+	execute := func(hash string) ExecuteResult {
+		return s.Execute(ctx, ExecuteRequest{Program: program, Torrent: &qbt.Torrent{Hash: hash, Name: hash}, InstanceID: instance.ID})
+	}
+	started := func() []string {
+		matches, globErr := filepath.Glob(filepath.Join(dir, "started-*"))
+		require.NoError(t, globErr)
+		return matches
+	}
+	activityReasons := func() []string {
+		activities, listErr := activityStore.ListByInstance(ctx, instance.ID, 100)
+		require.NoError(t, listErr)
+		reasons := make([]string, 0, len(activities))
+		for _, a := range activities {
+			reasons = append(reasons, a.Hash+": "+a.Reason)
+		}
+		return reasons
+	}
+	t.Cleanup(func() {
+		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
+		require.Eventually(t, func() bool { return len(s.slots) == 0 }, 5*time.Second, 10*time.Millisecond)
+	})
+
+	require.True(t, execute("a").Success)
+	require.True(t, execute("b").Success)
+	require.Eventually(t, func() bool { return len(started()) == 2 }, 5*time.Second, 10*time.Millisecond)
+
+	s.waitTimeout = 200 * time.Millisecond
+	require.True(t, execute("c").Success, "a request that must wait is still admitted")
+
+	full := execute("d")
+	require.False(t, full.Success)
+	require.ErrorContains(t, full.Error, "execution queue full")
+	assert.Contains(t, activityReasons(), "d: block: not started: execution queue full")
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(activityReasons(), "c: block: not started: execution limit reached")
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.ElementsMatch(t, []string{filepath.Join(dir, "started-a"), filepath.Join(dir, "started-b")}, started())
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "release"), nil, 0o600))
+	s.waitTimeout = 5 * time.Second
+	require.True(t, execute("e").Success)
+	require.Eventually(t, func() bool { return len(started()) == 3 }, 5*time.Second, 10*time.Millisecond)
 }
