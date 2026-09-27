@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -3431,4 +3432,57 @@ func TestResumeWhenCompletePollersShareSync(t *testing.T) {
 
 	// About one fetch per interval; one per poller per interval would be ~200.
 	require.LessOrEqual(t, int(maindataCalls.Load()), 3*int(timeout/interval))
+	require.GreaterOrEqual(t, int(maindataCalls.Load()), 3)
+}
+
+func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
+	t.Parallel()
+
+	const hash = "0000000000000000000000000000000000000001"
+	maindata := `{"rid":1,"full_update":true,"torrents":{"` + hash + `": {"name":"t", "state":"stoppedUP", "amount_left": 0}}}`
+
+	var maindataCalls atomic.Int32
+	var callsAtResume atomic.Int32
+	callsAtResume.Store(-1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			// A slow maindata makes the poller's next tick see a sync younger than the interval.
+			time.Sleep(30 * time.Millisecond)
+			maindataCalls.Add(1)
+			_, _ = w.Write([]byte(maindata))
+		case "/api/v2/torrents/start", "/api/v2/torrents/resume":
+			callsAtResume.CompareAndSwap(-1, maindataCalls.Load())
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	inst, err := pool.instanceStore.Create(t.Context(), "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](ttlcache.SetDefaultTTL(30 * time.Second)),
+	}
+	client.updateHealthStatus(true)
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+	sm.ResumeWhenComplete(inst.ID, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: 100 * time.Millisecond, Timeout: 2 * time.Second})
+
+	require.Eventually(t, func() bool { return callsAtResume.Load() >= 0 }, 3*time.Second, 10*time.Millisecond)
+	require.GreaterOrEqual(t, int(callsAtResume.Load()), resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
 }
