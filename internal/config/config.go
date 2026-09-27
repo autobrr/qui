@@ -154,6 +154,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+	c.viper.SetDefault("externalProgramMaxRunning", 8)
 
 	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
@@ -252,6 +253,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("externalProgramMaxRunning", envPrefix+"EXTERNAL_PROGRAM_MAX_RUNNING")
 	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
@@ -396,6 +398,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
 	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramMaxRunning = c.viper.GetInt("externalProgramMaxRunning")
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
 	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
@@ -706,6 +709,11 @@ sessionSecret = "{{ .sessionSecret }}"
 #       "/usr/local/bin/my-script",
 #       "/home/user/bin",
 #]
+
+# Maximum number of external programs that run at the same time (requires restart)
+# Other programs wait for a free slot. A value of 0 or less uses the default.
+# Default: 8
+#externalProgramMaxRunning = 8
 
 # OpenID Connect (OIDC) Configuration
 # Enable OIDC authentication

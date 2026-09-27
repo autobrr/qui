@@ -6285,7 +6285,7 @@ type pendingProgramExec struct {
 // executeExternalProgramsFromAutomation executes external programs for matching torrents.
 // Programs are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
 //
-// WARNING: externalprograms runs at most 8 programs at the same time, but a launcher run (a terminal
+// WARNING: externalprograms limits how many programs run at the same time (8 by default), but a launcher run (a terminal
 // emulator, or any run on Windows) releases its slot after the start, so if many torrents match
 // a rule, many processes can run concurrently. Long-running or stuck programs can exhaust system resources.
 func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, instanceID int, executions []pendingProgramExec) {

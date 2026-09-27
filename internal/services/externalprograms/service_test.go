@@ -38,6 +38,13 @@ func TestNewService(t *testing.T) {
 		assert.NotNil(t, service2)
 		assert.Nil(t, service2.config)
 	})
+
+	t.Run("sizes the execution limit from the config", func(t *testing.T) {
+		assert.Equal(t, 3, cap(NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: 3}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, &domain.Config{}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: -1}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, nil).slots))
+	})
 }
 
 func TestService_Execute_NilService(t *testing.T) {
@@ -1663,6 +1670,7 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 
 	s.waitTimeout = 200 * time.Millisecond
 	require.True(t, execute("c").Success, "a request that must wait is still admitted")
+	require.Equal(t, "Program already waiting for this torrent", execute("c").Message, "a second request for a waiting torrent is skipped, not rejected")
 
 	full := execute("d")
 	require.False(t, full.Success)
@@ -1676,8 +1684,12 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "release"), nil, 0o600))
 	s.waitTimeout = 5 * time.Second
-	require.True(t, execute("e").Success)
-	require.Eventually(t, func() bool { return len(started()) == 3 }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, "Program execution initiated", execute("c").Message, "a dropped run no longer blocks its torrent")
+	require.Equal(t, "Program execution initiated", execute("d").Message, "a rejected run does not block its torrent")
+	require.Eventually(t, func() bool { return len(started()) == 4 }, 5*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, "Program execution initiated", execute("a").Message, "a run that got a slot no longer blocks its torrent")
 
 	require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
 	for _, h := range []string{"f", "g", "h"} {
@@ -1726,6 +1738,6 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 		require.NoError(t, err)
 		return len(matches)
 	}
-	require.Eventually(t, func() bool { return started() == maxRunningPrograms }, 5*time.Second, 10*time.Millisecond)
-	require.Never(t, func() bool { return started() > maxRunningPrograms }, 300*time.Millisecond, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return started() == defaultMaxRunningPrograms }, 5*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return started() > defaultMaxRunningPrograms }, 300*time.Millisecond, 10*time.Millisecond)
 }

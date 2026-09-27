@@ -34,9 +34,9 @@ import (
 const ActivityActionExternalProgram = "external_program"
 
 const (
-	maxRunningPrograms = 8
-	maxWaitingPrograms = 1000
-	programWaitTimeout = 30 * time.Minute
+	defaultMaxRunningPrograms = 8
+	maxWaitingPrograms        = 1000
+	programWaitTimeout        = 30 * time.Minute
 )
 
 var (
@@ -53,7 +53,10 @@ type Service struct {
 	// slots is a process-wide counting semaphore; see executeAsync for how long a run holds one.
 	slots chan struct{}
 	// admitted counts runs that hold or wait for a slot.
-	admitted    atomic.Int32
+	admitted atomic.Int32
+	// waiting holds a waitKey for each run that waits for a slot, so a rule that matches
+	// the same torrent on every pass queues it only once.
+	waiting     sync.Map
 	maxWaiting  int32
 	waitTimeout time.Duration
 }
@@ -65,14 +68,24 @@ func NewService(
 	activityStore *models.AutomationActivityStore,
 	config *domain.Config,
 ) *Service {
+	maxRunning := defaultMaxRunningPrograms
+	if config != nil && config.ExternalProgramMaxRunning > 0 {
+		maxRunning = config.ExternalProgramMaxRunning
+	}
 	return &Service{
 		programStore:  programStore,
 		activityStore: activityStore,
 		config:        config,
-		slots:         make(chan struct{}, maxRunningPrograms),
+		slots:         make(chan struct{}, maxRunning),
 		maxWaiting:    maxWaitingPrograms,
 		waitTimeout:   programWaitTimeout,
 	}
+}
+
+type waitKey struct {
+	programID  int
+	instanceID int
+	hash       string
 }
 
 // ExecuteRequest contains all parameters needed to execute an external program.
@@ -193,8 +206,23 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 	// Use background context since the command runs async and parent context may be cancelled
 	cmd, launcher := s.buildCommand(context.Background(), program, args)
 
+	key := waitKey{programID: program.ID, instanceID: req.InstanceID, hash: req.Torrent.Hash}
+	if _, waiting := s.waiting.LoadOrStore(key, struct{}{}); waiting {
+		log.Debug().
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Msg("external program already waits for this torrent, skipping")
+		return SuccessResult("Program already waiting for this torrent")
+	}
+
 	if s.admitted.Add(1) > int32(cap(s.slots))+s.maxWaiting {
 		s.admitted.Add(-1)
+		s.waiting.Delete(key)
+		log.Warn().
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Int("maxRunning", cap(s.slots)).
+			Msg("external program not started: execution queue full")
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, errExecutionQueueFull.Error())
 		return FailureResult(errExecutionQueueFull)
 	}
@@ -210,7 +238,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Execute in goroutine (fire-and-forget)
 	// Activity logging happens inside executeAsync after cmd.Start() succeeds
-	go s.executeAsync(cmd, launcher, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
+	go s.executeAsync(cmd, launcher, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
 	if program.UseTerminal {
@@ -227,6 +255,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
 	launcher bool,
+	key waitKey,
 	program *models.ExternalProgram,
 	req ExecuteRequest,
 	deadline time.Time,
@@ -236,8 +265,16 @@ func (s *Service) executeAsync(
 
 	select {
 	case s.slots <- struct{}{}:
+		s.waiting.Delete(key)
 	case <-time.After(time.Until(deadline)):
 		s.admitted.Add(-1)
+		s.waiting.Delete(key)
+		log.Warn().
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Int("maxRunning", cap(s.slots)).
+			Dur("waited", s.waitTimeout).
+			Msg("external program not started: execution limit reached")
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, errExecutionLimitWait.Error())
 		return
 	}
