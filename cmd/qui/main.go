@@ -861,6 +861,7 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
+		UpdateAvailability:               update.Decide(update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)),
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
