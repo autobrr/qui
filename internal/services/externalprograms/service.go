@@ -191,7 +191,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Build and execute command
 	// Use background context since the command runs async and parent context may be cancelled
-	cmd := s.buildCommand(context.Background(), program, args)
+	cmd, launcher := s.buildCommand(context.Background(), program, args)
 
 	if s.admitted.Add(1) > int32(cap(s.slots))+s.maxWaiting {
 		s.admitted.Add(-1)
@@ -210,7 +210,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Execute in goroutine (fire-and-forget)
 	// Activity logging happens inside executeAsync after cmd.Start() succeeds
-	go s.executeAsync(cmd, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
+	go s.executeAsync(cmd, launcher, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
 	if program.UseTerminal {
@@ -221,11 +221,12 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 }
 
 // executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
-// A direct run on Unix holds the slot until it exits; terminal runs and Windows runs
-// release it after the start, because qui can only wait on a launcher there.
+// A launcher (a terminal emulator, or cmd.exe start on Windows) releases the slot after the start,
+// because qui cannot wait on the program behind it; any other run holds the slot until it exits.
 // Activity logging happens here after the command actually starts successfully.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
+	launcher bool,
 	program *models.ExternalProgram,
 	req ExecuteRequest,
 	deadline time.Time,
@@ -277,7 +278,7 @@ func (s *Service) executeAsync(
 			return
 		}
 
-		if program.UseTerminal {
+		if launcher {
 			release()
 		}
 
@@ -304,7 +305,8 @@ func (s *Service) executeAsync(
 }
 
 // buildCommand creates the appropriate exec.Cmd based on platform and settings.
-func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
+// launcher reports that the command exits before the program it starts.
+func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (cmd *exec.Cmd, launcher bool) {
 	if program.UseTerminal {
 		return s.buildTerminalCommand(ctx, program, args)
 	}
@@ -312,13 +314,13 @@ func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProg
 }
 
 // buildTerminalCommand creates a command that opens in a terminal window.
-func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
+func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
 	if runtime.GOOS == "windows" {
 		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 		cmdArgs := make([]string, 0, 6+len(args))
 		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
+		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
 	}
 
 	// Unix/Linux: Build command string and spawn in a terminal
@@ -328,20 +330,20 @@ func (s *Service) buildTerminalCommand(ctx context.Context, program *models.Exte
 }
 
 // buildDirectCommand creates a command that runs directly without a terminal.
-func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
+func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
 	if runtime.GOOS == "windows" {
 		// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
 		cmdArgs := make([]string, 0, 5+len(args))
 		cmdArgs = append(cmdArgs, "/c", "start", "", "/b", program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
+		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
 	}
 
 	// Unix/Linux: Direct execution
 	if len(args) > 0 {
-		return exec.CommandContext(ctx, program.Path, args...) //nolint:gosec // intentional external program execution
+		return exec.CommandContext(ctx, program.Path, args...), false //nolint:gosec // intentional external program execution
 	}
-	return exec.CommandContext(ctx, program.Path) //nolint:gosec // intentional external program execution
+	return exec.CommandContext(ctx, program.Path), false //nolint:gosec // intentional external program execution
 }
 
 // terminalCandidate represents a terminal emulator to check for availability.
@@ -494,7 +496,8 @@ func isTerminalAvailable(terminal string) bool {
 }
 
 // createTerminalCommand creates a command that spawns a terminal window on Unix/Linux/macOS.
-func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
+// With no terminal emulator it falls back to sh -c, which is not a launcher.
+func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cmd *exec.Cmd, launcher bool) {
 	// Priority 1: Check TERM_PROGRAM env var (user's current terminal)
 	if terminal, found := detectTerminalFromEnv(); found {
 		if isTerminalAvailable(terminal) {
@@ -505,7 +508,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *ex
 					Str("source", "TERM_PROGRAM").
 					Str("command", cmdLine).
 					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...) //nolint:gosec // intentional external program execution
+				return exec.CommandContext(ctx, cmdName, args...), true //nolint:gosec // intentional external program execution
 			}
 		}
 	}
@@ -520,7 +523,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *ex
 					Str("source", "detection").
 					Str("command", cmdLine).
 					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...) //nolint:gosec // intentional external program execution
+				return exec.CommandContext(ctx, cmdName, args...), true //nolint:gosec // intentional external program execution
 			}
 		}
 	}
@@ -529,7 +532,7 @@ func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *ex
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("no terminal emulator found, running command in background")
-	return exec.CommandContext(ctx, "sh", "-c", cmdLine) //nolint:gosec // intentional external program execution
+	return exec.CommandContext(ctx, "sh", "-c", cmdLine), false //nolint:gosec // intentional external program execution
 }
 
 // IsPathAllowed checks if the program path is allowed by the allowlist.

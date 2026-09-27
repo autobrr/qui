@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1346,7 +1348,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
@@ -1362,7 +1364,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
@@ -1378,7 +1380,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			UseTerminal: false,
 		}
 		args := []string{"--name", "test value", "--hash", "abc123"}
-		cmd := service.buildCommand(ctx, program, args)
+		cmd, _ := service.buildCommand(ctx, program, args)
 
 		for _, arg := range args {
 			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
@@ -1390,7 +1392,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
@@ -1405,7 +1407,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
@@ -1419,7 +1421,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Program Files\\My App\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
@@ -1430,7 +1432,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Program Files\\My App\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
@@ -1442,7 +1444,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			UseTerminal: false,
 		}
 		args := []string{"--name", "Test & Value", "--path", "C:\\My Files\\data"}
-		cmd := service.buildCommand(ctx, program, args)
+		cmd, _ := service.buildCommand(ctx, program, args)
 
 		for _, arg := range args {
 			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
@@ -1576,7 +1578,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assert.Equal(t, "/usr/bin/test", cmd.Path)
 		assert.Equal(t, []string{"/usr/bin/test", "arg1", "arg2"}, cmd.Args)
@@ -1587,7 +1589,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assert.Equal(t, "/usr/bin/test", cmd.Path)
 		assert.Equal(t, []string{"/usr/bin/test"}, cmd.Args)
@@ -1598,7 +1600,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
 
 		// On Unix, terminal mode should use a terminal emulator
 		// The exact emulator depends on what's available
@@ -1676,4 +1678,49 @@ while [ ! -e "$d/release" ]; do sleep 0.01; done
 	s.waitTimeout = 5 * time.Second
 	require.True(t, execute("e").Success)
 	require.Eventually(t, func() bool { return len(started()) == 3 }, 5*time.Second, 10*time.Millisecond)
+}
+
+func TestService_Execute_LimitsTerminalFallback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the sh fallback needs a host with no terminal emulator")
+	}
+
+	bin := t.TempDir()
+	for _, tool := range []string{"sh", "dirname", "touch", "sleep"} {
+		target, err := exec.LookPath(tool)
+		require.NoError(t, err)
+		require.NoError(t, os.Symlink(target, filepath.Join(bin, tool)))
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("TERM_PROGRAM", "")
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "block.sh")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+d=$(dirname "$0")
+touch "$d/started-$1"
+while [ ! -e "$d/release" ]; do sleep 0.01; done
+`), 0o700))
+
+	s := NewService(nil, nil, nil)
+	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}", UseTerminal: true}
+
+	_, launcher := s.buildCommand(t.Context(), program, nil)
+	require.False(t, launcher, "no terminal emulator, so qui runs the program with sh -c")
+
+	t.Cleanup(func() {
+		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
+		require.Eventually(t, func() bool { return len(s.slots) == 0 }, 5*time.Second, 10*time.Millisecond)
+	})
+	for i := range 10 {
+		require.True(t, s.Execute(t.Context(), ExecuteRequest{Program: program, Torrent: &qbt.Torrent{Hash: strconv.Itoa(i)}, InstanceID: 1}).Success)
+	}
+
+	started := func() int {
+		matches, err := filepath.Glob(filepath.Join(dir, "started-*"))
+		require.NoError(t, err)
+		return len(matches)
+	}
+	require.Eventually(t, func() bool { return started() == maxRunningPrograms }, 5*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return started() > maxRunningPrograms }, 300*time.Millisecond, 10*time.Millisecond)
 }
