@@ -143,6 +143,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -251,6 +252,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -381,6 +383,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -649,6 +652,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Turn off Self-update, where qui replaces its own binary with a new release (requires restart)
+# Package maintainers who pin the qui version should set this to true.
+# Default: false
+#disableSelfUpdate = false
 
 # Tracker icon fetching
 # Disable to prevent qui from requesting tracker favicons from remote trackers.

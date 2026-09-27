@@ -70,6 +70,7 @@ type Server struct {
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
 	updateService                    *update.Service
+	updateAvailability               update.Availability
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -118,6 +119,7 @@ type Dependencies struct {
 	WebHandler                       *web.Handler
 	LicenseService                   *license.Service
 	UpdateService                    *update.Service
+	UpdateAvailability               update.Availability
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -188,6 +190,7 @@ func NewServer(deps *Dependencies) *Server {
 		syncManager:                      deps.SyncManager,
 		licenseService:                   deps.LicenseService,
 		updateService:                    deps.UpdateService,
+		updateAvailability:               deps.UpdateAvailability,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -358,7 +361,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
-	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
