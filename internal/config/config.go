@@ -653,7 +653,7 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: true
 #checkForUpdates = true
 
-# Hide Self-update in the web UI. `qui update` from the shell still works (requires restart)
+# Hide Self-update in the web UI. "qui update" from the shell still works (requires restart)
 # Package maintainers who pin the qui version should set this to true.
 # Default: false
 #disableSelfUpdate = false
