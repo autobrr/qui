@@ -1627,7 +1627,7 @@ func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 d=$(dirname "$0")
 touch "$d/started-$1"
-while [ ! -e "$d/release" ]; do sleep 0.01; done
+while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 `), 0o700))
 
 	s := NewService(nil, activityStore, &domain.Config{ExternalProgramAllowList: []string{dir}})
@@ -1654,7 +1654,7 @@ while [ ! -e "$d/release" ]; do sleep 0.01; done
 	}
 	t.Cleanup(func() {
 		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
-		require.Eventually(t, func() bool { return len(s.slots) == 0 }, 5*time.Second, 10*time.Millisecond)
+		require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
 	})
 
 	require.True(t, execute("a").Success)
@@ -1704,7 +1704,7 @@ func TestService_Execute_LimitsTerminalFallback(t *testing.T) {
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 d=$(dirname "$0")
 touch "$d/started-$1"
-while [ ! -e "$d/release" ]; do sleep 0.01; done
+while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 `), 0o700))
 
 	s := NewService(nil, nil, nil)
@@ -1715,7 +1715,7 @@ while [ ! -e "$d/release" ]; do sleep 0.01; done
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
-		require.Eventually(t, func() bool { return len(s.slots) == 0 }, 5*time.Second, 10*time.Millisecond)
+		require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
 	})
 	for i := range 10 {
 		require.True(t, s.Execute(t.Context(), ExecuteRequest{Program: program, Torrent: &qbt.Torrent{Hash: strconv.Itoa(i)}, InstanceID: 1}).Success)
