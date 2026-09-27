@@ -99,6 +99,8 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
+	shuttingDown chan struct{}
 }
 
 type Dependencies struct {
@@ -218,7 +220,9 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		shuttingDown:                     make(chan struct{}),
 	}
+	s.server.RegisterOnShutdown(func() { close(s.shuttingDown) })
 
 	return &s
 }
@@ -384,12 +388,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
-	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager, s.shuttingDown)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
-	logsHandler := handlers.NewLogsHandler(s.config)
+	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
