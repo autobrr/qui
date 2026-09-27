@@ -1394,8 +1394,12 @@ func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, fil
 	if err != nil {
 		return nil, err
 	}
-	if err := syncManager.Sync(ctx); err != nil {
-		return nil, fmt.Errorf("refresh maindata: %w", err)
+	// Sync twice: the first call can join a sync that was in flight before the
+	// read and return its older snapshot. The second one starts after it.
+	for range 2 {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
 	}
 	return syncManager.GetTorrentsUnchecked(filter), nil
 }
@@ -4504,8 +4508,9 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 }
 
 // GetAllTorrents returns the current torrent list for an instance without pagination,
-// with optimistic updates applied. A cache past the fresh window is synced first, so a
-// caller acting on the list decides on current state or gets an error, never stale rows.
+// with optimistic updates applied. A cache past the fresh window is synced first, but
+// the rows can still predate a change made during the fresh window or during a sync
+// that was already in flight. GetTorrentsFresh closes both gaps at the cost of two requests.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)

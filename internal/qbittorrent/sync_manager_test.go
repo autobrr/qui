@@ -3368,19 +3368,28 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 }
 
 // Orphan scan deletes files that no torrent claims, so it must see a torrent
-// added after the last sync.
-func TestGetTorrentsFreshSeesTorrentAddedSinceLastSync(t *testing.T) {
+// added after the last sync, even when its read joins a sync already in flight
+// that returns an older snapshot.
+func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 	t.Parallel()
 
 	var maindataCalls atomic.Int32
+	leaderReceived := make(chan struct{})
+	releaseLeader := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/sync/maindata":
-			if maindataCalls.Add(1) == 1 {
+			switch maindataCalls.Add(1) {
+			case 1:
 				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
-				return
+			case 2:
+				// The leader reached the server before bb22 was added.
+				close(leaderReceived)
+				<-releaseLeader
+				_, _ = w.Write([]byte(`{"rid":2}`))
+			default:
+				_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
 			}
-			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.16.0"))
 		default:
@@ -3409,10 +3418,28 @@ func TestGetTorrentsFreshSeesTorrentAddedSinceLastSync(t *testing.T) {
 	pool.clients[inst.ID] = client
 	pool.mu.Unlock()
 
-	torrents, err := NewSyncManager(pool, nil).GetTorrentsFresh(ctx, inst.ID, qbt.TorrentFilterOptions{})
-	require.NoError(t, err)
-	hashes := make([]string, 0, len(torrents))
-	for _, torrent := range torrents {
+	leaderDone := make(chan error, 1)
+	go func() { leaderDone <- client.syncManager.Sync(ctx) }()
+	<-leaderReceived
+
+	type result struct {
+		torrents []qbt.Torrent
+		err      error
+	}
+	readDone := make(chan result, 1)
+	go func() {
+		torrents, err := NewSyncManager(pool, nil).GetTorrentsFresh(ctx, inst.ID, qbt.TorrentFilterOptions{})
+		readDone <- result{torrents, err}
+	}()
+	// Give the read time to join the blocked leader before it returns.
+	time.Sleep(100 * time.Millisecond)
+	close(releaseLeader)
+
+	require.NoError(t, <-leaderDone)
+	res := <-readDone
+	require.NoError(t, res.err)
+	hashes := make([]string, 0, len(res.torrents))
+	for _, torrent := range res.torrents {
 		hashes = append(hashes, torrent.Hash)
 	}
 	require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
