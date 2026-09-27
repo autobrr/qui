@@ -4504,7 +4504,8 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 }
 
 // GetAllTorrents returns the current torrent list for an instance without pagination,
-// with optimistic updates applied.
+// with optimistic updates applied. A cache past the fresh window is synced first, so a
+// caller acting on the list decides on current state or gets an error, never stale rows.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -4512,8 +4513,15 @@ func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qb
 		return nil, err
 	}
 
-	// Get all torrents from sync manager
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	// The checked getter serves the stale cache and refreshes behind it, so on a
+	// headless instance these callers saw a snapshot as old as their own interval.
+	// An instance the SSE loop keeps warm is inside the window and pays nothing.
+	if time.Since(syncManager.LastSuccessfulSyncTime()) > torrentResponseFreshWindow {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	torrents := syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
 
 	// NOTE: Tracker health counts (unregistered/tracker_down) are handled via
 	// background cache refresh, not inline enrichment. See StartTrackerHealthRefresh.

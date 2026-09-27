@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -3415,4 +3416,64 @@ func TestGetTorrentsFreshSeesTorrentAddedSinceLastSync(t *testing.T) {
 		hashes = append(hashes, torrent.Hash)
 	}
 	require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
+}
+
+// Automation rules delete on what GetAllTorrents returns, so a pass must not
+// evaluate a snapshot older than the window a torrent response counts as fresh.
+func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"keep"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":""}}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	syncManager := NewSyncManager(pool, nil)
+
+	torrents, err := syncManager.GetAllTorrents(ctx, inst.ID)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+	require.Equal(t, "keep", torrents[0].Tags)
+	require.Equal(t, int32(1), maindataCalls.Load(), "a warm cache must not cost a request")
+
+	time.Sleep(torrentResponseFreshWindow + 100*time.Millisecond)
+
+	torrents, err = syncManager.GetAllTorrents(ctx, inst.ID)
+	require.NoError(t, err)
+	require.Len(t, torrents, 1)
+	require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")
+	require.Equal(t, int32(2), maindataCalls.Load())
 }
