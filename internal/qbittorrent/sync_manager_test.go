@@ -3365,3 +3365,70 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 	t.Logf("20 requests: expr filter %d bytes, hash filter %d bytes", exprBytes, hashBytes)
 	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
 }
+
+// Directory scan starts one ResumeWhenComplete poller per injected torrent.
+// The pollers must share the sync instead of each fetching maindata on its own
+// schedule.
+func TestResumeWhenCompletePollersShareSync(t *testing.T) {
+	t.Parallel()
+
+	const (
+		pollers  = 20
+		interval = 50 * time.Millisecond
+		timeout  = 500 * time.Millisecond
+	)
+
+	torrents := make([]string, 0, pollers)
+	hashes := make([]string, 0, pollers)
+	for i := range pollers {
+		hash := fmt.Sprintf("%040x", i+1)
+		hashes = append(hashes, hash)
+		torrents = append(torrents, fmt.Sprintf(`%q: {"name":"t%d", "state":"checkingUP", "amount_left": 0}`, hash, i))
+	}
+	maindata := `{"rid":1,"full_update":true,"torrents":{` + strings.Join(torrents, ",") + `}}`
+
+	var maindataCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			maindataCalls.Add(1)
+			_, _ = w.Write([]byte(maindata))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+	// Directory scan injects torrents one by one, so the pollers tick out of step.
+	for _, hash := range hashes {
+		sm.ResumeWhenComplete(inst.ID, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: interval, Timeout: timeout})
+		time.Sleep(interval / pollers)
+	}
+
+	time.Sleep(timeout + 100*time.Millisecond)
+
+	// About one fetch per interval; one per poller per interval would be ~200.
+	require.LessOrEqual(t, int(maindataCalls.Load()), 3*int(timeout/interval))
+}

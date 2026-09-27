@@ -4364,9 +4364,12 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			case <-ticker.C:
 			}
 
-			if err := syncMgr.Sync(ctx); err != nil {
-				log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
-				continue
+			// Pollers for the same instance share the sync; only a stale cache fetches maindata.
+			if time.Since(syncMgr.LastSuccessfulSyncTime()) >= interval {
+				if err := syncMgr.Sync(ctx); err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
+					continue
+				}
 			}
 
 			requested := make([]string, 0, len(pending))
