@@ -1112,7 +1112,7 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		}
 		return true
 	}); err != nil && m.verificationErr == nil {
-		m.verificationErr = err
+		m.verificationErr = fmt.Errorf("source torrent %s: %w", normalizeHash(m.sourceHash), err)
 	}
 	m.sourceFileIDs = ids
 	return m.sourceFileIDs
@@ -1182,7 +1182,7 @@ func (s *Service) localLinkedMatchType(
 		return matchTypeHardlink
 	}
 	if err != nil && matchCtx.verificationErr == nil {
-		matchCtx.verificationErr = err
+		matchCtx.verificationErr = fmt.Errorf("candidate torrent %s: %w", normalizeHash(candidate.Hash), err)
 	}
 
 	if filesShareAllocation == nil {
@@ -1389,9 +1389,9 @@ func normalizeTorrentRelativePath(name string) string {
 // forEachLocalTorrentFile resolves each torrent file under savePath and invokes fn
 // until fn returns false. It returns the first name that cannot be mapped to a path
 // under savePath at all: such a file can never yield link evidence, so callers with a
-// localMatchContext must fail closed instead of reporting "not linked". A resolved
-// path that is missing or not a regular file stays a silent skip, because partially
-// downloaded torrents are normal.
+// localMatchContext must fail closed instead of reporting "not linked". Any Lstat
+// failure or non-regular file is a silent skip, because partially downloaded
+// torrents are normal. A non-absolute savePath returns nil.
 func forEachLocalTorrentFile(
 	ctx context.Context,
 	backend fsops.Backend,
