@@ -4,7 +4,10 @@
 package crossseed
 
 import (
+	"context"
+	"io/fs"
 	"strconv"
+	"syscall"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -19,6 +22,11 @@ import (
 // torrent that share the given file list, with local filesystem access on both.
 // Only the onDisk files are written to either save path.
 func findLocalMatchesForFiles(t *testing.T, files, onDisk qbt.TorrentFiles, strict bool) (*LocalMatchesResponse, error) {
+	t.Helper()
+	return localMatchesServiceForFiles(t, files, onDisk).FindLocalMatches(t.Context(), 1, hlSourceHash, strict)
+}
+
+func localMatchesServiceForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) *Service {
 	t.Helper()
 
 	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, onDisk, onDisk)
@@ -44,7 +52,7 @@ func findLocalMatchesForFiles(t *testing.T, files, onDisk qbt.TorrentFiles, stri
 		releaseCache:  NewReleaseCache(),
 	}
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
-	return service.FindLocalMatches(t.Context(), 1, source.Hash, strict)
+	return service
 }
 
 // A backslash is a legal filename byte on Unix, so such a name cannot be mapped to a
@@ -128,4 +136,43 @@ func TestFindLocalMatches_MissingLocalFile_StaysBestEffort(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, response.Matches, 1)
 	require.Equal(t, matchTypeName, response.Matches[0].MatchType)
+}
+
+type lstatErrorBackend struct {
+	*local.Backend
+	err error
+}
+
+func (b lstatErrorBackend) Lstat(_ context.Context, path string) (*fsops.LstatInfo, error) {
+	return nil, &fs.PathError{Op: "lstat", Path: path, Err: b.err}
+}
+
+// A permission error (a PUID mismatch, say) hides link evidence just like an
+// unresolvable name, so strict mode must fail. ENOTDIR means a parent of the path is
+// a file: the file is missing, which stays a best-effort skip.
+func TestFindLocalMatches_LstatError(t *testing.T) {
+	files := qbt.TorrentFiles{{Name: "Movie.2023.1080p.WEB.mkv", Size: 4}}
+	for _, tc := range []struct {
+		name    string
+		err     error
+		wantErr bool
+	}{
+		{name: "permission denied fails closed", err: syscall.EACCES, wantErr: true},
+		{name: "not a directory stays best-effort", err: syscall.ENOTDIR},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := localMatchesServiceForFiles(t, files, nil)
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, lstatErrorBackend{Backend: local.NewBackend(), err: tc.err}))
+
+			response, err := service.FindLocalMatches(t.Context(), 1, hlSourceHash, true)
+			if tc.wantErr {
+				require.ErrorIs(t, err, fs.ErrPermission)
+				require.Contains(t, err.Error(), "failed to verify local file relationship")
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, response.Matches, 1)
+			require.Equal(t, matchTypeName, response.Matches[0].MatchType)
+		})
+	}
 }
