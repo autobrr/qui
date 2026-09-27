@@ -5337,6 +5337,11 @@ func (sm *SyncManager) CategorySavePathsNest(ctx context.Context, instanceID int
 	if err != nil {
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
+	// A client that keeps syncing skips health checks, so after an in-place
+	// upgrade from 4.6 its cached capabilities would still say "flat".
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		return false, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
+	}
 	if !client.NestsCategorySavePaths() {
 		return false, nil
 	}
