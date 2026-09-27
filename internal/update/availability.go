@@ -38,7 +38,7 @@ func Measure(log zerolog.Logger, disableSelfUpdate bool, version string) Inputs 
 		AppContainer: appContainer(func(path string) bool {
 			_, err := os.Stat(path)
 			return err == nil
-		}, os.Getpid()),
+		}, os.Getpid(), os.Getenv("KUBERNETES_SERVICE_HOST") != ""),
 		DisableSelfUpdate: disableSelfUpdate,
 		ReleaseVersion:    isReleaseVersion(version),
 	}
@@ -65,8 +65,10 @@ func Measure(log zerolog.Logger, disableSelfUpdate bool, version string) Inputs 
 // appContainer reports whether qui runs as the application of a container.
 // Unlike config.detectContainer it ignores /dev/.lxc-boot-id: a system container
 // such as Proxmox LXC runs qui under its own init, so a Restart works there.
-func appContainer(exists func(path string) bool, pid int) bool {
-	return exists("/.dockerenv") || exists("/run/.containerenv") || pid == 1
+// The kubelet sets KUBERNETES_SERVICE_HOST in every pod, which covers a pod on
+// containerd where qui is not PID 1 (shareProcessNamespace, an init wrapper).
+func appContainer(exists func(path string) bool, pid int, kubernetes bool) bool {
+	return exists("/.dockerenv") || exists("/run/.containerenv") || pid == 1 || kubernetes
 }
 
 // isReleaseVersion rejects dev builds ("0.0.0-dev") and git describe builds

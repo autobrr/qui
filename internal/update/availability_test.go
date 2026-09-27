@@ -17,6 +17,7 @@ func TestAvailability(t *testing.T) {
 		name           string
 		files          []string
 		pid            int
+		kubernetes     bool
 		disabled       bool
 		version        string
 		dirWritable    bool
@@ -28,6 +29,7 @@ func TestAvailability(t *testing.T) {
 		{name: "docker", files: []string{"/.dockerenv"}, version: "1.30.0", dirWritable: true},
 		{name: "podman", files: []string{"/run/.containerenv"}, version: "1.30.0", dirWritable: true},
 		{name: "pid 1", pid: 1, version: "1.30.0", dirWritable: true},
+		{name: "kubernetes pod", kubernetes: true, version: "1.30.0", dirWritable: true},
 		{name: "lxc system container", files: []string{"/dev/.lxc-boot-id"}, version: "1.30.0", dirWritable: true, wantSelfUpdate: true, wantRestart: true},
 		{name: "opt-out", disabled: true, version: "1.30.0", dirWritable: true, wantRestart: true},
 		{name: "dev build", version: "0.0.0-dev", dirWritable: true, wantRestart: true},
@@ -41,7 +43,7 @@ func TestAvailability(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			exists := func(path string) bool { return slices.Contains(tt.files, path) }
 			got := Decide(Inputs{
-				AppContainer:      appContainer(exists, tt.pid),
+				AppContainer:      appContainer(exists, tt.pid, tt.kubernetes),
 				DisableSelfUpdate: tt.disabled,
 				ReleaseVersion:    isReleaseVersion(tt.version),
 				DirWritable:       tt.dirWritable,
