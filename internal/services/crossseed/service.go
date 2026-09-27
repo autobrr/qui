@@ -14060,7 +14060,9 @@ func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, tor
 
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
 //
-// WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
+// WARNING: externalprograms runs at most 8 programs at the same time, but a launcher run (a terminal
+// emulator, or any run on Windows) releases its slot after the start, so rapid injections can still
+// start many concurrent processes.
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
 	if s.externalProgramService == nil {
 		return
