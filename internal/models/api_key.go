@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -275,10 +277,22 @@ func (s *APIKeyStore) ValidateAPIKey(ctx context.Context, rawKey string) (*APIKe
 		return nil, err
 	}
 
-	// Update last used timestamp asynchronously
-	go func() {
-		_ = s.UpdateLastUsed(ctx, apiKey.ID)
-	}()
+	// autobrr sends API key requests often, so the write happens at most once a
+	// minute, and it outlives the request that triggered it. A negative age means
+	// a Postgres session east of UTC wrote CURRENT_TIMESTAMP; write then, as before.
+	age := time.Duration(-1)
+	if apiKey.LastUsedAt != nil {
+		age = time.Since(*apiKey.LastUsedAt)
+	}
+	if age < 0 || age >= time.Minute {
+		go func() {
+			writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if err := s.UpdateLastUsed(writeCtx, apiKey.ID); err != nil {
+				log.Warn().Err(err).Int("keyId", apiKey.ID).Msg("failed to update API key last used timestamp")
+			}
+		}()
+	}
 
 	return apiKey, nil
 }
