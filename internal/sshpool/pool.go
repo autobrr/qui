@@ -63,7 +63,6 @@ type entry struct {
 	// rather than a mutex so a caller waiting behind another caller's dial can
 	// give up with its own ctx instead of sitting out that dial.
 	sem     chan struct{}
-	id      identity // what the connection and the memo were made under
 	client  *ssh.Client
 	sftp    *sftp.Client
 	err     error         // memoised failure; nil when connected
@@ -71,21 +70,6 @@ type entry struct {
 	backoff time.Duration // delay for the next failure, doubling to backoffMax
 	// lastUsed is read by the keepalive loop to close an idle connection.
 	lastUsed atomic.Int64
-}
-
-// identity is everything a connection depends on; pin and key hold the
-// ciphertext columns, which is enough to notice a change without decrypting.
-// A changed pin clears the memo as well as the connection; changed credentials
-// drop only the connection, since the host key the memo refused is still the
-// same.
-type identity struct {
-	pin, host string
-	port      int
-	user, key string
-}
-
-func identityOf(inst *models.Instance) identity {
-	return identity{pin: inst.SSHHostKeyEncrypted, host: inst.SSHHost, port: inst.SSHPort, user: inst.SSHUsername, key: inst.SSHKeyEncrypted}
 }
 
 func NewPool(dialer *Dialer) *Pool {
@@ -120,16 +104,6 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	p.mu.Unlock()
 	if closed {
 		return nil, ErrPoolClosed
-	}
-
-	if id := identityOf(inst); entry.id != id {
-		// Only a changed pin clears a refusal; see identity.
-		if entry.id.pin == id.pin && entry.refused() {
-			entry.disconnect()
-		} else {
-			entry.forget()
-		}
-		entry.id = id
 	}
 
 	switch {
@@ -181,12 +155,38 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 
 	//nolint:gosec // G118: the watcher outlives the request that opened the connection by design
 	go entry.watch(inst.ID, client, done)
-	go entry.keepalive(client, done, keepaliveInterval)
+	go entry.keepalive(inst.ID, client, done, keepaliveInterval)
 	// sshd can close the sftp channel while the transport stays up; closing the
 	// client routes that through the watcher like any other drop.
-	go func() { _ = sftpClient.Wait(); _ = client.Close() }()
+	go func() {
+		err := sftpClient.Wait()
+		log.Debug().Int("instanceID", inst.ID).Err(err).Msg("sshpool: sftp channel closed")
+		_ = client.Close()
+	}()
 
 	return sftpClient, nil
+}
+
+// Invalidate ends the instance's connection and forgets its memo. The code
+// that changes what a connection depends on (credentials, pin, the row itself)
+// calls it, so the pool never has to guess from a caller's snapshot which of
+// two instances is newer. A mismatch is re-memoised by the next dial, so a
+// refusal survives a spurious call at the cost of one dial. Safe on a nil pool.
+func (p *Pool) Invalidate(instanceID int) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	entry := p.conns[instanceID]
+	p.mu.Unlock()
+	if entry == nil {
+		return
+	}
+
+	_ = entry.lock(context.Background())
+	entry.forget()
+	entry.unlock()
+	log.Debug().Int("instanceID", instanceID).Msg("sshpool: connection invalidated")
 }
 
 // Close drops every connection and refuses every later caller. Called once, at
@@ -242,8 +242,7 @@ func (e *entry) memoise(inst *models.Instance, err error) {
 	log.Debug().Int("instanceID", inst.ID).Err(err).Dur("retryIn", jittered).Msg("sshpool: dial failed")
 }
 
-// isRefusal tells the memo that outlives a credential change from the one
-// that does not: a wrong host key is not something new credentials can fix.
+// isRefusal tells a memo that no amount of waiting clears from a backoff.
 func isRefusal(err error) bool {
 	_, mismatch := errors.AsType[*MismatchError](err)
 	return mismatch || errors.Is(err, ErrPinUnusable)
@@ -254,24 +253,20 @@ func (e *entry) refused() bool { return e.err != nil && isRefusal(e.err) }
 
 // forget ends the connection and the memo. Callers hold the entry.
 func (e *entry) forget() {
-	e.disconnect()
-	e.err = nil
-	e.retryAt = time.Time{}
-	e.backoff = 0
-}
-
-// disconnect ends the connection and keeps the memo. Callers hold the entry.
-func (e *entry) disconnect() {
 	if e.client != nil {
 		_ = e.client.Close()
 	}
 	e.client = nil
 	e.sftp = nil
+	e.err = nil
+	e.retryAt = time.Time{}
+	e.backoff = 0
 }
 
 // watch clears the entry once this client is gone, so the next caller redials.
-// It compares the client rather than trusting the entry, because a Close or a
-// pin change may already have replaced it.
+// It compares the client rather than trusting the entry, because a Close or an
+// Invalidate may already have replaced it. The pool's own closes log their
+// reason first; a drop logged here alone came from the host.
 func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 	err := client.Wait()
 	close(done)
@@ -288,7 +283,7 @@ func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 // it has sat unused past idleTimeout. The request is sent from a goroutine
 // because SendRequest has no deadline of its own: a host that accepts bytes and
 // never answers would otherwise wedge this loop forever.
-func (e *entry) keepalive(client *ssh.Client, done <-chan struct{}, interval time.Duration) {
+func (e *entry) keepalive(instanceID int, client *ssh.Client, done <-chan struct{}, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -300,6 +295,7 @@ func (e *entry) keepalive(client *ssh.Client, done <-chan struct{}, interval tim
 		}
 
 		if time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
+			log.Debug().Int("instanceID", instanceID).Msg("sshpool: closing idle connection")
 			_ = client.Close()
 			return
 		}
@@ -315,7 +311,9 @@ func (e *entry) keepalive(client *ssh.Client, done <-chan struct{}, interval tim
 			if err == nil {
 				continue
 			}
+			log.Debug().Int("instanceID", instanceID).Err(err).Msg("sshpool: keepalive failed")
 		case <-time.After(keepaliveTimeout):
+			log.Debug().Int("instanceID", instanceID).Msg("sshpool: keepalive unanswered")
 		case <-done:
 			return
 		}

@@ -16,7 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// pinnedInstanceAt is an instance the pool will dial: the pool keys its memo on
+// pinnedInstanceAt is an instance the pool will dial: FilesystemAccessMode needs
 // the pin ciphertext, so that column has to hold something.
 func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
@@ -37,7 +37,7 @@ func TestConnectRequiresPin(t *testing.T) {
 	assert.Zero(t, server.Accepts(), "an unpinned host must not be dialed in the background")
 }
 
-func TestPoolMemoizesMismatchUntilPinChanges(t *testing.T) {
+func TestPoolMemoizesMismatchUntilInvalidated(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
@@ -51,13 +51,15 @@ func TestPoolMemoizesMismatchUntilPinChanges(t *testing.T) {
 	_, ok := errors.AsType[*MismatchError](err)
 	require.True(t, ok, "expected a mismatch error, got %v", err)
 
-	_, second := pool.SFTP(t.Context(), inst)
-	require.Equal(t, err, second, "a mismatch must be answered from the memo")
-	assert.Zero(t, server.Accepts())
+	for range 3 {
+		_, again := pool.SFTP(t.Context(), inst)
+		require.Equal(t, err, again, "a mismatch must be answered from the memo")
+	}
+	assert.Equal(t, 1, server.Dials(), "a refusal is never redialled")
 
-	// Replacing the pin is the only thing that clears the refusal.
+	// The code that replaced the pin tells the pool; the pool never guesses.
 	creds.pin = hostKey.PublicKey().Marshal()
-	inst.SSHHostKeyEncrypted = "enc-v2"
+	pool.Invalidate(inst.ID)
 
 	client, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
@@ -180,10 +182,9 @@ func TestPoolReusesConnection(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts(), "a second caller must reuse the open connection")
 }
 
-// Credentials are part of what a connection was made under: a new username or
-// key against the same pin ends the old session, while a refused host key stays
-// refused, since the credentials say nothing about it.
-func TestPoolReconnectsWhenCredentialsChange(t *testing.T) {
+// Invalidate is how a credential or pin change reaches the pool: it ends the
+// session and clears any memo, and the next caller redials.
+func TestPoolInvalidateEndsTheSession(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
@@ -195,38 +196,74 @@ func TestPoolReconnectsWhenCredentialsChange(t *testing.T) {
 	first, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
 
-	inst.SSHUsername = "someone-else"
+	pool.Invalidate(inst.ID)
+	_, err = first.Getwd()
+	require.Error(t, err, "the old session must be closed, not left for the old caller")
+
 	second, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
-	assert.NotSame(t, first, second, "new credentials must not ride the old session")
+	assert.NotSame(t, first, second)
 	assert.Equal(t, 2, server.Accepts())
 
-	refusing := NewPool(dialerFor(sshtest.NewSigner().PublicKey().Marshal()))
-	t.Cleanup(refusing.Close)
-	_, err = refusing.SFTP(t.Context(), inst)
-	_, mismatch := errors.AsType[*MismatchError](err)
-	require.True(t, mismatch, "expected a mismatch, got %v", err)
-	inst.SSHKeyEncrypted = "enc-key-v2"
-	_, again := refusing.SFTP(t.Context(), inst)
-	require.Equal(t, err, again, "a credential change must not clear a host-key refusal")
-
-	// A plain dial failure is forgiven by a credential change: the fix may be
-	// exactly what changed, so the caller must not sit out the backoff.
-	backingOff := NewPool(NewDialer(&fakeCreds{key: "not a key", pin: hostKey.PublicKey().Marshal()}))
-	t.Cleanup(backingOff.Close)
-	dead := pinnedInstanceAt(t, server.Addr)
-	_, err = backingOff.SFTP(t.Context(), dead)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrPinUnusable)
-	dead.SSHKeyEncrypted = "enc-key-v3"
-	backingOff.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
-	_, err = backingOff.SFTP(t.Context(), dead)
-	require.NoError(t, err, "corrected credentials must dial at once, not wait out the backoff")
+	pool.Invalidate(99) // an instance the pool never saw is a no-op
+	var nilPool *Pool
+	nilPool.Invalidate(inst.ID)
 }
 
-// A connection nobody uses is closed by the keepalive loop, which is how the
-// pool lets go of an instance that was deleted or left remote mode.
-func TestPoolClosesIdleConnection(t *testing.T) {
+// Two callers holding different snapshots of the same instance share one
+// connection: the pool no longer compares snapshots, so an older one resolved
+// before an edit cannot reset the connection a newer one is using.
+func TestPoolOlderSnapshotDoesNotResetNewerConnection(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
+	t.Cleanup(pool.Close)
+
+	older := pinnedInstanceAt(t, server.Addr)
+	newer := *older
+	newer.SSHKeyEncrypted = "key-v2" // the user saved new credentials
+
+	newerClient, err := pool.SFTP(t.Context(), &newer)
+	require.NoError(t, err)
+	for range 3 {
+		_, err = pool.SFTP(t.Context(), older) // the next directory of a walk resolved before the edit
+		require.NoError(t, err)
+		_, err = pool.SFTP(t.Context(), &newer)
+		require.NoError(t, err)
+	}
+	_, err = newerClient.Getwd()
+	require.NoError(t, err, "the newer caller's connection survives the older snapshot")
+	assert.Equal(t, 1, server.Accepts(), "no alternation redials")
+}
+
+// A pooled connection outlives the dial deadline: the deadline is lifted after
+// the handshake, so a client used after it would have fired still works.
+func TestPoolLiftsTheDialDeadline(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	pool := NewPool(dialerWithTimeout(200 * time.Millisecond))
+	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
+	t.Cleanup(pool.Close)
+	inst := pinnedInstanceAt(t, server.Addr)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	time.Sleep(400 * time.Millisecond)
+	_, err = client.Getwd()
+	require.NoError(t, err, "the socket deadline set for the dial must not outlive the dial")
+	again, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	assert.Same(t, client, again)
+	assert.Equal(t, 1, server.Accepts())
+}
+
+// Reusing a connection counts as using it: the idle close must leave a
+// connection alone that callers keep taking from the pool.
+func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
@@ -237,19 +274,44 @@ func TestPoolClosesIdleConnection(t *testing.T) {
 
 	client, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+
+	// The reuse path must refresh lastUsed before the next tick looks at it.
+	_, err = pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	done := make(chan struct{})
+	defer close(done)
+	go entry.keepalive(inst.ID, entry.client, done, 20*time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	_, err = client.Getwd()
+	require.NoError(t, err, "a connection just reused must not be closed as idle")
+}
+
+// A caller giving up says nothing about the host: a dial cut short by the
+// caller's own ctx leaves no memo and no backoff behind.
+func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
+	t.Parallel()
+
+	pool := NewPool(dialerWithTimeout(2 * time.Second))
+	pool.dialer.creds = fakeCreds{key: testClientKey, pin: sshtest.NewSigner().PublicKey().Marshal()}
+	t.Cleanup(pool.Close)
+	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	_, err := pool.SFTP(ctx, inst)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	pool.mu.Lock()
 	entry := pool.conns[inst.ID]
 	pool.mu.Unlock()
-	// Backdate the last use past the idle limit and run one keepalive tick.
-	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
-	done := make(chan struct{})
-	go entry.keepalive(entry.client, done, 20*time.Millisecond)
-	require.Eventually(t, func() bool {
-		_, err := client.Getwd()
-		return err != nil
-	}, 5*time.Second, 20*time.Millisecond, "the idle connection must be closed on the next tick")
-	close(done)
+	require.NoError(t, entry.lock(t.Context()))
+	assert.NoError(t, entry.err, "a cancelled dial must not be memoised")
+	assert.Zero(t, entry.backoff)
+	entry.unlock()
 }
 
 func TestPoolReconnectsAfterDrop(t *testing.T) {

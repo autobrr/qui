@@ -11,7 +11,7 @@ import (
 )
 
 // Backend abstracts filesystem operations so services work identically against
-// a local filesystem or a future SSH-backed remote. It covers exactly the
+// a local filesystem or an SSH-backed remote. It covers exactly the
 // operations qui's services need: syscall-level primitives (stat, walk,
 // mkdir, remove) plus the high-level tree operations (HardlinkTree,
 // ReflinkTree, RemoveTree) that create-and-rollback as a unit. Path

@@ -286,19 +286,19 @@ paths pays for one attempt: the retry delay starts at 5s, doubles to
 come back in lockstep.
 
 A host-key mismatch and an unreadable or missing pin are not retried at
-all — waiting does not make a wrong key right. That refusal is keyed on
-the stored pin ciphertext and lives only in memory: replacing the pin, or
-changing the host or port, changes the ciphertext and clears it (an
-endpoint change drops the pin, so the memo becomes an unpinned refusal
-until the key is confirmed again). Nothing
-about it is persisted. A connection is also keyed on the username and the
-key it authenticated with: new credentials against the same pin end the
-old session and forgive a failed dial, but keep a host-key refusal, since
-they say nothing about the host key. A refusal caused by a pin that would
-not decrypt outlives an out-of-band fix of the encryption key, since the
-ciphertext did not change; a restart clears it. A connection nobody has
-used for ten minutes is closed, which is how the pool lets go of an
-instance that was deleted or left remote mode.
+all — waiting does not make a wrong key right. That refusal lives only in
+memory, and the pool never infers a change from a caller's snapshot of
+the instance: the code that changes what a connection depends on tells it.
+Saving or clearing SSH credentials, confirming or replacing the pin, and
+deleting the instance each invalidate the instance's entry, which ends the
+session and clears any memo; the next caller redials, and a host whose
+key is still wrong is refused again on that dial. Two callers holding
+different snapshots of one instance therefore share one connection. A
+refusal caused by a pin that would not decrypt outlives an out-of-band fix
+of the encryption key, since nothing invalidates it; a restart clears it.
+A connection nobody has used for ten minutes is closed, which is how the
+pool lets go of an instance that was deleted without a running qui, or of
+one that left remote mode.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process

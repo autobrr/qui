@@ -47,6 +47,7 @@ type Server struct {
 	exec ExecMode
 
 	mu       sync.Mutex
+	dials    int
 	auths    int
 	accepts  int
 	channels int
@@ -106,6 +107,15 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	return server
 }
 
+// Dials returns the number of TCP connections the server accepted, whether or
+// not a handshake followed: a refused host key still counts here, which is how
+// a test proves a refusal was answered from the memo rather than redialled.
+func (s *Server) Dials() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dials
+}
+
 // Auths returns the number of public-key authentication attempts, which is
 // how a test proves a rejected host key stopped the client before it
 // authenticated.
@@ -131,6 +141,10 @@ func (s *Server) Channels() int {
 
 func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = conn.Close() }()
+
+	s.mu.Lock()
+	s.dials++
+	s.mu.Unlock()
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {

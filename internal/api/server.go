@@ -95,6 +95,7 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	backendPool                      *fsops.Pool
+	sshPool                          *sshpool.Pool
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
@@ -142,6 +143,7 @@ type Dependencies struct {
 	DiscScanStore                    *models.DiscScanStore
 	DiscScanService                  *discscan.Service
 	BackendPool                      *fsops.Pool
+	SSHPool                          *sshpool.Pool
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
@@ -214,6 +216,7 @@ func NewServer(deps *Dependencies) *Server {
 		discScanStore:                    deps.DiscScanStore,
 		discScanService:                  deps.DiscScanService,
 		backendPool:                      deps.BackendPool,
+		sshPool:                          deps.SSHPool,
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
@@ -352,7 +355,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore))
+	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -377,7 +380,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
-	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
+	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.instanceStore, s.backendPool)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
