@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
@@ -100,6 +101,24 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 	sink := getClientPoolSyncEventSink(t, clientPool)
 	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
 	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
+}
+
+func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
+	server := NewServer(&Dependencies{
+		Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+	})
+
+	// http.Server.Shutdown starts the registered callbacks on every call.
+	require.NoError(t, server.Shutdown(t.Context()))
+	require.NoError(t, server.Shutdown(t.Context()))
+
+	select {
+	case <-server.shuttingDown:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown signal was not sent")
+	}
+	// The second callback runs in its own goroutine; let it run so a double close panics here.
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
