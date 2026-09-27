@@ -100,7 +100,7 @@ type Server struct {
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
 	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
-	shuttingDown chan struct{}
+	shuttingDown <-chan struct{}
 }
 
 type Dependencies struct {
@@ -159,6 +159,7 @@ func NewServer(deps *Dependencies) *Server {
 		streamManager.SetActivityHub(deps.ActivityHub)
 	}
 
+	streamsCtx, stopStreams := context.WithCancel(context.Background())
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -220,9 +221,10 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
-		shuttingDown:                     make(chan struct{}),
+		shuttingDown:                     streamsCtx.Done(),
 	}
-	s.server.RegisterOnShutdown(func() { close(s.shuttingDown) })
+	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
+	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
 }
