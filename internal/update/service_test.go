@@ -15,6 +15,8 @@ import (
 // race detector is the gate.
 func TestServiceSetEnabledDuringCheckUpdates(t *testing.T) {
 	svc := NewService(zerolog.Nop(), false, "v1.0.0", "qui-test")
+	// A regressed flag check panics on the nil checker instead of calling api.autobrr.com.
+	svc.releaseChecker = nil
 
 	var wg sync.WaitGroup
 	wg.Go(func() { svc.SetEnabled(false) })
