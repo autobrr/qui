@@ -273,7 +273,6 @@ func (s *Service) executeAsync(
 			Str("program", program.Name).
 			Str("hash", req.Torrent.Hash).
 			Int("maxRunning", cap(s.slots)).
-			Dur("waited", s.waitTimeout).
 			Msg("external program not started: execution limit reached")
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, errExecutionLimitWait.Error())
 		return
