@@ -47,8 +47,8 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 
 ## Lint / Format
 
-- `make precommit` = fmt + gofix changed files + lint changed files.
-- `make lint` = changed files only.
+- `make precommit` = fmt + gofix on changed files, then `make lint`.
+- `make lint` = golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`.
 - `make lint-json` writes `lint-report.json`.
 - `make fmt` = gofmt + frontend eslint fix on changed files.
 - Avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested.
