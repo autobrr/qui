@@ -57,3 +57,24 @@ func TestAPIKeyStoreValidateAPIKeyRecordsLastUsed(t *testing.T) {
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return lastUsed().Before(future) }, 5*time.Second, 10*time.Millisecond)
 }
+
+func TestAPIKeyStoreLastUsedPostgresIntegrationSessionTimeZone(t *testing.T) {
+	// A session west of UTC stores CURRENT_TIMESTAMP hours in the past, so the throttle would never hold.
+	t.Setenv("PGTZ", "America/New_York")
+
+	ctx := t.Context()
+	store := models.NewAPIKeyStore(testdb.NewMigratedPostgres(t, "api-keys-tz"))
+	rawKey, key, err := store.Create(ctx, "autobrr")
+	require.NoError(t, err)
+
+	_, err = store.ValidateAPIKey(ctx, rawKey)
+	require.NoError(t, err)
+	var lastUsed *time.Time
+	require.Eventually(t, func() bool {
+		k, getErr := store.GetByHash(ctx, key.KeyHash)
+		require.NoError(t, getErr)
+		lastUsed = k.LastUsedAt
+		return lastUsed != nil
+	}, 5*time.Second, 10*time.Millisecond)
+	require.WithinDuration(t, time.Now(), *lastUsed, 5*time.Second)
+}
