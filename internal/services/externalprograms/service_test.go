@@ -1678,6 +1678,11 @@ while [ ! -e "$d/release" ]; do sleep 0.01; done
 	s.waitTimeout = 5 * time.Second
 	require.True(t, execute("e").Success)
 	require.Eventually(t, func() bool { return len(started()) == 3 }, 5*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool { return len(s.slots) == 0 }, 5*time.Second, 10*time.Millisecond)
+	for _, h := range []string{"f", "g", "h"} {
+		require.True(t, execute(h).Success, "finished runs free their admission: %s", h)
+	}
 }
 
 func TestService_Execute_LimitsTerminalFallback(t *testing.T) {
