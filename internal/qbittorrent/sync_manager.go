@@ -4356,8 +4356,8 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		// lastSeen stops one snapshot from counting as two stable polls.
-		var lastSeen time.Time
+		// lastSeen stops one snapshot, or one taken before this call, from counting as a stable poll.
+		lastSeen := syncMgr.LastSuccessfulSyncTime()
 		for len(pending) > 0 {
 			select {
 			case <-ctx.Done():

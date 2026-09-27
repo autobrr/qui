@@ -3480,9 +3480,13 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 	pool.clients[inst.ID] = client
 	pool.mu.Unlock()
 
+	// A sync from before the call, like the cache before a directory scan recheck, must not count as a poll.
+	require.NoError(t, client.syncManager.Sync(t.Context()))
+	callsBefore := int(maindataCalls.Load())
+
 	sm := NewSyncManager(pool, nil)
 	sm.ResumeWhenComplete(inst.ID, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: 100 * time.Millisecond, Timeout: 2 * time.Second})
 
 	require.Eventually(t, func() bool { return callsAtResume.Load() >= 0 }, 3*time.Second, 10*time.Millisecond)
-	require.GreaterOrEqual(t, int(callsAtResume.Load()), resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
+	require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
 }
