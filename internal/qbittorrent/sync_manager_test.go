@@ -3477,3 +3477,51 @@ func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 	require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")
 	require.Equal(t, int32(2), maindataCalls.Load())
 }
+
+// Add Tags rejects on a cache miss, so a torrent added outside qui since the
+// last sync must force a sync before the request is refused.
+func TestAddTagsSyncsWhenTheHashIsMissingFromTheCache(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"name":"New.Torrent"}}}`))
+		case "/api/v2/torrents/addTags":
+			// 200 with no body; AddTagsCtx errors on any other status.
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	require.NoError(t, NewSyncManager(pool, nil).AddTags(ctx, inst.ID, []string{"bb22"}, "fresh"))
+}

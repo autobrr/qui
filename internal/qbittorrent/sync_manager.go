@@ -6447,32 +6447,14 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
 	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
 	}
 
 	// Validate that torrents exist
-	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-
-	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
-	for _, torrent := range torrentList {
-		torrentMap[torrent.Hash] = torrent
-	}
-
-	if len(torrentMap) == 0 {
-		return errors.New("no sync data available")
-	}
-
-	existingCount := 0
-	for _, hash := range hashes {
-		if _, exists := torrentMap[hash]; exists {
-			existingCount++
-		}
-	}
-
-	if existingCount == 0 {
-		return errors.New("no valid torrents found to add tags")
+	if err := sm.validateTorrentsExist(client, hashes, "add tags"); err != nil {
+		return err
 	}
 
 	if err := client.AddTagsCtx(ctx, hashes, tags); err != nil {
