@@ -32,6 +32,7 @@ QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com  # O
 ```bash
 QUI__SESSION_SECRET_FILE=...  # Path to file containing secret. Takes precedence over QUI__SESSION_SECRET
 QUI__SESSION_SECRET=...       # Auto-generated if not set
+QUI__SESSION_COOKIE_SECURE=false  # Set to true behind an HTTPS reverse proxy
 ```
 
 ## Logging
@@ -116,6 +117,7 @@ QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remo
 
 ```bash
 QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
+QUI__DISABLE_SELF_UPDATE=true  # Optional: turn off Self-update, for packages that control the qui version (default: false)
 ```
 
 ## Profiling (pprof)

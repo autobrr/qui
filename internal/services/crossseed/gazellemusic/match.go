@@ -5,6 +5,7 @@ package gazellemusic
 
 import (
 	"context"
+	"errors"
 	"math"
 	"path"
 	"path/filepath"
@@ -26,14 +27,19 @@ type Match struct {
 	Reason     string // "hash", "size", "filelist"
 }
 
+// FindMatch returns nil, nil when the tracker has no copy. A failed lookup
+// (tracker down, rate limited) returns the error instead of a miss, so the
+// caller does not stamp a cooldown on a torrent that was never checked.
 func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles map[string]int64, totalSize int64) (*Match, error) {
 	// 1) Hash-based match (preferred).
 	if torrentBytes != nil {
-		hashes, err := CalculateHashesWithSources(torrentBytes, []string{c.SourceFlag()})
-		if err == nil {
-			targetHash := hashes[c.SourceFlag()]
-			if targetHash != "" {
-				if res, err := c.SearchByHash(ctx, targetHash); err == nil && res != nil {
+		if hashes, err := c.TargetHashes(torrentBytes); err == nil {
+			for _, targetHash := range hashes {
+				res, err := c.SearchByHash(ctx, targetHash)
+				if err != nil {
+					return nil, err
+				}
+				if res != nil {
 					return &Match{
 						Host:       c.Host(),
 						SourceFlag: c.SourceFlag(),
@@ -49,6 +55,7 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 	}
 
 	// 2) Filename search + verify by size/filelist.
+	var lookupErr error
 	searchFiles := selectSearchFilenames(localFiles, 5)
 	for _, fname := range searchFiles {
 		query := makeSearchQuery(fname)
@@ -57,7 +64,11 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 		}
 
 		results, err := c.SearchByFilename(ctx, query)
+		if errors.Is(err, ErrAccessDenied) {
+			return nil, err
+		}
 		if err != nil {
+			lookupErr = err
 			continue
 		}
 
@@ -88,7 +99,14 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 			}
 
 			torrentResp, err := c.GetTorrent(ctx, r.TorrentID)
-			if err != nil || torrentResp == nil {
+			if errors.Is(err, ErrAccessDenied) {
+				return nil, err
+			}
+			if err != nil {
+				lookupErr = err
+				continue
+			}
+			if torrentResp == nil {
 				continue
 			}
 
@@ -114,7 +132,7 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 		}
 	}
 
-	return nil, nil
+	return nil, lookupErr
 }
 
 func parseFileList(fileList string) map[string]int64 {

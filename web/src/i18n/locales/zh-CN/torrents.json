@@ -1014,10 +1014,6 @@
       "label": "节点",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "封禁节点",
-      "description": "确定要封禁 {{address}} 吗？"
-    },
     "banPeerPermanent": {
       "title": "永久封禁节点",
       "description": "确定要永久封禁此节点吗？此操作无法撤销。",

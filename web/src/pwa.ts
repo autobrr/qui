@@ -5,11 +5,12 @@
 
 import { toast } from "sonner"
 import { getBaseUrl, withBasePath } from "./lib/base-url"
+import { isDemo } from "./lib/demo"
 
 let hasRegistered = false
 
 export function setupPWAAutoUpdate(): void {
-  if (hasRegistered) return
+  if (hasRegistered || isDemo) return
   if (!("serviceWorker" in navigator)) return
 
   hasRegistered = true

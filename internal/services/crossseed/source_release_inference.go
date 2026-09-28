@@ -7,7 +7,7 @@ import (
 	"context"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -173,7 +173,7 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 			continue
 		}
 
-		fileRelease := s.parseFileRelease(file.Name)
+		fileRelease := s.matcher().parseFileRelease(file.Name)
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
 			if fileRelease.Episode > 0 {

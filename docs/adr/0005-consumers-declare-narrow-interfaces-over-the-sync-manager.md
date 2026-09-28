@@ -18,5 +18,5 @@ The qBittorrent sync manager stays one concrete type. A package that needs to fa
 ## Consequences
 
 - Prior art that already follows this: the SSE stream manager's `syncProvider` (4 methods) and the backup service's `backupReader` (5). The cross-seed `qbittorrentSync` (17) is over the cap and is a separate decision.
-- The orphan scan service reads through `syncReader`, `clientReadiness`, `instanceLister`, and `lastRunReader`. The automations hardlink, missing-files, and skipped-files checks read through `filesReader`. The torrents handler adds, downloads, and resolves content through `torrentAdder`, `torrentDownloader`, and `torrentContentResolver`.
+- The orphan scan service reads through `syncReader`, `clientReadiness`, `instanceLister`, and `lastRunReader`. The automations hardlink, missing-files, skipped-files, and season pack checks read through `filesReader`. The torrents handler adds, downloads, and resolves content through `torrentAdder`, `torrentDownloader`, and `torrentContentResolver`.
 - A change that adds a sixth method to one of these, adds an interface without a test fake, or adds a nil-check forwarder reverses this decision and needs a new ADR.

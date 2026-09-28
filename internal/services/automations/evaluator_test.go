@@ -3942,6 +3942,43 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_SeasonPackStatus(t *testing.T) {
+	parser := releases.NewDefaultParser()
+	pack := "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"
+	episode := qbt.Torrent{Hash: "ep", Name: "Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"}
+	movie := qbt.Torrent{Hash: "movie", Name: "Some.Movie.2021.1080p.BluRay.x264-GRP"}
+	sameCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
+	anyCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: map[string]struct{}{}, SeasonPackSetAnyInstance: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
+	unbuiltCtx := &EvalContext{ReleaseParser: parser}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{"same instance packed", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed"}, episode, sameCtx, true},
+		{"same instance not unpacked", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "unpacked"}, episode, sameCtx, true},
+		{"pack is pack", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "pack"}, qbt.Torrent{Hash: "pack", Name: pack}, sameCtx, true},
+		{"movie has empty status", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "unpacked"}, movie, sameCtx, false},
+		{"movie is not packed", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "packed"}, movie, sameCtx, true},
+		{"any instance packed while same instance has no pack", &RuleCondition{Field: FieldSeasonPackStatusAnyInstance, Operator: OperatorEqual, Value: "packed"}, episode, anyCtx, true},
+		{"same instance unpacked while any instance has the pack", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "unpacked"}, episode, anyCtx, true},
+		{"unbuilt set never matches", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorNotEqual, Value: "packed"}, episode, unbuiltCtx, false},
+		{"unbuilt set never matches through NOT", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed", Negate: true}, episode, unbuiltCtx, false},
+		{"unbuilt any-instance set never matches", &RuleCondition{Field: FieldSeasonPackStatusAnyInstance, Operator: OperatorEqual, Value: "pack"}, qbt.Torrent{Hash: "pack", Name: pack}, sameCtx, false},
+		{"nil ctx never matches", &RuleCondition{Field: FieldSeasonPackStatus, Operator: OperatorEqual, Value: "packed"}, episode, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0); got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 	memberCtx := &EvalContext{
 		SameInstanceCrossSeedTagsByHash: map[string][]string{

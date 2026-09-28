@@ -8,7 +8,7 @@ import (
 )
 
 func TestIsSizeWithinTolerance(t *testing.T) {
-	s := &Service{}
+	s := matcher{}
 
 	tests := []struct {
 		name             string

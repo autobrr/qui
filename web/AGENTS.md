@@ -10,7 +10,7 @@ Frontend and i18n rules for work under `web/`.
 - Organize React modules by feature within `web/src/{pages,routes,components}`.
 - File names should be descriptive, e.g. `torrent-table.tsx`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
-- Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
+- Frontend tests: Vitest + React Testing Library. A test lives in a `__tests__/` folder in the directory of the code it covers (`components/cross-seed/__tests__/`), or as `*.test.tsx` beside the file in directories that still do that. One directory uses one of the two.
 - Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
 - Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
 - Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
@@ -20,7 +20,7 @@ Frontend and i18n rules for work under `web/`.
 
 ## Frontend Tests
 
-- Colocate `*.test.ts(x)` specs with the change. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
+- Keep `*.test.ts(x)` specs in the directory of the change, in its `__tests__/` folder where one exists. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
 - Vitest runs with `globals: false` + jsdom. There **is** a setup file (`web/src/test/setup.ts`), but it only runs the MSW server lifecycle:
   - Import test globals explicitly: `import { describe, it, expect, vi } from "vitest"`; use `render` / `renderHook` / `act` from `@testing-library/react`.
   - **Nothing auto-cleans the DOM or mocks.** Add `afterEach(cleanup)` in files where more than one test renders, and call `cleanup()` or `unmount()` yourself between two `render` calls inside the same test. Add `afterEach(() => vi.restoreAllMocks())` when a test spies on a global such as `Storage.prototype.setItem`. RTL registers its own cleanup only when a global `afterEach` exists, and `globals: false` removes it; `restoreMocks` is not set either. Without this a second `render` leaves the first in the DOM and `getBy*` throws "Found multiple elements".
@@ -48,8 +48,10 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 ## i18n Commands
 
 - `pnpm check:i18n`
+- `pnpm check:i18n:plural-keys`
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
+- `pnpm check:i18n:unused`
 - `pnpm check:i18n:zh-cn`
 - `pnpm check:i18n:zh-tw`
 - `pnpm check:i18n:fr`
@@ -62,6 +64,8 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:ca`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
+
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
 
 ## Adding Languages
 
@@ -79,7 +83,15 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
-- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` also needs `_few` (2-4) and `uk` needs `_few` and `_many`, or i18next renders the raw key at those counts. The pre-v4 `_plural` suffix no longer resolves — never add one.
+- Plurals use the i18next v4 CLDR suffixes:
+  - English needs `_one` and `_other`.
+  - Chinese and Korean take `_other` alone.
+  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and no count reaches one: item counts are whole numbers, and relative-time counts are floored in `src/lib/dateTimeUtils.ts`.
+  - `uk` needs `_one`, `_few`, `_many` and `_other`.
+- A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
+- An unsuffixed base key beside the suffixed ones answers every category the locale omits, with one string. Use it only for text that does not change with the count. The base key also hides a missing form from `pnpm check:i18n`, so `cs` or `uk` can show the wrong form, for example "2 trackerů". A base key must exist in English and in every locale, or the missing-keys and extra-keys checks reject it.
+- Never add the pre-v4 `_plural` suffix. i18next does not resolve it in any locale.
+- `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` asks i18next whether each locale can resolve every plural base at nine counts, and fails on the ones it cannot, since the app serves English for those.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
 
@@ -88,3 +100,11 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state is stream-backed via `useSyncStream`; polling is fallback while stream unavailable. Content/files and Peers tabs still poll on interval, but polling is tab-scoped and visibility-gated.
 
 `useSyncStream` listeners receive raw frames. A delta for unchanged rows carries an empty `torrents` list and the previous `total`, so a handler clears its row only on `total === 0` and keeps the previous row on an empty list.
+
+## getqui.com Demo
+
+`pnpm build:demo` builds the unchanged app in Vite mode `demo` for the landing page at getqui.com/demo/. `web/src/demo/` replaces `window.fetch` and `window.EventSource` with an in-memory store; there is no backend.
+
+- A new API call on the torrent list surface needs a route in `web/src/demo/api.ts`, or the demo answers `404 {"error": "not available in the demo"}` and the feature looks broken on the site.
+- Demo-only UI branches use `isDemo` from `web/src/lib/demo.ts`. Vite folds it, so production bundles carry none of them.
+- Pages outside `/instances` are redirected in the demo; do not add demo handling to them.

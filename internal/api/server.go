@@ -43,6 +43,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -69,6 +70,7 @@ type Server struct {
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
 	updateService                    *update.Service
+	updateAvailability               update.Availability
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -98,6 +100,8 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
+	shuttingDown <-chan struct{}
 }
 
 type Dependencies struct {
@@ -117,6 +121,7 @@ type Dependencies struct {
 	WebHandler                       *web.Handler
 	LicenseService                   *license.Service
 	UpdateService                    *update.Service
+	UpdateAvailability               update.Availability
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -156,6 +161,7 @@ func NewServer(deps *Dependencies) *Server {
 		streamManager.SetActivityHub(deps.ActivityHub)
 	}
 
+	streamsCtx, stopStreams := context.WithCancel(context.Background())
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -187,6 +193,7 @@ func NewServer(deps *Dependencies) *Server {
 		syncManager:                      deps.SyncManager,
 		licenseService:                   deps.LicenseService,
 		updateService:                    deps.UpdateService,
+		updateAvailability:               deps.UpdateAvailability,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -217,7 +224,10 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		shuttingDown:                     streamsCtx.Done(),
 	}
+	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
+	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
 }
@@ -322,27 +332,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		httpcompression.GzipCompressionLevel(2),              // Use gzip level 2 (fast) instead of 6 (default)
 		httpcompression.Prefer(httpcompression.PreferServer), // Let server choose best compression
 	)
+	var compression chi.Middlewares
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		// SSE responses must never go through this compressor. Its writer buffers
-		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
-		// cuts the stream handler's http.NewResponseController off from the socket
-		// and silently disables the per-write deadline that evicts stalled clients.
-		// Bypass compression for event-stream requests (EventSource always sends
-		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
-		// without coupling to specific paths. /api/stream compresses itself instead:
-		// see gzipSessionWriter in internal/api/sse.
-		r.Use(func(next http.Handler) http.Handler {
-			compressed := compressor(next)
-			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
-					next.ServeHTTP(w, req)
-					return
-				}
-				compressed.ServeHTTP(w, req)
-			})
-		})
+		compression = chi.Middlewares{compressor}
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -367,13 +361,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
+	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore))
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
-	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -399,12 +393,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
-	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager, s.shuttingDown)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
-	logsHandler := handlers.NewLogsHandler(s.config)
+	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
@@ -421,6 +415,21 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 		// Apply setup check middleware
 		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
+
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
+		r.With(authMiddleware).Group(func(r chi.Router) {
+			// ServeContent needs the original Range header and writer to preserve byte ranges and Content-Length.
+			r.Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+
+			// These streams bypass the buffering compressor so events flush promptly and socket write deadlines remain reachable.
+			// /stream handles its own gzip through gzipSessionWriter in internal/api/sse.
+			r.Get("/stream", s.streamManager.Serve)
+			r.Get("/logs/stream", logsHandler.StreamLogs)
+			r.Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
+		})
+
+		// Every route below compresses; the group above must keep the raw writer.
+		r = r.With(compression...)
 
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
@@ -445,7 +454,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Get("/themes/settings", themesHandler.GetThemeSettings)
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
-		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
@@ -561,8 +569,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
 
-			r.Get("/stream", s.streamManager.Serve)
-
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
@@ -575,6 +581,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
 					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
+
+					// SSH credentials and host-key pinning for remote filesystem access
+					r.Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
+					r.Delete("/ssh-credentials", instancesHandler.DeleteSSHCredentials)
+					r.Post("/ssh-test", instancesHandler.TestSSHConnection)
+					r.Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
+					r.Post("/ssh-host-key/replace", instancesHandler.ReplaceSSHHostKey)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
@@ -602,7 +615,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
-							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 							r.Get("/disc-scans", discScanHandler.ListForTorrent)
 							r.Post("/disc-scans", discScanHandler.Start)
@@ -663,7 +675,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// RSS management
 					r.Route("/rss", func(r chi.Router) {
 						rssHandler.Routes(r)
-						r.Get("/events", rssSSEHandler.HandleSSE)
 					})
 
 					// Preferences
@@ -745,13 +756,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Proxy routes (outside of /api and not requiring authentication).
 	// Wrapped so proxy traffic gets the same status and latency record as /api.
-	proxyHandler.Routes(r.With(middleware.Logger(s.logger)))
+	// Top-level routes register on compressed, not r, or they silently skip gzip.
+	compressed := r.With(compression...)
+	proxyHandler.Routes(compressed.With(middleware.Logger(s.logger)))
 
 	swaggerHandler, err := swagger.NewHandler(s.config.Config.BaseURL)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize Swagger UI")
 	} else if swaggerHandler != nil {
-		swaggerHandler.RegisterRoutes(r)
+		swaggerHandler.RegisterRoutes(compressed)
 	}
 
 	baseURL := s.config.Config.BaseURL
@@ -760,9 +773,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
-	r.Get("/health", healthHandler.HandleHealth)
-	r.Get("/healthz/readiness", healthHandler.HandleReady)
-	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
+	compressed.Get("/health", healthHandler.HandleHealth)
+	compressed.Get("/healthz/readiness", healthHandler.HandleReady)
+	compressed.Get("/healthz/liveness", healthHandler.HandleLiveness)
 
 	apiMount := "/api"
 	if baseURL != "/" {
@@ -780,15 +793,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			trimmedBaseURL = "/"
 		}
 
-		r.Route(trimmedBaseURL, func(sub chi.Router) {
+		compressed.Route(trimmedBaseURL, func(sub chi.Router) {
 			webHandler.RegisterRoutes(sub)
 		})
 	} else {
-		webHandler.RegisterRoutes(r)
+		webHandler.RegisterRoutes(compressed)
 	}
 
 	if baseURL != "/" {
-		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
+		compressed.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})

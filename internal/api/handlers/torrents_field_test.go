@@ -213,6 +213,41 @@ func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 }
 
+// TestGetTorrentField_SingleInstanceFormatsLikeUnified pins the single-instance
+// route to the unified formatters: an uppercase hash and a trimmed name, so a
+// copied value matches whichever view it came from. The exclude by v1 hash
+// covers the hybrid case on this route.
+func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "  Alpha  ", Hash: "aaa", InfohashV1: "aaa", AddedOn: 2},
+			{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+		},
+	})
+
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	for field, want := range map[string][]string{
+		"hash": {"AAA"},
+		"name": {"Alpha"},
+	} {
+		req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
+			"field":         field,
+			"excludeHashes": []string{"EEE"},
+		})
+
+		rec := httptest.NewRecorder()
+		handler.GetTorrentField(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var response quiqbt.TorrentFieldResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Equal(t, want, response.Values, field)
+	}
+}
+
 func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
 	handler, release := createStaleCrossInstanceReadHarness(t)
 	defer release()

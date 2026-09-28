@@ -275,6 +275,8 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 
 // Versions and outcomes observed live with Automatic Torrent Management on,
 // default save path /downloads and categories tv=/media/tv, tv/anime="".
+// 5.0.0beta1 is the only release with WebAPI 2.10.x; it was not run live, but
+// upstream "Follow the parent category options" (a1c78a045) is in it.
 func TestCategorySavePathsNest(t *testing.T) {
 	t.Parallel()
 
@@ -285,7 +287,8 @@ func TestCategorySavePathsNest(t *testing.T) {
 		want             bool
 	}{
 		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true, want: false},
-		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true, want: false},
+		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true, want: false}, // highest version below the gate
+		{name: "5.0 beta1 with subcategories on", version: "2.10.4", useSubcategories: true, want: true},                        // lowest version at the gate
 		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false, want: false},
 		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: true},
 		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: true},
@@ -296,19 +299,33 @@ func TestCategorySavePathsNest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The cached preferences are fresh, so no request reaches the host.
+			var versionRequests atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v2/app/webapiVersion" {
+					t.Errorf("unexpected request: %s", r.URL)
+					http.NotFound(w, r)
+					return
+				}
+				versionRequests.Add(1)
+				_, _ = w.Write([]byte(tc.version))
+			}))
+			defer srv.Close()
+
+			// Cached preferences are fresh, so only the version is fetched.
 			client := &Client{
-				Client:               qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1"}),
+				Client:               qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}),
 				isHealthy:            true,
 				preferencesCache:     &qbt.AppPreferences{UseSubcategories: tc.useSubcategories},
 				preferencesFetchedAt: time.Now(),
 			}
-			client.applyCapabilitiesLocked(tc.version)
+			// Stale 4.6 capabilities, as after an in-place upgrade while syncing.
+			client.applyCapabilitiesLocked("2.9.3")
 			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
 
 			got, err := sm.CategorySavePathsNest(t.Context(), 1)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
+			require.Equal(t, int64(1), versionRequests.Load())
 		})
 	}
 }

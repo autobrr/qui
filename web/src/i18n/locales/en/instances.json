@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Using Deluge, rTorrent, or Transmission? <docs>Migrate to qBittorrent with our migration tool</docs>",
   "card": {
     "status": {
       "disabled": "Disabled",
@@ -697,6 +698,7 @@
       "runDryRunNow": "Run dry-run now",
       "duplicate": "Duplicate",
       "copyTo": "Copy to...",
+      "editJSON": "Edit as JSON",
       "exportJSON": "Export JSON",
       "dragToReorder": "Drag to reorder workflow",
       "actions": {
@@ -788,11 +790,25 @@
         "title": "Import Workflow",
         "description": "Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.",
         "placeholder": "Paste workflow JSON...",
-        "invalidImportData": "Invalid import data",
         "importFailed": "Failed to import workflow",
         "cancel": "Cancel",
         "importing": "Importing...",
-        "import": "Import"
+        "import": "Import",
+        "errors": {
+          "invalidJson": "Invalid JSON format",
+          "notObject": "Expected a JSON object",
+          "missingName": "Missing or invalid 'name' field",
+          "missingConditions": "Missing or invalid 'conditions' field",
+          "missingTracker": "Must specify either 'trackerDomains' (array of strings) or 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Edit \"{{name}}\" as JSON",
+        "description": "Edit the workflow JSON. The workflow keeps its enabled state and position.",
+        "saveFailed": "Failed to save workflow",
+        "cancel": "Cancel",
+        "saving": "Saving...",
+        "save": "Save"
       },
       "toast": {
         "workflowDeleted": "Workflow deleted",
@@ -808,6 +824,7 @@
         "createdWorkflow": "Created \"{{name}}\"",
         "copiedWorkflow": "Copied \"{{name}}\" to {{instance}}",
         "importedWorkflow": "Imported \"{{name}}\"",
+        "updatedWorkflow": "Updated \"{{name}}\"",
         "createFailed": "Failed to create workflow",
         "reorderFailed": "Failed to reorder workflows",
         "exportedTorrents": "Exported {{count}} torrents to CSV",
@@ -1611,10 +1628,6 @@
       },
       "trackerMatchInclude": "Include",
       "trackerMatchExclude": "Exclude"
-    },
-    "shareLimit": {
-      "global": "Global",
-      "unlimited": "Unlimited"
     }
   },
   "backups": {

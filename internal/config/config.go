@@ -143,6 +143,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -230,6 +231,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -250,6 +252,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -354,6 +357,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+	c.Config.SessionCookieSecure = c.viper.GetBool("sessionCookieSecure")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
 	c.Config.LogPath = c.viper.GetString("logPath")
@@ -379,6 +383,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -582,6 +587,12 @@ port = {{ .port }}
 # If changed, you'll need to re-enter passwords for all existing qBittorrent instances in the UI.
 sessionSecret = "{{ .sessionSecret }}"
 
+# Send the browser session cookie only over HTTPS
+# Enable this when qui is served through an HTTPS reverse proxy.
+# With this enabled, login over plain HTTP does not work.
+# An HTTPS oidcRedirectUrl enables it automatically.
+#sessionCookieSecure = false
+
 # Log file path
 # If not defined, logs to stdout
 # Optional
@@ -641,6 +652,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Hide Self-update in the web UI. "qui update" from the shell still works (requires restart)
+# Package maintainers who pin the qui version should set this to true.
+# Default: false
+#disableSelfUpdate = false
 
 # Tracker icon fetching
 # Disable to prevent qui from requesting tracker favicons from remote trackers.

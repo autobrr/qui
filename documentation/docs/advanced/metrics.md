@@ -162,9 +162,11 @@ This query includes disabled instances. Monitor the Prometheus `up{job="qui"}` m
 
 [Download the qui Grafana dashboard](/examples/qui-grafana-dashboard.json), then import the JSON file in Grafana. Select the Prometheus data source that scrapes qui.
 
-The dashboard has an instance filter and four panels:
+The dashboard has an instance filter and these panel groups:
 
-- qBittorrent connection status
-- session upload and download rates
-- current tracker upload and download totals
-- collection errors during the last five minutes
+- Status: qBittorrent connection, torrent counts by state, torrent errors, and collection errors during the last five minutes.
+- Transfer: all-time ratio, all-time and session totals, and session upload and download rates.
+- Trackers: torrent count, content size, ratio, and upload and download totals for each tracker group.
+- qui process: CPU, memory, goroutines, threads, open files, wedged database transactions, and uptime.
+
+A torrent can be in more than one tracker group, so the tracker panels can add up to more than the whole instance. The process panels show only the qui process that exports the selected instances.

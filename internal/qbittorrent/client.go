@@ -669,6 +669,19 @@ func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt
 	return enriched, trackerData, nil, nil
 }
 
+// refreshTrackers fetches tracker data for every torrent in one request, bypassing
+// the tracker cache. A torrent that the fetch does not return keeps no tracker data:
+// cached MainData can still hold a torrent that qBittorrent already deleted, and
+// that torrent must not block every pass.
+func (c *Client) refreshTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
+	tm := c.trackerManager()
+	if tm == nil {
+		return torrents, errors.New("tracker manager unavailable")
+	}
+	torrents, _, err := tm.Refresh(ctx, torrents)
+	return torrents, err
+}
+
 func (c *Client) invalidateTrackerCache(hashes ...string) {
 	if tm := c.trackerManager(); tm != nil {
 		tm.Invalidate(hashes...)

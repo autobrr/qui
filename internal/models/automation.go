@@ -757,6 +757,10 @@ const (
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 	FieldCrossSeedTags          ConditionField = "CROSS_SEED_TAGS"
 
+	// Season pack fields
+	FieldSeasonPackStatus            ConditionField = "SEASON_PACK_STATUS"
+	FieldSeasonPackStatusAnyInstance ConditionField = "SEASON_PACK_STATUS_ANY_INSTANCE"
+
 	// System time fields
 	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
 	FieldSystemMinute    ConditionField = "SYSTEM_MINUTE"
@@ -823,6 +827,13 @@ const (
 	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // Links outside the torrent set (stored: outside only; condition: also matches "both")
 	HardlinkScopeBoth               = "both"                // Links both inside and outside the torrent set
 	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"  // Condition-only: linked to other torrents, even if also outside (#1177)
+)
+
+// Season pack status values. Empty when the name parses without exactly one season.
+const (
+	SeasonPackStatusPack     = "pack"     // A whole single season
+	SeasonPackStatusPacked   = "packed"   // An episode whose season pack of the same release is in the client
+	SeasonPackStatusUnpacked = "unpacked" // An episode with no such pack
 )
 
 // ConditionOperator represents operators for comparing field values.

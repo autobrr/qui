@@ -25,6 +25,7 @@ type Config struct {
 	AllowedHosts []string `toml:"allowedHosts" mapstructure:"-"`
 	//nolint:gosec // Config schema requires this field name; value is provided by runtime configuration.
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
+	SessionCookieSecure      bool   `toml:"sessionCookieSecure" mapstructure:"sessionCookieSecure"`
 	LogLevel                 string `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath                  string `toml:"logPath" mapstructure:"logPath"`
 	LogMaxSize               int    `toml:"logMaxSize" mapstructure:"logMaxSize"`
@@ -45,6 +46,7 @@ type Config struct {
 	DatabaseConnMaxLifetime  int    `toml:"databaseConnMaxLifetime" mapstructure:"databaseConnMaxLifetime"`
 	QbittorrentTimeout       int    `toml:"qbittorrentTimeout" mapstructure:"qbittorrentTimeout"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
+	DisableSelfUpdate        bool   `toml:"disableSelfUpdate" mapstructure:"disableSelfUpdate"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	PprofAddr                string `toml:"pprofAddr" mapstructure:"pprofAddr"`
 	MetricsEnabled           bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
@@ -79,6 +81,12 @@ type Config struct {
 	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
 	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
+}
+
+// SecureSessionCookie reports whether the session cookie needs the Secure
+// attribute: set explicitly, or implied by an HTTPS OIDC redirect URL.
+func (c *Config) SecureSessionCookie() bool {
+	return c.SessionCookieSecure || strings.HasPrefix(strings.ToLower(c.OIDCRedirectURL), "https://")
 }
 
 // IsAuthDisabled returns true only when both AuthDisabled and

@@ -1,6 +1,6 @@
 ---
 sidebar_position: 15
-title: qui dashboard
+title: qBittorrent statistics dashboard in qui
 sidebar_label: Dashboard
 description: "The start page of qui: per-instance and combined qBittorrent statistics, live updates, and interface preferences that sync across devices."
 ---

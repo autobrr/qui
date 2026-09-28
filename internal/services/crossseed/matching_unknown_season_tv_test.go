@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -15,7 +15,7 @@ import (
 func TestReleasesMatch_UnknownSeasonTV(t *testing.T) {
 	t.Parallel()
 
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name                   string

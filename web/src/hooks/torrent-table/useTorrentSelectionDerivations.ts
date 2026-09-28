@@ -5,6 +5,7 @@
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
 import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { combineFilterExpr } from "@/lib/torrent-filters"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -27,7 +28,9 @@ export interface UseTorrentSelectionDerivationsParams {
   getVisibleRows: () => SelectionRow[]
   sortedTorrents: Torrent[]
   columnFiltersExpr: string | null
-  filters?: TorrentFilters
+  // True when the table, not the backend, applies the column filters (cross-seed mode).
+  clientSideFiltering?: boolean
+  filters: TorrentFilters
   stats?: { totalSize?: number }
   totalCount: number
   isCrossInstanceEndpoint?: boolean
@@ -40,11 +43,8 @@ export interface UseTorrentSelectionDerivationsParams {
  * the resolved hashes/torrents, counts, sizes, and the select-all targeting
  * filters/excludes.
  *
- * #1925 PIN: `selectAllFilters` must ALWAYS combine `columnFiltersExpr` with
- * `filters.expr` when both are present. This is deliberately DIFFERENT from
- * `useTorrentTableFilterExpr`'s `combinedFiltersExpr`, which early-returns the
- * cross-seed expression alone. Collapsing the two re-introduces #1925 (bulk
- * actions matching more torrents than the user sees).
+ * `selectAllFilters` always combines column filters with `filters.expr`
+ * (#1925), unlike the list expression in `useTorrentTableFilterExpr`.
  */
 export function useTorrentSelectionDerivations({
   isAllSelected,
@@ -55,6 +55,7 @@ export function useTorrentSelectionDerivations({
   getVisibleRows,
   sortedTorrents,
   columnFiltersExpr,
+  clientSideFiltering = false,
   filters,
   stats,
   totalCount,
@@ -66,56 +67,50 @@ export function useTorrentSelectionDerivations({
   const getVisibleRowsRef = useRef(getVisibleRows)
   getVisibleRowsRef.current = getVisibleRows
 
-  // Get selected torrent hashes - handle both regular selection and "select all" mode
-  const selectedHashes = useMemo((): string[] => {
+  // Get selected torrents - handle both regular selection and "select all" mode
+  const selectedTorrents = useMemo((): Torrent[] => {
     if (isAllSelected) {
-      // When all are selected, return all currently loaded hashes minus exclusions
-      // This is needed for actions to work properly
-      return sortedTorrents
+      // The table's row model, not sortedTorrents: in cross-seed mode the column
+      // filter applies client-side, and select-all is the visible set (#1925).
+      return getVisibleRowsRef.current()
+        .map(row => row.original)
         .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-        .map(torrent => torrent.hash)
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_HASHES
-      }
-      // Regular selection mode - get hashes from selected torrents directly
-      const tableRows = getVisibleRowsRef.current()
-      return tableRows
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original.hash)
     }
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, getSelectionIdentity])
+    if (selectedRowIdSet.size === 0) {
+      return EMPTY_TORRENTS
+    }
+    return getVisibleRowsRef.current()
+      .filter(row => selectedRowIdSet.has(row.id))
+      .map(row => row.original)
+    // The row model is read through the ref; sortedTorrents and columnFiltersExpr are its inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, columnFiltersExpr, getSelectionIdentity])
+
+  const selectedHashes = useMemo(
+    (): string[] => selectedTorrents.length === 0 ? EMPTY_HASHES : selectedTorrents.map(torrent => torrent.hash),
+    [selectedTorrents]
+  )
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
     if (isAllSelected) {
-      // When all selected, count is total minus exclusions
+      // The backend total does not know a client-side column filter; the
+      // visible rows do, and a select-all action reaches exactly those.
+      // ponytail: counts loaded rows only, so a cross-seed set past one page
+      // (300) under-reports; a cross-seed expression is one torrent's siblings.
+      if (clientSideFiltering) {
+        return selectedTorrents.length
+      }
       return Math.max(0, totalCount - excludedFromSelectAll.size)
     } else {
       // Regular selection mode - use the computed selectedHashes length
       return selectedRowIds.length
     }
-  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
-
-  // Get selected torrents
-  const selectedTorrents = useMemo((): Torrent[] => {
-    if (isAllSelected) {
-      // When all are selected, return all torrents minus exclusions
-      return sortedTorrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
-    } else {
-      if (selectedRowIdSet.size === 0) {
-        return EMPTY_TORRENTS
-      }
-      // Regular selection mode
-      return getVisibleRowsRef.current()
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original)
-    }
-  }, [selectedRowIdSet, sortedTorrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
+  }, [isAllSelected, clientSideFiltering, selectedTorrents.length, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
+    if (isAllSelected && !clientSideFiltering) {
       const aggregateTotalSize = stats?.totalSize ?? 0
 
       if (aggregateTotalSize <= 0) {
@@ -137,7 +132,7 @@ export function useTorrentSelectionDerivations({
     }
 
     return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
+  }, [isAllSelected, clientSideFiltering, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
@@ -167,33 +162,9 @@ export function useTorrentSelectionDerivations({
       return undefined
     }
 
-    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
-    // so select-all operations target exactly the visible set.
-    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
-    // causing bulk actions to match more torrents than the user sees.
-    const combinedExpr = (columnFiltersExpr && filters?.expr)? `(${columnFiltersExpr}) && (${filters.expr})`: (columnFiltersExpr || filters?.expr)
-
-    if (filters) {
-      return {
-        ...filters,
-        expr: combinedExpr ?? filters.expr ?? "",
-      }
-    }
-
-    if (combinedExpr == null) {
-      return undefined
-    }
-
     return {
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: combinedExpr,
+      ...filters,
+      expr: combineFilterExpr(columnFiltersExpr, filters.expr) ?? "",
     }
   }, [isAllSelected, filters, columnFiltersExpr])
 

@@ -29,10 +29,12 @@
     "selectState": "Sélectionner un état",
     "selectScope": "Sélectionner une portée",
     "selectTrackerStatus": "Sélectionner un statut",
+    "selectContentType": "Sélectionner un type de contenu",
     "true": "Vrai",
     "false": "Faux",
     "selectCategory": "Sélectionner une catégorie",
     "uncategorized": "Non catégorisé",
+    "customContentType": "{{value}} (non supporté)",
     "regexEnabled": "Regex activée",
     "enableRegex": "Activer regex",
     "selectField": "Sélectionner un champ",
@@ -138,6 +140,8 @@
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed existe sur la même instance",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed en partage sur la même instance",
       "CROSS_SEED_TAGS": "Tags des cross-seeds",
+      "SEASON_PACK_STATUS": "Statut du pack de saison",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Statut du pack de saison (toute instance)",
       "HARDLINK_SCOPE": "Portée du lien physique"
     },
     "fieldGroups": {
@@ -194,6 +198,11 @@
       "inside_qbittorrent": "Dans qBittorrent (même si aussi lié à l'extérieur)",
       "outside_qbittorrent": "En dehors de qBittorrent (bibliothèque/import)",
       "both": "Dans qBittorrent + en dehors"
+    },
+    "seasonPackStatuses": {
+      "pack": "Pack de saison",
+      "packed": "Épisode couvert par un pack de saison",
+      "unpacked": "Épisode sans pack de saison"
     },
     "trackerStatuses": {
       "not_contacted": "Non contacté",

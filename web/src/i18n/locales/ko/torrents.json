@@ -1014,10 +1014,6 @@
       "label": "피어",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "피어 차단",
-      "description": "{{address}}을(를) 차단하시겠습니까?"
-    },
     "banPeerPermanent": {
       "title": "피어 영구 차단",
       "description": "이 피어를 영구적으로 차단하시겠습니까? 이 작업은 취소할 수 없습니다.",

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -69,7 +69,7 @@ func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 	)
 	svc := newGroupFallbackService()
 	rawSplit := svc.releaseCache.Parse(split)
-	decision := svc.classifySearchCandidate(searchCandidateInput{
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
 		Candidate:     namedRelease{release: rawSplit, rawName: split},
 		SourceSize:    2_000,
@@ -82,7 +82,7 @@ func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 		{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000},
 	}, true)
 	require.Empty(t, view.release.Site, "the selected-file view does not carry the raw Site field")
-	require.True(t, svc.explicitGroupsFitFallbackIdentity(view, decision.GroupFallbackIdentity),
+	require.True(t, svc.matcher().explicitGroupsFitFallbackIdentity(view, decision.GroupFallbackIdentity),
 		"a selected file without a group must not contradict the raw split identity")
 }
 
@@ -95,7 +95,7 @@ func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000}}
 	torrent := &qbt.Torrent{Name: split}
 	view := svc.searchSourceReleaseViewFromFiles(context.Background(), torrent, svc.releaseCache.Parse(split), files)
-	decision := svc.classifySearchCandidate(searchCandidateInput{
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        view,
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
 		SourceSize:    2_000,
@@ -106,7 +106,7 @@ func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
 }
 
 func classifyGroupPair(svc *Service, sourceName, candidateName string, sourceSize, candidateSize int64) searchCandidateDecision {
-	return svc.classifySearchCandidate(searchCandidateInput{
+	return svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: svc.releaseCache.Parse(sourceName), rawName: sourceName},
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName},
 		SourceSize:    sourceSize,
@@ -164,7 +164,7 @@ func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 		{name: "tagged source", source: fansubTaggedPack, target: fansubBracketPack},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			strict, reason := svc.releasesMatchWithReasonAndNamesAndTitles(
+			strict, reason := svc.matcher().releasesMatchWithReasonAndNamesAndTitles(
 				svc.releaseCache.Parse(tt.source),
 				svc.releaseCache.Parse(tt.target),
 				tt.source, tt.target, nil, nil, false,
@@ -209,8 +209,8 @@ func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 			target := svc.releaseCache.Parse(tt.target)
 			sourceSide := namedRelease{release: source, rawName: tt.source}
 			targetSide := namedRelease{release: target, rawName: tt.target}
-			require.False(t, svc.crossFieldGroupSiteFallback(sourceSide, targetSide))
-			require.NotContains(t, svc.observedReleaseDifferences(sourceSide, targetSide), "group")
+			require.False(t, svc.matcher().crossFieldGroupSiteFallback(sourceSide, targetSide))
+			require.NotContains(t, svc.matcher().observedReleaseDifferences(sourceSide, targetSide), "group")
 
 			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
 			require.False(t, decision.Accepted, "class: %s", decision.Class)
@@ -225,7 +225,7 @@ func TestGroupSiteFallback_RejectsImpossiblePublicFieldsCheaply(t *testing.T) {
 
 	var matched bool
 	allocations := testing.AllocsPerRun(100, func() {
-		matched = svc.crossFieldGroupSiteFallback(source, target)
+		matched = svc.matcher().crossFieldGroupSiteFallback(source, target)
 	})
 
 	require.False(t, matched)
@@ -245,7 +245,7 @@ func TestGroupSiteFallback_RequiresFallbackGroupProvenance(t *testing.T) {
 	source.Group = "Unexplained"
 	require.False(t, releaseHasGroupTag(&source, source.Group))
 
-	decision := svc.classifySearchCandidate(searchCandidateInput{
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: &source, rawName: fansubBracketPack},
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(fansubTaggedPack), rawName: fansubTaggedPack},
 		SourceSize:    fansubPackSize,
@@ -271,7 +271,7 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	require.Empty(t, bare.Group)
 	require.Empty(t, bare.Site)
 
-	require.False(t, svc.crossFieldGroupSiteFallback(
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
 		namedRelease{release: siteOnly, rawName: bareFansubEpisode},
 		namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 	))
@@ -282,17 +282,17 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	labelled := svc.releaseCache.Parse(labelWithoutGroup)
 	require.Empty(t, labelled.Group, "fixture must leave the group empty")
 	require.Equal(t, "eztv", labelled.Site)
-	require.False(t, svc.crossFieldGroupSiteFallback(
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
 		namedRelease{release: labelled, rawName: labelWithoutGroup},
 		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup},
 	))
 
 	// Strict matching tolerates the missing candidate tag exactly as before.
-	ok, reason := svc.validateGroupSiteAndChecksum(siteOnly, bare, false)
+	ok, reason := svc.matcher().validateGroupSiteAndChecksum(siteOnly, bare, false)
 	require.True(t, ok, "unexpected rejection: %s", reason)
 
 	// An empty identity still cannot buy exact-size permission.
-	ok, reason = svc.validateExactSizeSearchIdentity(searchCandidateInput{
+	ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 		Source:        namedRelease{release: siteOnly, rawName: bareFansubEpisode},
 		Candidate:     namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 		SourceSize:    fansubPackSize,
@@ -316,8 +316,8 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	tagged := svc.releaseCache.Parse(fansubTaggedPack)
 	repeatedSide := namedRelease{release: repeated, rawName: fansubRepeatedTag}
 	taggedSide := namedRelease{release: tagged, rawName: fansubTaggedPack}
-	require.False(t, svc.crossFieldGroupSiteFallback(repeatedSide, taggedSide))
-	require.NotContains(t, svc.observedReleaseDifferences(repeatedSide, taggedSide), "group")
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(repeatedSide, taggedSide))
+	require.NotContains(t, svc.matcher().observedReleaseDifferences(repeatedSide, taggedSide), "group")
 
 	// The pairing still matches, on the codec the two names actually differ by.
 	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)
@@ -576,7 +576,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 	require.True(t, isTVEpisode(raw), "the raw fixture must reach the episode shape gate")
 	view := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, raw, files)
 	require.True(t, isTVSeasonPack(view.release), "search must derive the pack from its files")
-	decision := svc.classifySearchCandidate(searchCandidateInput{
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:                 view,
 		Candidate:              namedRelease{release: svc.releaseCache.Parse(packName), rawName: packName},
 		SourceSize:             size,
@@ -683,7 +683,7 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 	rawSource := svc.releaseCache.Parse(rawS01)
 	searchSource := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, rawSource, files)
 	require.Equal(t, 2, searchSource.release.Series)
-	decision := svc.classifySearchCandidate(searchCandidateInput{
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        searchSource,
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(rawS01), rawName: rawS01},
 		SourceSize:    size,
@@ -733,7 +733,7 @@ func TestGroupSiteFallback_ReadsProvenanceThroughEnrichment(t *testing.T) {
 		require.Equal(t, "FoV", enriched.Group, "the group comes from the torrent name")
 		require.Equal(t, "eztv", enriched.Site, "the site comes from the file name")
 
-		require.False(t, svc.crossFieldGroupSiteFallback(
+		require.False(t, svc.matcher().crossFieldGroupSiteFallback(
 			namedRelease{release: enriched, rawName: torrentName},
 			namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup}),
 			"FoV must not be reinterpreted as the eztv label")
@@ -744,7 +744,7 @@ func TestGroupSiteFallback_ReadsProvenanceThroughEnrichment(t *testing.T) {
 		enriched := enrich(torrentName, "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.mkv")
 		require.Equal(t, "KIRI", enriched.Group)
 
-		require.True(t, svc.crossFieldGroupSiteFallback(
+		require.True(t, svc.matcher().crossFieldGroupSiteFallback(
 			namedRelease{release: enriched, rawName: torrentName},
 			namedRelease{release: svc.releaseCache.Parse(fansubBracketPack), rawName: fansubBracketPack}),
 			"losing the tag to enrichment must not lose the rescue")
@@ -768,7 +768,7 @@ func TestGroupSiteFallback_KeepsFileGroupProvenance(t *testing.T) {
 	require.False(t, releaseHasGroupTag(releases.DefaultParser.Parse(torrentName), enriched.Group),
 		"fixture must give the torrent name no say: it never mentions this group")
 
-	require.False(t, svc.crossFieldGroupSiteFallback(
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
 		namedRelease{release: enriched, rawName: torrentName},
 		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup}),
 		"a group the file tagged properly is not a word rls guessed at")
@@ -846,7 +846,7 @@ func TestGroupSiteFallback_RejectsConflictingEnrichmentProvenance(t *testing.T) 
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			decision := svc.classifySearchCandidate(searchCandidateInput{
+			decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: tt.sourceRelease, rawName: tt.sourceName},
 				Candidate:     namedRelease{release: tt.candidateRelease, rawName: tt.candidateName},
 				SourceSize:    fansubPackSize,

@@ -32,6 +32,7 @@
     "false": "Nepravda",
     "selectCategory": "Vybrat kategorii",
     "uncategorized": "Nekategorizované",
+    "customContentType": "{{value}} (nepodporováno)",
     "regexEnabled": "Regex zapnuto",
     "enableRegex": "Povolit regex",
     "selectField": "Vybrat pole",
@@ -134,6 +135,8 @@
       "EXISTS_ON_SAME_INSTANCE": "Křížové sdílení existuje na stejné instanci",
       "SEEDING_ON_SAME_INSTANCE": "Křížové sdílení na stejné instanci",
       "CROSS_SEED_TAGS": "Tagy cross-seedů",
+      "SEASON_PACK_STATUS": "Stav sezónního balíčku",
+      "SEASON_PACK_STATUS_ANY_INSTANCE": "Stav sezónního balíčku (libovolná instance)",
       "HARDLINK_SCOPE": "Rozsah hardlinků",
       "RLS_YEAR": "Rok (RLS)",
       "TRACKER_STATUS": "Stav trackeru",
@@ -194,6 +197,11 @@
       "outside_qbittorrent": "Mimo qBittorrent (knihovna/import)",
       "both": "Uvnitř + mimo qBittorrent"
     },
+    "seasonPackStatuses": {
+      "pack": "Sezónní balíček",
+      "packed": "Epizoda pokrytá sezónním balíčkem",
+      "unpacked": "Epizoda bez sezónního balíčku"
+    },
     "durationUnits": {
       "minutes": "minut",
       "hours": "hodin",
@@ -205,6 +213,7 @@
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému"
     },
     "selectTrackerStatus": "Vybrat stav",
+    "selectContentType": "Vybrat typ obsahu",
     "trackerStatuses": {
       "not_contacted": "Nekontaktováno",
       "working": "Funguje",
