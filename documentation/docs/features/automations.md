@@ -170,7 +170,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 
 | Field | Description |
 | --- | --- |
-| Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines and courses |
+| Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines; courses are `unknown` |
 | Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty) |
 | Release Source | Parsed release specifier (for example `WEBDL`, `WEBRIP`, `BLURAY`, can be empty) |
 | Release Resolution | Parsed release specifier (for example `1080p`, can be empty) |

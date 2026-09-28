@@ -46,8 +46,6 @@ var ContentTypes = []ContentType{
 type ContentTypeInfo struct {
 	// ContentType is one of ContentTypes.
 	ContentType ContentType
-	// MediaType is an optional detected media format (e.g. "cd", "dvd-video", "bluray").
-	MediaType string
 }
 
 // normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
@@ -240,6 +238,14 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	}
 
 	release = normalizeReleaseTypeForContent(release)
+	return ClassifyAs(release, release.Type)
+}
+
+// ClassifyAs classifies a release as if it parsed as releaseType. Unlike
+// DetermineContentType it skips the music-to-video rescue, so callers that
+// already know the type from other evidence keep it.
+func ClassifyAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
+	var info ContentTypeInfo
 
 	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {
@@ -258,7 +264,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		return info
 	}
 
-	switch release.Type {
+	switch releaseType {
 	case rls.Movie:
 		info.ContentType = ContentTypeMovie
 	case rls.Episode, rls.Series:
@@ -267,7 +273,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = ContentTypeMusic
 	case rls.Audiobook:
 		info.ContentType = ContentTypeAudiobook
-	case rls.Book, rls.Education, rls.Magazine:
+	case rls.Book, rls.Magazine:
 		info.ContentType = ContentTypeBook
 	case rls.Comic:
 		info.ContentType = ContentTypeComic
@@ -275,6 +281,11 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = ContentTypeGame
 	case rls.App:
 		info.ContentType = ContentTypeApp
+	case rls.Education:
+		// rls mixes video courses with book publishers here. Book would skip the
+		// courses and the year fallback would search them as movies, so they skip
+		// the fallback.
+		info.ContentType = ContentTypeUnknown
 	case rls.Unknown:
 		// Fall back below.
 	}
@@ -293,22 +304,15 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 
 	// Last resort: infer from RIAJ media type.
 	if info.ContentType == ContentTypeUnknown {
-		info.MediaType = detectRIAJMediaType(release.Title)
-		if info.MediaType != "" {
-			switch info.MediaType {
-			case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio":
-				info.ContentType = ContentTypeMusic
-			case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
-				info.ContentType = ContentTypeMovie
-			case "cd-rom", "dvd-music":
-				if info.MediaType == "dvd-music" {
-					info.ContentType = ContentTypeMusic
-				} else {
-					info.ContentType = ContentTypeApp
-				}
-			case "ps-game":
-				info.ContentType = ContentTypeGame
-			}
+		switch detectRIAJMediaType(release.Title) {
+		case "cd", "cd-single", "sacd", "md", "cassette-single", "cassette-album", "cd-g", "vinyl-lp", "vinyl-ep", "cd-video", "dvd-audio", "dvd-music":
+			info.ContentType = ContentTypeMusic
+		case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
+			info.ContentType = ContentTypeMovie
+		case "cd-rom":
+			info.ContentType = ContentTypeApp
+		case "ps-game":
+			info.ContentType = ContentTypeGame
 		}
 	}
 
