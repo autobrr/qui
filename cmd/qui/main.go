@@ -107,6 +107,8 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
+		// On Windows the first process only supervises; the child returns here.
+		update.Supervise()
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
 		app.runServer()
 	}

@@ -13,16 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const restartSupported = true
-
-func checkBinary(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", path)
-	}
+func checkExecutable(path string) error {
 	if err := unix.Access(path, unix.X_OK); err != nil {
 		return fmt.Errorf("%s is not executable: %w", path, err)
 	}
@@ -36,3 +27,6 @@ func execBinary(path string) error {
 	//nolint:gosec // G204: path is qui's own binary, resolved at startup, and argv is qui's own
 	return syscall.Exec(path, os.Args, os.Environ())
 }
+
+// Supervise does nothing on Unix, where a Restart execs in place.
+func Supervise() {}

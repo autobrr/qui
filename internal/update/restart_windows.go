@@ -3,18 +3,16 @@
 
 package update
 
-import "errors"
+import "os"
 
-// restartSupported hides the Restart on Windows until #2858 adds it through a
-// supervisor process.
-const restartSupported = false
-
-var errWindowsRestart = errors.New("restart is not supported on Windows yet")
-
-func checkBinary(string) error {
-	return errWindowsRestart
+// checkExecutable passes: Windows has no execute bit.
+func checkExecutable(string) error {
+	return nil
 }
 
+// execBinary ends the child. Its supervisor starts the binary again, which
+// holds the new release after a Self-update.
 func execBinary(string) error {
-	return errWindowsRestart
+	os.Exit(restartExitCode)
+	return nil
 }

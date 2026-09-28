@@ -29,9 +29,8 @@ type Availability struct {
 
 func Decide(in Inputs) Availability {
 	return Availability{
-		// A Self-update ends in a Restart, so it needs one.
-		SelfUpdate: restartSupported && !in.AppContainer && !in.DisableSelfUpdate && in.ReleaseVersion && in.DirWritable,
-		Restart:    restartSupported && !in.AppContainer,
+		SelfUpdate: !in.AppContainer && !in.DisableSelfUpdate && in.ReleaseVersion && in.DirWritable,
+		Restart:    !in.AppContainer,
 	}
 }
 

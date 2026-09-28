@@ -72,6 +72,16 @@ In the Task Scheduler list, right-click **qui** and click **Run**.
 To restart the service, click **End** and then **Run** in the right sidebar of Task Scheduler.
 :::
 
+## Restart from qui
+
+qui can restart itself through the API (`POST /api/system/restart`). On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
+
+- The task shows **Running** during and after the restart.
+- **End** stops both processes.
+- **Run** does not start a second copy while qui runs. The task setting **If the task is already running, then the following rule applies: Do not start a new instance** controls this. It is the default.
+
+A task that you created with the steps above needs no change.
+
 ## Updating
 
 qui has a built-in update command. Stop the scheduled task first. A running task keeps the old version until you restart it.
@@ -82,6 +92,21 @@ qui has a built-in update command. Stop the scheduled task first. A running task
    .\qui.exe update
    ```
 3. Right-click the **qui** task again and click **Run** to restart it.
+
+### Roll back an update
+
+The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`. Each update deletes older backups. The first `qui.exe` process still runs from the file that it started from, so that backup stays until the task stops.
+
+1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
+2. In **Command Prompt**, move the backup back. Replace `1.30.0` with the version in the backup file name:
+   ```bat
+   move /Y "C:\qui\qui-v1.30.0.bak.exe" "C:\qui\qui.exe"
+   ```
+3. Right-click the **qui** task and click **Run**.
+
+:::warning
+A new version can migrate the database. The old version cannot always read a migrated database, and a binary swap does not undo a migration. Back up `%APPDATA%\qui\` before you update if you want a full rollback.
+:::
 
 ## Reverse proxy (optional)
 
