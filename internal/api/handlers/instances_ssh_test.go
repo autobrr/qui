@@ -66,6 +66,7 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)
+	router.Delete("/api/instances/{instanceID}", handler.DeleteInstance)
 	router.Put("/api/instances/{instanceID}/ssh-credentials", handler.UpdateSSHCredentials)
 	router.Delete("/api/instances/{instanceID}/ssh-credentials", handler.DeleteSSHCredentials)
 	router.Post("/api/instances/{instanceID}/ssh-test", handler.TestSSHConnection)
@@ -330,6 +331,11 @@ func TestSSHRoutesInvalidateThePool(t *testing.T) {
 	client = open()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 	assert.True(t, closed(client), "clearing credentials must end the old session")
+
+	f.putCredentials()
+	client = open()
+	require.Equal(t, http.StatusOK, f.do(http.MethodDelete, "", "").Code)
+	assert.True(t, closed(client), "deleting the instance must end its session")
 }
 
 // A dial for an instance with credentials but no pin memoises a refusal that

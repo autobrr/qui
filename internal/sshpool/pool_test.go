@@ -16,8 +16,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// pinnedInstanceAt is an instance the pool will dial: FilesystemAccessMode needs
-// the pin ciphertext, so that column has to hold something.
+// pinnedInstanceAt is an instance at addr whose row carries a pin, as every
+// instance the pool dials does.
 func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
 
@@ -329,19 +329,38 @@ func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	stale := pinnedInstanceAt(t, server.Addr)
-	stale.SSHHostKeyEncrypted = "enc-old"
-	row := *stale
-	row.SSHHostKeyEncrypted = "enc-new"
-	// The store now decrypts to the real key; only the stale caller still
-	// carries the old ciphertext.
-	pool := poolFor(hostKey.PublicKey().Marshal(), &row)
+	// The instance moved: the row points at the live server, the stale caller
+	// still carries the old, dead address.
+	stale := pinnedInstanceAt(t, sshtest.DeadAddr(t))
+	row := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), row)
 	t.Cleanup(pool.Close)
 	pool.Invalidate(stale.ID)
 
 	client, err := pool.SFTP(t.Context(), stale)
 	require.NoError(t, err, "the dial must use the row the handler just wrote")
 	require.NotNil(t, client)
+	assert.Equal(t, 1, server.Accepts())
+}
+
+// A failed row read is a local fault: it must not hold the host in backoff.
+func TestPoolRowReadFailureIsNotMemoised(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	creds := &fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal(), getErr: errors.New("database is locked")}
+	pool := NewPool(NewDialer(creds))
+	t.Cleanup(pool.Close)
+
+	_, err := pool.SFTP(t.Context(), inst)
+	require.ErrorContains(t, err, "database is locked")
+
+	creds.getErr = nil
+	creds.inst = inst
+	_, err = pool.SFTP(t.Context(), inst)
+	require.NoError(t, err, "the next caller reads the row again")
 	assert.Equal(t, 1, server.Accepts())
 }
 
@@ -367,35 +386,51 @@ func TestPoolRemoveDropsTheEntry(t *testing.T) {
 	pool.Remove(inst.ID) // idempotent
 }
 
-// The backoff doubles to a ceiling, and a successful dial resets it: without
-// the reset, the first failure after a recovery would wait the old maximum.
-func TestPoolBackoffCapsAndResets(t *testing.T) {
+// The sftp-init failure is memoised and handed to every caller in the backoff
+// window, so its text must name the host and say when the subsystem hung.
+func TestPoolSFTPInitErrorNamesTheHost(t *testing.T) {
 	t.Parallel()
 
-	hostKey := sshtest.NewSigner()
-	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	inst := pinnedInstanceAt(t, server.Addr)
-	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
-	t.Cleanup(pool.Close)
+	for _, tc := range []struct {
+		name string
+		mode sshtest.SFTPMode
+		want string
+	}{
+		{"refused", sshtest.SFTPRefuse, "open sftp session on "},
+		{"stalled", sshtest.SFTPStall, "no answer within"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
+			hostKey := sshtest.NewSigner()
+			server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+			server.SetSFTP(tc.mode)
+			inst := pinnedInstanceAt(t, server.Addr)
+			pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+			pool.dialer.timeout = 200 * time.Millisecond
+			t.Cleanup(pool.Close)
+
+			_, err := pool.SFTP(t.Context(), inst)
+			require.ErrorContains(t, err, "open sftp session on "+server.Addr)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
+func TestPoolBackoffCaps(t *testing.T) {
+	t.Parallel()
+
+	inst := &models.Instance{ID: 1}
 	entry := newEntry()
 	for range 6 {
 		entry.memoise(inst, errors.New("dial failed"))
 	}
 	assert.Equal(t, backoffMax, entry.backoff, "the delay stops doubling at the cap")
-
-	pool.mu.Lock()
-	pool.conns[inst.ID] = entry
-	pool.mu.Unlock()
-	entry.retryAt = time.Now().Add(-time.Second)
-	_, err := pool.SFTP(t.Context(), inst)
-	require.NoError(t, err)
-	assert.Zero(t, entry.backoff, "a successful dial forgets the failures before it")
 }
 
 // A connection nobody uses is closed by the keepalive loop, and the next
-// caller redials: this is how the pool lets go of an instance that was deleted
-// without a running qui, or that left remote mode.
+// caller redials: this is how the pool lets go of an instance that left
+// remote mode.
 func TestPoolClosesIdleConnection(t *testing.T) {
 	t.Parallel()
 

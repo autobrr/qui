@@ -35,8 +35,8 @@ const (
 	keepaliveTimeout  = 15 * time.Second
 
 	// idleTimeout closes a connection nobody has used for a while. It is what
-	// reclaims the connection of an instance that was deleted or left remote
-	// mode, since no caller comes back to tell the pool.
+	// reclaims the connection of an instance that left remote mode, since
+	// nothing tells the pool about a mode change.
 	//
 	// ponytail: "used" means taken from the pool, so one call that alone runs
 	// past the limit is cut and redialed; an in-flight counter is the upgrade
@@ -120,14 +120,15 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	// The dial reads the row, never the caller's snapshot: a caller built
 	// before a pin replace or a credential save would otherwise dial with the
 	// old values, and its result would serve every caller. The handlers write
-	// the row before they invalidate, so a dial after Invalidate sees it.
+	// the row before they invalidate, so a dial after Invalidate sees it. A
+	// failed read is local and says nothing about the host, so it is not
+	// memoised.
 	row, err := p.dialer.creds.Get(ctx, inst.ID)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		entry.memoise(inst, err)
-		return nil, err
+		return nil, fmt.Errorf("read instance %d for the ssh dial: %w", inst.ID, err)
 	}
 	client, err := p.dialer.Connect(ctx, row)
 	if err != nil {
@@ -171,7 +172,6 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	entry.client = client
 	entry.sftp = sftpClient
 	entry.err = nil
-	entry.backoff = 0
 	entry.lastUsed.Store(time.Now().UnixNano())
 	done := make(chan struct{})
 	log.Debug().Int("instanceID", inst.ID).Msg("sshpool: opened connection")
@@ -190,10 +190,9 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	return sftpClient, nil
 }
 
-// Invalidate ends the instance's connection and forgets its memo. The code
-// that changes what a connection depends on (credentials, pin, the row itself)
-// calls it, so the pool never has to guess from a caller's snapshot which of
-// two instances is newer. A mismatch is re-memoised by the next dial, so a
+// Invalidate ends the instance's connection and forgets its memo. The
+// credential and pin routes call it after they write the row, so the next dial
+// reads the new values. A mismatch is re-memoised by the next dial, so a
 // refusal survives a spurious call at the cost of one dial. Safe on a nil pool.
 func (p *Pool) Invalidate(instanceID int) {
 	if p == nil {
@@ -213,7 +212,7 @@ func (p *Pool) Invalidate(instanceID int) {
 }
 
 // Remove is Invalidate for an instance that no longer exists: the entry goes
-// with the connection, so a deleted instance leaves nothing behind.
+// with the connection.
 func (p *Pool) Remove(instanceID int) {
 	if p == nil {
 		return

@@ -28,8 +28,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// fakeCreds stands in for the instance store: the dialer reads only these two
-// values, so the tests need no database.
+// fakeCreds stands in for the instance store: the row Get answers with, plus
+// the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
 	key  string
 	pin  []byte
@@ -54,12 +54,7 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
-	// FilesystemAccessMode wants a pin ciphertext, so the column holds
-	// something even though this fake decrypts to a fixed key.
-	inst := &models.Instance{
-		ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui",
-		SSHHostKeyEncrypted: "enc-v1",
-	}
+	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui"}
 	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
 		key:  sshtest.PrivateKey(""),
 		pin:  hostKey.PublicKey().Marshal(),
@@ -345,6 +340,46 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 	require.Len(t, lost, 1, "one Err entry ends the walk")
 	require.ErrorIs(t, lost[0].Err, fsops.ErrConnectionLost)
 	assert.Equal(t, "z", lost[0].RelPath, "the directory the walk could not read is named")
+	assert.False(t, sawZ)
+}
+
+// A connection that drops while a directory read is in flight ends the walk
+// the same way: the read fails with pkg/sftp's connection-lost status, not
+// with a refusal the walk would step over.
+func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	dir := t.TempDir()
+	// "a" holds more files than the walk channel buffers, so its listing is
+	// done and the walk is parked inside it when the trap is armed; the next
+	// request is the opendir for "z".
+	for i := range 100 {
+		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
+	}
+	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+
+	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
+	require.NoError(t, err)
+	for range 3 {
+		<-ch
+	}
+	server.SetSFTP(sshtest.SFTPDropOnNextRequest)
+
+	var errs []fsops.WalkEntry
+	sawZ := false
+	for entry := range ch {
+		if entry.Err != nil {
+			errs = append(errs, entry)
+		}
+		if entry.RelPath == path.Join("z", "last.txt") {
+			sawZ = true
+		}
+	}
+	require.Len(t, errs, 1, "one Err entry ends the walk")
+	require.ErrorIs(t, errs[0].Err, fsops.ErrConnectionLost)
+	require.ErrorIs(t, errs[0].Err, sftp.ErrSSHFxConnectionLost)
+	assert.Equal(t, "z", errs[0].RelPath)
 	assert.False(t, sawZ)
 }
 
