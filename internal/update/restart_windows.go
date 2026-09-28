@@ -67,7 +67,7 @@ func supervise() (int, error) {
 		if err != nil {
 			return err
 		}
-		defer windows.CloseHandle(h)
+		defer func() { _ = windows.CloseHandle(h) }()
 		return windows.AssignProcessToJobObject(job, h)
 	})
 }
@@ -84,7 +84,7 @@ func newKillOnCloseJob() (windows.Handle, error) {
 	}
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
-		windows.CloseHandle(job)
+		_ = windows.CloseHandle(job)
 		return 0, err
 	}
 	return job, nil

@@ -4,6 +4,7 @@
 package update
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -23,7 +24,7 @@ const supervisedEnv = "QUI_SUPERVISED"
 func runSupervisor(path string, adopt func(*os.Process) error) (int, error) {
 	for {
 		//nolint:gosec // G204: path is qui's own binary, resolved at startup, and argv is qui's own
-		cmd := exec.Command(path)
+		cmd := exec.CommandContext(context.Background(), path)
 		cmd.Args = os.Args
 		cmd.Env = append(os.Environ(), supervisedEnv+"=1")
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
