@@ -27,12 +27,14 @@ import (
 // LogsHandler handles log settings and streaming endpoints.
 type LogsHandler struct {
 	appConfig *config.AppConfig
+	shutdown  <-chan struct{}
 }
 
-// NewLogsHandler creates a new LogsHandler.
-func NewLogsHandler(appConfig *config.AppConfig) *LogsHandler {
+// NewLogsHandler creates a new LogsHandler. The log stream ends when shutdown closes.
+func NewLogsHandler(appConfig *config.AppConfig, shutdown <-chan struct{}) *LogsHandler {
 	return &LogsHandler{
 		appConfig: appConfig,
+		shutdown:  shutdown,
 	}
 }
 
@@ -296,6 +298,8 @@ func (h *LogsHandler) streamLoop(ctx context.Context, w http.ResponseWriter, flu
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-h.shutdown:
 			return
 		case line, ok := <-sub.Channel():
 			if !ok {
