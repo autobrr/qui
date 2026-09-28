@@ -17,6 +17,8 @@ type Inputs struct {
 	DisableSelfUpdate bool
 	ReleaseVersion    bool
 	DirWritable       bool
+	// BinaryPath is the resolved binary that a Restart execs. Decide ignores it.
+	BinaryPath string
 }
 
 // Availability reports which of Self-update and Restart qui offers.
@@ -28,7 +30,7 @@ type Availability struct {
 func Decide(in Inputs) Availability {
 	return Availability{
 		SelfUpdate: !in.AppContainer && !in.DisableSelfUpdate && in.ReleaseVersion && in.DirWritable,
-		Restart:    !in.AppContainer,
+		Restart:    restartSupported && !in.AppContainer,
 	}
 }
 
@@ -45,6 +47,7 @@ func Measure(log zerolog.Logger, disableSelfUpdate bool, version string) Inputs 
 
 	binaryPath, err := resolveBinaryPath()
 	if err == nil {
+		in.BinaryPath = binaryPath
 		err = probeWritable(filepath.Dir(binaryPath))
 		in.DirWritable = err == nil
 	}
