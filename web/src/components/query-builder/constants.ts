@@ -232,6 +232,22 @@ export const HARDLINK_SCOPE_VALUES = [
   { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
 ];
 
+// Content types from release parsing. Mirrors releases.ContentTypes in
+// pkg/releases/content_type.go, which constants.test.ts enforces. A rule-forceable
+// subset of the same values lives in cross-seed/CategoryMappingRulesEditor.tsx.
+export const CONTENT_TYPE_VALUES = [
+  { value: "movie", label: "Movie" },
+  { value: "tv", label: "TV" },
+  { value: "music", label: "Music" },
+  { value: "audiobook", label: "Audiobook" },
+  { value: "book", label: "Book" },
+  { value: "comic", label: "Comic" },
+  { value: "game", label: "Game" },
+  { value: "app", label: "App" },
+  { value: "adult", label: "Adult" },
+  { value: "unknown", label: "Unknown" },
+];
+
 // Season pack status values (matches backend wire format)
 export const SEASON_PACK_STATUS_VALUES = [
   { value: "pack", label: "Season pack" },
@@ -483,6 +499,14 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
   return HARDLINK_SCOPE_VALUES.map((scope) => ({
     value: scope.value,
     label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
+  }));
+}
+
+/** Get translated content type values */
+export function getTranslatedContentTypes(t: TFunction): { value: string; label: string }[] {
+  return CONTENT_TYPE_VALUES.map((contentType) => ({
+    value: contentType.value,
+    label: t(`common:contentTypeLabels.${contentType.value}`, { defaultValue: contentType.label }),
   }));
 }
 
