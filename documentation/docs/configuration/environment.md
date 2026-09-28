@@ -117,6 +117,7 @@ QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remo
 
 ```bash
 QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
+QUI__DISABLE_SELF_UPDATE=true  # Optional: turn off Self-update, for packages that control the qui version (default: false)
 ```
 
 ## Profiling (pprof)

@@ -7610,6 +7610,8 @@ components:
       required:
         - version
         - updateAvailable
+        - selfUpdate
+        - restart
       properties:
         version:
           type: string
@@ -7622,6 +7624,14 @@ components:
         updateAvailable:
           type: boolean
           description: Whether a newer release than the running version is available
+          example: true
+        selfUpdate:
+          type: boolean
+          description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
+          example: true
+        restart:
+          type: boolean
+          description: Whether qui can restart itself. False in an app container.
           example: true
 
     QBittorrentBuildInfo:

@@ -59,3 +59,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Allowed Hosts**: The optional list of hostnames and IP addresses a request may use to reach qui. Empty means every host. _Avoid_: Host allowlist, host filter.
 - **Received Host**: The `Host` header, or the HTTP/2 `:authority`, as the main listener sees it. Never `X-Forwarded-Host`. _Avoid_: Forwarded host, original host.
+
+## Updating qui
+
+- **Self-update**: qui replaces its own binary with a verified release, then restarts. _Avoid_: Upgrade, auto-update.
+- **Restart**: qui shuts down the same way it does on SIGTERM and starts again as the same process. _Avoid_: Reload (suggests a config re-read without a restart).
+- **Install method**: How the qui binary got onto the host and who manages it: manual install, seedbox installer, swizzin, container image, or package manager. _Avoid_: Installation type, deployment.
+- **App container**: A container that runs qui as its application, such as Docker, Podman, or a Kubernetes pod. The image owns the binary, so an update means a new image. A system container with its own init, such as Proxmox LXC, is not an App container. _Avoid_: Container (when the difference matters), Docker install.
