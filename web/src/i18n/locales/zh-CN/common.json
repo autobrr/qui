@@ -118,6 +118,18 @@
     "trackerError": "Tracker 错误",
     "unreachable": "无法连接"
   },
+  "contentTypeLabels": {
+    "movie": "电影",
+    "tv": "电视剧",
+    "music": "音乐",
+    "audiobook": "有声书",
+    "book": "图书",
+    "comic": "漫画",
+    "game": "游戏",
+    "app": "应用",
+    "adult": "成人",
+    "unknown": "未知"
+  },
   "themeToggle": {
     "changeTheme": "切换主题",
     "appearance": "外观",

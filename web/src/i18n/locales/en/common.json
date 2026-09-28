@@ -118,6 +118,18 @@
     "trackerError": "Tracker error",
     "unreachable": "Unreachable"
   },
+  "contentTypeLabels": {
+    "movie": "Movie",
+    "tv": "TV",
+    "music": "Music",
+    "audiobook": "Audiobook",
+    "book": "Book",
+    "comic": "Comic",
+    "game": "Game",
+    "app": "App",
+    "adult": "Adult",
+    "unknown": "Unknown"
+  },
   "themeToggle": {
     "changeTheme": "Change theme",
     "appearance": "Appearance",

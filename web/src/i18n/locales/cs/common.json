@@ -118,6 +118,18 @@
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
   },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Seriál",
+    "music": "Hudba",
+    "audiobook": "Audiokniha",
+    "book": "Kniha",
+    "comic": "Komiks",
+    "game": "Hra",
+    "app": "Aplikace",
+    "adult": "Pro dospělé",
+    "unknown": "Neznámé"
+  },
   "themeToggle": {
     "changeTheme": "Změnit vzhled",
     "appearance": "Vzhled",
