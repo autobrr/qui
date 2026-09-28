@@ -2271,15 +2271,16 @@ func (s *Service) propagatePartialPoolFiles(ctx context.Context, now time.Time, 
 		if partialPoolChecking(targetSnapshot.torrent.State) {
 			continue
 		}
-		missingFilesReflinkRecovery := targetMember.Mode == models.CrossSeedPartialPoolModeReflink &&
-			targetSnapshot.torrent.State == qbt.TorrentStateMissingFiles &&
-			(initialVerification || partialPoolMemberHasVerificationWork(targetMember))
+		// The first recheck clears missingFiles in either mode. Only a reflink
+		// clone may take propagated data after that.
+		missingFilesRecovery := targetSnapshot.torrent.State == qbt.TorrentStateMissingFiles &&
+			(initialVerification || (targetMember.Mode == models.CrossSeedPartialPoolModeReflink && partialPoolMemberHasVerificationWork(targetMember)))
 		if targetSnapshot.torrent.State == qbt.TorrentStateError ||
-			(targetSnapshot.torrent.State == qbt.TorrentStateMissingFiles && !missingFilesReflinkRecovery) ||
+			(targetSnapshot.torrent.State == qbt.TorrentStateMissingFiles && !missingFilesRecovery) ||
 			partialPoolRecoveryPending(targetMember) {
 			continue
 		}
-		if !missingFilesReflinkRecovery && !isPausedOrStopped(targetSnapshot.torrent.State) {
+		if !missingFilesRecovery && !isPausedOrStopped(targetSnapshot.torrent.State) {
 			if targetMember.LastError != partialPoolPropagationPause {
 				reason := partialPoolPropagationPause
 				if !s.transitionPartialPoolMember(ctx, targetMember, targetMember.Status, models.PartialPoolMemberMutation{LastError: &reason}) {
@@ -2745,7 +2746,7 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 	if targetState == qbt.TorrentStateError ||
-		(targetState == qbt.TorrentStateMissingFiles && targetMember.Mode != models.CrossSeedPartialPoolModeReflink) ||
+		(targetState == qbt.TorrentStateMissingFiles && targetMember.Mode != models.CrossSeedPartialPoolModeReflink && !partialPoolInitialVerificationPending(targetMember)) ||
 		(targetState != qbt.TorrentStateMissingFiles && !isPausedOrStopped(targetState)) {
 		return false
 	}
@@ -3117,7 +3118,12 @@ func (s *Service) selectPartialPoolDownloader(ctx context.Context, pool *models.
 			continue
 		}
 		snapshot := snapshots[member.ID]
-		if snapshot == nil || len(snapshot.files) == 0 || !partialPoolMemberResumable(member, snapshot.torrent.State) {
+		if snapshot == nil || len(snapshot.files) == 0 {
+			continue
+		}
+		// Selecting a deferred member rechecks it, which is what clears missingFiles.
+		recheckFromMissingFiles := deferredVerification && snapshot.torrent.State == qbt.TorrentStateMissingFiles
+		if !recheckFromMissingFiles && !partialPoolMemberResumable(member, snapshot.torrent.State) {
 			continue
 		}
 		missing := partialPoolMissingWantedFiles(member, snapshot)
