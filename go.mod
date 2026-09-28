@@ -4,7 +4,6 @@ go 1.27.0
 
 require (
 	github.com/CAFxX/httpcompression v0.0.9
-	github.com/Hellseher/go-shellquote v0.1.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/andybalholm/brotli v1.2.5
