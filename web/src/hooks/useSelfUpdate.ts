@@ -89,6 +89,11 @@ export function useSelfUpdate() {
     restartAvailable: versionQuery.data?.restart === true,
     confirmOpen,
     setConfirmOpen: (open: boolean) => {
+      // Escape still closes the dialog while Cancel is disabled. A reset then
+      // drops the startedAt that the overlay compares against.
+      if (!open && restartMutation.isPending) {
+        return
+      }
       setConfirmOpen(open)
       if (!open) {
         restartMutation.reset()

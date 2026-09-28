@@ -85,6 +85,32 @@ describe("RestartButton", () => {
     expect(screen.queryByText("application.restart.overlay.restartingTitle")).toBeNull()
   })
 
+  it("keeps the dialog open on Escape while the restart request runs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let accept = () => {}
+    const accepted = new Promise<void>((resolve) => {
+      accept = resolve
+    })
+    server.use(http.post("*/api/system/restart", async () => {
+      await accepted
+      return new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })
+    }))
+    renderButton()
+    await confirmRestart()
+    await vi.waitFor(() => expect(infoCalls).toBe(1))
+
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    expect(screen.getByText("application.restart.confirmTitle")).toBeTruthy()
+
+    accept()
+    await screen.findByText("application.restart.overlay.restartingTitle")
+    // The old process still answers, so the overlay must not reload yet.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
+    expect(location.reload).not.toHaveBeenCalled()
+  })
+
   it("keeps the overlay until a new qui process answers, changes the text after 60 seconds, and reloads once", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     server.use(http.post("*/api/system/restart", () => new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })))
