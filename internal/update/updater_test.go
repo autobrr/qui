@@ -248,7 +248,7 @@ func TestInstallSwapsToRequestedTagAndKeepsBackup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		require.Equal(t, fmt.Sprintf(`move /Y "%s" "%s"`, backup, f.binary), result.RollbackCommand)
 	} else {
-		require.Equal(t, fmt.Sprintf(`mv "%s" "%s"`, backup, f.binary), result.RollbackCommand)
+		require.Equal(t, fmt.Sprintf(`mv '%s' '%s'`, backup, f.binary), result.RollbackCommand)
 	}
 
 	require.NoFileExists(t, older)
@@ -305,7 +305,7 @@ func TestInstallReportsSwapFailure(t *testing.T) {
 	requireUnchanged(t, f)
 }
 
-func TestInstallReportsMissingBackup(t *testing.T) {
+func TestInstallReportsBackupCheckFailure(t *testing.T) {
 	f := newInstallFixture(t)
 	older := filepath.Join(f.dir, backupName("1.29.0"))
 	require.NoError(t, os.WriteFile(older, []byte("qui 1.29.0"), 0o600))
@@ -313,7 +313,7 @@ func TestInstallReportsMissingBackup(t *testing.T) {
 	backup := filepath.Join(f.dir, backupName("1.30.0"))
 	statBackup = func(path string) (os.FileInfo, error) {
 		require.Equal(t, backup, path)
-		return nil, os.ErrNotExist
+		return nil, &os.PathError{Op: "stat", Path: path, Err: os.ErrPermission}
 	}
 	t.Cleanup(func() { statBackup = os.Stat })
 
@@ -321,7 +321,8 @@ func TestInstallReportsMissingBackup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1.31.0", result.Version)
 	require.Empty(t, result.RollbackCommand)
-	require.Equal(t, "backup not found at "+backup, result.BackupError)
+	// The real cause, not "not found": the backup may exist.
+	require.Equal(t, "stat "+backup+": permission denied", result.BackupError)
 	// Without the new backup, the older one is the only way back.
 	require.FileExists(t, older)
 }
@@ -335,4 +336,8 @@ func TestInstallReportsReleaseWithoutAssetForThisPlatform(t *testing.T) {
 	_, err := f.updater.Install(t.Context(), "v1.31.0")
 	require.ErrorIs(t, err, ErrReleaseNotFound)
 	requireUnchanged(t, f)
+}
+
+func TestShellQuoteKeepsPathLiteral(t *testing.T) {
+	require.Equal(t, `'/opt/$qui/`+"`id`"+`/it'\''s qui'`, shellQuote("/opt/$qui/`id`/it's qui"))
 }

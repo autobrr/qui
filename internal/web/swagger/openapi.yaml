@@ -5627,7 +5627,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
-          description: The binary swap failed, for example with a permission error
+          description: The binary swap failed, for example with a permission error, or the new binary is installed but qui refused the restart
           content:
             application/json:
               schema:
@@ -6712,10 +6712,10 @@ components:
         rollbackCommand:
           type: string
           description: The command that restores the backup. Empty when qui found no backup.
-          example: mv "/home/user/bin/qui-v1.30.0.bak" "/home/user/bin/qui"
+          example: mv '/home/user/bin/qui-v1.30.0.bak' '/home/user/bin/qui'
         backupError:
           type: string
-          description: Empty when the backup exists. Otherwise it names the path that qui checked.
+          description: Empty when the backup exists. Otherwise it names the path that qui checked and the cause.
           example: ""
 
     TorznabSearchRequest:

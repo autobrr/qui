@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
@@ -148,17 +149,24 @@ func swap(ctx context.Context, updater *selfupdate.Updater, release *selfupdate.
 
 	result := Result{Version: release.Version()}
 	if _, err := statBackup(backup); err != nil {
-		result.BackupError = "backup not found at " + backup
+		// A *PathError names the checked path and the real cause.
+		result.BackupError = err.Error()
 		// The older backups are now the only way back, so keep them.
 		return result, nil
 	}
 
-	result.RollbackCommand = fmt.Sprintf(`mv "%s" "%s"`, backup, binary)
+	result.RollbackCommand = "mv " + shellQuote(backup) + " " + shellQuote(binary)
 	if runtime.GOOS == "windows" {
 		result.RollbackCommand = fmt.Sprintf(`move /Y "%s" "%s"`, backup, binary)
 	}
 	removeOlderBackups(filepath.Dir(backup), filepath.Base(backup))
 	return result, nil
+}
+
+// shellQuote keeps $, backticks, and quotes in a path literal when the user
+// pastes the command into a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // backupPath sits next to the binary because the swap is a rename.

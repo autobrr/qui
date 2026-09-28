@@ -112,7 +112,7 @@ func TestSystemHandler_Update(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		restarter := &stubRestarter{}
-		want := update.Result{Version: "1.31.0", RollbackCommand: `mv "/opt/qui/qui-v1.30.0.bak" "/opt/qui/qui"`}
+		want := update.Result{Version: "1.31.0", RollbackCommand: `mv '/opt/qui/qui-v1.30.0.bak' '/opt/qui/qui'`}
 		installer := &stubInstaller{result: want}
 		rec := postUpdate(t, NewSystemHandler(available, restarter, installer), body)
 
@@ -168,6 +168,18 @@ func TestSystemHandler_Update(t *testing.T) {
 			require.Equal(t, http.StatusOK, postUpdate(t, h, body).Code)
 		})
 	}
+
+	t.Run("restart refused", func(t *testing.T) {
+		restarter := &stubRestarter{err: errors.New("/opt/qui/qui is not executable")}
+		installer := &stubInstaller{result: update.Result{Version: "1.31.0"}}
+		h := NewSystemHandler(available, restarter, installer)
+
+		requireErrorBody(t, postUpdate(t, h, body), http.StatusInternalServerError, "installed 1.31.0, but the restart was refused: /opt/qui/qui is not executable")
+
+		// The refusal releases the lock, so a fixed binary can restart.
+		restarter.err = nil
+		require.Equal(t, http.StatusAccepted, postRestart(t, h).Code)
+	})
 
 	t.Run("restart during update", func(t *testing.T) {
 		restarter := &stubRestarter{}

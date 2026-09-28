@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -64,8 +65,9 @@ type SelfUpdateRequest struct {
 	Version string `json:"version"`
 }
 
-// Update installs the requested release, returns 200, then restarts qui. On an
-// error the binary and the process do not change.
+// Update installs the requested release, requests the restart, then returns 200.
+// On an install error the binary and the process do not change. A refused
+// restart returns 500 and leaves the new binary installed.
 func (h *SystemHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if !h.availability.SelfUpdate {
 		RespondError(w, http.StatusForbidden, "Self-update is not available")
@@ -104,11 +106,14 @@ func (h *SystemHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info().Str("version", result.Version).Str("backupError", result.BackupError).Msg("self-update installed, restarting")
-	RespondJSON(w, http.StatusOK, result)
-	// The graceful shutdown waits for this response to finish.
+	// The graceful shutdown waits for this handler to return, so the response
+	// still goes out after the restart request.
 	if err := h.restarter.Request(); err != nil {
 		h.busy.Store(false)
-		log.Error().Err(err).Msg("self-update installed, but the restart was refused")
+		log.Error().Err(err).Str("version", result.Version).Msg("self-update installed, but the restart was refused")
+		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("installed %s, but the restart was refused: %v", result.Version, err))
+		return
 	}
+	log.Info().Str("version", result.Version).Str("backupError", result.BackupError).Msg("self-update installed, restarting")
+	RespondJSON(w, http.StatusOK, result)
 }
