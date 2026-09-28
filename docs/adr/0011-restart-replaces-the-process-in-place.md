@@ -46,4 +46,5 @@ The supervisor starts with `serve`, not on the first Restart. The graceful shutd
 ## Consequences
 
 - A Restart releases the port and the database because the exec closes every file descriptor. The deferred cleanup of `serve` does not run, the same as on SIGTERM.
+- On Windows the supervisor keeps running the file that it started from. After a Self-update that file is a backup, and a later update cannot delete it until the task stops.
 - A change that makes a Restart exit, or that execs a different path or argv, reverses this decision and needs a new ADR.

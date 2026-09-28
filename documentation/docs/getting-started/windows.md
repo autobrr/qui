@@ -95,7 +95,7 @@ qui has a built-in update command. Stop the scheduled task first. A running task
 
 ### Roll back an update
 
-The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`.
+The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`. Each update deletes older backups. The first `qui.exe` process still runs from the file that it started from, so that backup stays until the task stops.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
 2. In **Command Prompt**, move the backup back. Replace `1.30.0` with the version in the backup file name:

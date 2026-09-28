@@ -78,8 +78,14 @@ jobs:
 
           $action = New-ScheduledTaskAction -Execute "$dir\qui.exe" -Argument "serve --config-dir $cfg --log-path $dir\qui.log" -WorkingDirectory $dir
           $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
-          $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
-          Register-ScheduledTask -TaskName qui -Action $action -Settings $settings -Principal $principal | Out-Null
+          # "Run whether user is logged on or not" with a stored password, as the docs describe.
+          $pw = 'Qp-' + [guid]::NewGuid().ToString('N') + '!'
+          Write-Host "::add-mask::$pw"
+          New-LocalUser -Name quiproof -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group Administrators -Member quiproof
+          icacls $dir /grant 'quiproof:(OI)(CI)F' /T | Out-Null
+          Register-ScheduledTask -TaskName qui -Action $action -Settings $settings -User "$env:COMPUTERNAME\quiproof" -Password $pw -RunLevel Highest | Out-Null
+          Write-Host "logon type: $((Get-ScheduledTask -TaskName qui).Principal.LogonType)"
 
           Start-ScheduledTask -TaskName qui
           WaitFor 'first start' { Invoke-WebRequest "$base/health" -UseBasicParsing }

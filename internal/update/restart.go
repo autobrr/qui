@@ -23,7 +23,7 @@ func NewRestarter(binaryPath string) *Restarter {
 }
 
 // Request checks the binary, then asks the serve loop to restart. On an error
-// qui keeps running: without a supervisor, a failed exec leaves qui down.
+// qui keeps running: on Unix without a supervisor, a failed exec leaves qui down.
 func (r *Restarter) Request() error {
 	if err := checkBinary(r.binaryPath); err != nil {
 		return err
@@ -39,8 +39,8 @@ func (r *Restarter) Requested() <-chan struct{} {
 	return r.requested
 }
 
-// Restart runs the graceful shutdown, then replaces the process with the
-// binary. It never returns. A shutdown error, such as the 30-second timeout,
+// Restart runs the graceful shutdown, then starts the binary again: on Unix
+// through an exec in place, on Windows through the supervisor. It never returns. A shutdown error, such as the 30-second timeout,
 // does not stop the restart.
 func (r *Restarter) Restart(log zerolog.Logger, shutdown func() error) {
 	if err := shutdown(); err != nil {
@@ -48,7 +48,8 @@ func (r *Restarter) Restart(log zerolog.Logger, shutdown func() error) {
 	}
 	log.Info().Str("binaryPath", r.binaryPath).Msg("restarting")
 	err := execBinary(r.binaryPath)
-	// Exit non-zero so that Restart=on-failure starts qui again.
+	// Only a failed Unix exec gets here. Exit non-zero so that
+	// Restart=on-failure starts qui again.
 	log.Error().Err(err).Str("binaryPath", r.binaryPath).Msg("restart failed")
 	os.Exit(1)
 }

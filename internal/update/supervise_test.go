@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	superviseTestEnv   = "QUI_TEST_SUPERVISOR"
-	superviseCountFile = "QUI_TEST_SUPERVISE_COUNT"
+	superviseTestEnv     = "QUI_TEST_SUPERVISOR"
+	superviseRunsFileEnv = "QUI_TEST_SUPERVISE_RUNS_FILE"
 )
 
 // The supervisor starts the child again after each Restart request, and exits
@@ -31,29 +31,29 @@ func TestSupervisorRestartsUntilOtherExitCode(t *testing.T) {
 		os.Exit(code)
 	}
 
-	countFile := filepath.Join(t.TempDir(), "count")
+	runsFile := filepath.Join(t.TempDir(), "count")
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSupervisorRestartsUntilOtherExitCode$", "-test.timeout=30s")
-	cmd.Env = append(os.Environ(), superviseTestEnv+"=1", superviseCountFile+"="+countFile)
+	cmd.Env = append(os.Environ(), superviseTestEnv+"=1", superviseRunsFileEnv+"="+runsFile)
 	output, err := cmd.CombinedOutput()
 
 	exitErr, ok := errors.AsType[*exec.ExitError](err)
 	require.True(t, ok, "supervisor must exit with the child's code: %v: %s", err, output)
 	require.Equal(t, 3, exitErr.ExitCode(), "%s", output)
-	runs, err := os.ReadFile(countFile)
+	runs, err := os.ReadFile(runsFile)
 	require.NoError(t, err)
 	require.Equal(t, "run\nrun\nrun\n", string(runs), "two Restarts, then exit code 3")
 }
 
 // superviseChild asks for a Restart twice, then exits with 3.
 func superviseChild(t *testing.T) {
-	countFile := os.Getenv(superviseCountFile)
-	f, err := os.OpenFile(countFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	runsFile := os.Getenv(superviseRunsFileEnv)
+	f, err := os.OpenFile(runsFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	require.NoError(t, err)
 	_, err = f.WriteString("run\n")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	runs, err := os.ReadFile(countFile)
+	runs, err := os.ReadFile(runsFile)
 	require.NoError(t, err)
 	if len(runs) < len("run\nrun\nrun\n") {
 		os.Exit(restartExitCode)
