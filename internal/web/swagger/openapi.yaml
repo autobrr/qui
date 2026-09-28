@@ -5588,7 +5588,7 @@ paths:
       tags:
         - System
       summary: Install a release
-      description: Downloads the release with this exact tag, checks its signature, and replaces the binary. qui keeps the previous binary as qui-v<old version>.bak next to it and deletes older backups. After the 200 response qui restarts. On every error the binary and the process do not change. Only one update or restart runs at a time.
+      description: Downloads the release with this exact tag, checks its signature, and replaces the binary. qui keeps the previous binary as qui-v<old version>.bak next to it and deletes older backups. After the 200 response qui restarts. On an install error the binary and the process do not change. When qui refuses the restart after the install, it returns 500, the new binary stays in place, and the old process keeps running. Only one update or restart runs at a time.
       requestBody:
         required: true
         content:
