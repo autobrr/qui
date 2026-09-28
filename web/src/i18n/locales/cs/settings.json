@@ -1002,6 +1002,18 @@
         "lastChecked": "Poslední kontrola {{date}}"
       }
     },
+    "restart": {
+      "button": "Restartovat",
+      "confirmTitle": "Restartovat qui?",
+      "confirmDescription": "qui se vypne stejně jako při běžném zastavení a pak se znovu spustí. Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví. Stránka se znovu načte, až bude qui zpět.",
+      "confirm": "Restartovat",
+      "overlay": {
+        "restartingTitle": "qui se restartuje…",
+        "restartingDetail": "Stránka se znovu načte, až qui znovu odpoví.",
+        "slowTitle": "qui zatím neodpověděl",
+        "slowDetail": "qui se možná ještě spouští a tato stránka dál čeká. Zkontrolujte logy qui. Pokud jste změnili port nebo základní URL, otevřete qui na nové adrese."
+      }
+    },
     "runtime": {
       "title": "Čas běhu",
       "description": "Informace o času běhu serveru.",

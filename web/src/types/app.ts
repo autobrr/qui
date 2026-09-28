@@ -33,6 +33,14 @@ export interface ApplicationInfo {
   database: ApplicationDatabaseInfo
 }
 
+export interface VersionInfo {
+  version: string
+  latestVersion?: string
+  updateAvailable: boolean
+  selfUpdate: boolean
+  restart: boolean
+}
+
 export interface AppPreferences {
   // Core limits and speeds (fully supported)
   dl_limit: number

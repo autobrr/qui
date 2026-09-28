@@ -17,6 +17,7 @@ import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } f
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
+import { RestartButton } from "@/components/settings/RestartButton"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -1102,19 +1103,22 @@ function ApplicationInfoPanel() {
             fields={buildFields}
             onCopy={handleCopy}
             headerAction={(
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void appInfoQuery.refetch()
-                  void latestVersionQuery.refetch()
-                  void currentUserQuery.refetch()
-                }}
-                disabled={appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${(appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching) ? "animate-spin" : ""}`} />
-                {t("application.build.refresh")}
-              </Button>
+              <div className="flex gap-2">
+                <RestartButton />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void appInfoQuery.refetch()
+                    void latestVersionQuery.refetch()
+                    void currentUserQuery.refetch()
+                  }}
+                  disabled={appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${(appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching) ? "animate-spin" : ""}`} />
+                  {t("application.build.refresh")}
+                </Button>
+              </div>
             )}
           />
           <ApplicationSection

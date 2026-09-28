@@ -996,6 +996,18 @@
         "lastChecked": "마지막 확인 {{date}}"
       }
     },
+    "restart": {
+      "button": "재시작",
+      "confirmTitle": "qui를 재시작할까요?",
+      "confirmDescription": "qui는 일반 종료와 같은 방식으로 종료한 뒤 다시 시작합니다. 크로스시드 검색, 자동화, 백업, 고아 파일 검사 같은 실행 중인 작업은 중지됩니다. qui가 돌아오면 페이지가 다시 로드됩니다.",
+      "confirm": "재시작",
+      "overlay": {
+        "restartingTitle": "qui 재시작 중…",
+        "restartingDetail": "qui가 다시 응답하면 페이지가 다시 로드됩니다.",
+        "slowTitle": "qui가 아직 응답하지 않았습니다",
+        "slowDetail": "qui가 아직 시작 중일 수 있으며, 이 페이지는 계속 기다립니다. qui 로그를 확인하세요. 포트나 기본 URL을 변경했다면 새 주소에서 qui를 여세요."
+      }
+    },
     "runtime": {
       "title": "런타임",
       "description": "서버 런타임 정보입니다.",

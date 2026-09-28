@@ -126,6 +126,7 @@ import type {
   BuiltinTheme,
   ThemeSettings,
   User,
+  VersionInfo,
   WarningResponse,
   WebSeed
 } from "@/types"
@@ -322,6 +323,14 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
   }
 }
 
+let ssoRecoveryPaused = false
+
+// While qui restarts, every request fails with "Failed to fetch", and the SSO
+// recovery would send the tab to "/", where the browser shows its own error page.
+export function setSSORecoveryPaused(paused: boolean): void {
+  ssoRecoveryPaused = paused
+}
+
 /**
  * Attempt a single hard navigation to let the browser follow the SSO redirect
  * at the top level. Uses sessionStorage to prevent infinite navigation loops.
@@ -329,7 +338,7 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
  * Returns true if navigation was triggered, false if blocked.
  */
 async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
-  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+  if (ssoRecoveryPaused || typeof window === "undefined" || typeof sessionStorage === "undefined") {
     return false
   }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -2236,6 +2245,14 @@ class ApiClient {
 
   async getApplicationInfo(): Promise<ApplicationInfo> {
     return this.request<ApplicationInfo>("/application/info")
+  }
+
+  async getVersion(): Promise<VersionInfo> {
+    return this.request<VersionInfo>("/version")
+  }
+
+  async restartQui(): Promise<void> {
+    await this.request<void>("/system/restart", { method: "POST" })
   }
 
   async getLatestVersion(): Promise<{
