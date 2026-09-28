@@ -29,9 +29,13 @@ export function useSelfUpdate() {
   const restartMutation = useMutation({
     mutationFn: async () => {
       const { startedAt } = await api.getApplicationInfo()
+      // qui can close its listener before the 202 arrives, so pause before the
+      // request, not when the overlay shows.
+      setSSORecoveryPaused(true)
       await api.restartQui()
       return startedAt
     },
+    onError: () => setSSORecoveryPaused(false),
     onSuccess: () => {
       setConfirmOpen(false)
       setOverlay("restarting")
@@ -46,7 +50,6 @@ export function useSelfUpdate() {
     if (!overlayActive) {
       return
     }
-    setSSORecoveryPaused(true)
     // Plain fetch, not the API client: its SSO and 401 handling would navigate
     // away while qui is down.
     const controller = new AbortController()

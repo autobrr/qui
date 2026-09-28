@@ -102,6 +102,12 @@ describe("RestartButton", () => {
     fireEvent.keyDown(document.body, { key: "Escape" })
     expect(screen.getByText("application.restart.confirmTitle")).toBeTruthy()
 
+    // qui can close its listener before the 202 arrives.
+    qui = "down"
+    await expect(api.getApplicationInfo()).rejects.toThrow(TypeError)
+    expect(location.assign).not.toHaveBeenCalled()
+    qui = "old"
+
     accept()
     await screen.findByText("application.restart.overlay.restartingTitle")
     // The old process still answers, so the overlay must not reload yet.
