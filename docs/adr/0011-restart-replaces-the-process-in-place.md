@@ -5,7 +5,7 @@ date: 2026-09-28
 
 # A Restart replaces the process in place
 
-A Restart runs the graceful shutdown of `serve`, the same steps as SIGTERM. Then qui starts again as the same process. qui never restarts by exiting and relying on a supervisor to start it again. Issue #2853.
+A Restart runs the graceful shutdown of `serve`, the same steps as SIGTERM. Then qui starts again as the same process. qui never restarts by exiting and relying on an external supervisor to start it again. On Windows, qui runs its own supervisor (see below). Issue #2853.
 
 On Unix (linux, darwin, freebsd), qui calls `syscall.Exec` with the resolved binary path, `os.Args` unchanged, and the environment unchanged. The process ID does not change. qui resolves the binary path with `os.Executable` and `filepath.EvalSymlinks` at startup, before a Self-update can replace the file. qui does not exec `/proc/self/exe`, because that changes the process name to `exe`. qui does not change argv.
 
@@ -20,7 +20,7 @@ When the exec returns an error, qui logs the error and exits with a non-zero cod
 Windows has no exec that keeps the process. The first `serve` process becomes a supervisor before it loads the config or opens the database:
 
 - It starts the resolved binary as a child, with the same argv and the environment variable `QUI_SUPERVISED=1`, and waits for it. The child serves qui.
-- It puts the child in a job object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. When the supervisor stops, Windows closes the job handle and stops the child. Task Scheduler "End" stops the supervisor, so it also stops the child.
+- It puts itself in a job object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` before it starts a child, so each child starts inside the job. When the supervisor stops, Windows closes the job handle and stops the child. Task Scheduler "End" stops the supervisor, so it also stops the child.
 - A child that gets a Restart request runs the graceful shutdown and exits with the reserved code 75. The supervisor then starts the binary again from the same path. After a Self-update, that path holds the new release.
 - When the child exits with any other code, the supervisor exits with that code.
 - The supervisor ignores Ctrl+C and the console close event. The child shares the console and handles them.
@@ -45,6 +45,6 @@ The supervisor starts with `serve`, not on the first Restart. The graceful shutd
 
 ## Consequences
 
-- A Restart releases the port and the database because the exec closes every file descriptor. The deferred cleanup of `serve` does not run, the same as on SIGTERM.
+- On Unix, a Restart releases the port and the database because the exec closes every file descriptor. On Windows, the child exit releases them. The deferred cleanup of `serve` does not run, the same as on SIGTERM.
 - On Windows the supervisor keeps running the file that it started from. After a Self-update that file is a backup, and a later update cannot delete it until the task stops.
-- A change that makes a Restart exit, or that execs a different path or argv, reverses this decision and needs a new ADR.
+- A change that makes a Restart exit to an external supervisor, or that execs a different path or argv, reverses this decision and needs a new ADR.

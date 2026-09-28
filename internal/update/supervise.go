@@ -20,23 +20,15 @@ const supervisedEnv = "QUI_SUPERVISED"
 
 // runSupervisor starts the binary at path as a child with qui's own argv, and
 // starts it again each time the child exits with restartExitCode. It returns
-// the first other exit code. adopt runs after each start.
-func runSupervisor(path string, adopt func(*os.Process) error) (int, error) {
+// the first other exit code.
+func runSupervisor(path string) (int, error) {
 	for {
 		//nolint:gosec // G204: path is qui's own binary, resolved at startup, and argv is qui's own
 		cmd := exec.CommandContext(context.Background(), path)
 		cmd.Args = os.Args
 		cmd.Env = append(os.Environ(), supervisedEnv+"=1")
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := cmd.Start(); err != nil {
-			return 0, err
-		}
-		if err := adopt(cmd.Process); err != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			return 0, err
-		}
-		if err := cmd.Wait(); err != nil {
+		if err := cmd.Run(); err != nil {
 			if _, ok := errors.AsType[*exec.ExitError](err); !ok {
 				return 0, err
 			}

@@ -26,7 +26,7 @@ func TestSupervisorRestartsUntilOtherExitCode(t *testing.T) {
 		return
 	}
 	if os.Getenv(superviseTestEnv) == "1" {
-		code, err := runSupervisor(os.Args[0], func(*os.Process) error { return nil })
+		code, err := runSupervisor(os.Args[0])
 		require.NoError(t, err)
 		os.Exit(code)
 	}

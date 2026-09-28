@@ -42,16 +42,12 @@ func superviseInJob() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	// The job handle closes when the supervisor exits, which kills the child.
-	// Task Scheduler "End" stops the supervisor, so it stops the child too.
-	return runSupervisor(path, func(p *os.Process) error {
-		h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(p.Pid))
-		if err != nil {
-			return err
-		}
-		defer func() { _ = windows.CloseHandle(h) }()
-		return windows.AssignProcessToJobObject(job, h)
-	})
+	// Children inherit the job, so none runs outside it. The supervisor's exit,
+	// Task Scheduler "End" included, closes the job handle and kills the child.
+	if err := windows.AssignProcessToJobObject(job, windows.CurrentProcess()); err != nil {
+		return 0, fmt.Errorf("join kill-on-close job: %w", err)
+	}
+	return runSupervisor(path)
 }
 
 func newKillOnCloseJob() (windows.Handle, error) {
