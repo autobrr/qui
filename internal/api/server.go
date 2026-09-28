@@ -72,6 +72,7 @@ type Server struct {
 	updateService                    *update.Service
 	updateAvailability               update.Availability
 	restarter                        *update.Restarter
+	selfUpdater                      *update.Updater
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -125,6 +126,7 @@ type Dependencies struct {
 	UpdateService                    *update.Service
 	UpdateAvailability               update.Availability
 	Restarter                        *update.Restarter
+	SelfUpdater                      *update.Updater
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -199,6 +201,7 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:                    deps.UpdateService,
 		updateAvailability:               deps.UpdateAvailability,
 		restarter:                        deps.Restarter,
+		selfUpdater:                      deps.SelfUpdater,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -374,7 +377,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
-	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter)
+	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter, s.selfUpdater)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -576,6 +579,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
 			r.Post("/system/restart", systemHandler.Restart)
+			r.Post("/system/update", systemHandler.Update)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

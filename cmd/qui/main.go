@@ -851,6 +851,11 @@ func (app *Application) runServer() {
 
 	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
 	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	selfUpdater := update.NewUpdater(update.Config{
+		Repository: "autobrr/qui",
+		Version:    buildinfo.Version,
+		BinaryPath: updateInputs.BinaryPath,
+	})
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
@@ -871,6 +876,7 @@ func (app *Application) runServer() {
 		UpdateService:                    updateService,
 		UpdateAvailability:               update.Decide(updateInputs),
 		Restarter:                        restarter,
+		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,

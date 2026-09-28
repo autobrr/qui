@@ -13,14 +13,16 @@ import (
 //go:embed release_signing_cert.pem
 var releaseSigningCertificate []byte
 
-func newSelfUpdater() (*selfupdate.Updater, error) {
-	validator, err := newReleaseValidator(releaseSigningCertificate)
+func (u *Updater) newSelfUpdater(backup string) (*selfupdate.Updater, error) {
+	validator, err := newReleaseValidator(u.certificate)
 	if err != nil {
 		return nil, err
 	}
 
 	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Validator: validator,
+		Source:      u.source,
+		Validator:   validator,
+		OldSavePath: backup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not create updater: %w", err)
