@@ -32,6 +32,7 @@ const dialTimeout = 15 * time.Second
 
 // credentialSource is the part of the instance store the dialer needs.
 type credentialSource interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
 }

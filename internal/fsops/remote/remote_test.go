@@ -6,6 +6,7 @@ package remote
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -30,10 +31,12 @@ import (
 // fakeCreds stands in for the instance store: the dialer reads only these two
 // values, so the tests need no database.
 type fakeCreds struct {
-	key string
-	pin []byte
+	key  string
+	pin  []byte
+	inst *models.Instance
 }
 
+func (f fakeCreds) Get(context.Context, int) (*models.Instance, error)  { return f.inst, nil }
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return f.key, nil }
 func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return f.pin, nil }
 
@@ -51,18 +54,19 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
-	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
-		key: sshtest.PrivateKey(""),
-		pin: hostKey.PublicKey().Marshal(),
-	}))
-	t.Cleanup(pool.Close)
-
-	// SSHHostKeyEncrypted is what the pool keys its memo on, so it has to hold
+	// FilesystemAccessMode wants a pin ciphertext, so the column holds
 	// something even though this fake decrypts to a fixed key.
 	inst := &models.Instance{
 		ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui",
 		SSHHostKeyEncrypted: "enc-v1",
 	}
+	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
+		key:  sshtest.PrivateKey(""),
+		pin:  hostKey.PublicKey().Marshal(),
+		inst: inst,
+	}))
+	t.Cleanup(pool.Close)
+
 	return New(pool, inst), server
 }
 
@@ -264,6 +268,94 @@ func TestWalkDir_SkipsAndIgnores(t *testing.T) {
 			}
 		}
 	}))
+}
+
+// Each walk filter on its own, so a mutation of one is not hidden by another:
+// a prefix rule without SkipHidden, a name rule that must not drop a file of
+// that name, and identity only when the caller asked for it.
+func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	writeFile(t, remotePath(dir, "keep.txt"), "k")
+	writeFile(t, remotePath(dir, ".trash-1000", "deleted.mkv"), "t")
+	writeFile(t, remotePath(dir, "node_modules"), "a file, not a directory")
+	writeFile(t, remotePath(dir, "sub", "node_modules", "pkg.js"), "p")
+
+	collect := func(opts fsops.WalkOptions) ([]string, []fsops.WalkEntry) {
+		ch, err := b.WalkDir(t.Context(), remotePath(dir), opts)
+		require.NoError(t, err)
+		var rels []string
+		var entries []fsops.WalkEntry
+		for e := range ch {
+			rels = append(rels, e.RelPath)
+			entries = append(entries, e)
+		}
+		return rels, entries
+	}
+
+	rels, _ := collect(fsops.WalkOptions{IgnoreDirNamePrefixes: []string{".Trash-"}})
+	assert.Contains(t, rels, "keep.txt")
+	assert.NotContains(t, rels, ".trash-1000", "the prefix rule alone must hide the directory")
+	assert.NotContains(t, rels, path.Join(".trash-1000", "deleted.mkv"))
+
+	rels, _ = collect(fsops.WalkOptions{IgnoreDirNames: []string{"node_modules"}})
+	assert.Contains(t, rels, "node_modules", "the name rule applies to directories only")
+	assert.NotContains(t, rels, path.Join("sub", "node_modules", "pkg.js"))
+
+	_, entries := collect(fsops.WalkOptions{})
+	for _, e := range entries {
+		require.NoError(t, e.FileIDErr, "%s: identity is only reported absent when it was asked for", e.RelPath)
+	}
+}
+
+// A pool failure mid-walk ends the walk with one Err entry carrying
+// ErrConnectionLost, so a consumer that skips per-directory errors still sees
+// that the tree was cut short.
+func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	// "a" holds more files than the walk channel buffers, so the walk is parked
+	// inside it when the pool closes, and "z" is still to be read.
+	for i := range 100 {
+		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
+	}
+	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+
+	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
+	require.NoError(t, err)
+	for range 3 {
+		<-ch
+	}
+	b.pool.Close()
+
+	var lost []fsops.WalkEntry
+	sawZ := false
+	for entry := range ch {
+		if entry.Err != nil {
+			lost = append(lost, entry)
+		}
+		if entry.RelPath == path.Join("z", "last.txt") {
+			sawZ = true
+		}
+	}
+	require.Len(t, lost, 1, "one Err entry ends the walk")
+	require.ErrorIs(t, lost[0].Err, fsops.ErrConnectionLost)
+	assert.Equal(t, "z", lost[0].RelPath, "the directory the walk could not read is named")
+	assert.False(t, sawZ)
+}
+
+func TestLostConnection(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, lostConnection(sftp.ErrSSHFxConnectionLost))
+	assert.True(t, lostConnection(fmt.Errorf("wrapped: %w", net.ErrClosed)))
+	assert.True(t, lostConnection(io.EOF))
+	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
+	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
 }
 
 func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {

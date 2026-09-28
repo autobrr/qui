@@ -418,15 +418,23 @@ scratch directories and a temporarily added, uniquely tagged
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
 4. Frontend.
-5. Feature rollout per service, degraded-mode UX. Every consumer still
-   admits an instance on `HasLocalFilesystemAccess` rather than on its
+5. Feature rollout per service, degraded-mode UX. Most consumers still
+   admit an instance on `HasLocalFilesystemAccess` rather than on its
    filesystem mode: orphan scan (handler and service filters), automations
-   (free-space path source, missing-files condition, hardlink index),
-   dirscan, cross-seed (link mode, manual assemble, mediainfo, season pack,
-   partial pool) and the sync manager's hardlink base dir. Each lifts its
-   gate in its own slice, with the degraded-mode handling that service
-   needs, and the API-driven checks (free space, missing files, orphan
-   scan) become the field test of that slice.
+   (missing-files condition, hardlink index; rule save and dry-run
+   validation), dirscan, cross-seed (link mode, manual assemble, mediainfo,
+   season pack, partial pool), the sync manager's hardlink base dir, and
+   two routes that read file content, which no `Backend` method covers
+   yet: the torrents handler's local-access routes and the proxy mediainfo
+   route. The exception is the free-space path source: its preview and
+   scheduled-run paths resolve the backend and call `Statfs` with no mode
+   check, so a remote-mode instance already reports remote free space,
+   and that is the intended figure. Each remaining gate lifts in its own
+   slice, with the degraded-mode handling that service needs, and the
+   API-driven checks (missing files, orphan scan) become the field test of
+   that slice. A walk that loses its connection ends with one `Err` entry
+   wrapping `fsops.ErrConnectionLost`, so a consumer that skips
+   per-directory errors still learns the tree was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.

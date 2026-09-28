@@ -867,7 +867,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
-	h.sshPool.Invalidate(instanceID)
+	h.sshPool.Remove(instanceID)
 
 	response := DeleteInstanceResponse{
 		Message: "Instance deleted successfully",

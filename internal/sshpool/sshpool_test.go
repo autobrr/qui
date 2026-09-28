@@ -30,6 +30,14 @@ type fakeCreds struct {
 	keyErr error
 	pin    []byte
 	pinErr error
+	inst   *models.Instance // the row Get answers with, for the pool tests
+}
+
+func (f fakeCreds) Get(_ context.Context, id int) (*models.Instance, error) {
+	if f.inst == nil || f.inst.ID != id {
+		return nil, models.ErrInstanceNotFound
+	}
+	return f.inst, nil
 }
 
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) {

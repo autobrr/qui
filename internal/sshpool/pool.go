@@ -6,7 +6,10 @@ package sshpool
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand/v2"
+	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -114,7 +117,19 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 		return nil, entry.err
 	}
 
-	client, err := p.dialer.Connect(ctx, inst)
+	// The dial reads the row, never the caller's snapshot: a caller built
+	// before a pin replace or a credential save would otherwise dial with the
+	// old values, and its result would serve every caller. The handlers write
+	// the row before they invalidate, so a dial after Invalidate sees it.
+	row, err := p.dialer.creds.Get(ctx, inst.ID)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		entry.memoise(inst, err)
+		return nil, err
+	}
+	client, err := p.dialer.Connect(ctx, row)
 	if err != nil {
 		if ctx.Err() != nil {
 			// One caller giving up says nothing about the host.
@@ -140,6 +155,14 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 		_ = client.Close()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		// The memo hands this text to every caller in the backoff window, so
+		// it names the host and, when the subsystem never answered, says so.
+		addr := net.JoinHostPort(row.SSHHost, strconv.Itoa(row.SSHPort))
+		if initCtx.Err() != nil {
+			err = fmt.Errorf("open sftp session on %s: no answer within %s: %w", addr, p.dialer.timeout, err)
+		} else {
+			err = fmt.Errorf("open sftp session on %s: %w", addr, err)
 		}
 		entry.memoise(inst, err)
 		return nil, err
@@ -187,6 +210,26 @@ func (p *Pool) Invalidate(instanceID int) {
 	entry.forget()
 	entry.unlock()
 	log.Debug().Int("instanceID", instanceID).Msg("sshpool: connection invalidated")
+}
+
+// Remove is Invalidate for an instance that no longer exists: the entry goes
+// with the connection, so a deleted instance leaves nothing behind.
+func (p *Pool) Remove(instanceID int) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	entry := p.conns[instanceID]
+	delete(p.conns, instanceID)
+	p.mu.Unlock()
+	if entry == nil {
+		return
+	}
+
+	_ = entry.lock(context.Background())
+	entry.forget()
+	entry.unlock()
+	log.Debug().Int("instanceID", instanceID).Msg("sshpool: connection removed")
 }
 
 // Close drops every connection and refuses every later caller. Called once, at

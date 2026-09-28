@@ -12,7 +12,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path"
 	"slices"
@@ -147,14 +149,19 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		if ctx.Err() != nil {
 			return false
 		}
-		// The connection failed, not the directory: one Err entry ends the
-		// walk rather than repeating it for every directory left.
-		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
+		// The connection failed, not the directory: one Err entry carrying
+		// ErrConnectionLost ends the walk rather than repeating the error for
+		// every directory left, and tells the consumer the tree is cut short.
+		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: fmt.Errorf("%w: %w", fsops.ErrConnectionLost, err)})
 		return false
 	}
 	entries, err := client.ReadDirContext(ctx, dir)
 	if err != nil {
 		if ctx.Err() != nil {
+			return false
+		}
+		if lostConnection(err) {
+			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: pathError("readdir", dir, fmt.Errorf("%w: %w", fsops.ErrConnectionLost, err))})
 			return false
 		}
 		// An unreadable directory is one entry with Err and the walk goes on,
@@ -201,6 +208,14 @@ func ignoredDirName(name string, opts fsops.WalkOptions) bool {
 	}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
 		return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
 	})
+}
+
+// lostConnection tells a readdir that failed because the transport went away
+// from one the server refused: pkg/sftp answers every request in flight with
+// ErrSSHFxConnectionLost when its connection closes, and a closed socket
+// surfaces as net.ErrClosed or io.EOF.
+func lostConnection(err error) bool {
+	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
 }
 
 func send(ctx context.Context, ch chan<- fsops.WalkEntry, entry fsops.WalkEntry) bool {

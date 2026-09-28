@@ -19,6 +19,12 @@ var (
 	// loudly rather than read as "not configured".
 	ErrRemoteBackendNotWired = errors.New("remote filesystem backend is not wired into this pool")
 
+	// ErrConnectionLost marks a WalkDir Err entry that ends the walk because
+	// the transport failed, not because a directory was unreadable. A consumer
+	// that skips per-directory errors must not read a walk cut short as
+	// complete; this is the sentinel it checks.
+	ErrConnectionLost = errors.New("connection to the filesystem backend was lost")
+
 	// ErrUnsupported reports a per-host fact: this server lacks the extension
 	// the operation needs, or this transport has no such operation at all.
 	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.

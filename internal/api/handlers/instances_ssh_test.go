@@ -57,6 +57,9 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	instance, err := store.Create(t.Context(), "remote", "http://127.0.0.1:1", "admin", "password", nil, nil, false, nil)
 	require.NoError(t, err)
 
+	// The server is created before the pool so cleanup, which runs last in
+	// first out, closes the pool's connections before the server waits on them.
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
 	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
 	t.Cleanup(sshPool.Close)
 	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
@@ -75,7 +78,7 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 		db:        db,
 		store:     store,
 		instance:  instance,
-		server:    sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU),
+		server:    server,
 		clientKey: sshtest.PrivateKey(""),
 		sshPool:   sshPool,
 	}
@@ -327,6 +330,26 @@ func TestSSHRoutesInvalidateThePool(t *testing.T) {
 	client = open()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 	assert.True(t, closed(client), "clearing credentials must end the old session")
+}
+
+// A dial for an instance with credentials but no pin memoises a refusal that
+// never expires; confirming the pin must clear it, or the first background
+// caller before confirmation would block every caller after it.
+func TestConfirmClearsAnUnpinnedRefusal(t *testing.T) {
+	f := newSSHFixture(t, "ssh-confirm-clears-refusal")
+	f.putCredentials()
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrPinUnusable)
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err = f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err, "confirming the pin must clear the refusal memoised before it")
 }
 
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {

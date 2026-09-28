@@ -26,12 +26,19 @@ func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	return inst
 }
 
+// poolFor is a pool whose store answers Get with inst, the way the real store
+// does: every dial reads that row.
+func poolFor(pin []byte, inst *models.Instance) *Pool {
+	return NewPool(NewDialer(&fakeCreds{key: testClientKey, pin: pin, inst: inst}))
+}
+
 func TestConnectRequiresPin(t *testing.T) {
 	t.Parallel()
 
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
 
-	_, err := NewPool(dialerFor(nil)).SFTP(t.Context(), pinnedInstanceAt(t, server.Addr))
+	inst := pinnedInstanceAt(t, server.Addr)
+	_, err := poolFor(nil, inst).SFTP(t.Context(), inst)
 	require.ErrorIs(t, err, models.ErrSSHHostKeyNotPinned)
 	require.ErrorIs(t, err, ErrPinUnusable)
 	assert.Zero(t, server.Accepts(), "an unpinned host must not be dialed in the background")
@@ -42,10 +49,10 @@ func TestPoolMemoizesMismatchUntilInvalidated(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	creds := &fakeCreds{key: testClientKey, pin: sshtest.NewSigner().PublicKey().Marshal()}
+	inst := pinnedInstanceAt(t, server.Addr)
+	creds := &fakeCreds{key: testClientKey, pin: sshtest.NewSigner().PublicKey().Marshal(), inst: inst}
 	pool := NewPool(NewDialer(creds))
 	t.Cleanup(pool.Close)
-	inst := pinnedInstanceAt(t, server.Addr)
 
 	_, err := pool.SFTP(t.Context(), inst)
 	_, ok := errors.AsType[*MismatchError](err)
@@ -71,8 +78,8 @@ func TestPoolBacksOffAfterDialFailure(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
 	inst := pinnedInstanceAt(t, sshtest.DeadAddr(t))
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
 
 	_, err := pool.SFTP(t.Context(), inst)
 	require.Error(t, err)
@@ -102,9 +109,9 @@ func TestPoolWaiterHonoursContext(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	pool := NewPool(dialerWithTimeout(2 * time.Second))
-	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
 	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	pool.dialer.timeout = 2 * time.Second
 
 	first := make(chan error, 1)
 	go func() {
@@ -136,9 +143,9 @@ func TestPoolCloseRefusesAWaitingCaller(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
-	pool := NewPool(dialerWithTimeout(time.Second))
-	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
 	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	pool.dialer.timeout = time.Second
 
 	first := make(chan error, 1)
 	go func() {
@@ -169,9 +176,9 @@ func TestPoolReusesConnection(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
 
 	firstClient, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
@@ -189,9 +196,9 @@ func TestPoolInvalidateEndsTheSession(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
 
 	first, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
@@ -218,10 +225,10 @@ func TestPoolOlderSnapshotDoesNotResetNewerConnection(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
+	older := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), older)
 	t.Cleanup(pool.Close)
 
-	older := pinnedInstanceAt(t, server.Addr)
 	newer := *older
 	newer.SSHKeyEncrypted = "key-v2" // the user saved new credentials
 
@@ -245,10 +252,10 @@ func TestPoolLiftsTheDialDeadline(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerWithTimeout(200 * time.Millisecond))
-	pool.dialer.creds = fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal()}
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	pool.dialer.timeout = 200 * time.Millisecond
+	t.Cleanup(pool.Close)
 
 	client, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
@@ -268,9 +275,9 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
 
 	client, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err)
@@ -295,10 +302,10 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
 	t.Parallel()
 
-	pool := NewPool(dialerWithTimeout(2 * time.Second))
-	pool.dialer.creds = fakeCreds{key: testClientKey, pin: sshtest.NewSigner().PublicKey().Marshal()}
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, sshtest.NewHangingListener(t))
+	pool := poolFor(sshtest.NewSigner().PublicKey().Marshal(), inst)
+	pool.dialer.timeout = 2 * time.Second
+	t.Cleanup(pool.Close)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
@@ -314,14 +321,119 @@ func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
 	entry.unlock()
 }
 
+// The dial reads the row, not the caller's snapshot: after a pin replace a
+// caller built before the edit must not dial with the old pin and memoise a
+// refusal that every fresh caller then inherits.
+func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	stale := pinnedInstanceAt(t, server.Addr)
+	stale.SSHHostKeyEncrypted = "enc-old"
+	row := *stale
+	row.SSHHostKeyEncrypted = "enc-new"
+	// The store now decrypts to the real key; only the stale caller still
+	// carries the old ciphertext.
+	pool := poolFor(hostKey.PublicKey().Marshal(), &row)
+	t.Cleanup(pool.Close)
+	pool.Invalidate(stale.ID)
+
+	client, err := pool.SFTP(t.Context(), stale)
+	require.NoError(t, err, "the dial must use the row the handler just wrote")
+	require.NotNil(t, client)
+	assert.Equal(t, 1, server.Accepts())
+}
+
+// Remove is what a deleted instance gets: the entry goes with the connection.
+func TestPoolRemoveDropsTheEntry(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	pool.Remove(inst.ID)
+	_, err = client.Getwd()
+	require.Error(t, err, "the session ends with the instance")
+	pool.mu.Lock()
+	_, kept := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	assert.False(t, kept, "a deleted instance must not keep an entry for the life of the process")
+	pool.Remove(inst.ID) // idempotent
+}
+
+// The backoff doubles to a ceiling, and a successful dial resets it: without
+// the reset, the first failure after a recovery would wait the old maximum.
+func TestPoolBackoffCapsAndResets(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	entry := newEntry()
+	for range 6 {
+		entry.memoise(inst, errors.New("dial failed"))
+	}
+	assert.Equal(t, backoffMax, entry.backoff, "the delay stops doubling at the cap")
+
+	pool.mu.Lock()
+	pool.conns[inst.ID] = entry
+	pool.mu.Unlock()
+	entry.retryAt = time.Now().Add(-time.Second)
+	_, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	assert.Zero(t, entry.backoff, "a successful dial forgets the failures before it")
+}
+
+// A connection nobody uses is closed by the keepalive loop, and the next
+// caller redials: this is how the pool lets go of an instance that was deleted
+// without a running qui, or that left remote mode.
+func TestPoolClosesIdleConnection(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+	done := make(chan struct{})
+	go entry.keepalive(inst.ID, entry.client, done, 20*time.Millisecond)
+	require.Eventually(t, func() bool {
+		_, err := client.Getwd()
+		return err != nil
+	}, 5*time.Second, 20*time.Millisecond, "the idle connection must be closed on the next tick")
+	close(done)
+
+	require.Eventually(t, func() bool {
+		again, err := pool.SFTP(t.Context(), inst)
+		return err == nil && again != client
+	}, 5*time.Second, 20*time.Millisecond, "the next caller redials once the watcher has cleared the entry")
+	assert.Equal(t, 2, server.Accepts())
+}
+
 func TestPoolReconnectsAfterDrop(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
-	t.Cleanup(pool.Close)
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
 	dir := t.TempDir()
 
 	client, err := pool.SFTP(t.Context(), inst)
@@ -349,8 +461,8 @@ func TestPoolCloseClosesClients(t *testing.T) {
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	pool := NewPool(dialerFor(hostKey.PublicKey().Marshal()))
 	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
 	dir := t.TempDir()
 
 	client, err := pool.SFTP(t.Context(), inst)
