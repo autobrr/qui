@@ -1,0 +1,128 @@
+# Throwaway proof for #2858. Delete before the PR is ready.
+name: windows-restart-proof
+
+on:
+  push:
+    branches:
+      - feat/windows-restart-2858
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Create placeholder web dist for embed
+        run: |
+          New-Item -ItemType Directory -Force web/dist | Out-Null
+          New-Item -ItemType File -Force web/dist/.gitkeep | Out-Null
+
+      - name: Supervisor and availability tests
+        run: go test -count=1 -run 'TestSupervisor|TestAvailability' ./internal/update/
+
+      - name: Build 1.0.0 and 2.0.0
+        run: |
+          New-Item -ItemType Directory -Force C:\quitest | Out-Null
+          go build -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=1.0.0" -o C:\quitest\qui.exe ./cmd/qui
+          go build -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=2.0.0" -o C:\quitest\qui-new.exe ./cmd/qui
+
+      - name: Prove the restart under Task Scheduler
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'C:\quitest'; $cfg = "$dir\cfg"; $base = 'http://127.0.0.1:7476'
+          $hdr = @{ 'X-Requested-With' = 'XMLHttpRequest' }
+
+          & "$dir\qui.exe" create-user --config-dir $cfg --username proof --password 'proof-password-123'
+          if ($LASTEXITCODE) { throw 'create-user failed' }
+
+          function Procs { @(Get-CimInstance Win32_Process -Filter "Name='qui.exe'") }
+          function State { (Get-ScheduledTask -TaskName qui).State }
+          function Show($label) {
+            Write-Host "== $label (task state: $(State))"
+            Procs | Format-Table ProcessId, ParentProcessId, ExecutablePath, CommandLine -AutoSize | Out-String -Width 400 | Write-Host
+          }
+          function Pair {
+            $p = Procs
+            if ($p.Count -ne 2) { throw "want 2 qui.exe processes, got $($p.Count)" }
+            $sup = @($p | Where-Object { $p.ProcessId -notcontains $_.ParentProcessId })
+            $child = @($p | Where-Object { $sup.Count -eq 1 -and $_.ParentProcessId -eq $sup[0].ProcessId })
+            if ($sup.Count -ne 1 -or $child.Count -ne 1) { throw 'no supervisor and child pair' }
+            [pscustomobject]@{ Supervisor = $sup[0].ProcessId; Child = $child[0].ProcessId }
+          }
+          function WaitFor($what, [scriptblock]$ok) {
+            for ($i = 0; $i -lt 120; $i++) {
+              try { $r = & $ok; if ($r) { return $r } } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            Show "timeout: $what"
+            throw "timed out waiting for $what"
+          }
+          function Version { (Invoke-RestMethod "$base/api/version" -WebSession $script:s -Headers $hdr) }
+          function RequireRunning { if ((State) -ne 'Running') { throw "task state $(State), want Running" } }
+          function Restart {
+            $r = Invoke-WebRequest -Method Post "$base/api/system/restart" -WebSession $script:s -Headers $hdr -UseBasicParsing
+            if ($r.StatusCode -ne 202) { throw "restart returned $($r.StatusCode)" }
+          }
+
+          $action = New-ScheduledTaskAction -Execute "$dir\qui.exe" -Argument "serve --config-dir $cfg --log-path $dir\qui.log" -WorkingDirectory $dir
+          $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
+          $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
+          Register-ScheduledTask -TaskName qui -Action $action -Settings $settings -Principal $principal | Out-Null
+
+          Start-ScheduledTask -TaskName qui
+          WaitFor 'first start' { Invoke-WebRequest "$base/health" -UseBasicParsing }
+          Invoke-RestMethod -Method Post "$base/api/auth/login" -ContentType 'application/json' -Headers $hdr `
+            -Body '{"username":"proof","password":"proof-password-123"}' -SessionVariable s | Out-Null
+          $script:s = $s
+          $v = Version
+          if ($v.version -ne '1.0.0' -or -not $v.restart) { throw "unexpected version response: $($v | ConvertTo-Json -Compress)" }
+          RequireRunning
+          $first = Pair
+          Show 'started'
+
+          # 1. After a Restart, the task still shows Running.
+          Restart
+          $second = WaitFor 'restarted child' { $p = Pair; if ($p.Child -ne $first.Child) { $p } }
+          WaitFor 'restarted version' { (Version).version -eq '1.0.0' } | Out-Null
+          if ($second.Supervisor -ne $first.Supervisor) { throw 'the supervisor changed' }
+          RequireRunning
+          Show 'PROOF 1: after Restart, new child, same supervisor, task Running'
+
+          # 3. "Run" while qui runs does not start a second copy.
+          Start-ScheduledTask -TaskName qui
+          Start-Sleep -Seconds 10
+          $third = Pair
+          if ($third.Supervisor -ne $second.Supervisor -or $third.Child -ne $second.Child) { throw 'Run started another copy' }
+          Show 'PROOF 3: Run while running started no second copy'
+
+          # 4. A Self-update followed by a Restart runs the new binary. The swap
+          #    renames the running file, the same way go-selfupdate does it.
+          Rename-Item "$dir\qui.exe" 'qui-v1.0.0.bak.exe'
+          Rename-Item "$dir\qui-new.exe" 'qui.exe'
+          Restart
+          WaitFor 'new version' { (Version).version -eq '2.0.0' } | Out-Null
+          $fourth = Pair
+          if ($fourth.Supervisor -ne $first.Supervisor) { throw 'the supervisor changed' }
+          RequireRunning
+          Show 'PROOF 4: after swap and Restart, qui serves 2.0.0'
+
+          # 2. "End" stops both the supervisor and the child.
+          Stop-ScheduledTask -TaskName qui
+          WaitFor 'all qui.exe gone' { (Procs).Count -eq 0 } | Out-Null
+          Show 'PROOF 2: End stopped the supervisor and the child'
+
+      - name: qui log
+        if: always()
+        run: if (Test-Path C:\quitest\qui.log) { Get-Content C:\quitest\qui.log }

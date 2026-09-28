@@ -17,7 +17,15 @@ When the exec returns an error, qui logs the error and exits with a non-zero cod
 
 ## Windows
 
-The Windows Restart comes in #2858: the first process becomes a supervisor with a kill-on-close job object. That issue adds its points here.
+Windows has no exec that keeps the process. The first `serve` process becomes a supervisor before it loads the config or opens the database:
+
+- It starts the resolved binary as a child, with the same argv and the environment variable `QUI_SUPERVISED=1`, and waits for it. The child serves qui.
+- It puts the child in a job object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. When the supervisor stops, Windows closes the job handle and stops the child. Task Scheduler "End" stops the supervisor, so it also stops the child.
+- A child that gets a Restart request runs the graceful shutdown and exits with the reserved code 75. The supervisor then starts the binary again from the same path. After a Self-update, that path holds the new release.
+- When the child exits with any other code, the supervisor exits with that code.
+- The supervisor ignores Ctrl+C and the console close event. The child shares the console and handles them.
+
+The supervisor starts with `serve`, not on the first Restart. The graceful shutdown stops only the HTTP server and the partial pool. Automations, reannounce, scans, backups, and the sync loops stop only when the process exits. A process that became the supervisor on its first Restart would keep them running next to its child. Two copies would then act on qBittorrent and write to the database. The cost is a second, idle `qui.exe` in Task Manager.
 
 ## Evidence
 
@@ -32,6 +40,7 @@ The Windows Restart comes in #2858: the first process becomes a supervisor with 
 
 - **Exit with a non-zero code and let the supervisor start qui again.** Rejected: the installs above have no supervisor that restarts qui, so qui stays down.
 - **On Windows, start a child and exit.** Rejected: the child breaks away from the task job. "End" cannot stop it, and "Run" starts a second copy.
+- **On Windows, become the supervisor on the first Restart.** Rejected: the services of the first process keep running next to the child.
 - **Restart `serve` inside the process.** Rejected: global state and the metric registration make a second `serve` unsafe, and it cannot load a new binary after a Self-update.
 
 ## Consequences
