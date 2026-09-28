@@ -849,6 +849,9 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Path = cfg.Config.BaseURL
 	sessionManager.Cookie.Persist = false
 
+	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
+	restarter := update.NewRestarter(updateInputs.BinaryPath)
+
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
@@ -866,7 +869,8 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
-		UpdateAvailability:               update.Decide(update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)),
+		UpdateAvailability:               update.Decide(updateInputs),
+		Restarter:                        restarter,
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
@@ -965,40 +969,41 @@ func (app *Application) runServer() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
+	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
+	shutdown := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		partialPoolCancel()
+		select {
+		case <-partialPoolDone:
+		case <-ctx.Done():
+			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		if err := httpServer.Shutdown(ctx); err != nil {
+			return err
+		}
+
+		// Closed here because os.Exit below means a defer would never fire; a job
+		// still mid-operation gets ErrPoolClosed and ends with the process.
+		sshPool.Close()
+		return nil
+	}
+
 	select {
 	case sig := <-sigCh:
 		log.Info().Msgf("got signal %v, shutting down server", sig.String())
 	case err := <-errorChannel:
 		log.Error().Err(err).Msg("got unexpected error from server")
+	case <-restarter.Requested():
+		log.Info().Msg("restart requested, shutting down server")
+		restarter.Restart(log.Logger, shutdown)
 	}
 
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	partialPoolCancel()
-	select {
-	case <-partialPoolDone:
-	case <-ctx.Done():
-		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
-	}
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		// log.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := shutdown(); err != nil {
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
-
 		os.Exit(1)
 	}
-
-	// Closed here because os.Exit below means a defer would never fire; a job
-	// still mid-operation gets ErrPoolClosed and ends with the process.
-	sshPool.Close()
-
-	// if err := srv.Shutdown(context.Background()); err != nil {
-	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
-	//
-	//	os.Exit(1)
-	//}
-
 	os.Exit(0)
 }
 

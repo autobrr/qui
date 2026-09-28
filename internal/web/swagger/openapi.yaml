@@ -5555,6 +5555,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system/restart:
+    post:
+      tags:
+        - System
+      summary: Restart qui
+      description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      responses:
+        '202':
+          description: The restart started
+        '403':
+          description: Restart is not available, for example in an app container
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: An update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The binary is missing, is not a regular file, or is not executable. qui keeps running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/backups/import:
     post:
       tags:

@@ -71,6 +71,7 @@ type Server struct {
 	licenseService                   *license.Service
 	updateService                    *update.Service
 	updateAvailability               update.Availability
+	restarter                        *update.Restarter
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -123,6 +124,7 @@ type Dependencies struct {
 	LicenseService                   *license.Service
 	UpdateService                    *update.Service
 	UpdateAvailability               update.Availability
+	Restarter                        *update.Restarter
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -196,6 +198,7 @@ func NewServer(deps *Dependencies) *Server {
 		licenseService:                   deps.LicenseService,
 		updateService:                    deps.UpdateService,
 		updateAvailability:               deps.UpdateAvailability,
+		restarter:                        deps.Restarter,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -371,6 +374,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
+	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -571,6 +575,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
+			r.Post("/system/restart", systemHandler.Restart)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

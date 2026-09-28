@@ -48,7 +48,7 @@ func TestAvailability(t *testing.T) {
 				ReleaseVersion:    isReleaseVersion(tt.version),
 				DirWritable:       tt.dirWritable,
 			})
-			require.Equal(t, Availability{SelfUpdate: tt.wantSelfUpdate, Restart: tt.wantRestart}, got)
+			require.Equal(t, Availability{SelfUpdate: tt.wantSelfUpdate, Restart: tt.wantRestart && restartSupported}, got)
 		})
 	}
 }
