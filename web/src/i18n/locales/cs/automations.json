@@ -32,6 +32,7 @@
     "false": "Nepravda",
     "selectCategory": "Vybrat kategorii",
     "uncategorized": "Nekategorizované",
+    "customContentType": "{{value}} (nepodporováno)",
     "regexEnabled": "Regex zapnuto",
     "enableRegex": "Povolit regex",
     "selectField": "Vybrat pole",
@@ -212,6 +213,7 @@
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému"
     },
     "selectTrackerStatus": "Vybrat stav",
+    "selectContentType": "Vybrat typ obsahu",
     "trackerStatuses": {
       "not_contacted": "Nekontaktováno",
       "working": "Funguje",

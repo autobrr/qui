@@ -55,6 +55,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{1: inst}},
 				syncManager:   sm, releaseCache: NewReleaseCache(), stringNormalizer: stringutils.DefaultNormalizer,
 				seasonPackRunStore: runs, recheckResumeChan: make(chan *pendingResume, 1),
+				// Manual assemble is a deliberate user action and overrides the blocklist.
+				blocklistStore: blocklistWithPack(t, torrentData),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{
 						SeasonPackCoverageThreshold: 1, SkipRecheck: true,

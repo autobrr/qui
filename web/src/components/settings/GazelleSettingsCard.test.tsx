@@ -61,7 +61,7 @@ describe("GazelleSettingsCard save", () => {
     expect(mocks.patchSettings).toHaveBeenCalledWith({
       gazelleEnabled: true,
       redactedApiKey: "red-key",
-      orpheusApiKey: "",
+      orpheusApiKey: undefined,
     })
   })
 

@@ -122,3 +122,37 @@ func TestRSSSSEInitialCheckOmitsArticleData(t *testing.T) {
 	default:
 	}
 }
+
+func TestRSSSSEEndsOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	shutdown := make(chan struct{})
+	handler := &RSSSSEHandler{
+		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) {
+			return qbt.RSSItems{}, nil
+		},
+		shutdown: shutdown,
+		clients:  make(map[int]map[*rssSSEClient]struct{}),
+		pollers:  make(map[int]context.CancelFunc),
+	}
+
+	// The request context stays open: http.Server.Shutdown does not cancel it.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances/1/rss/events", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	done := make(chan struct{})
+	go func() {
+		handler.HandleSSE(httptest.NewRecorder(), req)
+		close(done)
+	}()
+
+	close(shutdown)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RSS stream did not end on shutdown")
+	}
+}
