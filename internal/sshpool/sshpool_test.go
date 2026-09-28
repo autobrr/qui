@@ -23,13 +23,25 @@ import (
 
 var testClientKey = sshtest.PrivateKey("")
 
-// fakeCreds stands in for the instance store: the dialer only reads two values
-// from it, so the tests need no database.
+// fakeCreds stands in for the instance store: the row Get answers with, plus
+// the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
 	key    string
 	keyErr error
 	pin    []byte
 	pinErr error
+	inst   *models.Instance // the row Get answers with, for the pool tests
+	getErr error
+}
+
+func (f fakeCreds) Get(_ context.Context, id int) (*models.Instance, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.inst == nil || f.inst.ID != id {
+		return nil, models.ErrInstanceNotFound
+	}
+	return f.inst, nil
 }
 
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) {

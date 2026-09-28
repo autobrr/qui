@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -25,11 +26,17 @@ type DiscScanHandler struct {
 	service     *discscan.Service
 	store       *models.DiscScanStore
 	resolver    torrentContentResolver
+	instances   discScanInstanceGetter
 	backendPool *fsops.Pool
 }
 
-func NewDiscScanHandler(service *discscan.Service, store *models.DiscScanStore, resolver torrentContentResolver, backendPool *fsops.Pool) *DiscScanHandler {
-	return &DiscScanHandler{service: service, store: store, resolver: resolver, backendPool: backendPool}
+// discScanInstanceGetter is the slice of the instance store the gate needs.
+type discScanInstanceGetter interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
+func NewDiscScanHandler(service *discscan.Service, store *models.DiscScanStore, resolver torrentContentResolver, instances discScanInstanceGetter, backendPool *fsops.Pool) *DiscScanHandler {
+	return &DiscScanHandler{service: service, store: store, resolver: resolver, instances: instances, backendPool: backendPool}
 }
 
 type discScanStartRequest struct {
@@ -62,12 +69,25 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	backend, err := h.backendPool.GetBackend(ctx, instanceID)
+	// BDInfo runs on the qui host, so only an instance whose files are local
+	// may be scanned: a remote-mode instance would pass the save-path Stat
+	// over SFTP and then scan a path that does not exist here.
+	instance, err := h.instances.Get(ctx, instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
 			return
 		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("discscan: failed to get instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
+		return
+	}
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
+		RespondError(w, http.StatusForbidden, "Disc scanning requires local filesystem access")
+		return
+	}
+	backend, err := h.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("discscan: failed to get filesystem backend")
 		RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
 		return
@@ -103,13 +123,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		contentPath = torrents[0].ContentPath
 	}
 
-	// The save path Stat is the access gate: the noop backend of an instance
-	// without filesystem access fails it with ErrNoFilesystemAccess.
 	if _, err := backend.Stat(ctx, props.SavePath); err != nil {
-		if errors.Is(err, fsops.ErrNoFilesystemAccess) {
-			RespondError(w, http.StatusForbidden, "Instance does not have filesystem access")
-			return
-		}
 		RespondError(w, http.StatusNotFound, "Disc not found on disk")
 		return
 	}
