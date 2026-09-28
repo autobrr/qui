@@ -7610,6 +7610,8 @@ components:
       required:
         - version
         - updateAvailable
+        - selfUpdate
+        - restart
       properties:
         version:
           type: string
@@ -7622,6 +7624,14 @@ components:
         updateAvailable:
           type: boolean
           description: Whether a newer release than the running version is available
+          example: true
+        selfUpdate:
+          type: boolean
+          description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
+          example: true
+        restart:
+          type: boolean
+          description: Whether qui can restart itself. False in an app container.
           example: true
 
     QBittorrentBuildInfo:
@@ -7940,10 +7950,10 @@ components:
           description: Enable Gazelle matching for OPS/RED torrents
         redactedApiKey:
           type: string
-          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Redacted (RED) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         orpheusApiKey:
           type: string
-          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
         startPaused:
@@ -8073,10 +8083,10 @@ components:
           description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
-          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+          description: TVDB API key for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         seasonPackTvdbPin:
           type: string
-          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
+          description: TVDB subscriber PIN for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
 
     CrossSeedAutomationSettings:
       type: object
@@ -8088,10 +8098,10 @@ components:
           description: Enable Gazelle matching for OPS/RED torrents
         redactedApiKey:
           type: string
-          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Redacted (RED) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         orpheusApiKey:
           type: string
-          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
         startPaused:
@@ -8223,10 +8233,10 @@ components:
           description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
-          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+          description: TVDB API key for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         seasonPackTvdbPin:
           type: string
-          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
+          description: TVDB subscriber PIN for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         createdAt:
           type: string
           format: date-time
