@@ -128,6 +128,8 @@ Detection requires:
 
 If qui cannot verify a copy (for example when its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
 
+The check also fails when qui cannot read a torrent's files. A common cause is a permission error: qui runs as a different user (PUID) than qBittorrent. The check fails in the same way when qui cannot map a torrent file name to a path under the save path. These failures stay until you fix the permissions or rename the file.
+
 On Windows, the same delete check also detects ReFS block-cloned files and displays a **Reflink** badge. This is a bounded verification step, not a disk scan:
 
 - qui considers only torrents that match by exact name or release metadata.

@@ -17,6 +17,10 @@ export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/
  */
 export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
 
+// Omit an untouched secret: the backend shows an undecryptable key as "", and sending that "" back deletes it.
+export const changedSecret = (value: string, saved: string | undefined): string | undefined =>
+  value === (saved ?? "") ? undefined : value
+
 /**
  * Check if a path is inside a base directory.
  * Returns true if base is non-empty and path equals base or starts with base + "/".
