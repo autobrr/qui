@@ -61,11 +61,11 @@ export function useSelfUpdate() {
           credentials: "include",
           signal: controller.signal,
         })
-        // A reverse proxy answers 5xx while qui is down. Any other answer that
-        // is not the old process comes from the new qui or the login in front of it.
-        if (response.status < 500) {
+        // A 404 after a base URL change must not reload: the overlay then
+        // points the user to the new address.
+        if (response.ok) {
           const info = await response.json().catch(() => null) as { startedAt?: string } | null
-          if (info?.startedAt !== startedAt) {
+          if (info?.startedAt && info.startedAt !== startedAt) {
             window.location.reload()
             return
           }

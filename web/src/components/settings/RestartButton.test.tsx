@@ -19,7 +19,7 @@ const location = { assign: vi.fn(), reload: vi.fn() }
 
 let versionCalls = 0
 let infoCalls = 0
-let qui: "old" | "down" | "new" = "old"
+let qui: "old" | "down" | "moved" | "new" = "old"
 let restartAvailable = true
 
 function renderButton() {
@@ -52,6 +52,9 @@ beforeEach(() => {
       infoCalls++
       if (qui === "down") {
         return HttpResponse.error()
+      }
+      if (qui === "moved") {
+        return new HttpResponse("404 page not found", { status: 404 })
       }
       return HttpResponse.json({ startedAt: qui === "old" ? "2026-09-28T20:00:00Z" : "2026-09-28T21:00:00Z" })
     })
@@ -152,6 +155,13 @@ describe("RestartButton", () => {
       await vi.advanceTimersByTimeAsync(5_000)
     })
     expect(infoCalls).toBeGreaterThan(callsAtSlow)
+    expect(location.reload).not.toHaveBeenCalled()
+
+    // After a base URL change, the old path answers 404 and the slow text stays.
+    qui = "moved"
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
     expect(location.reload).not.toHaveBeenCalled()
 
     qui = "new"
