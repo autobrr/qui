@@ -5328,15 +5328,21 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
-// SubcategoriesEnabled reports whether an instance nests categories. qBittorrent
-// 5.2 dropped use_subcategories, so the preference cannot be read on its own.
-// resolveUseSubcategories below answers the same from main data.
-func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+// CategorySavePathsNest reports whether an instance resolves a category with an
+// empty save path under its parent category's save path, as Automatic Torrent
+// Management does on qBittorrent 5.0+ with subcategories on. qBittorrent 5.2
+// dropped use_subcategories, so the preference cannot be read on its own.
+func (sm *SyncManager) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
-	if !client.SupportsSubcategories() {
+	// A client that keeps syncing skips health checks, so after an in-place
+	// upgrade from 4.6 its cached capabilities would still say "flat".
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		return false, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
+	}
+	if !client.NestsCategorySavePaths() {
 		return false, nil
 	}
 	if client.SubcategoriesAlwaysEnabled() {

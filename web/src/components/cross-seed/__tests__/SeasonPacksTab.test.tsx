@@ -88,8 +88,8 @@ describe("SeasonPacksTab save", () => {
       seasonPackTags: ["cross-seed", "season-pack"],
       seasonPackCategory: "tv",
       seasonPackCategoryRules: [],
-      seasonPackTvdbApiKey: "key",
-      seasonPackTvdbPin: "",
+      seasonPackTvdbApiKey: undefined,
+      seasonPackTvdbPin: undefined,
     })
   })
 })

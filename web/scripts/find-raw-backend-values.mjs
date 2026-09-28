@@ -170,35 +170,30 @@ function scanFile(filePath) {
       // Match patterns like {foo.status} or {foo?.status} or {item.status}
       // But NOT t(...status...) or className={...status...}
       const regex = new RegExp(
-        `\\{[^}]*\\b\\w+(?:\\.|\\?\\.)${prop}\\b[^}]*\\}`,
-        "g"
+        `\\{[^}]*\\b\\w+(?:\\.|\\?\\.)${prop}\\b[^}]*\\}`
       );
-      const matches = line.matchAll(regex);
+      if (!regex.test(line)) continue;
 
-      for (const match of matches) {
-        const matchStr = match[0];
+      // Skip if any safe pattern matches
+      if (SAFE_PATTERNS.some((pat) => pat.test(line))) continue;
 
-        // Skip if any safe pattern matches
-        if (SAFE_PATTERNS.some((pat) => pat.test(line))) continue;
+      // Extra check: is this likely a JSX render context?
+      // Look for surrounding JSX or if this is inside a JSX return
+      if (!isInJsxContext(line)) continue;
 
-        // Extra check: is this likely a JSX render context?
-        // Look for surrounding JSX or if this is inside a JSX return
-        if (!isInJsxContext(line)) continue;
-
-        // Check if the expression is just the property (direct render)
-        // vs being part of a larger expression
-        const simpleRender = new RegExp(
-          `\\{\\s*\\w+(?:\\.|\\?\\.)${prop}\\s*\\}|>\\s*\\{\\s*\\w+(?:\\.|\\?\\.)${prop}\\s*\\}\\s*<`
-        );
-        if (simpleRender.test(line)) {
-          findings.push({
-            line: lineNum,
-            type: "RAW_BACKEND_VALUE",
-            property: prop,
-            code: line.trim(),
-            suggestion: `Use t(\`namespace.${prop}Labels.\${variable.${prop}}\`, variable.${prop}) instead`,
-          });
-        }
+      // Check if the expression is just the property (direct render)
+      // vs being part of a larger expression
+      const simpleRender = new RegExp(
+        `\\{\\s*\\w+(?:\\.|\\?\\.)${prop}\\s*\\}|>\\s*\\{\\s*\\w+(?:\\.|\\?\\.)${prop}\\s*\\}\\s*<`
+      );
+      if (simpleRender.test(line)) {
+        findings.push({
+          line: lineNum,
+          type: "RAW_BACKEND_VALUE",
+          property: prop,
+          code: line.trim(),
+          suggestion: `Use t(\`namespace.${prop}Labels.\${variable.${prop}}\`, variable.${prop}) instead`,
+        });
       }
     }
 

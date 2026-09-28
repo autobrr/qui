@@ -21,6 +21,7 @@ import {
 } from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
+import { changedSecret } from "@/lib/cross-seed-utils"
 import type { CrossSeedAutomationSettings, SeasonPackCategoryRule } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
@@ -264,7 +265,11 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           formatDateValue={formatDateValue}
         />
       </CardContent>
-      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({ ...form })} label={t("rules.saveChanges")} />
+      <SaveFooter pending={patchSettings.isPending} onSave={() => patchSettings.mutate({
+        ...form,
+        seasonPackTvdbApiKey: changedSecret(form.seasonPackTvdbApiKey, settings.seasonPackTvdbApiKey),
+        seasonPackTvdbPin: changedSecret(form.seasonPackTvdbPin, settings.seasonPackTvdbPin),
+      })} label={t("rules.saveChanges")} />
     </Card>
   )
 }
