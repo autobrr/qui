@@ -53,6 +53,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -73,6 +74,12 @@ import (
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
+
+// SQLiteMigrations returns the embedded SQLite migration files. testdb keys
+// its shared migrated template on them.
+func SQLiteMigrations() fs.FS {
+	return migrationsFS
+}
 
 // reader/writer fields on DB
 type DB struct {
