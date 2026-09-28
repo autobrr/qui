@@ -3,19 +3,10 @@
 
 package update
 
-import (
-	"fmt"
-	"os"
-)
+import "os"
 
-func checkBinary(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", path)
-	}
+// checkExecutable passes: Windows has no execute bit.
+func checkExecutable(string) error {
 	return nil
 }
 

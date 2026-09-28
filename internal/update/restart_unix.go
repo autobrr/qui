@@ -13,14 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func checkBinary(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", path)
-	}
+func checkExecutable(path string) error {
 	if err := unix.Access(path, unix.X_OK); err != nil {
 		return fmt.Errorf("%s is not executable: %w", path, err)
 	}

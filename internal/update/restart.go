@@ -4,6 +4,7 @@
 package update
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -33,6 +34,17 @@ func (r *Restarter) Request() error {
 	default:
 	}
 	return nil
+}
+
+func checkBinary(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+	return checkExecutable(path)
 }
 
 func (r *Restarter) Requested() <-chan struct{} {
