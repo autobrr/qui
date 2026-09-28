@@ -262,7 +262,7 @@ const CrossSeedDialogComponent = ({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 {sourceTorrent?.contentType && (
                   <Badge variant="secondary" className="h-5 text-xs font-normal capitalize">
-                    {t(`crossseed:dirScan.contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
+                    {t(`common:contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
                   </Badge>
                 )}
                 {sourceTorrent?.category && <span>{t("crossSeedDialog.category", { category: sourceTorrent.category })}</span>}

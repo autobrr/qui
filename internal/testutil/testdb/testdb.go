@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -65,11 +66,7 @@ func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 		t.Fatalf("open PostgreSQL test administrator: %v", err)
 	}
 
-	safeName := strings.ReplaceAll(sanitizeName(name), "-", "_")
-	if len(safeName) > 24 {
-		safeName = safeName[:24]
-	}
-	schemaName := fmt.Sprintf("qui_test_%s_%d", safeName, time.Now().UnixNano())
+	schemaName := testSchemaName(name, time.Now())
 	quotedSchema := quotePostgresIdentifier(schemaName)
 	if _, err := adminPool.Exec(setupCtx, "CREATE SCHEMA "+quotedSchema); err != nil {
 		adminPool.Close()
@@ -121,6 +118,19 @@ func postgresDSNWithSearchPath(dsn, schema string) (string, error) {
 	query.Set("search_path", schema)
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
+}
+
+// testSchemaSeq keeps parallel tests from claiming the same schema name: the
+// clock is coarse enough that two tests starting together read the same
+// UnixNano, and CREATE SCHEMA then fails for the second one.
+var testSchemaSeq atomic.Int64
+
+func testSchemaName(name string, now time.Time) string {
+	safeName := strings.ReplaceAll(sanitizeName(name), "-", "_")
+	if len(safeName) > 24 {
+		safeName = safeName[:24]
+	}
+	return fmt.Sprintf("qui_test_%s_%d_%d", safeName, now.UnixNano(), testSchemaSeq.Add(1))
 }
 
 func quotePostgresIdentifier(value string) string {
