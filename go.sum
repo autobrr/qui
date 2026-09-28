@@ -13,8 +13,6 @@ github.com/alexedwards/scs/v2 v2.9.0/go.mod h1:ToaROZxyKukJKT/xLcVQAChi5k6+Pn1Gv
 github.com/andybalholm/brotli v1.0.5/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/andybalholm/brotli v1.2.5 h1:BSI8V4zmx/3BAn6OKjF1PmfVq7Aoi52AdFsi6bpCx+s=
 github.com/andybalholm/brotli v1.2.5/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
-github.com/autobrr/autobrr v1.86.0 h1:fwv+VEnpaenMssOeeUrwQUccAMGcKtQj6+YIp8AyUXU=
-github.com/autobrr/autobrr v1.86.0/go.mod h1:cN38NSQU+Jn+YT7QsxuCa02uDr5470rXaUpANRwoHzI=
 github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72 h1:fQnXBwvj6HC4ahCgBNDn178ywMMlqD1oEcnrV8Lw7dI=
 github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72/go.mod h1:OjpQR7TPcP7fBTo4GW1Yz1+biQG7YTo1OZH7KXX5gS0=
 github.com/autobrr/go-cache v1.0.0-rc1 h1:xqghz7o+4jvTOlyFq08JflUFps7eF9REdIjGkaHCqCY=

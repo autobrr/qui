@@ -8,7 +8,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/andybalholm/brotli v1.2.5
-	github.com/autobrr/autobrr v1.86.0
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
@@ -87,6 +86,7 @@ require (
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
