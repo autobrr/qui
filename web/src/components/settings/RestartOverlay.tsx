@@ -64,7 +64,7 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
             <div className="flex w-full flex-col gap-2 text-left">
               <p className="text-sm text-muted-foreground">{t("application.update.overlay.rollbackIntro")}</p>
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 p-2">
-                <code className="min-w-0 flex-1 break-all font-mono text-xs">{update.rollbackCommand}</code>
+                <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs">{update.rollbackCommand}</code>
                 <Button
                   variant="ghost"
                   size="icon"

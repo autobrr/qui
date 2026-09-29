@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -101,7 +102,7 @@ func (u *Updater) Run(ctx context.Context) error {
 	if result.BackupError != "" {
 		fmt.Printf("Warning: %s, a rollback needs a manual download\n", result.BackupError)
 	} else {
-		fmt.Printf("To roll back, stop qui and run: %s\n", result.RollbackCommand)
+		fmt.Printf("To roll back, stop qui and run:\n%s\n", result.RollbackCommand)
 	}
 	return nil
 }
@@ -156,28 +157,40 @@ func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSour
 		result.BackupError = err.Error()
 		// The older backups are now the only way back, so keep them.
 	} else {
-		result.RollbackCommand = "mv " + shellQuote(backup) + " " + shellQuote(binary)
-		if runtime.GOOS == "windows" {
-			// cmd /c: in PowerShell, the Windows 11 default, move is Move-Item and rejects /Y.
-			result.RollbackCommand = fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
-		}
+		result.RollbackCommand = rollbackCommand(backup, binary)
 		removeOlderBackups(binary, backup)
 	}
 
 	sibling := siblingPath(binary)
-	if _, err := os.Stat(sibling); err != nil {
+	_, err := os.Stat(sibling)
+	if errors.Is(err, os.ErrNotExist) {
 		return result, nil
 	}
 	siblingBackup := backupPath(sibling, current)
-	asset, err := selfupdate.DecompressCommand(bytes.NewReader(archive.archive), release.AssetName, filepath.Base(sibling), runtime.GOOS, runtime.GOARCH)
+	var asset io.Reader
+	if err == nil {
+		asset, err = selfupdate.DecompressCommand(bytes.NewReader(archive.archive), release.AssetName, filepath.Base(sibling), runtime.GOOS, runtime.GOARCH)
+	}
 	if err == nil {
 		err = selfupdateapply.Apply(asset, selfupdateapply.Options{TargetPath: sibling, OldSavePath: savePath(siblingBackup)})
 	}
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: replaced %s, but not %s: %w", ErrSwap, binary, sibling, err)
 	}
+	if result.RollbackCommand != "" {
+		// One command per line: no separator works in both cmd and PowerShell 5.1.
+		result.RollbackCommand += "\n" + rollbackCommand(siblingBackup, sibling)
+	}
 	removeOlderBackups(sibling, siblingBackup)
 	return result, nil
+}
+
+func rollbackCommand(backup, binary string) string {
+	if runtime.GOOS == "windows" {
+		// cmd /c: in PowerShell, the Windows 11 default, move is Move-Item and rejects /Y.
+		return fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
+	}
+	return "mv " + shellQuote(backup) + " " + shellQuote(binary)
 }
 
 // savePath is where a swap keeps the file it replaces. A backup of the running

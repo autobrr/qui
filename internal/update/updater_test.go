@@ -380,11 +380,14 @@ func TestInstallReplacesSiblingBinaryFromSameRelease(t *testing.T) {
 	result, err := f.updater.Install(t.Context(), "v1.31.0")
 	require.NoError(t, err)
 	require.Equal(t, "1.31.0", result.Version)
+	quiBackup := filepath.Join(f.dir, backupName("1.30.0"))
+	trayBackup := filepath.Join(f.dir, "qui-tray-v1.30.0"+backupSuffix())
+	require.Equal(t, rollbackCommand(quiBackup, f.binary)+"\n"+rollbackCommand(trayBackup, tray), result.RollbackCommand)
 
 	requireFile(t, f.binary, "qui 1.31.0")
 	requireFile(t, tray, "qui-tray 1.31.0")
-	requireFile(t, filepath.Join(f.dir, backupName("1.30.0")), "qui 1.30.0")
-	requireFile(t, filepath.Join(f.dir, "qui-tray-v1.30.0"+backupSuffix()), "qui-tray 1.30.0")
+	requireFile(t, quiBackup, "qui 1.30.0")
+	requireFile(t, trayBackup, "qui-tray 1.30.0")
 	require.NoFileExists(t, olderQui)
 	require.NoFileExists(t, olderTray)
 
@@ -427,6 +430,21 @@ func TestInstallReportsSiblingSwapFailure(t *testing.T) {
 	// The running binary is already replaced; the sibling keeps its old version.
 	requireFile(t, f.binary, "qui 1.31.0")
 	requireFile(t, tray, "qui-tray 1.30.0")
+}
+
+// Only a missing sibling means a single-binary install. Any other stat error
+// could hide a sibling that stays on the old version.
+func TestInstallReportsSiblingStatFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a symlink loop")
+	}
+	f := newInstallFixture(t)
+	tray := filepath.Join(f.dir, "qui-tray")
+	require.NoError(t, os.Symlink(tray, tray))
+
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.ErrorIs(t, err, ErrSwap)
+	require.ErrorContains(t, err, tray)
 }
 
 // A failed sibling swap does not restart qui, so the user can retry. The
