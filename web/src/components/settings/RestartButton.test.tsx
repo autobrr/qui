@@ -127,7 +127,7 @@ describe("RestartButton", () => {
     await confirmRestart()
     await screen.findByText("application.restart.overlay.restartingTitle")
 
-    // Keyboard focus can still reach the button under the overlay.
+    // fireEvent reaches the button under the overlay; a real click does not.
     fireEvent.click(screen.getByText("application.restart.button"))
     fireEvent.keyDown(document.body, { key: "Escape" })
 
@@ -136,6 +136,21 @@ describe("RestartButton", () => {
     })
     expect(screen.queryByText("application.restart.confirmTitle")).toBeNull()
     expect(location.reload).not.toHaveBeenCalled()
+  })
+
+  it("keeps focus in the overlay and hides the page under it", async () => {
+    server.use(http.post("*/api/system/restart", () => new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })))
+    renderButton()
+    await confirmRestart()
+    await screen.findByText("application.restart.overlay.restartingTitle")
+
+    // The closed confirm dialog returns focus to the Restart button on a timer.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    // A Settings tab switch under the overlay would unmount the poll.
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true)
+    expect(screen.queryByRole("button", { name: "application.restart.button" })).toBeNull()
   })
 
   it("keeps the overlay until a new qui process answers, changes the text after 60 seconds, and reloads once", async () => {

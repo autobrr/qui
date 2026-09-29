@@ -4,7 +4,6 @@
  */
 
 import { Loader2, Power } from "lucide-react"
-import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -17,6 +16,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { type RestartOverlay as RestartOverlayState, useSelfUpdate } from "@/hooks/useSelfUpdate"
 
 export function RestartButton() {
@@ -64,18 +64,23 @@ function RestartOverlay({ state }: { state: RestartOverlayState }) {
   }
 
   const slow = state === "slow"
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/95 p-6 backdrop-blur-sm">
-      <div role="status" aria-live="polite" className="flex max-w-md flex-col items-center gap-3 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-lg font-medium">
-          {slow ? t("application.restart.overlay.slowTitle") : t("application.restart.overlay.restartingTitle")}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {slow ? t("application.restart.overlay.slowDetail") : t("application.restart.overlay.restartingDetail")}
-        </p>
-      </div>
-    </div>,
-    document.body
+  // A modal with no close path: it traps focus, so the keyboard cannot reach
+  // a Settings tab whose switch would unmount the poll.
+  return (
+    <Dialog open>
+      <DialogContent
+        showCloseButton={false}
+        className="inset-0 z-[100] flex max-w-none translate-x-0 translate-y-0 items-center justify-center rounded-none border-0 bg-background/95 shadow-none backdrop-blur-sm sm:max-w-none">
+        <div role="status" aria-live="polite" className="flex max-w-md flex-col items-center gap-3 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <DialogTitle className="font-medium">
+            {slow ? t("application.restart.overlay.slowTitle") : t("application.restart.overlay.restartingTitle")}
+          </DialogTitle>
+          <DialogDescription>
+            {slow ? t("application.restart.overlay.slowDetail") : t("application.restart.overlay.restartingDetail")}
+          </DialogDescription>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
