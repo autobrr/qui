@@ -155,9 +155,9 @@ describe("TorrentDiscReportDialog", () => {
   })
 
   it("shows the start error when the server refuses the scan", () => {
-    const scans = scansWith(undefined, { isError: true, error: new Error("Instance does not have filesystem access") } as Partial<DiscScans["start"]>)
+    const scans = scansWith(undefined, { isError: true, error: new Error("Disc scanning requires local filesystem access") } as Partial<DiscScans["start"]>)
     const { getByText } = render(<TorrentDiscReportDialog discPath="Set/Disc 1" onClose={() => {}} scans={scans} />)
-    expect(getByText("Instance does not have filesystem access")).toBeTruthy()
+    expect(getByText("Disc scanning requires local filesystem access")).toBeTruthy()
     fireEvent.click(getByText("discScan.retry"))
     expect(scans.start.mutate).toHaveBeenCalledWith({ discPath: "Set/Disc 1", force: false })
   })

@@ -22,8 +22,8 @@
     "version": "Version {{version}}",
     "language": "Sprache",
     "viewOnGitHub": "Auf GitHub ansehen",
-    "rssRunning": "RSS läuft",
-    "rssEnabled": "RSS aktiviert",
+    "rssRunning": "Cross-Seed-RSS läuft",
+    "rssEnabled": "Cross-Seed-RSS aktiviert",
     "scanRunning": "Scan läuft",
     "showSidebar": "Sidebar anzeigen",
     "hideSidebar": "Sidebar ausblenden"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
     "updateAvailable": "Update verfügbar",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS läuft",
-    "rssEnabled": "RSS aktiviert",
+    "rssRunning": "Cross-Seed-RSS läuft",
+    "rssEnabled": "Cross-Seed-RSS aktiviert",
     "scanRunning": "Scan läuft",
     "allScope": "ALLE",
     "unified": "Vereinheitlicht"
@@ -81,8 +81,8 @@
     "noActiveClients": "Keine aktiven Clients",
     "updateAvailable": "Update verfügbar",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS läuft",
-    "rssEnabled": "RSS aktiviert",
+    "rssRunning": "Cross-Seed-RSS läuft",
+    "rssEnabled": "Cross-Seed-RSS aktiviert",
     "scanRunning": "Scan läuft",
     "logout": "Abmelden",
     "version": "Version {{version}}",
@@ -117,6 +117,18 @@
     "unknown": "Unbekannt",
     "trackerError": "Tracker-Fehler",
     "unreachable": "Nicht erreichbar"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Serie",
+    "music": "Musik",
+    "audiobook": "Hörbuch",
+    "book": "Buch",
+    "comic": "Comic",
+    "game": "Spiel",
+    "app": "App",
+    "adult": "Erwachsene",
+    "unknown": "Unbekannt"
   },
   "themeToggle": {
     "changeTheme": "Design ändern",

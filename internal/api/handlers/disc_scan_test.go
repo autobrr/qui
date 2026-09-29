@@ -69,6 +69,8 @@ type discScanFixture struct {
 	router     http.Handler
 	store      *models.DiscScanStore
 	service    *discscan.Service
+	handler    *DiscScanHandler
+	instances  *models.InstanceStore
 	instanceID int
 	root       string
 	scanner    *fakeScanner
@@ -116,7 +118,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	scanner := &fakeScanner{started: make(chan string, 8), release: make(chan struct{})}
 	service.SetScanner(scanner.scan)
 
-	handler := NewDiscScanHandler(service, store, resolver, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	handler := NewDiscScanHandler(service, store, resolver, instanceStore, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	router := chi.NewRouter()
 	router.Route("/api/instances/{instanceID}", func(r chi.Router) {
 		r.Get("/torrents/{hash}/disc-scans", handler.ListForTorrent)
@@ -125,7 +127,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 		r.Post("/disc-scans/{runID}/cancel", handler.Cancel)
 	})
 
-	return &discScanFixture{router: router, store: store, service: service, instanceID: instance.ID, root: root, scanner: scanner, events: events}
+	return &discScanFixture{router: router, store: store, service: service, handler: handler, instances: instanceStore, instanceID: instance.ID, root: root, scanner: scanner, events: events}
 }
 
 func (fx *discScanFixture) startWorker(t *testing.T) {
@@ -180,6 +182,37 @@ func TestDiscScanStart_DeniedWithoutFilesystemAccess(t *testing.T) {
 
 	code, _ := fx.start(t, "Box Set/Disc 1", false)
 	require.Equal(t, http.StatusForbidden, code)
+}
+
+// remoteModeStore returns the instance as it reads once SSH credentials and a
+// confirmed pin are stored, without local filesystem access.
+type remoteModeStore struct{ store *models.InstanceStore }
+
+func (s remoteModeStore) Get(ctx context.Context, id int) (*models.Instance, error) {
+	inst, err := s.store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	inst.HasLocalFilesystemAccess = false
+	inst.SSHHost, inst.SSHKeyEncrypted, inst.SSHHostKeyEncrypted = "seedbox.invalid", "key", "pin"
+	return inst, nil
+}
+
+// BDInfo reads the qui host's filesystem, so a remote-mode instance is refused
+// before the save path is checked: over SFTP that Stat would pass and queue a
+// scan of a path that does not exist here (soup, #2739).
+func TestDiscScanStart_RefusesRemoteModeInstance(t *testing.T) {
+	fx := newDiscScanFixture(t, false)
+
+	store := remoteModeStore{fx.instances}
+	fx.handler.instances = store
+	// The factory stands in for a remote host where the save path exists.
+	fx.handler.backendPool = fsops.NewPoolWithRemote(store, localbackend.NewBackend(), func(*models.Instance) fsops.Backend {
+		return localbackend.NewBackend()
+	})
+
+	code, _ := fx.start(t, "Box Set/Disc 1", false)
+	require.Equal(t, http.StatusForbidden, code, "a remote-mode instance must not queue a local BDInfo run")
 }
 
 func TestDiscScanStart_RejectsNonDiscPaths(t *testing.T) {

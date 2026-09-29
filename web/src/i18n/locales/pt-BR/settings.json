@@ -999,6 +999,39 @@
         "lastChecked": "Última verificação: {{date}}"
       }
     },
+    "restart": {
+      "button": "Reiniciar",
+      "confirmTitle": "Reiniciar o qui?",
+      "confirmDescription": "O qui desliga da mesma forma que em uma parada normal e depois inicia de novo. Trabalhos em andamento, como buscas de cross-seed, automações, backups e varreduras de órfãos, são interrompidos. A página recarrega quando o qui voltar.",
+      "confirm": "Reiniciar",
+      "overlay": {
+        "restartingTitle": "Reiniciando o qui…",
+        "restartingDetail": "A página recarrega quando o qui responder de novo.",
+        "slowTitle": "O qui ainda não respondeu",
+        "slowDetail": "O qui pode ainda estar iniciando, e esta página continua aguardando. Verifique os logs do qui. Se você mudou a porta ou a URL base, abra o qui no novo endereço."
+      }
+    },
+    "update": {
+      "button": "Instalar atualização",
+      "confirmTitle": "Instalar atualização?",
+      "confirmDescription": "O qui baixa a nova versão, verifica a assinatura e mantém o binário atual como backup. Depois o qui reinicia. A página recarrega quando o qui voltar.",
+      "runningWork": "O trabalho em andamento, como buscas de cross-seed, automações, backups e verificações de órfãos, para.",
+      "currentVersion": "Versão atual",
+      "targetVersion": "Nova versão",
+      "releaseNotes": "Notas da versão",
+      "confirm": "Instalar atualização",
+      "overlay": {
+        "notAppliedTitle": "A atualização não foi aplicada",
+        "notAppliedDetail": "O qui voltou, mas com outra versão. Verifique os logs do qui.",
+        "installedTitle": "O qui foi atualizado",
+        "installedDetail": "Recarregue a página para abrir a nova versão.",
+        "reload": "Recarregar página",
+        "noBackup": "O qui foi atualizado, mas não manteve backup: {{error}}. Para reverter, baixe a versão anterior manualmente.",
+        "rollbackIntro": "Se a nova versão não iniciar, execute este comando e inicie o qui de novo:",
+        "rollbackLabel": "Comando de reversão",
+        "rollbackDocs": "Passos para reverter"
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "description": "Informações do tempo de execução do servidor.",

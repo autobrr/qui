@@ -22,8 +22,8 @@
     "version": "Version {{version}}",
     "language": "Language",
     "viewOnGitHub": "View on GitHub",
-    "rssRunning": "RSS running",
-    "rssEnabled": "RSS enabled",
+    "rssRunning": "Cross-seed RSS running",
+    "rssEnabled": "Cross-seed RSS enabled",
     "scanRunning": "Scan running",
     "showSidebar": "Show sidebar",
     "hideSidebar": "Hide sidebar"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS running",
-    "rssEnabled": "RSS enabled",
+    "rssRunning": "Cross-seed RSS running",
+    "rssEnabled": "Cross-seed RSS enabled",
     "scanRunning": "Scan running",
     "allScope": "ALL",
     "unified": "Unified"
@@ -81,8 +81,8 @@
     "noActiveClients": "No active clients",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS running",
-    "rssEnabled": "RSS enabled",
+    "rssRunning": "Cross-seed RSS running",
+    "rssEnabled": "Cross-seed RSS enabled",
     "scanRunning": "Scan running",
     "logout": "Logout",
     "version": "Version {{version}}",
@@ -117,6 +117,18 @@
     "unknown": "Unknown",
     "trackerError": "Tracker error",
     "unreachable": "Unreachable"
+  },
+  "contentTypeLabels": {
+    "movie": "Movie",
+    "tv": "TV",
+    "music": "Music",
+    "audiobook": "Audiobook",
+    "book": "Book",
+    "comic": "Comic",
+    "game": "Game",
+    "app": "App",
+    "adult": "Adult",
+    "unknown": "Unknown"
   },
   "themeToggle": {
     "changeTheme": "Change theme",

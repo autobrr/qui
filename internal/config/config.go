@@ -143,6 +143,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -251,6 +252,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -381,6 +383,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -649,6 +652,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Hide Self-update in the web UI. "qui update" from the shell still works (requires restart)
+# Package maintainers who pin the qui version should set this to true.
+# Default: false
+#disableSelfUpdate = false
 
 # Tracker icon fetching
 # Disable to prevent qui from requesting tracker favicons from remote trackers.
@@ -962,6 +970,15 @@ func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
 	}
 	return dir, nil
+}
+
+// SetDefaultLogPath sets the log path that applies when the config file, the
+// environment, and the flags set none. A config reload keeps it.
+func (c *AppConfig) SetDefaultLogPath(path string) {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	c.viper.SetDefault("logPath", path)
+	c.Config.LogPath = c.viper.GetString("logPath")
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.

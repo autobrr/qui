@@ -5555,6 +5555,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system/restart:
+    post:
+      tags:
+        - System
+      summary: Restart qui
+      description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      responses:
+        '202':
+          description: The restart started
+        '403':
+          description: Restart is not available, for example in an app container
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: An update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The binary is missing, is not a regular file, or is not executable. qui keeps running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/system/update:
+    post:
+      tags:
+        - System
+      summary: Install a release
+      description: Downloads the release with this exact tag, checks its signature, and replaces the binary. qui keeps the previous binary as qui-v<old version>.bak next to it and deletes older backups. After the 200 response qui restarts. On an install error the binary and the process do not change. When qui refuses the restart after the install, it returns 500, the new binary stays in place, and the old process keeps running. Only one update or restart runs at a time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfUpdateRequest'
+      responses:
+        '200':
+          description: The new binary is in place. qui restarts next.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateResponse'
+        '400':
+          description: The version is missing or is not valid semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Self-update is not available, for example in an app container or for a development build
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: GitHub has no release with that tag, or no asset for this OS and architecture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The tag is not newer than the running version, or an update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The binary swap failed, for example with a permission error, or the new binary is installed but qui refused the restart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: GitHub returned an error, such as a rate limit, or the signature check failed. The error carries the message word for word.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/backups/import:
     post:
       tags:
@@ -6604,6 +6688,36 @@ components:
         error:
           type: string
 
+    SelfUpdateRequest:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          description: The release tag to install
+          example: v1.31.0
+
+    SelfUpdateResponse:
+      type: object
+      required:
+        - version
+        - rollbackCommand
+        - backupError
+      properties:
+        version:
+          type: string
+          description: The installed version, without a v prefix, in the same format as GET /api/version
+          example: 1.31.0
+        rollbackCommand:
+          type: string
+          description: The command that restores the backup, one line for each replaced binary. Empty when qui found no backup.
+          example: mv '/home/user/bin/qui-v1.30.0.bak' '/home/user/bin/qui'
+        backupError:
+          type: string
+          description: Empty when the backup exists. Otherwise it names the path that qui checked and the cause.
+          example: ""
+
     TorznabSearchRequest:
       type: object
       properties:
@@ -7610,6 +7724,8 @@ components:
       required:
         - version
         - updateAvailable
+        - selfUpdate
+        - restart
       properties:
         version:
           type: string
@@ -7622,6 +7738,14 @@ components:
         updateAvailable:
           type: boolean
           description: Whether a newer release than the running version is available
+          example: true
+        selfUpdate:
+          type: boolean
+          description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
+          example: true
+        restart:
+          type: boolean
+          description: Whether qui can restart itself. False in an app container.
           example: true
 
     QBittorrentBuildInfo:

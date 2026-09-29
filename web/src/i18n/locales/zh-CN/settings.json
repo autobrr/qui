@@ -996,6 +996,39 @@
         "lastChecked": "上次检查 {{date}}"
       }
     },
+    "restart": {
+      "button": "重启",
+      "confirmTitle": "重启 qui？",
+      "confirmDescription": "qui 会像正常停止时一样关闭，然后重新启动。正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。qui 恢复后页面会自动重新加载。",
+      "confirm": "重启",
+      "overlay": {
+        "restartingTitle": "正在重启 qui…",
+        "restartingDetail": "qui 再次响应后页面会重新加载。",
+        "slowTitle": "qui 尚未响应",
+        "slowDetail": "qui 可能仍在启动，此页面会继续等待。请查看 qui 日志。如果你更改了端口或基础 URL，请在新地址打开 qui。"
+      }
+    },
+    "update": {
+      "button": "安装更新",
+      "confirmTitle": "安装更新？",
+      "confirmDescription": "qui 会下载新版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。qui 恢复后页面会自动重新加载。",
+      "runningWork": "正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。",
+      "currentVersion": "当前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "发行说明",
+      "confirm": "安装更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢复，但运行的是其他版本。请查看 qui 日志。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新加载页面以打开新版本。",
+        "reload": "重新加载页面",
+        "noBackup": "qui 已更新，但未保留备份：{{error}}。如需回滚，请手动下载旧版本。",
+        "rollbackIntro": "如果新版本无法启动，请运行此命令，然后再次启动 qui：",
+        "rollbackLabel": "回滚命令",
+        "rollbackDocs": "回滚步骤"
+      }
+    },
     "runtime": {
       "title": "运行时",
       "description": "服务器运行时信息。",

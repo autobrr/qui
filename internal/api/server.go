@@ -70,6 +70,9 @@ type Server struct {
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
 	updateService                    *update.Service
+	updateAvailability               update.Availability
+	restarter                        *update.Restarter
+	selfUpdater                      *update.Updater
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
 	streamManager                    *sse.StreamManager
@@ -95,10 +98,13 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	backendPool                      *fsops.Pool
+	sshPool                          *sshpool.Pool
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
+	shuttingDown <-chan struct{}
 }
 
 type Dependencies struct {
@@ -118,6 +124,9 @@ type Dependencies struct {
 	WebHandler                       *web.Handler
 	LicenseService                   *license.Service
 	UpdateService                    *update.Service
+	UpdateAvailability               update.Availability
+	Restarter                        *update.Restarter
+	SelfUpdater                      *update.Updater
 	TrackerIconService               *trackericons.Service
 	BackupService                    *backups.Service
 	FilesManager                     *filesmanager.Service
@@ -142,6 +151,7 @@ type Dependencies struct {
 	DiscScanStore                    *models.DiscScanStore
 	DiscScanService                  *discscan.Service
 	BackendPool                      *fsops.Pool
+	SSHPool                          *sshpool.Pool
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
@@ -157,6 +167,7 @@ func NewServer(deps *Dependencies) *Server {
 		streamManager.SetActivityHub(deps.ActivityHub)
 	}
 
+	streamsCtx, stopStreams := context.WithCancel(context.Background())
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -188,6 +199,9 @@ func NewServer(deps *Dependencies) *Server {
 		syncManager:                      deps.SyncManager,
 		licenseService:                   deps.LicenseService,
 		updateService:                    deps.UpdateService,
+		updateAvailability:               deps.UpdateAvailability,
+		restarter:                        deps.Restarter,
+		selfUpdater:                      deps.SelfUpdater,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
 		streamManager:                    streamManager,
@@ -214,11 +228,15 @@ func NewServer(deps *Dependencies) *Server {
 		discScanStore:                    deps.DiscScanStore,
 		discScanService:                  deps.DiscScanService,
 		backendPool:                      deps.BackendPool,
+		sshPool:                          deps.SSHPool,
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		shuttingDown:                     streamsCtx.Done(),
 	}
+	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
+	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
 }
@@ -238,7 +256,8 @@ func (s *Server) open(ready chan<- struct{}) error {
 			return nil
 		}
 
-		if errors.Is(err, http.ErrServerClosed) {
+		// With "localhost", tcp6 would bind [::1] next to the qui that holds 127.0.0.1.
+		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, errAddrInUse) {
 			return err
 		}
 
@@ -352,13 +371,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore))
+	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
-	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version, s.updateAvailability)
+	systemHandler := handlers.NewSystemHandler(s.updateAvailability, s.restarter, s.selfUpdater)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -377,19 +397,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
-	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
+	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.instanceStore, s.backendPool)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
 	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
-	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager, s.shuttingDown)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
-	logsHandler := handlers.NewLogsHandler(s.config)
+	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
@@ -559,6 +579,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
+			r.Post("/system/restart", systemHandler.Restart)
+			r.Post("/system/update", systemHandler.Update)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

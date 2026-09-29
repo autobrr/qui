@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -21,9 +20,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
@@ -351,8 +350,7 @@ func TestStreamManagerHeartbeatPublishesEvent(t *testing.T) {
 }
 
 func TestStreamManagerServeInstanceNotFound(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	manager := NewStreamManager(nil, nil, store)
 
@@ -379,8 +377,7 @@ func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 }
 
 func TestStreamManagerServeInstanceValidationError(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	ctx := context.Background()
 	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false, nil)
@@ -511,12 +508,10 @@ func decodeStreamPayload(t *testing.T, message *sse.Message) *StreamPayload {
 	return &payload
 }
 
-func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
+func newTestInstanceStore(t *testing.T) *models.InstanceStore {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "sse-manager-test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err, "failed to create test database")
+	db := testdb.NewMigratedSQLite(t, "sse-manager-test")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -526,9 +521,7 @@ func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 	store, err := models.NewInstanceStore(db, key)
 	require.NoError(t, err, "failed to create instance store")
 
-	return store, func() {
-		_ = db.Close()
-	}
+	return store
 }
 
 func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {

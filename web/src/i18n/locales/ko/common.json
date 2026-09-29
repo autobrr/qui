@@ -22,8 +22,8 @@
     "version": "버전 {{version}}",
     "language": "언어",
     "viewOnGitHub": "GitHub에서 보기",
-    "rssRunning": "RSS 실행 중",
-    "rssEnabled": "RSS 활성화됨",
+    "rssRunning": "Cross-seed RSS 실행 중",
+    "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
     "showSidebar": "사이드바 표시",
     "hideSidebar": "사이드바 숨기기"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "토렌트 생성 작업",
     "updateAvailable": "업데이트 사용 가능",
     "updateVersion": "버전 {{version}}",
-    "rssRunning": "RSS 실행 중",
-    "rssEnabled": "RSS 활성화됨",
+    "rssRunning": "Cross-seed RSS 실행 중",
+    "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
     "allScope": "전체",
     "unified": "통합"
@@ -81,8 +81,8 @@
     "noActiveClients": "활성 클라이언트 없음",
     "updateAvailable": "업데이트 사용 가능",
     "updateVersion": "버전 {{version}}",
-    "rssRunning": "RSS 실행 중",
-    "rssEnabled": "RSS 활성화됨",
+    "rssRunning": "Cross-seed RSS 실행 중",
+    "rssEnabled": "Cross-seed RSS 활성화됨",
     "scanRunning": "스캔 실행 중",
     "logout": "로그아웃",
     "version": "버전 {{version}}",
@@ -117,6 +117,18 @@
     "unknown": "알 수 없음",
     "trackerError": "트래커 오류",
     "unreachable": "도달할 수 없음"
+  },
+  "contentTypeLabels": {
+    "movie": "영화",
+    "tv": "TV",
+    "music": "음악",
+    "audiobook": "오디오북",
+    "book": "도서",
+    "comic": "만화",
+    "game": "게임",
+    "app": "앱",
+    "adult": "성인",
+    "unknown": "알 수 없음"
   },
   "themeToggle": {
     "changeTheme": "테마 변경",

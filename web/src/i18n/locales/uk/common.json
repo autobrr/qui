@@ -22,8 +22,8 @@
     "version": "Версія {{version}}",
     "language": "Мова",
     "viewOnGitHub": "Переглянути на GitHub",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "showSidebar": "Показати бічну панель",
     "hideSidebar": "Приховати бічну панель"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "Завдання створення торента",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "allScope": "ВСІ",
     "unified": "Об'єднано"
@@ -81,8 +81,8 @@
     "noActiveClients": "Немає активних клієнтів",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "logout": "Вийти",
     "version": "Версія {{version}}",
@@ -117,6 +117,18 @@
     "unknown": "Невідомо",
     "trackerError": "Помилка трекера",
     "unreachable": "Недоступний"
+  },
+  "contentTypeLabels": {
+    "movie": "Фільм",
+    "tv": "Серіал",
+    "music": "Музика",
+    "audiobook": "Аудіокнига",
+    "book": "Книга",
+    "comic": "Комікс",
+    "game": "Гра",
+    "app": "Застосунок",
+    "adult": "Для дорослих",
+    "unknown": "Невідомо"
   },
   "themeToggle": {
     "changeTheme": "Змінити тему",
