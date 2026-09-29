@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync/atomic"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog/log"
@@ -19,6 +18,8 @@ import (
 )
 
 type restartRequester interface {
+	TryLock() bool
+	Unlock()
 	Request() error
 }
 
@@ -31,9 +32,6 @@ type SystemHandler struct {
 	availability update.Availability
 	restarter    restartRequester
 	updater      selfUpdater
-	// busy is the one lock over every system action. A successful action ends
-	// in a Restart, so only a failed action releases it.
-	busy atomic.Bool
 }
 
 func NewSystemHandler(availability update.Availability, restarter restartRequester, updater selfUpdater) *SystemHandler {
@@ -47,12 +45,12 @@ func (h *SystemHandler) Restart(w http.ResponseWriter, _ *http.Request) {
 		RespondError(w, http.StatusForbidden, "Restart is not available")
 		return
 	}
-	if !h.busy.CompareAndSwap(false, true) {
+	if !h.restarter.TryLock() {
 		RespondError(w, http.StatusConflict, "An update or restart is already running")
 		return
 	}
 	if err := h.restarter.Request(); err != nil {
-		h.busy.Store(false)
+		h.restarter.Unlock()
 		log.Error().Err(err).Msg("refused restart")
 		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -84,14 +82,14 @@ func (h *SystemHandler) Update(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "version must be a release tag, such as v1.31.0")
 		return
 	}
-	if !h.busy.CompareAndSwap(false, true) {
+	if !h.restarter.TryLock() {
 		RespondError(w, http.StatusConflict, "An update or restart is already running")
 		return
 	}
 
 	result, err := h.updater.Install(r.Context(), req.Version)
 	if err != nil {
-		h.busy.Store(false)
+		h.restarter.Unlock()
 		status := http.StatusBadGateway
 		switch {
 		case errors.Is(err, update.ErrReleaseNotFound):
@@ -109,7 +107,7 @@ func (h *SystemHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// The graceful shutdown waits for this handler to return, so the response
 	// still goes out after the restart request.
 	if err := h.restarter.Request(); err != nil {
-		h.busy.Store(false)
+		h.restarter.Unlock()
 		log.Error().Err(err).Str("version", result.Version).Msg("self-update installed, but the restart was refused")
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("installed %s, but the restart was refused: %v", result.Version, err))
 		return

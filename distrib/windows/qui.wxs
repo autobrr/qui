@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- wixl reads only part of the WiX v3 schema. See docs/adr/0013. -->
+<!-- A new MSI finds the installed one by UpgradeCode, so it never changes. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="qui"
+    Language="1033"
+    Version="{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+    Manufacturer="autobrr"
+    UpgradeCode="dc15e280-733f-480a-a395-419b5f0de8bb">
+    <Package
+      Description="qui"
+      Manufacturer="autobrr"
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perUser" />
+
+    <!-- wixl removes the old product right after InstallValidate, so an upgrade
+         also replaces exes that Self-update changed. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="qui.ico" SourceFile="internal/tray/qui.ico" />
+    <Property Id="ARPPRODUCTICON" Value="qui.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://getqui.com" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <!-- InstallScope only sets the summary flag in wixl, so the folder must
+           be per user. It is writable, which keeps Self-update on. -->
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="LocalProgramsFolder" Name="Programs">
+          <Directory Id="INSTALLFOLDER" Name="qui" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="Qui" Guid="1db679dd-79f1-4bb5-9339-6d44317fafc1">
+        <RegistryValue Root="HKCU" Key="Software\autobrr\qui" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <File Id="QuiExe" Name="qui.exe" Source="qui.exe" />
+        <File Id="QuiTrayExe" Name="qui-tray.exe" Source="qui-tray.exe" />
+        <!-- An explicit Target keeps wixl from making an advertised shortcut. -->
+        <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="qui" Target="[#QuiTrayExe]" WorkingDirectory="INSTALLFOLDER" />
+        <!-- wixl ignores Permanent="no". The "-" prefix makes the uninstall remove the entry. -->
+        <Environment Id="Path" Name="-PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" />
+        <RemoveFolder Id="InstallFolder" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Complete" Level="1">
+      <ComponentRef Id="Qui" />
+    </Feature>
+
+    <!-- Self-update leaves qui-v<old>.bak.exe and qui-tray-v<old>.bak.exe in
+         INSTALLFOLDER (backupPath in internal/update/updater.go). wixl 0.106
+         has no RemoveFile element, so cmd deletes them before the uninstall script runs RemoveFolder. -->
+    <CustomAction Id="SetCmdPath" Property="CMDPATH" Value="[SystemFolder]cmd.exe" />
+    <CustomAction Id="RemoveSelfUpdateBackups" Property="CMDPATH" ExeCommand='/c del /q "[INSTALLFOLDER]*.bak.exe"' Return="ignore" />
+    <!-- Start the Tray after a new install or an upgrade, not on a repair, where
+         it already runs. msiexec /qn sets UILevel 2, so a silent install does not
+         start it. wixl aborts on CDATA, so the condition escapes its ">". -->
+    <CustomAction Id="StartTray" FileKey="QuiTrayExe" ExeCommand="" Return="asyncNoWait" />
+    <InstallExecuteSequence>
+      <Custom Action="SetCmdPath" After="CostFinalize">REMOVE~="ALL"</Custom>
+      <Custom Action="RemoveSelfUpdateBackups" After="SetCmdPath">REMOVE~="ALL"</Custom>
+      <Custom Action="StartTray" After="InstallFinalize">NOT Installed AND UILevel &gt; 2</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

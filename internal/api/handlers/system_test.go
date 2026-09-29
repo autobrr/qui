@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,7 @@ import (
 )
 
 type stubRestarter struct {
+	sync.Mutex
 	err      error
 	requests int
 }
@@ -192,6 +194,18 @@ func TestSystemHandler_Update(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, postUpdate(t, h, body).Code)
 		require.Equal(t, []string{"v1.31.0"}, installer.tags)
+		require.Equal(t, 1, restarter.requests)
+	})
+
+	t.Run("tray restart during update", func(t *testing.T) {
+		restarter := &stubRestarter{}
+		installer := &stubInstaller{}
+		installer.during = func() {
+			// The Tray takes the same lock before it calls Request.
+			require.False(t, restarter.TryLock())
+		}
+
+		require.Equal(t, http.StatusOK, postUpdate(t, NewSystemHandler(available, restarter, installer), body).Code)
 		require.Equal(t, 1, restarter.requests)
 	})
 

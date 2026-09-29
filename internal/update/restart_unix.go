@@ -29,4 +29,4 @@ func execBinary(path string) error {
 }
 
 // Supervise does nothing on Unix, where a Restart execs in place.
-func Supervise() {}
+func Supervise(func(msg string)) {}
