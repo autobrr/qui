@@ -121,10 +121,12 @@ The autobrr **Test** button sends a sample release, `Best.Show.Ever.S18E21.1080p
 
 This result is correct. qui sent the body, so autobrr connected to qui and qui accepted the API key.
 
-A real problem gives a different result:
+qui sends the same `404` when it has no active qBittorrent instance to scan. qui skips each ID in `instanceIds` that does not exist or that is disabled. Make sure that each ID in `instanceIds` is an active instance in qui, or remove `instanceIds` to scan all instances.
+
+Other problems give a different result:
 
 - `401` or `403`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
-- `400` with an `error` body: qui cannot read the request. Make sure that **Data (JSON)** is the same as the template above.
+- `400` with an `error` body: the request is not valid, and the `error` text gives the cause. Make sure that **Data (JSON)** is the same as the template above.
 - A connection error or a timeout: autobrr cannot connect to qui. Make sure that the host and port in **Endpoint** are correct. If you use Docker Compose, read the Docker Compose tip above.
 
 To make sure that the full setup works:
