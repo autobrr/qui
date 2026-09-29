@@ -47,6 +47,13 @@ describe("getStateLabel", () => {
     }
   )
 
+  // Letters only, so these pass the separator check; i18next would resolve them to inherited functions.
+  it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+    "does not let the inherited name %j resolve to a function", (state) => {
+      expect(getStateLabel(state, t)).toBe("Unrecognized")
+    }
+  )
+
   it("names an undocumented state through the fallback, without the raw value", () => {
     const label = getStateLabel("someFutureState", t)
 

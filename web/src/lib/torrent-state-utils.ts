@@ -6,12 +6,13 @@
 import type { TFunction } from "i18next"
 
 export function getStateLabel(state: string, t: TFunction): string {
-  // Backend input in a key path: a "." or ":" resolves a fragment instead of reporting it missing.
-  // The fallback sits outside stateLabels because "unknown" is itself a qBittorrent state.
+  // Backend input in a key path: a "." or ":" resolves a fragment instead of reporting it missing,
+  // and an inherited name such as "constructor" resolves to a function. The fallback sits outside
+  // stateLabels because "unknown" is itself a qBittorrent state.
   if (!/^[a-zA-Z]+$/.test(state)) return t("stateLabelFallback")
 
   const key = `stateLabels.${state}`
   const label = t(key)
 
-  return label === key ? t("stateLabelFallback") : label
+  return typeof label === "string" && label !== key ? label : t("stateLabelFallback")
 }
