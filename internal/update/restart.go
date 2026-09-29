@@ -6,6 +6,7 @@ package update
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/rs/zerolog"
 )
@@ -13,6 +14,10 @@ import (
 // Restarter carries a Restart request from the API to the serve loop. See
 // docs/adr/0011-restart-replaces-the-process-in-place.md.
 type Restarter struct {
+	// Mutex is the one lock over every system action, taken with TryLock by the
+	// API and the Tray. A successful action ends in a Restart, so only a failed
+	// action unlocks it.
+	sync.Mutex
 	binaryPath string
 	requested  chan struct{}
 }
