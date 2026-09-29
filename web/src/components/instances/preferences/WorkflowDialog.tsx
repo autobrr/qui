@@ -656,7 +656,6 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
-// Mirrors the data map and FuncMap in resolveMovePath (internal/services/automations/processor.go).
 // Kept out of the locale strings: i18next would treat "{{ }}" as interpolation.
 const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
 
@@ -665,7 +664,6 @@ const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save
 
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
-
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
