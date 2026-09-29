@@ -6711,7 +6711,7 @@ components:
           example: 1.31.0
         rollbackCommand:
           type: string
-          description: The command that restores the backup. Empty when qui found no backup.
+          description: The command that restores the backup, one line for each replaced binary. Empty when qui found no backup.
           example: mv '/home/user/bin/qui-v1.30.0.bak' '/home/user/bin/qui'
         backupError:
           type: string

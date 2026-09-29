@@ -29,7 +29,7 @@ import (
 )
 
 func TestNewSelfUpdater(t *testing.T) {
-	updater, err := NewUpdater(Config{Repository: "autobrr/qui", Version: "1.30.0"}).newSelfUpdater("")
+	updater, _, err := NewUpdater(Config{Repository: "autobrr/qui", Version: "1.30.0"}).newSelfUpdater("")
 	require.NoError(t, err)
 	require.NotNil(t, updater)
 }
@@ -133,8 +133,9 @@ func (r fakeRelease) GetAssets() []selfupdate.SourceAsset {
 
 // fakeSource serves signed releases from memory, so no test calls GitHub.
 type fakeSource struct {
-	releases []fakeRelease
-	listErr  error
+	releases  []fakeRelease
+	listErr   error
+	downloads map[string]int
 }
 
 func (s *fakeSource) ListReleases(context.Context, selfupdate.Repository) ([]selfupdate.SourceRelease, error) {
@@ -152,6 +153,10 @@ func (s *fakeSource) DownloadReleaseAsset(_ context.Context, _ *selfupdate.Relea
 	for _, r := range s.releases {
 		for _, a := range r.assets {
 			if a.id == assetID {
+				if s.downloads == nil {
+					s.downloads = map[string]int{}
+				}
+				s.downloads[a.name]++
 				return io.NopCloser(bytes.NewReader(a.data)), nil
 			}
 		}
@@ -163,13 +168,21 @@ func (s *fakeSource) DownloadReleaseAsset(_ context.Context, _ *selfupdate.Relea
 // content, plus checksums.txt and its signature.
 func signedRelease(t *testing.T, key *ecdsa.PrivateKey, id int64, version string, binary []byte) fakeRelease {
 	t.Helper()
+	return signedArchiveRelease(t, key, id, version, map[string][]byte{"qui": binary})
+}
+
+// signedArchiveRelease builds a signed release whose archive holds these files.
+func signedArchiveRelease(t *testing.T, key *ecdsa.PrivateKey, id int64, version string, files map[string][]byte) fakeRelease {
+	t.Helper()
 
 	var archive bytes.Buffer
 	gz := gzip.NewWriter(&archive)
 	tw := tar.NewWriter(gz)
-	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "qui", Mode: 0o755, Size: int64(len(binary))}))
-	_, err := tw.Write(binary)
-	require.NoError(t, err)
+	for name, data := range files {
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(data))}))
+		_, err := tw.Write(data)
+		require.NoError(t, err)
+	}
 	require.NoError(t, tw.Close())
 	require.NoError(t, gz.Close())
 
@@ -188,6 +201,7 @@ type installFixture struct {
 	source  *fakeSource
 	binary  string
 	dir     string
+	key     *ecdsa.PrivateKey
 }
 
 func newInstallFixture(t *testing.T) installFixture {
@@ -208,11 +222,18 @@ func newInstallFixture(t *testing.T) installFixture {
 	updater.source = source
 	updater.certificate = certificate
 
-	return installFixture{updater: updater, source: source, binary: binary, dir: dir}
+	return installFixture{updater: updater, source: source, binary: binary, dir: dir, key: key}
 }
 
 func backupName(version string) string {
 	return "qui-v" + version + backupSuffix()
+}
+
+func requireFile(t *testing.T, path, content string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, content, string(got))
 }
 
 func requireUnchanged(t *testing.T, f installFixture) {
@@ -336,6 +357,113 @@ func TestInstallReportsReleaseWithoutAssetForThisPlatform(t *testing.T) {
 	_, err := f.updater.Install(t.Context(), "v1.31.0")
 	require.ErrorIs(t, err, ErrReleaseNotFound)
 	requireUnchanged(t, f)
+}
+
+// withTray gives the fixture a qui-tray binary next to qui, and a v1.31.0
+// release whose archive holds both.
+func withTray(t *testing.T, f installFixture, archive map[string][]byte) string {
+	t.Helper()
+	tray := filepath.Join(f.dir, "qui-tray")
+	require.NoError(t, os.WriteFile(tray, []byte("qui-tray 1.30.0"), 0o700))
+	f.source.releases[1] = signedArchiveRelease(t, f.key, 2, "1.31.0", archive)
+	return tray
+}
+
+func TestInstallReplacesSiblingBinaryFromSameRelease(t *testing.T) {
+	f := newInstallFixture(t)
+	tray := withTray(t, f, map[string][]byte{"qui": []byte("qui 1.31.0"), "qui-tray": []byte("qui-tray 1.31.0")})
+	olderQui := filepath.Join(f.dir, backupName("1.29.0"))
+	olderTray := filepath.Join(f.dir, "qui-tray-v1.29.0"+backupSuffix())
+	require.NoError(t, os.WriteFile(olderQui, []byte("qui 1.29.0"), 0o600))
+	require.NoError(t, os.WriteFile(olderTray, []byte("qui-tray 1.29.0"), 0o600))
+
+	result, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.NoError(t, err)
+	require.Equal(t, "1.31.0", result.Version)
+	quiBackup := filepath.Join(f.dir, backupName("1.30.0"))
+	trayBackup := filepath.Join(f.dir, "qui-tray-v1.30.0"+backupSuffix())
+	require.Equal(t, rollbackCommand(quiBackup, f.binary)+"\n"+rollbackCommand(trayBackup, tray), result.RollbackCommand)
+
+	requireFile(t, f.binary, "qui 1.31.0")
+	requireFile(t, tray, "qui-tray 1.31.0")
+	requireFile(t, quiBackup, "qui 1.30.0")
+	requireFile(t, trayBackup, "qui-tray 1.30.0")
+	require.NoFileExists(t, olderQui)
+	require.NoFileExists(t, olderTray)
+
+	archiveName := f.source.releases[1].assets[0].name
+	require.Equal(t, map[string]int{archiveName: 1, releaseChecksumsAsset: 1, releaseChecksumsAsset + ".sig": 1}, f.source.downloads)
+}
+
+func TestInstallFromTrayReplacesQui(t *testing.T) {
+	f := newInstallFixture(t)
+	tray := withTray(t, f, map[string][]byte{"qui": []byte("qui 1.31.0"), "qui-tray": []byte("qui-tray 1.31.0")})
+	f.updater.config.BinaryPath = tray
+
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.NoError(t, err)
+
+	requireFile(t, tray, "qui-tray 1.31.0")
+	requireFile(t, f.binary, "qui 1.31.0")
+	requireFile(t, filepath.Join(f.dir, "qui-tray-v1.30.0"+backupSuffix()), "qui-tray 1.30.0")
+	requireFile(t, filepath.Join(f.dir, backupName("1.30.0")), "qui 1.30.0")
+}
+
+func TestInstallWithoutSiblingReplacesOnlyRunningBinary(t *testing.T) {
+	f := newInstallFixture(t)
+
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.NoError(t, err)
+
+	requireFile(t, f.binary, "qui 1.31.0")
+	require.NoFileExists(t, filepath.Join(f.dir, "qui-tray"))
+}
+
+func TestInstallReportsSiblingSwapFailure(t *testing.T) {
+	f := newInstallFixture(t)
+	tray := withTray(t, f, map[string][]byte{"qui": []byte("qui 1.31.0")})
+
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.ErrorIs(t, err, ErrSwap)
+	require.ErrorContains(t, err, tray)
+
+	// The running binary is already replaced; the sibling keeps its old version.
+	requireFile(t, f.binary, "qui 1.31.0")
+	requireFile(t, tray, "qui-tray 1.30.0")
+}
+
+// Only a missing sibling means a single-binary install. Any other stat error
+// could hide a sibling that stays on the old version.
+func TestInstallReportsSiblingStatFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a symlink loop")
+	}
+	f := newInstallFixture(t)
+	tray := filepath.Join(f.dir, "qui-tray")
+	require.NoError(t, os.Symlink(tray, tray))
+
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.ErrorIs(t, err, ErrSwap)
+	require.ErrorContains(t, err, tray)
+}
+
+// A failed sibling swap does not restart qui, so the user can retry. The
+// retry must keep the backup of the version that still runs.
+func TestInstallRetryKeepsBackupOfRunningVersion(t *testing.T) {
+	f := newInstallFixture(t)
+	tray := withTray(t, f, map[string][]byte{"qui": []byte("qui 1.31.0")})
+	_, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.ErrorIs(t, err, ErrSwap)
+
+	f.source.releases[1] = signedArchiveRelease(t, f.key, 2, "1.31.0", map[string][]byte{"qui": []byte("qui 1.31.0"), "qui-tray": []byte("qui-tray 1.31.0")})
+	result, err := f.updater.Install(t.Context(), "v1.31.0")
+	require.NoError(t, err)
+	require.Empty(t, result.BackupError)
+
+	requireFile(t, f.binary, "qui 1.31.0")
+	requireFile(t, tray, "qui-tray 1.31.0")
+	requireFile(t, filepath.Join(f.dir, backupName("1.30.0")), "qui 1.30.0")
+	requireFile(t, filepath.Join(f.dir, "qui-tray-v1.30.0"+backupSuffix()), "qui-tray 1.30.0")
 }
 
 func TestShellQuoteKeepsPathLiteral(t *testing.T) {

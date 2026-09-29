@@ -26,7 +26,7 @@ func TestSupervisorRestartsUntilOtherExitCode(t *testing.T) {
 		return
 	}
 	if os.Getenv(superviseTestEnv) == "1" {
-		code, err := runSupervisor(os.Args[0])
+		code, err := runSupervisor(os.Args[0], nil)
 		require.NoError(t, err)
 		os.Exit(code)
 	}
@@ -59,4 +59,65 @@ func superviseChild(t *testing.T) {
 		os.Exit(restartExitCode)
 	}
 	os.Exit(3)
+}
+
+func TestExitMessage(t *testing.T) {
+	tests := []struct {
+		name   string
+		code   int
+		stderr string
+		want   string
+	}{
+		{
+			name:   "zerolog fatal line",
+			code:   1,
+			stderr: `{"level":"info","message":"Starting qui"}` + "\n" + `{"level":"fatal","error":"listen tcp :7476: bind: Only one usage of each socket address is normally permitted.","message":"failed to start HTTP server"}` + "\n",
+			want:   "qui stopped with exit code 1:\n\nfailed to start HTTP server: listen tcp :7476: bind: Only one usage of each socket address is normally permitted.",
+		},
+		{
+			name:   "fatal line without error",
+			code:   1,
+			stderr: `{"level":"fatal","message":"Authentication is disabled"}` + "\n",
+			want:   "qui stopped with exit code 1:\n\nAuthentication is disabled",
+		},
+		{
+			name:   "panic",
+			code:   2,
+			stderr: "panic: runtime error: invalid memory address\n\ngoroutine 1 [running]:\nmain.main()\n\tC:/qui/main.go:12 +0x1d\n",
+			want:   "qui stopped with exit code 2:\n\npanic: runtime error: invalid memory address",
+		},
+		{
+			name:   "plain text",
+			code:   1,
+			stderr: "qui supervisor: job failed\n",
+			want:   "qui stopped with exit code 1:\n\nqui supervisor: job failed",
+		},
+		{
+			// A kill from Task Manager: the last line has nothing to do with it.
+			name:   "last line is not fatal",
+			code:   1,
+			stderr: `{"level":"info","message":"Sync complete"}` + "\n",
+			want:   "qui stopped with exit code 1.",
+		},
+		{
+			name: "nothing written",
+			code: 1,
+			want: "qui stopped with exit code 1.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, exitMessage(tt.code, []byte(tt.stderr)))
+		})
+	}
+}
+
+func TestStderrTailKeepsTheEnd(t *testing.T) {
+	var tail stderrTail
+	for range 3 * stderrTailSize / 10 {
+		_, _ = tail.Write([]byte("123456789\n"))
+	}
+	_, _ = tail.Write([]byte("last line\n"))
+	require.LessOrEqual(t, len(tail.b), 2*stderrTailSize)
+	require.Equal(t, "qui stopped with exit code 1:\n\nlast line", exitMessage(1, tail.b))
 }

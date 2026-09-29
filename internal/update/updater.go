@@ -4,9 +4,11 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -73,7 +75,7 @@ func (u *Updater) Run(ctx context.Context) error {
 	}
 
 	backup := backupPath(binary, current)
-	updater, err := u.newSelfUpdater(backup)
+	updater, archive, err := u.newSelfUpdater(savePath(backup))
 	if err != nil {
 		return err
 	}
@@ -91,7 +93,7 @@ func (u *Updater) Run(ctx context.Context) error {
 		return nil
 	}
 
-	result, err := swap(ctx, updater, latest, binary, backup)
+	result, err := swap(ctx, updater, archive, latest, binary, current)
 	if err != nil {
 		return fmt.Errorf("error occurred while updating binary: %w", err)
 	}
@@ -100,7 +102,7 @@ func (u *Updater) Run(ctx context.Context) error {
 	if result.BackupError != "" {
 		fmt.Printf("Warning: %s, a rollback needs a manual download\n", result.BackupError)
 	} else {
-		fmt.Printf("To roll back, stop qui and run: %s\n", result.RollbackCommand)
+		fmt.Printf("To roll back, stop qui and run:\n%s\n", result.RollbackCommand)
 	}
 	return nil
 }
@@ -114,8 +116,7 @@ func (u *Updater) Install(ctx context.Context, tag string) (Result, error) {
 		return Result{}, fmt.Errorf("could not parse version: %w", err)
 	}
 
-	backup := backupPath(u.config.BinaryPath, current)
-	updater, err := u.newSelfUpdater(backup)
+	updater, archive, err := u.newSelfUpdater(savePath(backupPath(u.config.BinaryPath, current)))
 	if err != nil {
 		return Result{}, err
 	}
@@ -131,12 +132,15 @@ func (u *Updater) Install(ctx context.Context, tag string) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %s is not newer than %s", ErrNotNewer, tag, current)
 	}
 
-	return swap(ctx, updater, release, u.config.BinaryPath, backup)
+	return swap(ctx, updater, archive, release, u.config.BinaryPath, current)
 }
 
 // swap downloads, validates and installs the release, keeping the old binary at
-// backup. It checks that exact path afterwards and never guesses another.
-func swap(ctx context.Context, updater *selfupdate.Updater, release *selfupdate.Release, binary, backup string) (Result, error) {
+// its backup path. It checks that exact path afterwards and never guesses
+// another. Then it replaces the sibling Windows binary from the same archive, so
+// qui.exe and qui-tray.exe never run different versions against one database.
+func swap(ctx context.Context, updater *selfupdate.Updater, archive *archiveSource, release *selfupdate.Release, binary string, current *semver.Version) (Result, error) {
+	backup := backupPath(binary, current)
 	if err := updater.UpdateTo(ctx, release, binary); err != nil {
 		_, pathErr := errors.AsType[*os.PathError](err)
 		_, linkErr := errors.AsType[*os.LinkError](err)
@@ -152,16 +156,62 @@ func swap(ctx context.Context, updater *selfupdate.Updater, release *selfupdate.
 		// A *PathError names the checked path and the real cause.
 		result.BackupError = err.Error()
 		// The older backups are now the only way back, so keep them.
-		return result, nil
+	} else {
+		result.RollbackCommand = rollbackCommand(backup, binary)
+		removeOlderBackups(binary, backup)
 	}
 
-	result.RollbackCommand = "mv " + shellQuote(backup) + " " + shellQuote(binary)
+	sibling := siblingPath(binary)
+	_, err := os.Stat(sibling)
+	if errors.Is(err, os.ErrNotExist) {
+		return result, nil
+	}
+	siblingBackup := backupPath(sibling, current)
+	var asset io.Reader
+	if err == nil {
+		asset, err = selfupdate.DecompressCommand(bytes.NewReader(archive.archive), release.AssetName, filepath.Base(sibling), runtime.GOOS, runtime.GOARCH)
+	}
+	if err == nil {
+		err = selfupdateapply.Apply(asset, selfupdateapply.Options{TargetPath: sibling, OldSavePath: savePath(siblingBackup)})
+	}
+	if err != nil {
+		return Result{}, fmt.Errorf("%w: replaced %s, but not %s: %w", ErrSwap, binary, sibling, err)
+	}
+	if result.RollbackCommand != "" {
+		// One command per line: no separator works in both cmd and PowerShell 5.1.
+		result.RollbackCommand += "\n" + rollbackCommand(siblingBackup, sibling)
+	}
+	removeOlderBackups(sibling, siblingBackup)
+	return result, nil
+}
+
+func rollbackCommand(backup, binary string) string {
 	if runtime.GOOS == "windows" {
 		// cmd /c: in PowerShell, the Windows 11 default, move is Move-Item and rejects /Y.
-		result.RollbackCommand = fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
+		return fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
 	}
-	removeOlderBackups(filepath.Dir(backup), filepath.Base(backup))
-	return result, nil
+	return "mv " + shellQuote(backup) + " " + shellQuote(binary)
+}
+
+// savePath is where a swap keeps the file it replaces. A backup of the running
+// version exists already when an earlier swap did not end in a Restart, such
+// as a failed sibling swap. That backup holds the real old binary, so the swap
+// keeps it and deletes the replaced file.
+func savePath(backup string) string {
+	if _, err := os.Stat(backup); err == nil {
+		return ""
+	}
+	return backup
+}
+
+// siblingPath is the other Windows binary: qui-tray.exe next to qui.exe, and
+// the reverse. Only the Windows release ships both.
+func siblingPath(binary string) string {
+	sibling := "qui-tray"
+	if binaryName(binary) == "qui-tray" {
+		sibling = "qui"
+	}
+	return filepath.Join(filepath.Dir(binary), sibling+filepath.Ext(binary))
 }
 
 // shellQuote keeps $, backticks, and quotes in a path literal when the user
@@ -170,9 +220,14 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// backupPath sits next to the binary because the swap is a rename.
+// backupPath sits next to the binary because the swap is a rename. The name
+// starts with the binary name, so qui and qui-tray keep one backup each.
 func backupPath(binary string, current *semver.Version) string {
-	return filepath.Join(filepath.Dir(binary), "qui-v"+current.String()+backupSuffix())
+	return filepath.Join(filepath.Dir(binary), binaryName(binary)+"-v"+current.String()+backupSuffix())
+}
+
+func binaryName(binary string) string {
+	return strings.TrimSuffix(filepath.Base(binary), filepath.Ext(binary))
 }
 
 func backupSuffix() string {
@@ -182,8 +237,9 @@ func backupSuffix() string {
 	return ".bak"
 }
 
-// removeOlderBackups keeps only the latest backup, for seedbox disk quotas.
-func removeOlderBackups(dir, keep string) {
+// removeOlderBackups keeps only the latest backup of binary, for seedbox disk quotas.
+func removeOlderBackups(binary, keep string) {
+	dir := filepath.Dir(binary)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		log.Warn().Err(err).Str("dir", dir).Msg("could not list older backups")
@@ -191,7 +247,7 @@ func removeOlderBackups(dir, keep string) {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if matched, _ := filepath.Match("qui-v*"+backupSuffix(), name); !matched || name == keep || entry.IsDir() {
+		if matched, _ := filepath.Match(binaryName(binary)+"-v*"+backupSuffix(), name); !matched || name == filepath.Base(keep) || entry.IsDir() {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, name)); err != nil {
