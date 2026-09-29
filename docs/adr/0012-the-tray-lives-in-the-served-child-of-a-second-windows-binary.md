@@ -19,7 +19,7 @@ The Tray is Windows only. It uses `fyne.io/systray` behind `//go:build windows`,
 - Self-update replaces both binaries in one Install when both sit in the same folder. It downloads and verifies the release once. Each binary gets its own backup name. Replacing only the running binary would leave `qui.exe` one version behind, and a later `qui.exe` command would run against a database that the newer binary migrated.
 - The lock that stops a Restart during a Self-update lives in the `update` package, so the Tray and the API share it.
 - In `qui-tray.exe`, stderr is not a valid handle. The log writer drops stderr when it is not valid, so the log file and the web UI log stream keep working. When `logPath` is unset, `qui-tray.exe` writes to `log/qui.log` in the config folder.
-- A fatal start-up error in `qui-tray.exe`, such as a port already in use, shows a native error dialog before the process exits. There is no console to print it to.
+- A fatal error in `qui-tray.exe`, such as a port already in use, shows a native error dialog before the process exits. There is no console to print it to. The supervisor shows the dialog: it gives the served child a pipe for stderr and keeps the end of it. So the dialog also covers a config error, which happens before the log file exists, and a panic. The zerolog exit hook cannot see the message of the event.
 - "Start with Windows" writes a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` that points at `qui-tray.exe`. Users pick this or the Scheduled Task with `qui.exe`, never both, or two copies start.
 - A change that moves the Tray into its own process, or that drops the console binary, reverses this decision and needs a new ADR.
 
