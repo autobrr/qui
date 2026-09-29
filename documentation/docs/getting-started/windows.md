@@ -42,7 +42,7 @@ Do not put qui in `C:\Program Files`. The updater writes the new executable next
 
 ## Initial setup
 
-Do these steps after a zip install. After an MSI install, qui already runs: create your account as the MSI section says.
+Do these steps after a zip install. After an MSI install, qui already runs. Create your account as the MSI section says.
 
 1. Open **Command Prompt** or **PowerShell** and change to the folder:
    ```powershell
@@ -140,9 +140,9 @@ Click **Install update** in the update banner or in **Settings → Application**
 
 ### Update an MSI install
 
-Use **Install update**, the same as for a zip install. After an update, **Installed apps** still shows the version of the MSI that you installed. That is normal: the files are the new version.
+Use **Install update**, the same as for a zip install. After an update, **Installed apps** still shows the version of the MSI that you installed. That is normal. The files are the new version.
 
-You can also install a newer MSI. Quit the Tray, or end the scheduled task, before you do this. If qui runs, Windows asks you to close it, and it can ask for a restart.
+You can also install a newer MSI. Quit the Tray, or end the scheduled task, before you do this. If qui runs, Windows offers to close it, but it cannot stop qui fully. The old version keeps running, and the new version shows a port error. If this occurs, click **OK** on the error, click **Quit** in the Tray menu, and start qui from the Start Menu.
 
 ### Update from the shell
 

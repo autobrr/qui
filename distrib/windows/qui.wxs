@@ -43,7 +43,8 @@
         <File Id="QuiTrayExe" Name="qui-tray.exe" Source="qui-tray.exe" />
         <!-- An explicit Target keeps wixl from making an advertised shortcut. -->
         <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="qui" Target="[#QuiTrayExe]" WorkingDirectory="INSTALLFOLDER" />
-        <Environment Id="Path" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" Permanent="no" />
+        <!-- wixl ignores Permanent="no". The "-" prefix makes the uninstall remove the entry. -->
+        <Environment Id="Path" Name="-PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" />
         <RemoveFolder Id="InstallFolder" On="uninstall" />
       </Component>
     </DirectoryRef>
