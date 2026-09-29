@@ -58,7 +58,7 @@ Right-click the qui icon to open the menu:
 - **Open qui** opens qui in your default browser. A click on the icon does the same.
 - **Restart** restarts qui. The icon goes away for a moment and then comes back. qui refuses a Restart while an update installs.
 - **Open config folder** opens the folder that holds the configuration, the database, and the log file.
-- **Start with Windows** starts `qui-tray.exe` when you log on. A check mark shows that it is on. It needs no administrator rights. It applies only to your Windows account.
+- **Start with Windows** starts `qui-tray.exe` when you log on, with the flags that it runs with now. A check mark shows that it is on. It needs no administrator rights. It applies only to your Windows account.
 - **Quit** stops qui.
 
 Hover over the icon to see the qui version and the address.

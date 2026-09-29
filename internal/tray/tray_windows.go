@@ -6,6 +6,7 @@ package tray
 import (
 	_ "embed"
 	stdlog "log"
+	"os"
 	"strings"
 	"sync/atomic"
 
@@ -102,7 +103,8 @@ func shellOpen(target string) {
 	}
 }
 
-// startsWithWindows reports whether the Run value exists and starts this binary.
+// startsWithWindows reports whether the Run value exists and starts this binary
+// with the flags it runs with now.
 func startsWithWindows(binary string) bool {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
 	if err != nil {
@@ -110,7 +112,13 @@ func startsWithWindows(binary string) bool {
 	}
 	defer key.Close()
 	value, _, err := key.GetStringValue(runValue)
-	return err == nil && strings.EqualFold(strings.Trim(value, `"`), binary)
+	return err == nil && strings.EqualFold(value, runCommand(binary))
+}
+
+// runCommand keeps the serve flags, so a Tray started with --config-dir starts
+// on the same config at logon. The supervisor passes os.Args to this child.
+func runCommand(binary string) string {
+	return windows.ComposeCommandLine(append([]string{binary}, os.Args[1:]...))
 }
 
 // setStartWithWindows writes the Run value under HKCU, which needs no admin rights.
@@ -123,7 +131,7 @@ func setStartWithWindows(binary string, enabled bool) error {
 	if !enabled {
 		return key.DeleteValue(runValue)
 	}
-	return key.SetStringValue(runValue, `"`+binary+`"`)
+	return key.SetStringValue(runValue, runCommand(binary))
 }
 
 type warnWriter struct{}
