@@ -55,10 +55,6 @@ const passthroughTerms = new Set([
   "GPL-2.0-or-later",
 ])
 
-// {{plural}} carries an English "s"/"ies" suffix, so a translation has no use for it. PR #2784
-// converts those strings to real plural keys; this set goes with the last call site.
-const englishOnlyVars = new Set(["plural"])
-
 // ---------------------------------------------------------------------------
 // Utility functions
 // ---------------------------------------------------------------------------
@@ -225,7 +221,6 @@ function checkInterpolation(enValue, localeValue, key, namespace, locale) {
   const localeVars = extractInterpolationVars(localeValue)
 
   for (const v of enVars) {
-    if (englishOnlyVars.has(v)) continue
     if (!localeVars.has(v)) {
       errors.push(`${namespace}.${key}: missing {{${v}}} in ${locale}`)
     }

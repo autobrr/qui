@@ -79,13 +79,6 @@ for (const locale of allLocales) {
     assert.match(result.stdout, /\[Interpolation] 1 error\n {2}- common\.m: extra \{\{name}} not in en\n/)
   })
 
-  test(`${locale}: {{plural}} is English grammar and may be dropped`, (t) => {
-    const f = fixture(t, locale)
-    f.write({ m: "{{count}} item{{plural}}" }, { m: "{{count}} x" })
-
-    assert.equal(f.run(locale).status, 0)
-  })
-
   test(`${locale}: a missing locale directory fails`, (t) => {
     const f = fixture(t, locale)
     fs.rmSync(f.localeRoot, { recursive: true })
