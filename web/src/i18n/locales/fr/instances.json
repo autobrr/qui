@@ -1264,7 +1264,7 @@
         "noOtherInstances": "Aucune autre instance disponible.",
         "savePathLabel": "Chemin de sauvegarde sur la cible (facultatif)",
         "savePathPlaceholder": "ex. /data/torrents",
-        "savePathHelp": "Dossier parent. Laissez vide pour utiliser le défaut. Supporte les modèles :",
+        "savePathHelp": "Dossier parent. Laissez vide pour utiliser le défaut.",
         "categoryLabel": "Catégorie sur la cible (facultatif)",
         "selectTargetFirst": "Sélectionnez d'abord une instance cible",
         "loadingCategories": "Chargement des catégories...",
@@ -1397,6 +1397,11 @@
         "skipIfCrossSeedsDontMatch": "Ignorer si les cross-seeds ne correspondent pas aux conditions",
         "aboutSkipping": "À propos du saut de déplacement",
         "skipDescription": "Ignore le déplacement s'il y a d'autres torrents dans le groupe qui ne correspondent pas."
+      },
+      "templateHelp": {
+        "absolutePath": "Doit être un chemin absolu. Les valeurs s'insèrent dedans, par exemple",
+        "intro": "Supporte les modèles Go.",
+        "learnMore": "En savoir plus"
       },
       "freeSpace": {
         "title": "Source d'espace libre",

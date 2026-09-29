@@ -15,7 +15,9 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} vybrán - Hromadné akce jsou dostupné",
+    "ariaLabel_one": "Vybrán {{count}} torrent - Hromadné akce jsou dostupné",
+    "ariaLabel_few": "Vybrány {{count}} torrenty - Hromadné akce jsou dostupné",
+    "ariaLabel_other": "Vybráno {{count}} torrentů - Hromadné akce jsou dostupné",
     "resume": "Obnovit",
     "pause": "Pozastavit",
     "forceRecheck": "Vynutit opětovné ověření",
@@ -728,22 +730,34 @@
     "deleteEmptyCategories": {
       "title": "Odstranit prázdné kategorie",
       "noEmpty": "Nejsou žádné prázdné kategorie k odstranění.",
-      "confirm": "Jste si jisti, že chcete odstranit {{count}} prázdné kategorie{{plural}}? Tato akce nemůže být vrácena.",
+      "confirm_one": "Jste si jisti, že chcete odstranit {{count}} prázdnou kategorii? Tato akce nemůže být vrácena.",
+      "confirm_few": "Jste si jisti, že chcete odstranit {{count}} prázdné kategorie? Tato akce nemůže být vrácena.",
+      "confirm_other": "Jste si jisti, že chcete odstranit {{count}} prázdných kategorií? Tato akce nemůže být vrácena.",
       "cancel": "Zrušit",
-      "remove": "Odstranit {{count}} prázdné kategorie{{plural}}",
+      "remove_one": "Odstranit {{count}} prázdnou kategorii",
+      "remove_few": "Odstranit {{count}} prázdné kategorie",
+      "remove_other": "Odstranit {{count}} prázdných kategorií",
       "toast": {
-        "success": "Odstraněno {{count}} prázdných kategorií{{plural}}",
+        "success_one": "Odstraněna {{count}} prázdná kategorie",
+        "success_few": "Odstraněny {{count}} prázdné kategorie",
+        "success_other": "Odstraněno {{count}} prázdných kategorií",
         "error": "Nepodařilo se odstranit prázdné kategorie"
       }
     },
     "deleteUnusedTags": {
       "title": "Smazat nepoužité tagy",
       "noUnused": "Nejsou žádné nepoužité tagy k smazání.",
-      "confirm": "Jste si jisti, že chcete smazat {{count}} nepoužité tagy{{plural}}? Tato akce nemůže být vrácena.",
+      "confirm_one": "Jste si jisti, že chcete smazat {{count}} nepoužitý tag? Tato akce nemůže být vrácena.",
+      "confirm_few": "Jste si jisti, že chcete smazat {{count}} nepoužité tagy? Tato akce nemůže být vrácena.",
+      "confirm_other": "Jste si jisti, že chcete smazat {{count}} nepoužitých tagů? Tato akce nemůže být vrácena.",
       "cancel": "Zrušit",
-      "delete": "Smazat {{count}} nepoužité tagy{{plural}}",
+      "delete_one": "Smazat {{count}} nepoužitý tag",
+      "delete_few": "Smazat {{count}} nepoužité tagy",
+      "delete_other": "Smazat {{count}} nepoužitých tagů",
       "toast": {
-        "success": "Smazáno {{count}} nepoužitých tagů{{plural}}",
+        "success_one": "Smazán {{count}} nepoužitý tag",
+        "success_few": "Smazány {{count}} nepoužité tagy",
+        "success_other": "Smazáno {{count}} nepoužitých tagů",
         "error": "Nepodařilo se smazat nepoužité tagy"
       }
     }
@@ -769,7 +783,9 @@
     "contentFilteringInProgress": "Filtrování obsahu probíhá",
     "analyzingContent": "Analýza existujícího obsahu...",
     "smartFilteringActive": "Inteligentní filtrování je aktivní",
-    "indexersFiltered": "{{count}} indexer{{plural}} filtrováno",
+    "indexersFiltered_one": "{{count}} indexer odfiltrován",
+    "indexersFiltered_few": "{{count}} indexery odfiltrovány",
+    "indexersFiltered_other": "{{count}} indexerů odfiltrováno",
     "contentFilteringDescription": "Kontrola vašich existujících torrentů na duplikáty a vyloučení redundantních trackerů. To pomáhá předejít stahování stejného obsahu několikrát.",
     "excludedDescription": "Už stahujete tuto verzi z těchto trackerů, takže jsou vyloučeny z hledání.",
     "noContentDuplicates": "Filtrování obsahu dokončeno. Žádné duplikáty nebyly nalezeny na vašich povolených trackerech.",
@@ -1106,7 +1122,9 @@
       "fileRenameFailed": "Nepodařilo se přejmenovat soubor",
       "folderRenamed": "Složka přejmenována úspěšně",
       "folderRenameFailed": "Nepodařilo se přejmenovat složku",
-      "deletedTorrents": "Smazány {{count}} torrenty{{plural}}",
+      "deletedTorrents_one": "Smazán {{count}} torrent",
+      "deletedTorrents_few": "Smazány {{count}} torrenty",
+      "deletedTorrents_other": "Smazáno {{count}} torrentů",
       "deletedTorrent": "Smazán torrent: {{name}}",
       "deleteFailed": "Nepodařilo se smazat: {{error}}"
     },
@@ -1322,7 +1340,9 @@
     "url": "URL",
     "noHttpSources": "Žádné HTTP zdroje",
     "searchUrls": "Hledat URL...",
-    "httpSources": "{{count}} HTTP source{{plural}}",
+    "httpSources_one": "{{count}} HTTP zdroj",
+    "httpSources_few": "{{count}} HTTP zdroje",
+    "httpSources_other": "{{count}} HTTP zdrojů",
     "filteredCount": "{{filtered}} of {{total}}",
     "copyUrl": "Kopírovat URL",
     "toast": {
@@ -1333,7 +1353,9 @@
     "expandAll": "Rozbalit vše",
     "collapseAll": "Sbalit vše",
     "searchFiles": "Hledat soubory...",
-    "fileCount": "{{count}} soubor{{plural}}",
+    "fileCount_one": "{{count}} soubor",
+    "fileCount_few": "{{count}} soubory",
+    "fileCount_other": "{{count}} souborů",
     "filteredCount": "{{filtered}} z {{total}}",
     "noFiles": "Žádné soubory",
     "headers": {

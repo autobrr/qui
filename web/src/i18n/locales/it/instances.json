@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Nessun'altra istanza disponibile.",
         "savePathLabel": "Percorso di salvataggio sulla destinazione (facoltativo)",
         "savePathPlaceholder": "es. /data/torrents",
-        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria. Supporta i template:",
+        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria.",
         "categoryLabel": "Categoria sulla destinazione (facoltativo)",
         "selectTargetFirst": "Seleziona prima un'istanza di destinazione",
         "loadingCategories": "Caricamento delle categorie...",
@@ -1403,6 +1403,11 @@
         "skipIfCrossSeedsDontMatch": "Ignora se i cross-seed non corrispondono alle condizioni della regola",
         "aboutSkipping": "Informazioni sull'ignorare lo spostamento se esistono cross-seed",
         "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola."
+      },
+      "templateHelp": {
+        "absolutePath": "Deve essere un percorso assoluto. I valori vanno al suo interno, ad esempio",
+        "intro": "Supporta i template Go.",
+        "learnMore": "Scopri di più"
       },
       "freeSpace": {
         "title": "Origine dello spazio libero",

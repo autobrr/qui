@@ -32,9 +32,12 @@ type InstancesHandler struct {
 	syncManager     *internalqbittorrent.SyncManager
 	reannounceSvc   *reannounce.Service
 	sshDialer       *sshpool.Dialer
+	// sshPool is told when what a connection depends on changes; sshDialer
+	// stays separate so ssh-test never consults the pool's memo.
+	sshPool *sshpool.Pool
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore:   instanceStore,
 		reannounceStore: reannounceStore,
@@ -43,6 +46,7 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 		syncManager:     syncManager,
 		reannounceSvc:   svc,
 		sshDialer:       sshDialer,
+		sshPool:         sshPool,
 	}
 }
 
@@ -863,6 +867,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
+	h.sshPool.Remove(instanceID)
 
 	response := DeleteInstanceResponse{
 		Message: "Instance deleted successfully",

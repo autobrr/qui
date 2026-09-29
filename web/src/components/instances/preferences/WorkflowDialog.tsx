@@ -659,6 +659,12 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
+// Kept out of the locale strings: i18next would treat "{{ }}" as interpolation.
+const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
+
+const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
+const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
+
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
@@ -779,6 +785,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     inputRef: freeSpacePathInputRef,
     listRef: freeSpaceListRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
+
+  const pathTemplateHelp = (docsUrl: string) => (
+    <>
+      {t("preferences.workflowDialog.templateHelp.absolutePath")}{" "}
+      <code className="whitespace-nowrap">{PATH_TEMPLATE_EXAMPLE}</code>
+      <br />
+      {t("preferences.workflowDialog.templateHelp.intro")}{" "}
+      <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+        {t("preferences.workflowDialog.templateHelp.learnMore")}
+      </a>
+    </>
+  )
 
   // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
   const dropdownContainerRef = useRef<HTMLDivElement>(null)
@@ -3602,7 +3620,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
                             <FieldHelp>
-                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
+                              {t("preferences.workflowDialog.export.savePathHelp")} {pathTemplateHelp(EXPORT_PATH_DOCS_URL)}
                             </FieldHelp>
                           </Label>
                           <Input
@@ -3813,7 +3831,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.move.newSavePath")}</Label>
+                          <Label className="text-xs">
+                            {t("preferences.workflowDialog.move.newSavePath")}
+                            <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
+                          </Label>
                           <Input
                             type="text"
                             value={formState.exprMovePath}

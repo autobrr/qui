@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Só há o qBittorrent atual ativo.",
         "savePathLabel": "Onde salvar o arquivo no destino",
         "savePathPlaceholder": "ex. /arquivos/novos",
-        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria. Suporta modelos:",
+        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria.",
         "categoryLabel": "Em que categoria classificar no destino",
         "selectTargetFirst": "Escolha a instância no menu acima primeiro",
         "loadingCategories": "Acessando qBittorrent destino...",
@@ -1403,6 +1403,11 @@
         "skipIfCrossSeedsDontMatch": "Abortar a mudança caso haja cross-seeds que não condizem com a regra",
         "aboutSkipping": "Sobre pular cross-seeds",
         "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
+      },
+      "templateHelp": {
+        "absolutePath": "Deve ser um caminho absoluto. Os valores vão dentro dele, por exemplo",
+        "intro": "Suporta modelos Go.",
+        "learnMore": "Saiba mais"
       },
       "freeSpace": {
         "title": "Fonte de espaço livre",

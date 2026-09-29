@@ -6,8 +6,10 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -370,15 +372,54 @@ func listPostgresMigrationFiles(t *testing.T) []string {
 	return files
 }
 
+var (
+	testTemplatePath      string
+	buildTestTemplateOnce = sync.OnceValue(func() error { return buildTestTemplate(testTemplatePath) })
+)
+
+// TestMain holds the migrated template that openTestDatabase copies. The
+// package cannot use testdb, which imports it.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "qui-database-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create test template dir:", err)
+		os.Exit(1)
+	}
+	testTemplatePath = filepath.Join(dir, "template.db")
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// openTestDatabase opens a copy of a migrated template, so only the first call
+// in the package runs every migration. A test of the migrations or of a fresh
+// open calls New itself.
 func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
+	require.NoError(t, buildTestTemplateOnce())
+
+	data, err := os.ReadFile(testTemplatePath)
+	require.NoError(t, err)
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, os.WriteFile(dbPath, data, 0o600))
+
 	db, err := New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
 	})
 	return db
+}
+
+func buildTestTemplate(path string) error {
+	db, err := New(path)
+	if err != nil {
+		return err
+	}
+	if _, err := db.Conn().ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return errors.Join(err, db.Close())
+	}
+	return db.Close()
 }
 
 type pragmaQuerier interface {
