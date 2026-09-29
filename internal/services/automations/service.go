@@ -2232,7 +2232,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
-	// Load tracker display names when needed by tagging OR by TRACKER/TRACKERS conditions.
+	// Load tracker display names when needed by tagging, .Tracker path templates, or TRACKER/TRACKERS conditions.
 	// KISS: only load customizations when a rule actually references them.
 	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker) || rulesUseCondition(eligibleRules, FieldTrackers)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
@@ -5166,11 +5166,18 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 	return false
 }
 
-// rulesUseTrackerDisplayName checks if any enabled rule uses UseTrackerAsTag with UseDisplayName.
+// rulesUseTrackerDisplayName reports whether any enabled rule needs the tracker display-name map.
+// The ".Tracker" match pairs with the "Tracker" key resolveMovePath passes to path templates.
 func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
+		}
+		if move := rule.Conditions.Move; move != nil && move.Enabled && strings.Contains(move.Path, ".Tracker") {
+			return true
+		}
+		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, ".Tracker") {
+			return true
 		}
 		for _, tag := range rule.Conditions.TagActions() {
 			if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
