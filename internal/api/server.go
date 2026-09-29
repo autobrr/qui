@@ -256,7 +256,8 @@ func (s *Server) open(ready chan<- struct{}) error {
 			return nil
 		}
 
-		if errors.Is(err, http.ErrServerClosed) {
+		// With "localhost", tcp6 would bind [::1] next to the qui that holds 127.0.0.1.
+		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, errAddrInUse) {
 			return err
 		}
 
