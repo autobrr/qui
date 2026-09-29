@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -50,6 +51,8 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -61,6 +64,11 @@ func main() {
 	// process umask controls the final permissions of content directories
 	// (see discussion #1704). No-op when UMASK is unset or on Windows.
 	applyUmask()
+
+	if buildinfo.Tray == "true" {
+		runTray()
+		return
+	}
 
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
@@ -105,8 +113,22 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
+		if buildinfo.Tray != "true" {
+			// On Windows the first process only supervises; the child returns here.
+			update.Supervise(nil)
+			NewApplication(configDir, dataDir, logPath, pprofFlag).runServer()
+			return
+		}
+		update.Supervise(tray.ShowError)
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
-		app.runServer()
+		app.tray = make(chan tray.Menu, 1)
+		app.quit = make(chan struct{}, 1)
+		go app.runServer()
+		// The tray library needs the main goroutine's OS thread.
+		tray.Run(<-app.tray)
+		// Run returns after Remove, while the serve loop still shuts down. The
+		// serve loop sets the exit code: 75 asks the supervisor for a Restart.
+		select {}
 	}
 
 	return command
@@ -465,6 +487,10 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
+	// tray receives the Tray menu once qui listens, and quit carries the Tray's
+	// Quit. Both are nil outside qui-tray.exe.
+	tray chan tray.Menu
+	quit chan struct{}
 }
 
 func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
@@ -495,6 +521,10 @@ func (app *Application) runServer() {
 
 	if app.pprofFlag {
 		cfg.Config.PprofEnabled = true
+	}
+	if app.tray != nil {
+		// qui-tray.exe has no console, so it keeps a log file for bug reports.
+		cfg.SetDefaultLogPath("log/qui.log")
 	}
 
 	if err := cfg.ApplyLogConfig(); err != nil {
@@ -726,7 +756,10 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 
-	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
+	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+		return remotebackend.New(sshPool, inst)
+	})
 	crossSeedService.SetBackendPool(backendPool)
 	syncManager.SetBackendPool(backendPool)
 
@@ -844,6 +877,14 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Path = cfg.Config.BaseURL
 	sessionManager.Cookie.Persist = false
 
+	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
+	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	selfUpdater := update.NewUpdater(update.Config{
+		Repository: "autobrr/qui",
+		Version:    buildinfo.Version,
+		BinaryPath: updateInputs.BinaryPath,
+	})
+
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:                           cfg,
@@ -861,7 +902,9 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
-		UpdateAvailability:               update.Decide(update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)),
+		UpdateAvailability:               update.Decide(updateInputs),
+		Restarter:                        restarter,
+		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
@@ -886,6 +929,7 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		BackendPool:                      backendPool,
+		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
@@ -915,6 +959,9 @@ func (app *Application) runServer() {
 		}()
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
+	}
+	if app.tray != nil {
+		app.tray <- app.trayMenu(cfg, updateInputs.BinaryPath, restarter)
 	}
 
 	if cfg.Config.MetricsEnabled {
@@ -959,36 +1006,44 @@ func (app *Application) runServer() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
+	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
+	shutdown := func() error {
+		tray.Remove()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		partialPoolCancel()
+		select {
+		case <-partialPoolDone:
+		case <-ctx.Done():
+			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		if err := httpServer.Shutdown(ctx); err != nil {
+			return err
+		}
+
+		// Closed here because os.Exit below means a defer would never fire; a job
+		// still mid-operation gets ErrPoolClosed and ends with the process.
+		sshPool.Close()
+		return nil
+	}
+
 	select {
 	case sig := <-sigCh:
 		log.Info().Msgf("got signal %v, shutting down server", sig.String())
 	case err := <-errorChannel:
 		log.Error().Err(err).Msg("got unexpected error from server")
+	case <-app.quit:
+		log.Info().Msg("quit from the Tray, shutting down server")
+	case <-restarter.Requested():
+		log.Info().Msg("restart requested, shutting down server")
+		restarter.Restart(log.Logger, shutdown)
 	}
 
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	partialPoolCancel()
-	select {
-	case <-partialPoolDone:
-	case <-ctx.Done():
-		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
-	}
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		// log.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := shutdown(); err != nil {
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
-
 		os.Exit(1)
 	}
-
-	// if err := srv.Shutdown(context.Background()); err != nil {
-	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
-	//
-	//	os.Exit(1)
-	//}
-
 	os.Exit(0)
 }
 

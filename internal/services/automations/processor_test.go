@@ -858,6 +858,15 @@ func TestRenderPathTemplate_TrackerFallback(t *testing.T) {
 	require.Equal(t, "/data/tracker.example.com", resolved)
 }
 
+func TestRenderPathTemplate_TrackerDisplayName(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01"}
+	evalCtx := &EvalContext{TrackerDisplayNameByDomain: map[string]string{"tracker.example.com": "Example"}}
+
+	resolved, ok := renderPathTemplate("/data/{{.Tracker}}", torrent, &torrentDesiredState{trackerDomains: []string{"tracker.example.com"}}, evalCtx)
+	require.True(t, ok)
+	require.Equal(t, "/data/Example", resolved)
+}
+
 func TestMoveAction_WithTemplatePath(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrent := qbt.Torrent{

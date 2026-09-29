@@ -1306,7 +1306,7 @@
         "noOtherInstances": "Žádné další instance nejsou dostupné.",
         "savePathLabel": "Cílová cesta (volitelné)",
         "savePathPlaceholder": "např. /data/torrents",
-        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie. Podporuje šablony:",
+        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie.",
         "categoryLabel": "Kategorie na cíli (volitelné)",
         "selectTargetFirst": "Vyberte cílovou instanci jako první",
         "loadingCategories": "Načítání kategorií...",
@@ -1442,6 +1442,11 @@
         "errors": {
           "mustBeAbsolute": "Musí to být absolutní cesta, například /data/archive nebo D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Musí jít o absolutní cestu. Hodnoty se vkládají do ní, například",
+        "intro": "Podporuje šablony Go.",
+        "learnMore": "Další informace"
       },
       "freeSpace": {
         "title": "Zdroj volného místa",

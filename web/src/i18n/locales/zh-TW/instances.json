@@ -1240,7 +1240,7 @@
         "noOtherInstances": "沒有其他可用實例。",
         "savePathLabel": "目標上的儲存路徑（可選）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。支援範本：",
+        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。",
         "categoryLabel": "目標上的分類（可選）",
         "selectTargetFirst": "請先選擇目標實例",
         "loadingCategories": "正在載入分類...",
@@ -1376,6 +1376,11 @@
         "errors": {
           "mustBeAbsolute": "必須是絕對路徑，例如 /data/archive 或 D:\\Archive。"
         }
+      },
+      "templateHelp": {
+        "absolutePath": "必須是絕對路徑。值要寫在路徑中，例如",
+        "intro": "支援 Go 範本。",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空間來源",

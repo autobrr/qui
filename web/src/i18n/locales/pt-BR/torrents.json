@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent(s) selecionado(s) - Ações em massa disponíveis",
+    "ariaLabel_one": "{{count}} torrent selecionado - Ações em massa disponíveis",
+    "ariaLabel_other": "{{count}} torrents selecionados - Ações em massa disponíveis",
     "resume": "Retomar",
     "pause": "Pausar",
     "forceRecheck": "Forçar Verificação",
@@ -680,22 +681,28 @@
     "deleteEmptyCategories": {
       "title": "Remover Categorias Vazias",
       "noEmpty": "Não há categorias vazias para remover.",
-      "confirm": "Tem certeza de que deseja remover {{count}} categoria(s) vazia(s)? Esta ação não pode ser desfeita.",
+      "confirm_one": "Tem certeza de que deseja remover {{count}} categoria vazia? Esta ação não pode ser desfeita.",
+      "confirm_other": "Tem certeza de que deseja remover {{count}} categorias vazias? Esta ação não pode ser desfeita.",
       "cancel": "Cancelar",
-      "remove": "Remover {{count}} Categoria(s)",
+      "remove_one": "Remover {{count}} Categoria",
+      "remove_other": "Remover {{count}} Categorias",
       "toast": {
-        "success": "Removida(s) {{count}} categoria(s) vazia(s)",
+        "success_one": "Removida {{count}} categoria vazia",
+        "success_other": "Removidas {{count}} categorias vazias",
         "error": "Falha ao remover categorias vazias"
       }
     },
     "deleteUnusedTags": {
       "title": "Excluir Tags Não Utilizadas",
       "noUnused": "Não há tags não utilizadas para excluir.",
-      "confirm": "Tem certeza de que deseja excluir {{count}} tag(s) não utilizada(s)? Esta ação não pode ser desfeita.",
+      "confirm_one": "Tem certeza de que deseja excluir {{count}} tag não utilizada? Esta ação não pode ser desfeita.",
+      "confirm_other": "Tem certeza de que deseja excluir {{count}} tags não utilizadas? Esta ação não pode ser desfeita.",
       "cancel": "Cancelar",
-      "delete": "Excluir {{count}} Tag(s)",
+      "delete_one": "Excluir {{count}} Tag",
+      "delete_other": "Excluir {{count}} Tags",
       "toast": {
-        "success": "Excluída(s) {{count}} tag(s) não utilizada(s)",
+        "success_one": "Excluída {{count}} tag não utilizada",
+        "success_other": "Excluídas {{count}} tags não utilizadas",
         "error": "Falha ao excluir tags não utilizadas"
       }
     }
@@ -721,7 +728,8 @@
     "contentFilteringInProgress": "Filtragem de Conteúdo em Andamento",
     "analyzingContent": "Analisando conteúdo existente...",
     "smartFilteringActive": "Filtragem Inteligente Ativa",
-    "indexersFiltered": "{{count}} indexador(es) filtrado(s)",
+    "indexersFiltered_one": "{{count}} indexador filtrado",
+    "indexersFiltered_other": "{{count}} indexadores filtrados",
     "contentFilteringDescription": "Verificando seus torrents existentes para encontrar duplicatas e excluir trackers redundantes.",
     "excludedDescription": "Você já compartilha este lançamento destes trackers, então eles foram excluídos da busca.",
     "noContentDuplicates": "Filtragem de conteúdo concluída. Nenhum conteúdo duplicado encontrado nos seus trackers ativados.",
@@ -1055,7 +1063,8 @@
       "fileRenameFailed": "Falha ao renomear arquivo",
       "folderRenamed": "Pasta renomeada com sucesso",
       "folderRenameFailed": "Falha ao renomear pasta",
-      "deletedTorrents": "Excluído(s) {{count}} torrent(s)",
+      "deletedTorrents_one": "Excluído {{count}} torrent",
+      "deletedTorrents_other": "Excluídos {{count}} torrents",
       "deletedTorrent": "Torrent excluído: {{name}}",
       "deleteFailed": "Falha ao excluir: {{error}}"
     },
@@ -1263,7 +1272,8 @@
     "url": "URL",
     "noHttpSources": "Nenhuma fonte HTTP",
     "searchUrls": "Pesquisar URLs...",
-    "httpSources": "{{count}} fonte(s) HTTP",
+    "httpSources_one": "{{count}} fonte HTTP",
+    "httpSources_other": "{{count}} fontes HTTP",
     "filteredCount": "{{filtered}} de {{total}}",
     "copyUrl": "Copiar URL",
     "toast": {
@@ -1282,7 +1292,8 @@
     "expandAll": "Expandir Tudo",
     "collapseAll": "Recolher Tudo",
     "searchFiles": "Pesquisar arquivos...",
-    "fileCount": "{{count}} arquivo(s)",
+    "fileCount_one": "{{count}} arquivo",
+    "fileCount_other": "{{count}} arquivos",
     "filteredCount": "{{filtered}} de {{total}}",
     "noFiles": "Nenhum arquivo",
     "headers": {

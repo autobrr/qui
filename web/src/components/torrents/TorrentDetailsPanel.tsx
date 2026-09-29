@@ -719,7 +719,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
       toast.success(t("detailsPanel.toast.deletedTorrents", {
         count: torrentsToDelete.length,
-        plural: torrentsToDelete.length > 1 ? "s" : "",
       }))
 
       // An immediate refetch can race the backend's debounced post-delete sync
@@ -1585,7 +1584,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   ) : webseedsData && webseedsData.length > 0 ? (
                     <div className="space-y-3">
                       <div>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("webSeedsTable.httpSources", { count: webseedsData.length, plural: webseedsData.length === 1 ? "" : "s" })}</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("webSeedsTable.httpSources", { count: webseedsData.length })}</h3>
                         <p className="text-xs text-muted-foreground mt-1">{t("detailsPanel.counts.httpSources", { count: webseedsData.length })}</p>
                       </div>
                       <div className="space-y-2 mt-4">

@@ -928,7 +928,7 @@
         "noOtherInstances": "No hi ha cap altra instància disponible.",
         "savePathLabel": "Camí de desada a la destinació (opcional)",
         "savePathPlaceholder": "p. ex. /data/torrents",
-        "savePathHelp": "Directori pare del contingut del torrent. Deixa-ho buit per fer servir el valor predeterminat de la categoria. Admet plantilles:",
+        "savePathHelp": "Directori pare del contingut del torrent. Deixa-ho buit per fer servir el valor predeterminat de la categoria.",
         "categoryLabel": "Categoria a la destinació (opcional)",
         "selectTargetFirst": "Selecciona primer una instància de destinació",
         "loadingCategories": "S'estan carregant les categories...",
@@ -1064,6 +1064,11 @@
         "errors": {
           "mustBeAbsolute": "Ha de ser un camí absolut, per exemple /data/archive o D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Ha de ser un camí absolut. Els valors van dins del camí, per exemple",
+        "intro": "Admet plantilles de Go.",
+        "learnMore": "Més informació"
       },
       "footer": {
         "enabled": "Activat",

@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Nessun'altra istanza disponibile.",
         "savePathLabel": "Percorso di salvataggio sulla destinazione (facoltativo)",
         "savePathPlaceholder": "es. /data/torrents",
-        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria. Supporta i template:",
+        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria.",
         "categoryLabel": "Categoria sulla destinazione (facoltativo)",
         "selectTargetFirst": "Seleziona prima un'istanza di destinazione",
         "loadingCategories": "Caricamento delle categorie...",
@@ -1406,6 +1406,11 @@
         "errors": {
           "mustBeAbsolute": "Deve essere un percorso assoluto, ad esempio /data/archive o D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Deve essere un percorso assoluto. I valori vanno al suo interno, ad esempio",
+        "intro": "Supporta i template Go.",
+        "learnMore": "Scopri di più"
       },
       "freeSpace": {
         "title": "Origine dello spazio libero",

@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Só há o qBittorrent atual ativo.",
         "savePathLabel": "Onde salvar o arquivo no destino",
         "savePathPlaceholder": "ex. /arquivos/novos",
-        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria. Suporta modelos:",
+        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria.",
         "categoryLabel": "Em que categoria classificar no destino",
         "selectTargetFirst": "Escolha a instância no menu acima primeiro",
         "loadingCategories": "Acessando qBittorrent destino...",
@@ -1406,6 +1406,11 @@
         "errors": {
           "mustBeAbsolute": "Precisa ser um caminho absoluto, por exemplo /data/archive ou D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Deve ser um caminho absoluto. Os valores vão dentro dele, por exemplo",
+        "intro": "Suporta modelos Go.",
+        "learnMore": "Saiba mais"
       },
       "freeSpace": {
         "title": "Fonte de espaço livre",

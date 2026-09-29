@@ -1270,7 +1270,7 @@
         "noOtherInstances": "Keine weiteren Instanzen verfügbar.",
         "savePathLabel": "Speicherpfad auf Ziel (optional)",
         "savePathPlaceholder": "z. B. /data/torrents",
-        "savePathHelp": "Übergeordnetes Verzeichnis für den Torrent-Inhalt. Leer lassen, um den Kategorie-Standard zu verwenden. Unterstützt Vorlagen:",
+        "savePathHelp": "Übergeordnetes Verzeichnis für den Torrent-Inhalt. Leer lassen, um den Kategorie-Standard zu verwenden.",
         "categoryLabel": "Kategorie auf Ziel (optional)",
         "selectTargetFirst": "Wähle zuerst eine Ziel-Instanz aus",
         "loadingCategories": "Kategorien werden geladen...",
@@ -1406,6 +1406,11 @@
         "errors": {
           "mustBeAbsolute": "Muss ein absoluter Pfad sein, zum Beispiel /data/archive oder D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Muss ein absoluter Pfad sein. Werte stehen darin, zum Beispiel",
+        "intro": "Unterstützt Go-Vorlagen.",
+        "learnMore": "Mehr erfahren"
       },
       "freeSpace": {
         "title": "Quelle für freien Speicher",

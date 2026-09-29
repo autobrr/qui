@@ -659,11 +659,7 @@ When you save an enabled rule or start a dry run, qui renders the path for a sam
 - By category: `/data/{{.Category}}` → for example `/data/movies`
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
-- By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
-
-:::note
-If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
-:::
+- By tracker: `/data/{{.Tracker}}`
 
 ### Auto management
 

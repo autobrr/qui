@@ -1270,7 +1270,7 @@
         "noOtherInstances": "No other instances available.",
         "savePathLabel": "Save path on target (optional)",
         "savePathPlaceholder": "e.g. /data/torrents",
-        "savePathHelp": "Parent directory for torrent content. Leave empty to use category default. Supports templates:",
+        "savePathHelp": "Parent directory for torrent content. Leave empty to use category default.",
         "categoryLabel": "Category on target (optional)",
         "selectTargetFirst": "Select a target instance first",
         "loadingCategories": "Loading categories...",
@@ -1406,6 +1406,11 @@
         "errors": {
           "mustBeAbsolute": "Must be an absolute path, for example /data/archive or D:\\Archive."
         }
+      },
+      "templateHelp": {
+        "absolutePath": "Must be an absolute path. Values go inside it, for example",
+        "intro": "Supports Go templates.",
+        "learnMore": "Learn more"
       },
       "freeSpace": {
         "title": "Free space source",
