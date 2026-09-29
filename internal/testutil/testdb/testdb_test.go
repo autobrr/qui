@@ -7,8 +7,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -244,4 +247,126 @@ func TestSchemaNamesDifferWithinOneClockTick(t *testing.T) {
 	if first == second {
 		t.Fatalf("schema names collide: %s", first)
 	}
+}
+
+// cloneHelperEnv makes TestTemplateSharedAcrossProcesses act as the subprocess
+// that clones the template, the way another package process would. The
+// cross-process tests start it with cloneHelperCmd.
+const cloneHelperEnv = "QUI_TESTDB_CLONE_HELPER"
+
+func TestTemplateSharedAcrossProcesses(t *testing.T) {
+	if os.Getenv(cloneHelperEnv) == "1" {
+		disableTestLogs(t)
+		db := NewMigratedSQLite(t, "helper")
+		var n int
+		if err := db.Conn().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM string_pool").Scan(&n); err != nil {
+			t.Fatalf("query migrated schema: %v", err)
+		}
+		return
+	}
+
+	cacheDir := t.TempDir()
+	tmpDir := t.TempDir()
+
+	runCloneHelper(t, cacheDir, tmpDir)
+	first := onlyTemplate(t, cacheDir)
+	runCloneHelper(t, cacheDir, tmpDir)
+	second := onlyTemplate(t, cacheDir)
+
+	if !first.ModTime().Equal(second.ModTime()) {
+		t.Fatal("second process rebuilt the template instead of reusing it")
+	}
+	if entries, _ := os.ReadDir(tmpDir); len(entries) != 0 {
+		t.Fatalf("temp dir holds leftovers: %v", entries)
+	}
+}
+
+func TestTemplateConcurrentBuilders(t *testing.T) {
+	cacheDir := t.TempDir()
+
+	cmds := make([]*exec.Cmd, 4)
+	outputs := make([]strings.Builder, len(cmds))
+	for i := range cmds {
+		cmds[i] = cloneHelperCmd(t, cacheDir, t.TempDir())
+		cmds[i].Stdout = &outputs[i]
+		cmds[i].Stderr = &outputs[i]
+		if err := cmds[i].Start(); err != nil {
+			t.Fatalf("start clone helper: %v", err)
+		}
+	}
+	for i, cmd := range cmds {
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("clone helper %d: %v\n%s", i, err, outputs[i].String())
+		}
+	}
+	onlyTemplate(t, cacheDir)
+}
+
+func TestCachedTemplateKeyFollowsMigrations(t *testing.T) {
+	dir := t.TempDir()
+	builds := 0
+	build := func(dst string) error {
+		builds++
+		return os.WriteFile(dst, []byte("template"), 0o600)
+	}
+	v1 := fstest.MapFS{"migrations/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")}}
+	v2 := fstest.MapFS{
+		"migrations/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
+		"migrations/002_b.sql":    {Data: []byte("CREATE TABLE b (id INTEGER);")},
+	}
+
+	first, err := cachedTemplate(dir, v1, build)
+	if err != nil {
+		t.Fatalf("build v1 template: %v", err)
+	}
+	again, err := cachedTemplate(dir, v1, build)
+	if err != nil {
+		t.Fatalf("reuse v1 template: %v", err)
+	}
+	if again != first || builds != 1 {
+		t.Fatalf("same migrations: path %q, want %q; builds %d, want 1", again, first, builds)
+	}
+
+	second, err := cachedTemplate(dir, v2, build)
+	if err != nil {
+		t.Fatalf("build v2 template: %v", err)
+	}
+	if second == first || builds != 2 {
+		t.Fatalf("changed migrations: path %q reused or builds %d, want 2", second, builds)
+	}
+}
+
+func cloneHelperCmd(t *testing.T, cacheDir, tmpDir string) *exec.Cmd {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestTemplateSharedAcrossProcesses$", "-test.count=1")
+	cmd.Env = append(os.Environ(),
+		cloneHelperEnv+"=1",
+		cacheDirEnv+"="+cacheDir,
+		"TMPDIR="+tmpDir, "TMP="+tmpDir, "TEMP="+tmpDir,
+	)
+	return cmd
+}
+
+func runCloneHelper(t *testing.T, cacheDir, tmpDir string) {
+	t.Helper()
+	if output, err := cloneHelperCmd(t, cacheDir, tmpDir).CombinedOutput(); err != nil {
+		t.Fatalf("clone helper: %v\n%s", err, output)
+	}
+}
+
+// onlyTemplate fails unless dir holds exactly one finished template file.
+func onlyTemplate(t *testing.T, dir string) os.FileInfo {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read cache dir: %v", err)
+	}
+	if len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), "template-") || filepath.Ext(entries[0].Name()) != ".db" {
+		t.Fatalf("cache dir = %v, want one template-*.db file", entries)
+	}
+	info, err := entries[0].Info()
+	if err != nil {
+		t.Fatalf("stat template: %v", err)
+	}
+	return info
 }

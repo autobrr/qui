@@ -541,8 +541,7 @@ func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 // TestServeEndToEndDeliversInitAndUpdate covers the happy path: an init snapshot
 // on connect, followed by an update event when HandleMainData fires.
 func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
@@ -581,8 +580,7 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 }
 
 func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
@@ -619,8 +617,7 @@ func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
 // calls collapses into far fewer torrent builds than events while still
 // delivering at least one update to the connected subscriber.
 func TestServeCoalescesBurstOfUpdates(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)
@@ -750,8 +747,7 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 // spurious init to the first (init is per-connection, not a group fan-out), while
 // a subsequent update still fans out to both.
 func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)
@@ -847,8 +843,7 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, cleanup := newTestInstanceStore(t)
-			defer cleanup()
+			store := newTestInstanceStore(t)
 
 			provider := &fakeSyncProvider{
 				torrentsResponse:      cannedResponse(),
@@ -893,8 +888,7 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 // covered separately in manager_test.go; this exercises the second, group-refresh
 // callsite.
 func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{
 		torrentsResponse:      cannedResponse(),

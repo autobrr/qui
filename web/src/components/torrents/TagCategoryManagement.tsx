@@ -400,7 +400,7 @@ export function DeleteEmptyCategoriesDialog({
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["categories", instanceId] })
       queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId] })
-      toast.success(t("tagCategoryManagement.deleteEmptyCategories.toast.success", { count: emptyCategories.length, plural: emptyCategories.length === 1 ? "y" : "ies" }))
+      toast.success(t("tagCategoryManagement.deleteEmptyCategories.toast.success", { count: emptyCategories.length }))
       onOpenChange(false)
     },
     onError: (error: Error) => {
@@ -420,7 +420,7 @@ export function DeleteEmptyCategoriesDialog({
               t("tagCategoryManagement.deleteEmptyCategories.noEmpty")
             ) : (
               <>
-                {t("tagCategoryManagement.deleteEmptyCategories.confirm", { count: emptyCategories.length, plural: emptyCategories.length === 1 ? "y" : "ies" })}
+                {t("tagCategoryManagement.deleteEmptyCategories.confirm", { count: emptyCategories.length })}
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">
                     {emptyCategories.map(categoryName => (
@@ -442,7 +442,7 @@ export function DeleteEmptyCategoriesDialog({
               disabled={mutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {t("tagCategoryManagement.deleteEmptyCategories.remove", { count: emptyCategories.length, plural: emptyCategories.length === 1 ? "y" : "ies" })}
+              {t("tagCategoryManagement.deleteEmptyCategories.remove", { count: emptyCategories.length })}
             </AlertDialogAction>
           )}
         </AlertDialogFooter>
@@ -481,7 +481,7 @@ export function DeleteUnusedTagsDialog({
       // Refetch instead of invalidate to keep showing stale data
       queryClient.refetchQueries({ queryKey: ["tags", instanceId] })
       queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId] })
-      toast.success(t("tagCategoryManagement.deleteUnusedTags.toast.success", { count: unusedTags.length, plural: unusedTags.length !== 1 ? "s" : "" }))
+      toast.success(t("tagCategoryManagement.deleteUnusedTags.toast.success", { count: unusedTags.length }))
       onOpenChange(false)
     },
     onError: (error: Error) => {
@@ -501,7 +501,7 @@ export function DeleteUnusedTagsDialog({
               t("tagCategoryManagement.deleteUnusedTags.noUnused")
             ) : (
               <>
-                {t("tagCategoryManagement.deleteUnusedTags.confirm", { count: unusedTags.length, plural: unusedTags.length !== 1 ? "s" : "" })}
+                {t("tagCategoryManagement.deleteUnusedTags.confirm", { count: unusedTags.length })}
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">
                     {unusedTags.map(tag => (
@@ -523,7 +523,7 @@ export function DeleteUnusedTagsDialog({
               disabled={mutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {t("tagCategoryManagement.deleteUnusedTags.delete", { count: unusedTags.length, plural: unusedTags.length !== 1 ? "s" : "" })}
+              {t("tagCategoryManagement.deleteUnusedTags.delete", { count: unusedTags.length })}
             </AlertDialogAction>
           )}
         </AlertDialogFooter>

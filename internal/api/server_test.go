@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"sort"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -353,4 +355,20 @@ func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbit
 	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
 	require.True(t, ok, "unexpected sink type stored on client pool")
 	return sink
+}
+
+func TestOpenStopsWhenPortIsInUse(t *testing.T) {
+	held, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer held.Close()
+
+	s := &Server{
+		logger: zerolog.Nop(),
+		config: &config.AppConfig{Config: &domain.Config{
+			Host: "localhost",
+			Port: held.Addr().(*net.TCPAddr).Port,
+		}},
+	}
+	err = s.open(nil)
+	require.ErrorIs(t, err, errAddrInUse)
 }

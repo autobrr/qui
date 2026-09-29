@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -382,7 +383,7 @@ func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
 			data := buildTorrentData(tt.torrent, nil)
 
 			// Verify the data is stored as-is (not executed or interpreted)
-			// The actual shell escaping happens in shellquote.Join when building commands
+			// The actual shell escaping happens in shellJoin when building commands
 			assert.NotEmpty(t, data[tt.checkKey])
 
 			// For name-based tests, verify the exact value is preserved
@@ -1602,4 +1603,15 @@ func TestBuildCommand_Unix(t *testing.T) {
 		assert.NotNil(t, cmd)
 		assert.NotEmpty(t, cmd.Path)
 	})
+}
+
+func TestShellJoin_RoundTripsThroughShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shellJoin targets POSIX shells")
+	}
+
+	args := []string{"/usr/bin/my prog", "", "it's", `a"b`, "$HOME", "`id`", "a\\b", "x;y|z&", "line1\nline2", "~", "*", "\t"}
+	out, err := exec.CommandContext(t.Context(), "sh", "-c", `printf '%s\0' `+shellJoin(args)).Output()
+	require.NoError(t, err)
+	assert.Equal(t, args, strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00"))
 }

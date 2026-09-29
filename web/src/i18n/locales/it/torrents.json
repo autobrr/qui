@@ -15,7 +15,8 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "{{count}} torrent{{plural}} selezionati - Azioni di gruppo disponibili",
+    "ariaLabel_one": "{{count}} torrent selezionato - Azioni di gruppo disponibili",
+    "ariaLabel_other": "{{count}} torrent selezionati - Azioni di gruppo disponibili",
     "resume": "Riprendi",
     "pause": "Metti in pausa",
     "forceRecheck": "Forza riverifica",
@@ -680,22 +681,28 @@
     "deleteEmptyCategories": {
       "title": "Rimuovi categorie vuote",
       "noEmpty": "Non ci sono categorie vuote da rimuovere.",
-      "confirm": "Sei sicuro di voler rimuovere {{count}} categor{{plural}} vuote? Questa azione non può essere annullata.",
+      "confirm_one": "Sei sicuro di voler rimuovere {{count}} categoria vuota? Questa azione non può essere annullata.",
+      "confirm_other": "Sei sicuro di voler rimuovere {{count}} categorie vuote? Questa azione non può essere annullata.",
       "cancel": "Annulla",
-      "remove": "Rimuovi {{count}} categor{{plural}}",
+      "remove_one": "Rimuovi {{count}} categoria",
+      "remove_other": "Rimuovi {{count}} categorie",
       "toast": {
-        "success": "Rimosse {{count}} categor{{plural}} vuote",
+        "success_one": "Rimossa {{count}} categoria vuota",
+        "success_other": "Rimosse {{count}} categorie vuote",
         "error": "Impossibile rimuovere le categorie vuote"
       }
     },
     "deleteUnusedTags": {
       "title": "Elimina tag inutilizzati",
       "noUnused": "Non ci sono tag inutilizzati da eliminare.",
-      "confirm": "Sei sicuro di voler eliminare {{count}} tag inutilizzat{{plural}}? Questa azione non può essere annullata.",
+      "confirm_one": "Sei sicuro di voler eliminare {{count}} tag inutilizzato? Questa azione non può essere annullata.",
+      "confirm_other": "Sei sicuro di voler eliminare {{count}} tag inutilizzati? Questa azione non può essere annullata.",
       "cancel": "Annulla",
-      "delete": "Elimina {{count}} tag{{plural}}",
+      "delete_one": "Elimina {{count}} tag",
+      "delete_other": "Elimina {{count}} tag",
       "toast": {
-        "success": "Eliminati {{count}} tag inutilizzat{{plural}}",
+        "success_one": "Eliminato {{count}} tag inutilizzato",
+        "success_other": "Eliminati {{count}} tag inutilizzati",
         "error": "Impossibile eliminare i tag inutilizzati"
       }
     }
@@ -721,7 +728,8 @@
     "contentFilteringInProgress": "Filtraggio del contenuto in corso",
     "analyzingContent": "Analisi del contenuto esistente...",
     "smartFilteringActive": "Filtraggio intelligente attivo",
-    "indexersFiltered": "{{count}} indexer filtrat{{plural}}",
+    "indexersFiltered_one": "{{count}} indexer filtrato",
+    "indexersFiltered_other": "{{count}} indexer filtrati",
     "contentFilteringDescription": "Controllo dei tuoi torrent esistenti per trovare duplicati ed escludere i tracker ridondanti. Questo aiuta a evitare di scaricare più volte lo stesso contenuto.",
     "excludedDescription": "Stai già distribuendo questa release da questi tracker, quindi sono esclusi dalla ricerca.",
     "noContentDuplicates": "Filtraggio del contenuto completato. Nessun contenuto duplicato trovato sui tuoi tracker abilitati.",
@@ -1055,7 +1063,8 @@
       "fileRenameFailed": "Impossibile rinominare il file",
       "folderRenamed": "Cartella rinominata con successo",
       "folderRenameFailed": "Impossibile rinominare la cartella",
-      "deletedTorrents": "Eliminati {{count}} torrent{{plural}}",
+      "deletedTorrents_one": "Eliminato {{count}} torrent",
+      "deletedTorrents_other": "Eliminati {{count}} torrent",
       "deletedTorrent": "Torrent eliminato: {{name}}",
       "deleteFailed": "Impossibile eliminare: {{error}}"
     },
@@ -1263,7 +1272,8 @@
     "url": "URL",
     "noHttpSources": "Nessuna sorgente HTTP",
     "searchUrls": "Cerca URL...",
-    "httpSources": "{{count}} sorgenti HTTP{{plural}}",
+    "httpSources_one": "{{count}} sorgente HTTP",
+    "httpSources_other": "{{count}} sorgenti HTTP",
     "filteredCount": "{{filtered}} di {{total}}",
     "copyUrl": "Copia URL",
     "toast": {
@@ -1282,7 +1292,8 @@
     "expandAll": "Espandi tutto",
     "collapseAll": "Comprimi tutto",
     "searchFiles": "Cerca file...",
-    "fileCount": "{{count}} file{{plural}}",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} file",
     "filteredCount": "{{filtered}} di {{total}}",
     "noFiles": "Nessun file",
     "headers": {

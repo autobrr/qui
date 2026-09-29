@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -39,6 +40,7 @@ type sshFixture struct {
 	instance  *models.Instance
 	server    *sshtest.Server
 	clientKey string
+	sshPool   *sshpool.Pool
 }
 
 func newSSHFixture(t *testing.T, name string) *sshFixture {
@@ -55,10 +57,16 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	instance, err := store.Create(t.Context(), "remote", "http://127.0.0.1:1", "admin", "password", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store))
+	// The server is created before the pool so cleanup, which runs last in
+	// first out, closes the pool's connections before the server waits on them.
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
+	t.Cleanup(sshPool.Close)
+	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
 
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)
+	router.Delete("/api/instances/{instanceID}", handler.DeleteInstance)
 	router.Put("/api/instances/{instanceID}/ssh-credentials", handler.UpdateSSHCredentials)
 	router.Delete("/api/instances/{instanceID}/ssh-credentials", handler.DeleteSSHCredentials)
 	router.Post("/api/instances/{instanceID}/ssh-test", handler.TestSSHConnection)
@@ -71,8 +79,9 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 		db:        db,
 		store:     store,
 		instance:  instance,
-		server:    sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU),
+		server:    server,
 		clientKey: sshtest.PrivateKey(""),
+		sshPool:   sshPool,
 	}
 }
 
@@ -292,6 +301,61 @@ func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	result := f.sshTest()
 	assert.Equal(t, "error", result.Status)
 	assert.Equal(t, "Failed to read SSH credentials", result.Error, "the cipher fault's text stays out of this body too")
+}
+
+// The routes that change what a connection depends on tell the pool, so a
+// session opened under the old credentials or pin does not outlive them.
+func TestSSHRoutesInvalidateThePool(t *testing.T) {
+	f := newSSHFixture(t, "ssh-routes-invalidate")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	open := func() *sftp.Client {
+		t.Helper()
+		stored, err := f.store.Get(t.Context(), f.instance.ID)
+		require.NoError(t, err)
+		client, err := f.sshPool.SFTP(t.Context(), stored)
+		require.NoError(t, err)
+		return client
+	}
+	closed := func(client *sftp.Client) bool { _, err := client.Getwd(); return err != nil }
+
+	client := open()
+	f.putCredentials()
+	assert.True(t, closed(client), "saving credentials must end the old session")
+
+	client = open()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
+	assert.True(t, closed(client), "replacing the pin must end the old session")
+
+	client = open()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+	assert.True(t, closed(client), "clearing credentials must end the old session")
+
+	f.putCredentials()
+	client = open()
+	require.Equal(t, http.StatusOK, f.do(http.MethodDelete, "", "").Code)
+	assert.True(t, closed(client), "deleting the instance must end its session")
+}
+
+// A dial for an instance with credentials but no pin memoises a refusal that
+// never expires; confirming the pin must clear it, or the first background
+// caller before confirmation would block every caller after it.
+func TestConfirmClearsAnUnpinnedRefusal(t *testing.T) {
+	f := newSSHFixture(t, "ssh-confirm-clears-refusal")
+	f.putCredentials()
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrPinUnusable)
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err = f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err, "confirming the pin must clear the refusal memoised before it")
 }
 
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {
