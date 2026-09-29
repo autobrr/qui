@@ -124,8 +124,10 @@ import type {
   TrackerCustomizationInput,
   TransferInfo,
   BuiltinTheme,
+  SelfUpdateResult,
   ThemeSettings,
   User,
+  VersionInfo,
   WarningResponse,
   WebSeed
 } from "@/types"
@@ -326,6 +328,50 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
   }
 }
 
+let ssoRecoveryPaused = false
+
+// While qui restarts, every request fails with "Failed to fetch", and the SSO
+// recovery would send the tab to "/", where the browser shows its own error page.
+export function setSSORecoveryPaused(paused: boolean): void {
+  ssoRecoveryPaused = paused
+}
+
+/**
+ * Unregister qui's service worker and delete qui's Cache Storage entries, so
+ * the next navigation loads the frontend from the network. The SW re-registers
+ * on the next page load via pwa.ts. localStorage stays: it holds the theme
+ * that index.html paints before the app loads.
+ */
+export async function clearQuiServiceWorker(): Promise<void> {
+  // Scope cleanup to qui's own service worker and caches to avoid disrupting
+  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
+  const quiScope = new URL(withBasePath("/"), window.location.origin).href
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(
+        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+      )
+    } catch {
+      // ignore unregister errors
+    }
+  }
+
+  // Workbox names its precache after the SW scope, so filtering by quiScope
+  // avoids touching other apps' caches.
+  if ("caches" in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+      )
+    } catch {
+      // ignore cache clear errors
+    }
+  }
+}
+
 /**
  * Attempt a single hard navigation to let the browser follow the SSO redirect
  * at the top level. Uses sessionStorage to prevent infinite navigation loops.
@@ -333,7 +379,7 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
  * Returns true if navigation was triggered, false if blocked.
  */
 async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
-  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+  if (ssoRecoveryPaused || typeof window === "undefined" || typeof sessionStorage === "undefined") {
     return false
   }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -348,40 +394,13 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
 
-  // Scope cleanup to qui's own service worker and caches to avoid disrupting
-  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
-  const quiScope = new URL(withBasePath("/"), window.location.origin).href
-
   // Unregister qui's service worker so its NavigationRoute cannot intercept the
   // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
   // to fetch index.html from the network on cache miss, which Badger/Pangolin
   // redirect cross-origin — the SW can't handle that response for a navigation
   // request, and some mobile browsers don't fall back to the network properly.
-  // The SW re-registers automatically on the next page load via pwa.ts.
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
-      )
-    } catch {
-      // ignore unregister errors
-    }
-  }
-
-  // Clear qui's caches so the next navigation goes straight to the network,
-  // letting the SSO proxy intercept. Workbox names its precache after the SW
-  // scope, so filtering by quiScope avoids touching other apps' caches.
-  if ("caches" in window) {
-    try {
-      const names = await caches.keys()
-      await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
-      )
-    } catch {
-      // ignore cache clear errors
-    }
-  }
+  // The caches go too, so the navigation reaches the network and the SSO proxy.
+  await clearQuiServiceWorker()
 
   sessionStorage.setItem("qui_sso_recovered", "1")
 
@@ -2240,6 +2259,21 @@ class ApiClient {
 
   async getApplicationInfo(): Promise<ApplicationInfo> {
     return this.request<ApplicationInfo>("/application/info")
+  }
+
+  async getVersion(): Promise<VersionInfo> {
+    return this.request<VersionInfo>("/version")
+  }
+
+  async restartQui(): Promise<void> {
+    await this.request<void>("/system/restart", { method: "POST" })
+  }
+
+  async selfUpdateQui(version: string): Promise<SelfUpdateResult> {
+    return this.request<SelfUpdateResult>("/system/update", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    })
   }
 
   async getLatestVersion(): Promise<{

@@ -999,6 +999,39 @@
         "lastChecked": "Zuletzt geprüft {{date}}"
       }
     },
+    "restart": {
+      "button": "Neu starten",
+      "confirmTitle": "qui neu starten?",
+      "confirmDescription": "qui fährt wie bei einem normalen Stopp herunter und startet dann erneut. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "confirm": "Neu starten",
+      "overlay": {
+        "restartingTitle": "qui wird neu gestartet…",
+        "restartingDetail": "Die Seite lädt neu, sobald qui wieder antwortet.",
+        "slowTitle": "qui hat noch nicht geantwortet",
+        "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
+      }
+    },
+    "update": {
+      "button": "Update installieren",
+      "confirmTitle": "Update installieren?",
+      "confirmDescription": "qui lädt die neue Version herunter, prüft ihre Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Die Seite lädt neu, sobald qui wieder da ist.",
+      "runningWork": "Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet.",
+      "currentVersion": "Aktuelle Version",
+      "targetVersion": "Neue Version",
+      "releaseNotes": "Release Notes",
+      "confirm": "Update installieren",
+      "overlay": {
+        "notAppliedTitle": "Update wurde nicht angewendet",
+        "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "installedTitle": "qui wurde aktualisiert",
+        "installedDetail": "Lade die Seite neu, um die neue Version zu öffnen.",
+        "reload": "Seite neu laden",
+        "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback lade die alte Version manuell herunter.",
+        "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",
+        "rollbackLabel": "Rollback-Befehl",
+        "rollbackDocs": "Schritte für das Rollback"
+      }
+    },
     "runtime": {
       "title": "Laufzeit",
       "description": "Informationen zur Server-Laufzeit.",
