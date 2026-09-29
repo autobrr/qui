@@ -1011,6 +1011,24 @@
         "slowDetail": "O qui pode ainda estar iniciando, e esta página continua aguardando. Verifique os logs do qui. Se você mudou a porta ou a URL base, abra o qui no novo endereço."
       }
     },
+    "update": {
+      "button": "Instalar atualização",
+      "confirmTitle": "Instalar atualização?",
+      "confirmDescription": "O qui baixa a versão, verifica a assinatura e mantém o binário atual como backup. Depois o qui reinicia. O trabalho em andamento, como buscas de cross-seed, automações, backups e verificações de órfãos, para. A página recarrega quando o qui voltar.",
+      "currentVersion": "Versão atual",
+      "targetVersion": "Nova versão",
+      "releaseNotes": "Notas da versão",
+      "confirm": "Instalar atualização",
+      "overlay": {
+        "notAppliedTitle": "A atualização não foi aplicada",
+        "notAppliedDetail": "O qui voltou, mas com outra versão. Verifique os logs do qui.",
+        "reload": "Recarregar página",
+        "noBackup": "O qui foi atualizado, mas não manteve backup: {{error}}. Reverter exige um download manual.",
+        "rollbackIntro": "Se a nova versão não iniciar, execute este comando e inicie o qui de novo:",
+        "rollbackLabel": "Comando de reversão",
+        "rollbackDocs": "Passos para reverter"
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "description": "Informações do tempo de execução do servidor.",

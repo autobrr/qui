@@ -1011,6 +1011,24 @@
         "slowDetail": "qui may still be starting, and this page keeps waiting. Check the qui logs. If you changed the port or the base URL, open qui at the new address."
       }
     },
+    "update": {
+      "button": "Install update",
+      "confirmTitle": "Install update?",
+      "confirmDescription": "qui downloads the release, checks its signature, and keeps the current binary as a backup. Then qui restarts. Running work, such as cross-seed searches, automations, backups, and orphan scans, stops. The page reloads when qui is back.",
+      "currentVersion": "Current version",
+      "targetVersion": "New version",
+      "releaseNotes": "Release notes",
+      "confirm": "Install update",
+      "overlay": {
+        "notAppliedTitle": "Update did not apply",
+        "notAppliedDetail": "qui is back, but on a different version. Check the qui logs.",
+        "reload": "Reload page",
+        "noBackup": "qui updated, but kept no backup: {{error}}. A rollback needs a manual download.",
+        "rollbackIntro": "If the new version does not start, run this command, then start qui again:",
+        "rollbackLabel": "Rollback command",
+        "rollbackDocs": "Rollback steps"
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "description": "Server runtime information.",

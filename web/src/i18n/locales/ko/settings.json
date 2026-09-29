@@ -1008,6 +1008,24 @@
         "slowDetail": "qui가 아직 시작 중일 수 있으며, 이 페이지는 계속 기다립니다. qui 로그를 확인하세요. 포트나 기본 URL을 변경했다면 새 주소에서 qui를 여세요."
       }
     },
+    "update": {
+      "button": "업데이트 설치",
+      "confirmTitle": "업데이트를 설치할까요?",
+      "confirmDescription": "qui는 릴리스를 다운로드하고 서명을 확인한 뒤 현재 바이너리를 백업으로 보관합니다. 그런 다음 qui가 재시작합니다. 크로스시드 검색, 자동화, 백업, 고아 파일 검사 같은 실행 중인 작업은 중지됩니다. qui가 돌아오면 페이지가 다시 로드됩니다.",
+      "currentVersion": "현재 버전",
+      "targetVersion": "새 버전",
+      "releaseNotes": "릴리스 노트",
+      "confirm": "업데이트 설치",
+      "overlay": {
+        "notAppliedTitle": "업데이트가 적용되지 않았습니다",
+        "notAppliedDetail": "qui가 돌아왔지만 다른 버전으로 실행 중입니다. qui 로그를 확인하세요.",
+        "reload": "페이지 다시 로드",
+        "noBackup": "qui가 업데이트되었지만 백업을 보관하지 않았습니다: {{error}}. 롤백하려면 직접 다운로드해야 합니다.",
+        "rollbackIntro": "새 버전이 시작되지 않으면 이 명령을 실행한 뒤 qui를 다시 시작하세요:",
+        "rollbackLabel": "롤백 명령",
+        "rollbackDocs": "롤백 단계"
+      }
+    },
     "runtime": {
       "title": "런타임",
       "description": "서버 런타임 정보입니다.",

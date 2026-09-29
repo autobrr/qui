@@ -41,6 +41,12 @@ export interface VersionInfo {
   restart: boolean
 }
 
+export interface SelfUpdateResult {
+  version: string
+  rollbackCommand: string
+  backupError: string
+}
+
 export interface AppPreferences {
   // Core limits and speeds (fully supported)
   dl_limit: number

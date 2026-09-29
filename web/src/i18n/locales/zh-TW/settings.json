@@ -1008,6 +1008,24 @@
         "slowDetail": "qui 可能仍在啟動，此頁面會繼續等待。請查看 qui 日誌。如果你變更了連接埠或基礎 URL，請在新位址開啟 qui。"
       }
     },
+    "update": {
+      "button": "安裝更新",
+      "confirmTitle": "安裝更新？",
+      "confirmDescription": "qui 會下載該版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。qui 恢復後頁面會自動重新載入。",
+      "currentVersion": "目前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "發行說明",
+      "confirm": "安裝更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢復，但執行的是其他版本。請查看 qui 日誌。",
+        "reload": "重新載入頁面",
+        "noBackup": "qui 已更新，但未保留備份：{{error}}。回復需要手動下載。",
+        "rollbackIntro": "如果新版本無法啟動，請執行此命令，然後再次啟動 qui：",
+        "rollbackLabel": "回復命令",
+        "rollbackDocs": "回復步驟"
+      }
+    },
     "runtime": {
       "title": "執行時",
       "description": "伺服器執行時資訊。",

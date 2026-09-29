@@ -1011,6 +1011,24 @@
         "slowDetail": "qui est peut-être encore en train de démarrer, et cette page continue d'attendre. Consultez les journaux de qui. Si vous avez changé le port ou l'URL de base, ouvrez qui à la nouvelle adresse."
       }
     },
+    "update": {
+      "button": "Installer la mise à jour",
+      "confirmTitle": "Installer la mise à jour ?",
+      "confirmDescription": "qui télécharge la version, vérifie sa signature et garde le binaire actuel en sauvegarde. Puis qui redémarre. Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent. La page se recharge quand qui est de retour.",
+      "currentVersion": "Version actuelle",
+      "targetVersion": "Nouvelle version",
+      "releaseNotes": "Notes de version",
+      "confirm": "Installer la mise à jour",
+      "overlay": {
+        "notAppliedTitle": "La mise à jour ne s'est pas appliquée",
+        "notAppliedDetail": "qui est de retour, mais avec une autre version. Consultez les journaux de qui.",
+        "reload": "Recharger la page",
+        "noBackup": "qui a été mis à jour, mais n'a gardé aucune sauvegarde : {{error}}. Un retour en arrière demande un téléchargement manuel.",
+        "rollbackIntro": "Si la nouvelle version ne démarre pas, exécutez cette commande, puis redémarrez qui :",
+        "rollbackLabel": "Commande de retour en arrière",
+        "rollbackDocs": "Étapes du retour en arrière"
+      }
+    },
     "runtime": {
       "title": "Exécution",
       "description": "Informations d'exécution du serveur.",

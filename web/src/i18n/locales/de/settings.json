@@ -1011,6 +1011,24 @@
         "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
       }
     },
+    "update": {
+      "button": "Update installieren",
+      "confirmTitle": "Update installieren?",
+      "confirmDescription": "qui lädt das Release herunter, prüft seine Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "currentVersion": "Aktuelle Version",
+      "targetVersion": "Neue Version",
+      "releaseNotes": "Release Notes",
+      "confirm": "Update installieren",
+      "overlay": {
+        "notAppliedTitle": "Update wurde nicht angewendet",
+        "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "reload": "Seite neu laden",
+        "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback ist ein manueller Download nötig.",
+        "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",
+        "rollbackLabel": "Rollback-Befehl",
+        "rollbackDocs": "Schritte für das Rollback"
+      }
+    },
     "runtime": {
       "title": "Laufzeit",
       "description": "Informationen zur Server-Laufzeit.",

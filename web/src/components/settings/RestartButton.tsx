@@ -6,6 +6,7 @@
 import { Loader2, Power } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { RestartOverlay } from "@/components/settings/RestartOverlay"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -16,12 +17,11 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { type RestartOverlay as RestartOverlayState, useSelfUpdate } from "@/hooks/useSelfUpdate"
+import { useSelfUpdate } from "@/hooks/useSelfUpdate"
 
 export function RestartButton() {
   const { t } = useTranslation("settings")
-  const { restartAvailable, confirmOpen, setConfirmOpen, restart, restartPending, restartError, overlay } = useSelfUpdate()
+  const { restartAvailable, confirmOpen, setConfirmOpen, restart, pending, error, overlay } = useSelfUpdate()
 
   if (!restartAvailable) {
     return null
@@ -39,13 +39,13 @@ export function RestartButton() {
             <AlertDialogTitle>{t("application.restart.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("application.restart.confirmDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
-          {restartError && (
-            <p className="text-sm text-destructive">{restartError.message}</p>
+          {error && (
+            <p className="text-sm text-destructive">{error.message}</p>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={restartPending}>{t("common:actions.cancel")}</AlertDialogCancel>
-            <Button onClick={restart} disabled={restartPending}>
-              {restartPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <AlertDialogCancel disabled={pending}>{t("common:actions.cancel")}</AlertDialogCancel>
+            <Button onClick={restart} disabled={pending}>
+              {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t("application.restart.confirm")}
             </Button>
           </AlertDialogFooter>
@@ -53,34 +53,5 @@ export function RestartButton() {
       </AlertDialog>
       <RestartOverlay state={overlay} />
     </>
-  )
-}
-
-function RestartOverlay({ state }: { state: RestartOverlayState }) {
-  const { t } = useTranslation("settings")
-
-  if (state === "hidden") {
-    return null
-  }
-
-  const slow = state === "slow"
-  // A modal with no close path: it traps focus, so the keyboard cannot reach
-  // a Settings tab whose switch would unmount the poll.
-  return (
-    <Dialog open>
-      <DialogContent
-        showCloseButton={false}
-        className="inset-0 z-[100] flex max-w-none translate-x-0 translate-y-0 items-center justify-center rounded-none border-0 bg-background/95 shadow-none backdrop-blur-sm sm:max-w-none">
-        <div role="status" aria-live="polite" className="flex max-w-md flex-col items-center gap-3 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <DialogTitle className="font-medium">
-            {slow ? t("application.restart.overlay.slowTitle") : t("application.restart.overlay.restartingTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {slow ? t("application.restart.overlay.slowDetail") : t("application.restart.overlay.restartingDetail")}
-          </DialogDescription>
-        </div>
-      </DialogContent>
-    </Dialog>
   )
 }
