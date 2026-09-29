@@ -22,6 +22,9 @@ import (
 // runTray is main for qui-tray.exe. It always serves and takes only the serve
 // flags: a GUI program has no console for the output of another command.
 func runTray() {
+	// Cobra otherwise exits after 5 s with a "use cmd.exe" message when
+	// Explorer starts the exe: a double-click or the Start with Windows Run value.
+	cobra.MousetrapHelpText = ""
 	serve := RunServeCommand()
 	serve.Use = "qui-tray"
 	args := os.Args[1:]
