@@ -21,7 +21,7 @@ The default config directory is:
 | Windows | `%APPDATA%\qui\` |
 | Docker | The host folder that you mount at `/config` |
 
-If you start qui with `--config-dir`, the config directory is that directory.
+If a `config.toml` is in the directory where you start qui, qui uses that file. If you start qui with `--config-dir`, qui uses the path that you give. That path can be a directory that contains `config.toml`, or a `.toml` file with a different name. Copy the file that qui uses. The config directory is the directory that contains it.
 
 The data directory is the config directory, unless you set one of these:
 
@@ -33,7 +33,7 @@ The data directory is the config directory, unless you set one of these:
 
 Environment variables override the values in `config.toml`. If you set `QUI__SESSION_SECRET` or `QUI__SESSION_SECRET_FILE` on the old host, set the same value on the new host. If you use `QUI__SESSION_SECRET_FILE`, also copy the file that it names. If the secret changes, qui cannot read the stored passwords and API keys.
 
-Copy the other `QUI__` environment variables that you set, for example `QUI__DATA_DIR`.
+Copy the other `QUI__` environment variables that you set, for example `QUI__DATA_DIR`. A variable that ends in `_FILE` names a file, for example `QUI__DATABASE_PASSWORD_FILE` or `QUI__OIDC_CLIENT_SECRET_FILE`. Copy each of these files to the new host, and change the path in the variable if the file has a new location.
 
 ## Postgres
 
@@ -42,11 +42,11 @@ If you use Postgres, qui has no `qui.db`. The data stays in the Postgres databas
 ## Copy the files
 
 1. Stop qui on the old host. If qui runs, the copy of `qui.db` can be incomplete.
-2. On the old host, copy `qui.db` from the data directory and `config.toml` from the config directory.
+2. On the old host, copy `qui.db`, `qui.db-wal`, and `qui.db-shm` from the data directory, and `config.toml` from the config directory. The `-wal` and `-shm` files can hold recent changes that are not in `qui.db` yet. If they do not exist, copy only `qui.db`.
 3. Install qui on the new host. Use the [installation](./installation.md), [Docker](./docker.md), or [Windows](./windows.md) guide.
 4. Stop qui on the new host.
 5. In the data directory on the new host, delete `qui.db`, `qui.db-shm`, and `qui.db-wal` if they exist.
-6. Put `qui.db` in the data directory and `config.toml` in the config directory on the new host.
+6. Put the `qui.db` files in the data directory and `config.toml` in the config directory on the new host.
 7. Start qui on the new host.
 
 Log in with the user and password from the old host.
