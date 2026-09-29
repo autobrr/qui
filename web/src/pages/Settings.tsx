@@ -17,7 +17,9 @@ import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } f
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
+import { InstallUpdateButton } from "@/components/settings/InstallUpdateButton"
 import { RestartButton } from "@/components/settings/RestartButton"
+import { RestartOverlay } from "@/components/settings/RestartOverlay"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -55,6 +57,7 @@ import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/hooks/useAuth"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { useSelfUpdate } from "@/hooks/useSelfUpdate"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { APIError, api } from "@/lib/api"
 
@@ -884,6 +887,7 @@ type ApplicationField = {
   secondary?: string
   copyValue?: string
   monospace?: boolean
+  action?: ReactNode
 }
 
 interface ApplicationSectionProps {
@@ -924,6 +928,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
                         <p className="mt-1 text-xs text-muted-foreground">{field.secondary}</p>
                       )}
                     </div>
+                    {field.action}
                     {field.copyValue && (
                       <Button
                         variant="ghost"
@@ -968,6 +973,8 @@ function ApplicationInfoPanel() {
     queryFn: () => api.getLatestVersion(),
     staleTime: 5 * 60 * 1000,
   })
+
+  const selfUpdate = useSelfUpdate()
 
   const info = appInfoQuery.data
   const user = currentUserQuery.data
@@ -1033,6 +1040,9 @@ function ApplicationInfoPanel() {
       label: t("application.build.updateStatus"),
       value: updateStatus.label,
       secondary: [updateStatus.detail, t("application.build.statuses.lastChecked", { date: updateCheckedAt })].filter(Boolean).join(" • "),
+      action: latestVersionQuery.data && (
+        <InstallUpdateButton selfUpdate={selfUpdate} release={latestVersionQuery.data} className="shrink-0" />
+      ),
     },
   ] : []
 
@@ -1141,7 +1151,7 @@ function ApplicationInfoPanel() {
           />
         </>
       )}
-
+      <RestartOverlay state={selfUpdate.overlay} update={selfUpdate.update} />
     </div>
   )
 }

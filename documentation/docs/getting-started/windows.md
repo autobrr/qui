@@ -84,6 +84,12 @@ A task that you created with the steps above needs no change.
 
 ## Updating
 
+### Update from the web UI
+
+Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task. qui replaces `qui.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
+
+### Update from the shell
+
 qui has a built-in update command. Stop the scheduled task first. A running task keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
@@ -98,14 +104,14 @@ qui has a built-in update command. Stop the scheduled task first. A running task
 The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`. Each update deletes older backups. The first `qui.exe` process still runs from the file that it started from, so that backup stays until the task stops.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
-2. In **Command Prompt**, move the backup back. Replace `1.30.0` with the version in the backup file name:
+2. In **Command Prompt** or **PowerShell**, move the backup back. Replace `1.30.0` with the version in the backup file name:
    ```bat
-   move /Y "C:\qui\qui-v1.30.0.bak.exe" "C:\qui\qui.exe"
+   cmd /c move /Y "C:\qui\qui-v1.30.0.bak.exe" "C:\qui\qui.exe"
    ```
 3. Right-click the **qui** task and click **Run**.
 
 :::warning
-A new version can migrate the database. The old version cannot always read a migrated database, and a binary swap does not undo a migration. Back up `%APPDATA%\qui\` before you update if you want a full rollback.
+If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.
 :::
 
 ## Reverse proxy (optional)

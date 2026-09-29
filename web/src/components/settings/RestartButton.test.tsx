@@ -4,6 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -16,6 +17,8 @@ const i18n = vi.hoisted(() => ({ t: (key: string) => key }))
 vi.mock("react-i18next", () => ({ useTranslation: () => i18n }))
 
 const location = { assign: vi.fn(), reload: vi.fn() }
+const serviceWorker = { getRegistrations: vi.fn(async () => []) }
+const cacheStorage = { keys: vi.fn(async () => []), delete: vi.fn(async () => true) }
 
 let versionCalls = 0
 let infoCalls = 0
@@ -24,10 +27,13 @@ let restartAvailable = true
 
 function renderButton() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <RestartButton />
-    </QueryClientProvider>
+    <RouterContextProvider router={router}>
+      <QueryClientProvider client={queryClient}>
+        <RestartButton />
+      </QueryClientProvider>
+    </RouterContextProvider>
   )
 }
 
@@ -43,6 +49,8 @@ beforeEach(() => {
   restartAvailable = true
   sessionStorage.clear()
   vi.stubGlobal("location", { ...window.location, ...location, origin: window.location.origin, pathname: "/" })
+  Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: serviceWorker })
+  vi.stubGlobal("caches", cacheStorage)
   server.use(
     http.get("*/api/version", () => {
       versionCalls++
@@ -66,6 +74,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  Reflect.deleteProperty(navigator, "serviceWorker")
 })
 
 describe("RestartButton", () => {
@@ -203,5 +212,8 @@ describe("RestartButton", () => {
     })
     expect(location.reload).toHaveBeenCalledTimes(1)
     expect(location.assign).not.toHaveBeenCalled()
+    // Only a Self-update changes the frontend.
+    expect(serviceWorker.getRegistrations).not.toHaveBeenCalled()
+    expect(cacheStorage.keys).not.toHaveBeenCalled()
   })
 })

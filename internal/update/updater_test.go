@@ -246,7 +246,7 @@ func TestInstallSwapsToRequestedTagAndKeepsBackup(t *testing.T) {
 	require.Equal(t, "1.31.0", result.Version)
 	require.Empty(t, result.BackupError)
 	if runtime.GOOS == "windows" {
-		require.Equal(t, fmt.Sprintf(`move /Y "%s" "%s"`, backup, f.binary), result.RollbackCommand)
+		require.Equal(t, fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, f.binary), result.RollbackCommand)
 	} else {
 		require.Equal(t, fmt.Sprintf(`mv '%s' '%s'`, backup, f.binary), result.RollbackCommand)
 	}
