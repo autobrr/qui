@@ -162,7 +162,7 @@ If you use the Tray, click **Quit** in the Tray menu instead of step 1, and star
 The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`, and as `qui-tray-v<old version>.bak.exe` next to `qui-tray.exe`. Each update deletes older backups. The first `qui.exe` process still runs from the file that it started from, so that backup stays until the task stops.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
-2. In **Command Prompt** or **PowerShell**, move the backup back. Replace `1.30.0` with the version in the backup file name:
+2. In **Command Prompt** or **PowerShell**, move the backup back. Replace `1.30.0` with the version in the backup file name. Replace `C:\qui` with the folder of `qui.exe`. After an MSI install, that folder is `%LOCALAPPDATA%\Programs\qui`:
    ```bat
    cmd /c move /Y "C:\qui\qui-v1.30.0.bak.exe" "C:\qui\qui.exe"
    cmd /c move /Y "C:\qui\qui-tray-v1.30.0.bak.exe" "C:\qui\qui-tray.exe"
@@ -181,15 +181,13 @@ To move a zip install to the MSI:
 
 1. Right-click the qui icon and clear **Start with Windows**. That setting points to `qui-tray.exe` in the old folder.
 2. Click **Quit** in the Tray menu. If you use a scheduled task, end it and delete it, or change it to the new path.
-3. Delete the old folder, for example `C:\qui`.
-4. Install the MSI.
+3. If `config.toml` is in the old folder, move `config.toml` and `qui.db` together into `%APPDATA%\qui`.
+4. Delete the old folder, for example `C:\qui`.
+5. Install the MSI.
 
-qui finds its data in `%APPDATA%\qui` again, so most users need to do nothing more. If you used `--config-dir`, or kept `config.toml` in the folder of `qui.exe`, do one of these:
+qui finds its data in `%APPDATA%\qui` again, so most users need to do nothing more. If you used `--config-dir`, keep the flag.
 
-- Move `config.toml` and `qui.db` together into `%APPDATA%\qui`.
-- Keep the `--config-dir` flag.
-
-Always move the two files together. `config.toml` holds the secret that decrypts data in `qui.db`, which includes your theme license. If you move `qui.db` without its `config.toml`, qui cannot read that data.
+Always move `config.toml` and `qui.db` together. `config.toml` holds the secret that decrypts data in `qui.db`, which includes your theme license. If you move `qui.db` without its `config.toml`, qui cannot read that data.
 
 ## Uninstall
 
