@@ -9,10 +9,9 @@ description: Transfer a qui installation to another host. Copy qui.db and config
 
 qui keeps its state in two files. If you copy both files to the new host, qui starts there with the same instances, users, automations, and cross-seed configuration. You do not need a qBittorrent backup for this.
 
-The two files are:
+`qui.db` is the SQLite database that holds this data. If you use Postgres, qui has no `qui.db`, and your data stays in Postgres.
 
-- `qui.db`: the SQLite database with all your data. If you use Postgres, qui has no `qui.db`. Your data stays in Postgres.
-- `config.toml`: the configuration file. It contains `sessionSecret`, and qui makes the encryption key for the stored qBittorrent passwords from that value. If you start with a new `config.toml`, qui cannot read those passwords.
+`config.toml` is the configuration file. It contains `sessionSecret`. qui makes the encryption key for the stored qBittorrent passwords from that value. If you start with a new `config.toml`, qui cannot read those passwords.
 
 Both files are in the config directory:
 
@@ -43,4 +42,4 @@ Log in with the user and password from the old host.
 - If `config.toml` on the new host needs a different host, port, or base URL, edit it before you start qui.
 - To keep your [backups](../features/backups.md), also copy the `backups` directory. Copy the `tracker-icons` and `themes` directories if you want to keep them.
 
-Do not run qui on both hosts with the same database. The two copies then make changes to your qBittorrent instances at the same time.
+Do not run qui on both hosts with the same database. Both would then change your qBittorrent instances at the same time.
