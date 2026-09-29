@@ -77,8 +77,8 @@ describe("English output is unchanged", () => {
 
   it("composes the English bit rate from one mechanism", async () => {
     await i18next.changeLanguage("en")
-    // "Mbps" does not decompose into a unit plus a rate, so it used to need its own table of
-    // complete strings beside the byte ladder's perSecond rule. One rule now serves both.
+    // "Mbps" does not split into a unit and a rate, so English composes "Mb/s" from the same
+    // perSecond rule as the byte ladder.
     expect(formatSpeedWithUnit(1572864, "bits")).toBe("12.6 Mb/s")
     expect(unitLabel("Mb", true)).toBe("Mb/s")
     expect(unitLabel("Mb")).toBe("Mb")
@@ -201,7 +201,7 @@ describe("filter units keep their stored value", () => {
 
   it("converts every offered value, so a filter stored in one language still works in another", async () => {
     // A persisted ColumnFilter carries these strings verbatim. If a localized label ever
-    // reached the value, convertSizeToBytes would miss unitMultipliers and the filter
+    // reached the value, convertSizeToBytes would miss FILTER_UNIT_BYTES and the filter
     // expression would read "Size > NaN".
     await i18next.changeLanguage("fr")
     for (const { value } of getSizeUnitOptions()) {

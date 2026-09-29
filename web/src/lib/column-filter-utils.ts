@@ -138,16 +138,11 @@ function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-// The ladder shared by the size and speed filter dropdowns. These strings are stored
-// values, not display text: usePersistedColumnFilters writes them into a client setting
-// and convertSizeToBytes below looks them up in unitMultipliers, so a localized value
-// would miss the lookup and put NaN into the filter expression. Only the label is
-// localized, and it is built on call rather than frozen at import, so it follows a
-// language switch.
-// Which rungs the dropdowns offer, not a second copy of the ladder: PiB is left out because
-// nobody filters at that size, which is a different reason from why speeds stop at TiB/s.
+// Saved filters store these values, so only the labels are translated: a translated value would
+// miss FILTER_UNIT_BYTES and send NaN to the backend. PiB is left out; nobody filters at that size.
 const FILTER_UNIT_LADDER: SizeUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
 
+// Built per call, not at import, so the labels follow a language switch.
 export function getSizeUnitOptions(): { value: SizeUnit; label: string }[] {
   return FILTER_UNIT_LADDER.map((unit) => ({ value: unit, label: unitLabel(unit) }))
 }

@@ -4,13 +4,13 @@
  */
 
 // Locale forms of the IEC byte ladder and the bit-rate ladder, plus the number in front of
-// them. CLDR has no IEC units at all — Intl.NumberFormat({ unit: "kibibyte" }) throws
-// RangeError, only kB/MB/GB exist — so Intl formats the number and the symbols come from the
-// dataUnits block in common.json.
+// them. CLDR has no IEC units: Intl.NumberFormat({ unit: "kibibyte" }) throws RangeError and
+// only kB/MB/GB exist. So Intl formats the number and the symbols come from dataUnits in
+// common.json.
 //
-// The bare i18next singleton, never @/i18n: importing @/i18n here would pull the English
-// namespaces out of the entry chunk (measured: first load 7 -> 15 JS requests) and would reach
-// every component, because lib/utils.ts imports this module and also exports cn().
+// The bare i18next singleton, never @/i18n: lib/utils.ts imports this module and exports cn(),
+// so @/i18n here would reach every component. The same import in lib/api.ts split the English
+// namespaces out of the entry chunk (7 to 15 first-load JS files).
 import i18next from "i18next"
 
 /** How many bytes each unit is: the one place the ladder is written down. */
@@ -29,16 +29,15 @@ export const BIT_LADDER = ["b", "Kb", "Mb", "Gb", "Tb"] as const
 export type ByteUnit = keyof typeof BYTES_PER_UNIT
 export type BitUnit = (typeof BIT_LADDER)[number]
 
-// Derived from the ladder rather than listed again; a Set because unitLabel is on the
-// per-cell render path.
 const BIT_UNITS: ReadonlySet<string> = new Set(BIT_LADDER)
 
 function isBitUnit(unit: ByteUnit | BitUnit): unit is BitUnit {
   return BIT_UNITS.has(unit)
 }
 
-/** Size ladder, smallest first. Speeds stop at TiB/s, which no transfer will ever reach. */
+/** Size ladder, smallest first. */
 export const BYTE_LADDER = Object.keys(BYTES_PER_UNIT) as ByteUnit[]
+// No transfer reaches PiB/s.
 export const BYTE_SPEED_LADDER = BYTE_LADDER.slice(0, -1)
 
 /**
@@ -148,7 +147,7 @@ function numberFormatter(fractionDigits: number): Intl.NumberFormat {
     formatter = new Intl.NumberFormat(language, {
       maximumFractionDigits: fractionDigits,
       // These ladders never exceed four digits, and switching English from "1003.45 MiB" to
-      // "1,003.45 MiB" would change 8.5% of displayed values — a product change, not
+      // "1,003.45 MiB" would change 8.5% of displayed values: a product change, not
       // localization. CLDR's own it locale groups nothing either.
       useGrouping: false,
     })

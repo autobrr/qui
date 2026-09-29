@@ -28,22 +28,24 @@ export function useSpeedUnits(): [SpeedUnit, (unit: SpeedUnit) => void] {
 // Narrower values get more decimals so a speed column stays the same width.
 const speedDecimals = (value: number): number => (value >= 100 ? 0 : value >= 10 ? 1 : 2)
 
+const zeroSpeed = (unit: SpeedUnit, compact: boolean): string =>
+  compact ? "0" : formatValueWithUnit(0, unit === "bits" ? "b" : "B", { perSecond: true })
+
 // Format speed with unit preference
 export function formatSpeedWithUnit(
   bytesPerSecond: number,
   unit: SpeedUnit,
   compact: boolean = false
 ): string {
-  const zero = unit === "bits" ? () => formatValueWithUnit(0, "b", { perSecond: true }) : () => formatValueWithUnit(0, "B", { perSecond: true })
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
-    return compact ? "0" : zero()
+    return zeroSpeed(unit, compact)
   }
 
   // Bits are decimal by networking convention; bytes stay binary.
   const scaled = unit === "bits"? scaleToUnit(bytesPerSecond * 8, BIT_LADDER, 1000): scaleToUnit(bytesPerSecond, BYTE_SPEED_LADDER, 1024)
   const decimals = speedDecimals(scaled.value)
   if (Number(scaled.value.toFixed(decimals)) === 0) {
-    return compact ? "0" : zero()
+    return zeroSpeed(unit, compact)
   }
 
   // compact drops the rate suffix and the space, which only the byte columns are narrow

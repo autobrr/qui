@@ -28,7 +28,7 @@ describe("a language whose bundle arrives late", () => {
     // while the active language still has no resources. unit-format.ts caches resolved labels
     // per language for speed; without its store listener the English ladder would stay cached
     // under fr for the rest of the session. Note the number localizes either way, because that
-    // comes from Intl and not from the bundle — the unit is what changes.
+    // comes from Intl and not from the bundle; the unit is what changes.
     await i18next.changeLanguage("fr")
     expect(formatBytes(1610612736)).toBe("1,5 GiB")
 
