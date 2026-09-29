@@ -31,12 +31,18 @@ import (
 // fakeCreds stands in for the instance store: the row Get answers with, plus
 // the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
-	key  string
-	pin  []byte
-	inst *models.Instance
+	key    string
+	pin    []byte
+	inst   *models.Instance
+	getErr error
 }
 
-func (f fakeCreds) Get(context.Context, int) (*models.Instance, error)  { return f.inst, nil }
+func (f fakeCreds) Get(context.Context, int) (*models.Instance, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.inst, nil
+}
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return f.key, nil }
 func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return f.pin, nil }
 
@@ -378,7 +384,7 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 	}
 	require.Len(t, errs, 1, "one Err entry ends the walk")
 	require.ErrorIs(t, errs[0].Err, fsops.ErrConnectionLost)
-	require.ErrorIs(t, errs[0].Err, sftp.ErrSSHFxConnectionLost)
+	require.ErrorContains(t, errs[0].Err, sftp.ErrSSHFxConnectionLost.Error())
 	assert.Equal(t, "z", errs[0].RelPath)
 	assert.False(t, sawZ)
 }
@@ -391,6 +397,118 @@ func TestLostConnection(t *testing.T) {
 	assert.True(t, lostConnection(io.EOF))
 	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
 	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
+}
+
+// readCalls runs every read method against p, for the tests that assert how
+// each one reports a failure.
+func readCalls(b *Backend, p string) map[string]func(context.Context) error {
+	return map[string]func(context.Context) error{
+		"stat":    func(ctx context.Context) error { _, err := b.Stat(ctx, p); return err },
+		"lstat":   func(ctx context.Context) error { _, err := b.Lstat(ctx, p); return err },
+		"readdir": func(ctx context.Context) error { _, err := b.ReadDir(ctx, p); return err },
+		"walkdir": func(ctx context.Context) error {
+			_, err := b.WalkDir(ctx, p, fsops.WalkOptions{})
+			return err
+		},
+		"statfs":         func(ctx context.Context) error { _, err := b.Statfs(ctx, p); return err },
+		"samefilesystem": func(ctx context.Context) error { _, err := b.SameFilesystem(ctx, p, p); return err },
+	}
+}
+
+// A pool error is a lost connection from every read, and its cause is text
+// only. A cause that matches fs.ErrPermission would read as a denied path to a
+// consumer that steps over those.
+func TestReadsReportAPoolErrorAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	inst := &models.Instance{ID: 1}
+	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{getErr: fmt.Errorf("open database: %w", fs.ErrPermission)}))
+	t.Cleanup(pool.Close)
+	b := New(pool, inst)
+
+	for name, call := range readCalls(b, "/data") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := call(t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.NotErrorIs(t, err, fs.ErrPermission)
+			assert.ErrorContains(t, err, "open database", "the cause stays readable")
+		})
+	}
+}
+
+// An instance that left remote mode is refused by the pool, and every read
+// reports that as a lost connection rather than as an answer about the path.
+func TestReadsReportAnInstanceThatLeftRemoteModeAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	inst := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, SSHHost: "127.0.0.1", SSHKeyEncrypted: "enc-v1", SSHHostKeyEncrypted: "enc-v1"}
+	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{inst: inst}))
+	t.Cleanup(pool.Close)
+	b := New(pool, inst)
+
+	for name, call := range readCalls(b, "/data") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := call(t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			assert.ErrorContains(t, err, sshpool.ErrNotRemote.Error())
+		})
+	}
+}
+
+// A transport that drops while a request is in flight is a lost connection
+// from every read, not only from the walk.
+func TestReadsReportADroppedTransportAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	dir := remotePath(t.TempDir())
+	for _, name := range []string{"stat", "lstat", "readdir", "walkdir", "statfs", "samefilesystem"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			b, server := newBackend(t)
+			_, err := b.Stat(t.Context(), dir)
+			require.NoError(t, err)
+			server.SetSFTP(sshtest.SFTPDropOnNextRequest)
+
+			err = readCalls(b, dir)[name](t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.NotErrorIs(t, err, fs.ErrNotExist)
+			require.NotErrorIs(t, err, fs.ErrPermission)
+		})
+	}
+}
+
+// A path the server refuses is an answer about that path, not a lost
+// connection.
+func TestReadsKeepAServerPermissionDenial(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("0o000 permissions are not enforced on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+
+	b, _ := newBackend(t)
+	locked := remotePath(t.TempDir(), "locked")
+	require.NoError(t, os.Mkdir(locked, 0o700))
+	writeFile(t, remotePath(locked, "hidden.txt"), "h")
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	for name, call := range map[string]func() error{
+		"stat":    func() error { _, err := b.Stat(t.Context(), remotePath(locked, "hidden.txt")); return err },
+		"readdir": func() error { _, err := b.ReadDir(t.Context(), locked); return err },
+	} {
+		err := call()
+		require.ErrorIs(t, err, fs.ErrPermission, name)
+		assert.NotErrorIs(t, err, fsops.ErrConnectionLost, name)
+	}
 }
 
 func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {

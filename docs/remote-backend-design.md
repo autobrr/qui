@@ -440,8 +440,9 @@ scratch directories and a temporarily added, uniquely tagged
    and that is the intended figure. Each remaining gate lifts in its own
    slice, with the degraded-mode handling that service needs, and the
    API-driven checks (missing files, orphan scan) become the field test of
-   that slice. A walk that loses its connection ends with one `Err` entry
-   wrapping `fsops.ErrConnectionLost`, so a consumer that skips
+   that slice. Every remote read that loses its connection, or that the
+   pool will not dial, fails with `fsops.ErrConnectionLost`. A walk ends
+   with one `Err` entry carrying it, so a consumer that skips
    per-directory errors still learns the tree was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
