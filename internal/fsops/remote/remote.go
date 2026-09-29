@@ -88,7 +88,7 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 	if err != nil {
 		return nil, err
 	}
-	entries, err := client.ReadDirContext(ctx, p)
+	entries, err := readDir(ctx, client, p)
 	if err != nil {
 		return nil, pathError("readdir", p, err)
 	}
@@ -155,7 +155,7 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: fmt.Errorf("%w: %w", fsops.ErrConnectionLost, err)})
 		return false
 	}
-	entries, err := client.ReadDirContext(ctx, dir)
+	entries, err := readDir(ctx, client, dir)
 	if err != nil {
 		if ctx.Err() != nil {
 			return false
@@ -326,6 +326,13 @@ func readOnly(ctx context.Context, op string) error {
 		return err
 	}
 	return fmt.Errorf("%s: %w: sftp backend is read-only in this release", op, fsops.ErrUnsupported)
+}
+
+// readDir goes through await although ReadDirContext takes ctx: pkg/sftp
+// closes the handle with context.Background() on the way out, so a server
+// that never answers the readdir holds the call past ctx.
+func readDir(ctx context.Context, client *sftp.Client, p string) ([]os.FileInfo, error) {
+	return await(ctx, func() ([]os.FileInfo, error) { return client.ReadDirContext(ctx, p) })
 }
 
 // await runs an sftp call that takes no context and returns as soon as ctx is
