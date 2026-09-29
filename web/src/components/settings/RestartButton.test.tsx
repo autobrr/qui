@@ -120,6 +120,24 @@ describe("RestartButton", () => {
     expect(location.reload).not.toHaveBeenCalled()
   })
 
+  it("ignores the Restart button while the overlay shows", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    server.use(http.post("*/api/system/restart", () => new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })))
+    renderButton()
+    await confirmRestart()
+    await screen.findByText("application.restart.overlay.restartingTitle")
+
+    // Keyboard focus can still reach the button under the overlay.
+    fireEvent.click(screen.getByText("application.restart.button"))
+    fireEvent.keyDown(document.body, { key: "Escape" })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
+    expect(screen.queryByText("application.restart.confirmTitle")).toBeNull()
+    expect(location.reload).not.toHaveBeenCalled()
+  })
+
   it("keeps the overlay until a new qui process answers, changes the text after 60 seconds, and reloads once", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     server.use(http.post("*/api/system/restart", () => new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })))
