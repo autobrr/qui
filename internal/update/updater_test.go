@@ -469,3 +469,24 @@ func TestInstallRetryKeepsBackupOfRunningVersion(t *testing.T) {
 func TestShellQuoteKeepsPathLiteral(t *testing.T) {
 	require.Equal(t, `'/opt/$qui/`+"`id`"+`/it'\''s qui'`, shellQuote("/opt/$qui/`id`/it's qui"))
 }
+
+// A Windows release holds the MSI next to the zip. Self-update must take the
+// zip, because go-selfupdate cannot unpack an MSI (ADR 0013).
+func TestWindowsSelfUpdateTakesTheZipNotTheMSI(t *testing.T) {
+	certificate, _ := generateECDSACertificate(t)
+	validator, err := newReleaseValidator(certificate)
+	require.NoError(t, err)
+	source := &fakeSource{releases: []fakeRelease{{id: 1, tag: "v1.31.0", assets: []fakeAsset{
+		{id: 11, name: "qui_1.31.0_windows_x86_64.msi"},
+		{id: 12, name: "qui_1.31.0_windows_x86_64.zip"},
+		{id: 13, name: releaseChecksumsAsset},
+		{id: 14, name: releaseChecksumsAsset + ".sig"},
+	}}}}
+	updater, err := selfupdate.NewUpdater(selfupdate.Config{Source: source, Validator: validator, OS: "windows", Arch: "amd64"})
+	require.NoError(t, err)
+
+	release, found, err := updater.DetectVersion(t.Context(), selfupdate.ParseSlug("autobrr/qui"), "v1.31.0")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "qui_1.31.0_windows_x86_64.zip", release.AssetName)
+}

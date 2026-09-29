@@ -12,19 +12,39 @@ This guide explains how to install qui on Windows and run it in the background. 
 - **The Tray** runs qui in your logon session, with an icon in the notification area. Use it when you log on to the computer where qui runs. See [Run qui with the Tray](#run-qui-with-the-tray).
 - **A scheduled task** runs qui without a logon session and shows no icon. Use it for a headless computer, or when qui must run before anyone logs on. See [Create a Windows task](#create-a-windows-task).
 
-## Download
+## Install
 
-1. Download the latest Windows release from [GitHub Releases](https://github.com/autobrr/qui/releases/latest).
-   - For most systems, download `qui_x.x.x_windows_x86_64.zip`.
-2. Extract the archive and place `qui.exe` and `qui-tray.exe` in a directory, for example `C:\qui`. Keep the two files in the same directory: an update replaces both.
+There are two ways to install qui. The MSI is the easier one. Use the zip when you want qui in a folder of your choice.
+
+### MSI
+
+1. Download `qui_x.x.x_windows_x86_64.msi` from [GitHub Releases](https://github.com/autobrr/qui/releases/latest).
+2. Double-click the file. Windows can show a SmartScreen warning, because the file has no signature. Click **More info**, then **Run anyway**.
+
+The MSI installs qui for your Windows account only. It needs no administrator rights and shows no setup wizard. It does these things:
+
+- It puts `qui.exe` and `qui-tray.exe` in `%LOCALAPPDATA%\Programs\qui`.
+- It adds a **qui** entry to the Start Menu. The entry starts the Tray.
+- It adds the install folder to your `PATH`, so `qui.exe` works in a new terminal.
+- It adds qui to **Settings → Apps → Installed apps**, where you can uninstall it.
+- It starts the Tray, except on a silent install with `msiexec /qn`.
+
+Open your browser at [http://localhost:7476](http://localhost:7476) and create your account. Then see [Run qui with the Tray](#run-qui-with-the-tray).
+
+### Portable (zip)
+
+1. Download `qui_x.x.x_windows_x86_64.zip` from [GitHub Releases](https://github.com/autobrr/qui/releases/latest).
+2. Extract the archive and put `qui.exe` and `qui-tray.exe` in a folder, for example `C:\qui`. Keep the two files in the same folder, because an update replaces both.
 
 :::tip
-Do not place qui in `C:\Program Files`. The built-in updater writes the new executable next to the old one, and that location needs administrator rights.
+Do not put qui in `C:\Program Files`. The updater writes the new executable next to the old one, and that folder needs administrator rights.
 :::
 
 ## Initial setup
 
-1. Open **Command Prompt** or **PowerShell** and change to the directory:
+Do these steps after a zip install. After an MSI install, qui already runs: create your account as the MSI section says.
+
+1. Open **Command Prompt** or **PowerShell** and change to the folder:
    ```powershell
    cd C:\qui
    ```
@@ -46,7 +66,7 @@ qui stores its configuration and runtime data in `%APPDATA%\qui\` by default. Wi
 
 `qui-tray.exe` runs qui without a console window. While qui runs, the qui icon shows in the notification area of the taskbar.
 
-1. Double-click `qui-tray.exe`. The qui icon shows in the notification area. If Windows hides the icon, click the arrow next to the notification area to see it.
+1. Click **qui** in the Start Menu (MSI), or double-click `qui-tray.exe` (zip). The qui icon shows in the notification area. If Windows hides the icon, click the arrow next to the notification area to see it.
 2. Click the icon to open qui in your browser.
 
 `qui-tray.exe` accepts the same flags as `qui.exe serve`, for example `--config-dir` and `--data-dir`. It does not accept other commands. Use `qui.exe` for commands such as `update` or `create-user`.
@@ -78,9 +98,9 @@ Run qui in the background with **Task Scheduler**.
 3. **Name:** `qui`. Optionally add a description, for example: *qui torrent management service*.
 4. **Trigger:** Select **When the computer starts**.
 5. **Action:** Select **Start a Program**.
-   - **Program/script:** Browse to `C:\qui\qui.exe`
+   - **Program/script:** Browse to `qui.exe`. After an MSI install, it is `%LOCALAPPDATA%\Programs\qui\qui.exe`. After a zip install, it is in your folder, for example `C:\qui\qui.exe`.
    - **Add arguments:** `serve`
-   - **Start in:** `C:\qui`
+   - **Start in:** The folder of `qui.exe`, for example `%LOCALAPPDATA%\Programs\qui` or `C:\qui`.
 6. Check **Open the Properties dialog**, then click **Finish**.
 
 ### Configure the task properties
@@ -118,6 +138,12 @@ A task that you created with the steps above needs no change.
 
 Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
 
+### Update an MSI install
+
+Use **Install update**, the same as for a zip install. After an update, **Installed apps** still shows the version of the MSI that you installed. That is normal: the files are the new version.
+
+You can also install a newer MSI. Quit the Tray, or end the scheduled task, before you do this. If qui runs, Windows asks you to close it, and it can ask for a restart.
+
 ### Update from the shell
 
 qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe`. Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
@@ -148,6 +174,30 @@ If you use the Tray, click **Quit** in the Tray menu before step 2, and start `q
 :::warning
 If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.
 :::
+
+## Switch from the zip
+
+To move a zip install to the MSI:
+
+1. Right-click the qui icon and clear **Start with Windows**. That setting points to `qui-tray.exe` in the old folder.
+2. Click **Quit** in the Tray menu. If you use a scheduled task, end it and delete it, or change it to the new path.
+3. Delete the old folder, for example `C:\qui`.
+4. Install the MSI.
+
+qui finds its data in `%APPDATA%\qui` again, so most users need to do nothing more. If you used `--config-dir`, or kept `config.toml` in the folder of `qui.exe`, do one of these:
+
+- Move `config.toml` and `qui.db` together into `%APPDATA%\qui`.
+- Keep the `--config-dir` flag.
+
+Always move the two files together. `config.toml` holds the secret that decrypts data in `qui.db`, which includes your theme license. If you move `qui.db` without its `config.toml`, qui cannot read that data.
+
+## Uninstall
+
+1. Right-click the qui icon and clear **Start with Windows**. The MSI cannot remove that setting.
+2. Click **Quit** in the Tray menu.
+3. Open **Settings → Apps → Installed apps**, find **qui**, and click **Uninstall**.
+
+The uninstall removes the program, the update backups, the Start Menu entry, and the `PATH` entry. Your configuration and database stay in `%APPDATA%\qui`. To remove all your data, delete that folder too.
 
 ## Reverse proxy (optional)
 
