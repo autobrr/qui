@@ -60,6 +60,8 @@ In your new autobrr filter, go to **External** tab → **Add new**:
 | HTTP Request Headers      | `X-API-Key=YOUR_QUI_API_KEY`                         |
 | Expected HTTP Status Code | `200`                                                |
 
+If the autobrr **Test** button shows `404` with `"canCrossSeed":false` in the body, autobrr connected to qui and qui accepted the API key. See [Test the External filter](#test-the-external-filter).
+
 **Data (JSON):**
 
 ```json
@@ -108,6 +110,29 @@ Use autobrr's **Retry** block to handle `202 Accepted` responses:
 - **Retry HTTP status code(s):** `202`
 - **Maximum retry attempts:** `10`
 - **Retry delay in seconds:** `4`
+
+### Test the External filter
+
+The autobrr **Test** button sends a sample release, `Best.Show.Ever.S18E21.1080p.AMZN.WEB-DL.DDP2.0.H.264-GROUP`. You do not seed this release, so qui finds no match. autobrr then shows a result that starts with `Webhook responded with status 404 (expected 200)`, with this body:
+
+```json
+{"canCrossSeed":false,"matches":null,"recommendation":"skip"}
+```
+
+This result is correct. qui sent the body, so autobrr connected to qui and qui accepted the API key.
+
+A real problem gives a different result:
+
+- `401` or `403`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
+- `400` with an `error` body: qui cannot read the request. Make sure that **Data (JSON)** is the same as the template above.
+- A connection error or a timeout: autobrr cannot connect to qui. Make sure that the host and port in **Endpoint** are correct. If you use Docker Compose, read the Docker Compose tip above.
+
+To make sure that the full setup works:
+
+1. Make sure that you added the `/api/cross-seed/apply` Action from [Apply Endpoint](#apply-endpoint).
+2. Wait for a tracker to announce a release that you already seed.
+3. Make sure that the filter accepted the release in autobrr.
+4. Make sure that the torrent is in qBittorrent. qui often adds cross-seeds paused.
 
 ## Apply Endpoint
 
@@ -181,6 +206,10 @@ If autobrr shows that the filter accepted the release, or your autobrr notificat
    - qui often adds cross-seeds **paused**. Look in qBittorrent's paused list and in any cross-seed tag or category you configured.
 
 If the cause is still not clear, see [Cross-Seed Troubleshooting](./troubleshooting.md).
+
+### Troubleshooting: Test shows status 404 (expected 200)
+
+If the autobrr **Test** button shows `status 404 (expected 200)` and the body has `"canCrossSeed":false`, autobrr connected to qui and qui accepted the API key. See [Test the External filter](#test-the-external-filter).
 
 ## Webhook Source Filters
 
