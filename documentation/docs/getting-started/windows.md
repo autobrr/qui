@@ -84,6 +84,12 @@ A task that you created with the steps above needs no change.
 
 ## Updating
 
+### Update from the web UI
+
+Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task. qui replaces `qui.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
+
+### Update from the shell
+
 qui has a built-in update command. Stop the scheduled task first. A running task keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
