@@ -49,27 +49,35 @@ func NewPoolWithRemote(store instanceGetter, local Backend, remote func(*models.
 // Returns ErrNoFilesystemAccess wrapped in a noop backend for instances
 // without filesystem access configured.
 func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) {
+	backend, _, err := p.Resolve(ctx, instanceID)
+	return backend, err
+}
+
+// Resolve is GetBackend plus the mode the backend was chosen for, both from
+// one instance read, so a caller that records the mode cannot label a walk
+// with a mode the instance changed to in between.
+func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.FilesystemMode, error) {
 	instance, err := p.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("load instance %d: %w", instanceID, err)
+		return nil, "", fmt.Errorf("load instance %d: %w", instanceID, err)
 	}
 	if instance == nil {
-		return nil, fmt.Errorf("instance %d not found", instanceID)
+		return nil, "", fmt.Errorf("instance %d not found", instanceID)
 	}
 
 	mode := models.FilesystemAccessMode(instance)
 	switch mode {
 	case models.FilesystemModeLocal:
-		return p.local, nil
+		return p.local, mode, nil
 	case models.FilesystemModeRemote:
 		if p.remote == nil {
-			return nil, fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotWired)
+			return nil, "", fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotWired)
 		}
-		return p.remote(instance), nil
+		return p.remote(instance), mode, nil
 	case models.FilesystemModeNone:
-		return noopBackend{}, nil
+		return noopBackend{}, mode, nil
 	}
 	// No default arm, so exhaustive flags a new mode here instead of letting
 	// it fall through to "not configured".
-	return nil, fmt.Errorf("instance %d: unknown filesystem mode %q", instanceID, mode)
+	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instanceID, mode)
 }
