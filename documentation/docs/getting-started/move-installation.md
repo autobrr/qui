@@ -42,4 +42,4 @@ Log in with the user and password from the old host.
 - If `config.toml` on the new host needs a different host, port, or base URL, edit it before you start qui.
 - To keep your [backups](../features/backups.md), also copy the `backups` directory. Copy the `tracker-icons` and `themes` directories if you want to keep them.
 
-Do not run qui on both hosts with the same database. Both would then change your qBittorrent instances at the same time.
+Do not run qui on both hosts with the same database. If you do, both change your qBittorrent instances at the same time.
