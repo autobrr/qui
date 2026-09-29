@@ -996,6 +996,18 @@
         "lastChecked": "上次檢查 {{date}}"
       }
     },
+    "restart": {
+      "button": "重新啟動",
+      "confirmTitle": "重新啟動 qui？",
+      "confirmDescription": "qui 會像正常停止時一樣關閉，然後重新啟動。正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。qui 恢復後頁面會自動重新載入。",
+      "confirm": "重新啟動",
+      "overlay": {
+        "restartingTitle": "正在重新啟動 qui…",
+        "restartingDetail": "qui 再次回應後頁面會重新載入。",
+        "slowTitle": "qui 尚未回應",
+        "slowDetail": "qui 可能仍在啟動，此頁面會繼續等待。請查看 qui 日誌。如果你變更了連接埠或基礎 URL，請在新位址開啟 qui。"
+      }
+    },
     "runtime": {
       "title": "執行時",
       "description": "伺服器執行時資訊。",

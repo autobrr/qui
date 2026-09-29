@@ -999,6 +999,18 @@
         "lastChecked": "Zuletzt geprüft {{date}}"
       }
     },
+    "restart": {
+      "button": "Neu starten",
+      "confirmTitle": "qui neu starten?",
+      "confirmDescription": "qui fährt wie bei einem normalen Stopp herunter und startet dann erneut. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "confirm": "Neu starten",
+      "overlay": {
+        "restartingTitle": "qui wird neu gestartet…",
+        "restartingDetail": "Die Seite lädt neu, sobald qui wieder antwortet.",
+        "slowTitle": "qui hat noch nicht geantwortet",
+        "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
+      }
+    },
     "runtime": {
       "title": "Laufzeit",
       "description": "Informationen zur Server-Laufzeit.",

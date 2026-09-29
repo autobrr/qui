@@ -999,6 +999,18 @@
         "lastChecked": "Last checked {{date}}"
       }
     },
+    "restart": {
+      "button": "Restart",
+      "confirmTitle": "Restart qui?",
+      "confirmDescription": "qui shuts down the same way as on a normal stop, then starts again. Running work, such as cross-seed searches, automations, backups, and orphan scans, stops. The page reloads when qui is back.",
+      "confirm": "Restart",
+      "overlay": {
+        "restartingTitle": "Restarting qui…",
+        "restartingDetail": "The page reloads when qui answers again.",
+        "slowTitle": "qui has not answered yet",
+        "slowDetail": "qui may still be starting, and this page keeps waiting. Check the qui logs. If you changed the port or the base URL, open qui at the new address."
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "description": "Server runtime information.",

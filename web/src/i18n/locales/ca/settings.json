@@ -999,6 +999,18 @@
         "lastChecked": "Última comprovació: {{date}}"
       }
     },
+    "restart": {
+      "button": "Reinicia",
+      "confirmTitle": "Voleu reiniciar qui?",
+      "confirmDescription": "qui s'atura de la mateixa manera que en una aturada normal i després torna a arrencar. La feina en curs, com les cerques de cross-seed, les automatitzacions, les còpies de seguretat i les anàlisis d'orfes, s'atura. La pàgina es recarrega quan qui torna a estar disponible.",
+      "confirm": "Reinicia",
+      "overlay": {
+        "restartingTitle": "S'està reiniciant qui…",
+        "restartingDetail": "La pàgina es recarrega quan qui torna a respondre.",
+        "slowTitle": "qui encara no ha respost",
+        "slowDetail": "Pot ser que qui encara s'estigui iniciant, i aquesta pàgina continua esperant. Consulteu els registres de qui. Si heu canviat el port o l'URL base, obriu qui a la nova adreça."
+      }
+    },
     "runtime": {
       "title": "Execució",
       "description": "Informació d'execució del servidor.",

@@ -999,6 +999,18 @@
         "lastChecked": "Dernière vérification {{date}}"
       }
     },
+    "restart": {
+      "button": "Redémarrer",
+      "confirmTitle": "Redémarrer qui ?",
+      "confirmDescription": "qui s'arrête comme lors d'un arrêt normal, puis redémarre. Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent. La page se recharge quand qui est de retour.",
+      "confirm": "Redémarrer",
+      "overlay": {
+        "restartingTitle": "Redémarrage de qui…",
+        "restartingDetail": "La page se recharge quand qui répond de nouveau.",
+        "slowTitle": "qui n'a pas encore répondu",
+        "slowDetail": "qui est peut-être encore en train de démarrer, et cette page continue d'attendre. Consultez les journaux de qui. Si vous avez changé le port ou l'URL de base, ouvrez qui à la nouvelle adresse."
+      }
+    },
     "runtime": {
       "title": "Exécution",
       "description": "Informations d'exécution du serveur.",

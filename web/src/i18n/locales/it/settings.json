@@ -999,6 +999,18 @@
         "lastChecked": "Ultimo controllo {{date}}"
       }
     },
+    "restart": {
+      "button": "Riavvia",
+      "confirmTitle": "Riavviare qui?",
+      "confirmDescription": "qui si arresta come in un normale arresto, poi si avvia di nuovo. Le attività in corso, come ricerche cross-seed, automazioni, backup e scansioni orfani, si interrompono. La pagina si ricarica quando qui torna disponibile.",
+      "confirm": "Riavvia",
+      "overlay": {
+        "restartingTitle": "Riavvio di qui…",
+        "restartingDetail": "La pagina si ricarica quando qui risponde di nuovo.",
+        "slowTitle": "qui non ha ancora risposto",
+        "slowDetail": "qui potrebbe essere ancora in avvio, e questa pagina continua ad attendere. Controlla i log di qui. Se hai cambiato la porta o l'URL di base, apri qui al nuovo indirizzo."
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "description": "Informazioni sul runtime del server.",
