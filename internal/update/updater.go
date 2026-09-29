@@ -157,7 +157,8 @@ func swap(ctx context.Context, updater *selfupdate.Updater, release *selfupdate.
 
 	result.RollbackCommand = "mv " + shellQuote(backup) + " " + shellQuote(binary)
 	if runtime.GOOS == "windows" {
-		result.RollbackCommand = fmt.Sprintf(`move /Y "%s" "%s"`, backup, binary)
+		// cmd /c: in PowerShell, the Windows 11 default, move is Move-Item and rejects /Y.
+		result.RollbackCommand = fmt.Sprintf(`cmd /c move /Y "%s" "%s"`, backup, binary)
 	}
 	removeOlderBackups(filepath.Dir(backup), filepath.Base(backup))
 	return result, nil
