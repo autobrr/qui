@@ -432,6 +432,11 @@ func TestRulesUseTrackerDisplayName(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "move path uses index Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: `/data/{{ index . "Tracker" }}`}}),
+			want: true,
+		},
+		{
 			name: "disabled move path uses Tracker",
 			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Path: "/data/{{.Tracker}}"}}),
 			want: false,

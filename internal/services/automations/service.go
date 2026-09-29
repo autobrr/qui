@@ -5167,16 +5167,16 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 }
 
 // rulesUseTrackerDisplayName reports whether any enabled rule needs the tracker display-name map.
-// The ".Tracker" match pairs with the "Tracker" key resolveMovePath passes to path templates.
+// The "Tracker" match pairs with the key resolveMovePath passes to path templates, so it also catches {{ index . "Tracker" }}.
 func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
-		if move := rule.Conditions.Move; move != nil && move.Enabled && strings.Contains(move.Path, ".Tracker") {
+		if move := rule.Conditions.Move; move != nil && move.Enabled && strings.Contains(move.Path, "Tracker") {
 			return true
 		}
-		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, ".Tracker") {
+		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, "Tracker") {
 			return true
 		}
 		for _, tag := range rule.Conditions.TagActions() {
