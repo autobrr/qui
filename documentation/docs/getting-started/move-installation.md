@@ -1,8 +1,8 @@
 ---
 sidebar_position: 5
-title: Move qui to a new server
+title: Move or migrate qui to a new server
 sidebar_label: Move to a new server
-description: Move a qui installation to another host and keep instances, users, automations, and cross-seed configuration.
+description: Transfer a qui installation to another host. Copy qui.db and config.toml to keep your qBittorrent instances, users, automations, and cross-seed configuration.
 ---
 
 # Move qui to a new server
