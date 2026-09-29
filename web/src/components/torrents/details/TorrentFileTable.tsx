@@ -272,7 +272,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery ? t("fileTable.filteredCount", { filtered: filteredRows.length, total: files.length }) : t("fileTable.fileCount", { count: files.length, plural: files.length !== 1 ? "s" : "" })}
+          {searchQuery ? t("fileTable.filteredCount", { filtered: filteredRows.length, total: files.length }) : t("fileTable.fileCount", { count: files.length })}
         </span>
       </div>
 

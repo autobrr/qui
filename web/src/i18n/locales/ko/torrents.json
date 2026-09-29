@@ -15,7 +15,7 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "토렌트 {{count}}개 선택됨 - 일괄 작업 사용 가능",
+    "ariaLabel_other": "토렌트 {{count}}개 선택됨 - 일괄 작업 사용 가능",
     "resume": "재개",
     "pause": "일시 정지",
     "forceRecheck": "강제 재확인",
@@ -632,22 +632,22 @@
     "deleteEmptyCategories": {
       "title": "빈 카테고리 제거",
       "noEmpty": "제거할 빈 카테고리가 없습니다.",
-      "confirm": "빈 카테고리 {{count}}개를 제거하시겠습니까? 이 작업은 취소할 수 없습니다.",
+      "confirm_other": "빈 카테고리 {{count}}개를 제거하시겠습니까? 이 작업은 취소할 수 없습니다.",
       "cancel": "취소",
-      "remove": "카테고리 {{count}}개 제거",
+      "remove_other": "카테고리 {{count}}개 제거",
       "toast": {
-        "success": "빈 카테고리 {{count}}개를 제거했습니다",
+        "success_other": "빈 카테고리 {{count}}개를 제거했습니다",
         "error": "빈 카테고리를 제거하지 못했습니다"
       }
     },
     "deleteUnusedTags": {
       "title": "사용하지 않는 태그 삭제",
       "noUnused": "삭제할 사용하지 않는 태그가 없습니다.",
-      "confirm": "사용하지 않는 태그 {{count}}개를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+      "confirm_other": "사용하지 않는 태그 {{count}}개를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
       "cancel": "취소",
-      "delete": "태그 {{count}}개 삭제",
+      "delete_other": "태그 {{count}}개 삭제",
       "toast": {
-        "success": "사용하지 않는 태그 {{count}}개를 삭제했습니다",
+        "success_other": "사용하지 않는 태그 {{count}}개를 삭제했습니다",
         "error": "사용하지 않는 태그를 삭제하지 못했습니다"
       }
     }
@@ -673,7 +673,7 @@
     "contentFilteringInProgress": "콘텐츠 필터링 진행 중",
     "analyzingContent": "기존 콘텐츠 분석 중...",
     "smartFilteringActive": "스마트 필터링 활성",
-    "indexersFiltered": "인덱서 {{count}}개 필터링됨",
+    "indexersFiltered_other": "인덱서 {{count}}개 필터링됨",
     "contentFilteringDescription": "기존 토렌트를 확인하여 중복을 찾고 불필요한 트래커를 제외합니다. 이를 통해 동일한 콘텐츠를 여러 번 다운로드하는 것을 방지합니다.",
     "excludedDescription": "이 트래커에서 이미 이 릴리스를 시드 중이므로 검색에서 제외됩니다.",
     "noContentDuplicates": "콘텐츠 필터링이 완료되었습니다. 활성화된 트래커에서 중복 콘텐츠를 찾지 못했습니다.",
@@ -1004,7 +1004,7 @@
       "fileRenameFailed": "파일 이름을 변경하지 못했습니다",
       "folderRenamed": "폴더 이름이 변경되었습니다",
       "folderRenameFailed": "폴더 이름을 변경하지 못했습니다",
-      "deletedTorrents": "토렌트 {{count}}개를 삭제했습니다",
+      "deletedTorrents_other": "토렌트 {{count}}개를 삭제했습니다",
       "deletedTorrent": "토렌트를 삭제했습니다: {{name}}",
       "deleteFailed": "삭제하지 못했습니다: {{error}}"
     },
@@ -1204,7 +1204,7 @@
     "url": "URL",
     "noHttpSources": "HTTP 소스 없음",
     "searchUrls": "URL 검색...",
-    "httpSources": "HTTP 소스 {{count}}개",
+    "httpSources_other": "HTTP 소스 {{count}}개",
     "filteredCount": "{{total}}개 중 {{filtered}}개",
     "copyUrl": "URL 복사",
     "toast": {
@@ -1223,7 +1223,7 @@
     "expandAll": "모두 펼치기",
     "collapseAll": "모두 접기",
     "searchFiles": "파일 검색...",
-    "fileCount": "파일 {{count}}개",
+    "fileCount_other": "파일 {{count}}개",
     "filteredCount": "{{total}}개 중 {{filtered}}개",
     "noFiles": "파일 없음",
     "headers": {
