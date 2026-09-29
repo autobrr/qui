@@ -66,3 +66,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Restart**: qui shuts down the same way it does on SIGTERM and starts again as the same process. _Avoid_: Reload (suggests a config re-read without a restart).
 - **Install method**: How the qui binary got onto the host and who manages it: manual install, seedbox installer, swizzin, container image, or package manager. _Avoid_: Installation type, deployment.
 - **App container**: A container that runs qui as its application, such as Docker, Podman, or a Kubernetes pod. The image owns the binary, so an update means a new image. A system container with its own init, such as Proxmox LXC, is not an App container. _Avoid_: Container (when the difference matters), Docker install.
+
+## Running on Windows
+
+- **Tray**: The icon qui shows in the Windows notification area while it runs in a user's logon session. It replaces the console window as the user's handle on a running qui. _Avoid_: Systray, tray app, GUI mode (the GUI is the web UI).
