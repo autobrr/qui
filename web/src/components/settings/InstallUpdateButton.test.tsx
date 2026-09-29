@@ -4,6 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { type AnyRouter, createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -34,14 +35,25 @@ let selfUpdateAvailable = true
 let updateResult = { version: "1.31.0", rollbackCommand: "mv \"/opt/qui/qui-v1.30.0.bak\" \"/opt/qui/qui\"", backupError: "" }
 let updateBodies: unknown[] = []
 let queryClient: QueryClient
+let router: AnyRouter
 
 function renderBanner() {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/settings"] }) })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <UpdateBanner />
-    </QueryClientProvider>
+    <RouterContextProvider router={router}>
+      <QueryClientProvider client={queryClient}>
+        <UpdateBanner />
+      </QueryClientProvider>
+    </RouterContextProvider>
   )
+}
+
+async function navigateTo(path: string) {
+  await act(async () => {
+    router.history.push(path)
+  })
+  return router.history.location.pathname
 }
 
 async function confirmInstall() {
@@ -227,5 +239,29 @@ describe("Install update", () => {
     await advance(61_000)
     expect(screen.getByText("application.restart.overlay.slowTitle")).toBeTruthy()
     expect(screen.queryByText("application.update.overlay.rollbackIntro")).toBeNull()
+  })
+
+  it("blocks navigation while the install runs and while the overlay shows", async () => {
+    let finishUpdate = () => {}
+    const updateRequested = new Promise<void>((requested) => {
+      server.use(http.post("*/api/system/update", async () => {
+        requested()
+        await new Promise<void>((resolve) => {
+          finishUpdate = resolve
+        })
+        return HttpResponse.json(updateResult)
+      }))
+    })
+    renderBanner()
+    expect(await navigateTo("/dashboard")).toBe("/dashboard")
+
+    await confirmInstall()
+    await updateRequested
+    await vi.waitFor(() => expect(screen.getByText("common:actions.cancel").closest("button")?.disabled).toBe(true))
+    expect(await navigateTo("/settings")).toBe("/dashboard")
+
+    finishUpdate()
+    await screen.findByText("application.restart.overlay.restartingTitle")
+    expect(await navigateTo("/settings")).toBe("/dashboard")
   })
 })

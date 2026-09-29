@@ -4,6 +4,7 @@
  */
 
 import { useMutation, useQuery } from "@tanstack/react-query"
+import { useBlocker } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 
 import { api, clearQuiServiceWorker, setSSORecoveryPaused } from "@/lib/api"
@@ -61,6 +62,13 @@ export function useSelfUpdate() {
   })
 
   const overlayActive = overlay !== "hidden"
+  // Browser Back can unmount a Settings tab that owns this hook, and the poll
+  // with it. No beforeunload prompt: the poll reloads the page itself.
+  useBlocker({
+    shouldBlockFn: () => true,
+    disabled: !overlayActive && !actionMutation.isPending,
+    enableBeforeUnload: false,
+  })
   const target = actionMutation.data
   useEffect(() => {
     if (!overlayActive || !target) {

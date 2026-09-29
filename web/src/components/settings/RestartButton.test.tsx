@@ -4,6 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -26,10 +27,13 @@ let restartAvailable = true
 
 function renderButton() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <RestartButton />
-    </QueryClientProvider>
+    <RouterContextProvider router={router}>
+      <QueryClientProvider client={queryClient}>
+        <RestartButton />
+      </QueryClientProvider>
+    </RouterContextProvider>
   )
 }
 
