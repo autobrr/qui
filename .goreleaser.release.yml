@@ -77,6 +77,16 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
 
+msi:
+  - id: qui-msi
+    ids:
+      - qui
+      - qui-tray
+    wxs: ./distrib/windows/qui.wxs
+    extra_files:
+      - internal/tray/qui.ico
+    name: qui_{{ .Version }}_windows_x86_64
+
 release:
   prerelease: auto
   extra_files:
