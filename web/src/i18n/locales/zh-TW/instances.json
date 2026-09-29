@@ -1240,7 +1240,7 @@
         "noOtherInstances": "沒有其他可用實例。",
         "savePathLabel": "目標上的儲存路徑（可選）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。支援範本：",
+        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。",
         "categoryLabel": "目標上的分類（可選）",
         "selectTargetFirst": "請先選擇目標實例",
         "loadingCategories": "正在載入分類...",
@@ -1373,6 +1373,11 @@
         "skipIfCrossSeedsDontMatch": "如果輔種不匹配規則條件則跳過",
         "aboutSkipping": "關於輔種存在時跳過移動",
         "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。"
+      },
+      "templateHelp": {
+        "absolutePath": "必須是絕對路徑。值要寫在路徑中，例如",
+        "intro": "支援 Go 範本。",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空間來源",
