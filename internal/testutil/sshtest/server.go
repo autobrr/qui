@@ -47,6 +47,10 @@ const (
 	// SFTPDropOnNextRequest serves sftp but closes the connection when the
 	// next request arrives, so that request is cut off in flight.
 	SFTPDropOnNextRequest
+	// SFTPCloseChannelOnNextRequest closes only the sftp channel when the
+	// next request arrives, the way sshd does when its sftp-server exits,
+	// and leaves the connection up.
+	SFTPCloseChannelOnNextRequest
 )
 
 const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
@@ -251,10 +255,10 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 }
 
 func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
-	trap := &dropTrap{Channel: channel, conn: conn, drop: func() bool {
+	trap := &dropTrap{Channel: channel, conn: conn, mode: func() SFTPMode {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		return s.sftpMode == SFTPDropOnNextRequest
+		return s.sftpMode
 	}}
 	server, err := sftp.NewServer(trap)
 	if err != nil {
@@ -384,18 +388,26 @@ func NewRSASigner() ssh.Signer {
 	return signer
 }
 
-// dropTrap closes the connection on the first bytes a client sends once drop
-// reports true, before the sftp server sees them.
+// dropTrap closes the connection, or only the channel, on the first bytes a
+// client sends once mode asks for it, before the sftp server sees them.
 type dropTrap struct {
 	ssh.Channel
 	conn *ssh.ServerConn
-	drop func() bool
+	mode func() SFTPMode
 }
 
 func (t *dropTrap) Read(p []byte) (int, error) {
 	n, err := t.Channel.Read(p)
-	if n > 0 && t.drop() {
+	if n == 0 {
+		return n, err
+	}
+	switch t.mode() {
+	case SFTPDropOnNextRequest:
 		_ = t.conn.Close()
+	case SFTPCloseChannelOnNextRequest:
+		_ = t.Close()
+	default:
+		// Every other mode lets the request through.
 	}
 	return n, err
 }

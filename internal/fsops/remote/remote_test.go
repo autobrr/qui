@@ -311,6 +311,37 @@ func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
 	}
 }
 
+// writeCutTree lays out a tree for the connection-lost walks: "a" holds more
+// files than the walk channel buffers, so the walk is parked inside it when
+// the test cuts the connection, "m" is the directory that read fails on, and
+// "z" is a sibling after it that must never be reached.
+func writeCutTree(t *testing.T, dir string) {
+	t.Helper()
+	for i := range 100 {
+		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
+	}
+	writeFile(t, remotePath(dir, "m", "mid.txt"), "x")
+	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+}
+
+// drainAfterCut reads the rest of the walk and returns its one Err entry,
+// failing if a second Err or any entry after the first arrives: a walk that
+// lost its connection must stop, not step over the directory and go on.
+func drainAfterCut(t *testing.T, ch <-chan fsops.WalkEntry) fsops.WalkEntry {
+	t.Helper()
+	var cut *fsops.WalkEntry
+	for entry := range ch {
+		if cut != nil {
+			t.Fatalf("entry %q arrived after the walk lost its connection at %q", entry.RelPath, cut.RelPath)
+		}
+		if entry.Err != nil {
+			cut = &entry
+		}
+	}
+	require.NotNil(t, cut, "the walk must end with an Err entry")
+	return *cut
+}
+
 // A pool failure mid-walk ends the walk with one Err entry carrying
 // ErrConnectionLost, so a consumer that skips per-directory errors still sees
 // that the tree was cut short.
@@ -319,12 +350,7 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 
 	b, _ := newBackend(t)
 	dir := t.TempDir()
-	// "a" holds more files than the walk channel buffers, so the walk is parked
-	// inside it when the pool closes, and "z" is still to be read.
-	for i := range 100 {
-		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
-	}
-	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+	writeCutTree(t, dir)
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -333,20 +359,9 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 	}
 	b.pool.Close()
 
-	var lost []fsops.WalkEntry
-	sawZ := false
-	for entry := range ch {
-		if entry.Err != nil {
-			lost = append(lost, entry)
-		}
-		if entry.RelPath == path.Join("z", "last.txt") {
-			sawZ = true
-		}
-	}
-	require.Len(t, lost, 1, "one Err entry ends the walk")
-	require.ErrorIs(t, lost[0].Err, fsops.ErrConnectionLost)
-	assert.Equal(t, "z", lost[0].RelPath, "the directory the walk could not read is named")
-	assert.False(t, sawZ)
+	cut := drainAfterCut(t, ch)
+	require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
+	assert.Equal(t, "m", cut.RelPath, "the directory the walk could not read is named")
 }
 
 // A connection that drops while a directory read is in flight ends the walk
@@ -357,13 +372,9 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 
 	b, server := newBackend(t)
 	dir := t.TempDir()
-	// "a" holds more files than the walk channel buffers, so its listing is
-	// done and the walk is parked inside it when the trap is armed; the next
-	// request is the opendir for "z".
-	for i := range 100 {
-		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
-	}
-	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+	// The listing of "a" is done and the walk is parked inside it when the
+	// trap is armed, so the next request is the opendir for "m".
+	writeCutTree(t, dir)
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -372,21 +383,10 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 	}
 	server.SetSFTP(sshtest.SFTPDropOnNextRequest)
 
-	var errs []fsops.WalkEntry
-	sawZ := false
-	for entry := range ch {
-		if entry.Err != nil {
-			errs = append(errs, entry)
-		}
-		if entry.RelPath == path.Join("z", "last.txt") {
-			sawZ = true
-		}
-	}
-	require.Len(t, errs, 1, "one Err entry ends the walk")
-	require.ErrorIs(t, errs[0].Err, fsops.ErrConnectionLost)
-	require.ErrorContains(t, errs[0].Err, sftp.ErrSSHFxConnectionLost.Error())
-	assert.Equal(t, "z", errs[0].RelPath)
-	assert.False(t, sawZ)
+	cut := drainAfterCut(t, ch)
+	require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
+	require.ErrorContains(t, cut.Err, sftp.ErrSSHFxConnectionLost.Error())
+	assert.Equal(t, "m", cut.RelPath)
 }
 
 func TestLostConnection(t *testing.T) {
