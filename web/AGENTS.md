@@ -81,7 +81,8 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 - **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) directly into JSX.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`.
 - Read English namespace JSON and relevant UI first; translate in product context.
-- Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception. Byte and speed units are not preserved: translate them under `dataUnits` in `common.json` and render them through `web/src/lib/unit-format.ts`, which also localizes the decimal separator. Never hardcode `KiB` or `Mbps`.
+- Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
+- Byte and speed units and their decimal separator are the exception: they are localized, so render them through `web/src/lib/unit-format.ts` and never hardcode `KiB`, `MiB/s` or `Mbps`.
 - Keep a glossary for product names and torrent/domain terms.
 - Plurals use the i18next v4 CLDR suffixes:
   - English needs `_one` and `_other`.
