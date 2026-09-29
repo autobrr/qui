@@ -122,8 +122,10 @@ describe("Install update", () => {
   it("shows both versions and the release notes, and installs the tag it showed", async () => {
     renderBanner()
     fireEvent.click(await screen.findByText("application.update.button"))
+    // The dialog links the release notes, so the banner drops View Release.
+    expect(screen.queryByText("updateBanner.viewRelease")).toBeNull()
 
-    expect(await screen.findByText("1.30.0")).toBeTruthy()
+    expect(await screen.findByText("v1.30.0")).toBeTruthy()
     expect(screen.getByText("v1.31.0")).toBeTruthy()
     const notes = screen.getByText("application.update.releaseNotes").closest("a")
     expect(notes?.getAttribute("href")).toBe(RELEASE.html_url)
@@ -171,7 +173,7 @@ describe("Install update", () => {
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ["latest-version"] })
     })
-    await vi.waitFor(() => expect(screen.queryByText("updateBanner.viewRelease")).toBeNull())
+    await vi.waitFor(() => expect(screen.queryByText("updateBanner.updateAvailable")).toBeNull())
     expect(screen.getByText("application.restart.overlay.restartingTitle")).toBeTruthy()
 
     qui = "new"

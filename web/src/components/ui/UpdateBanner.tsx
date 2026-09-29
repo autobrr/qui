@@ -47,16 +47,20 @@ export function UpdateBanner() {
               <p className="text-xs text-green-700 dark:text-green-300 mt-1">
                 {t("updateBanner.versionAvailable", { version: updateInfo.tag_name })}
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={bannerButtonClass}
-                  onClick={() => window.open(updateInfo.html_url, "_blank", "noopener,noreferrer")}
-                >
-                  {t("updateBanner.viewRelease")}
-                </Button>
-                <InstallUpdateButton selfUpdate={selfUpdate} release={updateInfo} className={bannerButtonClass} />
+              {/* The Install dialog links the release notes, so one button is enough. */}
+              <div className="mt-2">
+                {selfUpdate.selfUpdateAvailable ? (
+                  <InstallUpdateButton selfUpdate={selfUpdate} release={updateInfo} className={bannerButtonClass} />
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={bannerButtonClass}
+                    onClick={() => window.open(updateInfo.html_url, "_blank", "noopener,noreferrer")}
+                  >
+                    {t("updateBanner.viewRelease")}
+                  </Button>
+                )}
               </div>
             </div>
             <Button

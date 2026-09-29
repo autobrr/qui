@@ -1014,7 +1014,8 @@
     "update": {
       "button": "Install update",
       "confirmTitle": "Install update?",
-      "confirmDescription": "qui downloads the release, checks its signature, and keeps the current binary as a backup. Then qui restarts. Running work, such as cross-seed searches, automations, backups, and orphan scans, stops. The page reloads when qui is back.",
+      "confirmDescription": "qui downloads the new version, checks its signature, and keeps the current binary as a backup. Then qui restarts. The page reloads when qui is back.",
+      "runningWork": "Running work, such as cross-seed searches, automations, backups, and orphan scans, stops.",
       "currentVersion": "Current version",
       "targetVersion": "New version",
       "releaseNotes": "Release notes",
@@ -1025,7 +1026,7 @@
         "installedTitle": "qui updated",
         "installedDetail": "Reload the page to open the new version.",
         "reload": "Reload page",
-        "noBackup": "qui updated, but kept no backup: {{error}}. A rollback needs a manual download.",
+        "noBackup": "qui updated, but kept no backup: {{error}}. To roll back, download the old version by hand.",
         "rollbackIntro": "If the new version does not start, run this command, then start qui again:",
         "rollbackLabel": "Rollback command",
         "rollbackDocs": "Rollback steps"

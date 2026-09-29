@@ -105,7 +105,7 @@ The update keeps the previous version as `qui-v<old version>.bak.exe` next to `q
 3. Right-click the **qui** task and click **Run**.
 
 :::warning
-A new version can migrate the database. The old version cannot always read a migrated database, and a binary swap does not undo a migration. Back up `%APPDATA%\qui\` before you update if you want a full rollback.
+If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.
 :::
 
 ## Reverse proxy (optional)

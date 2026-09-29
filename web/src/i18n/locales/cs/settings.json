@@ -1017,7 +1017,8 @@
     "update": {
       "button": "Nainstalovat aktualizaci",
       "confirmTitle": "Nainstalovat aktualizaci?",
-      "confirmDescription": "qui stáhne vydání, ověří jeho podpis a ponechá aktuální binární soubor jako zálohu. Pak se qui restartuje. Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví. Stránka se znovu načte, až bude qui zpět.",
+      "confirmDescription": "qui stáhne novou verzi, ověří její podpis a ponechá aktuální binární soubor jako zálohu. Pak se qui restartuje. Stránka se znovu načte, až bude qui zpět.",
+      "runningWork": "Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví.",
       "currentVersion": "Aktuální verze",
       "targetVersion": "Nová verze",
       "releaseNotes": "Poznámky k vydání",
@@ -1028,7 +1029,7 @@
         "installedTitle": "qui se aktualizoval",
         "installedDetail": "Znovu načtěte stránku, abyste otevřeli novou verzi.",
         "reload": "Znovu načíst stránku",
-        "noBackup": "qui se aktualizoval, ale neponechal žádnou zálohu: {{error}}. Návrat k předchozí verzi vyžaduje ruční stažení.",
+        "noBackup": "qui se aktualizoval, ale neponechal žádnou zálohu: {{error}}. Chcete-li se vrátit, stáhněte předchozí verzi ručně.",
         "rollbackIntro": "Pokud se nová verze nespustí, spusťte tento příkaz a pak qui znovu spusťte:",
         "rollbackLabel": "Příkaz pro návrat",
         "rollbackDocs": "Postup návratu k předchozí verzi"

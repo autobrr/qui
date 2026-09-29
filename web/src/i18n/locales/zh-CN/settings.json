@@ -1011,7 +1011,8 @@
     "update": {
       "button": "安装更新",
       "confirmTitle": "安装更新？",
-      "confirmDescription": "qui 会下载该版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。qui 恢复后页面会自动重新加载。",
+      "confirmDescription": "qui 会下载新版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。qui 恢复后页面会自动重新加载。",
+      "runningWork": "正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。",
       "currentVersion": "当前版本",
       "targetVersion": "新版本",
       "releaseNotes": "发行说明",
@@ -1022,7 +1023,7 @@
         "installedTitle": "qui 已更新",
         "installedDetail": "重新加载页面以打开新版本。",
         "reload": "重新加载页面",
-        "noBackup": "qui 已更新，但未保留备份：{{error}}。回滚需要手动下载。",
+        "noBackup": "qui 已更新，但未保留备份：{{error}}。如需回滚，请手动下载旧版本。",
         "rollbackIntro": "如果新版本无法启动，请运行此命令，然后再次启动 qui：",
         "rollbackLabel": "回滚命令",
         "rollbackDocs": "回滚步骤"

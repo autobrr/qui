@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Download, ExternalLink, Loader2 } from "lucide-react"
+import { ArrowRight, Download, ExternalLink, Info, Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -48,16 +48,27 @@ export function InstallUpdateButton({ selfUpdate, release, className }: InstallU
             <AlertDialogTitle>{t("application.update.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("application.update.confirmDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">{t("application.update.currentVersion")}</dt>
-            <dd className="font-mono">{currentVersion}</dd>
-            <dt className="text-muted-foreground">{t("application.update.targetVersion")}</dt>
-            <dd className="font-mono">{release.tag_name}</dd>
-          </dl>
-          <a className="inline-flex items-center gap-1 text-sm underline" href={release.html_url} target="_blank" rel="noopener noreferrer">
-            {t("application.update.releaseNotes")}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-muted/40 px-4 py-3">
+            <dl className="flex items-center gap-4">
+              <div>
+                <dt className="text-xs text-muted-foreground">{t("application.update.currentVersion")}</dt>
+                <dd className="font-mono text-sm">v{currentVersion}</dd>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <div>
+                <dt className="text-xs text-muted-foreground">{t("application.update.targetVersion")}</dt>
+                <dd className="font-mono text-sm font-semibold">{release.tag_name}</dd>
+              </div>
+            </dl>
+            <a className="ml-auto inline-flex items-center gap-1 text-sm underline" href={release.html_url} target="_blank" rel="noopener noreferrer">
+              {t("application.update.releaseNotes")}
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+            {t("application.update.runningWork")}
+          </p>
           {error && (
             <p className="text-sm text-destructive">{error.message}</p>
           )}

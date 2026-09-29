@@ -29,17 +29,21 @@ interface ActionTarget {
 
 export type SelfUpdate = ReturnType<typeof useSelfUpdate>
 
+export function useVersionInfo() {
+  return useQuery({
+    queryKey: ["version"],
+    queryFn: () => api.getVersion(),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // Holds the Restart and Self-update actions: the confirmation dialog, the
 // request, and the overlay that waits for qui to answer again.
 export function useSelfUpdate() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [overlay, setOverlay] = useState<RestartOverlay>("hidden")
 
-  const versionQuery = useQuery({
-    queryKey: ["version"],
-    queryFn: () => api.getVersion(),
-    staleTime: 5 * 60 * 1000,
-  })
+  const versionQuery = useVersionInfo()
 
   // updateTag is null for a plain Restart.
   const actionMutation = useMutation({

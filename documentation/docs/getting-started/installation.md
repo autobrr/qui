@@ -89,7 +89,7 @@ mv "/usr/local/bin/qui-v1.30.0.bak" "/usr/local/bin/qui"
 On Windows, follow [Roll back an update](./windows.md#roll-back-an-update) in the Windows guide.
 
 :::warning
-A new version can migrate the database. The old version cannot always read a migrated database, and a binary swap does not undo a migration. Back up the qui config directory before you update if you want a full rollback.
+If you want a full rollback, back up the qui config directory before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.
 :::
 
 ## First setup

@@ -1014,7 +1014,8 @@
     "update": {
       "button": "Installa aggiornamento",
       "confirmTitle": "Installare l'aggiornamento?",
-      "confirmDescription": "qui scarica la release, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. Il lavoro in corso, come ricerche cross-seed, automazioni, backup e scansioni degli orfani, si ferma. La pagina si ricarica quando qui è di nuovo attivo.",
+      "confirmDescription": "qui scarica la nuova versione, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. La pagina si ricarica quando qui è di nuovo attivo.",
+      "runningWork": "Il lavoro in corso, come ricerche cross-seed, automazioni, backup e scansioni degli orfani, si ferma.",
       "currentVersion": "Versione attuale",
       "targetVersion": "Nuova versione",
       "releaseNotes": "Note di rilascio",
@@ -1025,7 +1026,7 @@
         "installedTitle": "qui è stato aggiornato",
         "installedDetail": "Ricarica la pagina per aprire la nuova versione.",
         "reload": "Ricarica la pagina",
-        "noBackup": "qui è stato aggiornato, ma non ha conservato alcun backup: {{error}}. Per il rollback serve un download manuale.",
+        "noBackup": "qui è stato aggiornato, ma non ha conservato alcun backup: {{error}}. Per il rollback, scarica manualmente la versione precedente.",
         "rollbackIntro": "Se la nuova versione non si avvia, esegui questo comando, poi avvia di nuovo qui:",
         "rollbackLabel": "Comando di rollback",
         "rollbackDocs": "Passaggi per il rollback"
