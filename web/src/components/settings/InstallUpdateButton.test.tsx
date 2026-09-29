@@ -241,6 +241,27 @@ describe("Install update", () => {
     expect(screen.queryByText("application.update.overlay.rollbackIntro")).toBeNull()
   })
 
+  it("keeps the no-backup warning after the update applies, until the user reloads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    updateResult = { version: "1.31.0", rollbackCommand: "", backupError: "backup not found at /opt/qui/qui-v1.30.0.bak" }
+    renderBanner()
+    await confirmInstall()
+    await screen.findByText("application.restart.overlay.restartingTitle")
+
+    qui = "new"
+    await advance(3_000)
+    expect(screen.getByText("application.update.overlay.installedTitle")).toBeTruthy()
+    expect(screen.getByText("application.update.overlay.noBackup backup not found at /opt/qui/qui-v1.30.0.bak")).toBeTruthy()
+    expect(quiRegistration.unregister).toHaveBeenCalledTimes(1)
+    expect(location.reload).not.toHaveBeenCalled()
+
+    await advance(60_000)
+    expect(screen.getByText("application.update.overlay.installedTitle")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("application.update.overlay.reload"))
+    expect(location.reload).toHaveBeenCalledTimes(1)
+  })
+
   it("blocks navigation while the install runs and while the overlay shows", async () => {
     let finishUpdate = () => {}
     const updateRequested = new Promise<void>((requested) => {

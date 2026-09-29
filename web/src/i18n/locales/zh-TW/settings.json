@@ -1019,6 +1019,8 @@
       "overlay": {
         "notAppliedTitle": "更新未生效",
         "notAppliedDetail": "qui 已恢復，但執行的是其他版本。請查看 qui 日誌。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新載入頁面以開啟新版本。",
         "reload": "重新載入頁面",
         "noBackup": "qui 已更新，但未保留備份：{{error}}。回復需要手動下載。",
         "rollbackIntro": "如果新版本無法啟動，請執行此命令，然後再次啟動 qui：",

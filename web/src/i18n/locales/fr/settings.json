@@ -1022,6 +1022,8 @@
       "overlay": {
         "notAppliedTitle": "La mise à jour ne s'est pas appliquée",
         "notAppliedDetail": "qui est de retour, mais avec une autre version. Consultez les journaux de qui.",
+        "installedTitle": "qui a été mis à jour",
+        "installedDetail": "Rechargez la page pour ouvrir la nouvelle version.",
         "reload": "Recharger la page",
         "noBackup": "qui a été mis à jour, mais n'a gardé aucune sauvegarde : {{error}}. Un retour en arrière demande un téléchargement manuel.",
         "rollbackIntro": "Si la nouvelle version ne démarre pas, exécutez cette commande, puis redémarrez qui :",

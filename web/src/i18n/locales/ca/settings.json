@@ -1022,6 +1022,8 @@
       "overlay": {
         "notAppliedTitle": "L'actualització no s'ha aplicat",
         "notAppliedDetail": "qui ha tornat, però amb una altra versió. Consulteu els registres de qui.",
+        "installedTitle": "qui s'ha actualitzat",
+        "installedDetail": "Torneu a carregar la pàgina per obrir la versió nova.",
         "reload": "Recarrega la pàgina",
         "noBackup": "qui s'ha actualitzat, però no ha conservat cap còpia de seguretat: {{error}}. Per tornar enrere cal una baixada manual.",
         "rollbackIntro": "Si la versió nova no s'inicia, executeu aquesta ordre i torneu a iniciar qui:",

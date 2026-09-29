@@ -11,7 +11,7 @@ import { api, clearQuiServiceWorker, setSSORecoveryPaused } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import type { SelfUpdateResult } from "@/types"
 
-export type RestartOverlay = "hidden" | "restarting" | "slow" | "notApplied"
+export type RestartOverlay = "hidden" | "restarting" | "slow" | "notApplied" | "installed"
 
 const POLL_INTERVAL_MS = 1000
 const SLOW_AFTER_MS = 60_000
@@ -101,6 +101,11 @@ export function useSelfUpdate() {
             // The service worker serves the old frontend from its precache and
             // holds the new one behind the "Update available" toast.
             await clearQuiServiceWorker()
+            // A reload would hide the no-backup warning before anyone reads it.
+            if (target.update.backupError) {
+              setOverlay("installed")
+              return
+            }
             window.location.reload()
             return
           }

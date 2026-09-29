@@ -1019,6 +1019,8 @@
       "overlay": {
         "notAppliedTitle": "업데이트가 적용되지 않았습니다",
         "notAppliedDetail": "qui가 돌아왔지만 다른 버전으로 실행 중입니다. qui 로그를 확인하세요.",
+        "installedTitle": "qui가 업데이트되었습니다",
+        "installedDetail": "새 버전을 열려면 페이지를 새로고침하세요.",
         "reload": "페이지 다시 로드",
         "noBackup": "qui가 업데이트되었지만 백업을 보관하지 않았습니다: {{error}}. 롤백하려면 직접 다운로드해야 합니다.",
         "rollbackIntro": "새 버전이 시작되지 않으면 이 명령을 실행한 뒤 qui를 다시 시작하세요:",

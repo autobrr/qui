@@ -1022,6 +1022,8 @@
       "overlay": {
         "notAppliedTitle": "Update wurde nicht angewendet",
         "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "installedTitle": "qui wurde aktualisiert",
+        "installedDetail": "Lade die Seite neu, um die neue Version zu öffnen.",
         "reload": "Seite neu laden",
         "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback ist ein manueller Download nötig.",
         "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",

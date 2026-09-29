@@ -1022,6 +1022,8 @@
       "overlay": {
         "notAppliedTitle": "A atualização não foi aplicada",
         "notAppliedDetail": "O qui voltou, mas com outra versão. Verifique os logs do qui.",
+        "installedTitle": "O qui foi atualizado",
+        "installedDetail": "Recarregue a página para abrir a nova versão.",
         "reload": "Recarregar página",
         "noBackup": "O qui foi atualizado, mas não manteve backup: {{error}}. Reverter exige um download manual.",
         "rollbackIntro": "Se a nova versão não iniciar, execute este comando e inicie o qui de novo:",

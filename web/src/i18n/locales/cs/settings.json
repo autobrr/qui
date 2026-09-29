@@ -1025,6 +1025,8 @@
       "overlay": {
         "notAppliedTitle": "Aktualizace se neprovedla",
         "notAppliedDetail": "qui je zpět, ale s jinou verzí. Zkontrolujte logy qui.",
+        "installedTitle": "qui se aktualizoval",
+        "installedDetail": "Znovu načtěte stránku, abyste otevřeli novou verzi.",
         "reload": "Znovu načíst stránku",
         "noBackup": "qui se aktualizoval, ale neponechal žádnou zálohu: {{error}}. Návrat k předchozí verzi vyžaduje ruční stažení.",
         "rollbackIntro": "Pokud se nová verze nespustí, spusťte tento příkaz a pak qui znovu spusťte:",

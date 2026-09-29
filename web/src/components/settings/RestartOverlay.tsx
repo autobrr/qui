@@ -30,7 +30,11 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
   } else if (state === "notApplied") {
     title = t("application.update.overlay.notAppliedTitle")
     detail = t("application.update.overlay.notAppliedDetail")
+  } else if (state === "installed") {
+    title = t("application.update.overlay.installedTitle")
+    detail = t("application.update.overlay.installedDetail")
   }
+  const done = state === "notApplied" || state === "installed"
 
   const copyRollback = async (command: string) => {
     const label = t("application.update.overlay.rollbackLabel")
@@ -50,7 +54,7 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
         showCloseButton={false}
         className="inset-0 z-[100] flex max-w-none translate-x-0 translate-y-0 items-center justify-center rounded-none border-0 bg-background/95 shadow-none backdrop-blur-sm sm:max-w-none">
         <div role="status" aria-live="polite" className="flex max-w-md flex-col items-center gap-3 text-center">
-          {state !== "notApplied" && <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}
+          {!done && <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}
           <DialogTitle className="font-medium">{title}</DialogTitle>
           <DialogDescription>{detail}</DialogDescription>
           {update?.backupError && (
@@ -76,7 +80,7 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
               </a>
             </div>
           )}
-          {state === "notApplied" && (
+          {done && (
             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
               {t("application.update.overlay.reload")}
             </Button>

@@ -1022,6 +1022,8 @@
       "overlay": {
         "notAppliedTitle": "L'aggiornamento non è stato applicato",
         "notAppliedDetail": "qui è di nuovo attivo, ma con una versione diversa. Controlla i log di qui.",
+        "installedTitle": "qui è stato aggiornato",
+        "installedDetail": "Ricarica la pagina per aprire la nuova versione.",
         "reload": "Ricarica la pagina",
         "noBackup": "qui è stato aggiornato, ma non ha conservato alcun backup: {{error}}. Per il rollback serve un download manuale.",
         "rollbackIntro": "Se la nuova versione non si avvia, esegui questo comando, poi avvia di nuovo qui:",
