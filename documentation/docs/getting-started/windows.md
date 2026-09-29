@@ -181,11 +181,11 @@ To move a zip install to the MSI:
 
 1. Right-click the qui icon and clear **Start with Windows**. That setting points to `qui-tray.exe` in the old folder.
 2. Click **Quit** in the Tray menu. If you use a scheduled task, end it and delete it, or change it to the new path.
-3. If `config.toml` is in the old folder, move `config.toml` and `qui.db` together into `%APPDATA%\qui`.
+3. If `config.toml` is in the old folder, move all files and folders in it, except the `.exe` files, into `%APPDATA%\qui`. This includes `qui.db` and, if they exist, the `backups`, `themes`, and `log` folders.
 4. Delete the old folder, for example `C:\qui`.
 5. Install the MSI.
 
-qui finds its data in `%APPDATA%\qui` again, so most users need to do nothing more. If you used `--config-dir`, keep the flag.
+qui finds its data in `%APPDATA%\qui` again, so most users need to do nothing more. If you used `--config-dir` with the old folder, stop using the flag after the move. If the flag points to a different folder, keep it.
 
 Always move `config.toml` and `qui.db` together. `config.toml` holds the secret that decrypts data in `qui.db`, which includes your theme license. If you move `qui.db` without its `config.toml`, qui cannot read that data.
 
