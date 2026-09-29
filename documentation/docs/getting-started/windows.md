@@ -129,6 +129,8 @@ qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe`. Sto
    ```
 3. Right-click the **qui** task again and click **Run** to restart it.
 
+If you use the Tray, click **Quit** in the Tray menu instead of step 1, and start `qui-tray.exe` again instead of step 3.
+
 ### Roll back an update
 
 The update keeps the previous version as `qui-v<old version>.bak.exe` next to `qui.exe`, and as `qui-tray-v<old version>.bak.exe` next to `qui-tray.exe`. Each update deletes older backups. The first `qui.exe` process still runs from the file that it started from, so that backup stays until the task stops.
