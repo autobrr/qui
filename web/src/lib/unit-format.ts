@@ -23,8 +23,7 @@ export const BYTES_PER_UNIT = {
   PiB: 1024 ** 5,
 } as const
 
-// The bit ladder is only ever a speed, so it stops where BYTE_SPEED_LADDER does rather than
-// where BYTE_LADDER does. A Pb/s rung would be a key in eleven locale files that can never render.
+// Only ever a speed, so it stops where BYTE_SPEED_LADDER does, not BYTE_LADDER.
 export const BIT_LADDER = ["b", "Kb", "Mb", "Gb", "Tb"] as const
 
 export type ByteUnit = keyof typeof BYTES_PER_UNIT
