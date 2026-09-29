@@ -57,12 +57,6 @@ export function scaleToUnit<T extends string>(
   return { value: value / Math.pow(base, index), unit: ladder[index] }
 }
 
-// An uninitialised i18next t() returns undefined even when given a defaultValue (measured on
-// i18next 26.4.2), so every lookup needs a fallback. Each unit's own key is its English form,
-// which unit-format.fallback.test.ts pins against the en locale.
-
-const ENGLISH_PER_SECOND = "{{unit}}/s"
-const ENGLISH_VALUE_WITH_UNIT = "{{value}} {{unit}}"
 const JOIN_KEY = "dataUnits.valueWithUnit"
 
 /**
@@ -103,26 +97,26 @@ function activeLanguage(): string {
   return i18next.language || "en"
 }
 
-function translate(key: string, fallback: string, options?: Record<string, unknown>): string {
-  return i18next.t(key, { ns: "common", ...options }) ?? fallback
+function translate(key: string, options?: Record<string, unknown>): string {
+  return i18next.t(key, { ns: "common", ...options })
 }
 
 function perSecondForm(symbol: string): string {
-  return translate("dataUnits.perSecond", ENGLISH_PER_SECOND.replace("{{unit}}", symbol), { unit: symbol })
+  return translate("dataUnits.perSecond", { unit: symbol })
 }
 
 function buildLabels(): UnitLabels {
   const byte = {} as Record<ByteUnit, string>
   const byteRate = {} as Record<ByteUnit, string>
   for (const unit of BYTE_LADDER) {
-    byte[unit] = translate(`dataUnits.byte.${unit}`, unit)
+    byte[unit] = translate(`dataUnits.byte.${unit}`)
     byteRate[unit] = perSecondForm(byte[unit])
   }
 
   const bit = {} as Record<BitUnit, string>
   const bitRate = {} as Record<BitUnit, string>
   for (const unit of BIT_LADDER) {
-    bit[unit] = translate(`dataUnits.bit.${unit}`, unit)
+    bit[unit] = translate(`dataUnits.bit.${unit}`)
     bitRate[unit] = perSecondForm(bit[unit])
   }
 
@@ -131,12 +125,10 @@ function buildLabels(): UnitLabels {
   // second look. unit-format.test.ts pins every locale's template to those two placeholders,
   // which is what makes filling them with a plain replace safe.
   const language = activeLanguage()
-  const rawJoin = i18next.isInitialized
-    ? ((i18next.getResource(language, "common", JOIN_KEY) ??
-      i18next.getResource("en", "common", JOIN_KEY)) as string | undefined)
-    : undefined
+  const rawJoin = (i18next.getResource(language, "common", JOIN_KEY) ??
+    i18next.getResource("en", "common", JOIN_KEY)) as string
 
-  return { byte, byteRate, bit, bitRate, join: rawJoin ?? ENGLISH_VALUE_WITH_UNIT }
+  return { byte, byteRate, bit, bitRate, join: rawJoin }
 }
 
 function unitLabels(): UnitLabels {

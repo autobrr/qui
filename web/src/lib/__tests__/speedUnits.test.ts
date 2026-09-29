@@ -6,6 +6,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import "@/i18n"
 
 const STORAGE_KEY = "qui-speed-units"
 

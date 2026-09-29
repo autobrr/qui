@@ -155,6 +155,16 @@ describe("derived labels", () => {
   })
 })
 
+const byteUnits = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const
+const bitUnits = ["b", "Kb", "Mb", "Gb", "Tb"] as const
+
+describe("the English locale", () => {
+  it("covers every unit the en locale declares, with nothing left over", () => {
+    expect(Object.keys(commonEn.dataUnits.byte)).toEqual([...byteUnits])
+    expect(Object.keys(commonEn.dataUnits.bit)).toEqual([...bitUnits])
+  })
+})
+
 describe("the cached join template", () => {
   it("carries both placeholders in every locale, so filling it with a plain replace is safe", async () => {
     // formatValueWithUnit fills this template itself instead of paying i18next interpolation

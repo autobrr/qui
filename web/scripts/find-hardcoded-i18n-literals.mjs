@@ -411,19 +411,8 @@ export function walkFiles(rootDir) {
   return files.sort()
 }
 
-// Holds the English fallback ladders; unit-format.fallback.test.ts pins each to its en value.
-// Not in shouldScanFile: find-unused-i18n-keys.mjs shares walkFiles and must still see this
-// file, which is where every dataUnits key is referenced.
-const HARDCODED_CHECK_EXEMPT_FILES = new Set(["src/lib/unit-format.ts"])
-
-function isExemptFromHardcodedCheck(filePath) {
-  const relativePath = path.relative(webRoot, filePath).replaceAll(path.sep, "/")
-  return HARDCODED_CHECK_EXEMPT_FILES.has(relativePath)
-}
-
 export function findHardcodedStringsInFiles(files) {
   return files.flatMap((filePath) => {
-    if (isExemptFromHardcodedCheck(filePath)) return []
     const source = fs.readFileSync(filePath, "utf8")
     return findHardcodedStringsInSource(source, filePath)
   })
