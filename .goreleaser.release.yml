@@ -64,6 +64,9 @@ archives:
     ids:
       - qui
       - qui-tray
+    # Only the Windows zip holds qui-tray.exe. A Self-update takes both exes
+    # from that one zip, so the archives stay combined.
+    allow_different_binary_count: true
     format_overrides:
       - goos: windows
         formats: ['zip']
