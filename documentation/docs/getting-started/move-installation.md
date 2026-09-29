@@ -23,8 +23,9 @@ The config directory is the directory that contains the configuration file that 
 | Windows | `%APPDATA%\qui\` |
 | Docker | The host folder that you mount at `/config` |
 
-Two cases change this:
+Three cases change this:
 
+- If you set `XDG_CONFIG_HOME`, the default is `$XDG_CONFIG_HOME/qui`.
 - If a `config.toml` is in the directory where you start qui, qui uses that file.
 - If you start qui with `--config-dir`, qui uses the path that you give. The path can be a directory that contains `config.toml`, or a `.toml` file with a different name. In the second case, copy that file.
 
@@ -67,6 +68,8 @@ Log in with the user and password from the old host.
 - If the address of qBittorrent changed, edit each instance and set the new URL.
 - If the paths to your data changed, update the paths in cross-seed, automations, and orphan scan.
 - If the new host needs a different host, port, or base URL, edit `config.toml` before you start qui.
-- If you want to keep your [backups](../features/backups.md), copy the `backups` directory too. Do the same for the `tracker-icons` and `themes` directories.
+- If you want to keep your [backups](../features/backups.md), copy the `backups` directory in the data directory. If you set `backupDir`, copy that directory.
+- If you want to keep custom themes, copy the `themes` directory in the config directory. If you set `customThemesDir`, copy that directory.
+- If you want to keep the tracker icons, copy the `tracker-icons` directory in the data directory.
 
 Do not run qui on both hosts with the same database. If you do, both change your qBittorrent instances at the same time.
