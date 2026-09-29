@@ -15,7 +15,7 @@
     }
   },
   "managementBar": {
-    "ariaLabel": "已選擇 {{count}} 個種子 - 可進行批次操作",
+    "ariaLabel_other": "已選擇 {{count}} 個種子 - 可進行批次操作",
     "resume": "繼續",
     "pause": "暫停",
     "forceRecheck": "強制重新檢查",
@@ -632,22 +632,22 @@
     "deleteEmptyCategories": {
       "title": "移除空分類",
       "noEmpty": "沒有可移除的空分類。",
-      "confirm": "確定要移除 {{count}} 個空分類嗎？此操作無法復原。",
+      "confirm_other": "確定要移除 {{count}} 個空分類嗎？此操作無法復原。",
       "cancel": "取消",
-      "remove": "移除 {{count}} 個分類",
+      "remove_other": "移除 {{count}} 個分類",
       "toast": {
-        "success": "已移除 {{count}} 個空分類",
+        "success_other": "已移除 {{count}} 個空分類",
         "error": "移除空分類失敗"
       }
     },
     "deleteUnusedTags": {
       "title": "刪除未使用的標籤",
       "noUnused": "沒有可刪除的未使用標籤。",
-      "confirm": "確定要刪除 {{count}} 個未使用的標籤嗎？此操作無法復原。",
+      "confirm_other": "確定要刪除 {{count}} 個未使用的標籤嗎？此操作無法復原。",
       "cancel": "取消",
-      "delete": "刪除 {{count}} 個標籤",
+      "delete_other": "刪除 {{count}} 個標籤",
       "toast": {
-        "success": "已刪除 {{count}} 個未使用的標籤",
+        "success_other": "已刪除 {{count}} 個未使用的標籤",
         "error": "刪除未使用的標籤失敗"
       }
     }
@@ -673,7 +673,7 @@
     "contentFilteringInProgress": "內容篩選進行中",
     "analyzingContent": "正在分析現有內容...",
     "smartFilteringActive": "智慧篩選已啟用",
-    "indexersFiltered": "{{count}} 個索引器已篩選",
+    "indexersFiltered_other": "{{count}} 個索引器已篩選",
     "contentFilteringDescription": "正在檢查您現有的種子以查詢重複項並排除冗餘的 Tracker。這有助於避免多次下載相同內容。",
     "excludedDescription": "您已從這些 Tracker 做種此版本，因此它們已被排除在搜尋之外。",
     "noContentDuplicates": "內容篩選完成。在您啟用的 Tracker 上未發現重複內容。",
@@ -1004,7 +1004,7 @@
       "fileRenameFailed": "重新命名檔案失敗",
       "folderRenamed": "資料夾重新命名成功",
       "folderRenameFailed": "重新命名資料夾失敗",
-      "deletedTorrents": "已刪除 {{count}} 個種子",
+      "deletedTorrents_other": "已刪除 {{count}} 個種子",
       "deletedTorrent": "已刪除種子：{{name}}",
       "deleteFailed": "刪除失敗：{{error}}"
     },
@@ -1204,7 +1204,7 @@
     "url": "URL",
     "noHttpSources": "無 HTTP 來源",
     "searchUrls": "搜尋 URL...",
-    "httpSources": "{{count}} 個 HTTP 來源",
+    "httpSources_other": "{{count}} 個 HTTP 來源",
     "filteredCount": "{{filtered}}/{{total}}",
     "copyUrl": "複製 URL",
     "toast": {
@@ -1223,7 +1223,7 @@
     "expandAll": "全部展開",
     "collapseAll": "全部摺疊",
     "searchFiles": "搜尋檔案...",
-    "fileCount": "{{count}} 個檔案",
+    "fileCount_other": "{{count}} 個檔案",
     "filteredCount": "{{filtered}}/{{total}}",
     "noFiles": "無檔案",
     "headers": {

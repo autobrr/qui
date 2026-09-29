@@ -11,15 +11,14 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"sync"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type mockContentResolver struct {
@@ -49,72 +48,26 @@ func (m *mockContentResolver) GetTorrents(_ context.Context, _ int, _ qbt.Torren
 	return m.torrents, m.torrentsErr
 }
 
-type sharedInstanceStoreFixture struct {
-	once             sync.Once
-	store            *models.InstanceStore
-	localInstanceID  int
-	remoteInstanceID int
-	err              error
-}
-
-var torrentsHandlerInstanceFixture sharedInstanceStoreFixture
-
 func createInstanceStoreWithInstance(t *testing.T, hasLocalAccess bool) (*models.InstanceStore, int) {
 	t.Helper()
 
-	torrentsHandlerInstanceFixture.once.Do(func() {
-		tempDir, err := os.MkdirTemp("", "qui-torrents-handler-tests-")
-		if err != nil {
-			torrentsHandlerInstanceFixture.err = err
-			return
-		}
+	db := testdb.NewMigratedSQLite(t, "torrents-handler")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
 
-		dbPath := filepath.Join(tempDir, "test.db")
-		db, err := database.New(dbPath)
-		if err != nil {
-			torrentsHandlerInstanceFixture.err = err
-			return
-		}
-
-		instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-		if err != nil {
-			torrentsHandlerInstanceFixture.err = err
-			return
-		}
-
-		createInstance := func(name string, hasLocal bool) int {
-			instance, err := instanceStore.Create(
-				context.Background(),
-				name,
-				"http://localhost:8080",
-				"admin",
-				"admin",
-				nil,
-				nil,
-				false,
-				&hasLocal,
-			)
-			if err != nil {
-				torrentsHandlerInstanceFixture.err = err
-				return 0
-			}
-			return instance.ID
-		}
-
-		torrentsHandlerInstanceFixture.store = instanceStore
-		torrentsHandlerInstanceFixture.localInstanceID = createInstance("test-instance-local", true)
-		if torrentsHandlerInstanceFixture.err != nil {
-			return
-		}
-		torrentsHandlerInstanceFixture.remoteInstanceID = createInstance("test-instance-remote", false)
-	})
-
-	require.NoError(t, torrentsHandlerInstanceFixture.err)
-
-	if hasLocalAccess {
-		return torrentsHandlerInstanceFixture.store, torrentsHandlerInstanceFixture.localInstanceID
-	}
-	return torrentsHandlerInstanceFixture.store, torrentsHandlerInstanceFixture.remoteInstanceID
+	instance, err := instanceStore.Create(
+		context.Background(),
+		"test-instance",
+		"http://localhost:8080",
+		"admin",
+		"admin",
+		nil,
+		nil,
+		false,
+		&hasLocalAccess,
+	)
+	require.NoError(t, err)
+	return instanceStore, instance.ID
 }
 
 func newDownloadRequest(t *testing.T, instanceID int, hash, fileIndex string) *http.Request {
