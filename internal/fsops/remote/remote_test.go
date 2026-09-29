@@ -54,7 +54,7 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
-	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui"}
+	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui", SSHKeyEncrypted: "enc-v1", SSHHostKeyEncrypted: "enc-v1"}
 	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
 		key:  sshtest.PrivateKey(""),
 		pin:  hostKey.PublicKey().Marshal(),

@@ -16,12 +16,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// pinnedInstanceAt is an instance at addr whose row carries a pin, as every
-// instance the pool dials does.
+// pinnedInstanceAt is an instance at addr whose row carries a key and a pin,
+// as every instance the pool dials does.
 func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
 
 	inst := instanceAt(t, addr)
+	inst.SSHKeyEncrypted = "enc-v1"
 	inst.SSHHostKeyEncrypted = "enc-v1"
 	return inst
 }
@@ -343,6 +344,31 @@ func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
+// A row that left remote mode is refused before any dial, and the refusal is
+// not memoised: the row, not the host, decides it.
+func TestPoolRefusesARowThatLeftRemoteMode(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	remote := pinnedInstanceAt(t, server.Addr)
+	local := *remote
+	local.HasLocalFilesystemAccess = true
+	creds := &fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal(), inst: &local}
+	pool := NewPool(NewDialer(creds))
+	t.Cleanup(pool.Close)
+
+	// The caller still holds the remote snapshot, while the row says local.
+	_, err := pool.SFTP(t.Context(), remote)
+	require.ErrorIs(t, err, ErrNotRemote)
+	assert.Zero(t, server.Accepts(), "an instance that left remote mode must not be dialed")
+
+	creds.inst = remote
+	_, err = pool.SFTP(t.Context(), remote)
+	require.NoError(t, err, "the refusal must not outlive the row that caused it")
+	assert.Equal(t, 1, server.Accepts())
+}
+
 // A failed row read is a local fault: it must not hold the host in backoff.
 func TestPoolRowReadFailureIsNotMemoised(t *testing.T) {
 	t.Parallel()
@@ -429,8 +455,7 @@ func TestPoolBackoffCaps(t *testing.T) {
 }
 
 // A connection nobody uses is closed by the keepalive loop, and the next
-// caller redials: this is how the pool lets go of an instance that left
-// remote mode.
+// caller redials.
 func TestPoolClosesIdleConnection(t *testing.T) {
 	t.Parallel()
 

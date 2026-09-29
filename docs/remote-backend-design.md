@@ -285,8 +285,8 @@ paths pays for one attempt: the retry delay starts at 5s, doubles to
 60s, and carries ±20% jitter so instances that went down together do not
 come back in lockstep.
 
-A host-key mismatch and an unreadable or missing pin are not retried at
-all — waiting does not make a wrong key right. That refusal lives only in
+A host-key mismatch and an unreadable pin are not retried at all, because
+waiting does not make a wrong key right. That refusal lives only in
 memory, and the pool never infers a change from a caller's snapshot of
 the instance: the code that changes what a connection depends on tells it.
 Saving or clearing SSH credentials and confirming or replacing the pin
@@ -297,10 +297,15 @@ just written, and a host whose key is still wrong is refused again on that
 dial. Two callers holding different snapshots of one instance therefore
 share one connection. A failed read of the row is local and is not
 memoised. A refusal caused by a pin that would not decrypt outlives an
-out-of-band fix of the encryption key, since nothing invalidates it; a
-restart clears it.
-A connection nobody has used for ten minutes is closed, which is how the
-pool lets go of an instance that left remote mode.
+out-of-band fix of the encryption key, because that fix writes no row.
+Saving the SSH credentials or the pin again clears it, and so does a
+restart.
+Saving the instance invalidates its entry too when the save changes the
+filesystem mode, which the local access flag decides. Any other edit
+leaves the session alone. A dial for a row that is not in remote mode,
+including a row with credentials and no confirmed pin, is refused before
+it connects and is not memoised.
+A connection nobody has used for ten minutes is closed.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process

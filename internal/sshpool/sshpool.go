@@ -196,10 +196,11 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 	return nil
 }
 
-// ErrPinUnusable marks the errors Connect raises before it dials: the instance
-// is unpinned, or the stored pin will not decrypt or parse. Both are permanent
-// until the pin changes, which is why the pool tells them apart from a host
-// that is merely down.
+// ErrPinUnusable marks the errors Connect raises before it dials, when the
+// stored pin is missing or will not decrypt or parse. The pool dials only rows
+// in remote mode, which carry a pin, so there it means a pin that will not
+// decrypt or parse. That lasts until the pin changes, which is why the pool
+// tells it apart from a host that is merely down.
 var ErrPinUnusable = errors.New("host key pin is unusable")
 
 // Connect opens a long-lived connection to a host whose key is already pinned.
