@@ -1601,6 +1601,7 @@
   "stateLabels": {
     "downloading": "In download",
     "metaDL": "Recupero metadati",
+    "forcedMetaDL": "(F) Recupero metadati",
     "allocating": "Allocazione",
     "stalledDL": "In stallo",
     "queuedDL": "In coda",

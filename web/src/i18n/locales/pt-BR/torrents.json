@@ -1601,6 +1601,7 @@
   "stateLabels": {
     "downloading": "Baixando",
     "metaDL": "Buscando Metadados",
+    "forcedMetaDL": "(F) Buscando Metadados",
     "allocating": "Alocando",
     "stalledDL": "Estagnado",
     "queuedDL": "Na Fila",

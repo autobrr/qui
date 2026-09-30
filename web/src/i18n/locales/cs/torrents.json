@@ -1667,6 +1667,7 @@
   "stateLabels": {
     "downloading": "Stahování",
     "metaDL": "Načítání metadat",
+    "forcedMetaDL": "(F) Načítání metadat",
     "allocating": "Přidělování",
     "stalledDL": "Pozastavené stahování",
     "queuedDL": "Ve frontě",

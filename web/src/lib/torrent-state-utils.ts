@@ -11,8 +11,8 @@ export function getStateLabel(state: string, t: TFunction): string {
   // stateLabels because "unknown" is itself a qBittorrent state.
   if (!/^[a-zA-Z]+$/.test(state)) return t("stateLabelFallback")
 
-  const key = `stateLabels.${state}`
-  const label = t(key)
+  // One t() call: i18next returns the first key it finds, so a miss costs no second pass through the post-processors.
+  const label = t([`stateLabels.${state}`, "stateLabelFallback"])
 
-  return typeof label === "string" && label !== key ? label : t("stateLabelFallback")
+  return typeof label === "string" ? label : t("stateLabelFallback")
 }

@@ -1527,6 +1527,7 @@
   "stateLabels": {
     "downloading": "다운로드 중",
     "metaDL": "메타데이터 가져오는 중",
+    "forcedMetaDL": "(강제) 메타데이터 가져오는 중",
     "allocating": "할당 중",
     "stalledDL": "정체됨",
     "queuedDL": "대기 중",

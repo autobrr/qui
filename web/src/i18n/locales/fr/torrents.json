@@ -1601,6 +1601,7 @@
   "stateLabels": {
     "downloading": "Téléchargement",
     "metaDL": "Récupération des métadonnées",
+    "forcedMetaDL": "(F) Récupération des métadonnées",
     "allocating": "Allocation",
     "stalledDL": "En attente",
     "queuedDL": "File d'attente",

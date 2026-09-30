@@ -1601,6 +1601,7 @@
   "stateLabels": {
     "downloading": "Downloading",
     "metaDL": "Fetching Metadata",
+    "forcedMetaDL": "(F) Fetching Metadata",
     "allocating": "Allocating",
     "stalledDL": "Stalled",
     "queuedDL": "Queued",

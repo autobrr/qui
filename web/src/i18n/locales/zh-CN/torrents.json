@@ -1522,6 +1522,7 @@
   "stateLabels": {
     "downloading": "下载中",
     "metaDL": "获取元数据中",
+    "forcedMetaDL": "(强制) 获取元数据中",
     "allocating": "分配空间中",
     "stalledDL": "停滞",
     "queuedDL": "排队中",

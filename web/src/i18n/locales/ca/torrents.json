@@ -380,6 +380,7 @@
   "stateLabels": {
     "downloading": "Baixant",
     "metaDL": "Obtenint les metadades",
+    "forcedMetaDL": "(F) Obtenint les metadades",
     "allocating": "Assignant espai",
     "stalledDL": "Encallat",
     "queuedDL": "A la cua",

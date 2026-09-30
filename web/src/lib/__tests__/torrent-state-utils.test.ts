@@ -18,6 +18,7 @@ describe("getStateLabel", () => {
     expect(getStateLabel("uploading", t)).toBe("Seeding")
     expect(getStateLabel("stoppedDL", t)).toBe("Stopped")
     expect(getStateLabel("forcedDL", t)).toBe("(F) Downloading")
+    expect(getStateLabel("forcedMetaDL", t)).toBe("(F) Fetching Metadata")
   })
 
   it("treats qBittorrent's own unknown state as a label", () => {
@@ -26,7 +27,7 @@ describe("getStateLabel", () => {
 
   // Listed, not derived from the JSON: a derived list loses a state the moment the file does.
   const QBITTORRENT_STATES = [
-    "downloading", "metaDL", "allocating", "stalledDL", "queuedDL", "checkingDL", "forcedDL",
+    "downloading", "metaDL", "forcedMetaDL", "allocating", "stalledDL", "queuedDL", "checkingDL", "forcedDL",
     "uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP",
     "pausedDL", "pausedUP", "stoppedDL", "stoppedUP",
     "error", "missingFiles", "checkingResumeData", "moving", "unknown",
