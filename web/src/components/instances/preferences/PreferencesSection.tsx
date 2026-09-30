@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
@@ -37,5 +37,6 @@ export function PreferencesSection({ instanceId, i18nPrefix, children }: Prefere
     )
   }
 
-  return children(preferences)
+  // A new instance remounts the form, so it seeds from that instance's preferences.
+  return <Fragment key={instanceId}>{children(preferences)}</Fragment>
 }

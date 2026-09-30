@@ -72,14 +72,15 @@ afterEach(() => {
 function renderForm(Form: FormComponent, seed: AppPreferences = preferences, onSuccess?: () => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   queryClient.setQueryData(["instance-preferences", 1], seed)
-  const { container } = render(
+  const ui = (instanceId: number) => (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Form instanceId={1} onSuccess={onSuccess} />
+        <Form instanceId={instanceId} onSuccess={onSuccess} />
       </TooltipProvider>
     </QueryClientProvider>
   )
-  return { queryClient, form: container.querySelector("form")! }
+  const { container, rerender } = render(ui(1))
+  return { queryClient, form: container.querySelector("form")!, showInstance: (instanceId: number) => rerender(ui(instanceId)) }
 }
 
 function submitForm(Form: FormComponent, onSuccess: () => void) {
@@ -155,6 +156,17 @@ describe.each(forms)("%s save", (_name, Form, field, label) => {
     await act(() => new Promise(resolve => setTimeout(resolve, 0)))
 
     expect(switchFor(label).getAttribute("aria-checked")).toBe("false")
+  })
+})
+
+describe.each(forms)("%s instance switch", (_name, Form, field, label) => {
+  it("seeds again from the new instance", () => {
+    const { queryClient, showInstance } = renderForm(Form, { ...preferences, [field]: false })
+    queryClient.setQueryData(["instance-preferences", 2], { ...preferences, [field]: true })
+
+    showInstance(2)
+
+    expect(switchFor(label).getAttribute("aria-checked")).toBe("true")
   })
 })
 
