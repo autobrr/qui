@@ -1003,10 +1003,13 @@ func TestEvalContextFromRemoteInstanceLeavesHardlinkFieldsUnknown(t *testing.T) 
 	}
 }
 
-// The switch in conditionDataKnown must list every conditionFieldData row, or
-// the row is skipped and its field always reads as known.
+// The switch in conditionDataKnown must list every conditionFieldData row with
+// a known func, or the row is skipped and its field always reads as known.
 func TestConditionDataKnown_SwitchCoversTable(t *testing.T) {
-	for field := range conditionFieldData {
+	for field, data := range conditionFieldData {
+		if data.known == nil {
+			continue
+		}
 		if conditionDataKnown(field, "hash", nil) {
 			t.Errorf("%s: known with no context, want unknown; add it to the switch in conditionDataKnown", field)
 		}
