@@ -105,7 +105,8 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
                   ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
                   ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
                 ].join(t("preferences.orphanScanOverview.deletedSeparator")),
-                size: formatBytes(run.bytesReclaimed),
+                // A non-breaking space keeps the number with its unit when the stats wrap.
+                size: formatBytes(run.bytesReclaimed).replace(" ", "\u00a0"),
               })}
             </span>
           )}
