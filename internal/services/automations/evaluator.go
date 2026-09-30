@@ -392,36 +392,6 @@ func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
 	ctx.InstanceHasFileIdentity = models.FilesystemCapabilitiesOf(instance).Identity
 }
 
-func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
-	switch field {
-	case FieldHardlinkScope, FieldHardlinkScopeCross:
-		if ctx == nil || !ctx.InstanceHasFileIdentity {
-			return false
-		}
-	case FieldHasMissingFiles:
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-	case FieldSeasonPackStatus:
-		return ctx != nil && ctx.SeasonPackSet != nil
-	case FieldSeasonPackStatusAnyInstance:
-		return ctx != nil && ctx.SeasonPackSetAnyInstance != nil
-	default:
-		return true
-	}
-
-	var known bool
-	switch field {
-	case FieldHardlinkScope:
-		_, known = ctx.HardlinkScopeByHash[hash]
-	case FieldHardlinkScopeCross:
-		_, known = ctx.HardlinkCrossScopeByHash[hash]
-	case FieldHasMissingFiles:
-		_, known = ctx.HasMissingFilesByHash[hash]
-	}
-	return known
-}
-
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.
 func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bool {
 	switch cond.Field {
