@@ -308,14 +308,6 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	run, err := store.CreateRun(ctx, &models.CrossSeedRun{
-		TriggeredBy: "test",
-		Mode:        models.CrossSeedRunModeManual,
-		Status:      models.CrossSeedRunStatusRunning,
-		StartedAt:   time.Now().UTC(),
-	})
-	require.NoError(t, err)
-
 	guid := "test-guid"
 	indexerID := insertTestTorznabIndexer(t, db, "Test Indexer", "https://example.com")
 
@@ -329,7 +321,6 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 		IndexerID:   indexerID,
 		Title:       "Example",
 		LastStatus:  models.CrossSeedFeedItemStatusProcessed,
-		LastRunID:   &run.ID,
 		InfoHash:    nil,
 		FirstSeenAt: time.Now().Add(-48 * time.Hour),
 		LastSeenAt:  time.Now().Add(-48 * time.Hour),
