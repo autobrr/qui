@@ -12,7 +12,9 @@ vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
   return {
     ...actual,
-    useTranslation: () => ({ t: (key: string) => key }),
+    useTranslation: () => ({
+      t: (key: string, opts?: Record<string, unknown>) => opts ? `${key}(${Object.values(opts).join(",")})` : key,
+    }),
   }
 })
 
@@ -119,5 +121,19 @@ describe("OrphanScanOverview instance card", () => {
     expect(label!.classList.contains("whitespace-normal")).toBe(true)
     // A fixed height would clip the second line of a wrapped label.
     expect(label!.closest("button")!.classList.contains("h-auto")).toBe(true)
+  })
+
+  it("builds the settings summary from one key per pair and keeps each pair on one line", () => {
+    const { container } = renderExpanded()
+
+    const spans = Array.from(container.querySelectorAll("p > span.whitespace-nowrap"))
+    const pairs = spans.map((el) => el.textContent)
+    expect(pairs).toEqual([
+      "preferences.orphanScanOverview.summaryGrace(10)\u00a0·",
+      "preferences.orphanScanOverview.summaryInterval(24)\u00a0·",
+      "preferences.orphanScanOverview.summaryMax(1000)",
+    ])
+    // Only a plain space between pairs, so a wrapped line never starts with "·".
+    expect(spans[0]!.parentElement!.textContent).toBe(pairs.join(" "))
   })
 })

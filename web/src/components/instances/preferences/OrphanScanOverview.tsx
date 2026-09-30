@@ -181,10 +181,8 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   )
 }
 
-// Keeps each pair and its trailing "·" on one line when the summary wraps.
-function SettingsSummary({ text }: { text: string }) {
-  const parts = text.split(" · ")
-  if (parts.length === 1) return text
+// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
+function SettingsSummary({ parts }: { parts: string[] }) {
   return parts.map((part, i) => (
     <Fragment key={i}>
       <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
@@ -363,7 +361,15 @@ function InstanceOrphanScanItem({
             {/* A zero basis without min-w-0 moves the buttons down only once the widest summary pair stops fitting beside them. */}
             <div className="space-y-0.5 flex-1">
               <p className="text-sm text-muted-foreground">
-                {settings? <SettingsSummary text={t("preferences.orphanScanOverview.settingsSummary", { grace: settings.gracePeriodMinutes, interval: settings.scanIntervalHours, max: settings.maxFilesPerRun })} />: t("preferences.orphanScanOverview.loading")}
+                {settings? (
+                  <SettingsSummary
+                    parts={[
+                      t("preferences.orphanScanOverview.summaryGrace", { grace: settings.gracePeriodMinutes }),
+                      t("preferences.orphanScanOverview.summaryInterval", { interval: settings.scanIntervalHours }),
+                      t("preferences.orphanScanOverview.summaryMax", { max: settings.maxFilesPerRun }),
+                    ]}
+                  />
+                ): t("preferences.orphanScanOverview.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
                 {settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
