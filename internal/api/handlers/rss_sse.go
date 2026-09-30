@@ -195,7 +195,7 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 	}
 	h.mu.Unlock()
 
-	// Stop poller outside of h.mu to avoid lock-order inversions with h.pollerMu.
+	// Stop poller outside of h.mu: stopPoller takes h.mu under h.pollerMu.
 	if shouldStopPoller {
 		h.stopPoller(instanceID)
 	}
@@ -239,6 +239,16 @@ func (h *RSSSSEHandler) ensurePoller(instanceID int) {
 func (h *RSSSSEHandler) stopPoller(instanceID int) {
 	h.pollerMu.Lock()
 	defer h.pollerMu.Unlock()
+
+	// A viewer can join between removeClient dropping the last one and this
+	// stop; its ensurePoller saw the old poller, so keep it. Lock order is
+	// pollerMu, then mu.
+	h.mu.RLock()
+	hasClients := len(h.clients[instanceID]) > 0
+	h.mu.RUnlock()
+	if hasClients {
+		return
+	}
 
 	if cancel, exists := h.pollers[instanceID]; exists {
 		cancel()

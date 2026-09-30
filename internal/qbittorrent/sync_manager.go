@@ -4360,6 +4360,8 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
+		// lastSeen stops one snapshot, or one taken before this call, from counting as a stable poll.
+		lastSeen := syncMgr.LastSuccessfulSyncTime()
 		for len(pending) > 0 {
 			select {
 			case <-ctx.Done():
@@ -4368,9 +4370,12 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			case <-ticker.C:
 			}
 
-			if err := syncMgr.Sync(ctx); err != nil {
-				log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
-				continue
+			// Pollers for the same instance share the sync; fetch maindata only when no new sync landed since the last poll.
+			if !syncMgr.LastSuccessfulSyncTime().After(lastSeen) {
+				if err := syncMgr.Sync(ctx); err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
+					continue
+				}
 			}
 
 			requested := make([]string, 0, len(pending))
@@ -4382,6 +4387,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			if len(torrentMap) < len(requested) {
 				torrentMap = syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{})
 			}
+			lastSeen = syncMgr.LastSuccessfulSyncTime()
 			if len(torrentMap) == 0 {
 				continue
 			}
