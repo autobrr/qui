@@ -21,6 +21,16 @@ describe("getStateLabel", () => {
     expect(getStateLabel("forcedMetaDL", t)).toBe("(F) Fetching Metadata")
   })
 
+  it("disguises forcedMetaDL like metaDL under the spreadsheet theme", () => {
+    document.documentElement.setAttribute("data-theme", "spreadsheet")
+    try {
+      expect(getStateLabel("metaDL", t)).toBe("Fetching Info")
+      expect(getStateLabel("forcedMetaDL", t)).toBe("(F) Fetching Info")
+    } finally {
+      document.documentElement.removeAttribute("data-theme")
+    }
+  })
+
   it("treats qBittorrent's own unknown state as a label", () => {
     expect(getStateLabel("unknown", t)).toBe("Unknown")
   })
