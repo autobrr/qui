@@ -217,5 +217,5 @@ qui logs success after the program starts, not when qui queues the task. If the 
 
 - **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
-- **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and runs on Windows, are not held by the execution limit. Make sure that your script handles concurrent executions or uses a lock.
+- **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and runs on Windows, hold a slot only while qui starts them. For more information, see [Execution limit](#execution-limit). Make sure that your script handles concurrent executions or uses a lock.
 - **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.
