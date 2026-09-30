@@ -31,7 +31,7 @@ export const CONDITION_FIELDS = {
   CREATED_BY: { label: "Created By", type: "string" as const },
   // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
   // FIELD_GROUPS so it is no longer offered, and kept here so saved rules that
-  // already use it still render a label, a type, and help text.
+  // already use it still render a label and a type.
   TRACKERS: { label: "Trackers (All)", type: "string" as const },
   CONTENT_TYPE: { label: "Content Type", type: "string" as const },
   EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const },
