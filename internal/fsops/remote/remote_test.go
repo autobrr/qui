@@ -545,7 +545,7 @@ func TestReadsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
 	dir := remotePath(t.TempDir())
-	for _, name := range []string{"stat", "lstat", "readdir", "walkdir", "statfs", "samefilesystem"} {
+	for name := range readCalls(nil, dir) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
