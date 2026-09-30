@@ -232,17 +232,17 @@ func lostConnection(err error) bool {
 // pool would not serve the read, which a caller may want to tell apart.
 var poolSentinels = []error{sshpool.ErrConnect, sshpool.ErrPinUnusable, sshpool.ErrPoolClosed, sshpool.ErrNotRemote}
 
-// connectionLost is ErrConnectionLost plus whichever pool sentinels its cause
+// connectionLostError is ErrConnectionLost plus whichever pool sentinels its cause
 // carries. The rest of the cause is text only, because a redial refused with
 // EACCES carries an errno that matches fs.ErrPermission, and a consumer that
 // steps over denied directories would read the cut as one.
-type connectionLost struct {
+type connectionLostError struct {
 	msg  string
 	kept []error
 }
 
-func (e *connectionLost) Error() string   { return e.msg }
-func (e *connectionLost) Unwrap() []error { return e.kept }
+func (e *connectionLostError) Error() string   { return e.msg }
+func (e *connectionLostError) Unwrap() []error { return e.kept }
 
 func lost(err error) error {
 	kept := []error{fsops.ErrConnectionLost}
@@ -254,7 +254,7 @@ func lost(err error) error {
 	if mismatch, ok := errors.AsType[*sshpool.MismatchError](err); ok {
 		kept = append(kept, mismatch)
 	}
-	return &connectionLost{msg: fsops.ErrConnectionLost.Error() + ": " + err.Error(), kept: kept}
+	return &connectionLostError{msg: fsops.ErrConnectionLost.Error() + ": " + err.Error(), kept: kept}
 }
 
 // readError is pathError for a failed sftp request: a server answer keeps
