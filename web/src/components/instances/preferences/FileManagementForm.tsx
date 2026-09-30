@@ -210,7 +210,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         if (canToggleSubcategories) {
           qbittorrentPrefs.use_subcategories = Boolean(value.use_subcategories)
         }
-        updatePreferences(qbittorrentPrefs)
+        await updatePreferences(qbittorrentPrefs)
         toast.success(t("preferences.fileManagement.toast.success"))
         onSuccess?.()
       } catch {

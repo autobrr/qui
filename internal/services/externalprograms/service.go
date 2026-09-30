@@ -20,7 +20,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	shellquote "github.com/Hellseher/go-shellquote"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
@@ -361,8 +360,16 @@ func (s *Service) buildTerminalCommand(ctx context.Context, program *models.Exte
 
 	// Unix/Linux: Build command string and spawn in a terminal
 	allArgs := append([]string{program.Path}, args...)
-	fullCmd := shellquote.Join(allArgs...)
-	return s.createTerminalCommand(ctx, fullCmd)
+	return s.createTerminalCommand(ctx, shellJoin(allArgs))
+}
+
+// shellJoin single-quotes each argument for a POSIX shell and joins them with spaces.
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+	}
+	return strings.Join(quoted, " ")
 }
 
 // buildDirectCommand creates a command that runs directly without a terminal.

@@ -187,7 +187,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         setIsFormDirty(false) // Reset dirty flag after successful save
         toast.success(t("preferences.speedLimits.toast.success"))
         onSuccess?.()

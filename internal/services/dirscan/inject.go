@@ -214,7 +214,16 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("get instance: %w", err)
 	}
 
-	savePath, addMode, linkCreated, linkBackend, err := i.prepareInjection(ctx, instance, req)
+	// Every read below takes this one backend. A scan admits the instance on
+	// local access minutes before it injects, and a fresh resolve per read
+	// could land on the SSH host if local access was turned off since.
+	backend, err := i.localBackend(ctx, instance.ID)
+	if err != nil {
+		result.ErrorMessage = err.Error()
+		return result, err
+	}
+
+	savePath, addMode, linkCreated, err := i.prepareInjection(ctx, instance, backend, req)
 	if err != nil {
 		result.ErrorMessage = err.Error()
 		return result, err
@@ -227,14 +236,6 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
 	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
-
-	// For rollback and alignment checks, prefer the backend that actually built
-	// the link tree: a fresh resolve can transiently fail and would silently
-	// skip rollback of a tree that exists on disk.
-	backend := linkBackend
-	if backend == nil {
-		backend = i.resolveBackend(ctx, instance.ID)
-	}
 
 	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
 	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
@@ -560,47 +561,46 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	return nil
 }
 
-// resolveBackend returns the instance's filesystem backend, or nil when the pool is
-// missing or resolution fails. Callers treat a nil backend like an unreadable path.
-func (i *Injector) resolveBackend(ctx context.Context, instanceID int) fsops.Backend {
+// localBackend is the backend every read and write of one injection uses.
+func (i *Injector) localBackend(ctx context.Context, instanceID int) (fsops.Backend, error) {
 	if i.backendPool == nil {
-		return nil
+		return nil, errors.New("filesystem backend pool not configured")
 	}
-	backend, err := i.backendPool.GetBackend(ctx, instanceID)
+	backend, err := i.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("dirscan: failed to get filesystem backend")
-		return nil
+		return nil, fmt.Errorf("get filesystem backend: %w", err)
 	}
-	return backend
+	return backend, nil
 }
 
 func (i *Injector) prepareInjection(
 	ctx context.Context,
 	instance *models.Instance,
+	backend fsops.Backend,
 	req *InjectRequest,
-) (savePath, mode string, linkCreated *fsops.TreeCreateResult, linkBackend fsops.Backend, err error) {
+) (savePath, mode string, linkCreated *fsops.TreeCreateResult, err error) {
 	if instance == nil {
-		return "", "", nil, nil, errors.New("instance is nil")
+		return "", "", nil, errors.New("instance is nil")
 	}
 
 	if !instance.UseReflinks && !instance.UseHardlinks {
-		return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil, nil
+		return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
 	}
 
-	plan, linkMode, created, linkBackend, linkErr := i.materializeLinkTree(ctx, instance, req)
+	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, backend, req)
 	if linkErr == nil {
 		if plan == nil || plan.RootDir == "" {
-			return "", "", nil, linkBackend, errors.New("link-tree plan missing root dir")
+			return "", "", nil, errors.New("link-tree plan missing root dir")
 		}
-		return plan.RootDir, linkMode, created, linkBackend, nil
+		return plan.RootDir, linkMode, created, nil
 	}
 
 	if !instance.FallbackToRegularMode {
-		return "", "", nil, linkBackend, linkErr
+		return "", "", nil, linkErr
 	}
 
 	i.logLinkTreeFallback(instance, linkErr)
-	return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil, nil
+	return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
 }
 
 func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
@@ -642,7 +642,7 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 }
 
 // calculateSavePath determines the save path for the torrent.
-func (i *Injector) calculateSavePath(ctx context.Context, instance *models.Instance, req *InjectRequest) string {
+func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) string {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
@@ -652,7 +652,7 @@ func (i *Injector) calculateSavePath(ctx context.Context, instance *models.Insta
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
-		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, i.resolveBackend(ctx, instance.ID), req.Searchee.Path, req.ParsedTorrent) {
+		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent) {
 			savePath = req.Searchee.Path
 		}
 	}
@@ -749,12 +749,12 @@ func addPolicyForInjectRequest(req *InjectRequest) crossseed.AddPolicy {
 	return crossseed.PolicyForSourceFiles(files)
 }
 
-func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, fsops.Backend, error) {
+func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, backend fsops.Backend, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, error) {
 	if err := validateLinkTreeInstance(instance); err != nil {
-		return nil, "", nil, nil, err
+		return nil, "", nil, err
 	}
 	if req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return nil, "", nil, nil, errors.New("link-tree request is missing required data")
+		return nil, "", nil, errors.New("link-tree request is missing required data")
 	}
 
 	incomingFiles := buildLinkTreeIncomingFiles(req.ParsedTorrent)
@@ -762,23 +762,15 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
 	if err != nil {
-		return nil, "", nil, nil, err
-	}
-
-	if i.backendPool == nil {
-		return nil, "", nil, nil, errors.New("filesystem backend pool not configured")
-	}
-	backend, err := i.backendPool.GetBackend(ctx, instance.ID)
-	if err != nil {
-		return nil, "", nil, nil, fmt.Errorf("get filesystem backend: %w", err)
+		return nil, "", nil, err
 	}
 
 	selectedBaseDir, err := crossseed.FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend)
 	if err != nil {
-		return nil, "", nil, backend, fmt.Errorf("select hardlink base dir: %w", err)
+		return nil, "", nil, fmt.Errorf("select hardlink base dir: %w", err)
 	}
 	if err := backend.MkdirAll(ctx, selectedBaseDir, fsutil.LinkTreeBaseDirMode); err != nil {
-		return nil, "", nil, backend, fmt.Errorf("create hardlink base dir: %w", err)
+		return nil, "", nil, fmt.Errorf("create hardlink base dir: %w", err)
 	}
 
 	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
@@ -809,15 +801,15 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 			Str("instanceName", instance.Name).
 			Str("torrentName", req.ParsedTorrent.Name).
 			Msg("dirscan: failed to build link plan")
-		return nil, "", nil, backend, humanizeLinkPlanError(err)
+		return nil, "", nil, humanizeLinkPlanError(err)
 	}
 
 	mode, created, err := i.createLinkTree(ctx, instance, selectedBaseDir, existingFiles, plan, backend)
 	if err != nil {
-		return nil, "", nil, backend, err
+		return nil, "", nil, err
 	}
 
-	return plan, mode, created, backend, nil
+	return plan, mode, created, nil
 }
 
 func humanizeLinkPlanError(err error) error {

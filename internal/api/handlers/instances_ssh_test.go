@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -39,6 +40,7 @@ type sshFixture struct {
 	instance  *models.Instance
 	server    *sshtest.Server
 	clientKey string
+	sshPool   *sshpool.Pool
 }
 
 func newSSHFixture(t *testing.T, name string) *sshFixture {
@@ -55,10 +57,17 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	instance, err := store.Create(t.Context(), "remote", "http://127.0.0.1:1", "admin", "password", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store))
+	// The server is created before the pool so cleanup, which runs last in
+	// first out, closes the pool's connections before the server waits on them.
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
+	t.Cleanup(sshPool.Close)
+	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
 
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)
+	router.Put("/api/instances/{instanceID}", handler.UpdateInstance)
+	router.Delete("/api/instances/{instanceID}", handler.DeleteInstance)
 	router.Put("/api/instances/{instanceID}/ssh-credentials", handler.UpdateSSHCredentials)
 	router.Delete("/api/instances/{instanceID}/ssh-credentials", handler.DeleteSSHCredentials)
 	router.Post("/api/instances/{instanceID}/ssh-test", handler.TestSSHConnection)
@@ -71,8 +80,9 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 		db:        db,
 		store:     store,
 		instance:  instance,
-		server:    sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU),
+		server:    server,
 		clientKey: sshtest.PrivateKey(""),
+		sshPool:   sshPool,
 	}
 }
 
@@ -292,6 +302,114 @@ func TestConfirmHidesStoredKeyFault(t *testing.T) {
 	result := f.sshTest()
 	assert.Equal(t, "error", result.Status)
 	assert.Equal(t, "Failed to read SSH credentials", result.Error, "the cipher fault's text stays out of this body too")
+}
+
+// The routes that change what a connection depends on tell the pool, so a
+// session opened under the old credentials or pin does not outlive them.
+func TestSSHRoutesInvalidateThePool(t *testing.T) {
+	f := newSSHFixture(t, "ssh-routes-invalidate")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	open := func() *sftp.Client {
+		t.Helper()
+		stored, err := f.store.Get(t.Context(), f.instance.ID)
+		require.NoError(t, err)
+		client, err := f.sshPool.SFTP(t.Context(), stored)
+		require.NoError(t, err)
+		return client
+	}
+	closed := func(client *sftp.Client) bool { _, err := client.Getwd(); return err != nil }
+
+	client := open()
+	f.putCredentials()
+	assert.True(t, closed(client), "saving credentials must end the old session")
+
+	client = open()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
+	assert.True(t, closed(client), "replacing the pin must end the old session")
+
+	client = open()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+	assert.True(t, closed(client), "clearing credentials must end the old session")
+
+	f.putCredentials()
+	client = open()
+	require.Equal(t, http.StatusOK, f.do(http.MethodDelete, "", "").Code)
+	assert.True(t, closed(client), "deleting the instance must end its session")
+}
+
+// Ticking local access takes the instance out of remote mode. A session opened
+// before the edit must end with it, and no new one may be dialed, or file
+// operations for a local instance would keep running on the SSH host.
+func TestUpdateInstanceEndsTheRemoteSession(t *testing.T) {
+	f := newSSHFixture(t, "ssh-update-leaves-remote")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.FilesystemModeRemote, models.FilesystemAccessMode(stored))
+	client, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	_, err = client.Getwd()
+	require.NoError(t, err)
+	accepts := f.server.Accepts()
+
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","hasLocalFilesystemAccess":true}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	_, err = client.Getwd()
+	require.Error(t, err, "the handle taken before the edit must fail its next call")
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrNotRemote, "a caller holding the remote snapshot must not get a connection")
+	assert.Equal(t, accepts, f.server.Accepts(), "no new connection may be opened for a local instance")
+}
+
+// An edit that leaves the instance in remote mode must not touch its session.
+// Invalidate would cut every read in flight, and would hold the save behind a
+// dial that another caller has in progress.
+func TestUpdateInstanceKeepsTheRemoteSessionWhenTheModeStays(t *testing.T) {
+	f := newSSHFixture(t, "ssh-update-stays-remote")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	client, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	accepts := f.server.Accepts()
+
+	response := f.do(http.MethodPut, "", `{"name":"renamed","host":"http://127.0.0.1:1","username":"admin"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	_, err = client.Getwd()
+	require.NoError(t, err, "a rename must leave the handle taken before it working")
+	again, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	assert.Same(t, client, again, "the pool keeps serving the same connection")
+	assert.Equal(t, accepts, f.server.Accepts(), "no new connection is opened")
+}
+
+// An instance with credentials but no pin is not in remote mode, so the pool
+// refuses it without dialing or memoising anything. Confirming the pin must
+// then let the next caller through.
+func TestConfirmLetsTheNextCallerDial(t *testing.T) {
+	f := newSSHFixture(t, "ssh-confirm-lets-caller-dial")
+	f.putCredentials()
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrNotRemote)
+	assert.Zero(t, f.server.Accepts(), "an unpinned host must not be dialed")
+
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err = f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	_, err = f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err, "the first caller after the pin is confirmed must get a connection")
 }
 
 func TestReplaceRejectsKeyTheHostDoesNotPresent(t *testing.T) {

@@ -999,6 +999,39 @@
         "lastChecked": "Última comprovació: {{date}}"
       }
     },
+    "restart": {
+      "button": "Reinicia",
+      "confirmTitle": "Voleu reiniciar qui?",
+      "confirmDescription": "qui s'atura de la mateixa manera que en una aturada normal i després torna a arrencar. La feina en curs, com les cerques de cross-seed, les automatitzacions, les còpies de seguretat i les anàlisis d'orfes, s'atura. La pàgina es recarrega quan qui torna a estar disponible.",
+      "confirm": "Reinicia",
+      "overlay": {
+        "restartingTitle": "S'està reiniciant qui…",
+        "restartingDetail": "La pàgina es recarrega quan qui torna a respondre.",
+        "slowTitle": "qui encara no ha respost",
+        "slowDetail": "Pot ser que qui encara s'estigui iniciant, i aquesta pàgina continua esperant. Consulteu els registres de qui. Si heu canviat el port o l'URL base, obriu qui a la nova adreça."
+      }
+    },
+    "update": {
+      "button": "Instal·la l'actualització",
+      "confirmTitle": "Voleu instal·lar l'actualització?",
+      "confirmDescription": "qui baixa la nova versió, en comprova la signatura i conserva el binari actual com a còpia de seguretat. Després qui es reinicia. La pàgina es recarrega quan qui torna.",
+      "runningWork": "La feina en curs, com les cerques de cross-seed, les automatitzacions, les còpies de seguretat i les anàlisis d'orfes, s'atura.",
+      "currentVersion": "Versió actual",
+      "targetVersion": "Versió nova",
+      "releaseNotes": "Notes de la versió",
+      "confirm": "Instal·la l'actualització",
+      "overlay": {
+        "notAppliedTitle": "L'actualització no s'ha aplicat",
+        "notAppliedDetail": "qui ha tornat, però amb una altra versió. Consulteu els registres de qui.",
+        "installedTitle": "qui s'ha actualitzat",
+        "installedDetail": "Torneu a carregar la pàgina per obrir la versió nova.",
+        "reload": "Recarrega la pàgina",
+        "noBackup": "qui s'ha actualitzat, però no ha conservat cap còpia de seguretat: {{error}}. Per tornar enrere, baixa la versió anterior manualment.",
+        "rollbackIntro": "Si la versió nova no s'inicia, executeu aquesta ordre i torneu a iniciar qui:",
+        "rollbackLabel": "Ordre per tornar enrere",
+        "rollbackDocs": "Passos per tornar enrere"
+      }
+    },
     "runtime": {
       "title": "Execució",
       "description": "Informació d'execució del servidor.",
