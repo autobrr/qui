@@ -43,6 +43,7 @@ const (
 type Injector struct {
 	jackettService            JackettDownloader
 	syncManager               TorrentManager
+	linkedFiles               linkedFileReader
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
@@ -76,6 +77,13 @@ type TorrentManager interface {
 	TorrentPathAligner
 }
 
+// linkedFileReader reads what the linked-file check needs before a partial
+// hardlink add resumes.
+type linkedFileReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
+}
+
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
 type TorrentChecker interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
@@ -93,6 +101,7 @@ type trackerCustomizationProvider interface {
 func NewInjector(
 	jackettService JackettDownloader,
 	syncManager TorrentManager,
+	linkedFiles linkedFileReader,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
@@ -101,6 +110,7 @@ func NewInjector(
 	return &Injector{
 		jackettService:            jackettService,
 		syncManager:               syncManager,
+		linkedFiles:               linkedFiles,
 		torrentChecker:            torrentChecker,
 		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
@@ -290,7 +300,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	switch {
 	case partialLinkTree:
-		if err := i.triggerRecheckForPartialLinkTree(req); err != nil {
+		if err := i.triggerRecheckForPartialLinkTree(req, addMode); err != nil {
 			result.ErrorMessage = fmt.Sprintf("torrent added but recheck failed: %v", err)
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
@@ -330,7 +340,7 @@ func isCheckingState(state qbt.TorrentState) bool {
 // The torrent was added paused (forced) so qBit doesn't try to use the incomplete link tree.
 // Returns an error if the recheck cannot be scheduled, since the torrent would be stuck
 // in a forced-paused state with no way to recover.
-func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest) error {
+func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest, addMode string) error {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil {
 		return errors.New("missing injector components for recheck")
 	}
@@ -345,16 +355,31 @@ func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest) error {
 	// If the user wanted the torrent running, resume it after the recheck finishes.
 	// If StartPaused=true, leave it paused (we just honor the user's setting).
 	if !req.StartPaused {
-		i.resumeAfterRecheck(req.InstanceID, hash)
+		i.resumeAfterRecheck(req.InstanceID, hash, linkedTorrentPaths(req, addMode))
 	}
 	return nil
+}
+
+// linkedTorrentPaths returns the torrent paths of a hardlink add's matched files.
+// A reflink clone is copy-on-write, so a reflink add returns nil and skips the
+// linked-file check (ADR 0004).
+func linkedTorrentPaths(req *InjectRequest, addMode string) map[string]struct{} {
+	if addMode != injectModeHardlink {
+		return nil
+	}
+	linked := make(map[string]struct{}, len(req.MatchResult.MatchedFiles))
+	for _, pair := range req.MatchResult.MatchedFiles {
+		linked[pair.TorrentFile.Path] = struct{}{}
+	}
+	return linked
 }
 
 // resumeAfterRecheck polls the torrent state in a background goroutine and
 // resumes the torrent once it exits checking states. This is used for partial
 // link tree injections where we temporarily forced the torrent paused for a
 // safe recheck, but the user's StartPaused=false means they want it running.
-func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
+// A non-nil linked set runs the linked-file check before every resume attempt.
+func (i *Injector) resumeAfterRecheck(instanceID int, hash string, linked map[string]struct{}) {
 	if i.torrentChecker == nil || i.syncManager == nil {
 		return
 	}
@@ -462,6 +487,24 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 					Int("attempts", resumeAttempts).
 					Msg("dirscan: resume attempts after partial link tree recheck exhausted")
 				return
+			}
+
+			if linked != nil {
+				name, missing, err := crossseed.MismatchedLinkedFile(ctx, i.linkedFiles, instanceID, hash, linked)
+				if err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+						Msg("dirscan: linked-file check failed, retrying")
+					continue
+				}
+				if name != "" {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("file", name).
+						Int64("missingBytes", missing).
+						Msg("dirscan: linked file failed its recheck; torrent stays paused so the download does not write into the source file")
+					return
+				}
 			}
 
 			resumeAttempts++

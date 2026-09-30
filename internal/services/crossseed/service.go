@@ -6662,48 +6662,69 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 	return s.hardlinkResumeAllowed(instanceID, req)
 }
 
-// pieceStateReader is the sync-manager method the hardlink gate needs beyond
-// qbittorrentSync. Without piece states the entry retries until the absolute
-// timeout; the pin keeps the real sync manager on the gate without widening
-// qbittorrentSync for its test doubles.
-type pieceStateReader interface {
+// LinkedFileReader is what the ADR 0004 linked-file check reads: the file list
+// and the piece states of one torrent.
+type LinkedFileReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
 }
 
-var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
+// The pin keeps the real sync manager on the check without widening
+// qbittorrentSync for its test doubles.
+var _ LinkedFileReader = (*qbittorrent.SyncManager)(nil)
 
 // hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
 // that no pending file shares. Fetch failures keep the entry for a retry.
-// Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
 func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 	defer cancel()
-	ctx = qbittorrent.WithForceFilesRefresh(ctx)
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
-	files := filesByHash[normalizeHash(req.hash)]
-	if err != nil || len(files) == 0 {
+	reader, ok := s.syncManager.(LinkedFileReader)
+	if !ok {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-	// Empty piece states would make every incomplete linked file look mismatched,
-	// which blocks the boundary packs the gate must let through; retry instead.
-	var pieces []qbt.PieceState
-	if reader, ok := s.syncManager.(pieceStateReader); ok {
-		pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash)
-	}
-	if err != nil || len(pieces) == 0 {
+	name, missing, err := MismatchedLinkedFile(ctx, reader, instanceID, req.hash, req.linkedPaths)
+	if err != nil {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-
-	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
 	if name == "" {
 		return true
 	}
 	req.blockedLinkedFile = name
 	req.blockedLinkedBytes = missing
 	return false
+}
+
+// MismatchedLinkedFile runs the linked-file check before a hardlink add resumes.
+// It returns the first linked file whose failed pieces no pending file shares,
+// with its missing bytes, or "" when the resume is safe. linked holds torrent
+// paths. A failed or empty read returns an error: the caller retries and does
+// not resume. Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
+func MismatchedLinkedFile(ctx context.Context, reader LinkedFileReader, instanceID int, hash string, linked map[string]struct{}) (string, int64, error) {
+	ctx = qbittorrent.WithForceFilesRefresh(ctx)
+
+	filesByHash, err := reader.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	if err != nil {
+		return "", 0, fmt.Errorf("read file list: %w", err)
+	}
+	files := filesByHash[normalizeHash(hash)]
+	if len(files) == 0 {
+		return "", 0, errors.New("read file list: empty")
+	}
+	// Empty piece states would make every incomplete linked file look mismatched,
+	// which blocks the boundary packs the check must let through.
+	pieces, err := reader.GetTorrentPieceStates(ctx, instanceID, hash)
+	if err != nil {
+		return "", 0, fmt.Errorf("read piece states: %w", err)
+	}
+	if len(pieces) == 0 {
+		return "", 0, errors.New("read piece states: empty")
+	}
+
+	name, missing := mismatchedLinkedFile(files, pieces, linked)
+	return name, missing, nil
 }
 
 // mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
