@@ -150,8 +150,12 @@ path dialect, `Backend.Paths() fsops.PathDialect` (`Join`, `Dir`, `Base`,
 and noop backends answer `fsops.HostPaths`, which is the host `filepath`,
 so local callsites keep their exact behavior; the remote backend answers
 `fsops.SlashPaths`, which is `path` with `FromSlash`/`ToSlash` as the
-identity, so a Windows-hosted qui operating a unix remote is correct by
-construction rather than by luck. A path that goes to or comes from a
+identity and a slash-only `Rel` (`path` has none, and `filepath.Rel`
+answers with backslashes on a Windows host), so a Windows-hosted qui
+operating a unix remote is correct by construction rather than by luck.
+Like `Backend`, `PathDialect` exceeds the five-method guideline on
+purpose: it mirrors `filepath`'s grammar, and a smaller split would leave
+callers reaching for the host package again. A path that goes to or comes from a
 backend is manipulated with that backend's dialect; host-only paths (the
 data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
 slash-delimited and stay inside their instance's backend domain end to

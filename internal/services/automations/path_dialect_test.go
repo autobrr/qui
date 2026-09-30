@@ -50,9 +50,16 @@ func TestBuildFullPathRejectionsAreDialectIndependent(t *testing.T) {
 		`AC\DC.mkv`,
 		"",
 	}
-	for _, d := range []fsops.PathDialect{fsops.HostPaths, fsops.SlashPaths} {
+	// The base must be absolute under each dialect, or the base check would
+	// refuse first and prove nothing about the names ("/data" is relative on
+	// a Windows host).
+	bases := map[fsops.PathDialect]string{
+		fsops.HostPaths:  t.TempDir(),
+		fsops.SlashPaths: "/data",
+	}
+	for d, base := range bases {
 		for _, name := range names {
-			_, ok := buildFullPath(d, "/data", name)
+			_, ok := buildFullPath(d, base, name)
 			require.False(t, ok, "%T should reject %q", d, name)
 		}
 	}

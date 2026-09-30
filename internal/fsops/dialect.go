@@ -83,6 +83,9 @@ func relSlash(base, target string) (string, error) {
 	if base == "." {
 		base = ""
 	}
+	if target == "." {
+		target = ""
+	}
 	bs := splitSlash(base)
 	ts := splitSlash(target)
 	n := 0
@@ -94,9 +97,6 @@ func relSlash(base, target string) (string, error) {
 	}
 	parts := slices.Repeat([]string{".."}, len(bs)-n)
 	parts = append(parts, ts[n:]...)
-	if len(parts) == 0 {
-		return ".", nil
-	}
 	return strings.Join(parts, "/"), nil
 }
 
