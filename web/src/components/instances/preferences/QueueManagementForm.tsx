@@ -68,7 +68,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         toast.success(t("preferences.queueManagement.toast.success"))
         onSuccess?.()
       } catch {
