@@ -28,6 +28,8 @@ const (
 	ActivityActionResumed             = "resumed"              // Batch resume operation
 	ActivityActionRechecked           = "rechecked"            // Batch force recheck operation
 	ActivityActionReannounced         = "reannounced"          // Batch force reannounce operation
+	ActivityActionQueueTopped         = "queue_topped"         // Batch move to top of queue
+	ActivityActionQueueBottomed       = "queue_bottomed"       // Batch move to bottom of queue
 	ActivityActionMoved               = "moved"                // Batch move operation
 	ActivityActionAutoManaged         = "auto_managed"         // Batch auto management operation
 	ActivityActionExportedToInstance  = "exported_to_instance" // Export torrent to another instance

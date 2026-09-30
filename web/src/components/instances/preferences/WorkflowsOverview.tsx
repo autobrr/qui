@@ -79,7 +79,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Braces, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
@@ -174,6 +174,8 @@ function formatAction(action: AutomationActivity["action"]): string {
     resumed: "resume",
     rechecked: "recheck",
     reannounced: "reannounce",
+    queue_topped: "queueTop",
+    queue_bottomed: "queueBottom",
     auto_managed: "autoManagement",
     moved: "move",
     external_program: "externalProgram",
@@ -253,6 +255,15 @@ function formatReannouncedSummary(details: AutomationActivity["details"], outcom
   return i18n.t(outcome === "dry-run" ? `${s}.reannouncedDryRun` : `${s}.reannounced`, { ns: "instances", count })
 }
 
+function formatQueueMovedSummary(details: AutomationActivity["details"], action: "queue_topped" | "queue_bottomed", outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const s = "preferences.workflowsOverview.summary"
+  if (action === "queue_topped") {
+    return i18n.t(outcome === "dry-run" ? `${s}.queueToppedDryRun` : `${s}.queueTopped`, { ns: "instances", count })
+  }
+  return i18n.t(outcome === "dry-run" ? `${s}.queueBottomedDryRun` : `${s}.queueBottomed`, { ns: "instances", count })
+}
+
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
   const s = "preferences.workflowsOverview.summary"
@@ -305,6 +316,8 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "resumed",
   "rechecked",
   "reannounced",
+  "queue_topped",
+  "queue_bottomed",
   "auto_managed",
   "moved",
   "exported_to_instance",
@@ -828,6 +841,8 @@ export function WorkflowsOverview({
     resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
     rechecked: "bg-orange-500/10 text-orange-500 border-orange-500/20",
     reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
+    queue_topped: "bg-pink-500/10 text-pink-500 border-pink-500/20",
+    queue_bottomed: "bg-stone-500/10 text-stone-500 border-stone-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
@@ -1252,6 +1267,10 @@ export function WorkflowsOverview({
                                         ) : event.action === "reannounced" ? (
                                           <span className="font-medium text-sm block">
                                             {formatReannouncedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "queue_topped" || event.action === "queue_bottomed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatQueueMovedSummary(event.details, event.action, event.outcome)}
                                           </span>
                                         ) : event.action === "moved" ? (
                                           <span className="font-medium text-sm block">
@@ -1811,7 +1830,8 @@ function RulePreview({
     tagActions.some((action) => action.enabled && action.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
     (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
-    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
+    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition) ||
+    (rule.conditions?.queuePosition?.enabled && rule.conditions.queuePosition.condition)
   )
 
   return (
@@ -1932,6 +1952,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
             {t("preferences.workflowsOverview.program")}
+          </Badge>
+        )}
+        {rule.conditions?.queuePosition?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            {rule.conditions.queuePosition.position === "top" ? <ArrowUpToLine className="h-3 w-3" /> : <ArrowDownToLine className="h-3 w-3" />}
+            {t(rule.conditions.queuePosition.position === "top" ? "preferences.workflowDialog.queuePosition.top" : "preferences.workflowDialog.queuePosition.bottom")}
           </Badge>
         )}
         <Button

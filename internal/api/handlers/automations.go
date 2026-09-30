@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
@@ -29,15 +30,17 @@ type AutomationHandler struct {
 	instanceStore        *models.InstanceStore
 	externalProgramStore *models.ExternalProgramStore
 	service              *automations.Service
+	syncManager          *qbittorrent.SyncManager
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service, syncManager *qbittorrent.SyncManager) *AutomationHandler {
 	return &AutomationHandler{
 		store:                store,
 		activityStore:        activityStore,
 		instanceStore:        instanceStore,
 		externalProgramStore: externalProgramStore,
 		service:              service,
+		syncManager:          syncManager,
 	}
 }
 
@@ -368,6 +371,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			(payload.Conditions.Resume != nil && payload.Conditions.Resume.Enabled) ||
 			(payload.Conditions.Recheck != nil && payload.Conditions.Recheck.Enabled) ||
 			(payload.Conditions.Reannounce != nil && payload.Conditions.Reannounce.Enabled) ||
+			(payload.Conditions.QueuePosition != nil && payload.Conditions.QueuePosition.Enabled) ||
 			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
 			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
@@ -433,6 +437,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, msg, err
 	}
 
+	if status, msg, err := h.validateQueuePositionAction(ctx, instanceID, isEnabled, payload.Conditions.QueuePosition); err != nil {
+		return status, msg, err
+	}
+
 	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
 		return http.StatusBadRequest, msg, err
 	}
@@ -489,6 +497,31 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	return 0, "", nil
 }
 
+// validateQueuePositionAction rejects an enabled queue position action on an enabled rule while
+// the instance has qBittorrent queueing turned off, since every move would be a no-op. A disabled
+// rule skips the preference read so it can be turned off after queueing is.
+func (h *AutomationHandler) validateQueuePositionAction(ctx context.Context, instanceID int, ruleEnabled bool, action *models.QueuePositionAction) (int, string, error) {
+	if action == nil || !action.Enabled {
+		return 0, "", nil
+	}
+	if err := action.Validate(); err != nil {
+		return http.StatusBadRequest, "Queue position must be 'top' or 'bottom'", err
+	}
+	if !ruleEnabled {
+		return 0, "", nil
+	}
+
+	prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to read queueing preference for validation")
+		return http.StatusInternalServerError, "Failed to read the instance's queueing setting", err
+	}
+	if !prefs.QueueingEnabled {
+		return http.StatusBadRequest, "Queue position needs torrent queueing. Enable queueing in the instance's qBittorrent settings, or remove the queue position action.", errors.New("queueing disabled")
+	}
+	return 0, "", nil
+}
+
 // conditionsUseField checks if any enabled action condition uses the specified field.
 func conditionsUseField(conditions *models.ActionConditions, field automations.ConditionField) bool {
 	if conditions == nil {
@@ -504,6 +537,7 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Resume != nil && check(c.Resume.Enabled, c.Resume.Condition)) ||
 		(c.Recheck != nil && check(c.Recheck.Enabled, c.Recheck.Condition)) ||
 		(c.Reannounce != nil && check(c.Reannounce.Enabled, c.Reannounce.Condition)) ||
+		(c.QueuePosition != nil && check(c.QueuePosition.Enabled, c.QueuePosition.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
 		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
@@ -637,6 +671,9 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	}
 	if conditions.Reannounce != nil && conditions.Reannounce.Enabled {
 		trees = append(trees, conditions.Reannounce.Condition)
+	}
+	if conditions.QueuePosition != nil && conditions.QueuePosition.Enabled {
+		trees = append(trees, conditions.QueuePosition.Condition)
 	}
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		trees = append(trees, conditions.Delete.Condition)
@@ -1116,6 +1153,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.Reannounce != nil {
 		validateConditionRegex(conditions.Reannounce.Condition, "/conditions/reannounce/condition", &result)
+	}
+	if conditions.QueuePosition != nil {
+		validateConditionRegex(conditions.QueuePosition.Condition, "/conditions/queuePosition/condition", &result)
 	}
 	if conditions.Delete != nil {
 		validateConditionRegex(conditions.Delete.Condition, "/conditions/delete/condition", &result)
