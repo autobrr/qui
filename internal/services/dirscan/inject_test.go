@@ -650,7 +650,10 @@ type safeRecordingManager struct {
 	pieces        []qbt.PieceState
 	pieceFailures int
 	pieceReads    int
-	bulkCalls     []struct {
+	// qbitHash, when set, is the only hash the file and piece reads accept,
+	// like qBittorrent's exact-ID lookup for a hybrid torrent.
+	qbitHash  string
+	bulkCalls []struct {
 		instanceID int
 		hashes     []string
 		action     string
@@ -689,12 +692,18 @@ func (m *safeRecordingManager) RenameTorrentFolder(_ context.Context, _ int, _, 
 func (m *safeRecordingManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.qbitHash != "" && hashes[0] != m.qbitHash {
+		return nil, errors.New("torrent not found")
+	}
 	return map[string]qbt.TorrentFiles{hashes[0]: m.files}, nil
 }
 
-func (m *safeRecordingManager) GetTorrentPieceStates(_ context.Context, _ int, _ string) ([]qbt.PieceState, error) {
+func (m *safeRecordingManager) GetTorrentPieceStates(_ context.Context, _ int, hash string) ([]qbt.PieceState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.qbitHash != "" && hash != m.qbitHash {
+		return nil, errors.New("torrent not found")
+	}
 	m.pieceReads++
 	if m.pieceFailures > 0 {
 		m.pieceFailures--
@@ -1218,12 +1227,14 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				instance, req := partialLinkTreeRequest(t)
+				// qBittorrent lists the torrent under another hash than the parsed
+				// one, as it does with the v2 hash of a hybrid torrent.
 				checker := &fakeTorrentChecker{
-					hash:      "deadbeef",
+					hash:      "cafef00d",
 					states:    []qbt.TorrentState{qbt.TorrentStatePausedDl},
 					completed: []int64{4},
 				}
-				manager := &safeRecordingManager{files: tt.files, pieces: tt.pieces, pieceFailures: tt.pieceFailures}
+				manager := &safeRecordingManager{files: tt.files, pieces: tt.pieces, pieceFailures: tt.pieceFailures, qbitHash: "cafef00d"}
 				injector := NewInjector(nil, manager, manager, checker, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 				res, err := injector.Inject(t.Context(), req)

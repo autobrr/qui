@@ -490,7 +490,8 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string, linked map[st
 			}
 
 			if linked != nil {
-				name, missing, err := crossseed.MismatchedLinkedFile(ctx, i.linkedFiles, instanceID, hash, linked)
+				// The file and piece endpoints match qBittorrent's exact ID, which is the v2 hash for a hybrid torrent.
+				name, missing, err := crossseed.MismatchedLinkedFile(ctx, i.linkedFiles, instanceID, torrent.Hash, linked)
 				if err != nil {
 					log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 						Msg("dirscan: linked-file check failed, retrying")
