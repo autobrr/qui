@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 )
@@ -38,7 +39,7 @@ func NewOrphanScanHandler(store *models.OrphanScanStore, instanceStore *models.I
 	}
 }
 
-func (h *OrphanScanHandler) requireLocalAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -50,8 +51,8 @@ func (h *OrphanScanHandler) requireLocalAccess(w http.ResponseWriter, r *http.Re
 		return false
 	}
 
-	if !instance.HasLocalFilesystemAccess {
-		RespondError(w, http.StatusForbidden, "Orphan scanning requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+	if !models.FilesystemCapabilitiesOf(instance).Has(models.CapabilityRead) {
+		RespondError(w, http.StatusForbidden, "Orphan scanning requires filesystem access. Enable 'Local Filesystem Access' in instance settings, or configure SSH access with a confirmed host key.")
 		return false
 	}
 
@@ -80,7 +81,7 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -120,7 +121,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -245,7 +246,7 @@ func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -288,7 +289,7 @@ func (h *OrphanScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -320,7 +321,7 @@ func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -396,7 +397,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 
@@ -442,6 +443,14 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, fsops.ErrNotCapable) {
+			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for instances reached over SSH. The preview is kept.")
+			return
+		}
+		if errors.Is(err, orphanscan.ErrFilesystemModeChanged) {
+			RespondError(w, http.StatusConflict, orphanscan.FilesystemModeChangedMessage)
+			return
+		}
 		log.Error().Err(err).Int64("runID", runID).Msg("orphanscan: failed to confirm deletion")
 		RespondError(w, http.StatusInternalServerError, "Failed to start deletion")
 		return
@@ -457,7 +466,7 @@ func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireFilesystemAccess(w, r, instanceID) {
 		return
 	}
 

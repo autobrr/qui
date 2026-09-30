@@ -439,7 +439,7 @@ scratch directories and a temporarily added, uniquely tagged
 4. Frontend.
 5. Feature rollout per service, degraded-mode UX. Most consumers still
    admit an instance on `HasLocalFilesystemAccess` rather than on its
-   filesystem mode: orphan scan (handler and service filters), automations
+   filesystem mode: automations
    (missing-files condition, hardlink index; rule save and dry-run
    validation), dirscan, cross-seed (link mode, manual assemble,
    mediainfo, season pack, partial pool, local-match detection), the sync
@@ -456,9 +456,10 @@ scratch directories and a temporarily added, uniquely tagged
    that through `Pool.LocalBackend`, and missing files through
    `Pool.Resolve`. An instance whose local access was turned off after the
    gate is then refused rather than read over SSH at a local path. Orphan
-   scan still resolves with `GetBackend` until remote orphan scan replaces
-   its gate. Each remaining gate lifts in its own slice, with the
-   degraded-mode handling that service needs, and the API-driven checks
+   scan admits an instance on Read, walks the backend `Pool.Require`
+   returns for Read, and refuses to delete from a run scanned over SSH.
+   Each remaining gate lifts in its own slice, with the degraded-mode
+   handling that service needs, and the API-driven checks
    (missing files, orphan scan) become the field test of that slice. Every
    remote read that loses its connection, or that the pool will not dial,
    fails with `fsops.ErrConnectionLost`. When the pool refused on purpose

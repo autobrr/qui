@@ -24,16 +24,29 @@ When matching paths, qui normalizes Unicode paths to canonical NFC form. If the 
 :::
 
 :::info
-If multiple **active** qBittorrent instances have **[Local Filesystem Access](./instance-settings.md#local-filesystem-access)** enabled and their torrent save paths overlap, qui also protects files that torrents from those other instances reference. qui applies this protection even when it scans a single instance.
+If multiple **active** qBittorrent instances see the same files and their torrent save paths overlap, qui also protects files that torrents from those other instances reference. qui applies this protection even when it scans a single instance.
 
-To protect files safely, qui must determine whether the scan roots overlap. If any other local-access instance is unreachable or not ready, the scan fails to prevent false positives.
+For a scan with **[Local Filesystem Access](./instance-settings.md#local-filesystem-access)**, the other instances are those with local filesystem access and any instance set up with the same SSH host and port as the scanned one. For a scan over SSH, they are the instances set up with the same SSH host and port, whether or not their own SSH access is complete.
+
+To protect files safely, qui must determine whether the scan roots overlap. If any of those other instances is unreachable or not ready, the scan fails to prevent false positives.
 :::
 
 :::warning
-qui does not protect disabled instances. If a disabled instance with local filesystem access shares save paths with an active instance, qui can flag its files as orphans. Before you scan, enable the instance or make sure that the paths do not overlap.
+qui does not protect disabled instances. If a disabled instance shares save paths with an active instance, qui can flag its files as orphans. Before you scan, enable the instance or make sure that the paths do not overlap.
 :::
 
 <LocalFilesystemDocker />
+
+## Instances reached over SSH
+
+An instance that qui reaches over SSH, with a confirmed host key, can be scanned and previewed like a local one. Some parts do not work over SSH yet:
+
+- qui does not delete files over SSH. Confirming the preview is refused and the preview stays available until the next scan.
+- Automatic cleanup does not run. A scheduled scan stops at a preview and notes that cleanup was skipped. A new scan, manual or scheduled, replaces the previous SSH preview and marks it canceled. The next scheduled scan runs one scan interval after the scan behind that preview started.
+- qui cannot tell when two paths are the same file, for example through a bind mount. A file reachable at a second path can be listed, even when a torrent uses it at the first.
+- Protection by other instances only covers instances set up with the same SSH host name and port. The same server under a different name, such as its IP address, is not matched.
+
+If you switch an instance between local and SSH access after a scan, qui refuses to delete from that scan and marks it failed. Run a new scan.
 
 ## Directories no torrent points at
 
@@ -53,7 +66,7 @@ Both are off by default. Turning them on widens what a scan can flag, so review 
 
 Everything else still applies inside the wider roots:
 
-- Files that torrents reference are protected, including torrents on other active instances with local filesystem access.
+- Files that torrents reference are protected, including torrents on the other active instances that see the same files.
 - Ignore paths, the grace period, and max items per run all apply.
 - A save path missing from disk, such as an unmounted volume, is reported rather than treated as scanned, even when a wider root covers it.
 
