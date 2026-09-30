@@ -9,9 +9,11 @@ import (
 	"crypto/rsa"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -51,7 +53,16 @@ const (
 	// next request arrives, the way sshd does when its sftp-server exits,
 	// and leaves the connection up.
 	SFTPCloseChannelOnNextRequest
+	// SFTPStallReadDir serves an empty in-memory tree whose directory
+	// listings hang, the way sftp-server does on a hung network mount. Every
+	// other request is answered. The first listing to arrive starts a timer
+	// that ends the stall on its own, so a client that ignores its deadline
+	// fails the test instead of hanging it. ReleaseStall ends it sooner.
+	SFTPStallReadDir
 )
+
+// stallTimeout is how long a stalled listing waits before it releases itself.
+const stallTimeout = 3 * time.Second
 
 const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
 
@@ -65,13 +76,22 @@ type Server struct {
 
 	exec ExecMode
 
-	mu       sync.Mutex
-	sftpMode SFTPMode
-	dials    int
-	auths    int
-	accepts  int
-	channels int
-	live     map[*ssh.ServerConn]struct{}
+	mu              sync.Mutex
+	sftpMode        SFTPMode
+	dials           int
+	auths           int
+	accepts         int
+	channels        int
+	stalledReadDirs int
+	live            map[*ssh.ServerConn]struct{}
+
+	// wg tracks every goroutine the server starts, so Cleanup waits for all.
+	wg sync.WaitGroup
+
+	stallStart   sync.Once
+	stallTimer   *time.Timer
+	stallRelease chan struct{}
+	releaseStall func()
 }
 
 // NewServer starts a server on 127.0.0.1 with hostKey and stops it when the
@@ -79,7 +99,8 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}, stallRelease: make(chan struct{})}
+	server.releaseStall = sync.OnceFunc(func() { close(server.stallRelease) })
 	config := &ssh.ServerConfig{
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
@@ -106,22 +127,26 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 
 	server.Addr = listener.Addr().String()
 
-	var wg sync.WaitGroup
-	wg.Go(func() {
+	server.wg.Go(func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				return
 			}
-			wg.Go(func() {
+			server.wg.Go(func() {
 				server.serve(conn, config)
 			})
 		}
 	})
 
 	t.Cleanup(func() {
+		server.ReleaseStall()
 		_ = listener.Close()
-		wg.Wait()
+		server.wg.Wait()
+		// Read after Wait: the stall that set it ran on a goroutine Wait covered.
+		if server.stallTimer != nil {
+			server.stallTimer.Stop()
+		}
 	})
 
 	return server
@@ -159,6 +184,20 @@ func (s *Server) Channels() int {
 	return s.channels
 }
 
+// StalledReadDirs returns the number of directory listings that reached the
+// stall, which is how a test proves its deadline covered the stall and not
+// something before it.
+func (s *Server) StalledReadDirs() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stalledReadDirs
+}
+
+// ReleaseStall ends an SFTPStallReadDir stall. Safe to call more than once.
+func (s *Server) ReleaseStall() {
+	s.releaseStall()
+}
+
 func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = conn.Close() }()
 
@@ -182,7 +221,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.mu.Unlock()
 	}()
 
-	go ssh.DiscardRequests(reqs)
+	s.wg.Go(func() { ssh.DiscardRequests(reqs) })
 
 	var sessions sync.WaitGroup
 	defer sessions.Wait()
@@ -228,11 +267,14 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
-			if mode == SFTPStall {
+			switch mode {
+			case SFTPStall:
 				<-stalled
-				return
+			case SFTPStallReadDir:
+				s.serveStallingSFTP(channel)
+			default:
+				s.serveSFTP(conn, channel)
 			}
-			s.serveSFTP(conn, channel)
 			return
 
 		case "exec":
@@ -266,6 +308,40 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	}
 	defer func() { _ = server.Close() }()
 	_ = server.Serve()
+}
+
+// serveStallingSFTP serves SFTPStallReadDir. Serve returns once its workers
+// have, so a listing still stalled holds the session until the stall ends.
+func (s *Server) serveStallingSFTP(channel ssh.Channel) {
+	handlers := sftp.InMemHandler()
+	handlers.FileList = stallingLister{inner: handlers.FileList, server: s}
+	server := sftp.NewRequestServer(channel, handlers)
+	defer func() { _ = server.Close() }()
+	_ = server.Serve()
+}
+
+// stallingLister answers every list request but a directory listing from the
+// in-memory tree.
+type stallingLister struct {
+	inner  sftp.FileLister
+	server *Server
+}
+
+func (l stallingLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
+	if r.Method != "List" {
+		return l.inner.Filelist(r)
+	}
+	return l, nil
+}
+
+func (l stallingLister) ListAt([]os.FileInfo, int64) (int, error) {
+	s := l.server
+	s.mu.Lock()
+	s.stalledReadDirs++
+	s.mu.Unlock()
+	s.stallStart.Do(func() { s.stallTimer = time.AfterFunc(stallTimeout, s.releaseStall) })
+	<-s.stallRelease
+	return 0, io.EOF
 }
 
 func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
