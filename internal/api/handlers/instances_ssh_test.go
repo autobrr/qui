@@ -520,6 +520,23 @@ func TestInstanceResponseCarriesSSHFieldsWithoutKeyMaterial(t *testing.T) {
 	assert.NotContains(t, raw, "sshHostKeyEncrypted")
 }
 
+func TestInstanceResponsesCarryCapabilities(t *testing.T) {
+	f := newSSHFixture(t, "instance-capabilities")
+	assert.Equal(t, models.FilesystemCapabilities{}, f.listInstance().Capabilities, "no access")
+
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	assert.Equal(t, models.FilesystemCapabilities{Read: true}, f.listInstance().Capabilities, "remote")
+
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","hasLocalFilesystemAccess":true}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var updated InstanceResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &updated))
+	local := models.FilesystemCapabilities{Read: true, Identity: true, Write: true, Content: true}
+	assert.Equal(t, local, updated.Capabilities, "local, update response")
+	assert.Equal(t, local, f.listInstance().Capabilities, "local, list response")
+}
+
 func (f *sshFixture) listBody() string {
 	f.t.Helper()
 

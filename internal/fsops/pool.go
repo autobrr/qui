@@ -57,21 +57,50 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 // one instance read, so a caller that records the mode cannot label a walk
 // with a mode the instance changed to in between.
 func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.FilesystemMode, error) {
+	instance, err := p.load(ctx, instanceID)
+	if err != nil {
+		return nil, "", err
+	}
+	return p.backendFor(instance)
+}
+
+// Require returns the backend and the instance row for an instance whose mode
+// grants capability, both from one read, so a caller cannot check one row and
+// act on another. Any other instance fails with ErrNotCapable.
+func (p *Pool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (Backend, *models.Instance, error) {
+	instance, err := p.load(ctx, instanceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !models.FilesystemCapabilitiesOf(instance).Has(capability) {
+		return nil, nil, fmt.Errorf("instance %d, %s: %w", instanceID, capability, ErrNotCapable)
+	}
+	backend, _, err := p.backendFor(instance)
+	if err != nil {
+		return nil, nil, err
+	}
+	return backend, instance, nil
+}
+
+func (p *Pool) load(ctx context.Context, instanceID int) (*models.Instance, error) {
 	instance, err := p.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		return nil, "", fmt.Errorf("load instance %d: %w", instanceID, err)
+		return nil, fmt.Errorf("load instance %d: %w", instanceID, err)
 	}
 	if instance == nil {
-		return nil, "", fmt.Errorf("instance %d not found", instanceID)
+		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
+	return instance, nil
+}
 
+func (p *Pool) backendFor(instance *models.Instance) (Backend, models.FilesystemMode, error) {
 	mode := models.FilesystemAccessMode(instance)
 	switch mode {
 	case models.FilesystemModeLocal:
 		return p.local, mode, nil
 	case models.FilesystemModeRemote:
 		if p.remote == nil {
-			return nil, "", fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotWired)
+			return nil, "", fmt.Errorf("instance %d: %w", instance.ID, ErrRemoteBackendNotWired)
 		}
 		return p.remote(instance), mode, nil
 	case models.FilesystemModeNone:
@@ -79,7 +108,7 @@ func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.Fil
 	}
 	// No default arm, so exhaustive flags a new mode here instead of letting
 	// it fall through to "not configured".
-	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instanceID, mode)
+	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instance.ID, mode)
 }
 
 // LocalBackend is Resolve for a caller that admitted the instance on local

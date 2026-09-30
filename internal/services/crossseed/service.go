@@ -809,12 +809,13 @@ func (s *Service) getBackendPool() *fsops.Pool {
 	return v.(*fsops.Pool)
 }
 
-func (s *Service) getBackendForInstance(ctx context.Context, instanceID int) (fsops.Backend, error) {
+func (s *Service) getBackendForInstance(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, error) {
 	pool := s.getBackendPool()
 	if pool == nil {
 		return nil, errors.New("backend pool not configured")
 	}
-	return pool.GetBackend(ctx, instanceID)
+	backend, _, err := pool.Require(ctx, instanceID, capability)
+	return backend, err
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service
@@ -882,12 +883,12 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Create match context with lazy file loading. Files are fetched only when
 	// content-path overlap or linked-copy verification needs them.
 	matchCtx := &localMatchContext{
-		ctx:               ctx,
-		svc:               s,
-		sourceInstanceID:  sourceInstanceID,
-		sourceHash:        sourceTorrent.Hash,
-		sourceSavePath:    sourceTorrent.SavePath,
-		sourceHasFSAccess: instanceHasLocalFSAccess(instances, sourceInstanceID),
+		ctx:                   ctx,
+		svc:                   s,
+		sourceInstanceID:      sourceInstanceID,
+		sourceHash:            sourceTorrent.Hash,
+		sourceSavePath:        sourceTorrent.SavePath,
+		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
 	}
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
@@ -1024,12 +1025,12 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
-	svc               *Service
-	sourceInstanceID  int
-	sourceHash        string
-	sourceSavePath    string
-	sourceHasFSAccess bool
+	ctx                   context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	svc                   *Service
+	sourceInstanceID      int
+	sourceHash            string
+	sourceSavePath        string
+	sourceHasFileIdentity bool
 
 	// Lazy-loaded source file data
 	fetched          bool
@@ -1096,7 +1097,7 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		return nil
 	}
 
-	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID)
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, models.CapabilityIdentity)
 	if err != nil {
 		// Unlike a per-file stat failure, a backend outage discards ALL
 		// hardlink evidence for the instance — record it so strict mode
@@ -1146,8 +1147,8 @@ func (s *Service) localLinkedMatchType(
 	candidateInstance *models.Instance,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 ) string {
-	if matchCtx == nil || !matchCtx.sourceHasFSAccess ||
-		candidateInstance == nil || !candidateInstance.HasLocalFilesystemAccess ||
+	if matchCtx == nil || !matchCtx.sourceHasFileIdentity ||
+		candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
 		candidate == nil || candidate.ContentPath == "" {
 		return ""
 	}
@@ -1169,7 +1170,7 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID)
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, models.CapabilityIdentity)
 	if err != nil {
 		// A backend outage discards all evidence for the candidate — record it
 		// so strict mode fails the check instead of reading "no cross-seeds".
@@ -1190,7 +1191,7 @@ func (s *Service) localLinkedMatchType(
 	if filesShareAllocation == nil {
 		return ""
 	}
-	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID)
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, models.CapabilityIdentity)
 	if err != nil {
 		if matchCtx.verificationErr == nil {
 			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)
@@ -1464,12 +1465,12 @@ func hasWindowsDrivePrefix(name string) bool {
 		name[1] == ':'
 }
 
-// instanceHasLocalFSAccess reports whether the instance with the given ID has
-// local filesystem access enabled.
-func instanceHasLocalFSAccess(instances []*models.Instance, instanceID int) bool {
+// instanceHasFileIdentity reports whether qui trusts the file identity of the
+// instance with the given ID.
+func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool {
 	for _, instance := range instances {
 		if instance.ID == instanceID {
-			return instance.HasLocalFilesystemAccess
+			return models.FilesystemCapabilitiesOf(instance).Identity
 		}
 	}
 	return false

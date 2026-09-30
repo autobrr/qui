@@ -41,10 +41,10 @@ func (s *statSpy) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
 }
 
-// The delete handler gates the cleanup on one read of the instance and
-// resolves the backend with another. If local access was turned off between
-// the two, the cleanup must be skipped rather than stat and later remove the
-// local hardlink base dir's paths on the SSH host.
+// The ClientPool's instance store still reads the row as local, the backend
+// pool's store reads it as remote. The cleanup must decide from the backend
+// pool's row alone and skip, rather than stat and later remove the local
+// hardlink base dir's paths on the SSH host.
 func TestManagedDeleteCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	const hash = "cccccccccccccccccccccccccccccccccccccccc"
 	baseDir := filepath.Join(t.TempDir(), "links")

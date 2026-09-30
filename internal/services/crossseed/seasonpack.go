@@ -471,7 +471,7 @@ func (s *Service) addSeasonPack(
 		backend := planBuild.backend
 		if backend == nil {
 			var backendErr error
-			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID); backendErr != nil {
+			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID, models.CapabilityWrite); backendErr != nil {
 				log.Warn().Err(backendErr).Str("torrentName", torrentName).Msg("season pack: no backend to rollback after add failure")
 			}
 		}
@@ -594,7 +594,7 @@ func (s *Service) planSeasonPack(
 		return nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
 	}
 
-	backend, err := s.getBackendForInstance(ctx, inst.ID)
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
 	if err != nil {
 		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
 	}
@@ -638,7 +638,7 @@ func (s *Service) planSeasonPack(
 }
 
 func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instance, planBuild *seasonPackPlanBuild, linkMode string) error {
-	backend, err := s.getBackendForInstance(ctx, inst.ID)
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
 	if err != nil {
 		return err
 	}
@@ -936,12 +936,12 @@ func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[e
 	return episodes
 }
 
-// filterLinkEligible returns instances that have local filesystem access
-// and either hardlink or reflink mode enabled.
+// filterLinkEligible returns instances where qui may write link trees and
+// either hardlink or reflink mode is enabled.
 func filterLinkEligible(instances []*models.Instance) []*models.Instance {
 	var eligible []*models.Instance
 	for _, inst := range instances {
-		if !inst.HasLocalFilesystemAccess {
+		if !models.FilesystemCapabilitiesOf(inst).Write {
 			continue
 		}
 		switch {

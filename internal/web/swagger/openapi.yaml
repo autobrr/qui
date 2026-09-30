@@ -7090,7 +7090,27 @@ components:
           type: string
           enum: [none, local, remote]
           description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
+        capabilities:
+          $ref: '#/components/schemas/FilesystemCapabilities'
 
+
+    FilesystemCapabilities:
+      type: object
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
+      required: [read, identity, write, content]
+      properties:
+        read:
+          type: boolean
+          description: qui can list, stat, and walk paths.
+        identity:
+          type: boolean
+          description: qui trusts file identity (device and inode) to find hardlinks.
+        write:
+          type: boolean
+          description: qui can create and remove hardlink and reflink trees.
+        content:
+          type: boolean
+          description: qui can read file content, for downloads, MediaInfo, and Disc scans.
 
     SSHHostKeyRequest:
       type: object

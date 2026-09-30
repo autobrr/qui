@@ -897,7 +897,7 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	}
 
 	if instance != nil {
-		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
+		evalCtx.setFilesystemAccess(instance)
 	}
 
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
@@ -1065,7 +1065,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 // setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
 func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) *HardlinkIndex {
-	if instance == nil || !instance.HasLocalFilesystemAccess {
+	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Identity {
 		return nil
 	}
 	needsHardlinkScope, needsCrossScope, needsHardlinkSignatureGrouping := deleteHardlinkNeeds(rule)
@@ -1646,7 +1646,7 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 
 // setupCategoryHardlinkContext sets up hardlink index if needed for category preview.
 func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
-	if instance == nil || !instance.HasLocalFilesystemAccess {
+	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Identity {
 		return
 	}
 	if rule.Conditions == nil || rule.Conditions.Category == nil {
@@ -2082,10 +2082,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Initialize evaluation context
-	evalCtx := &EvalContext{
-		InstanceHasLocalAccess: instance.HasLocalFilesystemAccess,
-		ReleaseParser:          s.releaseParser,
-	}
+	evalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+	evalCtx.setFilesystemAccess(instance)
 
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
@@ -2104,7 +2102,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	needsCrossScope := rulesUseCondition(eligibleRules, FieldHardlinkScopeCross)
 	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
 	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping || needsCrossScope
-	if instance.HasLocalFilesystemAccess && needsHardlinkIndex {
+	if evalCtx.InstanceHasFileIdentity && needsHardlinkIndex {
 		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
@@ -5500,8 +5498,8 @@ func (s *Service) recordDryRunActivities(
 	if s.instanceStore != nil && ruleByID != nil {
 		instance, err := s.instanceStore.Get(ctx, instanceID)
 		if err == nil && instance != nil {
-			dryRunEvalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
-			if dryRunEvalCtx.InstanceHasLocalAccess {
+			dryRunEvalCtx.setFilesystemAccess(instance)
+			if dryRunEvalCtx.InstanceHasFileIdentity {
 				needsHardlinkSignature := false
 				needsDryRunCrossScope := false
 				for _, rule := range ruleByID {

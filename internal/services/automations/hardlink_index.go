@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -73,7 +74,7 @@ type HardlinkIndex struct {
 	ScopeByHash map[string]string
 
 	// CrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
-	// Considers files from ALL instances with HasLocalFilesystemAccess when resolving
+	// Considers files from ALL instances with trusted file identity when resolving
 	// whether "outside" links are on other qBittorrent instances or truly external.
 	// Used for HARDLINK_SCOPE_CROSS condition evaluation. Nil until Phase 2 runs.
 	// Access requires holding crossScopeMu.
@@ -516,7 +517,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
-	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
 			Msg("automations: failed to get backend to re-read delete candidates, holding the deletions")
@@ -640,7 +641,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 		return nil, false
 	}
 
-	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
 			Msg("automations: failed to get backend for hardlink index update, falling back to a full build")
@@ -694,10 +695,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	// The caller admitted the instance on local access from a snapshot. sftp
-	// reports no inode numbers, so a build over it would only cost a stat per
-	// file and cache an index with every scope unknown.
-	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
+	// The caller admitted the instance from a snapshot. sftp reports no inode
+	// numbers, so a build over it would only cost a stat per file and cache an
+	// index with every scope unknown.
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
 		index.builtAt = time.Now()
@@ -1045,7 +1046,7 @@ func (idx *HardlinkIndex) finalizeCrossScope(instanceID int, reason string) {
 	}
 }
 
-// listCrossScopeInstances returns IDs of other active instances with local filesystem access.
+// listCrossScopeInstances returns IDs of other active instances with trusted file identity.
 func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) ([]int, error) {
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
@@ -1053,7 +1054,7 @@ func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) (
 	}
 	var result []int
 	for _, inst := range instances {
-		if inst.ID != instanceID && inst.IsActive && inst.HasLocalFilesystemAccess {
+		if inst.ID != instanceID && inst.IsActive && models.FilesystemCapabilitiesOf(inst).Identity {
 			result = append(result, inst.ID)
 		}
 	}
@@ -1090,7 +1091,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
-		backend, backendErr := s.backendPool.LocalBackend(ctx, otherID)
+		backend, _, backendErr := s.backendPool.Require(ctx, otherID, models.CapabilityIdentity)
 		if backendErr != nil {
 			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get backend for cross-scope scan, skipping instance")
