@@ -22,6 +22,8 @@ import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
   instanceId: number
+  /** The instance is reached over SSH, where auto-cleanup does not run yet. */
+  isRemote?: boolean
   onSuccess?: () => void
   /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
@@ -43,6 +45,7 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
 
 export function OrphanScanSettingsForm({
   instanceId,
+  isRemote = false,
   onSuccess,
   formId,
 }: OrphanScanSettingsFormProps) {
@@ -359,6 +362,13 @@ export function OrphanScanSettingsForm({
         </div>
 
         <div className="space-y-4">
+          {isRemote && (
+            <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0" />
+              <p>{t("preferences.orphanScanOverview.remoteLimits")}</p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
             <div className="flex items-center gap-2">
               <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">

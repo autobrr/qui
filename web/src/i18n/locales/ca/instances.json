@@ -1453,10 +1453,11 @@
     "orphanScanOverview": {
       "title": "Exploració d'orfes",
       "noInstancesDescription": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nCal activar l'accés al sistema de fitxers local per a cada instància.",
+      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nCal l'accés al sistema de fitxers local o l'accés SSH per a cada instància.",
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
-      "noLocalAccess": "Sense accés local",
-      "noLocalAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
+      "noFilesystemAccess": "Sense accés als fitxers",
+      "noLocalAccessTooltip": "L'exploració d'orfes necessita accés als fitxers d'aquesta instància. Activa «Accés al sistema de fitxers local» a la configuració de la instància, o configura l'accés SSH amb una clau d'amfitrió confirmada.",
+      "remoteLimits": "La supressió i la neteja automàtica encara no funcionen per SSH. A més, qui no pot saber quan dos camins són el mateix fitxer, de manera que un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi.",
       "on": "Activada",
       "off": "Desactivada",
       "summaryGrace": "Marge {{grace}} min",
@@ -1466,6 +1467,7 @@
       "cancel": "Cancel·la",
       "autoCleanupEnabled": "Neteja automàtica activada (≤{{max}} fitxers)",
       "autoCleanupDisabled": "Neteja automàtica desactivada",
+      "autoCleanupRemote": "Sense neteja automàtica per SSH",
       "scanNow": "Explora ara",
       "configure": "Configura",
       "totalSize": "Mida total: {{size}}",
@@ -1513,6 +1515,7 @@
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",
       "description": "Revisa els fitxers i els directoris que aquesta execució suprimirà.",
+      "remoteDescription": "Revisa els fitxers i els directoris que ha trobat aquesta exploració.",
       "truncated": " (truncat)",
       "path": "Camí",
       "size": "Mida",
@@ -1540,6 +1543,7 @@
       "itemsCount_one": "{{count}} element · {{size}}",
       "itemsCount_other": "{{count}} elements · {{size}}",
       "deleteItems": "Elimina",
+      "remoteDeleteUnavailable": "Aquesta exploració s'ha fet per SSH, on la supressió encara no és compatible. Exporta la llista per suprimir tu mateix els fitxers al servidor.",
       "directory": "Directori",
       "noItems": "No hi ha res per mostrar."
     },

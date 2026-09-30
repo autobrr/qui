@@ -828,10 +828,11 @@
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
       "noInstancesDescription": "Aucune instance configurée. Ajoutez-en une dans les paramètres.",
-      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès au système de fichiers local.",
+      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès au système de fichiers local ou un accès SSH pour chaque instance.",
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
-      "noLocalAccess": "Pas d'accès local",
-      "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
+      "noFilesystemAccess": "Aucun accès aux fichiers",
+      "noLocalAccessTooltip": "L'analyse d'orphelins a besoin d'accéder aux fichiers de cette instance. Activez l'accès au système de fichiers local dans les paramètres de l'instance, ou configurez un accès SSH avec une clé d'hôte confirmée.",
+      "remoteLimits": "La suppression et le nettoyage automatique ne fonctionnent pas encore via SSH. L'application ne sait pas non plus reconnaître deux chemins menant au même fichier : un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolérance {{grace}}min",
@@ -843,6 +844,7 @@
       "cancel": "Annuler",
       "autoCleanupEnabled": "Nettoyage automatique activé (≤{{max}} fichiers)",
       "autoCleanupDisabled": "Nettoyage automatique désactivé",
+      "autoCleanupRemote": "Pas de nettoyage auto via SSH",
       "pathsIgnored_one": " · {{count}} chemin ignoré",
       "pathsIgnored_other": " · {{count}} chemins ignorés",
       "scanNow": "Analyser maintenant",
@@ -888,6 +890,7 @@
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
       "description": "Examinez les fichiers et dossiers que cette exécution va supprimer.",
+      "remoteDescription": "Examinez les fichiers et dossiers trouvés par cette analyse.",
       "itemsCount_one": "{{count}} élément · {{size}}",
       "itemsCount_other": "{{count}} éléments · {{size}}",
       "truncated": " (tronqué)",
@@ -902,6 +905,7 @@
       "exportCSV": "Exporter CSV",
       "close": "Fermer",
       "deleteItems": "Supprimer",
+      "remoteDeleteUnavailable": "Cette analyse a été faite via SSH, où la suppression n'est pas encore prise en charge. Exportez la liste pour supprimer vous-même les fichiers sur le serveur.",
       "statusLabels": {
         "pending": "En attente",
         "deleted": "Supprimé",

@@ -834,10 +834,11 @@
     "orphanScanOverview": {
       "title": "Orphan-Scan",
       "noInstancesDescription": "Keine Instanzen konfiguriert. Füge in den Einstellungen eine hinzu, um diesen Dienst zu nutzen.",
-      "tooltip": "Findet Dateien auf dem Datenträger, die keinem Torrent in qBittorrent zugeordnet sind.\nErfordert, dass der lokale Dateisystemzugriff für jede Instanz aktiviert ist.",
+      "tooltip": "Findet Dateien auf dem Datenträger, die keinem Torrent in qBittorrent zugeordnet sind.\nErfordert für jede Instanz lokalen Dateisystemzugriff oder SSH-Zugriff.",
       "description": "Durchsucht Download-Verzeichnisse und identifiziert Orphan-Dateien zum Aufräumen.",
-      "noLocalAccess": "Kein lokaler Zugriff",
-      "noLocalAccessTooltip": "qui und qBittorrent müssen auf derselben Maschine laufen. Aktiviere \"Lokaler Dateisystemzugriff\" in den Instanzeinstellungen, um den Orphan-Scan zu nutzen.",
+      "noFilesystemAccess": "Kein Dateisystemzugriff",
+      "noLocalAccessTooltip": "Der Orphan-Scan braucht Zugriff auf die Dateien dieser Instanz. Aktiviere \"Lokaler Dateisystemzugriff\" in den Instanzeinstellungen oder richte SSH-Zugriff mit bestätigtem Host-Schlüssel ein.",
+      "remoteLimits": "Löschen und Auto-Cleanup laufen über SSH noch nicht. qui erkennt außerdem nicht, wenn zwei Pfade dieselbe Datei sind. Eine Datei, die über einen zweiten Pfad erreichbar ist, etwa per Bind-Mount, kann daher gelistet werden, obwohl ein Torrent sie nutzt.",
       "on": "An",
       "off": "Aus",
       "summaryGrace": "Schonfrist {{grace}}min",
@@ -849,6 +850,7 @@
       "cancel": "Abbrechen",
       "autoCleanupEnabled": "Auto-Cleanup aktiviert (≤{{max}} Dateien)",
       "autoCleanupDisabled": "Auto-Cleanup deaktiviert",
+      "autoCleanupRemote": "Kein Auto-Cleanup über SSH",
       "pathsIgnored_one": " · {{count}} Pfad ignoriert",
       "pathsIgnored_other": " · {{count}} Pfade ignoriert",
       "scanNow": "Jetzt scannen",
@@ -894,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Orphan-Vorschau",
       "description": "Prüfe die Dateien und Verzeichnisse, die dieser Lauf entfernt.",
+      "remoteDescription": "Prüfe die Dateien und Verzeichnisse, die dieser Scan gefunden hat.",
       "itemsCount_one": "{{count}} Eintrag · {{size}}",
       "itemsCount_other": "{{count}} Einträge · {{size}}",
       "truncated": " (gekürzt)",
@@ -908,6 +911,7 @@
       "exportCSV": "CSV exportieren",
       "close": "Schließen",
       "deleteItems": "Löschen",
+      "remoteDeleteUnavailable": "Dieser Scan lief über SSH, wo Löschen noch nicht unterstützt wird. Exportiere die Liste, um die Dateien selbst auf dem Server zu entfernen.",
       "statusLabels": {
         "pending": "Ausstehend",
         "deleted": "Gelöscht",

@@ -203,9 +203,9 @@ function InstanceOrphanScanItem({
   onToggle: () => void
 }) {
   const { t } = useTranslation("instances")
-  const hasLocalAccess = instance.hasLocalFilesystemAccess
-  const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasLocalAccess })
-  const runsQuery = useOrphanScanRuns(instance.id, { limit: 5, enabled: hasLocalAccess })
+  const hasAccess = instance.capabilities.read
+  const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasAccess })
+  const runsQuery = useOrphanScanRuns(instance.id, { limit: 5, enabled: hasAccess })
   const triggerMutation = useTriggerOrphanScan(instance.id)
   const updateSettingsMutation = useUpdateOrphanScanSettings(instance.id)
   const cancelMutation = useCancelOrphanScanRun(instance.id)
@@ -265,13 +265,13 @@ function InstanceOrphanScanItem({
   // Compute status badge once for reuse in header
   const latestRunBadge = latestRun ? getStatusBadge(latestRun, t) : null
 
-  if (!hasLocalAccess) {
+  if (!hasAccess) {
     return (
       <AccordionItem value={String(instance.id)} disabled>
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noLocalAccess")}</Badge>
+            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -372,7 +372,7 @@ function InstanceOrphanScanItem({
                 ): t("preferences.orphanScanOverview.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                {settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
+                {instance.filesystemMode === "remote"? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
                 {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
                   <>{t("preferences.orphanScanOverview.pathsIgnored", { count: settings.ignorePaths.length })}</>
                 )}
@@ -426,6 +426,13 @@ function InstanceOrphanScanItem({
               )}
             </div>
           </div>
+
+          {instance.filesystemMode === "remote" && (
+            <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0" />
+              <p>{t("preferences.orphanScanOverview.remoteLimits")}</p>
+            </div>
+          )}
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
