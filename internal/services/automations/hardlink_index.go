@@ -516,7 +516,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
 			Msg("automations: failed to get backend to re-read delete candidates, holding the deletions")
@@ -640,7 +640,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 		return nil, false
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
 			Msg("automations: failed to get backend for hardlink index update, falling back to a full build")
@@ -694,7 +694,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	// The caller admitted the instance on local access from a snapshot. sftp
+	// reports no inode numbers, so a build over it would only cost a stat per
+	// file and cache an index with every scope unknown.
+	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
 		index.builtAt = time.Now()
@@ -1087,7 +1090,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
-		backend, backendErr := s.backendPool.GetBackend(ctx, otherID)
+		backend, backendErr := s.backendPool.LocalBackend(ctx, otherID)
 		if backendErr != nil {
 			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get backend for cross-scope scan, skipping instance")

@@ -822,6 +822,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
+	// The local access flag decides whether the instance is in remote mode,
+	// and the ssh pool only rereads the row when it dials. Any other edit
+	// leaves the session alone, since Invalidate cuts reads in flight.
+	if models.FilesystemAccessMode(existingInstance) != models.FilesystemAccessMode(instance) {
+		h.sshPool.Invalidate(instanceID)
+	}
 
 	var settings *models.InstanceReannounceSettings
 	if req.ReannounceSettings != nil {

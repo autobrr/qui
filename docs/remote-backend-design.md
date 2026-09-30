@@ -285,8 +285,8 @@ paths pays for one attempt: the retry delay starts at 5s, doubles to
 60s, and carries ±20% jitter so instances that went down together do not
 come back in lockstep.
 
-A host-key mismatch and an unreadable or missing pin are not retried at
-all — waiting does not make a wrong key right. That refusal lives only in
+A host-key mismatch and an unreadable pin are not retried at all, because
+waiting does not make a wrong key right. That refusal lives only in
 memory, and the pool never infers a change from a caller's snapshot of
 the instance: the code that changes what a connection depends on tells it.
 Saving or clearing SSH credentials and confirming or replacing the pin
@@ -297,10 +297,15 @@ just written, and a host whose key is still wrong is refused again on that
 dial. Two callers holding different snapshots of one instance therefore
 share one connection. A failed read of the row is local and is not
 memoised. A refusal caused by a pin that would not decrypt outlives an
-out-of-band fix of the encryption key, since nothing invalidates it; a
-restart clears it.
-A connection nobody has used for ten minutes is closed, which is how the
-pool lets go of an instance that left remote mode.
+out-of-band fix of the encryption key, because that fix writes no row.
+Saving the SSH credentials or the pin again clears it, and so does a
+restart.
+Saving the instance invalidates its entry too when the save changes the
+filesystem mode, which the local access flag decides. Any other edit
+leaves the session alone. A dial for a row that is not in remote mode,
+including a row with credentials and no confirmed pin, is refused before
+it connects and is not memoised.
+A connection nobody has used for ten minutes is closed.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
@@ -424,20 +429,32 @@ scratch directories and a temporarily added, uniquely tagged
    admit an instance on `HasLocalFilesystemAccess` rather than on its
    filesystem mode: orphan scan (handler and service filters), automations
    (missing-files condition, hardlink index; rule save and dry-run
-   validation), dirscan, cross-seed (link mode, manual assemble, mediainfo,
-   season pack, partial pool, local-match detection), the sync manager's
-   hardlink base dir, the disc-scan route (which checks for local mode, not
-   the flag), and two routes that read file content, which no `Backend`
-   method covers yet: the torrents handler's local-access routes and the
-   proxy mediainfo route. The exception is the free-space path source: its preview and
-   scheduled-run paths resolve the backend and call `Statfs` with no mode
-   check, so a remote-mode instance already reports remote free space,
-   and that is the intended figure. Each remaining gate lifts in its own
-   slice, with the degraded-mode handling that service needs, and the
-   API-driven checks (missing files, orphan scan) become the field test of
-   that slice. A walk that loses its connection ends with one `Err` entry
-   wrapping `fsops.ErrConnectionLost`, so a consumer that skips
-   per-directory errors still learns the tree was cut short.
+   validation), dirscan, cross-seed (link mode, manual assemble,
+   mediainfo, season pack, partial pool, local-match detection), the sync
+   manager's hardlink base dir, the disc-scan route (which checks for
+   local mode, not the flag), and two routes that read file content, which
+   no `Backend` method covers yet: the torrents handler's local-access
+   routes and the proxy mediainfo route. The exception is the free-space
+   path source: its preview and scheduled-run paths resolve the backend
+   and call `Statfs` with no mode check, so a remote-mode instance already
+   reports remote free space, and that is the intended figure. A gate
+   reads the instance before the work starts, so the reads after it
+   resolve backend and mode from one later read and refuse every mode but
+   local. The hardlink index, dirscan and the sync manager's cleanup do
+   that through `Pool.LocalBackend`, and missing files through
+   `Pool.Resolve`. An instance whose local access was turned off after the
+   gate is then refused rather than read over SSH at a local path. Orphan
+   scan still resolves with `GetBackend` until remote orphan scan replaces
+   its gate. Each remaining gate lifts in its own slice, with the
+   degraded-mode handling that service needs, and the API-driven checks
+   (missing files, orphan scan) become the field test of that slice. Every
+   remote read that loses its connection, or that the pool will not dial,
+   fails with `fsops.ErrConnectionLost`. When the pool refused on purpose
+   (a host key mismatch, an unusable pin, a closed pool, an instance no
+   longer in remote mode), its sentinel stays in the chain, and the rest
+   of the cause is text only. A walk ends with one `Err` entry carrying
+   it, so a consumer that skips per-directory errors still learns the tree
+   was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.

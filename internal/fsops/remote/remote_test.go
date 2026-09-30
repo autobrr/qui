@@ -5,6 +5,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,12 +16,14 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -31,12 +34,18 @@ import (
 // fakeCreds stands in for the instance store: the row Get answers with, plus
 // the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
-	key  string
-	pin  []byte
-	inst *models.Instance
+	key    string
+	pin    []byte
+	inst   *models.Instance
+	getErr error
 }
 
-func (f fakeCreds) Get(context.Context, int) (*models.Instance, error)  { return f.inst, nil }
+func (f fakeCreds) Get(context.Context, int) (*models.Instance, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.inst, nil
+}
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return f.key, nil }
 func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return f.pin, nil }
 
@@ -47,6 +56,19 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	t.Helper()
 
 	hostKey := sshtest.NewSigner()
+	return newBackendWithKey(t, hostKey, hostKey.PublicKey().Marshal())
+}
+
+// newBackendPinned is newBackend with a pin other than the server's key.
+func newBackendPinned(t *testing.T, pin []byte) (*Backend, *sshtest.Server) {
+	t.Helper()
+
+	return newBackendWithKey(t, sshtest.NewSigner(), pin)
+}
+
+func newBackendWithKey(t *testing.T, hostKey ssh.Signer, pin []byte) (*Backend, *sshtest.Server) {
+	t.Helper()
+
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 
 	host, portText, err := net.SplitHostPort(server.Addr)
@@ -54,10 +76,10 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
-	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui"}
+	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui", SSHKeyEncrypted: "enc-v1", SSHHostKeyEncrypted: "enc-v1"}
 	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
 		key:  sshtest.PrivateKey(""),
-		pin:  hostKey.PublicKey().Marshal(),
+		pin:  pin,
 		inst: inst,
 	}))
 	t.Cleanup(pool.Close)
@@ -305,6 +327,37 @@ func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
 	}
 }
 
+// writeCutTree lays out a tree for the connection-lost walks: "a" holds more
+// files than the walk channel buffers, so the walk is parked inside it when
+// the test cuts the connection, "m" is the directory that read fails on, and
+// "z" is a sibling after it that must never be reached.
+func writeCutTree(t *testing.T, dir string) {
+	t.Helper()
+	for i := range 100 {
+		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
+	}
+	writeFile(t, remotePath(dir, "m", "mid.txt"), "x")
+	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+}
+
+// drainAfterCut reads the rest of the walk and returns its one Err entry,
+// failing if a second Err or any entry after the first arrives: a walk that
+// lost its connection must stop, not step over the directory and go on.
+func drainAfterCut(t *testing.T, ch <-chan fsops.WalkEntry) fsops.WalkEntry {
+	t.Helper()
+	var cut *fsops.WalkEntry
+	for entry := range ch {
+		if cut != nil {
+			t.Fatalf("entry %q arrived after the walk lost its connection at %q", entry.RelPath, cut.RelPath)
+		}
+		if entry.Err != nil {
+			cut = &entry
+		}
+	}
+	require.NotNil(t, cut, "the walk must end with an Err entry")
+	return *cut
+}
+
 // A pool failure mid-walk ends the walk with one Err entry carrying
 // ErrConnectionLost, so a consumer that skips per-directory errors still sees
 // that the tree was cut short.
@@ -313,12 +366,7 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 
 	b, _ := newBackend(t)
 	dir := t.TempDir()
-	// "a" holds more files than the walk channel buffers, so the walk is parked
-	// inside it when the pool closes, and "z" is still to be read.
-	for i := range 100 {
-		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
-	}
-	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+	writeCutTree(t, dir)
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -327,20 +375,9 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 	}
 	b.pool.Close()
 
-	var lost []fsops.WalkEntry
-	sawZ := false
-	for entry := range ch {
-		if entry.Err != nil {
-			lost = append(lost, entry)
-		}
-		if entry.RelPath == path.Join("z", "last.txt") {
-			sawZ = true
-		}
-	}
-	require.Len(t, lost, 1, "one Err entry ends the walk")
-	require.ErrorIs(t, lost[0].Err, fsops.ErrConnectionLost)
-	assert.Equal(t, "z", lost[0].RelPath, "the directory the walk could not read is named")
-	assert.False(t, sawZ)
+	cut := drainAfterCut(t, ch)
+	require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
+	assert.Equal(t, "m", cut.RelPath, "the directory the walk could not read is named")
 }
 
 // A connection that drops while a directory read is in flight ends the walk
@@ -351,13 +388,9 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 
 	b, server := newBackend(t)
 	dir := t.TempDir()
-	// "a" holds more files than the walk channel buffers, so its listing is
-	// done and the walk is parked inside it when the trap is armed; the next
-	// request is the opendir for "z".
-	for i := range 100 {
-		writeFile(t, remotePath(dir, "a", fmt.Sprintf("f%03d.txt", i)), "x")
-	}
-	writeFile(t, remotePath(dir, "z", "last.txt"), "x")
+	// The listing of "a" is done and the walk is parked inside it when the
+	// trap is armed, so the next request is the opendir for "m".
+	writeCutTree(t, dir)
 
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -366,21 +399,10 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 	}
 	server.SetSFTP(sshtest.SFTPDropOnNextRequest)
 
-	var errs []fsops.WalkEntry
-	sawZ := false
-	for entry := range ch {
-		if entry.Err != nil {
-			errs = append(errs, entry)
-		}
-		if entry.RelPath == path.Join("z", "last.txt") {
-			sawZ = true
-		}
-	}
-	require.Len(t, errs, 1, "one Err entry ends the walk")
-	require.ErrorIs(t, errs[0].Err, fsops.ErrConnectionLost)
-	require.ErrorIs(t, errs[0].Err, sftp.ErrSSHFxConnectionLost)
-	assert.Equal(t, "z", errs[0].RelPath)
-	assert.False(t, sawZ)
+	cut := drainAfterCut(t, ch)
+	require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
+	require.ErrorContains(t, cut.Err, sftp.ErrSSHFxConnectionLost.Error())
+	assert.Equal(t, "m", cut.RelPath)
 }
 
 func TestLostConnection(t *testing.T) {
@@ -388,9 +410,207 @@ func TestLostConnection(t *testing.T) {
 
 	assert.True(t, lostConnection(sftp.ErrSSHFxConnectionLost))
 	assert.True(t, lostConnection(fmt.Errorf("wrapped: %w", net.ErrClosed)))
-	assert.True(t, lostConnection(io.EOF))
+	assert.False(t, lostConnection(io.EOF), "io.EOF can be a server's answer")
 	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
 	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
+
+	require.ErrorIs(t, readDirError("/data", io.EOF), fsops.ErrConnectionLost,
+		"a listing ends on SSH_FX_EOF inside pkg/sftp, so an io.EOF out of it is a closed channel")
+	require.NotErrorIs(t, readDirError("/data", fs.ErrPermission), fsops.ErrConnectionLost)
+}
+
+// A server that answers a stat with SSH_FX_EOF has answered. Reading that as a
+// lost connection would end a walk or a scan over one odd reply.
+func TestStatAnsweredWithEOFIsNotALostConnection(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	server.SetSFTP(sshtest.SFTPStatEOF)
+
+	for name, call := range map[string]func() error{
+		"stat":  func() error { _, err := b.Stat(t.Context(), "/"); return err },
+		"lstat": func() error { _, err := b.Lstat(t.Context(), "/"); return err },
+	} {
+		err := call()
+		require.ErrorIs(t, err, io.EOF, name)
+		require.NotErrorIs(t, err, fsops.ErrConnectionLost, name)
+	}
+}
+
+// readCalls runs every read method against p, for the tests that assert how
+// each one reports a failure.
+func readCalls(b *Backend, p string) map[string]func(context.Context) error {
+	return map[string]func(context.Context) error{
+		"stat":    func(ctx context.Context) error { _, err := b.Stat(ctx, p); return err },
+		"lstat":   func(ctx context.Context) error { _, err := b.Lstat(ctx, p); return err },
+		"readdir": func(ctx context.Context) error { _, err := b.ReadDir(ctx, p); return err },
+		"walkdir": func(ctx context.Context) error {
+			_, err := b.WalkDir(ctx, p, fsops.WalkOptions{})
+			return err
+		},
+		"statfs":         func(ctx context.Context) error { _, err := b.Statfs(ctx, p); return err },
+		"samefilesystem": func(ctx context.Context) error { _, err := b.SameFilesystem(ctx, p, p); return err },
+	}
+}
+
+// A pool error is a lost connection from every read, and its cause is text
+// only. A cause that matches fs.ErrPermission would read as a denied path to a
+// consumer that steps over those.
+func TestReadsReportAPoolErrorAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	inst := &models.Instance{ID: 1}
+	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{getErr: fmt.Errorf("open database: %w", fs.ErrPermission)}))
+	t.Cleanup(pool.Close)
+	b := New(pool, inst)
+
+	for name, call := range readCalls(b, "/data") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := call(t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.NotErrorIs(t, err, fs.ErrPermission)
+			assert.ErrorContains(t, err, "open database", "the cause stays readable")
+		})
+	}
+}
+
+// An instance that left remote mode is refused by the pool, and every read
+// reports that as a lost connection rather than as an answer about the path.
+func TestReadsReportAnInstanceThatLeftRemoteModeAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	inst := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, SSHHost: "127.0.0.1", SSHKeyEncrypted: "enc-v1", SSHHostKeyEncrypted: "enc-v1"}
+	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{inst: inst}))
+	t.Cleanup(pool.Close)
+	b := New(pool, inst)
+
+	for name, call := range readCalls(b, "/data") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := call(t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.ErrorIs(t, err, sshpool.ErrNotRemote)
+		})
+	}
+}
+
+// Every pool refusal is a lost connection, and the pool's own sentinel stays
+// in the chain so a caller can still tell a changed host key from a down host.
+func TestReadsKeepThePoolsOwnErrors(t *testing.T) {
+	t.Parallel()
+
+	mismatched := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackendPinned(t, sshtest.NewSigner().PublicKey().Marshal())
+		return b
+	}
+	closed := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackend(t)
+		b.pool.Close()
+		return b
+	}
+	unusablePin := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackendPinned(t, []byte("not a key"))
+		return b
+	}
+
+	for _, test := range []struct {
+		name    string
+		backend func(*testing.T) *Backend
+		check   func(*testing.T, error)
+	}{
+		{name: "host key mismatch", backend: mismatched, check: func(t *testing.T, err error) {
+			_, ok := errors.AsType[*sshpool.MismatchError](err)
+			require.True(t, ok, "the mismatch must stay matchable: %v", err)
+		}},
+		{name: "pool closed", backend: closed, check: func(t *testing.T, err error) {
+			require.ErrorIs(t, err, sshpool.ErrPoolClosed)
+		}},
+		{name: "pin unusable", backend: unusablePin, check: func(t *testing.T, err error) {
+			require.ErrorIs(t, err, sshpool.ErrPinUnusable)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := test.backend(t).Stat(t.Context(), "/")
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			test.check(t, err)
+		})
+	}
+}
+
+// A dial refused with EPERM carries an errno that matches fs.ErrPermission.
+// Keeping ErrConnect must not pull that errno into the chain with it.
+func TestLostKeepsATransportCauseAsText(t *testing.T) {
+	t.Parallel()
+
+	cause := fmt.Errorf("%w: dial box: %w", sshpool.ErrConnect,
+		&net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EPERM)})
+	require.ErrorIs(t, cause, fs.ErrPermission, "the cause must be able to match for this test to mean anything")
+
+	err := lost(cause)
+	require.ErrorIs(t, err, fsops.ErrConnectionLost)
+	require.ErrorIs(t, err, sshpool.ErrConnect)
+	require.NotErrorIs(t, err, fs.ErrPermission)
+	assert.ErrorContains(t, err, cause.Error(), "the cause stays readable")
+}
+
+// A transport that drops while a request is in flight is a lost connection
+// from every read, not only from the walk.
+func TestReadsReportADroppedTransportAsConnectionLost(t *testing.T) {
+	t.Parallel()
+
+	dir := remotePath(t.TempDir())
+	for name := range readCalls(nil, dir) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			b, server := newBackend(t)
+			_, err := b.Stat(t.Context(), dir)
+			require.NoError(t, err)
+			server.SetSFTP(sshtest.SFTPDropOnNextRequest)
+
+			err = readCalls(b, dir)[name](t.Context())
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			require.NotErrorIs(t, err, fs.ErrNotExist)
+			require.NotErrorIs(t, err, fs.ErrPermission)
+		})
+	}
+}
+
+// A path the server refuses is an answer about that path, not a lost
+// connection.
+func TestReadsKeepAServerPermissionDenial(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("0o000 permissions are not enforced on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+
+	b, _ := newBackend(t)
+	locked := remotePath(t.TempDir(), "locked")
+	require.NoError(t, os.Mkdir(locked, 0o700))
+	writeFile(t, remotePath(locked, "hidden.txt"), "h")
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	for name, call := range map[string]func() error{
+		"stat":    func() error { _, err := b.Stat(t.Context(), remotePath(locked, "hidden.txt")); return err },
+		"readdir": func() error { _, err := b.ReadDir(t.Context(), locked); return err },
+	} {
+		err := call()
+		require.ErrorIs(t, err, fs.ErrPermission, name)
+		assert.NotErrorIs(t, err, fsops.ErrConnectionLost, name)
+	}
 }
 
 func TestWalkDir_DoesNotDescendSymlinkedDir(t *testing.T) {

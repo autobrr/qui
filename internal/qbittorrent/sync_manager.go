@@ -39,7 +39,7 @@ import (
 
 // backendPoolGetter provides filesystem backends per instance.
 type backendPoolGetter interface {
-	GetBackend(ctx context.Context, instanceID int) (fsops.Backend, error)
+	LocalBackend(ctx context.Context, instanceID int) (fsops.Backend, error)
 }
 
 // FilesManager interface for caching torrent files.
@@ -2619,7 +2619,11 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	if pool == nil {
 		return nil, nil
 	}
-	backend, err := pool.GetBackend(ctx, instanceID)
+	// The gate above read the instance once and this reads it again. If local
+	// access was turned off in between, the base dir is a local path the SSH
+	// host need not have, so the cleanup is skipped as it is for an instance
+	// without local access.
+	backend, err := pool.LocalBackend(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
 		return nil, nil
