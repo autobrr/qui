@@ -23,8 +23,9 @@ var (
 	// could not be reached (the transport dropped, or the pool would not
 	// dial), not because of the path. It ends a walk as its one Err entry, and
 	// a consumer that skips per-directory errors checks for it so that a walk
-	// cut short is not read as complete. The cause is kept as text only, so a
-	// lost connection never also matches fs.ErrPermission or fs.ErrNotExist.
+	// cut short is not read as complete. The cause is kept as text only, apart
+	// from sshpool's own sentinels, so a lost connection never also matches
+	// fs.ErrPermission or fs.ErrNotExist.
 	ErrConnectionLost = errors.New("connection to the filesystem backend was lost")
 
 	// ErrUnsupported reports a per-host fact: this server lacks the extension

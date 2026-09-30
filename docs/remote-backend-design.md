@@ -441,7 +441,10 @@ scratch directories and a temporarily added, uniquely tagged
    slice, with the degraded-mode handling that service needs, and the
    API-driven checks (missing files, orphan scan) become the field test of
    that slice. Every remote read that loses its connection, or that the
-   pool will not dial, fails with `fsops.ErrConnectionLost`. A walk ends
+   pool will not dial, fails with `fsops.ErrConnectionLost`. When the pool
+   refused on purpose (a host key mismatch, an unusable pin, a closed pool,
+   an instance no longer in remote mode), its sentinel stays in the chain,
+   and the rest of the cause is text only. A walk ends
    with one `Err` entry carrying it, so a consumer that skips
    per-directory errors still learns the tree was cut short.
 

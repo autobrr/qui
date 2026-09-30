@@ -992,8 +992,9 @@ func (app *Application) runServer() {
 			return err
 		}
 
-		// Closed here because os.Exit below means a defer would never fire; a job
-		// still mid-operation gets ErrPoolClosed and ends with the process.
+		// Closed here because os.Exit below means a defer would never fire. A
+		// job still reading gets ErrConnectionLost, with ErrPoolClosed in its
+		// chain, and ends with the process.
 		sshPool.Close()
 		return nil
 	}

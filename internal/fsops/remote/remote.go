@@ -52,7 +52,7 @@ const statvfsExtension = "statvfs@openssh.com"
 // client is the context check plus the pooled connection every method opens
 // with. A pool error (dial failure, mismatch, instance no longer remote) is
 // marked ErrConnectionLost and carries no path, so callers can tell a broken
-// connection from a broken path.
+// connection from a broken path. The pool's own sentinels stay matchable.
 func (b *Backend) client(ctx context.Context) (*sftp.Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -227,11 +227,33 @@ func lostConnection(err error) bool {
 	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
 }
 
-// lost marks err as a lost connection. The cause stays text only: a redial
-// refused with EACCES carries an errno that matches fs.ErrPermission, and a
-// consumer that steps over denied directories would read the cut as one.
+// poolSentinels are the answers sshpool gives on purpose. They say why the
+// pool would not serve the read, which a caller may want to tell apart.
+var poolSentinels = []error{sshpool.ErrConnect, sshpool.ErrPinUnusable, sshpool.ErrPoolClosed, sshpool.ErrNotRemote}
+
+// connectionLost is ErrConnectionLost plus whichever pool sentinels its cause
+// carries. The rest of the cause is text only, because a redial refused with
+// EACCES carries an errno that matches fs.ErrPermission, and a consumer that
+// steps over denied directories would read the cut as one.
+type connectionLost struct {
+	msg  string
+	kept []error
+}
+
+func (e *connectionLost) Error() string   { return e.msg }
+func (e *connectionLost) Unwrap() []error { return e.kept }
+
 func lost(err error) error {
-	return fmt.Errorf("%w: %v", fsops.ErrConnectionLost, err) //nolint:errorlint // the cause must stay out of the chain
+	kept := []error{fsops.ErrConnectionLost}
+	for _, sentinel := range poolSentinels {
+		if errors.Is(err, sentinel) {
+			kept = append(kept, sentinel)
+		}
+	}
+	if mismatch, ok := errors.AsType[*sshpool.MismatchError](err); ok {
+		kept = append(kept, mismatch)
+	}
+	return &connectionLost{msg: fsops.ErrConnectionLost.Error() + ": " + err.Error(), kept: kept}
 }
 
 // readError is pathError for a failed sftp request: a server answer keeps

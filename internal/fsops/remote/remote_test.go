@@ -5,6 +5,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,12 +16,14 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -53,6 +56,19 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	t.Helper()
 
 	hostKey := sshtest.NewSigner()
+	return newBackendWithKey(t, hostKey, hostKey.PublicKey().Marshal())
+}
+
+// newBackendPinned is newBackend with a pin other than the server's key.
+func newBackendPinned(t *testing.T, pin []byte) (*Backend, *sshtest.Server) {
+	t.Helper()
+
+	return newBackendWithKey(t, sshtest.NewSigner(), pin)
+}
+
+func newBackendWithKey(t *testing.T, hostKey ssh.Signer, pin []byte) (*Backend, *sshtest.Server) {
+	t.Helper()
+
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 
 	host, portText, err := net.SplitHostPort(server.Addr)
@@ -63,7 +79,7 @@ func newBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	inst := &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui", SSHKeyEncrypted: "enc-v1", SSHHostKeyEncrypted: "enc-v1"}
 	pool := sshpool.NewPool(sshpool.NewDialer(fakeCreds{
 		key:  sshtest.PrivateKey(""),
-		pin:  hostKey.PublicKey().Marshal(),
+		pin:  pin,
 		inst: inst,
 	}))
 	t.Cleanup(pool.Close)
@@ -454,9 +470,73 @@ func TestReadsReportAnInstanceThatLeftRemoteModeAsConnectionLost(t *testing.T) {
 
 			err := call(t.Context())
 			require.ErrorIs(t, err, fsops.ErrConnectionLost)
-			assert.ErrorContains(t, err, sshpool.ErrNotRemote.Error())
+			require.ErrorIs(t, err, sshpool.ErrNotRemote)
 		})
 	}
+}
+
+// Every pool refusal is a lost connection, and the pool's own sentinel stays
+// in the chain so a caller can still tell a changed host key from a down host.
+func TestReadsKeepThePoolsOwnErrors(t *testing.T) {
+	t.Parallel()
+
+	mismatched := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackendPinned(t, sshtest.NewSigner().PublicKey().Marshal())
+		return b
+	}
+	closed := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackend(t)
+		b.pool.Close()
+		return b
+	}
+	unusablePin := func(t *testing.T) *Backend {
+		t.Helper()
+		b, _ := newBackendPinned(t, []byte("not a key"))
+		return b
+	}
+
+	for _, test := range []struct {
+		name    string
+		backend func(*testing.T) *Backend
+		check   func(*testing.T, error)
+	}{
+		{name: "host key mismatch", backend: mismatched, check: func(t *testing.T, err error) {
+			_, ok := errors.AsType[*sshpool.MismatchError](err)
+			require.True(t, ok, "the mismatch must stay matchable: %v", err)
+		}},
+		{name: "pool closed", backend: closed, check: func(t *testing.T, err error) {
+			require.ErrorIs(t, err, sshpool.ErrPoolClosed)
+		}},
+		{name: "pin unusable", backend: unusablePin, check: func(t *testing.T, err error) {
+			require.ErrorIs(t, err, sshpool.ErrPinUnusable)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := test.backend(t).Stat(t.Context(), "/")
+			require.ErrorIs(t, err, fsops.ErrConnectionLost)
+			test.check(t, err)
+		})
+	}
+}
+
+// A dial refused with EPERM carries an errno that matches fs.ErrPermission.
+// Keeping ErrConnect must not pull that errno into the chain with it.
+func TestLostKeepsATransportCauseAsText(t *testing.T) {
+	t.Parallel()
+
+	cause := fmt.Errorf("%w: dial box: %w", sshpool.ErrConnect,
+		&net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EPERM)})
+	require.ErrorIs(t, cause, fs.ErrPermission, "the cause must be able to match for this test to mean anything")
+
+	err := lost(cause)
+	require.ErrorIs(t, err, fsops.ErrConnectionLost)
+	require.ErrorIs(t, err, sshpool.ErrConnect)
+	require.NotErrorIs(t, err, fs.ErrPermission)
+	assert.ErrorContains(t, err, cause.Error(), "the cause stays readable")
 }
 
 // A transport that drops while a request is in flight is a lost connection
