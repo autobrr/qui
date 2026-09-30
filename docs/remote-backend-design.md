@@ -437,7 +437,15 @@ scratch directories and a temporarily added, uniquely tagged
    proxy mediainfo route. The exception is the free-space path source: its preview and
    scheduled-run paths resolve the backend and call `Statfs` with no mode
    check, so a remote-mode instance already reports remote free space,
-   and that is the intended figure. Each remaining gate lifts in its own
+   and that is the intended figure. A gate reads the instance before the
+   work starts, so the reads after it resolve backend and mode from one
+   later read and refuse every mode but local. The hardlink index, dirscan
+   and the sync manager's cleanup do that through `Pool.LocalBackend`, and
+   missing files through `Pool.Resolve`. An instance whose local access was
+   turned off after the gate is then refused rather than read over SSH at a
+   local path. Orphan scan
+   still resolves with `GetBackend` until remote orphan scan replaces its
+   gate. Each remaining gate lifts in its own
    slice, with the degraded-mode handling that service needs, and the
    API-driven checks (missing files, orphan scan) become the field test of
    that slice. Every remote read that loses its connection, or that the
