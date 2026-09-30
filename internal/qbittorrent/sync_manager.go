@@ -1387,6 +1387,23 @@ func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter q
 	return syncManager.GetTorrents(filter), nil
 }
 
+// GetTorrentsFresh syncs before it reads. GetTorrents returns a stale cache
+// while it refreshes, so it can miss a torrent added since the last sync.
+func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	// Sync twice: the first call can join a sync that was in flight before the
+	// read and return its older snapshot. The second one starts after it.
+	for range 2 {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	return syncManager.GetTorrentsUnchecked(filter), nil
+}
+
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
 func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
 	if sm == nil || sm.clientPool == nil {
@@ -4491,7 +4508,9 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 }
 
 // GetAllTorrents returns the current torrent list for an instance without pagination,
-// with optimistic updates applied.
+// with optimistic updates applied. A cache past the fresh window is synced first, but
+// the rows can still predate a change made during the fresh window or during a sync
+// that was already in flight. GetTorrentsFresh closes both gaps at the cost of two requests.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -4499,8 +4518,15 @@ func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qb
 		return nil, err
 	}
 
-	// Get all torrents from sync manager
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	// The checked getter serves the stale cache and refreshes behind it, so on a
+	// headless instance these callers saw a snapshot as old as their own interval.
+	// An instance the SSE loop keeps warm is inside the window and pays nothing.
+	if time.Since(syncManager.LastSuccessfulSyncTime()) > torrentResponseFreshWindow {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	torrents := syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
 
 	// NOTE: Tracker health counts (unregistered/tracker_down) are handled via
 	// background cache refresh, not inline enrichment. See StartTrackerHealthRefresh.
@@ -6432,32 +6458,14 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
 	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
 	}
 
 	// Validate that torrents exist
-	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-
-	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
-	for _, torrent := range torrentList {
-		torrentMap[torrent.Hash] = torrent
-	}
-
-	if len(torrentMap) == 0 {
-		return errors.New("no sync data available")
-	}
-
-	existingCount := 0
-	for _, hash := range hashes {
-		if _, exists := torrentMap[hash]; exists {
-			existingCount++
-		}
-	}
-
-	if existingCount == 0 {
-		return errors.New("no valid torrents found to add tags")
+	if err := sm.validateTorrentsExist(client, hashes, "add tags"); err != nil {
+		return err
 	}
 
 	if err := client.AddTagsCtx(ctx, hashes, tags); err != nil {

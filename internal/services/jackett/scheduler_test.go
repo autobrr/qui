@@ -1256,3 +1256,214 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 		t.Fatalf("queued order after reversed pushes = %v, want %v", gotQueued, wantQueued)
 	}
 }
+
+// A timed-out task keeps its indexer and worker slot until its exec returns,
+// so an exec that ignores its context cannot pile up goroutines (#2817).
+func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		late func() ([]Result, []int, error)
+	}{
+		{name: "late result", late: func() ([]Result, []int, error) { return []Result{{Title: "late"}}, []int{1}, nil }},
+		{name: "late panic", late: func() ([]Result, []int, error) { panic("late panic") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSearchScheduler(nil, 1)
+			defer s.Stop()
+			rec := &recordingHistoryRecorder{}
+			s.historyRecorder = rec
+			pub := &recordingPublisher{}
+			s.setActivityPublisher(pub)
+
+			first := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+			other := &models.TorznabIndexer{ID: 2, Name: "other"}
+			release := make(chan struct{})
+			firstDone := make(chan error, 2)
+
+			_, err := s.Submit(context.Background(), SubmitRequest{
+				Indexers:         []*models.TorznabIndexer{first},
+				ExecutionTimeout: 20 * time.Millisecond,
+				ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+					<-release
+					return tc.late()
+				},
+				Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+					firstDone <- err
+				}},
+			})
+			require.NoError(t, err)
+
+			select {
+			case err := <-firstDone:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(time.Second):
+				t.Fatal("timed-out task did not report completion before its exec returned")
+			}
+			// Enqueue published one signal; the timeout must publish another so the
+			// activity panel drops the finished job while exec is still blocked.
+			require.Eventually(t, func() bool { return pub.counts()[activity.KindIndexerActivity] >= 2 },
+				time.Second, 5*time.Millisecond)
+
+			started := make(chan int, 2)
+			laterDone := make(chan struct{}, 2)
+			for _, idx := range []*models.TorznabIndexer{first, other} {
+				_, err := s.Submit(context.Background(), SubmitRequest{
+					Indexers: []*models.TorznabIndexer{idx},
+					ExecFn: func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+						started <- idxs[0].ID
+						return nil, nil, nil
+					},
+					Callbacks: JobCallbacks{OnComplete: func(uint64, *models.TorznabIndexer, []Result, []int, error) {
+						laterDone <- struct{}{}
+					}},
+				})
+				require.NoError(t, err)
+			}
+
+			select {
+			case id := <-started:
+				t.Fatalf("indexer %d started while the timed-out exec still held the slot", id)
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			close(release)
+			got := []int{recvWithin(t, started), recvWithin(t, started)}
+			assert.ElementsMatch(t, []int{1, 2}, got)
+			recvWithin(t, laterDone)
+			recvWithin(t, laterDone)
+
+			assert.Empty(t, firstDone, "timed-out task reported completion twice")
+			// OnComplete starts before Record runs, so laterDone can arrive first.
+			require.Eventually(t, func() bool { return len(rec.statuses()) == 3 }, time.Second, 5*time.Millisecond)
+		})
+	}
+}
+
+// recvWithin fails the test instead of hanging until -timeout when nothing arrives.
+func recvWithin[T any](t *testing.T, ch <-chan T) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing received within 2s")
+		var zero T
+		return zero
+	}
+}
+
+// submitStuck submits a task for idx that times out after 20ms while its exec
+// blocks until release closes, and waits for the timeout report.
+func submitStuck(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, release <-chan struct{}, jobDone chan<- struct{}) {
+	t.Helper()
+	timedOut := make(chan error, 1)
+	_, err := s.Submit(t.Context(), SubmitRequest{
+		Indexers:         []*models.TorznabIndexer{idx},
+		ExecutionTimeout: 20 * time.Millisecond,
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			<-release
+			return nil, nil, nil
+		},
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { timedOut <- err },
+			OnJobDone:  func(uint64) { jobDone <- struct{}{} },
+		},
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, recvWithin(t, timedOut), context.DeadlineExceeded)
+}
+
+// submitStart submits a task for idx whose exec sends idx.ID on started. Its
+// completion error goes to done.
+func submitStart(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, started chan<- int, done chan<- error) {
+	t.Helper()
+	_, err := s.Submit(t.Context(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{idx},
+		ExecFn: func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+			started <- idxs[0].ID
+			return nil, nil, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { done <- err }},
+	})
+	require.NoError(t, err)
+}
+
+// A timed-out task ends its job at once, and holds only its own indexer: a
+// free worker still runs other indexers.
+func TestSearchScheduler_TimedOutTaskEndsJobAndHoldsOnlyItsIndexer(t *testing.T) {
+	s := newSearchScheduler(nil, 2)
+	defer s.Stop()
+	stuck := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+	other := &models.TorznabIndexer{ID: 2, Name: "other"}
+	release := make(chan struct{})
+	jobDone := make(chan struct{}, 1)
+	submitStuck(t, s, stuck, release, jobDone)
+	recvWithin(t, jobDone)
+
+	started := make(chan int, 2)
+	done := make(chan error, 2)
+	submitStart(t, s, stuck, started, done)
+	submitStart(t, s, other, started, done)
+	require.Equal(t, 2, recvWithin(t, started), "a free worker must run the other indexer")
+	select {
+	case id := <-started:
+		t.Fatalf("indexer %d started while its timed-out exec still runs", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	require.Equal(t, 1, recvWithin(t, started))
+}
+
+// The pacing interval of an indexer starts when a timed-out exec really
+// returns, not at the timeout.
+func TestSearchScheduler_PacingStartsWhenTimedOutExecReturns(t *testing.T) {
+	s := newSearchScheduler(NewRateLimiter(150*time.Millisecond), 2)
+	defer s.Stop()
+	stuck := &models.TorznabIndexer{ID: 1, Name: "stuck", Backend: models.TorznabBackendNative}
+	release := make(chan struct{})
+	submitStuck(t, s, stuck, release, make(chan struct{}, 1))
+	time.Sleep(200 * time.Millisecond) // longer than the interval, counted from the timeout
+
+	started := make(chan int, 1)
+	submitStart(t, s, stuck, started, make(chan error, 1))
+	releasedAt := time.Now()
+	close(release)
+	recvWithin(t, started)
+	require.GreaterOrEqual(t, time.Since(releasedAt), 100*time.Millisecond, "interval must start when the late exec returns")
+}
+
+// After the stuck warning, tasks for that indexer fail at once instead of
+// holding their jobs, and the indexer runs again once the exec returns.
+func TestSearchScheduler_DetachedIndexerFailsQueuedTasks(t *testing.T) {
+	old := detachedExecWarnAfter
+	detachedExecWarnAfter = 50 * time.Millisecond
+	t.Cleanup(func() { detachedExecWarnAfter = old })
+
+	s := newSearchScheduler(nil, 2)
+	defer s.Stop()
+	stuck := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+	release := make(chan struct{})
+	submitStuck(t, s, stuck, release, make(chan struct{}, 1))
+
+	// Queued before the warning, with no deadline and no pacing wait: only
+	// the warning can wake the loop for it.
+	started := make(chan int, 1)
+	done := make(chan error, 1)
+	submitStart(t, s, stuck, started, done)
+	require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
+
+	// Submitted after the warning.
+	submitStart(t, s, stuck, started, done)
+	require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
+	require.Empty(t, started, "a task for the stuck indexer ran while its exec still runs")
+
+	close(release)
+	require.Eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return len(s.inFlight) == 0
+	}, time.Second, 5*time.Millisecond)
+	submitStart(t, s, stuck, started, done)
+	require.Equal(t, 1, recvWithin(t, started))
+	require.NoError(t, recvWithin(t, done))
+}

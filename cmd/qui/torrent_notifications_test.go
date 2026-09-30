@@ -24,7 +24,7 @@ type stubTorrentNotificationSync struct {
 	extractInvoked bool
 }
 
-func (s *stubTorrentNotificationSync) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (s *stubTorrentNotificationSync) GetTorrentsFresh(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	s.lastHashes = append([]string(nil), filter.Hashes...)
 	if s.err != nil {
 		return nil, s.err

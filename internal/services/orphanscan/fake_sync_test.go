@@ -41,7 +41,7 @@ func stubSync(svc *Service) *fakeSync {
 	return f
 }
 
-func (f *fakeSync) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *fakeSync) GetTorrentsFresh(ctx context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	if f.getAllTorrents == nil {
 		return nil, errNotStubbed
 	}

@@ -5,8 +5,10 @@ package jackett
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,4 +36,60 @@ func TestRetryDoStopsWhenContextEnds(t *testing.T) {
 
 	require.Error(t, err)
 	require.Less(t, elapsed, time.Second, "retry loop kept running after the context ended")
+}
+
+// A 5xx response must not leave its connection open until Client.Timeout (#2817).
+func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	open := map[net.Conn]bool{}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+	}))
+	server.Config.ConnState = func(c net.Conn, state http.ConnState) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch state {
+		case http.StateNew:
+			open[c] = true
+		case http.StateClosed, http.StateHijacked:
+			delete(open, c)
+		case http.StateActive, http.StateIdle:
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{Host: server.URL})
+	for range 20 {
+		_, err := client.GetTorrentsCtx(t.Context(), "tracker", map[string]string{})
+		require.Error(t, err)
+	}
+
+	// The server sees each client close a moment after the call returns.
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(open) == 0
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// A 5xx body that never ends must not hold the caller until the client timeout.
+func TestRetryDoReturnsOn5xxWithoutReadingBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("partial"))
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{Host: server.URL})
+	start := time.Now()
+	_, err := client.GetTorrentsCtx(t.Context(), "tracker", map[string]string{})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 5*time.Second, "drained a 5xx body until the client timeout")
 }

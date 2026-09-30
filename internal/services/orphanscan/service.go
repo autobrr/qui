@@ -37,7 +37,7 @@ type healthChecker interface {
 
 // syncReader is the slice of the sync manager an orphan scan reads. ADR 0005.
 type syncReader interface {
-	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
@@ -1711,7 +1711,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, ti
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -1751,7 +1751,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
