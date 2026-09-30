@@ -14,6 +14,10 @@ var (
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
 
+	// ErrNotLocal is returned by Pool.LocalBackend for an instance that no
+	// longer has local filesystem access.
+	ErrNotLocal = errors.New("instance does not have local filesystem access")
+
 	// ErrRemoteBackendNotWired is returned by a Pool built without a remote
 	// factory for an instance in remote mode: a wiring mistake must fail
 	// loudly rather than read as "not configured".

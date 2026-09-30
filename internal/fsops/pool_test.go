@@ -150,6 +150,26 @@ func TestPool_ResolveReturnsTheModeItRoutedBy(t *testing.T) {
 	}
 }
 
+func TestPool_LocalBackendRefusesEveryOtherMode(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+
+	backend, err := pool.LocalBackend(context.Background(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, local, backend)
+
+	for _, id := range []int{2, 3} {
+		backend, err := pool.LocalBackend(context.Background(), id)
+		require.ErrorIs(t, err, ErrNotLocal, "instance %d", id)
+		assert.Nil(t, backend, "instance %d", id)
+	}
+}
+
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
 	pool := NewPoolWithRemote(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))

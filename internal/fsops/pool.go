@@ -81,3 +81,17 @@ func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.Fil
 	// it fall through to "not configured".
 	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instanceID, mode)
 }
+
+// LocalBackend is Resolve for a caller that admitted the instance on local
+// access from an earlier read of it. Any other mode fails with ErrNotLocal, so
+// a caller whose read went stale never runs local paths against another host.
+func (p *Pool) LocalBackend(ctx context.Context, instanceID int) (Backend, error) {
+	backend, mode, err := p.Resolve(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	if mode != models.FilesystemModeLocal {
+		return nil, fmt.Errorf("instance %d is in %s filesystem mode: %w", instanceID, mode, ErrNotLocal)
+	}
+	return backend, nil
+}
