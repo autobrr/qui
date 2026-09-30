@@ -65,6 +65,9 @@ export function collectLocaleKeys(namespaceBundles) {
  * interpolation after it is filled from the string literals of the enclosing function,
  * which is where `` `${s}.${outcome ? "executed" : "failed"}` `` and lookup maps keep them.
  *
+ * A string passed as `i18nPrefix`, as a property or a JSX attribute, works like a template
+ * head: shared preference components build their keys from it.
+ *
  * Literals are collected from anywhere in the file, not just inside `t(...)`: keys
  * travel through `labelKey` fields and `<Trans i18nKey>` attributes as often as they
  * are passed directly. Literals and prefixes keep a `namespace:` qualifier when the
@@ -122,6 +125,11 @@ export function collectKeyReferencesFromSource(source, fileName) {
   function visit(node) {
     if (ts.isStringLiteralLike(node)) {
       addLiteral(node.text)
+    } else if ((ts.isPropertyAssignment(node) || ts.isJsxAttribute(node)) && node.name.getText() === "i18nPrefix") {
+      const value = node.initializer && ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer
+      if (value && ts.isStringLiteralLike(value)) {
+        addPrefix(`${value.text}.`)
+      }
     } else if (ts.isTemplateExpression(node)) {
       if (node.head.text) {
         addPrefix(node.head.text)

@@ -4,16 +4,16 @@
  */
 
 import React from "react"
-import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Switch } from "@/components/ui/switch"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
+import type { AppPreferences } from "@/types"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 
 function SwitchSetting({
@@ -51,62 +51,32 @@ interface QueueManagementFormProps {
 }
 
 export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.queueManagement">
+      {(preferences) => <QueueManagementFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function QueueManagementFields({ instanceId, preferences, onSuccess }: QueueManagementFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-
-  const form = useForm({
-    defaultValues: {
-      queueing_enabled: false,
-      max_active_downloads: 0,
-      max_active_uploads: 0,
-      max_active_torrents: 0,
-      max_active_checking_torrents: 0,
-      dont_count_slow_torrents: false,
-      slow_torrent_dl_rate_threshold: 2,
-      slow_torrent_ul_rate_threshold: 2,
-      slow_torrent_inactive_timer: 60,
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(t("preferences.queueManagement.toast.success"))
-        onSuccess?.()
-      } catch {
-        toast.error(t("preferences.queueManagement.toast.error"))
-      }
-    },
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
+      queueing_enabled: p.queueing_enabled,
+      max_active_downloads: p.max_active_downloads,
+      max_active_uploads: p.max_active_uploads,
+      max_active_torrents: p.max_active_torrents,
+      max_active_checking_torrents: p.max_active_checking_torrents,
+      dont_count_slow_torrents: p.dont_count_slow_torrents,
+      slow_torrent_dl_rate_threshold: p.slow_torrent_dl_rate_threshold,
+      slow_torrent_ul_rate_threshold: p.slow_torrent_ul_rate_threshold,
+      slow_torrent_inactive_timer: p.slow_torrent_inactive_timer,
+    }),
+    i18nPrefix: "preferences.queueManagement",
+    onSaved: onSuccess,
   })
-
-  // Update form when preferences change
-  React.useEffect(() => {
-    if (preferences) {
-      form.setFieldValue("queueing_enabled", preferences.queueing_enabled)
-      form.setFieldValue("max_active_downloads", preferences.max_active_downloads)
-      form.setFieldValue("max_active_uploads", preferences.max_active_uploads)
-      form.setFieldValue("max_active_torrents", preferences.max_active_torrents)
-      form.setFieldValue("max_active_checking_torrents", preferences.max_active_checking_torrents)
-      form.setFieldValue("dont_count_slow_torrents", preferences.dont_count_slow_torrents)
-      form.setFieldValue("slow_torrent_dl_rate_threshold", preferences.slow_torrent_dl_rate_threshold)
-      form.setFieldValue("slow_torrent_ul_rate_threshold", preferences.slow_torrent_ul_rate_threshold)
-      form.setFieldValue("slow_torrent_inactive_timer", preferences.slow_torrent_inactive_timer)
-    }
-  }, [preferences, form])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.queueManagement.loading")}</p>
-      </div>
-    )
-  }
-
-  if (!preferences) {
-    return (
-      <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">{t("preferences.queueManagement.loadFailed")}</p>
-      </div>
-    )
-  }
 
   return (
     <PreferencesFormShell

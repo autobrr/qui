@@ -78,6 +78,25 @@ test("a template literal prefix reaches every leaf below it", () => {
   assert.deepEqual(unusedKeysFor(bundles, [source]), [])
 })
 
+test("a string passed as i18nPrefix reaches every leaf below it", () => {
+  const bundles = {
+    instances: {
+      preferences: {
+        seedingLimits: { loading: "Loading", toast: { success: "Saved" } },
+        speedLimits: { loading: "Loading", toast: { success: "Saved" } },
+        queueManagement: { loading: "Loading" },
+      },
+    },
+  }
+
+  const sources = [
+    `<PreferencesSection instanceId={instanceId} i18nPrefix="preferences.seedingLimits" />`,
+    `usePreferencesForm({ i18nPrefix: "preferences.speedLimits" })`,
+  ]
+
+  assert.deepEqual(unusedKeysFor(bundles, sources), ["instances:preferences.queueManagement.loading"])
+})
+
 test("a template that starts with a string const resolves the const as its head", () => {
   const bundles = {
     instances: {

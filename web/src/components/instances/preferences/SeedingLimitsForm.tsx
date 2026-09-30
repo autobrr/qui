@@ -3,18 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React from "react"
-import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
+import type { AppPreferences } from "@/types"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 
 function SwitchSetting({
@@ -43,52 +42,27 @@ interface SeedingLimitsFormProps {
 }
 
 export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.seedingLimits">
+      {(preferences) => <SeedingLimitsFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function SeedingLimitsFields({ instanceId, preferences, onSuccess }: SeedingLimitsFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-
-  const form = useForm({
-    defaultValues: {
-      max_ratio_enabled: false,
-      max_ratio: 0,
-      max_seeding_time_enabled: false,
-      max_seeding_time: 0,
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(t("preferences.seedingLimits.toast.success"))
-        onSuccess?.()
-      } catch {
-        toast.error(t("preferences.seedingLimits.toast.error"))
-      }
-    },
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
+      max_ratio_enabled: p.max_ratio_enabled,
+      max_ratio: p.max_ratio,
+      max_seeding_time_enabled: p.max_seeding_time_enabled,
+      max_seeding_time: p.max_seeding_time,
+    }),
+    i18nPrefix: "preferences.seedingLimits",
+    onSaved: onSuccess,
   })
-
-  // Update form when preferences change
-  React.useEffect(() => {
-    if (preferences) {
-      form.setFieldValue("max_ratio_enabled", preferences.max_ratio_enabled)
-      form.setFieldValue("max_ratio", preferences.max_ratio)
-      form.setFieldValue("max_seeding_time_enabled", preferences.max_seeding_time_enabled)
-      form.setFieldValue("max_seeding_time", preferences.max_seeding_time)
-    }
-  }, [preferences, form])
-
-  if (isLoading) {
-    return (
-      <div className="text-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.seedingLimits.loading")}</p>
-      </div>
-    )
-  }
-
-  if (!preferences) {
-    return (
-      <div className="text-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">{t("preferences.seedingLimits.loadFailed")}</p>
-      </div>
-    )
-  }
 
   return (
     <PreferencesFormShell

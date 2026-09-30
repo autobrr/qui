@@ -12,16 +12,16 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { useIncognitoMode } from "@/lib/incognito"
-import { useForm } from "@tanstack/react-form"
+import type { AppPreferences } from "@/types"
 import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
 import React from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
   const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
@@ -122,79 +122,45 @@ function NumberInput({
 }
 
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.connectionSettings">
+      {(preferences) => <ConnectionSettingsFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function ConnectionSettingsFields({ instanceId, preferences, onSuccess }: ConnectionSettingsFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
   const [incognitoMode] = useIncognitoMode()
-
-  const form = useForm({
-    defaultValues: {
-      listen_port: 0,
-      random_port: false,
-      upnp: false,
-      upnp_lease_duration: 0,
-      bittorrent_protocol: 0,
-      utp_tcp_mixed_mode: 0,
-      current_network_interface: "",
-      current_interface_address: "",
-      reannounce_when_address_changed: false,
-      max_connec: 0,
-      max_connec_per_torrent: 0,
-      max_uploads: 0,
-      max_uploads_per_torrent: 0,
-      enable_multi_connections_from_same_ip: false,
-      outgoing_ports_min: 0,
-      outgoing_ports_max: 0,
-      ip_filter_enabled: false,
-      ip_filter_path: "",
-      ip_filter_trackers: false,
-      banned_IPs: "",
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(t("preferences.connectionSettings.toast.success"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(t("preferences.connectionSettings.toast.error"))
-        console.error("Failed to update connection settings:", error)
-      }
-    },
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
+      listen_port: p.listen_port,
+      random_port: p.random_port,
+      upnp: p.upnp,
+      upnp_lease_duration: p.upnp_lease_duration,
+      bittorrent_protocol: sanitizeBtProtocol(p.bittorrent_protocol),
+      utp_tcp_mixed_mode: sanitizeUtpTcpMixedMode(p.utp_tcp_mixed_mode),
+      current_network_interface: p.current_network_interface,
+      current_interface_address: p.current_interface_address,
+      reannounce_when_address_changed: p.reannounce_when_address_changed,
+      max_connec: p.max_connec,
+      max_connec_per_torrent: p.max_connec_per_torrent,
+      max_uploads: p.max_uploads,
+      max_uploads_per_torrent: p.max_uploads_per_torrent,
+      enable_multi_connections_from_same_ip: p.enable_multi_connections_from_same_ip,
+      outgoing_ports_min: p.outgoing_ports_min,
+      outgoing_ports_max: p.outgoing_ports_max,
+      ip_filter_enabled: p.ip_filter_enabled,
+      ip_filter_path: p.ip_filter_path,
+      ip_filter_trackers: p.ip_filter_trackers,
+      banned_IPs: p.banned_IPs,
+    }),
+    i18nPrefix: "preferences.connectionSettings",
+    onSaved: onSuccess,
   })
-
-  React.useEffect(() => {
-    if (preferences) {
-      form.setFieldValue("listen_port", preferences.listen_port)
-      form.setFieldValue("random_port", preferences.random_port)
-      form.setFieldValue("upnp", preferences.upnp)
-      form.setFieldValue("upnp_lease_duration", preferences.upnp_lease_duration)
-      form.setFieldValue("bittorrent_protocol", sanitizeBtProtocol(preferences.bittorrent_protocol))
-      form.setFieldValue("utp_tcp_mixed_mode", sanitizeUtpTcpMixedMode(preferences.utp_tcp_mixed_mode))
-      form.setFieldValue("current_network_interface", preferences.current_network_interface)
-      form.setFieldValue("current_interface_address", preferences.current_interface_address)
-      form.setFieldValue("reannounce_when_address_changed", preferences.reannounce_when_address_changed)
-      form.setFieldValue("max_connec", preferences.max_connec)
-      form.setFieldValue("max_connec_per_torrent", preferences.max_connec_per_torrent)
-      form.setFieldValue("max_uploads", preferences.max_uploads)
-      form.setFieldValue("max_uploads_per_torrent", preferences.max_uploads_per_torrent)
-      form.setFieldValue("enable_multi_connections_from_same_ip", preferences.enable_multi_connections_from_same_ip)
-      form.setFieldValue("outgoing_ports_min", preferences.outgoing_ports_min)
-      form.setFieldValue("outgoing_ports_max", preferences.outgoing_ports_max)
-      form.setFieldValue("ip_filter_enabled", preferences.ip_filter_enabled)
-      form.setFieldValue("ip_filter_path", preferences.ip_filter_path)
-      form.setFieldValue("ip_filter_trackers", preferences.ip_filter_trackers)
-      form.setFieldValue("banned_IPs", preferences.banned_IPs)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
-  }, [preferences])
-
-  if (isLoading || !preferences) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.connectionSettings.loading")}</p>
-      </div>
-    )
-  }
 
   const getBittorrentProtocolLabel = (value: number) => {
     switch (value) {
@@ -210,7 +176,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       default: return t("preferences.connectionSettings.preferTcp")
     }
   }
-
 
   return (
     <PreferencesFormShell

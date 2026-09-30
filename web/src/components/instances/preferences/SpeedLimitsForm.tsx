@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
-import { useForm } from "@tanstack/react-form"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
+import type { AppPreferences } from "@/types"
 import { Clock, Download, Upload } from "lucide-react"
 import React from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 // Convert bytes/s to MiB/s for display
 function bytesToMiB(bytes: number): number {
@@ -148,8 +148,15 @@ interface SpeedLimitsFormProps {
 }
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.speedLimits">
+      {(preferences) => <SpeedLimitsFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function SpeedLimitsFields({ instanceId, preferences, onSuccess }: SpeedLimitsFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const dayOptions = [
     { value: 0, label: t("preferences.speedLimits.everyDay") },
     { value: 1, label: t("preferences.speedLimits.everyWeekday") },
@@ -163,73 +170,24 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     { value: 9, label: t("preferences.speedLimits.sunday") },
   ]
 
-
-  // Track if form is being actively edited
-  const [isFormDirty, setIsFormDirty] = React.useState(false)
-
-  // Memoize preferences to prevent unnecessary form resets
-  const memoizedPreferences = React.useMemo(() => preferences, [
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
     preferences,
-  ])
-
-  const form = useForm({
-    defaultValues: {
-      dl_limit: 0,
-      up_limit: 0,
-      alt_dl_limit: 0,
-      alt_up_limit: 0,
-      scheduler_enabled: false,
-      schedule_from_hour: 16,
-      schedule_from_min: 0,
-      schedule_to_hour: 23,
-      schedule_to_min: 0,
-      scheduler_days: 0,
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        setIsFormDirty(false) // Reset dirty flag after successful save
-        toast.success(t("preferences.speedLimits.toast.success"))
-        onSuccess?.()
-      } catch {
-        toast.error(t("preferences.speedLimits.toast.error"))
-      }
-    },
+    toForm: (p) => ({
+      dl_limit: p.dl_limit,
+      up_limit: p.up_limit,
+      alt_dl_limit: p.alt_dl_limit,
+      alt_up_limit: p.alt_up_limit,
+      scheduler_enabled: p.scheduler_enabled,
+      schedule_from_hour: p.schedule_from_hour,
+      schedule_from_min: p.schedule_from_min,
+      schedule_to_hour: p.schedule_to_hour,
+      schedule_to_min: p.schedule_to_min,
+      scheduler_days: p.scheduler_days,
+    }),
+    i18nPrefix: "preferences.speedLimits",
+    onSaved: onSuccess,
   })
-
-
-  // Update form when preferences change (but only if form is not being actively edited)
-  React.useEffect(() => {
-    if (memoizedPreferences && !isFormDirty) {
-      form.setFieldValue("dl_limit", memoizedPreferences.dl_limit)
-      form.setFieldValue("up_limit", memoizedPreferences.up_limit)
-      form.setFieldValue("alt_dl_limit", memoizedPreferences.alt_dl_limit)
-      form.setFieldValue("alt_up_limit", memoizedPreferences.alt_up_limit)
-      form.setFieldValue("scheduler_enabled", memoizedPreferences.scheduler_enabled)
-      form.setFieldValue("schedule_from_hour", memoizedPreferences.schedule_from_hour)
-      form.setFieldValue("schedule_from_min", memoizedPreferences.schedule_from_min)
-      form.setFieldValue("schedule_to_hour", memoizedPreferences.schedule_to_hour)
-      form.setFieldValue("schedule_to_min", memoizedPreferences.schedule_to_min)
-      form.setFieldValue("scheduler_days", memoizedPreferences.scheduler_days)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
-  }, [memoizedPreferences, isFormDirty])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.speedLimits.loading")}</p>
-      </div>
-    )
-  }
-
-  if (!memoizedPreferences) {
-    return (
-      <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">{t("preferences.speedLimits.loadFailed")}</p>
-      </div>
-    )
-  }
 
   return (
     <PreferencesFormShell
@@ -271,10 +229,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 <SpeedLimitInput
                   label={t("preferences.speedLimits.downloadLimit")}
                   value={(field.state.value as number) ?? 0}
-                  onChange={(value) => {
-                    setIsFormDirty(true)
-                    field.handleChange(value)
-                  }}
+                  onChange={field.handleChange}
                   icon={Download}
                   placeholder={t("preferences.speedLimits.unlimitedPlaceholder")}
                   unitLabel={t("preferences.speedLimits.rateUnit")}
@@ -302,10 +257,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 <SpeedLimitInput
                   label={t("preferences.speedLimits.uploadLimit")}
                   value={(field.state.value as number) ?? 0}
-                  onChange={(value) => {
-                    setIsFormDirty(true)
-                    field.handleChange(value)
-                  }}
+                  onChange={field.handleChange}
                   icon={Upload}
                   placeholder={t("preferences.speedLimits.unlimitedPlaceholder")}
                   unitLabel={t("preferences.speedLimits.rateUnit")}
@@ -333,10 +285,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 <SpeedLimitInput
                   label={t("preferences.speedLimits.altDownloadLimit")}
                   value={(field.state.value as number) ?? 0}
-                  onChange={(value) => {
-                    setIsFormDirty(true)
-                    field.handleChange(value)
-                  }}
+                  onChange={field.handleChange}
                   icon={Download}
                   placeholder={t("preferences.speedLimits.unlimitedPlaceholder")}
                   unitLabel={t("preferences.speedLimits.rateUnit")}
@@ -364,10 +313,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 <SpeedLimitInput
                   label={t("preferences.speedLimits.altUploadLimit")}
                   value={(field.state.value as number) ?? 0}
-                  onChange={(value) => {
-                    setIsFormDirty(true)
-                    field.handleChange(value)
-                  }}
+                  onChange={field.handleChange}
                   icon={Upload}
                   placeholder={t("preferences.speedLimits.unlimitedPlaceholder")}
                   unitLabel={t("preferences.speedLimits.rateUnit")}
@@ -387,10 +333,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               <div className="flex items-center gap-3">
                 <Switch
                   checked={field.state.value as boolean}
-                  onCheckedChange={(checked) => {
-                    setIsFormDirty(true)
-                    field.handleChange(checked)
-                  }}
+                  onCheckedChange={field.handleChange}
                 />
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -417,14 +360,8 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                 <TimeInput
                                   hour={(hourField.state.value as number) ?? 16}
                                   minute={(minField.state.value as number) ?? 0}
-                                  onHourChange={(hour) => {
-                                    setIsFormDirty(true)
-                                    hourField.handleChange(hour)
-                                  }}
-                                  onMinuteChange={(minute) => {
-                                    setIsFormDirty(true)
-                                    minField.handleChange(minute)
-                                  }}
+                                  onHourChange={hourField.handleChange}
+                                  onMinuteChange={minField.handleChange}
                                   groupLabel={t("preferences.speedLimits.timeLabel", { label: t("preferences.speedLimits.start") })}
                                   hourLabel={t("preferences.speedLimits.hourLabel", { label: t("preferences.speedLimits.start") })}
                                   minuteLabel={t("preferences.speedLimits.minuteLabel", { label: t("preferences.speedLimits.start") })}
@@ -446,14 +383,8 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                 <TimeInput
                                   hour={(hourField.state.value as number) ?? 23}
                                   minute={(minField.state.value as number) ?? 0}
-                                  onHourChange={(hour) => {
-                                    setIsFormDirty(true)
-                                    hourField.handleChange(hour)
-                                  }}
-                                  onMinuteChange={(minute) => {
-                                    setIsFormDirty(true)
-                                    minField.handleChange(minute)
-                                  }}
+                                  onHourChange={hourField.handleChange}
+                                  onMinuteChange={minField.handleChange}
                                   groupLabel={t("preferences.speedLimits.timeLabel", { label: t("preferences.speedLimits.end") })}
                                   hourLabel={t("preferences.speedLimits.hourLabel", { label: t("preferences.speedLimits.end") })}
                                   minuteLabel={t("preferences.speedLimits.minuteLabel", { label: t("preferences.speedLimits.end") })}
@@ -472,10 +403,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                       {(field) => (
                         <Select
                           value={(field.state.value as number).toString()}
-                          onValueChange={(value) => {
-                            setIsFormDirty(true)
-                            field.handleChange(parseInt(value, 10))
-                          }}
+                          onValueChange={(value) => field.handleChange(parseInt(value, 10))}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
