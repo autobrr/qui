@@ -136,14 +136,11 @@ export function useInstancePreferences(
     },
   })
 
-  type UpdatePreferencesOptions = Parameters<typeof updateMutation.mutate>[1]
-
   return {
     preferences: resolvedPreferences,
     isLoading: fetchIfMissing && externalEnabled ? (isLoading && !resolvedPreferences) : false,
     error,
-    updatePreferences: (updatedPreferences: Partial<AppPreferences>, options?: UpdatePreferencesOptions) =>
-      updateMutation.mutate(updatedPreferences, options),
+    updatePreferences: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
   }
 }

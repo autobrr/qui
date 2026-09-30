@@ -55,7 +55,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         toast.success(t("preferences.seedingLimits.toast.success"))
         onSuccess?.()
       } catch {
