@@ -93,10 +93,10 @@ func TestSeasonPackStatus_RuleGate(t *testing.T) {
 			Condition: &RuleCondition{Field: field, Operator: OperatorEqual, Value: SeasonPackStatusPacked},
 		}}}}
 	}
-	require.False(t, rulesUseCondition([]*models.Automation{rule(FieldName)}, FieldSeasonPackStatus))
-	require.True(t, rulesUseCondition([]*models.Automation{rule(FieldSeasonPackStatus)}, FieldSeasonPackStatus))
-	require.False(t, rulesUseCondition([]*models.Automation{rule(FieldSeasonPackStatus)}, FieldSeasonPackStatusAnyInstance))
-	require.True(t, rulesUseCondition([]*models.Automation{rule(FieldSeasonPackStatusAnyInstance)}, FieldSeasonPackStatusAnyInstance))
+	require.False(t, NeedsFor([]*models.Automation{rule(FieldName)}).SeasonPack)
+	require.True(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatus)}).SeasonPack)
+	require.False(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatus)}).SeasonPackAnyInstance)
+	require.True(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatusAnyInstance)}).SeasonPackAnyInstance)
 }
 
 func TestSeasonPackStatus_EpisodeRangeWithoutPack(t *testing.T) {
@@ -174,7 +174,7 @@ func TestSeasonPackStatus_PreviewScoreRuleGate(t *testing.T) {
 			},
 		}},
 	}}
-	evalCtx := &EvalContext{ReleaseParser: releases.NewDefaultParser()}
-	(&Service{}).setupPreviewSeasonPackContext(t.Context(), rule, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, evalCtx)
+	s := &Service{releaseParser: releases.NewDefaultParser()}
+	evalCtx, _ := s.buildEvalContext(t.Context(), 1, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, previewNeeds(rule))
 	require.Len(t, evalCtx.SeasonPackSet, 1)
 }
