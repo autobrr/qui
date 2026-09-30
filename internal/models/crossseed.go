@@ -1795,8 +1795,6 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	// last_seen_at index on every single feed poll.
 	lastSeenAt := item.LastSeenAt.Truncate(24 * time.Hour)
 
-	// last_run_id stays NULL: its ON DELETE SET NULL would make every run
-	// prune in CreateRun rewrite each feed row that run wrote.
 	query := `
 		INSERT INTO cross_seed_feed_items (
 			guid, indexer_id, title, first_seen_at,

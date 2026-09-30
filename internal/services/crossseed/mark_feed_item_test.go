@@ -102,9 +102,9 @@ func TestRunPruneLeavesFeedItemsPostgresIntegration(t *testing.T) {
 	runRunPruneLeavesFeedItems(t, testdb.NewMigratedPostgres)
 }
 
-// CreateRun keeps the 10 newest runs. Feed rows must not reference a run:
-// last_run_id's ON DELETE SET NULL would rewrite every row the pruned run
-// wrote, on every automation run.
+// CreateRun keeps the 10 newest runs. A pruned run must not touch the feed
+// rows written during it: last_run_id's ON DELETE SET NULL used to rewrite
+// every one of them on every automation run.
 func runRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 
@@ -130,10 +130,6 @@ func runRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *da
 	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{GUID: updated.GUID, IndexerID: indexerID, Title: updated.Title, LastStatus: models.CrossSeedFeedItemStatusSkipped}))
 	service.markFeedItem(ctx, inserted, models.CrossSeedFeedItemStatusPending, models.CrossSeedFeedItemStatusSkipped, nil)
 	service.markFeedItem(ctx, updated, models.CrossSeedFeedItemStatusSkipped, models.CrossSeedFeedItemStatusProcessed, &hash)
-
-	var referenced int
-	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cross_seed_feed_items WHERE last_run_id IS NOT NULL").Scan(&referenced))
-	assert.Zero(t, referenced, "feed rows referencing a run")
 
 	// Postgres writes a new row version, and a new xmin, for every update.
 	// SQLite has no row version, so a trigger counts updates instead.
