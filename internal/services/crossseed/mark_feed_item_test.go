@@ -102,9 +102,7 @@ func TestRunPruneLeavesFeedItemsPostgresIntegration(t *testing.T) {
 	runRunPruneLeavesFeedItems(t, testdb.NewMigratedPostgres)
 }
 
-// CreateRun keeps the 10 newest runs. A pruned run must not touch the feed
-// rows written during it: last_run_id's ON DELETE SET NULL used to rewrite
-// every one of them on every automation run.
+// last_run_id's ON DELETE SET NULL made each run prune rewrite the feed rows that run wrote.
 func runRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 
@@ -131,8 +129,7 @@ func runRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *da
 	service.markFeedItem(ctx, inserted, models.CrossSeedFeedItemStatusPending, models.CrossSeedFeedItemStatusSkipped, nil)
 	service.markFeedItem(ctx, updated, models.CrossSeedFeedItemStatusSkipped, models.CrossSeedFeedItemStatusProcessed, &hash)
 
-	// Postgres writes a new row version, and a new xmin, for every update.
-	// SQLite has no row version, so a trigger counts updates instead.
+	// Postgres gives every updated row a new xmin; SQLite has none, so a trigger counts updates.
 	if !postgres {
 		for _, stmt := range []string{
 			"CREATE TABLE feed_writes (n INTEGER NOT NULL)",
