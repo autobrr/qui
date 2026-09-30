@@ -501,7 +501,7 @@ type pendingResume struct {
 	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
 	budgetBytes        *int64
 	forgivenessGranted bool
-	// forgivenessEvalFailed marks that the LAST forgiveness or hardlink-gate
+	// forgivenessEvalFailed marks that the LAST forgiveness or linked-file check
 	// evaluation could not load its qBittorrent evidence; terminal branches keep
 	// the entry and retry instead of dropping it on a transient error.
 	forgivenessEvalFailed         bool
@@ -524,17 +524,17 @@ type pendingResume struct {
 	// would write into the source through the shared inode. Paths, not indexes:
 	// qBittorrent drops pad files from its file list and renumbers.
 	linkedPaths map[string]struct{}
-	// blockedLinkedFile names the linked file that tripped the gate on the last
+	// blockedLinkedFile names the linked file that tripped the check on the last
 	// evaluation, with its missing bytes.
 	blockedLinkedFile  string
 	blockedLinkedBytes int64
-	// blockedRun is the season pack history row to append when the gate blocks,
+	// blockedRun is the season pack history row to append when the check blocks,
 	// since the apply row was written before the recheck ran. nil for cross-seed
 	// adds, whose result already went back to the caller.
 	blockedRun *models.SeasonPackRun
 }
 
-// leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
+// leftPausedMsg names the linked file that tripped the linked-file check, else fallback.
 func (req *pendingResume) leftPausedMsg(fallback string) string {
 	if req.blockedLinkedFile == "" {
 		return fallback
@@ -6649,7 +6649,7 @@ func pendingResumeBudgetForLog(req *pendingResume) int64 {
 // pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
 // Threshold mode compares verified progress. Budget mode compares missing bytes against the
 // budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
-// sidecar files. Hardlink entries then pass the linked-file gate.
+// sidecar files. Hardlink entries then pass the linked-file check.
 func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
 	req.forgivenessEvalFailed = false
 	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
@@ -6662,48 +6662,69 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 	return s.hardlinkResumeAllowed(instanceID, req)
 }
 
-// pieceStateReader is the sync-manager method the hardlink gate needs beyond
-// qbittorrentSync. Without piece states the entry retries until the absolute
-// timeout; the pin keeps the real sync manager on the gate without widening
-// qbittorrentSync for its test doubles.
-type pieceStateReader interface {
+// LinkedFileReader is what the ADR 0004 linked-file check reads: the file list
+// and the piece states of one torrent.
+type LinkedFileReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
 }
 
-var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
+// The pin keeps the real sync manager on the check without widening
+// qbittorrentSync for its test doubles.
+var _ LinkedFileReader = (*qbittorrent.SyncManager)(nil)
 
 // hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
 // that no pending file shares. Fetch failures keep the entry for a retry.
-// Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
 func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 	defer cancel()
-	ctx = qbittorrent.WithForceFilesRefresh(ctx)
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
-	files := filesByHash[normalizeHash(req.hash)]
-	if err != nil || len(files) == 0 {
+	reader, ok := s.syncManager.(LinkedFileReader)
+	if !ok {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-	// Empty piece states would make every incomplete linked file look mismatched,
-	// which blocks the boundary packs the gate must let through; retry instead.
-	var pieces []qbt.PieceState
-	if reader, ok := s.syncManager.(pieceStateReader); ok {
-		pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash)
-	}
-	if err != nil || len(pieces) == 0 {
+	name, missing, err := MismatchedLinkedFile(ctx, reader, instanceID, req.hash, req.linkedPaths)
+	if err != nil {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-
-	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
 	if name == "" {
 		return true
 	}
 	req.blockedLinkedFile = name
 	req.blockedLinkedBytes = missing
 	return false
+}
+
+// MismatchedLinkedFile runs the linked-file check before a hardlink add resumes.
+// It returns the first linked file whose failed pieces no pending file shares,
+// with its missing bytes, or "" when the resume is safe. linked holds torrent
+// paths. A failed or empty read returns an error: the caller retries and does
+// not resume. Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
+func MismatchedLinkedFile(ctx context.Context, reader LinkedFileReader, instanceID int, hash string, linked map[string]struct{}) (string, int64, error) {
+	ctx = qbittorrent.WithForceFilesRefresh(ctx)
+
+	filesByHash, err := reader.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	if err != nil {
+		return "", 0, fmt.Errorf("read file list: %w", err)
+	}
+	files := filesByHash[normalizeHash(hash)]
+	if len(files) == 0 {
+		return "", 0, errors.New("read file list: empty")
+	}
+	// Empty piece states would make every incomplete linked file look mismatched,
+	// which blocks the boundary packs the check must let through.
+	pieces, err := reader.GetTorrentPieceStates(ctx, instanceID, hash)
+	if err != nil {
+		return "", 0, fmt.Errorf("read piece states: %w", err)
+	}
+	if len(pieces) == 0 {
+		return "", 0, errors.New("read piece states: empty")
+	}
+
+	name, missing := mismatchedLinkedFile(files, pieces, linked)
+	return name, missing, nil
 }
 
 // mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
@@ -7131,7 +7152,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
-// recordBlockedResume appends the hardlink gate verdict to the season pack history.
+// recordBlockedResume appends the linked-file check verdict to the season pack history.
 func (s *Service) recordBlockedResume(req *pendingResume) {
 	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
 		return
@@ -14500,7 +14521,7 @@ func treeFilesTotalSize(files []hardlinktree.TorrentFile) int64 {
 }
 
 // linkedTreePaths collects the torrent paths of the linked tree files for the
-// hardlink resume gate.
+// linked-file check.
 func linkedTreePaths(linked []hardlinktree.TorrentFile) map[string]struct{} {
 	paths := make(map[string]struct{}, len(linked))
 	for _, file := range linked {

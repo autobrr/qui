@@ -75,7 +75,7 @@ func TestInjectRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 			fx.instance.UseHardlinks = test.useHardlinks
 			pool, spy := remotePool()
 			adder := &failingTorrentAdder{err: errors.New("add failed")}
-			injector := NewInjector(nil, adder, nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
+			injector := NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: fx.instance}, nil, pool)
 
 			_, err := injector.Inject(t.Context(), fx.req)
 
