@@ -297,12 +297,12 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 }
 
 func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
-	trap := &dropTrap{Channel: channel, conn: conn, mode: func() SFTPMode {
+	cutter := &requestCutter{Channel: channel, conn: conn, mode: func() SFTPMode {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		return s.sftpMode
 	}}
-	server, err := sftp.NewServer(trap)
+	server, err := sftp.NewServer(cutter)
 	if err != nil {
 		return
 	}
@@ -464,15 +464,16 @@ func NewRSASigner() ssh.Signer {
 	return signer
 }
 
-// dropTrap closes the connection, or only the channel, on the first bytes a
-// client sends once mode asks for it, before the sftp server sees them.
-type dropTrap struct {
+// requestCutter cuts off the next request once mode asks for it. It closes the
+// connection, or only the channel, on the first bytes a client sends, before
+// the sftp server sees them.
+type requestCutter struct {
 	ssh.Channel
 	conn *ssh.ServerConn
 	mode func() SFTPMode
 }
 
-func (t *dropTrap) Read(p []byte) (int, error) {
+func (t *requestCutter) Read(p []byte) (int, error) {
 	n, err := t.Channel.Read(p)
 	if n == 0 {
 		return n, err
