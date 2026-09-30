@@ -23,7 +23,7 @@ import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRun } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -75,46 +75,48 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   const hasWarning = run.status === "completed" && hasError && !run.partial
 
   const rowContent = (
-    <div className="p-3 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
-          {statusBadge.label}
-        </Badge>
-        {hasWarning && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
+    <div className="p-3 flex items-center gap-3">
+      <div className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex items-center gap-3">
+          <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
+            {statusBadge.label}
+          </Badge>
+          {hasWarning && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {(run.status === "completed" || run.status === "preview_ready") && run.filesFound === 0 && !run.partial && !hasError && (
+            <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
+          )}
+          {run.status === "completed" && run.filesFound > 0 && (
+            <span>
+              {t("preferences.orphanScanOverview.deletedStats", {
+                deleted: [
+                  // A dirs-only run drops the files fragment; a run that deleted nothing keeps "0 files".
+                  ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
+                  ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
+                ].join(t("preferences.orphanScanOverview.deletedSeparator")),
+                size: formatBytes(run.bytesReclaimed),
+              })}
+            </span>
+          )}
+          {run.startedAt && (
+            <span className="whitespace-nowrap">{formatRelativeTime(run.startedAt)}</span>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {(run.status === "completed" || run.status === "preview_ready") && run.filesFound === 0 && !run.partial && !hasError && (
-          <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
-        )}
-        {run.status === "completed" && run.filesFound > 0 && (
-          <span>
-            {t("preferences.orphanScanOverview.deletedStats", {
-              deleted: [
-                // A dirs-only run drops the files fragment; a run that deleted nothing keeps "0 files".
-                ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
-                ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
-              ].join(t("preferences.orphanScanOverview.deletedSeparator")),
-              size: formatBytes(run.bytesReclaimed),
-            })}
-          </span>
-        )}
-        {run.startedAt && (
-          <span>{formatRelativeTime(run.startedAt)}</span>
-        )}
-        {hasDetails && (
-          <ChevronDownIcon className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-        )}
-      </div>
+      {hasDetails && (
+        <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      )}
     </div>
   )
 
@@ -176,6 +178,18 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
       </CollapsibleContent>
     </Collapsible>
   )
+}
+
+// Keeps each pair and its trailing "·" on one line when the summary wraps.
+function SettingsSummary({ text }: { text: string }) {
+  const parts = text.split(" · ")
+  if (parts.length === 1) return text
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
+      {i < parts.length - 1 && " "}
+    </Fragment>
+  ))
 }
 
 function InstanceOrphanScanItem({
@@ -275,10 +289,10 @@ function InstanceOrphanScanItem({
 
   return (
     <AccordionItem value={String(instance.id)} className="group/item">
-      <div className="grid grid-cols-[1fr_auto] items-center px-6">
-        <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-3 min-w-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center px-6">
+        <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
+          <div className="flex items-center justify-between gap-3 w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
               <span className="font-medium truncate">{instance.name}</span>
               {latestRunBadge && (
                 <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
@@ -306,7 +320,7 @@ function InstanceOrphanScanItem({
             </div>
 
             {latestRun?.completedAt && (
-              <span className="text-xs text-muted-foreground hidden sm:block">
+              <span className="text-xs text-muted-foreground hidden sm:block shrink-0 whitespace-nowrap">
                 {formatRelativeTime(latestRun.completedAt)}
               </span>
             )}
@@ -344,10 +358,11 @@ function InstanceOrphanScanItem({
       <AccordionContent className="px-6 pb-4">
         <div className="space-y-4">
           {/* Settings summary */}
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-            <div className="space-y-0.5">
+          <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
+            {/* A zero basis without min-w-0 moves the buttons down only once the widest summary pair stops fitting beside them. */}
+            <div className="space-y-0.5 flex-1">
               <p className="text-sm text-muted-foreground">
-                {settings? t("preferences.orphanScanOverview.settingsSummary", { grace: settings.gracePeriodMinutes, interval: settings.scanIntervalHours, max: settings.maxFilesPerRun }): t("preferences.orphanScanOverview.loading")}
+                {settings? <SettingsSummary text={t("preferences.orphanScanOverview.settingsSummary", { grace: settings.gracePeriodMinutes, interval: settings.scanIntervalHours, max: settings.maxFilesPerRun })} />: t("preferences.orphanScanOverview.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
                 {settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
@@ -356,7 +371,7 @@ function InstanceOrphanScanItem({
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -420,15 +435,15 @@ function InstanceOrphanScanItem({
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPreviewOpen(true)}
-                  className="h-8"
+                  className="h-8 max-w-full"
                 >
                   <Eye className="h-4 w-4 mr-2" />
-                  {t("preferences.orphanScanOverview.viewPreview")}
+                  <span className="truncate">{t("preferences.orphanScanOverview.viewPreview")}</span>
                 </Button>
                 <Button
                   variant="ghost"

@@ -158,19 +158,20 @@ export function OrphanScanPreviewDialog({
 
         <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
           <div className="overflow-auto max-h-[50vh]">
-            <table className="w-full text-sm">
+            {/* Path fills what the other columns leave and truncates. Narrower screens scroll sideways. */}
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="sticky top-0">
                 <tr className="border-b">
                   <th className="text-left p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.path")}</th>
                   <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.size")}</th>
                   <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.modified")}</th>
-                  <th className="text-left p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.status")}</th>
+                  <th className="text-left p-2 font-medium bg-muted whitespace-nowrap">{t("preferences.orphanScanPreview.status")}</th>
                 </tr>
               </thead>
               <tbody>
                 {files.map((f) => (
                   <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="p-2 max-w-[520px]">
+                    <td className="p-2 w-full max-w-0">
                       <div className="flex items-center gap-1.5">
                         {f.isAbandonedDir && (
                           <Folder
@@ -188,7 +189,7 @@ export function OrphanScanPreviewDialog({
                       {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}
                     </td>
                     <td className="p-2">
-                      <div className="text-xs font-mono text-muted-foreground">
+                      <div className="text-xs font-mono text-muted-foreground whitespace-nowrap">
                         {t(`preferences.orphanScanPreview.statusLabels.${f.status}`, f.status)}
                         {f.errorMessage ? (
                           <div className="mt-1 text-[11px] text-muted-foreground/80 whitespace-pre-wrap break-all">
