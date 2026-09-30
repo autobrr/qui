@@ -294,7 +294,7 @@ function InstanceOrphanScanItem({
         <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
           <div className="flex items-center justify-between gap-3 w-full min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
-              <span className="font-medium truncate">{instance.name}</span>
+              <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
               {latestRunBadge && (
                 <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
                   {latestRunBadge.label}
@@ -441,10 +441,10 @@ function InstanceOrphanScanItem({
                   variant="outline"
                   size="sm"
                   onClick={() => setPreviewOpen(true)}
-                  className="h-8 max-w-full"
+                  className="h-auto min-h-8 max-w-full py-1.5"
                 >
                   <Eye className="h-4 w-4 mr-2" />
-                  <span className="truncate">{t("preferences.orphanScanOverview.viewPreview")}</span>
+                  <span className="whitespace-normal text-left">{t("preferences.orphanScanOverview.viewPreview")}</span>
                 </Button>
                 <Button
                   variant="ghost"
