@@ -897,6 +897,11 @@ func TestValidateRule(t *testing.T) {
 		return func(r *models.Automation) { r.Conditions = ac }
 	}
 	local := &models.Instance{HasLocalFilesystemAccess: true}
+	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "100000000000"}
+	freeSpacePathMsg := "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+	if runtime.GOOS == "windows" {
+		freeSpacePathMsg = errMsgWindowsPathSourceNotSupported
+	}
 
 	tests := []struct {
 		name     string
@@ -947,6 +952,22 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
 		{name: "external program without program", edit: withConditions(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true}}),
 			wantMsg: "External program action requires a valid program selection"},
+		{name: "invalid sorting config", edit: func(r *models.Automation) { r.SortingConfig = &models.SortingConfig{SchemaVersion: "2"} },
+			wantMsg: "Invalid sorting config: invalid schema version: 2"},
+		{name: "keep-files delete on free space", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, Condition: freeSpaceBelow}}),
+			wantMsg: "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed."},
+		{name: "delete group outside keep files", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeWithFiles, GroupID: "cross_seed_content_save_path", Condition: cond(FieldSize)}}),
+			wantMsg: "delete.groupId is only supported when delete mode is 'Keep files'"},
+		{name: "tag delete from client with tracker tags", edit: withConditions(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, DeleteFromClient: true, UseTrackerAsTag: true}}}),
+			wantMsg: "tags[0].deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient"},
+		{name: "unknown grouping id", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "unknown_group", Value: "1"}}}),
+			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
+		{name: "release year out of range", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldRlsYear, Operator: models.OperatorEqual, Value: "1800"}}}),
+			wantMsg: "Release Year must be between " + strconv.Itoa(minRlsYear) + " and " + strconv.Itoa(time.Now().Year()+1)},
+		{name: "free space path source without local access", edit: func(r *models.Automation) {
+			r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
+			r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
+		}, wantMsg: freeSpacePathMsg},
 	}
 
 	for _, tt := range tests {

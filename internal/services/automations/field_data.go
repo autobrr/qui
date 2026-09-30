@@ -34,6 +34,14 @@ var conditionFieldData = map[ConditionField]fieldData{
 }
 
 func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
+	// The switch skips the map lookup for the common field that reads only the
+	// torrent; this runs for every leaf on every torrent.
+	switch field {
+	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
+		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance:
+	default:
+		return true
+	}
 	data, ok := conditionFieldData[field]
 	if !ok {
 		return true
