@@ -80,7 +80,7 @@ func TestMissingFilesSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 		known bool
 	}{
 		{name: "still local", row: snapshot, known: true},
-		{name: "now remote", row: &models.Instance{ID: 1, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}},
+		{name: "now remote", row: &models.Instance{ID: 1, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

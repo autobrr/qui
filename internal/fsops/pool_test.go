@@ -130,7 +130,7 @@ func TestPool_ResolveReturnsTheModeItRoutedBy(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
 		1: {ID: 1, HasLocalFilesystemAccess: true},
 		2: {ID: 2},
-		3: {ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
 	}}
 	pool := NewPoolWithRemote(store, local, remoteFactory(remote))
 
