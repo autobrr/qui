@@ -402,8 +402,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate fields that require local filesystem access
-	if conditionsRequireLocalAccess(payload.Conditions) {
+	// Validate fields that require filesystem access
+	needsIdentity := conditionsNeedFileIdentity(payload.Conditions)
+	needsLocalAccess := conditionsUseField(payload.Conditions, automations.FieldHasMissingFiles)
+	if needsIdentity || needsLocalAccess {
 		instance, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
@@ -413,7 +415,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
 			return http.StatusInternalServerError, "Failed to validate automation", err
 		}
-		if !instance.HasLocalFilesystemAccess {
+		if (needsIdentity && !models.FilesystemCapabilitiesOf(instance).Identity) || (needsLocalAccess && !instance.HasLocalFilesystemAccess) {
 			return http.StatusBadRequest, "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
 		}
 	}
@@ -447,7 +449,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if payload.Conditions.Delete.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return http.StatusBadRequest, "includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'", errors.New("includeHardlinks requires include cross-seeds mode")
 		}
-		// Requires local filesystem access
+		// Requires trusted file identity
 		instance, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
@@ -456,7 +458,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for includeHardlinks validation")
 			return http.StatusInternalServerError, "Failed to validate automation", err
 		}
-		if !instance.HasLocalFilesystemAccess {
+		if !models.FilesystemCapabilitiesOf(instance).Identity {
 			return http.StatusBadRequest, "includeHardlinks requires Local Filesystem Access to be enabled on this instance", errors.New("local access required for hardlinks")
 		}
 	}
@@ -522,12 +524,11 @@ func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations
 	return false
 }
 
-// conditionsRequireLocalAccess checks if any enabled action condition uses fields
-// that require local filesystem access (HARDLINK_SCOPE, HARDLINK_SCOPE_CROSS, or HAS_MISSING_FILES).
-func conditionsRequireLocalAccess(conditions *models.ActionConditions) bool {
+// conditionsNeedFileIdentity reports whether any enabled action condition uses
+// a hardlink scope field.
+func conditionsNeedFileIdentity(conditions *models.ActionConditions) bool {
 	return conditionsUseField(conditions, automations.FieldHardlinkScope) ||
-		conditionsUseField(conditions, automations.FieldHardlinkScopeCross) ||
-		conditionsUseField(conditions, automations.FieldHasMissingFiles)
+		conditionsUseField(conditions, automations.FieldHardlinkScopeCross)
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode

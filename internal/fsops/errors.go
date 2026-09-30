@@ -18,6 +18,10 @@ var (
 	// longer has local filesystem access.
 	ErrNotLocal = errors.New("instance does not have local filesystem access")
 
+	// ErrNotCapable is returned by Pool.Require for an instance whose
+	// filesystem mode does not grant the capability asked for.
+	ErrNotCapable = errors.New("instance filesystem mode does not grant this capability")
+
 	// ErrRemoteBackendNotWired is returned by a Pool built without a remote
 	// factory for an instance in remote mode: a wiring mistake must fail
 	// loudly rather than read as "not configured".

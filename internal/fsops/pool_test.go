@@ -18,9 +18,11 @@ import (
 // fakeInstanceStore implements instanceGetter for tests.
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
+	gets      int
 }
 
 func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	s.gets++
 	inst, ok := s.instances[id]
 	if !ok {
 		return nil, nil
@@ -167,6 +169,50 @@ func TestPool_LocalBackendRefusesEveryOtherMode(t *testing.T) {
 		backend, err := pool.LocalBackend(context.Background(), id)
 		require.ErrorIs(t, err, ErrNotLocal, "instance %d", id)
 		assert.Nil(t, backend, "instance %d", id)
+	}
+}
+
+func TestPool_RequireGrantsByMode(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	remote := fakeBackend{kind: "remote"}
+	instances := map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}
+
+	for _, tc := range []struct {
+		id          int
+		capability  models.FilesystemCapability
+		wantBackend Backend
+	}{
+		{1, models.CapabilityRead, local},
+		{1, models.CapabilityIdentity, local},
+		{1, models.CapabilityWrite, local},
+		{1, models.CapabilityContent, local},
+		{2, models.CapabilityRead, nil},
+		{2, models.CapabilityIdentity, nil},
+		{2, models.CapabilityWrite, nil},
+		{2, models.CapabilityContent, nil},
+		{3, models.CapabilityRead, remote},
+		{3, models.CapabilityIdentity, nil},
+		{3, models.CapabilityWrite, nil},
+		{3, models.CapabilityContent, nil},
+	} {
+		store := &fakeInstanceStore{instances: instances}
+		pool := NewPoolWithRemote(store, local, remoteFactory(remote))
+
+		backend, instance, err := pool.Require(t.Context(), tc.id, tc.capability)
+		assert.Equal(t, 1, store.gets, "instance %d %s", tc.id, tc.capability)
+		if tc.wantBackend == nil {
+			require.ErrorIs(t, err, ErrNotCapable, "instance %d %s", tc.id, tc.capability)
+			assert.Nil(t, backend)
+			assert.Nil(t, instance)
+			continue
+		}
+		require.NoError(t, err, "instance %d %s", tc.id, tc.capability)
+		assert.Equal(t, tc.wantBackend, backend, "instance %d %s", tc.id, tc.capability)
+		assert.Same(t, instances[tc.id], instance, "instance %d %s", tc.id, tc.capability)
 	}
 }
 

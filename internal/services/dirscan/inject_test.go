@@ -1283,3 +1283,21 @@ func TestInjector_PartialReflinkResumeSkipsLinkedFileCheck(t *testing.T) {
 		}
 	})
 }
+
+// A remote instance has Read only, so link-tree injection refuses it even with
+// a link mode and a base dir configured.
+func TestValidateLinkTreeInstanceRefusesRemoteInstance(t *testing.T) {
+	remote := &models.Instance{
+		UseHardlinks: true, HardlinkBaseDir: "/links",
+		SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey",
+	}
+	local := *remote
+	local.HasLocalFilesystemAccess = true
+
+	if err := validateLinkTreeInstance(&local); err != nil {
+		t.Fatalf("local instance: %v", err)
+	}
+	if err := validateLinkTreeInstance(remote); err == nil {
+		t.Fatal("remote instance: got no error, want a refusal")
+	}
+}

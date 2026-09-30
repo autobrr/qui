@@ -39,7 +39,7 @@ import (
 
 // backendPoolGetter provides filesystem backends per instance.
 type backendPoolGetter interface {
-	LocalBackend(ctx context.Context, instanceID int) (fsops.Backend, error)
+	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
 // FilesManager interface for caching torrent files.
@@ -2601,31 +2601,25 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	syncManager *qbt.SyncManager,
 	hashes []string,
 ) ([]managedDeleteCleanupTarget, fsops.Backend) {
-	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
+	pool := sm.getBackendPool()
+	if pool == nil || syncManager == nil {
 		return nil, nil
 	}
-
-	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
-	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+	// The base dir and the backend come from one read: a base dir read before
+	// local access was turned off is a local path the SSH host need not have.
+	backend, instance, err := pool.Require(ctx, instanceID, models.CapabilityWrite)
+	if err != nil {
+		if !errors.Is(err, fsops.ErrNotCapable) {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
+		}
+		return nil, nil
+	}
+	if strings.TrimSpace(instance.HardlinkBaseDir) == "" {
 		return nil, nil
 	}
 
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrents) == 0 {
-		return nil, nil
-	}
-
-	pool := sm.getBackendPool()
-	if pool == nil {
-		return nil, nil
-	}
-	// The gate above read the instance once and this reads it again. If local
-	// access was turned off in between, the base dir is a local path the SSH
-	// host need not have, so the cleanup is skipped as it is for an instance
-	// without local access.
-	backend, err := pool.LocalBackend(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
 		return nil, nil
 	}
 
