@@ -17,15 +17,15 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
 import { useIncognitoMode } from "@/lib/incognito"
-import { useForm } from "@tanstack/react-form"
+import type { AppPreferences } from "@/types"
 import React from "react"
 import { Trans, useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 const LEGACY_AUTORUN_PLACEHOLDERS: Array<{ token: string; labelKey: string }> = [
   { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },
@@ -152,8 +152,15 @@ interface FileManagementFormProps {
 }
 
 export function FileManagementForm({ instanceId, onSuccess }: FileManagementFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.fileManagement">
+      {(preferences) => <FileManagementFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function FileManagementFields({ instanceId, preferences, onSuccess }: FileManagementFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const [incognitoMode] = useIncognitoMode()
@@ -165,106 +172,56 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const autorunPlaceholders = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PLACEHOLDERS : LEGACY_AUTORUN_PLACEHOLDERS
   const autorunProgramPlaceholder = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PROGRAM_PLACEHOLDER : LEGACY_AUTORUN_PROGRAM_PLACEHOLDER
 
-  const form = useForm({
-    defaultValues: {
-      auto_tmm_enabled: false,
-      torrent_changed_tmm_enabled: true,
-      save_path_changed_tmm_enabled: true,
-      category_changed_tmm_enabled: true,
-      start_paused_enabled: false,
-      use_subcategories: false,
-      save_path: "",
-      temp_path_enabled: false,
-      temp_path: "",
-      torrent_content_layout: "Original",
-      autorun_on_torrent_added_enabled: false,
-      autorun_on_torrent_added_program: "",
-      autorun_enabled: false,
-      autorun_program: "",
-      watch_folders: [] as WatchFolderConfig[],
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        // NOTE: Save start_paused_enabled to localStorage instead of qBittorrent
-        // This is a workaround because qBittorrent's API rejects this preference
-        setStartPausedEnabled(value.start_paused_enabled)
-
-        // Update other preferences to qBittorrent (excluding start_paused_enabled)
-        const qbittorrentPrefs: Record<string, unknown> = {
-          auto_tmm_enabled: value.auto_tmm_enabled,
-          torrent_changed_tmm_enabled: value.torrent_changed_tmm_enabled,
-          save_path_changed_tmm_enabled: value.save_path_changed_tmm_enabled,
-          category_changed_tmm_enabled: value.category_changed_tmm_enabled,
-          save_path: value.save_path,
-          temp_path_enabled: value.temp_path_enabled,
-          temp_path: value.temp_path,
-          torrent_content_layout: value.torrent_content_layout ?? "Original",
-          autorun_enabled: value.autorun_enabled,
-          autorun_program: value.autorun_program,
-          scan_dirs: toScanDirs(value.watch_folders),
-        }
-        if (supportsAutorunOnTorrentAdded) {
-          qbittorrentPrefs.autorun_on_torrent_added_enabled = value.autorun_on_torrent_added_enabled
-          qbittorrentPrefs.autorun_on_torrent_added_program = value.autorun_on_torrent_added_program
-        }
-        if (canToggleSubcategories) {
-          qbittorrentPrefs.use_subcategories = Boolean(value.use_subcategories)
-        }
-        await updatePreferences(qbittorrentPrefs)
-        toast.success(t("preferences.fileManagement.toast.success"))
-        onSuccess?.()
-      } catch {
-        toast.error(t("preferences.fileManagement.toast.error"))
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
+      auto_tmm_enabled: p.auto_tmm_enabled,
+      torrent_changed_tmm_enabled: p.torrent_changed_tmm_enabled ?? true,
+      save_path_changed_tmm_enabled: p.save_path_changed_tmm_enabled ?? true,
+      category_changed_tmm_enabled: p.category_changed_tmm_enabled ?? true,
+      start_paused_enabled: startPausedEnabled,
+      use_subcategories: Boolean(p.use_subcategories),
+      save_path: p.save_path,
+      temp_path_enabled: p.temp_path_enabled,
+      temp_path: p.temp_path,
+      torrent_content_layout: p.torrent_content_layout ?? "Original",
+      autorun_on_torrent_added_enabled: p.autorun_on_torrent_added_enabled ?? false,
+      autorun_on_torrent_added_program: p.autorun_on_torrent_added_program ?? "",
+      autorun_enabled: p.autorun_enabled ?? false,
+      autorun_program: p.autorun_program ?? "",
+      watch_folders: getWatchFolders(p.scan_dirs),
+    }),
+    // start_paused_enabled is not sent: qBittorrent's API rejects it, so qui stores it itself.
+    toPayload: (value) => {
+      const payload: Partial<AppPreferences> = {
+        auto_tmm_enabled: value.auto_tmm_enabled,
+        torrent_changed_tmm_enabled: value.torrent_changed_tmm_enabled,
+        save_path_changed_tmm_enabled: value.save_path_changed_tmm_enabled,
+        category_changed_tmm_enabled: value.category_changed_tmm_enabled,
+        save_path: value.save_path,
+        temp_path_enabled: value.temp_path_enabled,
+        temp_path: value.temp_path,
+        torrent_content_layout: value.torrent_content_layout ?? "Original",
+        autorun_enabled: value.autorun_enabled,
+        autorun_program: value.autorun_program,
+        scan_dirs: toScanDirs(value.watch_folders),
       }
+      if (supportsAutorunOnTorrentAdded) {
+        payload.autorun_on_torrent_added_enabled = value.autorun_on_torrent_added_enabled
+        payload.autorun_on_torrent_added_program = value.autorun_on_torrent_added_program
+      }
+      if (canToggleSubcategories) {
+        payload.use_subcategories = value.use_subcategories
+      }
+      return payload
+    },
+    i18nPrefix: "preferences.fileManagement",
+    onSaved: (value) => {
+      setStartPausedEnabled(value.start_paused_enabled)
+      onSuccess?.()
     },
   })
-
-  // Update form when preferences change
-  React.useEffect(() => {
-    if (preferences) {
-      form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
-      form.setFieldValue("torrent_changed_tmm_enabled", preferences.torrent_changed_tmm_enabled ?? true)
-      form.setFieldValue("save_path_changed_tmm_enabled", preferences.save_path_changed_tmm_enabled ?? true)
-      form.setFieldValue("category_changed_tmm_enabled", preferences.category_changed_tmm_enabled ?? true)
-      if (subcategoriesAlwaysEnabled) {
-        form.setFieldValue("use_subcategories", true)
-      } else if (supportsSubcategories) {
-        form.setFieldValue("use_subcategories", Boolean(preferences.use_subcategories))
-      } else {
-        form.setFieldValue("use_subcategories", false)
-      }
-      form.setFieldValue("save_path", preferences.save_path)
-      form.setFieldValue("temp_path_enabled", preferences.temp_path_enabled)
-      form.setFieldValue("temp_path", preferences.temp_path)
-      form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
-      form.setFieldValue("autorun_on_torrent_added_enabled", preferences.autorun_on_torrent_added_enabled ?? false)
-      form.setFieldValue("autorun_on_torrent_added_program", preferences.autorun_on_torrent_added_program ?? "")
-      form.setFieldValue("autorun_enabled", preferences.autorun_enabled ?? false)
-      form.setFieldValue("autorun_program", preferences.autorun_program ?? "")
-      form.setFieldValue("watch_folders", getWatchFolders(preferences.scan_dirs))
-    }
-  }, [preferences, form, supportsSubcategories, subcategoriesAlwaysEnabled])
-
-  // Update form when localStorage start_paused_enabled changes
-  React.useEffect(() => {
-    form.setFieldValue("start_paused_enabled", startPausedEnabled)
-  }, [startPausedEnabled, form])
-
-  if (isLoading) {
-    return (
-      <div className="text-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.fileManagement.loading")}</p>
-      </div>
-    )
-  }
-
-  if (!preferences) {
-    return (
-      <div className="text-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">{t("preferences.fileManagement.loadFailed")}</p>
-      </div>
-    )
-  }
 
   return (
     <PreferencesFormShell

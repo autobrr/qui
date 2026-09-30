@@ -38,7 +38,7 @@ export function useInstancePreferences(
   const queryEnabled =
     Boolean(externalEnabled) && fetchIfMissing && typeof instanceId === "number" && !cachedPreferences
 
-  const { data: preferences, isLoading, error } = useQuery<AppPreferences | undefined>({
+  const { data: preferences, isLoading, isPlaceholderData, error } = useQuery<AppPreferences | undefined>({
     queryKey: preferencesQueryKey,
     queryFn: async () => {
       if (instanceId === undefined) {
@@ -142,5 +142,6 @@ export function useInstancePreferences(
     error,
     updatePreferences: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
+    isPlaceholderData,
   }
 }
