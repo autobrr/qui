@@ -1766,13 +1766,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }
 
   const movePathClientError = isVisiblyRelativeMovePath(formState.exprMovePath)? t("preferences.workflowDialog.move.errors.mustBeAbsolute"): null
-  // Ignore both errors once the Move action is removed, or Save stays disabled.
-  // A disabled rule is never checked, so an older one with a relative path can
-  // still be edited and saved, matching the server.
+  // Only an enabled rule with a Move action is checked, matching the server.
   const movePathError = formState.enabled && formState.moveEnabled ? movePathClientError ?? movePathServerError : null
 
-  // The server renders templated paths for a sample torrent; show its move path
-  // error next to the field instead of in a toast.
+  // Show the server's move path error under the field, not in a toast.
   const showMovePathServerError = (error: unknown): boolean => {
     if (!(error instanceof Error) || !isMovePathServerError(error.message)) {
       return false

@@ -28,8 +28,6 @@ func normalizeLower(value string) string {
 }
 
 func normalizePathInner(p string) string {
-	// Same shape as cross-seed: lowercased, slash-separated, cleaned. qBittorrent
-	// cleans the path it stores, so /a//b and /a/./b come back as /a/b and a move
-	// that skips this would repeat every run.
+	// qBittorrent cleans the path it stores, so compare cleaned paths or a move repeats every run.
 	return strings.ToLower(pathcmp.NormalizePath(p))
 }

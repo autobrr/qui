@@ -392,8 +392,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Checks that only apply when the workflow is enabled: a disabled rule saved
-	// before these checks existed must still be editable.
+	// A disabled rule skips these, so one saved before a check existed stays editable.
 	isEnabled := payload.Enabled == nil || *payload.Enabled
 	if isEnabled {
 		if msg, err := validateMovePath(payload.Conditions.Move); err != nil {
@@ -585,10 +584,7 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-// validateMovePath renders the move path for a placeholder torrent and rejects
-// it unless the result is absolute or empty. Branches the placeholder does not take are
-// still checked per torrent when the rule runs. Callers skip it for a disabled
-// rule, so an older rule with a relative path can still be toggled off.
+// validateMovePath rejects a move path that renders relative for a placeholder torrent.
 func validateMovePath(move *models.MoveAction) (string, error) {
 	if move == nil || !move.Enabled {
 		return "", nil
@@ -601,8 +597,7 @@ func validateMovePath(move *models.MoveAction) (string, error) {
 	if err != nil {
 		return fmt.Sprintf("Invalid move path template: %v", err), err
 	}
-	// A conditional template can render nothing for the placeholder torrent and
-	// still be absolute for a real one; the run skips an empty render anyway.
+	// A conditional template can render empty for the placeholder yet be absolute for a real torrent.
 	if rendered == "" || pathcmp.IsAbsolute(rendered) {
 		return "", nil
 	}

@@ -568,10 +568,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
-	// qBittorrent creates the folder under its own working directory, which
-	// usually fails, and otherwise moves under its default or category save path.
-	// Either way the reported save path never matches, so the move would repeat
-	// every run.
+	// qBittorrent never reports a relative path back as the save path, so the move would repeat every run.
 	if conditionMet && !pathcmp.IsAbsolute(resolvedPath) {
 		// One warning per rule per run; stats is per rule per run.
 		if stats == nil || !stats.movePathWarned {
@@ -687,8 +684,7 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// renderPathTemplate renders a Move or Export save path template for torrent; ok
-// is false when rendering fails or yields nothing. The path is executed as a
+// renderPathTemplate returns the rendered Move or Export path. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
 func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
@@ -709,8 +705,7 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 	return resolvedPath, true
 }
 
-// RenderMovePathSample renders a move path for a placeholder torrent, so a rule's
-// path can be checked when it is saved.
+// RenderMovePathSample renders a move path for a placeholder torrent, to check it on save.
 func RenderMovePathSample(path string) (string, error) {
 	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
 	return executePathTemplate(path, pathTemplateData(sample, "tracker"))

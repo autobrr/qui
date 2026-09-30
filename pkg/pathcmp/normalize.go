@@ -22,9 +22,7 @@ func IsWindowsDriveAbs(p string) bool {
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && p[1] == ':' && p[2] == '/'
 }
 
-// IsAbsolute reports whether p is absolute for a torrent client on any OS. qui
-// and qBittorrent can run on different OSes, so filepath.IsAbs would judge the
-// wrong host. A leading slash covers POSIX paths and UNC shares.
+// IsAbsolute reports whether p is absolute on any client OS; filepath.IsAbs would judge qui's host.
 func IsAbsolute(p string) bool {
 	p = strings.ReplaceAll(p, `\`, "/")
 	return strings.HasPrefix(p, "/") || IsWindowsDriveAbs(p)
