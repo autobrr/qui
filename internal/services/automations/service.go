@@ -5029,57 +5029,11 @@ func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
 }
 
 func actionConditionsUseField(ac *models.ActionConditions, field ConditionField) bool {
-	if ac == nil {
-		return false
-	}
-	conds := make([]*models.RuleCondition, 0, 10)
-	if ac.SpeedLimits != nil && ac.SpeedLimits.Enabled {
-		conds = append(conds, ac.SpeedLimits.Condition)
-	}
-	if ac.ShareLimits != nil && ac.ShareLimits.Enabled {
-		conds = append(conds, ac.ShareLimits.Condition)
-	}
-	if ac.Pause != nil && ac.Pause.Enabled {
-		conds = append(conds, ac.Pause.Condition)
-	}
-	if ac.Resume != nil && ac.Resume.Enabled {
-		conds = append(conds, ac.Resume.Condition)
-	}
-	if ac.Recheck != nil && ac.Recheck.Enabled {
-		conds = append(conds, ac.Recheck.Condition)
-	}
-	if ac.Reannounce != nil && ac.Reannounce.Enabled {
-		conds = append(conds, ac.Reannounce.Condition)
-	}
-	if ac.AutoManagement != nil {
-		conds = append(conds, ac.AutoManagement.Condition)
-	}
-	if ac.Delete != nil && ac.Delete.Enabled {
-		conds = append(conds, ac.Delete.Condition)
-	}
-	if ac.Category != nil && ac.Category.Enabled {
-		conds = append(conds, ac.Category.Condition)
-	}
-	if ac.Move != nil && ac.Move.Enabled {
-		conds = append(conds, ac.Move.Condition)
-	}
-	if ac.ExternalProgram != nil && ac.ExternalProgram.Enabled {
-		conds = append(conds, ac.ExternalProgram.Condition)
-	}
-	if ac.ExportToInstance != nil && ac.ExportToInstance.Enabled {
-		conds = append(conds, ac.ExportToInstance.Condition)
-	}
-	for _, cond := range conds {
-		if conditionTreeUsesField(cond, field) {
+	for c := range ac.Conditions() {
+		if c.Enabled && conditionTreeUsesField(c.Condition, field) {
 			return true
 		}
 	}
-	for _, action := range ac.TagActions() {
-		if action != nil && action.Enabled && conditionTreeUsesField(action.Condition, field) {
-			return true
-		}
-	}
-
 	return false
 }
 
