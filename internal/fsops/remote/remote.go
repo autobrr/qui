@@ -268,7 +268,8 @@ func readError(op, p string, err error) error {
 
 // readDirError is readError for a directory listing. pkg/sftp takes the
 // server's SSH_FX_EOF as the end of the listing, so an io.EOF that still
-// escapes it comes from a request sent on a channel that had closed.
+// escapes it comes from a request sent on a channel that had closed, or from
+// a server that answered the opendir itself with SSH_FX_EOF.
 func readDirError(p string, err error) error {
 	if errors.Is(err, io.EOF) {
 		return pathError("readdir", p, lost(err))

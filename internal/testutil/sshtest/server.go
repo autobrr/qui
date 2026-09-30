@@ -146,7 +146,8 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 		server.ReleaseStall()
 		_ = listener.Close()
 		server.wg.Wait()
-		// Read after Wait: the stall that set it ran on a goroutine Wait covered.
+		// The stall that set it ran on a goroutine Wait covered, so this read
+		// follows the write.
 		if server.stallTimer != nil {
 			server.stallTimer.Stop()
 		}

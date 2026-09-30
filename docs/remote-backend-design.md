@@ -429,32 +429,32 @@ scratch directories and a temporarily added, uniquely tagged
    admit an instance on `HasLocalFilesystemAccess` rather than on its
    filesystem mode: orphan scan (handler and service filters), automations
    (missing-files condition, hardlink index; rule save and dry-run
-   validation), dirscan, cross-seed (link mode, manual assemble, mediainfo,
-   season pack, partial pool, local-match detection), the sync manager's
-   hardlink base dir, the disc-scan route (which checks for local mode, not
-   the flag), and two routes that read file content, which no `Backend`
-   method covers yet: the torrents handler's local-access routes and the
-   proxy mediainfo route. The exception is the free-space path source: its preview and
-   scheduled-run paths resolve the backend and call `Statfs` with no mode
-   check, so a remote-mode instance already reports remote free space,
-   and that is the intended figure. A gate reads the instance before the
-   work starts, so the reads after it resolve backend and mode from one
-   later read and refuse every mode but local. The hardlink index, dirscan
-   and the sync manager's cleanup do that through `Pool.LocalBackend`, and
-   missing files through `Pool.Resolve`. An instance whose local access was
-   turned off after the gate is then refused rather than read over SSH at a
-   local path. Orphan scan
-   still resolves with `GetBackend` until remote orphan scan replaces its
-   gate. Each remaining gate lifts in its own
-   slice, with the degraded-mode handling that service needs, and the
-   API-driven checks (missing files, orphan scan) become the field test of
-   that slice. Every remote read that loses its connection, or that the
-   pool will not dial, fails with `fsops.ErrConnectionLost`. When the pool
-   refused on purpose (a host key mismatch, an unusable pin, a closed pool,
-   an instance no longer in remote mode), its sentinel stays in the chain,
-   and the rest of the cause is text only. A walk ends
-   with one `Err` entry carrying it, so a consumer that skips
-   per-directory errors still learns the tree was cut short.
+   validation), dirscan, cross-seed (link mode, manual assemble,
+   mediainfo, season pack, partial pool, local-match detection), the sync
+   manager's hardlink base dir, the disc-scan route (which checks for
+   local mode, not the flag), and two routes that read file content, which
+   no `Backend` method covers yet: the torrents handler's local-access
+   routes and the proxy mediainfo route. The exception is the free-space
+   path source: its preview and scheduled-run paths resolve the backend
+   and call `Statfs` with no mode check, so a remote-mode instance already
+   reports remote free space, and that is the intended figure. A gate
+   reads the instance before the work starts, so the reads after it
+   resolve backend and mode from one later read and refuse every mode but
+   local. The hardlink index, dirscan and the sync manager's cleanup do
+   that through `Pool.LocalBackend`, and missing files through
+   `Pool.Resolve`. An instance whose local access was turned off after the
+   gate is then refused rather than read over SSH at a local path. Orphan
+   scan still resolves with `GetBackend` until remote orphan scan replaces
+   its gate. Each remaining gate lifts in its own slice, with the
+   degraded-mode handling that service needs, and the API-driven checks
+   (missing files, orphan scan) become the field test of that slice. Every
+   remote read that loses its connection, or that the pool will not dial,
+   fails with `fsops.ErrConnectionLost`. When the pool refused on purpose
+   (a host key mismatch, an unusable pin, a closed pool, an instance no
+   longer in remote mode), its sentinel stays in the chain, and the rest
+   of the cause is text only. A walk ends with one `Err` entry carrying
+   it, so a consumer that skips per-directory errors still learns the tree
+   was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.

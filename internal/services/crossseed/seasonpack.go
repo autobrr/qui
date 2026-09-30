@@ -466,7 +466,8 @@ func (s *Service) addSeasonPack(
 	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, prep.torrentBytes, opts); err != nil {
 		// Roll back with the backend that created the tree: a fresh resolve on
 		// the live ctx fails when the run was cancelled, silently skipping
-		// rollback (same shape as dirscan's linkBackend threading).
+		// rollback. dirscan's injector resolves one backend up front for the
+		// same reason.
 		backend := planBuild.backend
 		if backend == nil {
 			var backendErr error

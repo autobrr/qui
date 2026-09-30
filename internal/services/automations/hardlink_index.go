@@ -694,9 +694,9 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	// The caller admitted the instance on local access from a snapshot. A
-	// remote host has no inode numbers to give, so a build over it would only
-	// cost a stat per file and cache an index with every scope unknown.
+	// The caller admitted the instance on local access from a snapshot. sftp
+	// reports no inode numbers, so a build over it would only cost a stat per
+	// file and cache an index with every scope unknown.
 	backend, err := s.backendPool.LocalBackend(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
