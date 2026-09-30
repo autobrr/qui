@@ -18,9 +18,10 @@ interface PreferencesSectionProps {
 // Mounts the form only once the preferences exist, so usePreferencesForm seeds it from real values.
 export function PreferencesSection({ instanceId, i18nPrefix, children }: PreferencesSectionProps) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading } = useInstancePreferences(instanceId)
+  const { preferences, isLoading, isPlaceholderData } = useInstancePreferences(instanceId)
 
-  if (isLoading) {
+  // Placeholder data is the previous instance's; seeding from it would save those values here.
+  if (isLoading || isPlaceholderData) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">{t(`${i18nPrefix}.loading`)}</p>

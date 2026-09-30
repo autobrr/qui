@@ -168,6 +168,15 @@ describe.each(forms)("%s instance switch", (_name, Form, field, label) => {
 
     expect(switchFor(label).getAttribute("aria-checked")).toBe("true")
   })
+
+  it("waits for an uncached instance's preferences before it seeds", async () => {
+    server.use(http.get("*/api/instances/2/preferences", () => HttpResponse.json({ ...preferences, [field]: true })))
+    const { showInstance } = renderForm(Form, { ...preferences, [field]: false })
+
+    showInstance(2)
+
+    await waitFor(() => expect(switchFor(label).getAttribute("aria-checked")).toBe("true"))
+  })
 })
 
 describe("FileManagementForm start paused", () => {
