@@ -144,13 +144,21 @@ host `filepath` are correct by construction. The remote backend speaks
 slash-delimited POSIX paths regardless of the qui host's OS, which means
 host `filepath` must never touch a remote path: on a Windows host,
 `filepath.IsAbs("/data")` is false and `Join` inserts backslashes
-(raised by Audionut on #1914). The remote-backend PR introduces a path
-dialect for backend-owned path manipulation (Join/Dir/Base/IsAbs/Rel);
-the local backend's dialect is the host `filepath`, so existing callsites
-keep their exact behavior, and a Windows-hosted qui operating a unix
-remote becomes correct by construction rather than by luck. Paths from
-qBittorrent's API arrive slash-delimited and stay inside their instance's
-backend domain end to end.
+(raised by Audionut on #1914). Slice 3c (#2724) gives every backend a
+path dialect, `Backend.Paths() fsops.PathDialect` (`Join`, `Dir`, `Base`,
+`Clean`, `IsAbs`, `Rel`, `FromSlash`, `ToSlash`, `Separator`): the local
+and noop backends answer `fsops.HostPaths`, which is the host `filepath`,
+so local callsites keep their exact behavior; the remote backend answers
+`fsops.SlashPaths`, which is `path` with `FromSlash`/`ToSlash` as the
+identity, so a Windows-hosted qui operating a unix remote is correct by
+construction rather than by luck. A path that goes to or comes from a
+backend is manipulated with that backend's dialect; host-only paths (the
+data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
+slash-delimited and stay inside their instance's backend domain end to
+end. 3c moved the free-space path source, missing-files, the hardlink
+index, the dirscan scanner and the fileid index onto the dialect; orphan
+scan follows #2918 (#2930) and cross-seed, managed-delete cleanup and the
+sync manager follow 3d, when writes make them reachable.
 
 ## Path and Command Safety
 

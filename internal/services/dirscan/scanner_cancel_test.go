@@ -16,6 +16,8 @@ type cancelingScannerBackend struct {
 	cancel context.CancelFunc
 }
 
+func (b *cancelingScannerBackend) Paths() fsops.PathDialect { return fsops.HostPaths }
+
 func (b *cancelingScannerBackend) ReadDir(context.Context, string) ([]fsops.DirEntry, error) {
 	return []fsops.DirEntry{{Name: "release", IsDir: true}}, nil
 }

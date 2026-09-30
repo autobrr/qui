@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"maps"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -243,7 +242,8 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 	}
 
 	// Reject empty or non-absolute save paths to prevent Lstat on unintended locations.
-	if torrent.SavePath == "" || !filepath.IsAbs(torrent.SavePath) {
+	d := backend.Paths()
+	if torrent.SavePath == "" || !d.IsAbs(torrent.SavePath) {
 		info.allAccessible = false
 		info.hasInvalidPath = true
 		return info
@@ -258,8 +258,8 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 
 		// Reject paths that escape the torrent's save path to prevent malicious
 		// torrent metadata from causing Lstat on arbitrary filesystem locations.
-		fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
-		if !ok || !isPathInsideBase(torrent.SavePath, fullPath) {
+		fullPath, ok := buildFullPath(d, torrent.SavePath, f.Name)
+		if !ok || !isPathInsideBase(d, torrent.SavePath, fullPath) {
 			info.allAccessible = false
 			info.hasInvalidPath = true
 			continue
@@ -878,13 +878,13 @@ func computeFileIDSignature(fileIDs []hardlink.FileID) string {
 // isPathInsideBase checks if fullPath is safely contained within basePath.
 // Returns true if fullPath is inside basePath, false if it escapes (e.g., via ".." traversal).
 // This prevents malicious torrent metadata from causing Lstat on arbitrary paths.
-func isPathInsideBase(basePath, fullPath string) bool {
+func isPathInsideBase(d fsops.PathDialect, basePath, fullPath string) bool {
 	// Clean both paths to resolve any . or .. components
-	cleanBase := filepath.Clean(basePath)
-	cleanFull := filepath.Clean(fullPath)
+	cleanBase := d.Clean(basePath)
+	cleanFull := d.Clean(fullPath)
 
 	// Get relative path from base to full
-	rel, err := filepath.Rel(cleanBase, cleanFull)
+	rel, err := d.Rel(cleanBase, cleanFull)
 	if err != nil {
 		return false
 	}
@@ -892,7 +892,7 @@ func isPathInsideBase(basePath, fullPath string) bool {
 	// Check if the relative path escapes the base:
 	// - ".." means direct parent traversal
 	// - Paths starting with "../" traverse upward
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel == ".." || strings.HasPrefix(rel, ".."+d.Separator()) {
 		return false
 	}
 
@@ -1098,6 +1098,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			stats.skipped++
 			continue
 		}
+		d := backend.Paths()
 
 		views, err := s.filesReader.GetCachedInstanceTorrents(ctx, otherID)
 		if err != nil {
@@ -1130,7 +1131,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			}
 
 			savePath := savePaths[hash]
-			if savePath == "" || !filepath.IsAbs(savePath) {
+			if savePath == "" || !d.IsAbs(savePath) {
 				continue
 			}
 
@@ -1139,8 +1140,8 @@ func (s *Service) scanOtherInstancesForDeficits(
 					break
 				}
 
-				fullPath, ok := buildFullPath(savePath, f.Name)
-				if !ok || !isPathInsideBase(savePath, fullPath) {
+				fullPath, ok := buildFullPath(d, savePath, f.Name)
+				if !ok || !isPathInsideBase(d, savePath, fullPath) {
 					continue
 				}
 				if _, seen := state.seenPaths[fullPath]; seen {
