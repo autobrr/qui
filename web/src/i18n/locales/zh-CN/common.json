@@ -22,8 +22,8 @@
     "version": "版本 {{version}}",
     "language": "语言",
     "viewOnGitHub": "在 GitHub 上查看",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "showSidebar": "显示侧边栏",
     "hideSidebar": "隐藏侧边栏"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "种子创建任务",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "allScope": "全部",
     "unified": "统一视图"
@@ -81,8 +81,8 @@
     "noActiveClients": "没有活动的客户端",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "logout": "退出登录",
     "version": "版本 {{version}}",
@@ -116,6 +116,18 @@
     "unknown": "未知",
     "trackerError": "Tracker 错误",
     "unreachable": "无法连接"
+  },
+  "contentTypeLabels": {
+    "movie": "电影",
+    "tv": "电视剧",
+    "music": "音乐",
+    "audiobook": "有声书",
+    "book": "图书",
+    "comic": "漫画",
+    "game": "游戏",
+    "app": "应用",
+    "adult": "成人",
+    "unknown": "未知"
   },
   "themeToggle": {
     "changeTheme": "切换主题",

@@ -23,20 +23,22 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// dialTimeout bounds the TCP connect, and then the whole life of the
-// connection: the handshake and the probe that follows it. A user is waiting on
-// the response, so it is short enough to fail the page rather than hold the
-// request open on a host that answers the connect and then stalls.
+// dialTimeout bounds the TCP connect and the handshake always, and — on a
+// one-shot connection, where the deadline is left in place — the probe that
+// follows it too. A user is waiting on the response, so it is short enough to
+// fail the page rather than hold the request open on a host that answers the
+// connect and then stalls.
 const dialTimeout = 15 * time.Second
 
 // credentialSource is the part of the instance store the dialer needs.
 type credentialSource interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
 }
 
-// Dialer opens one-shot SSH connections. There is no pool yet: every call
-// dials, does its work and closes.
+// Dialer opens SSH connections: one-shot ones for Test and Confirm, and the
+// long-lived ones Pool keeps through Connect.
 type Dialer struct {
 	creds   credentialSource
 	timeout time.Duration
@@ -119,7 +121,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 
 	var presented ssh.PublicKey
 	var first sync.Once
-	var algorithms []string
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		// x/crypto runs this on every key exchange, and a server may start a
 		// rekey at any time — including while the probe is using the
@@ -134,11 +135,8 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		}
 		return matchKey(key, pinned)
 	}
-	if pinned != nil {
-		algorithms = hostKeyAlgorithms(pinned)
-	}
 
-	client, err := d.dial(ctx, inst, callback, algorithms)
+	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(pinned), false)
 	if err != nil {
 		if mismatch, ok := errors.AsType[*MismatchError](err); ok {
 			return &Report{Status: StatusMismatch, HostKey: mismatch.Presented, PinnedKey: mismatch.Pinned}, nil
@@ -187,11 +185,7 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 		return fmt.Errorf("parse host key: %w", err)
 	}
 
-	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
-		return matchKey(key, expected)
-	}
-
-	client, err := d.dial(ctx, inst, callback, hostKeyAlgorithms(expected))
+	client, err := d.dialExpecting(ctx, inst, expected, false)
 	if err != nil {
 		return err
 	}
@@ -200,6 +194,38 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 	// failed confirmation.
 	_ = client.Close()
 	return nil
+}
+
+// ErrPinUnusable marks the errors Connect raises before it dials: the instance
+// is unpinned, or the stored pin will not decrypt or parse. Both are permanent
+// until the pin changes, which is why the pool tells them apart from a host
+// that is merely down.
+var ErrPinUnusable = errors.New("host key pin is unusable")
+
+// Connect opens a long-lived connection to a host whose key is already pinned.
+// A background connection has no first contact and nobody to confirm one, so
+// unpinned and unreadable both refuse rather than trust what the host presents.
+func (d *Dialer) Connect(ctx context.Context, inst *models.Instance) (*ssh.Client, error) {
+	pin, err := d.creds.GetHostKeyPin(inst)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPinUnusable, err)
+	}
+
+	expected, err := ssh.ParsePublicKey(pin)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse pinned host key: %w", ErrPinUnusable, err)
+	}
+
+	return d.dialExpecting(ctx, inst, expected, true)
+}
+
+// dialExpecting dials and succeeds only if the host presents expected.
+func (d *Dialer) dialExpecting(ctx context.Context, inst *models.Instance, expected ssh.PublicKey, keepOpen bool) (*ssh.Client, error) {
+	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		return matchKey(key, expected)
+	}
+
+	return d.dial(ctx, inst, callback, hostKeyAlgorithms(expected), keepOpen)
 }
 
 func matchKey(presented, expected ssh.PublicKey) error {
@@ -213,16 +239,31 @@ func matchKey(presented, expected ssh.PublicKey) error {
 // list decides which host key the server offers: a host holding several keys
 // would otherwise present one we never pinned and read as a mismatch. A pinned
 // RSA key negotiates under the SHA-2 signature names, so all three come first
-// for it. The remaining algorithms stay allowed so a host that genuinely
-// changed key type reports as a mismatch the user can act on, rather than as a
-// failed negotiation nobody can interpret. Verification is the callback's byte
-// comparison either way.
-func hostKeyAlgorithms(key ssh.PublicKey) []string {
-	algorithms := []string{key.Type()}
-	if key.Type() == ssh.KeyAlgoRSA {
-		algorithms = []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+// for it. First contact has no pinned key and leads with ed25519, so a host
+// holding several keys pins its strongest one. The remaining algorithms stay
+// allowed so a host that genuinely changed key type reports as a mismatch the
+// user can act on, rather than as a failed negotiation nobody can interpret.
+// Verification is the callback's byte comparison either way.
+//
+// The list is never left empty. x/crypto's default applies then, and it admits
+// SHA-1 ssh-rsa, ssh-dss and their certificate forms. No pinned dial admits
+// those, apart from ssh-rsa for a pinned RSA key, so the policy would be
+// loosest at the one moment the host is unverified and the user is being asked
+// to trust it for good.
+func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
+	switch {
+	case pinned == nil:
+		return preferHostKeyAlgorithms(ssh.KeyAlgoED25519)
+	case pinned.Type() == ssh.KeyAlgoRSA:
+		return preferHostKeyAlgorithms(ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA)
 	}
+	return preferHostKeyAlgorithms(pinned.Type())
+}
 
+// preferHostKeyAlgorithms puts preferred at the front of the host-key
+// algorithms x/crypto considers secure.
+func preferHostKeyAlgorithms(preferred ...string) []string {
+	algorithms := slices.Clone(preferred)
 	for _, algorithm := range ssh.SupportedAlgorithms().HostKeys {
 		if !slices.Contains(algorithms, algorithm) {
 			algorithms = append(algorithms, algorithm)
@@ -232,7 +273,7 @@ func hostKeyAlgorithms(key ssh.PublicKey) []string {
 	return algorithms
 }
 
-func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.HostKeyCallback, algorithms []string) (*ssh.Client, error) {
+func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.HostKeyCallback, algorithms []string, keepOpen bool) (*ssh.Client, error) {
 	key, err := d.creds.GetDecryptedSSHKey(inst)
 	if err != nil {
 		return nil, fmt.Errorf("read ssh key: %w", err)
@@ -251,8 +292,8 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 
 	// ssh.ClientConfig.Timeout would buy nothing here: x/crypto reads it only
 	// in ssh.Dial, which this code does not use. One deadline on the socket
-	// bounds the handshake and then everything the caller runs over the
-	// connection, which is sound only because these connections are one-shot.
+	// bounds the handshake; keepOpen decides whether it stays on afterwards and
+	// bounds the caller's work too, which is sound only on a one-shot dial.
 	_ = conn.SetDeadline(time.Now().Add(d.timeout))
 
 	config := &ssh.ClientConfig{
@@ -290,6 +331,9 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 		if result.err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("%w: ssh handshake with %s: %w", ErrConnect, addr, result.err)
+		}
+		if keepOpen {
+			_ = conn.SetDeadline(time.Time{})
 		}
 		return result.client, nil
 	}

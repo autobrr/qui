@@ -34,6 +34,21 @@ const (
 	ExecHang
 )
 
+// SFTPMode selects what the test server does with an sftp subsystem request.
+type SFTPMode int
+
+const (
+	// SFTPServe serves the subsystem through pkg/sftp.
+	SFTPServe SFTPMode = iota
+	// SFTPRefuse refuses the subsystem request.
+	SFTPRefuse
+	// SFTPStall accepts the subsystem request and never speaks sftp.
+	SFTPStall
+	// SFTPDropOnNextRequest serves sftp but closes the connection when the
+	// next request arrives, so that request is cut off in flight.
+	SFTPDropOnNextRequest
+)
+
 const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
 
 // Server is an in-process SSH server listening on loopback. It serves the sftp
@@ -47,9 +62,12 @@ type Server struct {
 	exec ExecMode
 
 	mu       sync.Mutex
+	sftpMode SFTPMode
+	dials    int
 	auths    int
 	accepts  int
 	channels int
+	live     map[*ssh.ServerConn]struct{}
 }
 
 // NewServer starts a server on 127.0.0.1 with hostKey and stops it when the
@@ -57,7 +75,7 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey()}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}}
 	config := &ssh.ServerConfig{
 		// Any key authenticates: these tests exercise host-key verification,
 		// not server-side authorization.
@@ -105,6 +123,15 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	return server
 }
 
+// Dials returns the number of TCP connections the server accepted, whether or
+// not a handshake followed: a refused host key still counts here, which is how
+// a test proves a refusal was answered from the memo rather than redialled.
+func (s *Server) Dials() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dials
+}
+
 // Auths returns the number of public-key authentication attempts, which is
 // how a test proves a rejected host key stopped the client before it
 // authenticated.
@@ -131,6 +158,10 @@ func (s *Server) Channels() int {
 func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = conn.Close() }()
 
+	s.mu.Lock()
+	s.dials++
+	s.mu.Unlock()
+
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
 		return
@@ -139,7 +170,13 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 	s.mu.Lock()
 	s.accepts++
+	s.live[sshConn] = struct{}{}
 	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.live, sshConn)
+		s.mu.Unlock()
+	}()
 
 	go ssh.DiscardRequests(reqs)
 
@@ -167,24 +204,31 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		}
 
 		sessions.Go(func() {
-			s.handleSession(channel, requests, stalled)
+			s.handleSession(sshConn, channel, requests, stalled)
 		})
 	}
 }
 
-func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request, stalled <-chan struct{}) {
+func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, requests <-chan *ssh.Request, stalled <-chan struct{}) {
 	defer func() { _ = channel.Close() }()
 
 	for req := range requests {
 		var payload struct{ Value string }
 		switch req.Type {
 		case "subsystem":
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil || payload.Value != "sftp" {
+			s.mu.Lock()
+			mode := s.sftpMode
+			s.mu.Unlock()
+			if err := ssh.Unmarshal(req.Payload, &payload); err != nil || payload.Value != "sftp" || mode == SFTPRefuse {
 				_ = req.Reply(false, nil)
 				continue
 			}
 			_ = req.Reply(true, nil)
-			s.serveSFTP(channel)
+			if mode == SFTPStall {
+				<-stalled
+				return
+			}
+			s.serveSFTP(conn, channel)
 			return
 
 		case "exec":
@@ -206,8 +250,13 @@ func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request
 	}
 }
 
-func (s *Server) serveSFTP(channel ssh.Channel) {
-	server, err := sftp.NewServer(channel)
+func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
+	trap := &dropTrap{Channel: channel, conn: conn, drop: func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.sftpMode == SFTPDropOnNextRequest
+	}}
+	server, err := sftp.NewServer(trap)
 	if err != nil {
 		return
 	}
@@ -233,6 +282,28 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+}
+
+// SetSFTP sets what later sftp subsystem requests get.
+func (s *Server) SetSFTP(mode SFTPMode) {
+	s.mu.Lock()
+	s.sftpMode = mode
+	s.mu.Unlock()
+}
+
+// DropConnections closes every live connection, the way a host that reboots or
+// an idle timeout that fires does, so a test can assert the client redials.
+func (s *Server) DropConnections() {
+	s.mu.Lock()
+	conns := make([]*ssh.ServerConn, 0, len(s.live))
+	for conn := range s.live {
+		conns = append(conns, conn)
+	}
+	s.mu.Unlock()
+
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
 }
 
 // DeadAddr returns a 127.0.0.1 address that was listening a moment ago and is
@@ -311,4 +382,20 @@ func NewRSASigner() ssh.Signer {
 		panic(err)
 	}
 	return signer
+}
+
+// dropTrap closes the connection on the first bytes a client sends once drop
+// reports true, before the sftp server sees them.
+type dropTrap struct {
+	ssh.Channel
+	conn *ssh.ServerConn
+	drop func() bool
+}
+
+func (t *dropTrap) Read(p []byte) (int, error) {
+	n, err := t.Channel.Read(p)
+	if n > 0 && t.drop() {
+		_ = t.conn.Close()
+	}
+	return n, err
 }

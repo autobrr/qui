@@ -22,8 +22,8 @@
     "version": "Verze {{version}}",
     "language": "Jazyk",
     "viewOnGitHub": "Zobrazit na GitHubu",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "showSidebar": "Zobrazit postranní panel",
     "hideSidebar": "Skrýt postranní panel"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "allScope": "VŠE",
     "unified": "Unifikované"
@@ -81,8 +81,8 @@
     "noActiveClients": "Žádní aktivní klienti",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "logout": "Odhlásit se",
     "version": "Verze {{version}}",
@@ -116,6 +116,18 @@
     "unknown": "Neznámé",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Seriál",
+    "music": "Hudba",
+    "audiobook": "Audiokniha",
+    "book": "Kniha",
+    "comic": "Komiks",
+    "game": "Hra",
+    "app": "Aplikace",
+    "adult": "Pro dospělé",
+    "unknown": "Neznámé"
   },
   "themeToggle": {
     "changeTheme": "Změnit vzhled",

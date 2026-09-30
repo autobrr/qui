@@ -22,8 +22,8 @@
     "version": "Version {{version}}",
     "language": "Langue",
     "viewOnGitHub": "Voir sur GitHub",
-    "rssRunning": "RSS en cours d'exécution",
-    "rssEnabled": "RSS activé",
+    "rssRunning": "RSS cross-seed en cours d'exécution",
+    "rssEnabled": "RSS cross-seed activé",
     "scanRunning": "Analyse en cours",
     "showSidebar": "Afficher la barre latérale",
     "hideSidebar": "Masquer la barre latérale"
@@ -58,8 +58,8 @@
     "torrentCreationTasksTitle": "Tâches de création de torrents",
     "updateAvailable": "Mise à jour disponible",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS en cours d'exécution",
-    "rssEnabled": "RSS activé",
+    "rssRunning": "RSS cross-seed en cours d'exécution",
+    "rssEnabled": "RSS cross-seed activé",
     "scanRunning": "Analyse en cours",
     "allScope": "TOUS",
     "unified": "Unifié"
@@ -81,8 +81,8 @@
     "noActiveClients": "Aucun client actif",
     "updateAvailable": "Mise à jour disponible",
     "updateVersion": "Version {{version}}",
-    "rssRunning": "RSS en cours d'exécution",
-    "rssEnabled": "RSS activé",
+    "rssRunning": "RSS cross-seed en cours d'exécution",
+    "rssEnabled": "RSS cross-seed activé",
     "scanRunning": "Analyse en cours",
     "logout": "Déconnexion",
     "version": "Version {{version}}",
@@ -116,6 +116,18 @@
     "unknown": "Inconnu",
     "trackerError": "Erreur du tracker",
     "unreachable": "Inaccessible"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Série TV",
+    "music": "Musique",
+    "audiobook": "Livre audio",
+    "book": "Livre",
+    "comic": "Bande dessinée",
+    "game": "Jeu",
+    "app": "Application",
+    "adult": "Adulte",
+    "unknown": "Inconnu"
   },
   "themeToggle": {
     "changeTheme": "Changer le thème",

@@ -909,6 +909,20 @@
       "unknown": "Sconosciuto"
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Abilita la corrispondenza diretta tramite API con Orpheus e Redacted. Funziona in parallelo a Torznab; gli indexer Torznab OPS/RED vengono ignorati.",
+    "enableMatching": "Abilita la corrispondenza Gazelle",
+    "enableDescription": "Si applica a tutti i torrent sorgente. Se possibile, qui verifica anche RED/OPS tramite Gazelle.",
+    "redactedApiKey": "Chiave API Redacted",
+    "orpheusApiKey": "Chiave API Orpheus",
+    "pasteRedKey": "Incolla la chiave API RED",
+    "pasteOpsKey": "Incolla la chiave API OPS",
+    "enableToConfigure": "Abilita per configurare",
+    "redDescription": "Usata per le ricerche su redacted.sh. Incolla per sostituire; svuota per rimuovere.",
+    "opsDescription": "Usata per le ricerche su orpheus.network. Incolla per sostituire; svuota per rimuovere.",
+    "save": "Salva"
+  },
   "searchCache": {
     "title": "Cache di ricerca",
     "description": "Risultati di ricerca memorizzati nella cache provenienti dagli indexer Torznab.",
@@ -964,6 +978,39 @@
         "upToDateDetail": "È in esecuzione l'ultima versione",
         "notCheckedYet": "Non ancora verificato",
         "lastChecked": "Ultimo controllo {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Riavvia",
+      "confirmTitle": "Riavviare qui?",
+      "confirmDescription": "qui si arresta come in un normale arresto, poi si avvia di nuovo. Le attività in corso, come ricerche cross-seed, automazioni, backup e scansioni orfani, si interrompono. La pagina si ricarica quando qui torna disponibile.",
+      "confirm": "Riavvia",
+      "overlay": {
+        "restartingTitle": "Riavvio di qui…",
+        "restartingDetail": "La pagina si ricarica quando qui risponde di nuovo.",
+        "slowTitle": "qui non ha ancora risposto",
+        "slowDetail": "qui potrebbe essere ancora in avvio, e questa pagina continua ad attendere. Controlla i log di qui. Se hai cambiato la porta o l'URL di base, apri qui al nuovo indirizzo."
+      }
+    },
+    "update": {
+      "button": "Installa aggiornamento",
+      "confirmTitle": "Installare l'aggiornamento?",
+      "confirmDescription": "qui scarica la nuova versione, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. La pagina si ricarica quando qui è di nuovo attivo.",
+      "runningWork": "Il lavoro in corso, come ricerche cross-seed, automazioni, backup e scansioni degli orfani, si ferma.",
+      "currentVersion": "Versione attuale",
+      "targetVersion": "Nuova versione",
+      "releaseNotes": "Note di rilascio",
+      "confirm": "Installa aggiornamento",
+      "overlay": {
+        "notAppliedTitle": "L'aggiornamento non è stato applicato",
+        "notAppliedDetail": "qui è di nuovo attivo, ma con una versione diversa. Controlla i log di qui.",
+        "installedTitle": "qui è stato aggiornato",
+        "installedDetail": "Ricarica la pagina per aprire la nuova versione.",
+        "reload": "Ricarica la pagina",
+        "noBackup": "qui è stato aggiornato, ma non ha conservato alcun backup: {{error}}. Per il rollback, scarica manualmente la versione precedente.",
+        "rollbackIntro": "Se la nuova versione non si avvia, esegui questo comando, poi avvia di nuovo qui:",
+        "rollbackLabel": "Comando di rollback",
+        "rollbackDocs": "Passaggi per il rollback"
       }
     },
     "runtime": {

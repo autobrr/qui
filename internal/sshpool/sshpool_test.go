@@ -6,6 +6,7 @@ package sshpool
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"strconv"
 	"testing"
@@ -22,13 +23,25 @@ import (
 
 var testClientKey = sshtest.PrivateKey("")
 
-// fakeCreds stands in for the instance store: the dialer only reads two values
-// from it, so the tests need no database.
+// fakeCreds stands in for the instance store: the row Get answers with, plus
+// the decrypted key and pin, so the tests need no database.
 type fakeCreds struct {
 	key    string
 	keyErr error
 	pin    []byte
 	pinErr error
+	inst   *models.Instance // the row Get answers with, for the pool tests
+	getErr error
+}
+
+func (f fakeCreds) Get(_ context.Context, id int) (*models.Instance, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.inst == nil || f.inst.ID != id {
+		return nil, models.ErrInstanceNotFound
+	}
+	return f.inst, nil
 }
 
 func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) {
@@ -84,6 +97,41 @@ func TestFirstContactReportsKeyAndCapabilities(t *testing.T) {
 	assert.False(t, report.Capabilities.Limits)
 }
 
+// legacyHostKeySigner hides ssh.AlgorithmSigner, which is what makes x/crypto's
+// server offer ssh-rsa on its own instead of the SHA-2 signature names as well.
+// That is the host key an old OpenSSH presents.
+type legacyHostKeySigner struct{ signer ssh.Signer }
+
+func (s legacyHostKeySigner) PublicKey() ssh.PublicKey { return s.signer.PublicKey() }
+
+func (s legacyHostKeySigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	return s.signer.Sign(rand, data)
+}
+
+func TestFirstContactRefusesSHA1RSAHostKey(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, legacyHostKeySigner{sshtest.NewRSASigner()}, sshtest.ExecGNU)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, ErrConnect, "first contact must not pin a key negotiated under SHA-1 ssh-rsa")
+	assert.Nil(t, report)
+	assert.Zero(t, server.Accepts(), "negotiation fails before the host key is exchanged")
+	assert.Zero(t, server.Auths())
+	assert.Zero(t, server.Channels())
+}
+
+func TestFirstContactOffersOnlySupportedHostKeyAlgorithms(t *testing.T) {
+	t.Parallel()
+
+	algorithms := hostKeyAlgorithms(nil)
+
+	require.NotEmpty(t, algorithms)
+	assert.Equal(t, ssh.KeyAlgoED25519, algorithms[0], "a host holding several keys should pin its ed25519 one")
+	assert.ElementsMatch(t, ssh.SupportedAlgorithms().HostKeys, algorithms,
+		"first contact offers the supported set and nothing else, which excludes ssh-rsa, ssh-dss and their certificate forms")
+}
+
 func TestPinnedMatchReportsCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -112,6 +160,7 @@ func TestMismatchReportsBothKeysAndOpensNoSession(t *testing.T) {
 	require.NotNil(t, report.PinnedKey)
 	assert.Equal(t, otherKey.Marshal(), report.PinnedKey.Marshal())
 	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Auths(), "a refused host key must not be offered the client key")
 	assert.Zero(t, server.Channels(), "a refused host key must not open a session")
 }
 

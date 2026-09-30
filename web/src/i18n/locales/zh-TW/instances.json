@@ -1,4 +1,5 @@
 {
+  "migrationHint": "正在使用 Deluge、rTorrent 或 Transmission？<docs>使用我們的遷移工具遷移到 qBittorrent</docs>",
   "card": {
     "status": {
       "disabled": "已停用",
@@ -656,6 +657,7 @@
       "runDryRunNow": "立即模擬執行",
       "duplicate": "複製",
       "copyTo": "複製到...",
+      "editJSON": "以 JSON 編輯",
       "exportJSON": "匯出 JSON",
       "dragToReorder": "拖拽以重新排序工作流",
       "actions": {
@@ -730,11 +732,25 @@
         "title": "匯入工作流",
         "description": "貼上工作流 JSON 以匯入。工作流將以停用狀態建立並追加到末尾。",
         "placeholder": "貼上工作流 JSON...",
-        "invalidImportData": "匯入資料無效",
         "importFailed": "匯入工作流失敗",
         "cancel": "取消",
         "importing": "匯入中...",
-        "import": "匯入"
+        "import": "匯入",
+        "errors": {
+          "invalidJson": "JSON 格式無效",
+          "notObject": "需要一個 JSON 物件",
+          "missingName": "缺少或無效的 'name' 欄位",
+          "missingConditions": "缺少或無效的 'conditions' 欄位",
+          "missingTracker": "必須指定 'trackerDomains'（字串陣列）或 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "以 JSON 編輯「{{name}}」",
+        "description": "編輯工作流 JSON。工作流保持其啟用狀態與位置。",
+        "saveFailed": "儲存工作流失敗",
+        "cancel": "取消",
+        "saving": "儲存中...",
+        "save": "儲存"
       },
       "toast": {
         "workflowDeleted": "工作流已刪除",
@@ -750,6 +766,7 @@
         "createdWorkflow": "已建立\"{{name}}\"",
         "copiedWorkflow": "已將\"{{name}}\"複製到 {{instance}}",
         "importedWorkflow": "已匯入\"{{name}}\"",
+        "updatedWorkflow": "已更新「{{name}}」",
         "createFailed": "建立工作流失敗",
         "reorderFailed": "重新排序工作流失敗",
         "exportedTorrents": "已匯出 {{count}} 個種子到 CSV",
@@ -1183,7 +1200,7 @@
         "noOtherInstances": "沒有其他可用實例。",
         "savePathLabel": "目標上的儲存路徑（可選）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。支援範本：",
+        "savePathHelp": "種子內容的父目錄。留空則使用分類預設值。",
         "categoryLabel": "目標上的分類（可選）",
         "selectTargetFirst": "請先選擇目標實例",
         "loadingCategories": "正在載入分類...",
@@ -1316,6 +1333,11 @@
         "skipIfCrossSeedsDontMatch": "如果輔種不匹配規則條件則跳過",
         "aboutSkipping": "關於輔種存在時跳過移動",
         "skipDescription": "如果同一輔種組中有其他種子不匹配規則條件，則跳過移動。否則，所有輔種都將被移動，即使它們不匹配規則條件。"
+      },
+      "templateHelp": {
+        "absolutePath": "必須是絕對路徑。值要寫在路徑中，例如",
+        "intro": "支援 Go 範本。",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空間來源",

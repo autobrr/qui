@@ -38,6 +38,7 @@ var (
 	renameFolderMinVersion               = semver.MustParse("2.7.0")
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
+	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
@@ -88,6 +89,7 @@ type Client struct {
 	supportsFilePriority       bool
 	supportsSubcategories      bool
 	subcategoriesAlwaysEnabled bool
+	nestsCategorySavePaths     bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
 	trackerIncludeSupported    bool
@@ -468,6 +470,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
+	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
@@ -541,6 +544,15 @@ func (c *Client) SubcategoriesAlwaysEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.subcategoriesAlwaysEnabled
+}
+
+// NestsCategorySavePaths reports whether this qBittorrent version can resolve an
+// empty category save path under the parent category. qBittorrent 4.6 shows
+// subcategories but always saves to the default save path plus the full name.
+func (c *Client) NestsCategorySavePaths() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nestsCategorySavePaths
 }
 
 func (c *Client) SupportsTorrentTmpPath() bool {
@@ -655,6 +667,19 @@ func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt
 
 	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
 	return enriched, trackerData, nil, nil
+}
+
+// refreshTrackers fetches tracker data for every torrent in one request, bypassing
+// the tracker cache. A torrent that the fetch does not return keeps no tracker data:
+// cached MainData can still hold a torrent that qBittorrent already deleted, and
+// that torrent must not block every pass.
+func (c *Client) refreshTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
+	tm := c.trackerManager()
+	if tm == nil {
+		return torrents, errors.New("tracker manager unavailable")
+	}
+	torrents, _, err := tm.Refresh(ctx, torrents)
+	return torrents, err
 }
 
 func (c *Client) invalidateTrackerCache(hashes ...string) {

@@ -912,6 +912,20 @@
       "unknown": "Neznámé"
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Povolit přímé shodování API proti Orpheus a Redacted. Toto běží paralelně s Torznab; OPS/RED Torznab indexery jsou ignorovány.",
+    "enableMatching": "Povolit shodování Gazelle",
+    "enableDescription": "Použije se na všechny zdrojové torrenty. Pokud je to možné, qui také kontroluje RED/OPS přes Gazelle.",
+    "redactedApiKey": "Redacted API klíč",
+    "orpheusApiKey": "Orpheus API klíč",
+    "pasteRedKey": "Vložit RED API klíč",
+    "pasteOpsKey": "Vložit OPS API klíč",
+    "enableToConfigure": "Povolit konfiguraci",
+    "redDescription": "Použito pro redacted.sh hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "opsDescription": "Použito pro orpheus.network hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "save": "Uložit"
+  },
   "searchCache": {
     "title": "Vyhledávací mezipaměť",
     "description": "Vyhledávací výsledky z Torznab indexerů.",
@@ -967,6 +981,39 @@
         "upToDateDetail": "Spouští se nejnovější verze",
         "notCheckedYet": "Neprovedený test pouze",
         "lastChecked": "Poslední kontrola {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Restartovat",
+      "confirmTitle": "Restartovat qui?",
+      "confirmDescription": "qui se vypne stejně jako při běžném zastavení a pak se znovu spustí. Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví. Stránka se znovu načte, až bude qui zpět.",
+      "confirm": "Restartovat",
+      "overlay": {
+        "restartingTitle": "qui se restartuje…",
+        "restartingDetail": "Stránka se znovu načte, až qui znovu odpoví.",
+        "slowTitle": "qui zatím neodpověděl",
+        "slowDetail": "qui se možná ještě spouští a tato stránka dál čeká. Zkontrolujte logy qui. Pokud jste změnili port nebo základní URL, otevřete qui na nové adrese."
+      }
+    },
+    "update": {
+      "button": "Nainstalovat aktualizaci",
+      "confirmTitle": "Nainstalovat aktualizaci?",
+      "confirmDescription": "qui stáhne novou verzi, ověří její podpis a ponechá aktuální binární soubor jako zálohu. Pak se qui restartuje. Stránka se znovu načte, až bude qui zpět.",
+      "runningWork": "Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví.",
+      "currentVersion": "Aktuální verze",
+      "targetVersion": "Nová verze",
+      "releaseNotes": "Poznámky k vydání",
+      "confirm": "Nainstalovat aktualizaci",
+      "overlay": {
+        "notAppliedTitle": "Aktualizace se neprovedla",
+        "notAppliedDetail": "qui je zpět, ale s jinou verzí. Zkontrolujte logy qui.",
+        "installedTitle": "qui se aktualizoval",
+        "installedDetail": "Znovu načtěte stránku, abyste otevřeli novou verzi.",
+        "reload": "Znovu načíst stránku",
+        "noBackup": "qui se aktualizoval, ale neponechal žádnou zálohu: {{error}}. Chcete-li se vrátit, stáhněte předchozí verzi ručně.",
+        "rollbackIntro": "Pokud se nová verze nespustí, spusťte tento příkaz a pak qui znovu spusťte:",
+        "rollbackLabel": "Příkaz pro návrat",
+        "rollbackDocs": "Postup návratu k předchozí verzi"
       }
     },
     "runtime": {

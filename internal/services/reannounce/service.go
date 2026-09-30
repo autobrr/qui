@@ -564,6 +564,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		return
 	}
 	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce job succeeded")
+	s.syncManager.KickTrackerHealthRefresh(instanceID)
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {

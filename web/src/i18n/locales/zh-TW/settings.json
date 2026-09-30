@@ -906,6 +906,20 @@
       }
     }
   },
+  "gazelle": {
+    "title": "Gazelle（OPS/RED）",
+    "description": "啟用對 Orpheus 和 Redacted 的直接 API 匹配。這與 Torznab 並行執行；OPS/RED Torznab 索引器將被忽略。",
+    "enableMatching": "啟用 Gazelle 匹配",
+    "enableDescription": "應用於所有源種子。如果可能，qui 還會透過 Gazelle 檢查 RED/OPS。",
+    "redactedApiKey": "Redacted API 金鑰",
+    "orpheusApiKey": "Orpheus API 金鑰",
+    "pasteRedKey": "貼上 RED API 金鑰",
+    "pasteOpsKey": "貼上 OPS API 金鑰",
+    "enableToConfigure": "啟用後進行配置",
+    "redDescription": "用於 redacted.sh 查詢。貼上以替換，清空以移除。",
+    "opsDescription": "用於 orpheus.network 查詢。貼上以替換，清空以移除。",
+    "save": "儲存"
+  },
   "searchCache": {
     "title": "搜尋快取",
     "description": "來自 Torznab 索引器的快取搜尋結果。",
@@ -961,6 +975,39 @@
         "upToDateDetail": "正在執行最新版本",
         "notCheckedYet": "尚未檢查",
         "lastChecked": "上次檢查 {{date}}"
+      }
+    },
+    "restart": {
+      "button": "重新啟動",
+      "confirmTitle": "重新啟動 qui？",
+      "confirmDescription": "qui 會像正常停止時一樣關閉，然後重新啟動。正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。qui 恢復後頁面會自動重新載入。",
+      "confirm": "重新啟動",
+      "overlay": {
+        "restartingTitle": "正在重新啟動 qui…",
+        "restartingDetail": "qui 再次回應後頁面會重新載入。",
+        "slowTitle": "qui 尚未回應",
+        "slowDetail": "qui 可能仍在啟動，此頁面會繼續等待。請查看 qui 日誌。如果你變更了連接埠或基礎 URL，請在新位址開啟 qui。"
+      }
+    },
+    "update": {
+      "button": "安裝更新",
+      "confirmTitle": "安裝更新？",
+      "confirmDescription": "qui 會下載新版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。qui 恢復後頁面會自動重新載入。",
+      "runningWork": "正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。",
+      "currentVersion": "目前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "發行說明",
+      "confirm": "安裝更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢復，但執行的是其他版本。請查看 qui 日誌。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新載入頁面以開啟新版本。",
+        "reload": "重新載入頁面",
+        "noBackup": "qui 已更新，但未保留備份：{{error}}。如需回復，請手動下載舊版本。",
+        "rollbackIntro": "如果新版本無法啟動，請執行此命令，然後再次啟動 qui：",
+        "rollbackLabel": "回復命令",
+        "rollbackDocs": "回復步驟"
       }
     },
     "runtime": {

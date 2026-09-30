@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Používáte Deluge, rTorrent nebo Transmission? <docs>Přejděte na qBittorrent pomocí našeho migračního nástroje</docs>",
   "card": {
     "status": {
       "disabled": "Vypnuto",
@@ -658,6 +659,7 @@
       "runDryRunNow": "Spustit zkušební běh nyní",
       "duplicate": "Duplikovat",
       "copyTo": "Kopírovat do...",
+      "editJSON": "Upravit jako JSON",
       "exportJSON": "Exportovat JSON",
       "dragToReorder": "Přetáhnout pro seřazení postupu automatizace",
       "actions": {
@@ -766,11 +768,25 @@
         "title": "Importovat kroky automatizace",
         "description": "Vložte JSON kroků automatizace k importu. Postup automatizace bude vytvořen vypnutý a přidán na konec.",
         "placeholder": "Vložte JSON kroků automatizace...",
-        "invalidImportData": "Neplatný import dat",
         "importFailed": "Nepodařilo se importovat kroky automatizace",
         "cancel": "Zrušit",
         "importing": "Importuje se...",
-        "import": "Importovat"
+        "import": "Importovat",
+        "errors": {
+          "invalidJson": "Neplatný formát JSON",
+          "notObject": "Očekáván objekt JSON",
+          "missingName": "Chybí nebo je neplatné pole 'name'",
+          "missingConditions": "Chybí nebo je neplatné pole 'conditions'",
+          "missingTracker": "Musíte zadat 'trackerDomains' (pole řetězců) nebo 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Upravit „{{name}}“ jako JSON",
+        "description": "Upravte JSON kroků automatizace. Postup automatizace si zachová stav zapnutí a pozici.",
+        "saveFailed": "Nepodařilo se uložit kroky automatizace",
+        "cancel": "Zrušit",
+        "saving": "Ukládám...",
+        "save": "Uložit"
       },
       "toast": {
         "workflowDeleted": "Postup automatizace smazán",
@@ -786,6 +802,7 @@
         "createdWorkflow": "Vytvořen postup automatizace \"{{name}}\"",
         "copiedWorkflow": "Postup automatizace \"{{name}}\" zkopírována do {{instance}}",
         "importedWorkflow": "Importován postup automatizace \"{{name}}\"",
+        "updatedWorkflow": "„{{name}}“ aktualizováno",
         "createFailed": "Nepodařilo se vytvořit postup automatizace",
         "reorderFailed": "Nepodařilo se seřadit postupy automatizace",
         "exportedTorrents": "Exportováno {{count}} torrentů do CSV",
@@ -1247,7 +1264,7 @@
         "noOtherInstances": "Žádné další instance nejsou dostupné.",
         "savePathLabel": "Cílová cesta (volitelné)",
         "savePathPlaceholder": "např. /data/torrents",
-        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie. Podporuje šablony:",
+        "savePathHelp": "Nadřazený adresář pro obsah torrentu. Zanechte prázdný pro použití výchozí kategorie.",
         "categoryLabel": "Kategorie na cíli (volitelné)",
         "selectTargetFirst": "Vyberte cílovou instanci jako první",
         "loadingCategories": "Načítání kategorií...",
@@ -1380,6 +1397,11 @@
         "skipIfCrossSeedsDontMatch": "Přeskočit, pokud křížová sdílení neodpovídají podmínkám pravidla",
         "aboutSkipping": "O přeskakování přesunu, když existují křížová sdílení",
         "skipDescription": "Přeskočí přesun, pokud existují jiné torrenty v stejné křížové sdílení skupině, které neodpovídají podmínkám pravidla. Jinak budou všechna křížová sdílení přesunuta, i když neodpovídají podmínkám pravidla."
+      },
+      "templateHelp": {
+        "absolutePath": "Musí jít o absolutní cestu. Hodnoty se vkládají do ní, například",
+        "intro": "Podporuje šablony Go.",
+        "learnMore": "Další informace"
       },
       "freeSpace": {
         "title": "Zdroj volného místa",

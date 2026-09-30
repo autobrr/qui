@@ -95,7 +95,8 @@ jobs:
   goreleaserbuild:
     name: Build distribution binaries
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+    # The MSI needs wixl 0.105 or later for Environment. Ubuntu 24.04 ships 0.103.
+    runs-on: ubuntu-26.04
     needs: [test, web]
     steps:
       - name: Checkout
@@ -122,6 +123,9 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+
+      - name: Install msitools
+        run: sudo apt-get update && sudo apt-get install -y msitools
 
       - name: Prepare release signing key
         if: startsWith(github.ref, 'refs/tags/')
@@ -160,11 +164,12 @@ jobs:
       - name: Run GoReleaser build and publish tags
         uses: goreleaser/goreleaser-action@v7.2.3
         with:
-          distribution: goreleaser
+          distribution: goreleaser-pro
           version: "~> v2"
           args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish --snapshot --clean --config .goreleaser.release.yml' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           BUILDER: ${{ github.actor }}@github-actions
           RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
 
@@ -186,6 +191,7 @@ jobs:
             dist/*.zip
             dist/*.deb
             dist/*.rpm
+            dist/msi/*/*.msi
           if-no-files-found: error
 
   docker-matrix:
@@ -246,14 +252,14 @@ jobs:
             latest=auto
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4.3.0
+        uses: docker/setup-qemu-action@v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.3.0
+        uses: docker/setup-buildx-action@v4.4.1
 
       - name: Build and publish image
         id: docker_build
-        uses: docker/build-push-action@v7.3.0
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           file: ./distrib/docker/ci.Dockerfile
@@ -299,7 +305,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.3.0
+        uses: docker/setup-buildx-action@v4.4.1
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4.6.0

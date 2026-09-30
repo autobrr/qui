@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Usa Deluge, rTorrent ou Transmission? <docs>Migre para o qBittorrent com nossa ferramenta de migração</docs>",
   "card": {
     "status": {
       "disabled": "Desativado",
@@ -657,6 +658,7 @@
       "runDryRunNow": "Rodar simulação agora",
       "duplicate": "Duplicar",
       "copyTo": "Copiar para...",
+      "editJSON": "Editar como JSON",
       "exportJSON": "Exportar JSON",
       "dragToReorder": "Arraste para reordenar",
       "actions": {
@@ -748,11 +750,25 @@
         "title": "Importar Workflow",
         "description": "Cole o JSON do workflow. Ele será criado como desativado.",
         "placeholder": "JSON...",
-        "invalidImportData": "Formato inválido",
         "importFailed": "Falha ao importar",
         "cancel": "Cancelar",
         "importing": "Importando...",
-        "import": "Importar"
+        "import": "Importar",
+        "errors": {
+          "invalidJson": "Formato JSON inválido",
+          "notObject": "Esperado um objeto JSON",
+          "missingName": "Campo 'name' ausente ou inválido",
+          "missingConditions": "Campo 'conditions' ausente ou inválido",
+          "missingTracker": "Informe 'trackerDomains' (lista de strings) ou 'trackerPattern'"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Editar \"{{name}}\" como JSON",
+        "description": "Edite o JSON do workflow. O workflow mantém o estado de ativação e a posição.",
+        "saveFailed": "Falha ao salvar o workflow",
+        "cancel": "Cancelar",
+        "saving": "Salvando...",
+        "save": "Salvar"
       },
       "toast": {
         "workflowDeleted": "Workflow excluído",
@@ -768,6 +784,7 @@
         "createdWorkflow": "Criado \"{{name}}\"",
         "copiedWorkflow": "Copiado \"{{name}}\" para {{instance}}",
         "importedWorkflow": "Importado \"{{name}}\"",
+        "updatedWorkflow": "\"{{name}}\" atualizado",
         "createFailed": "Falha ao criar",
         "reorderFailed": "Falha ao reordenar",
         "exportedTorrents": "Exportados {{count}} para CSV",
@@ -1212,7 +1229,7 @@
         "noOtherInstances": "Só há o qBittorrent atual ativo.",
         "savePathLabel": "Onde salvar o arquivo no destino",
         "savePathPlaceholder": "ex. /arquivos/novos",
-        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria. Suporta modelos:",
+        "savePathHelp": "Diretório pai para o conteúdo do torrent. Deixe vazio para usar o padrão da categoria.",
         "categoryLabel": "Em que categoria classificar no destino",
         "selectTargetFirst": "Escolha a instância no menu acima primeiro",
         "loadingCategories": "Acessando qBittorrent destino...",
@@ -1345,6 +1362,11 @@
         "skipIfCrossSeedsDontMatch": "Abortar a mudança caso haja cross-seeds que não condizem com a regra",
         "aboutSkipping": "Sobre pular cross-seeds",
         "skipDescription": "Cancela a mudança se houver outros torrents no mesmo grupo de cross-seed que não atendam às condições da regra. Caso contrário, todos os cross-seeds serão movidos, mesmo os não correspondidos."
+      },
+      "templateHelp": {
+        "absolutePath": "Deve ser um caminho absoluto. Os valores vão dentro dele, por exemplo",
+        "intro": "Suporta modelos Go.",
+        "learnMore": "Saiba mais"
       },
       "freeSpace": {
         "title": "Fonte de espaço livre",

@@ -39,11 +39,34 @@ builds:
         goarch: arm64
     main: ./cmd/qui
     binary: qui
+  # qui-tray.exe: the GUI-subsystem build that serves with the Tray. See
+  # docs/adr/0012-the-tray-lives-in-the-served-child-of-a-second-windows-binary.md.
+  - id: qui-tray
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -H windowsgui
+      - -X github.com/autobrr/qui/internal/buildinfo.Version={{.Version}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Date={{.Date}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Commit={{.Commit}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Tray=true
+    goos:
+      - windows
+    goarch:
+      - amd64
+    main: ./cmd/qui
+    binary: qui-tray
 
 archives:
   - id: qui-archive
     ids:
       - qui
+      - qui-tray
+    # Only the Windows zip holds qui-tray.exe. A Self-update takes both exes
+    # from that one zip, so the archives stay combined.
+    allow_different_binary_count: true
     format_overrides:
       - goos: windows
         formats: ['zip']
@@ -53,6 +76,16 @@ archives:
       {{- .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
+
+msi:
+  - id: qui-msi
+    ids:
+      - qui
+      - qui-tray
+    wxs: ./distrib/windows/qui.wxs
+    extra_files:
+      - internal/tray/qui.ico
+    name: qui_{{ .Version }}_windows_x86_64
 
 release:
   prerelease: auto
