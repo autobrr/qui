@@ -965,3 +965,8 @@ func extensionNames(t *testing.T) []string {
 	}
 	return names
 }
+
+func TestPathsIsSlashDialect(t *testing.T) {
+	b, _ := newBackend(t)
+	require.Equal(t, fsops.SlashPaths, b.Paths())
+}
