@@ -52,6 +52,7 @@ import (
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -63,6 +64,11 @@ func main() {
 	// process umask controls the final permissions of content directories
 	// (see discussion #1704). No-op when UMASK is unset or on Windows.
 	applyUmask()
+
+	if buildinfo.Tray == "true" {
+		runTray()
+		return
+	}
 
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
@@ -107,10 +113,22 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		// On Windows the first process only supervises; the child returns here.
-		update.Supervise()
+		if buildinfo.Tray != "true" {
+			// On Windows the first process only supervises; the child returns here.
+			update.Supervise(nil)
+			NewApplication(configDir, dataDir, logPath, pprofFlag).runServer()
+			return
+		}
+		update.Supervise(tray.ShowError)
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
-		app.runServer()
+		app.tray = make(chan tray.Menu, 1)
+		app.quit = make(chan struct{}, 1)
+		go app.runServer()
+		// The tray library needs the main goroutine's OS thread.
+		tray.Run(<-app.tray)
+		// Run returns after Remove, while the serve loop still shuts down. The
+		// serve loop sets the exit code: 75 asks the supervisor for a Restart.
+		select {}
 	}
 
 	return command
@@ -469,6 +487,10 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
+	// tray receives the Tray menu once qui listens, and quit carries the Tray's
+	// Quit. Both are nil outside qui-tray.exe.
+	tray chan tray.Menu
+	quit chan struct{}
 }
 
 func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
@@ -499,6 +521,10 @@ func (app *Application) runServer() {
 
 	if app.pprofFlag {
 		cfg.Config.PprofEnabled = true
+	}
+	if app.tray != nil {
+		// qui-tray.exe has no console, so it keeps a log file for bug reports.
+		cfg.SetDefaultLogPath("log/qui.log")
 	}
 
 	if err := cfg.ApplyLogConfig(); err != nil {
@@ -934,6 +960,9 @@ func (app *Application) runServer() {
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
 	}
+	if app.tray != nil {
+		app.tray <- app.trayMenu(cfg, updateInputs.BinaryPath, restarter)
+	}
 
 	if cfg.Config.MetricsEnabled {
 		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore)
@@ -979,6 +1008,7 @@ func (app *Application) runServer() {
 
 	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
 	shutdown := func() error {
+		tray.Remove()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		partialPoolCancel()
@@ -1005,6 +1035,8 @@ func (app *Application) runServer() {
 		log.Info().Msgf("got signal %v, shutting down server", sig.String())
 	case err := <-errorChannel:
 		log.Error().Err(err).Msg("got unexpected error from server")
+	case <-app.quit:
+		log.Info().Msg("quit from the Tray, shutting down server")
 	case <-restarter.Requested():
 		log.Info().Msg("restart requested, shutting down server")
 		restarter.Restart(log.Logger, shutdown)

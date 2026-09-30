@@ -972,6 +972,15 @@ func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 	return dir, nil
 }
 
+// SetDefaultLogPath sets the log path that applies when the config file, the
+// environment, and the flags set none. A config reload keeps it.
+func (c *AppConfig) SetDefaultLogPath(path string) {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	c.viper.SetDefault("logPath", path)
+	c.Config.LogPath = c.viper.GetString("logPath")
+}
+
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.
 // Returns empty string if logPath is empty (stdout only).
 func (c *AppConfig) ResolveLogPath(logPath string) string {
