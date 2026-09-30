@@ -1443,10 +1443,10 @@ func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {
 
 var _ qbittorrentSync = (*recheckResumeSyncManager)(nil)
 
-// TestProcessPendingRecheckResumeHardlinkLinkedFileGate covers the hardlink
-// resume gate: a linked file that rechecks below 100% blocks the resume unless
-// every failed piece straddles a pending file.
-func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
+// TestProcessPendingRecheckResumeHardlinkLinkedFileCheck covers the linked-file
+// check on hardlink resumes: a linked file that rechecks below 100% blocks the
+// resume unless every failed piece straddles a pending file.
+func TestProcessPendingRecheckResumeHardlinkLinkedFileCheck(t *testing.T) {
 	t.Parallel()
 
 	// E01 and E02 are linked, E03 is pending. Piece 15 sits inside E02 alone.

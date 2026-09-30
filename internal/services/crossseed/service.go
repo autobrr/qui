@@ -501,7 +501,7 @@ type pendingResume struct {
 	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
 	budgetBytes        *int64
 	forgivenessGranted bool
-	// forgivenessEvalFailed marks that the LAST forgiveness or hardlink-gate
+	// forgivenessEvalFailed marks that the LAST forgiveness or linked-file check
 	// evaluation could not load its qBittorrent evidence; terminal branches keep
 	// the entry and retry instead of dropping it on a transient error.
 	forgivenessEvalFailed         bool
@@ -524,17 +524,17 @@ type pendingResume struct {
 	// would write into the source through the shared inode. Paths, not indexes:
 	// qBittorrent drops pad files from its file list and renumbers.
 	linkedPaths map[string]struct{}
-	// blockedLinkedFile names the linked file that tripped the gate on the last
+	// blockedLinkedFile names the linked file that tripped the check on the last
 	// evaluation, with its missing bytes.
 	blockedLinkedFile  string
 	blockedLinkedBytes int64
-	// blockedRun is the season pack history row to append when the gate blocks,
+	// blockedRun is the season pack history row to append when the check blocks,
 	// since the apply row was written before the recheck ran. nil for cross-seed
 	// adds, whose result already went back to the caller.
 	blockedRun *models.SeasonPackRun
 }
 
-// leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
+// leftPausedMsg names the linked file that tripped the linked-file check, else fallback.
 func (req *pendingResume) leftPausedMsg(fallback string) string {
 	if req.blockedLinkedFile == "" {
 		return fallback
@@ -6649,7 +6649,7 @@ func pendingResumeBudgetForLog(req *pendingResume) int64 {
 // pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
 // Threshold mode compares verified progress. Budget mode compares missing bytes against the
 // budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
-// sidecar files. Hardlink entries then pass the linked-file gate.
+// sidecar files. Hardlink entries then pass the linked-file check.
 func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
 	req.forgivenessEvalFailed = false
 	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
@@ -7152,7 +7152,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
-// recordBlockedResume appends the hardlink gate verdict to the season pack history.
+// recordBlockedResume appends the linked-file check verdict to the season pack history.
 func (s *Service) recordBlockedResume(req *pendingResume) {
 	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
 		return
@@ -14519,7 +14519,7 @@ func treeFilesTotalSize(files []hardlinktree.TorrentFile) int64 {
 }
 
 // linkedTreePaths collects the torrent paths of the linked tree files for the
-// hardlink resume gate.
+// linked-file check.
 func linkedTreePaths(linked []hardlinktree.TorrentFile) map[string]struct{} {
 	paths := make(map[string]struct{}, len(linked))
 	for _, file := range linked {
