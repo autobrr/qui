@@ -90,8 +90,8 @@ func TestMissingFilesSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 				backendPool: fsops.NewPoolWithRemote(rowGetter{row: test.row}, localbackend.NewBackend(),
 					func(*models.Instance) fsops.Backend { return absentBackend{} }),
 			}
-			evalCtx := &EvalContext{InstanceHasLocalAccess: true}
-			service.setupMissingFilesContext(t.Context(), 1, &models.Automation{}, cond, []qbt.Torrent{torrent}, evalCtx, snapshot)
+			rule := &models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}
+			evalCtx, _ := service.buildEvalContext(t.Context(), 1, snapshot, []qbt.Torrent{torrent}, previewNeeds(rule))
 
 			missing, known := evalCtx.HasMissingFilesByHash[torrent.Hash]
 			require.Equal(t, test.known, known)

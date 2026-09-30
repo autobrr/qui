@@ -49,7 +49,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SubcategoriesAlwaysEnabled:  client.SubcategoriesAlwaysEnabled(),
 		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
-		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,
+		SupportsFreeSpacePathSource: runtime.GOOS != "windows",
 		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
 		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
 		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),
