@@ -59,6 +59,9 @@ const (
 	// that ends the stall on its own, so a client that ignores its deadline
 	// fails the test instead of hanging it. ReleaseStall ends it sooner.
 	SFTPStallReadDir
+	// SFTPStatEOF serves an empty in-memory tree and answers every stat and
+	// lstat with SSH_FX_EOF, which pkg/sftp hands its caller as io.EOF.
+	SFTPStatEOF
 )
 
 // stallTimeout is how long a stalled listing waits before it releases itself.
@@ -270,8 +273,8 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			switch mode {
 			case SFTPStall:
 				<-stalled
-			case SFTPStallReadDir:
-				s.serveStallingSFTP(channel)
+			case SFTPStallReadDir, SFTPStatEOF:
+				s.serveInMemSFTP(channel, mode)
 			default:
 				s.serveSFTP(conn, channel)
 			}
@@ -310,31 +313,37 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	_ = server.Serve()
 }
 
-// serveStallingSFTP serves SFTPStallReadDir. Serve returns once its workers
-// have, so a listing still stalled holds the session until the stall ends.
-func (s *Server) serveStallingSFTP(channel ssh.Channel) {
+// serveInMemSFTP serves the modes built on pkg/sftp's in-memory tree. Serve
+// returns once its workers have, so a listing still stalled holds the session
+// until the stall ends.
+func (s *Server) serveInMemSFTP(channel ssh.Channel, mode SFTPMode) {
 	handlers := sftp.InMemHandler()
-	handlers.FileList = stallingLister{inner: handlers.FileList, server: s}
+	handlers.FileList = inMemLister{inner: handlers.FileList, server: s, mode: mode}
 	server := sftp.NewRequestServer(channel, handlers)
 	defer func() { _ = server.Close() }()
 	_ = server.Serve()
 }
 
-// stallingLister answers every list request but a directory listing from the
-// in-memory tree.
-type stallingLister struct {
+// inMemLister answers from the in-memory tree, except for the requests its
+// mode is about.
+type inMemLister struct {
 	inner  sftp.FileLister
 	server *Server
+	mode   SFTPMode
 }
 
-func (l stallingLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
-	if r.Method != "List" {
-		return l.inner.Filelist(r)
+func (l inMemLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
+	switch {
+	case l.mode == SFTPStallReadDir && r.Method == "List":
+		return l, nil
+	case l.mode == SFTPStatEOF && (r.Method == "Stat" || r.Method == "Lstat"):
+		return nil, io.EOF
 	}
-	return l, nil
+	return l.inner.Filelist(r)
 }
 
-func (l stallingLister) ListAt([]os.FileInfo, int64) (int, error) {
+// ListAt is the stalled listing.
+func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 	s := l.server
 	s.mu.Lock()
 	s.stalledReadDirs++

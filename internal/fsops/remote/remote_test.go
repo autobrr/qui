@@ -410,9 +410,31 @@ func TestLostConnection(t *testing.T) {
 
 	assert.True(t, lostConnection(sftp.ErrSSHFxConnectionLost))
 	assert.True(t, lostConnection(fmt.Errorf("wrapped: %w", net.ErrClosed)))
-	assert.True(t, lostConnection(io.EOF))
+	assert.False(t, lostConnection(io.EOF), "io.EOF can be a server's answer")
 	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
 	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
+
+	require.ErrorIs(t, readDirError("/data", io.EOF), fsops.ErrConnectionLost,
+		"a listing ends on SSH_FX_EOF inside pkg/sftp, so an io.EOF out of it is a closed channel")
+	require.NotErrorIs(t, readDirError("/data", fs.ErrPermission), fsops.ErrConnectionLost)
+}
+
+// A server that answers a stat with SSH_FX_EOF has answered. Reading that as a
+// lost connection would end a walk or a scan over one odd reply.
+func TestStatAnsweredWithEOFIsNotALostConnection(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	server.SetSFTP(sshtest.SFTPStatEOF)
+
+	for name, call := range map[string]func() error{
+		"stat":  func() error { _, err := b.Stat(t.Context(), "/"); return err },
+		"lstat": func() error { _, err := b.Lstat(t.Context(), "/"); return err },
+	} {
+		err := call()
+		require.ErrorIs(t, err, io.EOF, name)
+		require.NotErrorIs(t, err, fsops.ErrConnectionLost, name)
+	}
 }
 
 // readCalls runs every read method against p, for the tests that assert how

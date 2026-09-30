@@ -98,7 +98,7 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 	}
 	entries, err := readDir(ctx, client, p)
 	if err != nil {
-		return nil, readError("readdir", p, err)
+		return nil, readDirError(p, err)
 	}
 
 	result := make([]fsops.DirEntry, 0, len(entries))
@@ -168,7 +168,7 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		if ctx.Err() != nil {
 			return false
 		}
-		err = readError("readdir", dir, err)
+		err = readDirError(dir, err)
 		if errors.Is(err, fsops.ErrConnectionLost) {
 			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
 			return false
@@ -222,9 +222,10 @@ func ignoredDirName(name string, opts fsops.WalkOptions) bool {
 // lostConnection tells a request that failed because the transport went away
 // from one the server refused: pkg/sftp answers every request in flight with
 // ErrSSHFxConnectionLost when its connection closes, and a closed socket
-// surfaces as net.ErrClosed or io.EOF.
+// surfaces as net.ErrClosed. io.EOF is not here, because pkg/sftp also returns
+// it for a server's SSH_FX_EOF answer. readDirError is where it counts.
 func lostConnection(err error) bool {
-	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
+	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed)
 }
 
 // poolSentinels are the answers sshpool gives on purpose. They say why the
@@ -263,6 +264,16 @@ func readError(op, p string, err error) error {
 		err = lost(err)
 	}
 	return pathError(op, p, err)
+}
+
+// readDirError is readError for a directory listing. pkg/sftp takes the
+// server's SSH_FX_EOF as the end of the listing, so an io.EOF that still
+// escapes it comes from a request sent on a channel that had closed.
+func readDirError(p string, err error) error {
+	if errors.Is(err, io.EOF) {
+		return pathError("readdir", p, lost(err))
+	}
+	return readError("readdir", p, err)
 }
 
 func send(ctx context.Context, ch chan<- fsops.WalkEntry, entry fsops.WalkEntry) bool {
