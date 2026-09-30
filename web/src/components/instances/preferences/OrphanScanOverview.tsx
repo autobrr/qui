@@ -444,7 +444,8 @@ function InstanceOrphanScanItem({
             </div>
           )}
 
-          {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
+          {/* Mounted only while open, so every open starts from the first page. */}
+          {previewOpen && latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
             <OrphanScanPreviewDialog
               open={previewOpen}
               onOpenChange={setPreviewOpen}

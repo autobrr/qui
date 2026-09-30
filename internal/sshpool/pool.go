@@ -34,9 +34,7 @@ const (
 	keepaliveInterval = 30 * time.Second
 	keepaliveTimeout  = 15 * time.Second
 
-	// idleTimeout closes a connection nobody has used for a while. It is what
-	// reclaims the connection of an instance that left remote mode, since
-	// nothing tells the pool about a mode change.
+	// idleTimeout closes a connection nobody has used for a while.
 	//
 	// ponytail: "used" means taken from the pool, so one call that alone runs
 	// past the limit is cut and redialed; an in-flight counter is the upgrade
@@ -59,6 +57,11 @@ type Pool struct {
 // ErrPoolClosed answers a caller that arrives after shutdown began: nothing
 // may dial once Close has run.
 var ErrPoolClosed = errors.New("ssh pool is closed")
+
+// ErrNotRemote answers a dial for an instance whose row is not in remote
+// filesystem mode. It is not memoised: the row changes without the host
+// doing anything, and the next dial reads it again.
+var ErrNotRemote = errors.New("instance is not in remote filesystem mode")
 
 // entry is one instance's connection state.
 type entry struct {
@@ -130,6 +133,9 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 		}
 		return nil, fmt.Errorf("read instance %d for the ssh dial: %w", inst.ID, err)
 	}
+	if models.FilesystemAccessMode(row) != models.FilesystemModeRemote {
+		return nil, fmt.Errorf("instance %d: %w", inst.ID, ErrNotRemote)
+	}
 	client, err := p.dialer.Connect(ctx, row)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -191,9 +197,10 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 }
 
 // Invalidate ends the instance's connection and forgets its memo. The
-// credential and pin routes call it after they write the row, so the next dial
-// reads the new values. A mismatch is re-memoised by the next dial, so a
-// refusal survives a spurious call at the cost of one dial. Safe on a nil pool.
+// credential, pin and instance update routes call it after they write the row,
+// so the next dial reads the new values. A mismatch is re-memoised by the next
+// dial, so a refusal survives a spurious call at the cost of one dial. Safe on
+// a nil pool.
 func (p *Pool) Invalidate(instanceID int) {
 	if p == nil {
 		return

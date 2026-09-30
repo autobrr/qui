@@ -312,12 +312,9 @@ export function RSSPage({
             variant="outline"
             className="shrink-0 !px-3"
             onClick={() => {
-              updatePreferences(
-                { rss_processing_enabled: true },
-                {
-                  onSuccess: () => toast.success(t("toast.rssProcessingEnabled")),
-                  onError: () => toast.error(t("toast.failedToEnableProcessing")),
-                }
+              updatePreferences({ rss_processing_enabled: true }).then(
+                () => toast.success(t("toast.rssProcessingEnabled")),
+                () => toast.error(t("toast.failedToEnableProcessing"))
               )
             }}
             disabled={isUpdatingPreferences}
@@ -338,12 +335,9 @@ export function RSSPage({
             variant="outline"
             className="shrink-0 !px-3"
             onClick={() => {
-              updatePreferences(
-                { rss_auto_downloading_enabled: true },
-                {
-                  onSuccess: () => toast.success(t("toast.rssAutoDownloadEnabled")),
-                  onError: () => toast.error(t("toast.failedToEnableAutoDownload")),
-                }
+              updatePreferences({ rss_auto_downloading_enabled: true }).then(
+                () => toast.success(t("toast.rssAutoDownloadEnabled")),
+                () => toast.error(t("toast.failedToEnableAutoDownload"))
               )
             }}
             disabled={isUpdatingPreferences}
@@ -2363,10 +2357,10 @@ function RssSettingsPopover({
       rss_refresh_interval: refreshInterval,
       rss_max_articles_per_feed: maxArticles,
       rss_download_repack_proper_episodes: downloadRepack,
-    }, {
-      onSuccess: () => toast.success(t("toast.rssSettingsSaved")),
-      onError: () => toast.error(t("toast.failedToSaveRssSettings")),
-    })
+    }).then(
+      () => toast.success(t("toast.rssSettingsSaved")),
+      () => toast.error(t("toast.failedToSaveRssSettings"))
+    )
   }
 
   return (
