@@ -378,8 +378,10 @@
       "all": "Vše",
       "none": "Žádné",
       "levelCount_one": "{{count}} Úroveň",
+      "levelCount_few": "{{count}} Úrovně",
       "levelCount_other": "{{count}} Úrovně",
       "mutedCount_one": "{{count}} Ztlumené",
+      "mutedCount_few": "{{count}} Ztlumené",
       "mutedCount_other": "{{count}} Ztlumené",
       "mutedMessages": "Ztlumené zprávy",
       "clearAll": "Smazat vše",
@@ -421,10 +423,6 @@
       "loadingDescription": "Načítám dostupné motivy...",
       "description": "Vyberte z dostupných motivů. Premium motivy vyžadují platný licenční klíč.",
       "verificationUnavailable": "Ověření licence není dostupné. Přepínání premium motivů je dočasně nedostupné.",
-      "freeBadge": "Zdarma",
-      "freeThemes": "Zdarma dostupné motivy",
-      "premiumBadge": "Premiový",
-      "premiumThemes": "Premium motivy",
       "notLoaded": "Premium motivy nejsou načteny",
       "notLoadedDescription": "Nastavte",
       "notLoadedAnd": "a spusťte",
@@ -444,9 +442,7 @@
       "managementTitle": "Správa licencí",
       "managementDescription": "Spravujte svou licenci motivu a přístup k premium motivům",
       "providers": {
-        "dodoPortal": "Dodo portál",
-        "polarPortal": "Polar portál",
-        "legacyPolarPortal": "Starší Polar portál"
+        "dodoPortal": "Dodo portál"
       },
       "status": {
         "unlockTitle": "Odemknout premium motivy",
@@ -479,8 +475,6 @@
         "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, deaktivujte ji na jiném stroji, na kterém je aktivní, nebo spravujte aktivace přes",
-        "polarSuffix": ".",
         "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, deaktivujte ji na jiném stroji, na kterém je aktuálně aktivní."
       },
       "actions": {
@@ -545,16 +539,13 @@
       "copiedVerify": "Příkaz ověření zkopírován",
       "failedCopyVerify": "Nepodařilo se zkopírovat příkaz ověření",
       "toasts": {
-        "activationSuccess": "Licence aktivována úspěšně!",
         "activationSuccessPremium": "Premium přístup aktivován! Děkujeme!",
         "paymentCompleted": "Platba dokončena. Přidejte svůj licenční klíč premium pro dokončení nastavení.",
         "paymentNotCompleted": "Platba nebyla dokončena úspěšně.",
         "returnedFromCheckout": "Vráceno z pokladny. Přidejte svůj licenční klíč premium, když budete připraveni.",
         "keyCopied": "Licenční klíč zkopírován do schránky",
         "copyFailed": "Nepodařilo se zkopírovat licenční klíč",
-        "removedFromMachine": "Licence odstraněna z tohoto stroje",
-        "refreshedAll": "Všechny licence obnoveny úspěšně",
-        "refreshFailed": "Nepodařilo se obnovit licence"
+        "removedFromMachine": "Licence odstraněna z tohoto stroje"
       }
     },
     "custom": {
@@ -563,7 +554,6 @@
       "lockedTitle": "Vlastní motivy jsou premiová funkce",
       "lockedDescription": "Odemkněte premium a načítejte vlastní CSS soubory motivů z adresáře na disku.",
       "unlockCta": "Odemknout premium",
-      "directoryLabel": "Adresář motivů",
       "refresh": "Obnovit",
       "detectedCount": "Nalezené motivy: {{total}}",
       "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
@@ -666,10 +656,6 @@
   },
   "indexers": {
     "title": "Torznab indexery",
-    "addIndexer": "Přidat indexer",
-    "autodiscoverProwlarr": "Automaticky najít z Prowlarru",
-    "noIndexers": "Žádné indexery nakonfigurovány. Přidejte Torznab-kompatibilní indexer pro povolení automatického křížového sdílení.",
-    "noIndexersDescription": "Přidejte Torznab-kompatibilní indexer pro povolení automatického křížového sdílení.",
     "deleteIndexer": "Odstranit indexer",
     "deleteIndexerDescription": "Jste si jisti, že chcete odstranit \"{{name}}\"? Tato akce nemůže být vrácena.",
     "deleteAllIndexers": "Odstranit všechny indexery",
@@ -678,8 +664,6 @@
       "loadFailed": "Nepodařilo se načíst indexery",
       "deletedSuccess": "Indexer odstraněn",
       "deleteFailed": "Nepodařilo se odstranit indexer",
-      "allDeletedSuccess": "Všechny indexery odstraněny",
-      "allDeletedFailed": "Nepodařilo se odstranit všechny indexery",
       "deleteAllSuccess": "Odstraněno všechny {{count}} indexery",
       "deleteAllPartial": "Odstraněno {{success}} indexerů, {{failed}} selhalo: {{names}}",
       "testSuccess": "Test připojení úspěšný",
@@ -804,7 +788,6 @@
         "importSuccess": "Úspěch: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} s upozorněními)",
         "moreWarnings": "...a {{count}} dalších upozornění",
-        "importErrors": "{{details}}",
         "moreErrors": "...a {{count}} dalších chyb",
         "created": "{{count}} vytvořeno",
         "updated": "{{count}} aktualizováno",
@@ -816,6 +799,7 @@
         "manual": "Zadat ručně",
         "storedKey": "Použije se uložený API klíč pro tento server.",
         "indexerCount_one": "{{count}} indexer",
+        "indexerCount_few": "{{count}} indexery",
         "indexerCount_other": "{{count}} indexerů"
       }
     },
@@ -865,10 +849,6 @@
     },
     "activity": {
       "title": "Aktivita plánovače",
-      "idle": "Neaktivní",
-      "queueLength": "Fronty",
-      "workers": "Pracovníci",
-      "cooldown": "Čekání",
       "running": "Běží",
       "queued": "V frontě",
       "rateLimited": "Omezeno",
@@ -932,6 +912,20 @@
       "unknown": "Neznámé"
     }
   },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Povolit přímé shodování API proti Orpheus a Redacted. Toto běží paralelně s Torznab; OPS/RED Torznab indexery jsou ignorovány.",
+    "enableMatching": "Povolit shodování Gazelle",
+    "enableDescription": "Použije se na všechny zdrojové torrenty. Pokud je to možné, qui také kontroluje RED/OPS přes Gazelle.",
+    "redactedApiKey": "Redacted API klíč",
+    "orpheusApiKey": "Orpheus API klíč",
+    "pasteRedKey": "Vložit RED API klíč",
+    "pasteOpsKey": "Vložit OPS API klíč",
+    "enableToConfigure": "Povolit konfiguraci",
+    "redDescription": "Použito pro redacted.sh hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "opsDescription": "Použito pro orpheus.network hledání. Vložit k nahrazení; vymazat k odstranění.",
+    "save": "Uložit"
+  },
   "searchCache": {
     "title": "Vyhledávací mezipaměť",
     "description": "Vyhledávací výsledky z Torznab indexerů.",
@@ -987,6 +981,39 @@
         "upToDateDetail": "Spouští se nejnovější verze",
         "notCheckedYet": "Neprovedený test pouze",
         "lastChecked": "Poslední kontrola {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Restartovat",
+      "confirmTitle": "Restartovat qui?",
+      "confirmDescription": "qui se vypne stejně jako při běžném zastavení a pak se znovu spustí. Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví. Stránka se znovu načte, až bude qui zpět.",
+      "confirm": "Restartovat",
+      "overlay": {
+        "restartingTitle": "qui se restartuje…",
+        "restartingDetail": "Stránka se znovu načte, až qui znovu odpoví.",
+        "slowTitle": "qui zatím neodpověděl",
+        "slowDetail": "qui se možná ještě spouští a tato stránka dál čeká. Zkontrolujte logy qui. Pokud jste změnili port nebo základní URL, otevřete qui na nové adrese."
+      }
+    },
+    "update": {
+      "button": "Nainstalovat aktualizaci",
+      "confirmTitle": "Nainstalovat aktualizaci?",
+      "confirmDescription": "qui stáhne novou verzi, ověří její podpis a ponechá aktuální binární soubor jako zálohu. Pak se qui restartuje. Stránka se znovu načte, až bude qui zpět.",
+      "runningWork": "Probíhající práce, například cross-seed vyhledávání, automatizace, zálohy a skenování osiřelých souborů, se zastaví.",
+      "currentVersion": "Aktuální verze",
+      "targetVersion": "Nová verze",
+      "releaseNotes": "Poznámky k vydání",
+      "confirm": "Nainstalovat aktualizaci",
+      "overlay": {
+        "notAppliedTitle": "Aktualizace se neprovedla",
+        "notAppliedDetail": "qui je zpět, ale s jinou verzí. Zkontrolujte logy qui.",
+        "installedTitle": "qui se aktualizoval",
+        "installedDetail": "Znovu načtěte stránku, abyste otevřeli novou verzi.",
+        "reload": "Znovu načíst stránku",
+        "noBackup": "qui se aktualizoval, ale neponechal žádnou zálohu: {{error}}. Chcete-li se vrátit, stáhněte předchozí verzi ručně.",
+        "rollbackIntro": "Pokud se nová verze nespustí, spusťte tento příkaz a pak qui znovu spusťte:",
+        "rollbackLabel": "Příkaz pro návrat",
+        "rollbackDocs": "Postup návratu k předchozí verzi"
       }
     },
     "runtime": {

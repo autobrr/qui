@@ -10,6 +10,7 @@ interface PreferencesFormShellProps {
   children: ReactNode
   footer: ReactNode
   onSubmit: FormEventHandler<HTMLFormElement>
+  noValidate?: boolean
   className?: string
   contentClassName?: string
   footerClassName?: string
@@ -19,6 +20,7 @@ export function PreferencesFormShell({
   children,
   footer,
   onSubmit,
+  noValidate,
   className,
   contentClassName,
   footerClassName,
@@ -65,7 +67,7 @@ export function PreferencesFormShell({
   }, [])
 
   return (
-    <form onSubmit={onSubmit} className={cn("flex min-h-0 flex-1 flex-col", className)}>
+    <form onSubmit={onSubmit} noValidate={noValidate} className={cn("flex min-h-0 flex-1 flex-col", className)}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           className={cn(

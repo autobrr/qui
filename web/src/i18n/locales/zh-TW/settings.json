@@ -419,10 +419,6 @@
       "loadingDescription": "正在載入可用主題...",
       "description": "從可用主題中選擇。進階主題需要有效的授權。",
       "verificationUnavailable": "授權驗證不可用。進階主題切換暫時停用。",
-      "freeBadge": "免費",
-      "freeThemes": "免費主題",
-      "premiumBadge": "進階",
-      "premiumThemes": "進階主題",
       "notLoaded": "進階主題未載入",
       "notLoadedDescription": "配置",
       "notLoadedAnd": "並執行",
@@ -442,9 +438,7 @@
       "managementTitle": "授權管理",
       "managementDescription": "管理您的主題授權和進階存取權限",
       "providers": {
-        "dodoPortal": "Dodo 門戶",
-        "polarPortal": "Polar 門戶",
-        "legacyPolarPortal": "舊版 Polar 門戶"
+        "dodoPortal": "Dodo 門戶"
       },
       "status": {
         "unlockTitle": "解鎖進階主題",
@@ -477,8 +471,6 @@
         "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
       },
       "invalid": {
-        "polarPrefix": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺已啟用的裝置上停用，或透過",
-        "polarSuffix": "管理啟用。",
         "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺目前已啟用的裝置上停用。"
       },
       "actions": {
@@ -543,16 +535,13 @@
       "copiedVerify": "驗證命令已複製",
       "failedCopyVerify": "複製驗證命令失敗",
       "toasts": {
-        "activationSuccess": "授權啟用成功！",
         "activationSuccessPremium": "進階存取已啟用！感謝您的支援！",
         "paymentCompleted": "支付完成。請新增您的進階授權金鑰以完成設定。",
         "paymentNotCompleted": "支付未成功完成。",
         "returnedFromCheckout": "已從結帳返回。準備好後請新增您的進階授權金鑰。",
         "keyCopied": "授權金鑰已複製到剪貼簿",
         "copyFailed": "複製授權金鑰失敗",
-        "removedFromMachine": "授權已從此裝置移除",
-        "refreshedAll": "所有授權重新整理成功",
-        "refreshFailed": "重新整理授權失敗"
+        "removedFromMachine": "授權已從此裝置移除"
       }
     },
     "custom": {
@@ -561,7 +550,6 @@
       "lockedTitle": "自訂主題是進階功能",
       "lockedDescription": "解鎖進階版即可從磁碟目錄載入您自己的主題 CSS 檔案。",
       "unlockCta": "解鎖進階版",
-      "directoryLabel": "主題目錄",
       "refresh": "重新整理",
       "detectedCount": "找到的主題：{{total}}",
       "parseErrorsTitle": "無法解析以下檔案：",
@@ -664,10 +652,6 @@
   },
   "indexers": {
     "title": "Torznab 索引器",
-    "addIndexer": "新增索引器",
-    "autodiscoverProwlarr": "從 Prowlarr 自動發現",
-    "noIndexers": "尚未配置索引器。",
-    "noIndexersDescription": "新增一個 Torznab 相容的索引器以啟用自動 cross-seed 搜尋。",
     "deleteIndexer": "刪除索引器",
     "deleteIndexerDescription": "確定要刪除「{{name}}」嗎？此操作無法復原。",
     "deleteAllIndexers": "刪除所有索引器",
@@ -676,8 +660,6 @@
       "loadFailed": "載入索引器失敗",
       "deletedSuccess": "索引器已刪除",
       "deleteFailed": "刪除索引器失敗",
-      "allDeletedSuccess": "所有索引器已刪除",
-      "allDeletedFailed": "刪除所有索引器失敗",
       "deleteAllSuccess": "已刪除全部 {{count}} 個索引器",
       "deleteAllPartial": "已刪除 {{success}} 個索引器，{{failed}} 個失敗：{{names}}",
       "testSuccess": "連線測試成功",
@@ -823,7 +805,6 @@
         "importSuccess": "成功：{{details}}",
         "importWithWarnings": "{{details}}（{{warningCount}} 個有警告）",
         "moreWarnings": "...還有 {{count}} 個警告",
-        "importErrors": "{{details}}",
         "moreErrors": "...還有 {{count}} 個錯誤",
         "created": "{{count}} 個已建立",
         "updated": "{{count}} 個已更新",
@@ -883,10 +864,6 @@
     },
     "activity": {
       "title": "排程器活動",
-      "idle": "空閒",
-      "queueLength": "佇列",
-      "workers": "工作執行緒",
-      "cooldown": "冷卻",
       "running": "執行中",
       "queued": "排隊中",
       "rateLimited": "速率受限",
@@ -928,6 +905,20 @@
         "episode": "集"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle（OPS/RED）",
+    "description": "啟用對 Orpheus 和 Redacted 的直接 API 匹配。這與 Torznab 並行執行；OPS/RED Torznab 索引器將被忽略。",
+    "enableMatching": "啟用 Gazelle 匹配",
+    "enableDescription": "應用於所有源種子。如果可能，qui 還會透過 Gazelle 檢查 RED/OPS。",
+    "redactedApiKey": "Redacted API 金鑰",
+    "orpheusApiKey": "Orpheus API 金鑰",
+    "pasteRedKey": "貼上 RED API 金鑰",
+    "pasteOpsKey": "貼上 OPS API 金鑰",
+    "enableToConfigure": "啟用後進行配置",
+    "redDescription": "用於 redacted.sh 查詢。貼上以替換，清空以移除。",
+    "opsDescription": "用於 orpheus.network 查詢。貼上以替換，清空以移除。",
+    "save": "儲存"
   },
   "searchCache": {
     "title": "搜尋快取",
@@ -984,6 +975,39 @@
         "upToDateDetail": "正在執行最新版本",
         "notCheckedYet": "尚未檢查",
         "lastChecked": "上次檢查 {{date}}"
+      }
+    },
+    "restart": {
+      "button": "重新啟動",
+      "confirmTitle": "重新啟動 qui？",
+      "confirmDescription": "qui 會像正常停止時一樣關閉，然後重新啟動。正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。qui 恢復後頁面會自動重新載入。",
+      "confirm": "重新啟動",
+      "overlay": {
+        "restartingTitle": "正在重新啟動 qui…",
+        "restartingDetail": "qui 再次回應後頁面會重新載入。",
+        "slowTitle": "qui 尚未回應",
+        "slowDetail": "qui 可能仍在啟動，此頁面會繼續等待。請查看 qui 日誌。如果你變更了連接埠或基礎 URL，請在新位址開啟 qui。"
+      }
+    },
+    "update": {
+      "button": "安裝更新",
+      "confirmTitle": "安裝更新？",
+      "confirmDescription": "qui 會下載新版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。qui 恢復後頁面會自動重新載入。",
+      "runningWork": "正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。",
+      "currentVersion": "目前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "發行說明",
+      "confirm": "安裝更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢復，但執行的是其他版本。請查看 qui 日誌。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新載入頁面以開啟新版本。",
+        "reload": "重新載入頁面",
+        "noBackup": "qui 已更新，但未保留備份：{{error}}。如需回復，請手動下載舊版本。",
+        "rollbackIntro": "如果新版本無法啟動，請執行此命令，然後再次啟動 qui：",
+        "rollbackLabel": "回復命令",
+        "rollbackDocs": "回復步驟"
       }
     },
     "runtime": {

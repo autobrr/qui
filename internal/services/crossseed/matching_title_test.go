@@ -6,14 +6,14 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	base := rls.Release{
 		Title: "Test Movie",
@@ -35,7 +35,7 @@ func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
 }
 
 func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	movie := rls.Release{
 		Type:  rls.Movie,
@@ -61,7 +61,7 @@ func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
 }
 
 func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	// Different artists with same title should NOT match (regression test for 0day scene)
 	adamBeyer := rls.Release{
@@ -104,7 +104,7 @@ func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
 }
 
 func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	// Same year but different month/day should NOT match (0day scene releases)
 	oct4 := rls.Release{
@@ -194,7 +194,7 @@ func TestNormalizeForMatching(t *testing.T) {
 }
 
 func TestReleasesMatch_PunctuationVariations(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	tests := []struct {
 		name        string
@@ -352,7 +352,7 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 }
 
 func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	// Regression: different shows that share a common prefix should not match.
 	// Example: "FBI" vs "FBI Most Wanted".
@@ -431,7 +431,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 			var match bool
 			var reason string
@@ -488,7 +488,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidate)
 
@@ -505,7 +505,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 }
 
 func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := rls.Release{
 		Type:       rls.Episode,
 		Title:      "Haibara kun no Tsuyokute Seishun New Game",

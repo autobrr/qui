@@ -421,10 +421,6 @@
       "loadingDescription": "Verfügbare Designs werden geladen...",
       "description": "Wähle aus den verfügbaren Designs. Premium-Designs erfordern eine gültige Lizenz.",
       "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
-      "freeBadge": "Kostenlos",
-      "freeThemes": "Kostenlose Designs",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Premium-Designs",
       "notLoaded": "Premium-Designs nicht geladen",
       "notLoadedDescription": "Konfiguriere",
       "notLoadedAnd": "und führe aus",
@@ -444,9 +440,7 @@
       "managementTitle": "Lizenzverwaltung",
       "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
       "providers": {
-        "dodoPortal": "Dodo-Portal",
-        "polarPortal": "Polar-Portal",
-        "legacyPolarPortal": "Altes Polar-Portal"
+        "dodoPortal": "Dodo-Portal"
       },
       "status": {
         "unlockTitle": "Premium-Designs freischalten",
@@ -479,8 +473,6 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktiv ist, oder verwalte die Aktivierungen über",
-        "polarSuffix": ".",
         "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktuell aktiv ist."
       },
       "actions": {
@@ -545,16 +537,13 @@
       "copiedVerify": "Verifizierungsbefehl kopiert",
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
-        "activationSuccess": "Lizenz erfolgreich aktiviert!",
         "activationSuccessPremium": "Premium-Zugang aktiviert! Vielen Dank!",
         "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Premium-Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
         "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Premium-Lizenzschlüssel hinzu, sobald du bereit bist.",
         "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
         "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
-        "removedFromMachine": "Lizenz von diesem Gerät entfernt",
-        "refreshedAll": "Alle Lizenzen erfolgreich aktualisiert",
-        "refreshFailed": "Lizenzen konnten nicht aktualisiert werden"
+        "removedFromMachine": "Lizenz von diesem Gerät entfernt"
       }
     },
     "custom": {
@@ -563,7 +552,6 @@
       "lockedTitle": "Eigene Themes sind eine Premium-Funktion",
       "lockedDescription": "Schalte Premium frei, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
       "unlockCta": "Premium freischalten",
-      "directoryLabel": "Themes-Verzeichnis",
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
@@ -666,10 +654,6 @@
   },
   "indexers": {
     "title": "Torznab Indexer",
-    "addIndexer": "Indexer hinzufügen",
-    "autodiscoverProwlarr": "Automatisch aus Prowlarr erkennen",
-    "noIndexers": "Noch keine Indexer konfiguriert.",
-    "noIndexersDescription": "Füge einen Torznab-kompatiblen Indexer hinzu, um automatische Cross-Seed-Suchen zu aktivieren.",
     "deleteIndexer": "Indexer löschen",
     "deleteIndexerDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleteAllIndexers": "Alle Indexer löschen",
@@ -678,8 +662,6 @@
       "loadFailed": "Indexer konnten nicht geladen werden",
       "deletedSuccess": "Indexer gelöscht",
       "deleteFailed": "Indexer konnte nicht gelöscht werden",
-      "allDeletedSuccess": "Alle Indexer gelöscht",
-      "allDeletedFailed": "Es konnten nicht alle Indexer gelöscht werden",
       "deleteAllSuccess": "Alle {{count}} Indexer gelöscht",
       "deleteAllPartial": "{{success}} Indexer gelöscht, {{failed}} fehlgeschlagen: {{names}}",
       "testSuccess": "Verbindungstest erfolgreich",
@@ -825,7 +807,6 @@
         "importSuccess": "Erfolg: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} mit Warnungen)",
         "moreWarnings": "...und {{count}} weitere Warnungen",
-        "importErrors": "{{details}}",
         "moreErrors": "...und {{count}} weitere Fehler",
         "created": "{{count}} erstellt",
         "updated": "{{count}} aktualisiert",
@@ -886,10 +867,6 @@
     },
     "activity": {
       "title": "Scheduler-Aktivität",
-      "idle": "Inaktiv",
-      "queueLength": "Warteschlange",
-      "workers": "Worker",
-      "cooldown": "Cooldown",
       "running": "Läuft",
       "queued": "In Warteschlange",
       "rateLimited": "Rate-limitiert",
@@ -931,6 +908,20 @@
         "episode": "Episode"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Aktiviere direktes API-Matching gegen Orpheus und Redacted. Dies läuft parallel zu Torznab; OPS-/RED-Torznab-Indexer werden ignoriert.",
+    "enableMatching": "Gazelle-Matching aktivieren",
+    "enableDescription": "Gilt für alle Quell-Torrents. Wenn möglich, prüft qui auch RED/OPS über Gazelle.",
+    "redactedApiKey": "Redacted API Key",
+    "orpheusApiKey": "Orpheus API Key",
+    "pasteRedKey": "RED API Key einfügen",
+    "pasteOpsKey": "OPS API Key einfügen",
+    "enableToConfigure": "Zum Konfigurieren aktivieren",
+    "redDescription": "Wird für redacted.sh-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen.",
+    "opsDescription": "Wird für orpheus.network-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen.",
+    "save": "Speichern"
   },
   "searchCache": {
     "title": "Such-Cache",
@@ -987,6 +978,39 @@
         "upToDateDetail": "Neueste Version läuft",
         "notCheckedYet": "Noch nicht geprüft",
         "lastChecked": "Zuletzt geprüft {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Neu starten",
+      "confirmTitle": "qui neu starten?",
+      "confirmDescription": "qui fährt wie bei einem normalen Stopp herunter und startet dann erneut. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "confirm": "Neu starten",
+      "overlay": {
+        "restartingTitle": "qui wird neu gestartet…",
+        "restartingDetail": "Die Seite lädt neu, sobald qui wieder antwortet.",
+        "slowTitle": "qui hat noch nicht geantwortet",
+        "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
+      }
+    },
+    "update": {
+      "button": "Update installieren",
+      "confirmTitle": "Update installieren?",
+      "confirmDescription": "qui lädt die neue Version herunter, prüft ihre Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Die Seite lädt neu, sobald qui wieder da ist.",
+      "runningWork": "Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet.",
+      "currentVersion": "Aktuelle Version",
+      "targetVersion": "Neue Version",
+      "releaseNotes": "Release Notes",
+      "confirm": "Update installieren",
+      "overlay": {
+        "notAppliedTitle": "Update wurde nicht angewendet",
+        "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "installedTitle": "qui wurde aktualisiert",
+        "installedDetail": "Lade die Seite neu, um die neue Version zu öffnen.",
+        "reload": "Seite neu laden",
+        "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback lade die alte Version manuell herunter.",
+        "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",
+        "rollbackLabel": "Rollback-Befehl",
+        "rollbackDocs": "Schritte für das Rollback"
       }
     },
     "runtime": {

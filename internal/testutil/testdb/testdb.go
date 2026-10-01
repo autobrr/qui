@@ -6,14 +6,18 @@ package testdb
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,15 +26,17 @@ import (
 	"github.com/autobrr/qui/internal/database"
 )
 
-var (
-	templateOnce sync.Once
-	templatePath string
-	errTemplate  error
-)
+// cacheDirEnv overrides the directory that holds the shared migrated template.
+const cacheDirEnv = "QUI_TESTDB_CACHE_DIR"
 
 // NewMigratedSQLite returns an isolated SQLite database with all migrations
-// already applied. It avoids replaying the full migration set for every store
-// test by cloning a process-local migrated template database.
+// already applied, cloned from a migrated template.
+//
+// The first call in a process finds the template in the user cache directory
+// (or QUI_TESTDB_CACHE_DIR) and builds it when no template matches the current
+// migrations. A build runs every migration: about 0.2 s without -race and
+// about 7 s with -race. Every later clone, in any package process, is a file
+// copy.
 func NewMigratedSQLite(t testing.TB, name string) *database.DB {
 	t.Helper()
 
@@ -65,11 +71,7 @@ func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 		t.Fatalf("open PostgreSQL test administrator: %v", err)
 	}
 
-	safeName := strings.ReplaceAll(sanitizeName(name), "-", "_")
-	if len(safeName) > 24 {
-		safeName = safeName[:24]
-	}
-	schemaName := fmt.Sprintf("qui_test_%s_%d", safeName, time.Now().UnixNano())
+	schemaName := testSchemaName(name, time.Now())
 	quotedSchema := quotePostgresIdentifier(schemaName)
 	if _, err := adminPool.Exec(setupCtx, "CREATE SCHEMA "+quotedSchema); err != nil {
 		adminPool.Close()
@@ -123,12 +125,26 @@ func postgresDSNWithSearchPath(dsn, schema string) (string, error) {
 	return parsed.String(), nil
 }
 
+// testSchemaSeq keeps parallel tests from claiming the same schema name: the
+// clock is coarse enough that two tests starting together read the same
+// UnixNano, and CREATE SCHEMA then fails for the second one.
+var testSchemaSeq atomic.Int64
+
+func testSchemaName(name string, now time.Time) string {
+	safeName := strings.ReplaceAll(sanitizeName(name), "-", "_")
+	if len(safeName) > 24 {
+		safeName = safeName[:24]
+	}
+	return fmt.Sprintf("qui_test_%s_%d_%d", safeName, now.UnixNano(), testSchemaSeq.Add(1))
+}
+
 func quotePostgresIdentifier(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 // CloneMigratedSQLite copies the migrated template database into t.TempDir and
-// returns the cloned database path.
+// returns the cloned database path. The first call costs what NewMigratedSQLite
+// describes.
 func CloneMigratedSQLite(t testing.TB, name string) string {
 	t.Helper()
 
@@ -144,40 +160,104 @@ func CloneMigratedSQLite(t testing.TB, name string) string {
 	return dst
 }
 
-func migratedTemplatePath() (string, error) {
-	templateOnce.Do(func() {
-		templatePath, errTemplate = buildMigratedTemplate()
-	})
-	return templatePath, errTemplate
+var migratedTemplatePath = sync.OnceValues(func() (string, error) {
+	dir, err := templateCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return cachedTemplate(dir, database.SQLiteMigrations(), buildMigratedTemplate)
+})
+
+func templateCacheDir() (string, error) {
+	if dir := os.Getenv(cacheDirEnv); dir != "" {
+		return dir, nil
+	}
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("find template cache dir (set %s): %w", cacheDirEnv, err)
+	}
+	return filepath.Join(dir, "qui", "testdb"), nil
 }
 
-func buildMigratedTemplate() (string, error) {
-	dir, err := os.MkdirTemp("", "qui-migrated-testdb-*")
+// cachedTemplate returns the template in dir that matches migrations, and
+// builds it first when it is missing. Package processes that start together
+// can all build; each renames a complete file into place, so a reader never
+// sees a partial template.
+func cachedTemplate(dir string, migrations fs.FS, build func(dbPath string) error) (string, error) {
+	key, err := migrationsKey(migrations)
 	if err != nil {
-		return "", fmt.Errorf("create template dir: %w", err)
+		return "", fmt.Errorf("hash migrations: %w", err)
+	}
+	final := filepath.Join(dir, "template-"+key+".db")
+	if _, err := os.Stat(final); err == nil {
+		return final, nil
 	}
 
-	dbPath := filepath.Join(dir, "template.db")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create template cache dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, "build-"+key+"-*.partial")
+	if err != nil {
+		return "", fmt.Errorf("create partial template: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+		_ = removeSQLiteSidecars(tmpPath)
+	}()
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("close partial template: %w", err)
+	}
+
+	if err := build(tmpPath); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmpPath, final); err != nil {
+		// Windows refuses to replace a file another builder renamed into
+		// place while a process reads it; that file is just as good.
+		if _, statErr := os.Stat(final); statErr == nil {
+			return final, nil
+		}
+		return "", fmt.Errorf("publish template: %w", err)
+	}
+	return final, nil
+}
+
+func migrationsKey(migrations fs.FS) (string, error) {
+	h := sha256.New()
+	err := fs.WalkDir(migrations, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(migrations, path)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s %d\n", path, len(data))
+		h.Write(data)
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:16], err
+}
+
+func buildMigratedTemplate(dbPath string) error {
 	db, err := database.New(dbPath)
 	if err != nil {
-		return "", fmt.Errorf("create migrated template database: %w", err)
+		return fmt.Errorf("create migrated template database: %w", err)
 	}
 
 	if _, err := db.Conn().ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		closeErr := db.Close()
 		if closeErr != nil {
-			return "", fmt.Errorf("checkpoint migrated template database: %w; close: %w", err, closeErr)
+			return fmt.Errorf("checkpoint migrated template database: %w; close: %w", err, closeErr)
 		}
-		return "", fmt.Errorf("checkpoint migrated template database: %w", err)
+		return fmt.Errorf("checkpoint migrated template database: %w", err)
 	}
 	if err := db.Close(); err != nil {
-		return "", fmt.Errorf("close migrated template database: %w", err)
+		return fmt.Errorf("close migrated template database: %w", err)
 	}
 
-	if err := removeSQLiteSidecars(dbPath); err != nil {
-		return "", err
-	}
-	return dbPath, nil
+	return removeSQLiteSidecars(dbPath)
 }
 
 func removeSQLiteSidecars(dbPath string) error {

@@ -1,7 +1,8 @@
 ---
 sidebar_position: 9
-title: Notifications
-description: Send events to Shoutrrr targets and Notifiarr.
+title: qBittorrent notifications for Discord, Telegram, and webhooks
+sidebar_label: Notifications
+description: Send qui events to Discord, Telegram, Slack, Gotify, and other Shoutrrr targets, or to Notifiarr.
 ---
 
 # Notifications

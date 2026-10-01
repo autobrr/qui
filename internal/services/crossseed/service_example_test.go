@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 )
 
 // TestMakeReleaseKey tests the release key extraction logic using rls parser
@@ -171,7 +171,7 @@ func TestEnrichReleaseFromTorrent(t *testing.T) {
 
 // TestCheckPartialMatch tests the partial matching logic
 func TestCheckPartialMatch(t *testing.T) {
-	s := &Service{}
+	s := matcher{}
 
 	tests := []struct {
 		name     string

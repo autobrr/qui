@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
@@ -35,12 +36,21 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, nil
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	// The callers gate on an instance snapshot taken before the hardlink index
+	// build, which can run for minutes. If local access was turned off since,
+	// the backend now points at the SSH host, where qBittorrent's paths need
+	// not exist, and every torrent would read as missing.
+	backend, mode, err := s.backendPool.Resolve(ctx, instanceID)
 	if err != nil {
 		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
 	}
+	if mode != models.FilesystemModeLocal {
+		log.Debug().Int("instanceID", instanceID).Str("mode", string(mode)).
+			Msg("automations: instance no longer has local filesystem access, skipping missing files detection")
+		return result, nil
+	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")
@@ -60,6 +70,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 
 func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) map[string]bool {
 	result := make(map[string]bool)
+	d := backend.Paths()
 
 	for hash, files := range filesByHash {
 		torrent := torrentByHash[hash]
@@ -72,7 +83,7 @@ func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrent
 				allPathsValid = false
 				continue
 			}
-			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+			fullPath, ok := buildFullPath(d, torrent.SavePath, f.Name)
 			if !ok {
 				allPathsValid = false
 				continue

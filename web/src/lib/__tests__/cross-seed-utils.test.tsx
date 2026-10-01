@@ -17,6 +17,7 @@ vi.mock("@/lib/api", () => ({
 
 import { api } from "@/lib/api"
 import {
+  changedSecret,
   getLocalMatchTypeInfo,
   hasBreakableLocalMatches,
   isHardlinkManaged,
@@ -125,16 +126,16 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
 
-  it("is false when hasLocalFilesystemAccess is false", () => {
+  it("is false when the instance lacks the write capability", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { useHardlinks: true, hasLocalFilesystemAccess: false, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: false }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
@@ -143,7 +144,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/x" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: "" }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: "" }
       )
     ).toBe(false)
   })
@@ -152,7 +153,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/data/links/show", content_path: "/elsewhere/show" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(true)
   })
@@ -161,7 +162,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/elsewhere/show", content_path: "/data/links/show/file.mkv" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(true)
   })
@@ -170,7 +171,7 @@ describe("isHardlinkManaged", () => {
     expect(
       isHardlinkManaged(
         { save_path: "/elsewhere/a", content_path: "/elsewhere/b" },
-        { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
+        { useHardlinks: true, capabilities: { write: true }, hardlinkBaseDir: base }
       )
     ).toBe(false)
   })
@@ -394,5 +395,16 @@ describe("useLocalCrossSeedMatches", () => {
     await waitFor(() => {
       expect(result.current.matchingTorrents).toHaveLength(1)
     })
+  })
+})
+
+describe("changedSecret", () => {
+  it.each([
+    { name: "untouched unset key", value: "", saved: undefined, want: undefined },
+    { name: "untouched set key", value: "<redacted>", saved: "<redacted>", want: undefined },
+    { name: "cleared key", value: "", saved: "<redacted>", want: "" },
+    { name: "new key", value: "new-key", saved: undefined, want: "new-key" },
+  ])("$name", ({ value, saved, want }) => {
+    expect(changedSecret(value, saved)).toBe(want)
   })
 })

@@ -1,6 +1,7 @@
 ---
 sidebar_position: 13
-title: Client Migration
+title: Migrate from Deluge, rTorrent, or Transmission to qBittorrent
+sidebar_label: Client Migration
 description: Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent.
 ---
 
@@ -21,6 +22,8 @@ Run with `--dry-run` first to preview the import. The dry run writes nothing.
 1. **Stop the source client cleanly.** All three clients flush their resume state on shutdown. If you terminate the process abruptly, it leaves stale or missing state files.
 2. **Stop qBittorrent.** The importer writes into qBittorrent's `BT_backup` directory. qBittorrent reads that directory only at startup.
 3. After the migration finishes, start qBittorrent. The imported torrents appear with their history intact.
+
+The command does not change the source client's files or your downloaded data. To switch back, stop qBittorrent and start the source client again. This works until you move or rename data in qBittorrent.
 
 If you do not set `--skip-backup`, the command archives both directories to `qbt_backup/` in the current working directory before it writes anything. If the qBittorrent directory already exists, the command archives it. A fresh destination produces only the source archive. If you run the migration again, the command safely skips torrents that already exist in the target.
 

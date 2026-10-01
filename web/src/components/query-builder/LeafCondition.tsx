@@ -27,11 +27,14 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
+  WRAPPING_BETWEEN_FIELDS,
   getFieldType,
   getOperatorsForField,
   getTranslatedOperatorsForField,
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
+  getTranslatedContentTypes,
+  getTranslatedSeasonPackStatuses,
   getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
@@ -201,6 +204,8 @@ export function LeafCondition({
       defaultValue = "true";
     } else if (newFieldType === "hardlinkScope") {
       defaultValue = "outside_qbittorrent";
+    } else if (newFieldType === "seasonPackStatus") {
+      defaultValue = "packed";
     }
 
     onChange({
@@ -250,6 +255,20 @@ export function LeafCondition({
       condition.field === "CATEGORY" && value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value;
     onChange({ ...condition, value: actualValue });
   };
+
+  // A CONTENT_TYPE condition saved with regex on holds a pattern, not a type, so it keeps the free-text input.
+  const isContentTypeEqualityOperator =
+    condition.field === "CONTENT_TYPE" &&
+    (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL") &&
+    !condition.regex;
+
+  const contentTypeOptions = isContentTypeEqualityOperator ? getTranslatedContentTypes(t) : [];
+  // The evaluator ignores case, so a saved "TV" selects "tv". Any other saved value stays
+  // selected as a flagged option, because rewriting it would change what the rule matches.
+  const savedContentType = condition.value ?? "";
+  const knownContentType = contentTypeOptions.find((option) => option.value === savedContentType.toLowerCase());
+  const contentTypeValue = knownContentType?.value ?? savedContentType;
+  const isCustomContentType = contentTypeValue !== "" && !knownContentType;
 
   const getCategoryDisplayValue = (): string => {
     if (condition.field === "CATEGORY" && !condition.value) {
@@ -435,6 +454,14 @@ export function LeafCondition({
   };
 
   const betweenPercentageDisplay = (fieldType === "percentage" && condition.operator === "BETWEEN") ? getBetweenPercentageDisplay() : null;
+
+  // A reversed range on a clock field is a wrap, not a mistake, so say what it covers.
+  const wrapsBetween = condition.operator === "BETWEEN" &&
+    condition.field !== undefined &&
+    WRAPPING_BETWEEN_FIELDS.has(condition.field) &&
+    condition.minValue !== undefined &&
+    condition.maxValue !== undefined &&
+    condition.minValue > condition.maxValue;
 
   return (
     <div
@@ -634,22 +661,29 @@ export function LeafCondition({
             <span className="text-sm text-muted-foreground">%</span>
           </div>
         ) : condition.operator === "BETWEEN" ? (
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              className="h-8 w-20"
-              value={condition.minValue ?? ""}
-              onChange={(e) => handleMinValueChange(e.target.value)}
-              placeholder={t("queryBuilder.min")}
-            />
-            <span className="text-muted-foreground">-</span>
-            <Input
-              type="number"
-              className="h-8 w-20"
-              value={condition.maxValue ?? ""}
-              onChange={(e) => handleMaxValueChange(e.target.value)}
-              placeholder={t("queryBuilder.max")}
-            />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                className="h-8 w-20"
+                value={condition.minValue ?? ""}
+                onChange={(e) => handleMinValueChange(e.target.value)}
+                placeholder={t("queryBuilder.min")}
+              />
+              <span className="text-muted-foreground">-</span>
+              <Input
+                type="number"
+                className="h-8 w-20"
+                value={condition.maxValue ?? ""}
+                onChange={(e) => handleMaxValueChange(e.target.value)}
+                placeholder={t("queryBuilder.max")}
+              />
+            </div>
+            {wrapsBetween && (
+              <span className="text-xs text-muted-foreground">
+                {t("queryBuilder.wrappingRangeHint", { min: condition.minValue, max: condition.maxValue })}
+              </span>
+            )}
           </div>
         ) : fieldType === "trackerStatus" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
@@ -699,6 +733,39 @@ export function LeafCondition({
               {getTranslatedHardlinkScopes(t).map((scope) => (
                 <SelectItem key={scope.value} value={scope.value}>
                   {scope.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : isContentTypeEqualityOperator ? (
+          <Select value={contentTypeValue} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue placeholder={t("queryBuilder.selectContentType")} />
+            </SelectTrigger>
+            <SelectContent>
+              {contentTypeOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              {isCustomContentType && (
+                <SelectItem value={contentTypeValue}>
+                  <span className="italic text-muted-foreground">
+                    {t("queryBuilder.customContentType", { value: contentTypeValue })}
+                  </span>
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        ) : fieldType === "seasonPackStatus" ? (
+          <Select value={condition.value ?? "packed"} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {getTranslatedSeasonPackStatuses(t).map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
                 </SelectItem>
               ))}
             </SelectContent>

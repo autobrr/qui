@@ -14,6 +14,85 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
+func TestProcessTorrents_Uncategorized(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	torrents := []qbt.Torrent{
+		{Hash: "source", Category: "archive", SavePath: "data", ContentPath: "data/show"},
+		{Hash: "peer", Category: "protected", SavePath: "data", ContentPath: "data/show"},
+		{Hash: "uncategorized", SavePath: "other", ContentPath: "other/show"},
+	}
+
+	for _, tc := range []struct {
+		name                string
+		enabled             bool
+		includeCrossSeeds   bool
+		protectedCategories []string
+		wantMatch           bool
+	}{
+		{name: "clear", enabled: true, wantMatch: true},
+		{name: "disabled"},
+		{name: "include cross-seeds", enabled: true, includeCrossSeeds: true, wantMatch: true},
+		{name: "protected cross-seed", enabled: true, includeCrossSeeds: true, protectedCategories: []string{"protected"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := &models.Automation{
+				ID:             1,
+				Enabled:        true,
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Category: &models.CategoryAction{
+						Enabled:                      tc.enabled,
+						Category:                     "",
+						IncludeCrossSeeds:            tc.includeCrossSeeds,
+						BlockIfCrossSeedInCategories: tc.protectedCategories,
+						Condition:                    &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: "archive"},
+					},
+				},
+			}
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+			if !tc.wantMatch {
+				require.Empty(t, states)
+				return
+			}
+			require.Len(t, states, 1)
+			require.NotNil(t, states["source"].category)
+			require.Empty(t, *states["source"].category)
+			require.Equal(t, tc.includeCrossSeeds, states["source"].categoryIncludeCrossSeeds)
+
+			service := &Service{syncManager: sm}
+			preview := newCategoryPreviewState("")
+			action := getCategoryAction(rule)
+			service.findDirectCategoryMatches(rule, torrents, nil, buildCrossSeedIndex(torrents), action, preview)
+			service.findCategoryCrossSeeds(torrents, action, preview)
+			require.Equal(t, map[string]struct{}{"source": {}}, preview.directMatchSet)
+			_, included := preview.crossSeedSet["peer"]
+			require.Equal(t, tc.includeCrossSeeds, included)
+		})
+	}
+}
+
+func TestProcessTorrents_UncategorizedLastRuleWins(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	torrents := []qbt.Torrent{{Hash: "source"}}
+	rules := []*models.Automation{
+		{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "archive"},
+		}},
+		{ID: 2, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: ""},
+		}},
+	}
+	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	require.NotNil(t, states["source"].category)
+	require.Empty(t, *states["source"].category)
+	require.Equal(t, 2, states["source"].categoryRuleID)
+
+	service := &Service{syncManager: sm}
+	preview := newCategoryPreviewState("")
+	service.findDirectCategoryMatches(rules[1], torrents, nil, nil, getCategoryAction(rules[1]), preview)
+	require.Empty(t, preview.directMatchSet)
+}
+
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
@@ -664,6 +743,15 @@ func TestResolveMovePath_TrackerFallback(t *testing.T) {
 	resolved, ok := resolveMovePath("/data/{{.Tracker}}", torrent, state, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/tracker.example.com", resolved)
+}
+
+func TestResolveMovePath_TrackerDisplayName(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01"}
+	evalCtx := &EvalContext{TrackerDisplayNameByDomain: map[string]string{"tracker.example.com": "Example"}}
+
+	resolved, ok := resolveMovePath("/data/{{.Tracker}}", torrent, &torrentDesiredState{trackerDomains: []string{"tracker.example.com"}}, evalCtx)
+	require.True(t, ok)
+	require.Equal(t, "/data/Example", resolved)
 }
 
 func TestMoveAction_WithTemplatePath(t *testing.T) {

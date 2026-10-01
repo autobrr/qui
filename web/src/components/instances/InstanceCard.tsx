@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
-import { cn, formatErrorMessage } from "@/lib/utils"
+import { formatErrorMessage } from "@/lib/format-error-message"
+import { cn } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import {
   ArrowDown,

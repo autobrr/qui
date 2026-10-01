@@ -1,6 +1,7 @@
 ---
 sidebar_position: 99
-title: License Management
+title: Premium theme licenses
+sidebar_label: License Management
 description: Manage premium theme license activations, deactivate old servers, and recover lost keys.
 ---
 

@@ -199,7 +199,7 @@ func TestPartialInPackIntegration(t *testing.T) {
 
 	// Step 1: Verify matching produces partial-in-pack
 	// The episode's files should be found inside the season pack's files
-	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles)
+	matchType := svc.matcher().getMatchTypeWithReason(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 }
@@ -230,7 +230,7 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles)
+	matchType := svc.matcher().getMatchTypeWithReason(movieRelease, collectionRelease, movieFiles, collectionFiles, 0).MatchType
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 }
@@ -2744,7 +2744,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
@@ -2845,7 +2844,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
@@ -2929,7 +2927,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID},
 	}
@@ -3099,7 +3096,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID},
 	}
@@ -3176,7 +3172,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID},
 	}
@@ -3252,7 +3247,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
 		TargetInstanceIDs: []int{instance1ID},
 	}

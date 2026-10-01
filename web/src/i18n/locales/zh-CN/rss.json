@@ -23,8 +23,6 @@
   "feeds": {
     "title": "订阅源",
     "refreshAll": "全部刷新",
-    "addFolder": "添加文件夹",
-    "addFeed": "添加订阅源",
     "articles": "文章",
     "unread": "{{count}} 条未读",
     "markAllAsRead": "全部标记为已读",
@@ -48,7 +46,6 @@
     "toggleDetails": "切换详情"
   },
   "rules": {
-    "title": "规则",
     "reprocess": "重新处理",
     "reprocessTooltip": "对所有未读文章重新检查规则",
     "addRule": "添加规则",

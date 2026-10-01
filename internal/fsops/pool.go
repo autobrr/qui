@@ -11,12 +11,14 @@ import (
 )
 
 // Pool resolves an instance ID to the appropriate Backend. For instances with
-// local filesystem access it returns the local backend; for instances without
-// access it returns a noop backend that errors on every call. A future remote
-// backend slots in here for instances with SSH access configured.
+// local filesystem access it returns the local backend; for instances pinned
+// for SSH access it returns a remote backend built for that instance; for
+// instances without access it returns a noop backend that errors on every
+// call.
 type Pool struct {
 	instanceStore instanceGetter
 	local         Backend
+	remote        func(*models.Instance) Backend
 }
 
 // instanceGetter is the subset of models.InstanceStore that Pool needs.
@@ -25,11 +27,21 @@ type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
-// NewPool creates a Backend pool backed by the given instance store and local backend.
+// NewPool creates a Backend pool backed by the given instance store and local
+// backend. Without a remote factory a remote-mode instance is an error, not a
+// silent "not configured": NewPoolWithRemote is the constructor that wires one.
 func NewPool(store instanceGetter, local Backend) *Pool {
+	return NewPoolWithRemote(store, local, nil)
+}
+
+// NewPoolWithRemote is NewPool plus a remote-backend factory, called per
+// resolution: the backend it returns is a thin handle over the shared SSH
+// connection pool, which owns the connections and their lifetime.
+func NewPoolWithRemote(store instanceGetter, local Backend, remote func(*models.Instance) Backend) *Pool {
 	return &Pool{
 		instanceStore: store,
 		local:         local,
+		remote:        remote,
 	}
 }
 
@@ -37,6 +49,40 @@ func NewPool(store instanceGetter, local Backend) *Pool {
 // Returns ErrNoFilesystemAccess wrapped in a noop backend for instances
 // without filesystem access configured.
 func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) {
+	backend, _, err := p.Resolve(ctx, instanceID)
+	return backend, err
+}
+
+// Resolve is GetBackend plus the mode the backend was chosen for, both from
+// one instance read, so a caller that records the mode cannot label a walk
+// with a mode the instance changed to in between.
+func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.FilesystemMode, error) {
+	instance, err := p.load(ctx, instanceID)
+	if err != nil {
+		return nil, "", err
+	}
+	return p.backendFor(instance)
+}
+
+// Require returns the backend and the instance row for an instance whose mode
+// grants capability, both from one read, so a caller cannot check one row and
+// act on another. Any other instance fails with ErrNotCapable.
+func (p *Pool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (Backend, *models.Instance, error) {
+	instance, err := p.load(ctx, instanceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !models.FilesystemCapabilitiesOf(instance).Has(capability) {
+		return nil, nil, fmt.Errorf("instance %d, %s: %w", instanceID, capability, ErrNotCapable)
+	}
+	backend, _, err := p.backendFor(instance)
+	if err != nil {
+		return nil, nil, err
+	}
+	return backend, instance, nil
+}
+
+func (p *Pool) load(ctx context.Context, instanceID int) (*models.Instance, error) {
 	instance, err := p.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance %d: %w", instanceID, err)
@@ -44,12 +90,37 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 	if instance == nil {
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
+	return instance, nil
+}
 
-	if instance.HasLocalFilesystemAccess {
-		return p.local, nil
+func (p *Pool) backendFor(instance *models.Instance) (Backend, models.FilesystemMode, error) {
+	mode := models.FilesystemAccessMode(instance)
+	switch mode {
+	case models.FilesystemModeLocal:
+		return p.local, mode, nil
+	case models.FilesystemModeRemote:
+		if p.remote == nil {
+			return nil, "", fmt.Errorf("instance %d: %w", instance.ID, ErrRemoteBackendNotWired)
+		}
+		return p.remote(instance), mode, nil
+	case models.FilesystemModeNone:
+		return noopBackend{}, mode, nil
 	}
+	// No default arm, so exhaustive flags a new mode here instead of letting
+	// it fall through to "not configured".
+	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instance.ID, mode)
+}
 
-	// Future: return a remote backend for instances with SSH access configured.
-
-	return noopBackend{}, nil
+// LocalBackend is Resolve for a caller that admitted the instance on local
+// access from an earlier read of it. Any other mode fails with ErrNotLocal, so
+// a caller whose read went stale never runs local paths against another host.
+func (p *Pool) LocalBackend(ctx context.Context, instanceID int) (Backend, error) {
+	backend, mode, err := p.Resolve(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	if mode != models.FilesystemModeLocal {
+		return nil, fmt.Errorf("instance %d is in %s filesystem mode: %w", instanceID, mode, ErrNotLocal)
+	}
+	return backend, nil
 }

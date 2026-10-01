@@ -16,12 +16,11 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestValidateLicenses_DoesNotAutoActivateInvalidDodoLicense(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
@@ -52,15 +51,15 @@ func TestValidateLicenses_DoesNotAutoActivateInvalidDodoLicense(t *testing.T) {
 		}),
 	)
 
-	service := NewLicenseService(repo, nil, client, t.TempDir())
+	service := NewLicenseService(repo, client, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.NoError(t, err)
 	require.False(t, valid)
 }
 
-func TestRefreshAllLicenses_UnknownProviderStoresDodoInstanceIDFromValidate(t *testing.T) {
-	ctx := context.Background()
+func TestValidateAndStoreLicense_DodoInvalidReturnsNotActive(t *testing.T) {
+	ctx := t.Context()
 
 	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
@@ -73,64 +72,8 @@ func TestRefreshAllLicenses_UnknownProviderStoresDodoInstanceIDFromValidate(t *t
 		Status:         models.LicenseStatusActive,
 		ActivatedAt:    now.Add(-time.Hour),
 		LastValidated:  now.Add(-2 * time.Hour),
-		Provider:       "",
-		DodoInstanceID: "",
-		Username:       "tester",
-		CreatedAt:      now.Add(-time.Hour),
-		UpdatedAt:      now.Add(-time.Hour),
-	}
-	require.NoError(t, repo.StoreLicense(ctx, license))
-
-	client := dodo.NewClient(
-		dodo.WithBaseURL("http://dodo.test"),
-		dodo.WithHTTPClient(&http.Client{
-			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
-				switch req.URL.Path {
-				case "/licenses/validate":
-					body := string(mustRead(req.Body))
-					require.Contains(t, body, `"license_key":"LIC-TEST"`)
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(strings.NewReader(`{"valid":true,"instance_id":"inst_123"}`)),
-						Header:     make(http.Header),
-					}, nil
-				case "/licenses/activate":
-					t.Fatalf("unexpected activation call during unknown-provider validation")
-					return nil, nil
-				default:
-					t.Fatalf("unexpected path %q", req.URL.Path)
-					return nil, nil
-				}
-			}),
-		}),
-	)
-
-	service := NewLicenseService(repo, nil, client, t.TempDir())
-	require.NoError(t, service.RefreshAllLicenses(ctx))
-
-	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
-	require.NoError(t, err)
-	require.Equal(t, models.LicenseProviderDodo, stored.Provider)
-	require.Equal(t, "inst_123", stored.DodoInstanceID)
-	require.Equal(t, models.LicenseStatusActive, stored.Status)
-}
-
-func TestValidateAndStoreLicense_UnknownProviderDodoInvalidDoesNotFallbackToPolar(t *testing.T) {
-	ctx := context.Background()
-
-	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
-
-	repo := database.NewLicenseRepo(db)
-
-	now := time.Now()
-	license := &models.ProductLicense{
-		LicenseKey:     "LIC-TEST",
-		ProductName:    ProductNamePremium,
-		Status:         models.LicenseStatusActive,
-		ActivatedAt:    now.Add(-time.Hour),
-		LastValidated:  now.Add(-2 * time.Hour),
-		Provider:       "",
-		DodoInstanceID: "",
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "inst_123",
 		Username:       "tester",
 		CreatedAt:      now.Add(-time.Hour),
 		UpdatedAt:      now.Add(-time.Hour),
@@ -156,25 +99,66 @@ func TestValidateAndStoreLicense_UnknownProviderDodoInvalidDoesNotFallbackToPola
 		}),
 	)
 
-	polarClient := polar.NewClient(
-		polar.WithOrganizationID("org_test"),
-		polar.WithHTTPClient(&http.Client{
-			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
-				t.Fatalf("unexpected call to polar %q", req.URL.Path)
-				return nil, nil
-			}),
-		}),
-	)
-
-	service := NewLicenseService(repo, polarClient, dodoClient, t.TempDir())
+	service := NewLicenseService(repo, dodoClient, t.TempDir())
 
 	_, err := service.ValidateAndStoreLicense(ctx, license.LicenseKey, "tester")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrLicenseNotActive)
 }
 
+func TestValidateAndStoreLicense_BackfillsInstanceIDFromValidate(t *testing.T) {
+	ctx := t.Context()
+
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
+
+	repo := database.NewLicenseRepo(db)
+
+	now := time.Now()
+	license := &models.ProductLicense{
+		LicenseKey:     "LIC-TEST",
+		ProductName:    ProductNamePremium,
+		Status:         models.LicenseStatusActive,
+		ActivatedAt:    now.Add(-time.Hour),
+		LastValidated:  now.Add(-2 * time.Hour),
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "",
+		Username:       "tester",
+		CreatedAt:      now.Add(-time.Hour),
+		UpdatedAt:      now.Add(-time.Hour),
+	}
+	require.NoError(t, repo.StoreLicense(ctx, license))
+
+	dodoClient := dodo.NewClient(
+		dodo.WithBaseURL("http://dodo.test"),
+		dodo.WithHTTPClient(&http.Client{
+			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.Path {
+				case "/licenses/validate":
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`{"valid":true,"instance_id":"inst_123"}`)),
+						Header:     make(http.Header),
+					}, nil
+				default:
+					t.Fatalf("unexpected dodo path %q", req.URL.Path)
+					return nil, nil
+				}
+			}),
+		}),
+	)
+
+	service := NewLicenseService(repo, dodoClient, t.TempDir())
+
+	_, err := service.ValidateAndStoreLicense(ctx, license.LicenseKey, "tester")
+	require.NoError(t, err)
+
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	require.Equal(t, "inst_123", stored.DodoInstanceID)
+}
+
 func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
@@ -195,7 +179,7 @@ func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T
 	}
 	require.NoError(t, repo.StoreLicense(ctx, license))
 
-	service := NewLicenseService(repo, nil, nil, t.TempDir())
+	service := NewLicenseService(repo, nil, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.ErrorIs(t, err, ErrDodoClientNotConfigured)
@@ -206,15 +190,15 @@ func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T
 	require.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
-func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
-	ctx := context.Background()
+func TestRefreshAllLicenses_ContinuesAfterDodoError(t *testing.T) {
+	ctx := t.Context()
 
 	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
 	now := time.Now()
-	dodoLicense := &models.ProductLicense{
+	errLicense := &models.ProductLicense{
 		LicenseKey:     "LIC-DODO-ERR",
 		ProductName:    ProductNamePremium,
 		Status:         models.LicenseStatusActive,
@@ -226,48 +210,55 @@ func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	require.NoError(t, repo.StoreLicense(ctx, dodoLicense))
+	require.NoError(t, repo.StoreLicense(ctx, errLicense))
 
-	polarLicense := &models.ProductLicense{
-		LicenseKey:        "LIC-POLAR-OK",
-		ProductName:       ProductNamePremium,
-		Status:            models.LicenseStatusActive,
-		ActivatedAt:       now.Add(-time.Hour),
-		LastValidated:     now.Add(-2 * time.Hour),
-		Provider:          models.LicenseProviderPolar,
-		PolarActivationID: "act_ok",
-		Username:          "tester",
-		CreatedAt:         now.Add(-time.Minute),
-		UpdatedAt:         now.Add(-time.Minute),
+	okLicense := &models.ProductLicense{
+		LicenseKey:     "LIC-DODO-OK",
+		ProductName:    ProductNamePremium,
+		Status:         models.LicenseStatusActive,
+		ActivatedAt:    now.Add(-time.Hour),
+		LastValidated:  now.Add(-2 * time.Hour),
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "inst_ok",
+		Username:       "tester",
+		CreatedAt:      now.Add(-time.Minute),
+		UpdatedAt:      now.Add(-time.Minute),
 	}
-	require.NoError(t, repo.StoreLicense(ctx, polarLicense))
+	require.NoError(t, repo.StoreLicense(ctx, okLicense))
 
-	polarClient := polar.NewClient(
-		polar.WithOrganizationID("org_test"),
-		polar.WithHTTPClient(&http.Client{
+	timeoutErr := context.DeadlineExceeded
+	validatedOK := false
+	client := dodo.NewClient(
+		dodo.WithBaseURL("http://dodo.test"),
+		dodo.WithHTTPClient(&http.Client{
 			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
-				require.Equal(t, "/v1/customer-portal/license-keys/validate", req.URL.Path)
+				require.Equal(t, "/licenses/validate", req.URL.Path)
+				if strings.Contains(string(mustRead(req.Body)), "LIC-DODO-ERR") {
+					return nil, timeoutErr
+				}
+				validatedOK = true
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(`{"status":"granted"}`)),
+					Body:       io.NopCloser(strings.NewReader(`{"valid":true}`)),
 					Header:     make(http.Header),
 				}, nil
 			}),
 		}),
 	)
 
-	service := NewLicenseService(repo, polarClient, nil, t.TempDir())
+	service := NewLicenseService(repo, client, t.TempDir())
 
 	err := service.RefreshAllLicenses(ctx)
-	require.ErrorIs(t, err, ErrDodoClientNotConfigured)
+	require.ErrorIs(t, err, timeoutErr)
+	require.True(t, validatedOK, "refresh must reach the second license after the first fails")
 
-	storedPolar, err := repo.GetLicenseByKey(ctx, polarLicense.LicenseKey)
+	storedOK, err := repo.GetLicenseByKey(ctx, okLicense.LicenseKey)
 	require.NoError(t, err)
-	require.Equal(t, models.LicenseStatusActive, storedPolar.Status)
+	require.Equal(t, models.LicenseStatusActive, storedOK.Status)
 }
 
 func TestDeleteLicense_DodoProviderWithoutDodoClientStillDeletesLocalLicense(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
@@ -288,7 +279,7 @@ func TestDeleteLicense_DodoProviderWithoutDodoClientStillDeletesLocalLicense(t *
 	}
 	require.NoError(t, repo.StoreLicense(ctx, license))
 
-	service := NewLicenseService(repo, nil, nil, t.TempDir())
+	service := NewLicenseService(repo, nil, t.TempDir())
 	require.NoError(t, service.DeleteLicense(ctx, license.LicenseKey))
 
 	_, err := repo.GetLicenseByKey(ctx, license.LicenseKey)

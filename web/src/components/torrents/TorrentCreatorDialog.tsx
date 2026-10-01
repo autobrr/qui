@@ -191,7 +191,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     showSuggestions: showSourcePathSuggestions,
     inputRef: sourcePathInputRef,
     listRef: sourcePathListRef,
-  } = usePathAutocomplete(setSourcePath, instanceId)
+  } = usePathAutocomplete(setSourcePath, instanceId, { includeFiles: true })
 
   const {
     suggestions: torrentFilePathSuggestions,
@@ -483,6 +483,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           <SelectValue placeholder={t("creatorDialog.pieceSizePlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value={TorrentPieceSize.Auto}>
+                            {t("creatorDialog.pieceSizePlaceholder")}
+                          </SelectItem>
                           {pieceSizeOptions.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}

@@ -7,15 +7,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -43,7 +46,6 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                            {},
 	{Method: http.MethodGet, Path: "/api/torznab/activity"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/torznab/indexers"}:                                         {},
 	{Method: http.MethodPost, Path: "/api/torznab/indexers"}:                                        {},
@@ -103,6 +105,24 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
 }
 
+func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
+	server := NewServer(&Dependencies{
+		Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+	})
+
+	// http.Server.Shutdown starts the registered callbacks on every call.
+	require.NoError(t, server.Shutdown(t.Context()))
+	require.NoError(t, server.Shutdown(t.Context()))
+
+	select {
+	case <-server.shuttingDown:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown signal was not sent")
+	}
+	// The second callback runs in its own goroutine; let it run so a double close panics here.
+	time.Sleep(50 * time.Millisecond)
+}
+
 func TestAllEndpointsDocumented(t *testing.T) {
 	server := NewServer(newTestDependencies(t))
 	router, err := server.Handler()
@@ -155,6 +175,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		nil,
 		nil,
 		trackerCustomizationStore,
+		nil,
 		nil,
 		nil,
 	)
@@ -334,4 +355,20 @@ func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbit
 	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
 	require.True(t, ok, "unexpected sink type stored on client pool")
 	return sink
+}
+
+func TestOpenStopsWhenPortIsInUse(t *testing.T) {
+	held, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer held.Close()
+
+	s := &Server{
+		logger: zerolog.Nop(),
+		config: &config.AppConfig{Config: &domain.Config{
+			Host: "localhost",
+			Port: held.Addr().(*net.TCPAddr).Port,
+		}},
+	}
+	err = s.open(nil)
+	require.ErrorIs(t, err, errAddrInUse)
 }

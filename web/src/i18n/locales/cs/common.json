@@ -12,7 +12,9 @@
     "generalSettings": "Obecná nastavení",
     "manageInstances": "Spravovat instance",
     "appearance": "Vzhled",
-    "instanceBackups": "Zálohy instance"
+    "instanceBackups": "Zálohy instance",
+    "backToSite": "Zpět na getqui.com",
+    "docs": "Dokumentace"
   },
   "sidebar": {
     "instances": "Instance",
@@ -22,8 +24,8 @@
     "version": "Verze {{version}}",
     "language": "Jazyk",
     "viewOnGitHub": "Zobrazit na GitHubu",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "showSidebar": "Zobrazit postranní panel",
     "hideSidebar": "Skrýt postranní panel"
@@ -48,7 +50,7 @@
     "globPattern": "Vzorové hledání...",
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Hrubé hledání:",
     "smartSearchFuzzyExample": "\"breaking bad\" najde \"Breaking.Bad\"",
     "smartSearchDots": "Zpracovává tečky, podtržítka a závorky",
@@ -58,11 +60,14 @@
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "allScope": "VŠE",
     "unified": "Unifikované"
+  },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
   },
   "unifiedScope": {
     "unified": "Unifikované",
@@ -81,8 +86,8 @@
     "noActiveClients": "Žádní aktivní klienti",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
-    "rssRunning": "RSS běží",
-    "rssEnabled": "RSS je zapnuto",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
     "scanRunning": "Scan běží",
     "logout": "Odhlásit se",
     "version": "Verze {{version}}",
@@ -98,8 +103,7 @@
     "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat",
-    "toggle": "Přepnout"
+    "select": "Vybrat"
   },
   "placeholders": {
     "search": "Hledat...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Žádné výsledky."
+  },
+  "errors": {
+    "unknown": "Neznámá chyba",
+    "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
+    "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
   },
   "status": {
     "disabled": "Vypnuto",
@@ -117,6 +128,18 @@
     "unknown": "Neznámé",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Seriál",
+    "music": "Hudba",
+    "audiobook": "Audiokniha",
+    "book": "Kniha",
+    "comic": "Komiks",
+    "game": "Hra",
+    "app": "Aplikace",
+    "adult": "Pro dospělé",
+    "unknown": "Neznámé"
   },
   "themeToggle": {
     "changeTheme": "Změnit vzhled",
@@ -130,14 +153,19 @@
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
-    "custom": "Vlastní"
+    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
+  },
+  "pwaUpdate": {
+    "reload": "Znovu načíst",
+    "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",
+    "activatedTitle": "qui bylo aktualizováno",
+    "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
   },
   "notFound": {
     "title": "Ajeje! Ztratil jsi se?",
@@ -176,18 +204,25 @@
     "future": "{{value}} po",
     "units": {
       "second_one": "{{count}} sekunda",
+      "second_few": "{{count}} sekundy",
       "second_other": "{{count}} sekund",
       "minute_one": "{{count}} minuta",
+      "minute_few": "{{count}} minuty",
       "minute_other": "{{count}} minut",
       "hour_one": "{{count}} hodina",
+      "hour_few": "{{count}} hodiny",
       "hour_other": "{{count}} hodin",
       "day_one": "{{count}} den",
+      "day_few": "{{count}} dny",
       "day_other": "{{count}} dní",
       "week_one": "{{count}} týden",
+      "week_few": "{{count}} týdny",
       "week_other": "{{count}} týdnů",
       "month_one": "{{count}} měsíc",
+      "month_few": "{{count}} měsíce",
       "month_other": "{{count}} měsíců",
       "year_one": "{{count}} rok",
+      "year_few": "{{count}} roky",
       "year_other": "{{count}} let"
     }
   },

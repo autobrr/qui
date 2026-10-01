@@ -1,7 +1,8 @@
 ---
 sidebar_position: 18
-title: Incognito Mode
-description: Disguise torrent names for screen sharing, with optional spreadsheet themes that disguise the whole app.
+title: Incognito mode for screen sharing
+sidebar_label: Incognito Mode
+description: Disguise torrent names, trackers, and save paths for screen sharing, or turn the whole app into a spreadsheet with a disguise theme.
 ---
 
 # Incognito Mode

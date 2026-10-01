@@ -56,6 +56,7 @@ const SYNCED_KEYS = new Set<string>([
   TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
+  "qui-log-levels",
 ])
 const SYNCED_PREFIXES = [
   "qui-start-paused-instance-",
@@ -65,6 +66,7 @@ const SYNCED_PREFIXES = [
   "qui-column-order:",
   "qui-column-sorting:",
   "qui-column-sizing:",
+  "qui-stretch-name-column:",
   "qui-column-filters-",
   "qui-collapsed-categories-",
   "qui-filters-",
@@ -184,7 +186,10 @@ async function flushPending(): Promise<void> {
     // flush finish, and this module must stay import-light (i18n boots on it).
     const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
       body: JSON.stringify(batch),
       keepalive: true,
     })

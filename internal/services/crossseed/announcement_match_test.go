@@ -79,7 +79,7 @@ func TestClassifyAnnouncementSourceKnownSize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
-			want := svc.classifySearchCandidate(searchCandidateInput{
+			want := svc.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:                 expectedSourceView,
 				Candidate:              candidate,
 				SourceSize:             searchSourceSize(&source),
@@ -123,7 +123,7 @@ func TestClassifyAnnouncementSourceKnownSizeUsesFileDerivedTVStructure(t *testin
 	expectedSourceView := svc.searchSourceReleaseViewFromFiles(
 		context.Background(), &source, svc.releaseCache.Parse(sourceName), files,
 	)
-	want := svc.classifySearchCandidate(searchCandidateInput{
+	want := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           expectedSourceView,
 		Candidate:        candidate,
 		SourceSize:       searchSourceSize(&source),

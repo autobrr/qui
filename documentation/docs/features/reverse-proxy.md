@@ -1,6 +1,7 @@
 ---
 sidebar_position: 7
-title: Reverse Proxy
+title: qBittorrent reverse proxy for Sonarr, Radarr, and autobrr
+sidebar_label: Reverse Proxy
 description: Let external apps access qBittorrent through qui without credentials.
 ---
 

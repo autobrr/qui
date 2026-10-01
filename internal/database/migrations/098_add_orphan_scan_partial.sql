@@ -1,0 +1,1 @@
+ALTER TABLE orphan_scan_runs ADD COLUMN partial INTEGER NOT NULL DEFAULT 0;

@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
-title: Automations
+title: qBittorrent automation rules
+sidebar_label: Automations
 description: Rule-based automation for torrent management.
 ---
 
@@ -90,6 +91,12 @@ When qui evaluates a rule, these fields use qui's current system time. Use them 
 | System Month | Current month (`1-12`) |
 | System Year | Current year |
 
+##### Ranges that wrap
+
+On System Hour, System Minute, System Day of Week and System Month, a **between** range whose minimum is above its maximum wraps past the end of the field. For example, System Hour between `20` and `6` is true from 20:00 through 05:59, and false from 06:00 through 19:59. The minimum is included and the maximum is not, so set the maximum to the hour the window must stop.
+
+System Day and System Year do not wrap. A month boundary depends on the length of the month, and years only go up. On every other numeric field, a minimum above the maximum matches nothing.
+
 #### Progress fields
 
 | Field | Description |
@@ -163,7 +170,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 
 | Field | Description |
 | --- | --- |
-| Content Type | Derived from release name parsing (useful for grouping, can be empty) |
+| Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines; courses are `unknown` |
 | Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty) |
 | Release Source | Parsed release specifier (for example `WEBDL`, `WEBRIP`, `BLURAY`, can be empty) |
 | Release Resolution | Parsed release specifier (for example `1080p`, can be empty) |
@@ -185,6 +192,8 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Cross-seed Exists on Same Instance | Boolean: another matching torrent exists on this instance |
 | Cross-seed Seeding on Same Instance | Boolean: another matching torrent is actively seeding on this instance |
 | Cross-seed Tags | String: the tags of this torrent and all of its same-instance cross-seeds as one set. NOT operators match only when no copy has the tag. Same matching rules as **Tags** (see [Tag conditions](#tag-conditions)). If there are no cross-seeds, qui checks only the torrent's own tags. |
+| Season pack status | `pack`, `packed`, `unpacked`, or empty. Whether this torrent is a season pack, an episode covered by a season pack of the same release on this instance, or an episode with no such pack (see [Season pack status](#season-pack-status)) |
+| Season pack status (any instance) | Same as **Season pack status**, but a season pack on any active instance counts |
 
 #### Filesystem fields
 
@@ -245,6 +254,8 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 
 **Numeric:** `=`, `!=`, `>`, `>=`, `<`, `<=`, between
 
+A **between** range includes both ends. The one exception is a range that wraps on a clock field, described in [Ranges that wrap](#ranges-that-wrap).
+
 **Boolean:** is, is not
 
 **State:** is, is not
@@ -252,7 +263,7 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 **Cross-Category (Name field only):**
 
 - `EXISTS_IN`: exact name match in the target category
-- `CONTAINS_IN`: partial or normalized name match in the target category
+- `CONTAINS_IN`: partial name match in the target category. The comparison is case-insensitive and accent-insensitive, and treats `.`, `_` and `-` as spaces, so "Amélie.2001" matches "Amelie 2001".
 
 ### Regex support
 
@@ -344,6 +355,7 @@ To run a dry-run immediately without waiting for interval execution:
 - **Workflow list menu:** `Run dry-run now`
 
 A dry-run executes the current workflow configuration as a simulation and writes results to automation activity.
+A dry-run reports the same torrents as the live impact preview, because it deletes nothing.
 
 No-match behavior:
 
@@ -599,7 +611,7 @@ Quick troubleshooting:
 
 ### Category
 
-Move torrents to a different category.
+Move torrents to a different category. Select **Uncategorized** to remove their category.
 
 Options:
 
@@ -643,11 +655,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By category: `/data/{{.Category}}` → for example `/data/movies`
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
-- By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
-
-:::note
-If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
-:::
+- By tracker: `/data/{{.Tracker}}`
 
 ### Auto management
 
@@ -797,6 +805,10 @@ With AND/OR groups and the "is not" operator, you can express every combination 
 #### Unknown scope and safety behavior
 
 If path validation or file inspection fails for **any remaining** file, the torrent receives no scope entry. Causes include invalid paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
+
+The NOT toggle cannot turn unknown data into a match, including through nested condition groups. This also applies to `HARDLINK_SCOPE_CROSS` and `HAS_MISSING_FILES`. Negation still inverts comparisons against known values.
+
+Before deletion, qui reads the files again for rules that use hardlink data. If scope is unknown or changes, qui holds the deletion, even if another branch of an OR group matches.
 
 To diagnose this issue, enable debug logging and check for the "hardlink index built" log message, which reports an `inaccessible` count.
 
@@ -983,6 +995,69 @@ If torrents have no media library hardlinks, this rule tags them with `noHL`, ev
 
 This configuration works because `HARDLINK_SCOPE_CROSS != outside_qbittorrent` matches both `none` (no hardlinks) and `torrents_only` (hardlinks only between qBittorrent instances). Torrents with a media library copy (`outside_qbittorrent`) do not receive the tag.
 
+## Season pack status
+
+The `SEASON_PACK_STATUS` field tells you whether a torrent is a season pack, an episode that a season pack in the client already covers, or an episode with no such pack. qui builds the set of season packs from the torrent names it already has in memory. It sends no extra requests to qBittorrent, and it builds the set only when a rule uses the field.
+
+| Value | Meaning |
+| --- | --- |
+| `pack` | The name has one season and no episode, for example `Show.S01.1080p.WEB-DL-GRP`. |
+| `packed` | A single episode or an episode range such as `S01E05E06`, and a season pack of the same release is in the client. |
+| `unpacked` | A single episode or an episode range, and no season pack of the same release is in the client. |
+| empty | The name has no single season: movies, date-based releases, absolute-numbered anime, multi-season packs such as `S01-S03`, "Complete Series" names without a season token, and names the parser cannot read. |
+
+`SEASON_PACK_STATUS` looks at the torrent's own instance. `SEASON_PACK_STATUS_ANY_INSTANCE` looks at every active instance, so a pack on one instance covers an episode on another. Both fields support only `is` and `is not`.
+
+"Same release" is strict on purpose, because `packed` is often paired with a delete action. A pack covers an episode only when these parsed fields match: title, season, cut, other markers (`REPACK`, `PROPER`, `RERIP`, `HYBRiD`, `REMASTERED`, `Audio.Description`), language markers (`DUBBED`, `SUBBED`), resolution, source, codec, audio, channels, HDR, and group. A 720p pack does not cover a 1080p episode, a pack from another group does not cover, and a plain pack does not cover a `REPACK` episode. An episode title in the name, such as `S01E03.The.Long.Night`, does not split the episode from its pack.
+
+A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition to the rule if you want more.
+
+#### Example: tag packs, packed, and unpacked
+
+One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
+
+```json
+{
+  "name": "Season pack",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["season-pack"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "pack" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Packed episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["packed"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "packed" } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "Unpacked episode",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      { "enabled": true, "mode": "full", "tags": ["unpacked"], "condition": { "field": "SEASON_PACK_STATUS", "operator": "EQUAL", "value": "unpacked" } }
+    ]
+  }
+}
+```
+
 ## Missing files detection
 
 The `Has Missing Files` field detects whether any file of a completed torrent is missing from disk.
@@ -1074,18 +1149,30 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Path on server | Reads free space from a specific filesystem path |
 
 :::note
-Path on server requires "Local Filesystem Access" enabled on the instance.
+Path on server requires local or SSH filesystem access on the instance. With SSH access, qui reads the free space on the SSH host. If qui cannot reach the SSH host, the run fails and sends a notification. qui does not fall back to qBittorrent's value, because that value can come from a different disk.
 :::
 
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-qui does not support Path on server on Windows, and Free Space always uses qBittorrent's reported free space there. The UI disables the option and switches legacy workflows back to the default when you open them.
+When qui runs on Windows, Path on server works only for an instance with SSH access. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching
 
 qui groups torrents by action value and sends them to qBittorrent in batches of up to 50 hashes per API call.
+
+## Rules as JSON
+
+A rule can move as JSON. The rule menu has two entries, and the **Import** button sits above the rule list:
+
+- **Export JSON** copies the rule to the clipboard.
+- **Edit as JSON** opens the rule's JSON in an editor. Save updates the rule in place. The rule keeps its enabled state and its position in the list.
+- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list.
+
+The JSON carries the name, the tracker fields, the conditions, the sorting config, the free space source, the interval, dry-run, and notify. It does not carry the id, the instance id, the enabled state, or the sort order. The export omits `intervalSeconds` at the default 15 minutes, `dryRun` when off, and `notify` when on; when you remove one of these keys, the rule goes back to that default.
+
+The editor highlights the JSON and underlines syntax errors as you type. Save runs the same checks as Import. When qui rejects the JSON, the editor stays open with your text.
 
 ## Activity log
 

@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Refresh All",
-    "addFolder": "Add Folder",
-    "addFeed": "Add Feed",
     "articles": "Articles",
     "unread": "{{count}} unread",
     "markAllAsRead": "Mark all as read",
@@ -48,7 +46,6 @@
     "toggleDetails": "Toggle details"
   },
   "rules": {
-    "title": "Rules",
     "reprocess": "Reprocess",
     "reprocessTooltip": "Re-check all unread articles against rules",
     "addRule": "Add Rule",

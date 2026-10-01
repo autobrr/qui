@@ -35,10 +35,20 @@ Before changing cross-module data flow, service boundaries, API routing, or long
 
 CI runs `make test` on every push. Run the full suite locally only when asked, or when one change crosses many packages.
 
+## Mandatory performance checks
+
+Before opening or updating a PR, complete these steps for the full PR diff:
+
+1. Review changed code and its callers for backend and frontend performance risks. Include shared helpers, dependencies, and configuration. Consider call frequency and data size when assessing allocations, nested scans, queries, concurrency, rendering, and requests. If no performance risk applies, explain why in the PR's Performance section.
+2. If a change can affect performance, you must measure before and after. If the risk is unclear, measure it. Use the merge-base with the PR's target branch as the baseline. Compare it against the latest PR code under the same workload and environment. Use representative synthetic data and local stubs for external services. Repeat runs to distinguish regressions from measurement noise.
+3. Use existing benchmarks, profilers, or repeatable browser measurements. Temporary measurement code is sufficient. Committing benchmark files is optional. For Go benchmarks, measure without `-race`. For rendering and interaction changes, measure the browser with a production build.
+4. Record the affected paths, revisions, workload size, environment, and measurement method in the PR's Performance section. Include before/after numbers, the measured differences, and your conclusion. Choose relevant metrics, such as time, memory, allocations, request counts, or bundle size. CI results qualify only when they provide this comparison. Otherwise, measure locally, even when CI covers the tests.
+5. Investigate regressions beyond measurement noise. Fix them or obtain explicit maintainer acceptance of the measured cost before declaring the PR ready. After further code changes, repeat the affected measurements. If measurements are blocked, report the blocker and keep this step incomplete.
+
 ## Lint / Format
 
-- `make precommit` = fmt + gofix changed files + lint changed files.
-- `make lint` = changed files only.
+- `make precommit` = fmt + gofix on changed files, then `make lint`.
+- `make lint` = golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`.
 - `make lint-json` writes `lint-report.json`.
 - `make fmt` = gofmt + frontend eslint fix on changed files.
 - Avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested.
@@ -102,7 +112,6 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end-to-end work first, then UI. A dependency in another repo is its own PR there.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.

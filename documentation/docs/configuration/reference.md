@@ -1,7 +1,8 @@
 ---
 sidebar_position: 1
-title: Configuration Reference
-description: All config.toml options and their defaults.
+title: qui config.toml reference
+sidebar_label: Configuration Reference
+description: Every config.toml option qui reads, with its default, its environment variable, and what it controls.
 ---
 
 # Configuration Reference
@@ -46,7 +47,9 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). qui normalizes the value at startup and adds missing leading and trailing slashes. |
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. An empty list disables CORS. Origins must match `http(s)://host[:port]`. qui rejects wildcards and normalizes default ports. Restart required. |
-| `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. |
+| `allowedHosts` | `QUI__ALLOWED_HOSTS` | string[] | empty list | Restricts the received HTTP Host. Accepts exact hostnames, IP addresses, and leading `*.` subdomain wildcards. Restart required. See [Allowed Hosts](#allowed-hosts). |
+| `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: a changed value breaks decryption of stored instance passwords. You must enter them again in the UI. The value cannot be empty. Use at least 32 characters on a new install. Leave the value alone on an install that already stores credentials. On the first start after upgrading, qui re-encrypts stored credentials under a key derived from this secret. A credential that does not decrypt is left as it is. qui warns about it on every start until you enter it again. The re-encryption is one way, so an older qui cannot read the new values. After rolling back, enter the credentials again or restore a database backup taken before the upgrade. |
+| `sessionCookieSecure` | `QUI__SESSION_COOKIE_SECURE` | bool | `false` | Sends the browser session cookie only over HTTPS. Enable it when you serve qui through an HTTPS reverse proxy. An HTTPS `oidcRedirectUrl` enables it automatically. When enabled, login over plain HTTP does not work. See [Sessions](#sessions). Restart required. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. qui applies changes immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty, qui logs to stdout. qui resolves relative paths against the config directory. qui applies changes immediately. |
 | `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts log rotation. qui applies changes immediately. |
@@ -68,6 +71,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
 | `qbittorrentTimeout` | `QUI__QBITTORRENT_TIMEOUT` | int | `60` | HTTP timeout in seconds for requests qui makes to qBittorrent instances (sync, health checks). If you run large or slow instances, raise this value. Restart required. |
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. qui applies changes on config reload. If you set it with the environment variable, restart qui. |
+| `disableSelfUpdate` | `QUI__DISABLE_SELF_UPDATE` | bool | `false` | If `true`, the web UI does not offer Self-update. `qui update` from the shell still works. This setting does not affect Restart. If you maintain a package that controls the qui version, set this value in the package. Restart required. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable this setting to prevent remote tracker favicon fetches. qui applies changes immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | If enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. This process can add 25+ minutes per torrent. Restart qui after a change. |
 | `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables the pprof server (`/debug/pprof/`). Restart required. |
@@ -77,6 +81,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
 | `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:password` or `user1:password1,user2:password2`. Passwords are plaintext and can contain colons. Usernames cannot contain colons. Commas cannot appear in credentials. Restart required. |
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables qui can launch from the UI. Configure this only in `config.toml` (no env override). |
+| `externalProgramMaxRunning` | `QUI__EXTERNAL_PROGRAM_MAX_RUNNING` | int | `8` | Maximum number of external programs that run at the same time. Other programs wait for a free slot. A value of 0 or less uses the default. See [Execution limit](../features/external-programs.md#execution-limit). Restart required. |
 | `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disables all built-in authentication. You must set **both** this and `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` to `true` to disable auth. See [Authentication](#authentication) below. qui applies changes on config reload. |
 | `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that qui without authentication can permit unauthorized access to your torrent clients and can cause private tracker bans. qui applies changes on config reload. |
 | `authDisabledAllowedCIDRs` | `QUI__AUTH_DISABLED_ALLOWED_CIDRS` | string[] | empty list | If auth is disabled, this setting is required. Restricts access to specific client IPs and CIDRs. Entries can be canonical CIDRs or single IPs. qui applies changes on config reload. |
@@ -125,6 +130,63 @@ If you use private trackers, running qui without authentication creates severe r
 :::
 
 If you set `QUI__AUTH_DISABLED` without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui logs a warning and keeps authentication enabled.
+
+## Sessions
+
+The web UI signs in with a browser session cookie. These rules apply to that cookie:
+
+- `sessionCookieSecure = true` adds the Secure attribute to the cookie. An HTTPS `oidcRedirectUrl` also adds it. With the attribute set, the browser never sends the cookie over plain HTTP, so HTTP access to the same instance stops working. Without it, the cookie travels over both HTTP and HTTPS.
+- Finish the initial setup before you expose qui to the Internet. The first client that reaches an unconfigured instance can create the account.
+- Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests must send an `X-Requested-With` header. The web UI and the Swagger UI do this. Scripts and other clients must use an [API key](../api/overview.md) instead of the cookie.
+- `/api/auth/setup` and `/api/auth/login` accept only `Content-Type: application/json`. Other media types get HTTP 415.
+- After five failed password logins in one minute, qui rejects password logins with HTTP 429 until the minute passes. This limit is process-wide and does not apply to OIDC or API keys.
+- A password change ends every session, including the browser that changed it. Sign in again with the new password.
+
+## Allowed Hosts
+
+`allowedHosts` restricts the hostnames and IP addresses that requests can use to reach qui.
+An unset or empty list permits all hosts, including when authentication is disabled.
+To enable the restriction, set a TOML string array or a comma-separated environment value:
+
+```toml
+allowedHosts = ["qui.example.com", "localhost", "::1", "*.home.example.com"]
+```
+
+```bash
+QUI__ALLOWED_HOSTS=qui.example.com,localhost,::1,*.home.example.com
+```
+
+qui checks the `Host` that it receives and ignores `X-Forwarded-Host`.
+Caddy and Traefik pass the original `Host`, so list the public name of qui.
+By default, nginx sends the address of the upstream instead. Set `proxy_set_header Host $host;` to pass the original name.
+If a reverse proxy rewrites `Host`, list the rewritten name.
+The proxy must then reject unwanted public hostnames itself, because qui only sees the rewritten name.
+
+Matching rules:
+
+- DNS names ignore case and one final dot. International names and their punycode forms match.
+- qui compares IP addresses by value, so `::1` and `[::1]` match the same address.
+- Request ports do not affect matching. Do not include ports in the configured list.
+- `*.example.com` matches `qui.example.com` and `a.qui.example.com`. It does not match `example.com` or `badexample.com`.
+- Schemes, paths, CIDR ranges, other wildcard forms, and empty entries are invalid. Invalid configuration prevents startup.
+
+The restriction covers all requests on the main HTTP listener, including authenticated requests, static files, and the qBittorrent proxy.
+With a configured list, a missing, invalid, or unlisted Host returns HTTP 400.
+Your own browser and API requests must also use a listed hostname or address.
+qui always adds `localhost`, `127.0.0.1`, `::1`, and the hostname of the machine to a configured list, so local access keeps working.
+qui logs the full list at startup.
+When authentication is disabled and the list is empty, qui logs a warning at startup.
+
+Health `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list when the immediate connection peer is a loopback address.
+This includes external health requests forwarded by a local reverse proxy.
+To restrict health endpoints to local probes, block external health requests at the proxy.
+Forwarded IP headers do not affect this exemption. The Docker health probe continues to work.
+
+qui reads the list once at startup. Restart qui after each change to `allowedHosts`.
+The list works together with authentication and the IP allowlist.
+It blocks DNS rebinding, an attack where a hostname of the attacker points at the address of qui.
+That hostname is not on the list, so qui rejects the request.
+It does not block requests that use a listed hostname.
 
 ## CORS
 

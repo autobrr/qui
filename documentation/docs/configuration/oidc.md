@@ -1,7 +1,8 @@
 ---
 sidebar_position: 4
-title: OIDC
-description: Single sign-on with an OpenID Connect provider.
+title: OpenID Connect single sign-on for qui
+sidebar_label: OIDC
+description: Log in to qui with any OpenID Connect provider, with setup steps and the required redirect URL.
 ---
 
 # OpenID Connect (OIDC)
@@ -11,6 +12,10 @@ Set `QUI__OIDC_ENABLED=true` to delegate authentication to an external identity 
 If your provider advertises PKCE (`S256`) support, qui uses it for the authorization flow. You do not need to configure extra settings in qui.
 To make sure that PKCE is active, inspect `/api/auth/oidc/config`. The `authorizationUrl` must include both `code_challenge=` and `code_challenge_method=S256`.
 qui does not emit a dedicated "PKCE enabled" log line, so check the authorization URL directly.
+
+qui accepts every identity that the provider permits for the qui client. qui has one user and no identity allowlist of its own. Restrict the client on the provider side, for example with a group or user assignment, so that only you can sign in.
+
+An `https://` redirect URL marks the session cookie as Secure, so the browser sends it only over HTTPS. See [Sessions](./reference.md#sessions).
 
 For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference.md).
 

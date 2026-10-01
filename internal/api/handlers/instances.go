@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/sshpool"
 )
 
 type InstancesHandler struct {
@@ -30,9 +31,13 @@ type InstancesHandler struct {
 	clientPool      *internalqbittorrent.ClientPool
 	syncManager     *internalqbittorrent.SyncManager
 	reannounceSvc   *reannounce.Service
+	sshDialer       *sshpool.Dialer
+	// sshPool is told when what a connection depends on changes; sshDialer
+	// stays separate so ssh-test never consults the pool's memo.
+	sshPool *sshpool.Pool
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service, sshDialer *sshpool.Dialer, sshPool *sshpool.Pool) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore:   instanceStore,
 		reannounceStore: reannounceStore,
@@ -40,6 +45,8 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 		clientPool:      clientPool,
 		syncManager:     syncManager,
 		reannounceSvc:   svc,
+		sshDialer:       sshDialer,
+		sshPool:         sshPool,
 	}
 }
 
@@ -266,6 +273,12 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
 				IsActive:                 instances[i].IsActive,
+				SSHHost:                  instances[i].SSHHost,
+				SSHPort:                  instances[i].SSHPort,
+				SSHUsername:              instances[i].SSHUsername,
+				SSHHostKeyPinned:         instances[i].SSHHostKeyEncrypted != "",
+				FilesystemMode:           string(models.FilesystemAccessMode(instances[i])),
+				Capabilities:             models.FilesystemCapabilitiesOf(instances[i]),
 				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
@@ -317,6 +330,12 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		ConnectionStatus:         connectionStatus,
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
+		SSHHost:                  instance.SSHHost,
+		SSHPort:                  instance.SSHPort,
+		SSHUsername:              instance.SSHUsername,
+		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
+		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 
 		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
@@ -359,6 +378,12 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
 		ConnectionStatus:         connectionStatus,
+		SSHHost:                  instance.SSHHost,
+		SSHPort:                  instance.SSHPort,
+		SSHUsername:              instance.SSHUsername,
+		SSHHostKeyPinned:         instance.SSHHostKeyEncrypted != "",
+		FilesystemMode:           string(models.FilesystemAccessMode(instance)),
+		Capabilities:             models.FilesystemCapabilitiesOf(instance),
 	}
 }
 
@@ -481,6 +506,12 @@ type InstanceResponse struct {
 	ConnectionStatus         string                            `json:"connectionStatus,omitempty"`
 	SortOrder                int                               `json:"sortOrder"`
 	IsActive                 bool                              `json:"isActive"`
+	SSHHost                  string                            `json:"sshHost,omitempty"`
+	SSHPort                  int                               `json:"sshPort,omitempty"`
+	SSHUsername              string                            `json:"sshUsername,omitempty"`
+	SSHHostKeyPinned         bool                              `json:"sshHostKeyPinned"`
+	FilesystemMode           string                            `json:"filesystemMode"`
+	Capabilities             models.FilesystemCapabilities     `json:"capabilities"`
 	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
 }
 
@@ -727,10 +758,11 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate hardlink/reflink settings
-	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
+	effective := *existingInstance
 	if req.HasLocalFilesystemAccess != nil {
-		effectiveLocalAccess = *req.HasLocalFilesystemAccess
+		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
 	}
+	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
 	effectiveUseHardlinks := existingInstance.UseHardlinks
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
@@ -751,7 +783,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseHardlinks {
-		if !effectiveLocalAccess {
+		if !canWrite {
 			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
 			return
 		}
@@ -762,7 +794,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseReflinks {
-		if !effectiveLocalAccess {
+		if !canWrite {
 			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
 			return
 		}
@@ -795,6 +827,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
+	// The local access flag decides whether the instance is in remote mode,
+	// and the ssh pool only rereads the row when it dials. Any other edit
+	// leaves the session alone, since Invalidate cuts reads in flight.
+	if models.FilesystemAccessMode(existingInstance) != models.FilesystemAccessMode(instance) {
+		h.sshPool.Invalidate(instanceID)
+	}
 
 	var settings *models.InstanceReannounceSettings
 	if req.ReannounceSettings != nil {
@@ -840,6 +878,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
+	h.sshPool.Remove(instanceID)
 
 	response := DeleteInstanceResponse{
 		Message: "Instance deleted successfully",

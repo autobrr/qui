@@ -20,7 +20,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -70,6 +70,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
 	backendPool               *fsops.Pool
+	blocklistStore            *models.CrossSeedBlocklistStore
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -128,6 +129,7 @@ func NewService(
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 	notifier notifications.Notifier,
 	backendPool *fsops.Pool,
+	blocklistStore *models.CrossSeedBlocklistStore,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -143,7 +145,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, syncManager, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,
@@ -156,6 +158,7 @@ func NewService(
 		trackerCustomizationStore: trackerCustomizationStore,
 		notifier:                  notifier,
 		backendPool:               backendPool,
+		blocklistStore:            blocklistStore,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
@@ -883,7 +886,10 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
-	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
+	// validateDirectory admitted the instance on local access from an earlier
+	// read. If local access was turned off since, the scan must not walk the
+	// SSH host at the local path.
+	backend, err := s.backendPool.LocalBackend(ctx, dir.TargetInstanceID)
 	if err != nil {
 		l.Warn().Err(err).Msg("dirscan: no filesystem backend, failing scan")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("no filesystem backend: %v", err), dir.TargetInstanceID, l)
@@ -896,7 +902,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	// This is best-effort; if it fails, scanning continues without seeding skips.
 	fileIDIndex := make(map[string]string)
 	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, l); err != nil {
+		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
 		} else if len(index) > 0 {
 			fileIDIndex = index
@@ -2077,6 +2083,17 @@ func (s *Service) tryMatchAndInject(
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
 		return nil
+	}
+
+	if s.blocklistStore != nil {
+		// Fails closed like the cross-seed path: an unreadable blocklist skips the match.
+		if _, blocked, err := s.blocklistStore.FindBlocked(ctx, dir.TargetInstanceID, []string{parsed.InfoHash, parsed.InfoHashV2}); err != nil {
+			l.Warn().Err(err).Str("hash", parsed.InfoHash).Msg("dirscan: failed to check cross-seed blocklist, skipping match")
+			return nil
+		} else if blocked {
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
+			return nil
+		}
 	}
 
 	// Check if this torrent already exists in qBittorrent

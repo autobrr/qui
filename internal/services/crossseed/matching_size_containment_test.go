@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
+	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/pkg/releases"
@@ -125,7 +125,7 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			svc := newMatcherService()
+			svc := newMatcherService().matcher()
 			result := svc.getMatchTypeWithReason(tt.sourceRelease, tt.candidateRelease, tt.sourceFiles, tt.candidateFiles, 5.0)
 			if tt.want == "" {
 				require.Empty(t, result.MatchType)
@@ -190,7 +190,7 @@ func TestGetMatchTypeFromTitle_RenamedPackFallback(t *testing.T) {
 		{Name: "pack/Show.S01E03.mkv", Size: 2 << 30},
 	}
 
-	svc := newMatcherService()
+	svc := newMatcherService().matcher()
 
 	got := svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S01.Pack", &episode, &pack, renamedFiles)
 	require.Equal(t, "release-match", got, "renamed same-season pack must pass discovery for the file-level matcher")

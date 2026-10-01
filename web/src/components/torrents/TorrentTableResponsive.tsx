@@ -17,7 +17,7 @@ interface TorrentTableResponsiveProps {
   instanceId: number
   instanceIds?: number[]
   readOnly?: boolean
-  filters?: TorrentFilters
+  filters: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean

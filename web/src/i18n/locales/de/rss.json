@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Alle aktualisieren",
-    "addFolder": "Ordner hinzufügen",
-    "addFeed": "Feed hinzufügen",
     "articles": "Artikel",
     "unread": "{{count}} ungelesen",
     "markAllAsRead": "Alle als gelesen markieren",
@@ -48,7 +46,6 @@
     "toggleDetails": "Details umschalten"
   },
   "rules": {
-    "title": "Regeln",
     "reprocess": "Neu verarbeiten",
     "reprocessTooltip": "Alle ungelesenen Artikel erneut gegen die Regeln prüfen",
     "addRule": "Regel hinzufügen",

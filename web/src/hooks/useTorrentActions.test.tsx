@@ -131,7 +131,7 @@ describe("useTorrentActions - delete", () => {
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
   })
 
-  it("select-all delete sends empty hashes + selectAll, normalizes expanded categories, and uses clientHashes for optimism", async () => {
+  it("select-all delete sends empty hashes + selectAll, passes filters through, and uses clientHashes for optimism", async () => {
     const { result, queryClient } = renderActions()
 
     queryClient.setQueryData(TORRENTS_LIST_KEY(), {
@@ -165,9 +165,9 @@ describe("useTorrentActions - delete", () => {
     expect(payload.selectAll).toBe(true)
     expect(payload.search).toBe("ubuntu")
     expect(payload.excludeHashes).toEqual(["zz"])
-    // expandedCategories collapse into categories in the outgoing payload
-    expect(payload.filters?.categories).toEqual(["movies", "tv"])
-    expect(payload.filters?.excludeCategories).toEqual(["junk"])
+    // Filters go to api.bulkAction untouched; the expandedCategories fold is
+    // the api client's job (ADR 0010, pinned in api.torrents.test.ts).
+    expect(payload.filters).toBe(filters)
 
     // Optimism uses clientHashes (a,b) not the empty hashes array; clientCount drives totals
     const cache = queryClient.getQueryData(TORRENTS_LIST_KEY()) as {

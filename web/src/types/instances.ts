@@ -12,6 +12,7 @@ export interface Instance {
   basicUsername?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
+  capabilities: FilesystemCapabilities
   // Hardlink mode settings (per-instance)
   useHardlinks: boolean
   hardlinkBaseDir: string
@@ -23,6 +24,14 @@ export interface Instance {
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
+}
+
+// What qui can do with an instance's files, from models.FilesystemCapabilitiesOf.
+export interface FilesystemCapabilities {
+  read: boolean
+  identity: boolean
+  write: boolean
+  content: boolean
 }
 
 export interface InstanceFormData {

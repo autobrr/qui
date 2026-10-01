@@ -122,3 +122,64 @@ func TestRSSSSEInitialCheckOmitsArticleData(t *testing.T) {
 	default:
 	}
 }
+
+// The last viewer can leave while a new viewer joins: removeClient decides to
+// stop the poller, the new viewer's ensurePoller sees it still running, and
+// then the stop lands. The poller must survive while the instance has a viewer.
+func TestRSSSSEStopPollerKeepsPollerForConnectedViewer(t *testing.T) {
+	handler := &RSSSSEHandler{
+		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) { return qbt.RSSItems{}, nil },
+		clients:     make(map[int]map[*rssSSEClient]struct{}),
+		pollers:     make(map[int]context.CancelFunc),
+	}
+	client := &rssSSEClient{instanceID: 1, events: make(chan rssSSEEvent, 1), done: make(chan struct{})}
+
+	handler.addClient(1, client)
+	handler.ensurePoller(1)
+	handler.stopPoller(1)
+
+	handler.pollerMu.Lock()
+	_, running := handler.pollers[1]
+	handler.pollerMu.Unlock()
+	require.True(t, running, "poller stopped while a viewer is connected")
+
+	handler.removeClient(1, client)
+	handler.pollerMu.Lock()
+	_, running = handler.pollers[1]
+	handler.pollerMu.Unlock()
+	require.False(t, running, "poller kept after the last viewer left")
+}
+
+func TestRSSSSEEndsOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	shutdown := make(chan struct{})
+	handler := &RSSSSEHandler{
+		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) {
+			return qbt.RSSItems{}, nil
+		},
+		shutdown: shutdown,
+		clients:  make(map[int]map[*rssSSEClient]struct{}),
+		pollers:  make(map[int]context.CancelFunc),
+	}
+
+	// The request context stays open: http.Server.Shutdown does not cancel it.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances/1/rss/events", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	done := make(chan struct{})
+	go func() {
+		handler.HandleSSE(httptest.NewRecorder(), req)
+		close(done)
+	}()
+
+	close(shutdown)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RSS stream did not end on shutdown")
+	}
+}

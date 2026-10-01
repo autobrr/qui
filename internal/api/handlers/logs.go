@@ -27,20 +27,21 @@ import (
 // LogsHandler handles log settings and streaming endpoints.
 type LogsHandler struct {
 	appConfig *config.AppConfig
+	shutdown  <-chan struct{}
 }
 
-// NewLogsHandler creates a new LogsHandler.
-func NewLogsHandler(appConfig *config.AppConfig) *LogsHandler {
+// NewLogsHandler creates a new LogsHandler. The log stream ends when shutdown closes.
+func NewLogsHandler(appConfig *config.AppConfig, shutdown <-chan struct{}) *LogsHandler {
 	return &LogsHandler{
 		appConfig: appConfig,
+		shutdown:  shutdown,
 	}
 }
 
-// Routes registers the log routes on the provided router.
+// Routes registers log settings and file routes; the server groups log streaming with the other SSE routes.
 func (h *LogsHandler) Routes(r chi.Router) {
 	r.Get("/log-settings", h.GetLogSettings)
 	r.Put("/log-settings", h.UpdateLogSettings)
-	r.Get("/logs/stream", h.StreamLogs)
 	r.Get("/logs/files", h.ListLogFiles)
 	r.Get("/logs/files/{filename}", h.DownloadLogFile)
 }
@@ -297,6 +298,8 @@ func (h *LogsHandler) streamLoop(ctx context.Context, w http.ResponseWriter, flu
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-h.shutdown:
 			return
 		case line, ok := <-sub.Channel():
 			if !ok {

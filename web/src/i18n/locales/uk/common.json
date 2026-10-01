@@ -12,7 +12,9 @@
     "generalSettings": "Загальні налаштування",
     "manageInstances": "Керування екземплярами",
     "appearance": "Зовнішній вигляд",
-    "instanceBackups": "Резервні копії екземплярів"
+    "instanceBackups": "Резервні копії екземплярів",
+    "backToSite": "Назад на getqui.com",
+    "docs": "Документація"
   },
   "sidebar": {
     "instances": "Екземпляри",
@@ -22,8 +24,8 @@
     "version": "Версія {{version}}",
     "language": "Мова",
     "viewOnGitHub": "Переглянути на GitHub",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "showSidebar": "Показати бічну панель",
     "hideSidebar": "Приховати бічну панель"
@@ -48,7 +50,7 @@
     "globPattern": "Glob шаблон...",
     "smartSearchTitle": "Можливості розумного пошуку:",
     "smartSearchGlob": "Glob шаблони:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Нечіткий пошук:",
     "smartSearchFuzzyExample": "\"breaking bad\" знайде \"Breaking.Bad\"",
     "smartSearchDots": "Обробляє крапки, підкреслення та дужки",
@@ -58,11 +60,14 @@
     "torrentCreationTasksTitle": "Завдання створення торента",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "allScope": "ВСІ",
     "unified": "Об'єднано"
+  },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
   },
   "unifiedScope": {
     "unified": "Об'єднано",
@@ -81,8 +86,8 @@
     "noActiveClients": "Немає активних клієнтів",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
-    "rssRunning": "RSS активний",
-    "rssEnabled": "RSS увімкнено",
+    "rssRunning": "RSS cross-seed активний",
+    "rssEnabled": "RSS cross-seed увімкнено",
     "scanRunning": "Сканування активне",
     "logout": "Вийти",
     "version": "Версія {{version}}",
@@ -98,8 +103,7 @@
     "copyPath": "Копіювати шлях",
     "scrollToTop": "Прокрутити вгору",
     "search": "Пошук",
-    "select": "Вибрати",
-    "toggle": "Перемкнути"
+    "select": "Вибрати"
   },
   "placeholders": {
     "search": "Пошук...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Результатів не знайдено."
+  },
+  "errors": {
+    "unknown": "Невідома помилка",
+    "httpStatus": "Помилка HTTP! Статус: {{status}}",
+    "httpStatusHtml": "Помилка HTTP! Статус: {{status}} (сервер повернув сторінку помилки HTML)",
+    "ssoHtmlResponse": "API повернув відповідь HTML замість JSON. Якщо ви за SSO-проксі (Cloudflare Access, Pangolin тощо), спробуйте оновити сторінку або знову відкрити URL у новій вкладці.",
+    "torrentFileDownloadFailed": "Не вдалося завантажити торрент-файл: {{status}}"
   },
   "status": {
     "disabled": "Вимкнено",
@@ -117,6 +128,18 @@
     "unknown": "Невідомо",
     "trackerError": "Помилка трекера",
     "unreachable": "Недоступний"
+  },
+  "contentTypeLabels": {
+    "movie": "Фільм",
+    "tv": "Серіал",
+    "music": "Музика",
+    "audiobook": "Аудіокнига",
+    "book": "Книга",
+    "comic": "Комікс",
+    "game": "Гра",
+    "app": "Застосунок",
+    "adult": "Для дорослих",
+    "unknown": "Невідомо"
   },
   "themeToggle": {
     "changeTheme": "Змінити тему",
@@ -130,14 +153,19 @@
     "switchedToMode": "Перемкнуто на {{mode}} режим",
     "switchedToTheme": "Перемкнуто на тему {{theme}}",
     "switchedToThemeVariation": "Перемкнуто на тему {{theme}} ({{variation}})",
-    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії.",
-    "custom": "Власна"
+    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії."
   },
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",
     "versionAvailable": "Версія {{version}} тепер доступна",
     "viewRelease": "Переглянути реліз",
     "dismiss": "Закрити"
+  },
+  "pwaUpdate": {
+    "reload": "Перезавантажити",
+    "waitingDescription": "Перезавантажте сторінку, щоб застосувати найновіший випуск qui.",
+    "activatedTitle": "qui оновлено",
+    "activatedDescription": "Перезавантажте сторінку, коли буде зручно, щоб завершити встановлення найновішого випуску."
   },
   "notFound": {
     "title": "Упс! Загубився в рої?",

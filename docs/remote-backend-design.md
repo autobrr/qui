@@ -78,8 +78,8 @@ non-link strategies, which is the safe degradation.
 consumer; this backend is that consumer. pkg/sftp pipelines concurrent
 requests over the one session, and the exec path fills a batch with a single
 `xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. Re-add them in the
-PR that implements this backend.
+indexing (hundreds of thousands of lstats) survivable. They come back with
+the exec tier (3e, #2726), which is the first thing that can fill them.
 
 ## File Identity Over the Wire — DECIDED
 
@@ -144,13 +144,25 @@ host `filepath` are correct by construction. The remote backend speaks
 slash-delimited POSIX paths regardless of the qui host's OS, which means
 host `filepath` must never touch a remote path: on a Windows host,
 `filepath.IsAbs("/data")` is false and `Join` inserts backslashes
-(raised by Audionut on #1914). The remote-backend PR introduces a path
-dialect for backend-owned path manipulation (Join/Dir/Base/IsAbs/Rel);
-the local backend's dialect is the host `filepath`, so existing callsites
-keep their exact behavior, and a Windows-hosted qui operating a unix
-remote becomes correct by construction rather than by luck. Paths from
-qBittorrent's API arrive slash-delimited and stay inside their instance's
-backend domain end to end.
+(raised by Audionut on #1914). Slice 3c (#2724) gives every backend a
+path dialect, `Backend.Paths() fsops.PathDialect` (`Join`, `Dir`, `Base`,
+`Clean`, `IsAbs`, `Rel`, `FromSlash`, `ToSlash`, `Separator`): the local
+and noop backends answer `fsops.HostPaths`, which is the host `filepath`,
+so local callsites keep their exact behavior; the remote backend answers
+`fsops.SlashPaths`, which is `path` with `FromSlash`/`ToSlash` as the
+identity and a slash-only `Rel` (`path` has none, and `filepath.Rel`
+answers with backslashes on a Windows host), so a Windows-hosted qui
+operating a unix remote is correct by construction rather than by luck.
+Like `Backend`, `PathDialect` exceeds the five-method guideline on
+purpose: it mirrors `filepath`'s grammar, and a smaller split would leave
+callers reaching for the host package again. A path that goes to or comes from a
+backend is manipulated with that backend's dialect; host-only paths (the
+data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
+slash-delimited and stay inside their instance's backend domain end to
+end. 3c moved the free-space path source, missing-files, the hardlink
+index, the dirscan scanner and the fileid index onto the dialect; orphan
+scan follows #2918 (#2930) and cross-seed, managed-delete cleanup and the
+sync manager follow 3d, when writes make them reachable.
 
 ## Path and Command Safety
 
@@ -205,18 +217,49 @@ backend domain end to end.
   Mechanically this stays the product's one crypto pattern — the same
   AES-GCM/`sessionSecret` helpers the existing credential stores use,
   with an AAD argument those stores simply haven't passed before.
+- Key derivation: `GetEncryptionKey` now derives the key from the whole
+  `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521). New
+  writes carry a `qui2:` prefix, so the stored format is decidable.
+  Rows written under the truncated key stay readable through
+  `GetLegacyEncryptionKey`, and each store rewrites its own on first
+  start. A row that does not decrypt is left alone and warns on every
+  start until the credential is entered again.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
   it matches a preconfigured fingerprint). No connection is trusted for
   real operations before that. `InsecureIgnoreHostKey` is forbidden.
+  First contact offers only `ssh.SupportedAlgorithms().HostKeys`,
+  ed25519 first. A host that signs only with SHA-1 `ssh-rsa` or
+  `ssh-dss` cannot be pinned, and `ssh-test` reports the failed
+  negotiation.
 - What gets pinned is the marshaled public key and its algorithm, not a
-  display string; later connects constrain `HostKeyAlgorithms` to the
-  pinned type, so a key-type change is a mismatch, never a negotiation
-  accident. Fingerprints render as `SHA256:` for humans only.
-- A host-key change after pinning fails closed: no automatic re-pin, and
-  no fallback to TOFU if the stored pin is missing or unreadable. The
-  mismatch surfaces both fingerprints and both key types behind a
+  display string; later connects put the pinned key's algorithms first in
+  `HostKeyAlgorithms` (a multi-key host offers the key the client prefers,
+  so a still-valid pin is never mismatched by accident) and leave the rest
+  allowed, so a host that changed key type reports as a mismatch the user
+  can act on rather than a failed negotiation. Verification is always the
+  byte comparison against the pin. Fingerprints render as `SHA256:` for
+  humans only.
+- A host-key change after pinning fails closed: no automatic re-pin. A
+  pin that fails to decrypt is never "unpinned": `ssh-test` reports it as
+  `pin_unreadable` with the presented key (when the host answers) and no
+  probe, nothing runs over
+  that connection, and the way out is the replace route with its heavier
+  confirmation, the same door a mismatch uses (an endpoint change drops the
+  pin as it always does, and takes first contact). A probe the connection
+  does not survive, whether the request was cancelled or the deadline
+  fired, is an error, never a partial capability report. An empty
+  pin column is unpinned and takes the first-contact flow: there is no
+  separate "was pinned" state, so a database writer who clears the column
+  is not detected. What that buys them is a first-contact confirmation the
+  user sees in place of the mismatch flow, not a silent re-pin; the AAD
+  binding above still refuses the transplant and redirect edits. Writing
+  the pin is one-shot:
+  `SetHostKeyPin` refuses an instance that is already pinned, so
+  replacing a live pin is a separate, named operation on the
+  confirmed-mismatch path. The mismatch surfaces both fingerprints and
+  both key types behind a
   confirmation deliberately heavier than first contact, one that names
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
@@ -241,9 +284,42 @@ backend domain end to end.
 
 ## Connection Pool
 
-One pool keyed by instance: lazy dial, reconnect backoff 5s→60s with ±20%
-jitter, every operation ctx-cancellable. The sftp client and exec sessions
-share the one `x/crypto/ssh` connection. Concurrency comes from sftp
+One pool keyed by instance. Each instance gets one `x/crypto/ssh`
+connection with one sftp client on it, dialed lazily on the first
+operation. A keepalive goes out every 30s and
+the host has 15s to answer it; a silent host is closed, and the next
+caller redials. A dead sftp channel on a live transport is treated the
+same way as a dropped connection: the entry is cleared and the next caller
+redials. Opening the sftp subsystem is bounded by the dial timeout, so a
+host that accepts the handshake and then stalls the subsystem request
+fails the call instead of wedging the instance. A failed dial is memoised so a job touching hundreds of
+paths pays for one attempt: the retry delay starts at 5s, doubles to
+60s, and carries ±20% jitter so instances that went down together do not
+come back in lockstep.
+
+A host-key mismatch and an unreadable pin are not retried at all, because
+waiting does not make a wrong key right. That refusal lives only in
+memory, and the pool never infers a change from a caller's snapshot of
+the instance: the code that changes what a connection depends on tells it.
+Saving or clearing SSH credentials and confirming or replacing the pin
+invalidate the instance's entry, and deleting the instance removes it;
+both end the session and clear any memo. Every dial reads the current
+row, never a caller's snapshot, so the next caller redials with the values
+just written, and a host whose key is still wrong is refused again on that
+dial. Two callers holding different snapshots of one instance therefore
+share one connection. A failed read of the row is local and is not
+memoised. A refusal caused by a pin that would not decrypt outlives an
+out-of-band fix of the encryption key, because that fix writes no row.
+Saving the SSH credentials or the pin again clears it, and so does a
+restart.
+Saving the instance invalidates its entry too when the save changes the
+filesystem mode, which the local access flag decides. Any other edit
+leaves the session alone. A dial for a row that is not in remote mode,
+including a row with credentials and no confirmed pin, is refused before
+it connects and is not memoised.
+A connection nobody has used for ten minutes is closed.
+
+Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
 lifecycle to manage.
 
@@ -253,13 +329,15 @@ Half of the old design's schema survives: SSH columns on `instances` —
 host, port, user, the AEAD-encrypted private key (AAD: instance id +
 field), and the pinned host key stored as the marshaled public key plus
 its algorithm under the same AEAD (AAD: instance id + field + host +
-port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
+port). Not a fingerprint column: the `HostKeyAlgorithms` preference and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
-capabilities. `HasFilesystemAccess` resolves to local | remote | none.
+capabilities. `FilesystemAccessMode` resolves to local | remote | none.
 This is the slimmed scope for #1917, which also carries the credential
-store that owns these columns: the AEAD write and read path, and setting
-or clearing the pin. Columns without the code that owns them cannot be
+store that owns these columns: the AEAD write and read path, and a pin
+the store sets once, drops when the host or port changes, and keeps when
+the credentials are cleared. Replacing a live pin lands with the mismatch
+flow in a later PR. Columns without the code that owns them cannot be
 tested end to end, and the AAD binding is only real once something
 applies it. Note that the AAD carries the instance id, so credentials can
 only be encrypted after the row exists — the endpoints below all operate
@@ -268,9 +346,19 @@ need insert-then-update in one transaction.
 
 ## API
 
-- `POST /instances/{id}/ssh-test` — dial with provided credentials, return
-  host-key fingerprint for TOFU confirmation plus the capability report.
-- `DELETE /instances/{id}/ssh-credentials`.
+- `PUT /instances/{id}/ssh-credentials` — store host, port, username and
+  private key; a host or port change drops the pin.
+- `DELETE /instances/{id}/ssh-credentials` — clear the credentials, keep
+  the pin.
+- `POST /instances/{id}/ssh-test` — dial with the stored credentials and
+  report the presented host key, its relation to the pin (`unpinned`,
+  `pinned`, `mismatch`, `pin_unreadable`, `error`) and, when the key is
+  trusted or unpinned, the capability report.
+- `POST /instances/{id}/ssh-host-key` — re-dial, require the host to
+  present exactly the echoed key, pin it; 409 when already pinned.
+- `POST /instances/{id}/ssh-host-key/replace` — the same over an existing
+  pin, reached only from the mismatch or unreadable-pin screen; 409 when
+  unpinned.
 - No deploy/redeploy/helper endpoints.
 
 ## Frontend
@@ -296,16 +384,89 @@ FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
 every other remote path.
 
+## Field Validation
+
+The tier model above was checked against a commercial shared seedbox
+(Debian 11, OpenSSH 8.4p1) on 2026-08-23, before the remote backend
+implementation existed. The probe was read-only apart from two self-cleaned
+scratch directories and a temporarily added, uniquely tagged
+`authorized_keys` line.
+
+- `statvfs@openssh.com` and `hardlink@openssh.com` both work over the sftp
+  subsystem. `df` returned filesystem numbers and `ln` created a real
+  hardlink. The sftp attribute set has no link-count field, and the only
+  place the server exposes one is the free-form `ls -l` longname, which
+  the protocol tells clients not to parse and `pkg/sftp` discards, so link
+  identity only ever arrives through the exec tier (the `find -printf`
+  sweep below).
+  `limits@openssh.com` is absent (it arrived in OpenSSH 8.6), so the
+  backend must tolerate that extension missing.
+- A `command="internal-sftp",restrict` key behaves exactly as the Security
+  section specifies: sftp works, exec is refused with "This service allows
+  sftp connections only." The recommended template holds as written.
+- The exec tier finds full GNU userland (findutils 4.8, coreutils 8.32), so
+  `find -printf` identity sweeps work without the BSD degradation path.
+- Hardlinks across directories keep consistent inode, device and nlink, and
+  `find -printf '%D %i %n'` reports them, so the exec-tier identity design
+  holds on the real filesystem.
+- Reflink is unsupported (XFS without reflink). Providers mostly do not
+  enable it on shared hosts, and where it exists it is a dedicated-host
+  option on request, so the design expectation is: probe it, assume off,
+  hardlink mode is the real path there.
+- Latency is the load-bearing number: about 740 ms per sftp readdir round
+  trip from a home connection, and 2.1 to 3.5 s per cold connect, auth and
+  exec.
+  A 500-directory walk is roughly six minutes serial over sftp against one
+  `find` exec round trip, which is why the batch methods, the exec tier and
+  the pooled persistent connection are all necessary rather than
+  optimizations.
+
 ## Rollout
 
 1. Foundation (open): #1914 backend interface, #1915 callsite migration.
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
-3. Remote backend: pool + SFTP implementation + capability probe (re-adds
-   batch methods), API endpoints, OpenAPI.
+3. Remote backend, in slices:
+   - 3a (#2722): one-shot dialing, host-key pinning, the capability probe
+     and the credential endpoints.
+   - 3b (#2723): the persistent connection pool and the SFTP backend's
+     read methods. Writes refuse with `fsops.ErrUnsupported`.
+   - 3c (#2724): path dialect on the backend and the callsite sweep.
+   - 3d (#2725): SFTP write operations.
+   - 3e (#2726): exec tier and batch methods; extends the pool to hand out
+     the ssh client for exec sessions.
 4. Frontend.
-5. Feature rollout per service, degraded-mode UX.
+5. Feature rollout per service, degraded-mode UX. Most consumers still
+   admit an instance on `HasLocalFilesystemAccess` rather than on its
+   filesystem mode: orphan scan (handler and service filters), automations
+   (missing-files condition, hardlink index; rule save and dry-run
+   validation), dirscan, cross-seed (link mode, manual assemble,
+   mediainfo, season pack, partial pool, local-match detection), the sync
+   manager's hardlink base dir, the disc-scan route (which checks for
+   local mode, not the flag), and two routes that read file content, which
+   no `Backend` method covers yet: the torrents handler's local-access
+   routes and the proxy mediainfo route. The exception is the free-space
+   path source: its preview and scheduled-run paths resolve the backend
+   and call `Statfs` with no mode check, so a remote-mode instance already
+   reports remote free space, and that is the intended figure. A gate
+   reads the instance before the work starts, so the reads after it
+   resolve backend and mode from one later read and refuse every mode but
+   local. The hardlink index, dirscan and the sync manager's cleanup do
+   that through `Pool.LocalBackend`, and missing files through
+   `Pool.Resolve`. An instance whose local access was turned off after the
+   gate is then refused rather than read over SSH at a local path. Orphan
+   scan still resolves with `GetBackend` until remote orphan scan replaces
+   its gate. Each remaining gate lifts in its own slice, with the
+   degraded-mode handling that service needs, and the API-driven checks
+   (missing files, orphan scan) become the field test of that slice. Every
+   remote read that loses its connection, or that the pool will not dial,
+   fails with `fsops.ErrConnectionLost`. When the pool refused on purpose
+   (a host key mismatch, an unusable pin, a closed pool, an instance no
+   longer in remote mode), its sentinel stays in the chain, and the rest
+   of the cause is text only. A walk ends with one `Err` entry carrying
+   it, so a consumer that skips per-directory errors still learns the tree
+   was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.

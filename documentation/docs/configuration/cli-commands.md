@@ -1,7 +1,8 @@
 ---
 sidebar_position: 5
-title: CLI Commands
-description: CLI commands for users, updates, migration, and the database.
+title: qui CLI commands for users, updates, and migration
+sidebar_label: CLI Commands
+description: "qui command-line reference: start the server, create users, change passwords, update, migrate torrents, and manage the database."
 ---
 
 # CLI Commands
@@ -122,7 +123,7 @@ Update qui to the latest release:
 ./qui update
 ```
 
-This command replaces the qui binary in place. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
+This command replaces the qui binary in place. It keeps the previous binary as `qui-v<old version>.bak` (`qui-v<old version>.bak.exe` on Windows) in the same directory, deletes older backups, and prints the command that restores the backup. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
 
 ## Migrate From Other Torrent Clients
 
@@ -163,8 +164,11 @@ Notes:
 Offline SQLite to Postgres migration:
 
 ```bash
-# 0) Stop qui first (no writes during migration)
-#    (example) docker compose stop qui
+# 0) Start the new qui version on SQLite once, then stop it (no writes during migration)
+#    The start applies the SQLite migrations, so the copy carries their data changes.
+#    (example) docker compose up -d qui
+#              (wait until the web UI answers)
+#              docker compose stop qui
 
 # 1) Create the target Postgres database first (required)
 #    (example) createdb -h localhost -p 5432 -U user qui
@@ -192,7 +196,7 @@ cp /path/to/qui.db /path/to/qui.db.bak
 
 Notes:
 
-- Stop qui before you run the migration.
+- Start the qui version you migrate with on the SQLite database once, then stop it. The migrator reads SQLite as is and does not apply migrations to it. A migration that deletes or rewrites rows only takes effect in Postgres when it already ran on the source.
 - Create the target Postgres database before you run the migration.
 - Set exactly one of `--dry-run` or `--apply`.
 - The command copies all runtime tables except migration history.

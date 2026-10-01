@@ -26,6 +26,13 @@ jobs:
       - name: Create placeholder web dist for embed
         run: mkdir -p web/dist && touch web/dist/.gitkeep
 
+      # Maven Central intermittently refuses runner downloads of the Postgres binary.
+      - name: Cache embedded Postgres binary
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/qui/embedded-postgres/*/*/archives
+          key: embedded-postgres-${{ runner.os }}-${{ hashFiles('go.mod', 'internal/testutil/postgres/main.go') }}
+
       - name: Run tests (Postgres integration)
         run: make test-postgres
 

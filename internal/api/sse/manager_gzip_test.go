@@ -34,8 +34,7 @@ func connectStreamGzip(t *testing.T, srv *httptest.Server, payload []map[string]
 // failure is "the whole table stopped updating", not a decode error, so assert a
 // second event arrives on a still-open compressed stream.
 func TestGzipStreamFlushesEveryEvent(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
@@ -65,8 +64,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 // strips or refuses gzip must still get a readable stream, byte for byte what it
 // got before compression existed.
 func TestStreamStaysPlainWithoutGzip(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)
@@ -109,8 +107,7 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 // Go keeps repeated Accept-Encoding field lines separate, so Header.Get would read
 // only "br" here and the client would silently lose compression.
 func TestGzipNegotiationReadsRepeatedHeaderLines(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)

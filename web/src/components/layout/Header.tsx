@@ -50,6 +50,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
+import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import {
@@ -355,6 +356,17 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
+  const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
+  const updateItemLabel = updateInfo && (
+    <>
+      <Download className="mr-2 h-4 w-4" />
+      <div className="flex flex-col">
+        <span className="font-medium">{t("header.updateAvailable")}</span>
+        <span className="text-[10px] opacity-80">{t("header.updateVersion", { version: updateInfo.tag_name })}</span>
+      </div>
+    </>
+  )
 
   // Query instance capabilities via the dedicated lightweight endpoint
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
@@ -783,18 +795,12 @@ export function Header({
               {updateInfo && (
                 <>
                   <DropdownMenuItem asChild>
-                    <a
-                      href={updateInfo.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{t("header.updateAvailable")}</span>
-                        <span className="text-[10px] opacity-80">{t("header.updateVersion", { version: updateInfo.tag_name })}</span>
-                      </div>
-                    </a>
+                    {/* Settings holds the Install update button. */}
+                    {selfUpdateAvailable ? (
+                      <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
+                    ) : (
+                      <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

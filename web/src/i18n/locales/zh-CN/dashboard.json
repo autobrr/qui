@@ -31,13 +31,6 @@
       "performance": "做种量"
     }
   },
-  "speedLimits": {
-    "title": "速度限制",
-    "download": "下载",
-    "upload": "上传",
-    "current": "当前：{{speed}}",
-    "unlimited": "无限制"
-  },
   "instanceCard": {
     "loadingStats": "正在加载统计信息……",
     "failedToLoadStats": "加载统计信息失败",
@@ -186,8 +179,7 @@
       "invalidDomains": "条目无效：domains 必须是非空数组",
       "invalidJson": "JSON 格式无效",
       "newCount": "{{count}} 个新增",
-      "conflictCount": "{{count}} 个冲突",
-      "conflictCount_plural": "{{count}} 个冲突",
+      "conflictCount_other": "{{count}} 个冲突",
       "unchangedCount": "{{count}} 个未变更",
       "resolveConflicts": "解决冲突",
       "conflictsWith": "与以下条目冲突：{{name}}",
@@ -206,8 +198,7 @@
       "deleteFailed": "删除 Tracker 自定义配置失败",
       "failedToImport": "导入失败：{{names}}",
       "importedAndSkipped": "已导入 {{imported}} 项，跳过 {{skipped}} 项",
-      "importedCount": "已导入 {{count}} 项自定义配置",
-      "importedCount_plural": "已导入 {{count}} 项自定义配置",
+      "importedCount_other": "已导入 {{count}} 项自定义配置",
       "noCustomizationsImported": "未导入任何自定义配置"
     }
   },

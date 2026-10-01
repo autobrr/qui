@@ -259,7 +259,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		// read-only save path shows what the add will actually do.
 		// ponytail: plain parsed releases approximate the apply's release view.
 		if linkMode && overlap > 0 &&
-			s.getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
+			s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
 			effectiveSavePath = effectiveFor(torrent)
 		}
 		proposals = append(proposals, ManualMatchProposal{
@@ -363,7 +363,7 @@ func (s *Service) manualMatchEffectiveSavePath(
 // FindMatchingBaseDir. Falls back to the first configured directory.
 func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) string {
 	first := ""
-	backend, backendErr := s.getBackendForInstance(ctx, instance.ID)
+	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
 	for dir := range strings.SplitSeq(instance.HardlinkBaseDir, ",") {
 		dir = strings.TrimSpace(dir)
 		if dir == "" {

@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Flux",
     "refreshAll": "Tout rafraîchir",
-    "addFolder": "Ajouter un dossier",
-    "addFeed": "Ajouter un flux",
     "articles": "Articles",
     "unread": "{{count}} non lu(s)",
     "markAllAsRead": "Tout marquer comme lu",
@@ -48,7 +46,6 @@
     "toggleDetails": "Basculer les détails"
   },
   "rules": {
-    "title": "Règles",
     "reprocess": "Retraiter",
     "reprocessTooltip": "Revérifier tous les articles non lus par rapport aux règles",
     "addRule": "Ajouter une règle",

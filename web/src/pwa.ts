@@ -4,12 +4,14 @@
  */
 
 import { toast } from "sonner"
+import i18n from "./i18n"
 import { getBaseUrl, withBasePath } from "./lib/base-url"
+import { isDemo } from "./lib/demo"
 
 let hasRegistered = false
 
 export function setupPWAAutoUpdate(): void {
-  if (hasRegistered) return
+  if (hasRegistered || isDemo) return
   if (!("serviceWorker" in navigator)) return
 
   hasRegistered = true
@@ -47,7 +49,7 @@ export function setupPWAAutoUpdate(): void {
       description,
       duration: Number.POSITIVE_INFINITY,
       action: {
-        label: "Reload",
+        label: i18n.t("pwaUpdate.reload", { ns: "common" }),
         onClick: () => {
           dismissUpdateToast()
           onConfirm()
@@ -65,8 +67,8 @@ export function setupPWAAutoUpdate(): void {
 
       const promptForUpdate = () => {
         showUpdateToast({
-          title: "Update available",
-          description: "Reload to apply the latest qui release.",
+          title: i18n.t("updateBanner.updateAvailable", { ns: "common" }),
+          description: i18n.t("pwaUpdate.waitingDescription", { ns: "common" }),
           onConfirm: () => {
             shouldReloadAfterActivation = true
 
@@ -93,8 +95,8 @@ export function setupPWAAutoUpdate(): void {
 
         if (event.isUpdate || event.isExternal) {
           showUpdateToast({
-            title: "qui updated",
-            description: "Reload when convenient to finish installing the latest release.",
+            title: i18n.t("pwaUpdate.activatedTitle", { ns: "common" }),
+            description: i18n.t("pwaUpdate.activatedDescription", { ns: "common" }),
             onConfirm: () => {
               reload()
             },

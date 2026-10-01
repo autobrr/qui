@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Atualizar Todos",
-    "addFolder": "Adicionar Pasta",
-    "addFeed": "Adicionar Feed",
     "articles": "Artigos",
     "unread": "{{count}} não lidos",
     "markAllAsRead": "Marcar todos como lidos",
@@ -48,7 +46,6 @@
     "toggleDetails": "Alternar detalhes"
   },
   "rules": {
-    "title": "Regras",
     "reprocess": "Reprocessar",
     "reprocessTooltip": "Verificar novamente todos os artigos não lidos em relação às regras",
     "addRule": "Adicionar Regra",

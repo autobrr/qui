@@ -1,12 +1,13 @@
 ---
 sidebar_position: 3
-title: SSO Proxies and CORS
-description: Run qui behind an SSO proxy and handle CORS.
+title: Run qui behind an SSO proxy
+sidebar_label: SSO Proxies and CORS
+description: Fix CORS and NetworkError failures when qui sits behind Cloudflare Access, Pangolin, or another SSO proxy.
 ---
 
 # SSO proxies and CORS
 
-When qui runs behind an SSO proxy, such as Cloudflare Access or Pangolin, an expired session redirects API `fetch()` calls to the proxy auth origin. If the **proxy** does not send CORS headers, browsers block cross-origin redirects. You then see errors like "CORS request did not succeed" or "NetworkError". If you use a same-origin setup, qui needs no CORS configuration and keeps CORS disabled.
+When qui runs behind an SSO proxy, such as Cloudflare Access or Pangolin, an expired session redirects API `fetch()` calls to the proxy auth origin. If the **proxy** does not send CORS headers, browsers block cross-origin redirects. You then see errors like "CORS request did not succeed" or "NetworkError". If you use a same-origin setup, qui needs no CORS configuration and keeps CORS disabled. For single sign-on inside qui rather than at the proxy, see [OpenID Connect](../configuration/oidc.md).
 
 ## What qui does
 

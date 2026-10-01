@@ -79,12 +79,12 @@ func hardlinkTestCandidate(candidateDir string) *qbittorrent.CrossInstanceTorren
 
 func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 	return &localMatchContext{
-		ctx:               context.Background(),
-		svc:               svc,
-		sourceInstanceID:  1,
-		sourceHash:        hlSourceHash,
-		sourceSavePath:    sourceDir,
-		sourceHasFSAccess: true,
+		ctx:                   context.Background(),
+		svc:                   svc,
+		sourceInstanceID:      1,
+		sourceHash:            hlSourceHash,
+		sourceSavePath:        sourceDir,
+		sourceHasFileIdentity: true,
 	}
 }
 
@@ -150,9 +150,9 @@ func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1}, candidate))
 
-	// Source instance lacks filesystem access.
+	// Source instance lacks trusted file identity.
 	matchCtx = hardlinkTestMatchCtx(svc, sourceDir)
-	matchCtx.sourceHasFSAccess = false
+	matchCtx.sourceHasFileIdentity = false
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, candidate))
 }
 
@@ -403,21 +403,22 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	}
 
 	var visited int
-	forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
+	err := forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
 	require.Equal(t, 1, visited, "only the in-base file should be statted")
+	require.Error(t, err, "escaping names must be reported, not silently skipped")
 
 	// Relative or empty save paths are refused outright.
 	visited = 0
-	forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
+	require.NoError(t, forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
-	})
-	forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
+	}))
+	require.NoError(t, forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
-	})
+	}))
 	require.Zero(t, visited)
 }

@@ -421,10 +421,6 @@
       "loadingDescription": "Loading available themes...",
       "description": "Choose from available themes. Premium themes require a valid license.",
       "verificationUnavailable": "License verification unavailable. Premium theme switching is temporarily disabled.",
-      "freeBadge": "Free",
-      "freeThemes": "Free Themes",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Premium Themes",
       "notLoaded": "Premium themes not loaded",
       "notLoadedDescription": "Configure",
       "notLoadedAnd": "and run",
@@ -444,9 +440,7 @@
       "managementTitle": "License Management",
       "managementDescription": "Manage your theme license and premium access",
       "providers": {
-        "dodoPortal": "Dodo portal",
-        "polarPortal": "Polar portal",
-        "legacyPolarPortal": "Legacy Polar portal"
+        "dodoPortal": "Dodo portal"
       },
       "status": {
         "unlockTitle": "Unlock Premium Themes",
@@ -479,8 +473,6 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}"
       },
       "invalid": {
-        "polarPrefix": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via",
-        "polarSuffix": ".",
         "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active."
       },
       "actions": {
@@ -545,16 +537,13 @@
       "copiedVerify": "Verification command copied",
       "failedCopyVerify": "Failed to copy verification command",
       "toasts": {
-        "activationSuccess": "License activated successfully!",
         "activationSuccessPremium": "Premium access activated! Thank you!",
         "paymentCompleted": "Payment completed. Add your premium license key to finish setup.",
         "paymentNotCompleted": "Payment did not complete successfully.",
         "returnedFromCheckout": "Returned from checkout. Add your premium license key when ready.",
         "keyCopied": "License key copied to clipboard",
         "copyFailed": "Failed to copy license key",
-        "removedFromMachine": "License removed from this machine",
-        "refreshedAll": "All licenses refreshed successfully",
-        "refreshFailed": "Failed to refresh licenses"
+        "removedFromMachine": "License removed from this machine"
       }
     },
     "custom": {
@@ -563,7 +552,6 @@
       "lockedTitle": "Custom themes are a premium feature",
       "lockedDescription": "Unlock premium to sideload your own theme CSS files from a directory on disk.",
       "unlockCta": "Unlock premium",
-      "directoryLabel": "Themes directory",
       "refresh": "Refresh",
       "detectedCount": "Themes found: {{total}}",
       "parseErrorsTitle": "Could not parse these files:",
@@ -666,10 +654,6 @@
   },
   "indexers": {
     "title": "Torznab Indexers",
-    "addIndexer": "Add Indexer",
-    "autodiscoverProwlarr": "Autodiscover from Prowlarr",
-    "noIndexers": "No indexers configured yet.",
-    "noIndexersDescription": "Add a Torznab-compatible indexer to enable automated cross-seed searches.",
     "deleteIndexer": "Delete Indexer",
     "deleteIndexerDescription": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
     "deleteAllIndexers": "Delete All Indexers",
@@ -678,8 +662,6 @@
       "loadFailed": "Failed to load indexers",
       "deletedSuccess": "Indexer deleted",
       "deleteFailed": "Failed to delete indexer",
-      "allDeletedSuccess": "All indexers deleted",
-      "allDeletedFailed": "Failed to delete all indexers",
       "deleteAllSuccess": "Deleted all {{count}} indexers",
       "deleteAllPartial": "Deleted {{success}} indexers, {{failed}} failed: {{names}}",
       "testSuccess": "Connection test successful",
@@ -825,7 +807,6 @@
         "importSuccess": "Success: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} with warnings)",
         "moreWarnings": "...and {{count}} more warnings",
-        "importErrors": "{{details}}",
         "moreErrors": "...and {{count}} more errors",
         "created": "{{count}} created",
         "updated": "{{count}} updated",
@@ -886,10 +867,6 @@
     },
     "activity": {
       "title": "Scheduler Activity",
-      "idle": "Idle",
-      "queueLength": "Queue",
-      "workers": "Workers",
-      "cooldown": "Cooldown",
       "running": "Running",
       "queued": "Queued",
       "rateLimited": "Rate Limited",
@@ -931,6 +908,20 @@
         "episode": "Episode"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.",
+    "enableMatching": "Enable Gazelle matching",
+    "enableDescription": "Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.",
+    "redactedApiKey": "Redacted API key",
+    "orpheusApiKey": "Orpheus API key",
+    "pasteRedKey": "Paste RED API key",
+    "pasteOpsKey": "Paste OPS API key",
+    "enableToConfigure": "Enable to configure",
+    "redDescription": "Used for redacted.sh lookups. Paste to replace; clear to remove.",
+    "opsDescription": "Used for orpheus.network lookups. Paste to replace; clear to remove.",
+    "save": "Save"
   },
   "searchCache": {
     "title": "Search Cache",
@@ -987,6 +978,39 @@
         "upToDateDetail": "Running the latest version",
         "notCheckedYet": "Not checked yet",
         "lastChecked": "Last checked {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Restart",
+      "confirmTitle": "Restart qui?",
+      "confirmDescription": "qui shuts down the same way as on a normal stop, then starts again. Running work, such as cross-seed searches, automations, backups, and orphan scans, stops. The page reloads when qui is back.",
+      "confirm": "Restart",
+      "overlay": {
+        "restartingTitle": "Restarting qui…",
+        "restartingDetail": "The page reloads when qui answers again.",
+        "slowTitle": "qui has not answered yet",
+        "slowDetail": "qui may still be starting, and this page keeps waiting. Check the qui logs. If you changed the port or the base URL, open qui at the new address."
+      }
+    },
+    "update": {
+      "button": "Install update",
+      "confirmTitle": "Install update?",
+      "confirmDescription": "qui downloads the new version, checks its signature, and keeps the current binary as a backup. Then qui restarts. The page reloads when qui is back.",
+      "runningWork": "Running work, such as cross-seed searches, automations, backups, and orphan scans, stops.",
+      "currentVersion": "Current version",
+      "targetVersion": "New version",
+      "releaseNotes": "Release notes",
+      "confirm": "Install update",
+      "overlay": {
+        "notAppliedTitle": "Update did not apply",
+        "notAppliedDetail": "qui is back, but on a different version. Check the qui logs.",
+        "installedTitle": "qui updated",
+        "installedDetail": "Reload the page to open the new version.",
+        "reload": "Reload page",
+        "noBackup": "qui updated, but kept no backup: {{error}}. To roll back, download the old version by hand.",
+        "rollbackIntro": "If the new version does not start, run this command, then start qui again:",
+        "rollbackLabel": "Rollback command",
+        "rollbackDocs": "Rollback steps"
       }
     },
     "runtime": {

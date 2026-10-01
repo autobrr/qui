@@ -33,9 +33,9 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	remotebackend "github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -51,13 +51,10 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
-)
-
-var (
-	// PolarOrgID Publisher credentials - set during build via ldflags
-	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
@@ -67,6 +64,11 @@ func main() {
 	// process umask controls the final permissions of content directories
 	// (see discussion #1704). No-op when UMASK is unset or on Windows.
 	applyUmask()
+
+	if buildinfo.Tray == "true" {
+		runTray()
+		return
+	}
 
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
@@ -111,8 +113,22 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
-		app.runServer()
+		if buildinfo.Tray != "true" {
+			// On Windows the first process only supervises; the child returns here.
+			update.Supervise(nil)
+			NewApplication(configDir, dataDir, logPath, pprofFlag).runServer()
+			return
+		}
+		update.Supervise(tray.ShowError)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag)
+		app.tray = make(chan tray.Menu, 1)
+		app.quit = make(chan struct{}, 1)
+		go app.runServer()
+		// The tray library needs the main goroutine's OS thread.
+		tray.Run(<-app.tray)
+		// Run returns after Remove, while the serve loop still shuts down. The
+		// serve loop sets the exit code: 75 asks the supervisor for a Restart.
+		select {}
 	}
 
 	return command
@@ -471,18 +487,18 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
-
-	// Publisher credentials - set during build via ldflags
-	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
+	// tray receives the Tray menu once qui listens, and quit carries the Tray's
+	// Quit. Both are nil outside qui-tray.exe.
+	tray chan tray.Menu
+	quit chan struct{}
 }
 
-func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
 	return &Application{
-		configDir:  configDir,
-		dataDir:    dataDir,
-		logPath:    logPath,
-		pprofFlag:  pprofFlag,
-		polarOrgID: polarOrgID,
+		configDir: configDir,
+		dataDir:   dataDir,
+		logPath:   logPath,
+		pprofFlag: pprofFlag,
 	}
 }
 
@@ -506,6 +522,10 @@ func (app *Application) runServer() {
 	if app.pprofFlag {
 		cfg.Config.PprofEnabled = true
 	}
+	if app.tray != nil {
+		// qui-tray.exe has no console, so it keeps a log file for bug reports.
+		cfg.SetDefaultLogPath("log/qui.log")
+	}
 
 	if err := cfg.ApplyLogConfig(); err != nil {
 		log.Warn().Err(err).Str("logPath", cfg.Config.LogPath).Msg("Failed to apply log configuration, continuing with the previous log settings")
@@ -521,6 +541,9 @@ func (app *Application) runServer() {
 		log.Warn().Strs("authDisabledAllowedCIDRs", cfg.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
 	case cfg.Config.AuthDisabled != cfg.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
+	}
+	if cfg.Config.IsAuthDisabled() && len(cfg.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
 	}
 
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
@@ -548,14 +571,6 @@ func (app *Application) runServer() {
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
-	// init polar client
-	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
-	if app.polarOrgID != "" {
-		log.Trace().Msg("Initializing Polar client for license validation")
-	} else {
-		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-	}
-
 	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
 	if dodoEnv == "" {
 		dodoEnv = os.Getenv("DODO_ENVIRONMENT")
@@ -578,7 +593,9 @@ func (app *Application) runServer() {
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
-	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
+	encryptionKey := cfg.GetEncryptionKey()
+	legacyEncryptionKey := models.WithLegacyEncryptionKey(cfg.GetLegacyEncryptionKey())
+	instanceStore, err := models.NewInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
@@ -599,7 +616,7 @@ func (app *Application) runServer() {
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
-	arrInstanceStore, err := models.NewArrInstanceStore(db, cfg.GetEncryptionKey())
+	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize ARR instance store")
 	}
@@ -608,7 +625,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -638,7 +655,7 @@ func (app *Application) runServer() {
 	)
 
 	// Initialize Torznab indexer store
-	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
@@ -699,10 +716,20 @@ func (app *Application) runServer() {
 	jackettService.SetActivityPublisher(activityHub)
 
 	// Initialize cross-seed automation store and service
-	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
+	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
 	}
+
+	// Runs once the four credential stores exist rather than next to each one.
+	// Placement is free: consumers built earlier decrypt either format through
+	// the legacy key, and nothing before this point writes a credential column.
+	rewriteLegacyCredentials(context.Background(), []legacyCredentialStore{
+		{table: "instances", store: instanceStore},
+		{table: "arr_instances", store: arrInstanceStore},
+		{table: "torznab_indexers", store: torznabIndexerStore},
+		{table: "cross_seed_settings", store: crossSeedStore},
+	})
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
@@ -729,7 +756,10 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 
-	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
+	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
+		return remotebackend.New(sshPool, inst)
+	})
 	crossSeedService.SetBackendPool(backendPool)
 	syncManager.SetBackendPool(backendPool)
 
@@ -745,7 +775,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedBlocklistStore)
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
@@ -843,8 +873,17 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Secure = cfg.Config.SecureSessionCookie()
+	sessionManager.Cookie.Path = cfg.Config.BaseURL
 	sessionManager.Cookie.Persist = false
+
+	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
+	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	selfUpdater := update.NewUpdater(update.Config{
+		Repository: "autobrr/qui",
+		Version:    buildinfo.Version,
+		BinaryPath: updateInputs.BinaryPath,
+	})
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
@@ -863,6 +902,9 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
+		UpdateAvailability:               update.Decide(updateInputs),
+		Restarter:                        restarter,
+		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
@@ -887,6 +929,7 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		BackendPool:                      backendPool,
+		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
@@ -916,6 +959,9 @@ func (app *Application) runServer() {
 		}()
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
+	}
+	if app.tray != nil {
+		app.tray <- app.trayMenu(cfg, updateInputs.BinaryPath, restarter)
 	}
 
 	if cfg.Config.MetricsEnabled {
@@ -960,36 +1006,46 @@ func (app *Application) runServer() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
+	// Graceful shutdown with timeout. A Restart runs the same steps as SIGTERM.
+	shutdown := func() error {
+		tray.Remove()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		partialPoolCancel()
+		select {
+		case <-partialPoolDone:
+		case <-ctx.Done():
+			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		if err := httpServer.Shutdown(ctx); err != nil {
+			return err
+		}
+
+		// Closed here because os.Exit below means a defer would never fire. A
+		// job's next read gets ErrConnectionLost with ErrPoolClosed in its
+		// chain, a read in flight gets ErrConnectionLost, and either ends with
+		// the process.
+		sshPool.Close()
+		return nil
+	}
+
 	select {
 	case sig := <-sigCh:
 		log.Info().Msgf("got signal %v, shutting down server", sig.String())
 	case err := <-errorChannel:
 		log.Error().Err(err).Msg("got unexpected error from server")
+	case <-app.quit:
+		log.Info().Msg("quit from the Tray, shutting down server")
+	case <-restarter.Requested():
+		log.Info().Msg("restart requested, shutting down server")
+		restarter.Restart(log.Logger, shutdown)
 	}
 
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	partialPoolCancel()
-	select {
-	case <-partialPoolDone:
-	case <-ctx.Done():
-		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
-	}
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		// log.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := shutdown(); err != nil {
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
-
 		os.Exit(1)
 	}
-
-	// if err := srv.Shutdown(context.Background()); err != nil {
-	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
-	//
-	//	os.Exit(1)
-	//}
-
 	os.Exit(0)
 }
 
@@ -1028,4 +1084,35 @@ func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID
 		hashes[i] = torrents[i].Hash
 	}
 	return hashes, nil
+}
+
+// legacyCredentialRewriter is implemented by every store that seals credentials
+// with the key derived from sessionSecret.
+type legacyCredentialRewriter interface {
+	RewriteLegacyCredentials(ctx context.Context) (int, error)
+}
+
+type legacyCredentialStore struct {
+	table string
+	store legacyCredentialRewriter
+}
+
+// rewriteLegacyCredentials moves stored credentials to the versioned ciphertext
+// format. A failure leaves readable legacy rows behind, so it logs the rows that
+// did commit and lets startup continue.
+func rewriteLegacyCredentials(ctx context.Context, stores []legacyCredentialStore) {
+	for _, s := range stores {
+		rewritten, err := s.store.RewriteLegacyCredentials(ctx)
+		if err != nil {
+			event := log.Error().Err(err).Str("table", s.table)
+			if rewritten > 0 {
+				event = event.Int("rows", rewritten)
+			}
+			event.Msg("Failed to re-encrypt legacy credentials")
+			continue
+		}
+		if rewritten > 0 {
+			log.Info().Str("table", s.table).Int("rows", rewritten).Msg("Re-encrypted legacy credentials under the derived key")
+		}
+	}
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 )
 
 const defaultNormalizerTTL = 5 * time.Minute
@@ -23,8 +23,8 @@ type Normalizer[K comparable, V any] struct {
 
 // NewNormalizer returns a normalizer with the provided TTL and transform function for cached entries.
 func NewNormalizer[K comparable, V any](ttl time.Duration, transform TransformFunc[K, V]) *Normalizer[K, V] {
-	cache := ttlcache.New(ttlcache.Options[K, V]{}.
-		SetDefaultTTL(ttl))
+	cache := ttlcache.New[K, V](
+		ttlcache.SetDefaultTTL(ttl))
 	return &Normalizer[K, V]{
 		cache:     cache,
 		transform: transform,

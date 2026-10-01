@@ -5,14 +5,9 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
@@ -137,71 +132,40 @@ type TorznabIndexerHealth struct {
 
 // TorznabIndexerStore manages Torznab indexers in the database
 type TorznabIndexerStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db     dbinterface.Querier
+	cipher *CredentialCipher
 }
 
 // NewTorznabIndexerStore creates a new TorznabIndexerStore
-func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte) (*TorznabIndexerStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*TorznabIndexerStore, error) {
+	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
+	if err != nil {
+		return nil, err
 	}
 
-	return &TorznabIndexerStore{
-		db:            db,
-		encryptionKey: encryptionKey,
-	}, nil
+	return &TorznabIndexerStore{db: db, cipher: credentialCipher}, nil
 }
 
 // encrypt encrypts a string using AES-GCM
 func (s *TorznabIndexerStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return s.cipher.Encrypt(plaintext, nil)
 }
 
 // decrypt decrypts a string encrypted with encrypt
 func (s *TorznabIndexerStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
+	return s.cipher.Decrypt(ciphertext, nil)
+}
 
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+// RewriteLegacyCredentials re-encrypts stored Torznab indexer credentials that still
+// carry the pre-HKDF format and reports how many rows it rewrote.
+func (s *TorznabIndexerStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
+	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
+		table: "torznab_indexers",
+		columns: []string{
+			"api_key_encrypted",
+			"basic_password_encrypted",
+		},
+	})
 }
 
 // Create creates a new Torznab indexer

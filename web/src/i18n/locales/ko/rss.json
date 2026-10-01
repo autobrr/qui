@@ -23,8 +23,6 @@
   "feeds": {
     "title": "피드",
     "refreshAll": "모두 새로 고침",
-    "addFolder": "폴더 추가",
-    "addFeed": "피드 추가",
     "articles": "기사",
     "unread": "읽지 않음 {{count}}개",
     "markAllAsRead": "모두 읽음으로 표시",
@@ -48,7 +46,6 @@
     "toggleDetails": "세부 정보 전환"
   },
   "rules": {
-    "title": "규칙",
     "reprocess": "재처리",
     "reprocessTooltip": "읽지 않은 모든 기사를 규칙에 따라 다시 확인합니다",
     "addRule": "규칙 추가",

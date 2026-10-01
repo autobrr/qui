@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command postgres runs Go tests with a temporary Postgres server.
+// Command postgres runs Postgres integration tests with a temporary server.
 package main
 
 import (
@@ -79,7 +79,7 @@ func run(ctx context.Context, args []string) (runErr error) {
 	}
 
 	if len(args) == 0 {
-		args = []string{"-race", "-count=1", "-v", "-timeout=20m", "./..."}
+		args = []string{"-race", "-count=1", "-v", "-timeout=20m", "-run", "PostgresIntegration", "./..."}
 	}
 	cmd := exec.CommandContext(ctx, "go", append([]string{"test"}, args...)...) //nolint:gosec // Forward developer-supplied test arguments without a shell.
 	cmd.Env = append(os.Environ(), "QUI_TEST_POSTGRES_DSN="+dsn)

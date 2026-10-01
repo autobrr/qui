@@ -419,10 +419,6 @@
       "loadingDescription": "사용 가능한 테마 불러오는 중...",
       "description": "사용 가능한 테마 중에서 선택하세요. 프리미엄 테마에는 유효한 라이선스가 필요합니다.",
       "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 프리미엄 테마 전환이 일시적으로 비활성화되었습니다.",
-      "freeBadge": "무료",
-      "freeThemes": "무료 테마",
-      "premiumBadge": "프리미엄",
-      "premiumThemes": "프리미엄 테마",
       "notLoaded": "프리미엄 테마가 로드되지 않음",
       "notLoadedDescription": "구성",
       "notLoadedAnd": "한 후 실행",
@@ -442,9 +438,7 @@
       "managementTitle": "라이선스 관리",
       "managementDescription": "테마 라이선스 및 프리미엄 접근을 관리합니다",
       "providers": {
-        "dodoPortal": "Dodo 포털",
-        "polarPortal": "Polar 포털",
-        "legacyPolarPortal": "레거시 Polar 포털"
+        "dodoPortal": "Dodo 포털"
       },
       "status": {
         "unlockTitle": "프리미엄 테마 잠금 해제",
@@ -477,8 +471,6 @@
         "productStatusAndAdded": "{{productName}} • 상태: {{status}} • 추가됨 {{date}}"
       },
       "invalid": {
-        "polarPrefix": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 활성화된 다른 컴퓨터에서 비활성화하거나 다음을 통해 활성화를 관리하세요:",
-        "polarSuffix": ".",
         "dodo": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 현재 활성화된 다른 컴퓨터에서 비활성화하세요."
       },
       "actions": {
@@ -543,16 +535,13 @@
       "copiedVerify": "확인 명령이 복사되었습니다",
       "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
       "toasts": {
-        "activationSuccess": "라이선스가 활성화되었습니다!",
         "activationSuccessPremium": "프리미엄 접근이 활성화되었습니다! 감사합니다!",
         "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 프리미엄 라이선스 키를 추가하세요.",
         "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
         "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 프리미엄 라이선스 키를 추가하세요.",
         "keyCopied": "라이선스 키가 클립보드에 복사되었습니다",
         "copyFailed": "라이선스 키를 복사하지 못했습니다",
-        "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다",
-        "refreshedAll": "모든 라이선스가 새로 고쳐졌습니다",
-        "refreshFailed": "라이선스를 새로 고치지 못했습니다"
+        "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다"
       }
     },
     "custom": {
@@ -561,7 +550,6 @@
       "lockedTitle": "사용자 지정 테마는 프리미엄 기능입니다",
       "lockedDescription": "프리미엄을 잠금 해제하면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
       "unlockCta": "프리미엄 잠금 해제",
-      "directoryLabel": "테마 디렉터리",
       "refresh": "새로 고침",
       "detectedCount": "찾은 테마: {{total}}개",
       "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",
@@ -664,10 +652,6 @@
   },
   "indexers": {
     "title": "Torznab 인덱서",
-    "addIndexer": "인덱서 추가",
-    "autodiscoverProwlarr": "Prowlarr에서 자동 검색",
-    "noIndexers": "아직 구성된 인덱서가 없습니다.",
-    "noIndexersDescription": "자동화된 cross-seed 검색을 활성화하려면 Torznab 호환 인덱서를 추가하세요.",
     "deleteIndexer": "인덱서 삭제",
     "deleteIndexerDescription": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
     "deleteAllIndexers": "모든 인덱서 삭제",
@@ -676,8 +660,6 @@
       "loadFailed": "인덱서를 불러오지 못했습니다",
       "deletedSuccess": "인덱서가 삭제되었습니다",
       "deleteFailed": "인덱서를 삭제하지 못했습니다",
-      "allDeletedSuccess": "모든 인덱서가 삭제되었습니다",
-      "allDeletedFailed": "모든 인덱서를 삭제하지 못했습니다",
       "deleteAllSuccess": "인덱서 {{count}}개를 모두 삭제했습니다",
       "deleteAllPartial": "인덱서 {{success}}개 삭제, {{failed}}개 실패: {{names}}",
       "testSuccess": "연결 테스트에 성공했습니다",
@@ -823,7 +805,6 @@
         "importSuccess": "성공: {{details}}",
         "importWithWarnings": "{{details}} (경고 {{warningCount}}개)",
         "moreWarnings": "...그리고 경고 {{count}}개 더",
-        "importErrors": "{{details}}",
         "moreErrors": "...그리고 오류 {{count}}개 더",
         "created": "{{count}}개 생성됨",
         "updated": "{{count}}개 업데이트됨",
@@ -883,10 +864,6 @@
     },
     "activity": {
       "title": "스케줄러 활동",
-      "idle": "대기",
-      "queueLength": "대기열",
-      "workers": "워커",
-      "cooldown": "대기 시간",
       "running": "실행 중",
       "queued": "대기 중",
       "rateLimited": "속도 제한됨",
@@ -928,6 +905,20 @@
         "episode": "에피소드"
       }
     }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Orpheus 및 Redacted에 대한 직접 API 일치를 활성화합니다. 이는 Torznab과 함께 실행되며, OPS/RED Torznab 인덱서는 무시됩니다.",
+    "enableMatching": "Gazelle 일치 활성화",
+    "enableDescription": "모든 소스 토렌트에 적용됩니다. 가능한 경우 qui는 Gazelle을 통해 RED/OPS도 확인합니다.",
+    "redactedApiKey": "Redacted API 키",
+    "orpheusApiKey": "Orpheus API 키",
+    "pasteRedKey": "RED API 키 붙여 넣기",
+    "pasteOpsKey": "OPS API 키 붙여 넣기",
+    "enableToConfigure": "구성하려면 활성화",
+    "redDescription": "redacted.sh 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요.",
+    "opsDescription": "orpheus.network 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요.",
+    "save": "저장"
   },
   "searchCache": {
     "title": "검색 캐시",
@@ -984,6 +975,39 @@
         "upToDateDetail": "최신 버전을 실행 중입니다",
         "notCheckedYet": "아직 확인되지 않음",
         "lastChecked": "마지막 확인 {{date}}"
+      }
+    },
+    "restart": {
+      "button": "재시작",
+      "confirmTitle": "qui를 재시작할까요?",
+      "confirmDescription": "qui는 일반 종료와 같은 방식으로 종료한 뒤 다시 시작합니다. 크로스시드 검색, 자동화, 백업, 고아 파일 검사 같은 실행 중인 작업은 중지됩니다. qui가 돌아오면 페이지가 다시 로드됩니다.",
+      "confirm": "재시작",
+      "overlay": {
+        "restartingTitle": "qui 재시작 중…",
+        "restartingDetail": "qui가 다시 응답하면 페이지가 다시 로드됩니다.",
+        "slowTitle": "qui가 아직 응답하지 않았습니다",
+        "slowDetail": "qui가 아직 시작 중일 수 있으며, 이 페이지는 계속 기다립니다. qui 로그를 확인하세요. 포트나 기본 URL을 변경했다면 새 주소에서 qui를 여세요."
+      }
+    },
+    "update": {
+      "button": "업데이트 설치",
+      "confirmTitle": "업데이트를 설치할까요?",
+      "confirmDescription": "qui는 새 버전을 다운로드하고 서명을 확인한 뒤 현재 바이너리를 백업으로 보관합니다. 그런 다음 qui가 재시작합니다. qui가 돌아오면 페이지가 다시 로드됩니다.",
+      "runningWork": "크로스시드 검색, 자동화, 백업, 고아 파일 검사 같은 실행 중인 작업은 중지됩니다.",
+      "currentVersion": "현재 버전",
+      "targetVersion": "새 버전",
+      "releaseNotes": "릴리스 노트",
+      "confirm": "업데이트 설치",
+      "overlay": {
+        "notAppliedTitle": "업데이트가 적용되지 않았습니다",
+        "notAppliedDetail": "qui가 돌아왔지만 다른 버전으로 실행 중입니다. qui 로그를 확인하세요.",
+        "installedTitle": "qui가 업데이트되었습니다",
+        "installedDetail": "새 버전을 열려면 페이지를 새로고침하세요.",
+        "reload": "페이지 다시 로드",
+        "noBackup": "qui가 업데이트되었지만 백업을 보관하지 않았습니다: {{error}}. 롤백하려면 이전 버전을 직접 다운로드하세요.",
+        "rollbackIntro": "새 버전이 시작되지 않으면 이 명령을 실행한 뒤 qui를 다시 시작하세요:",
+        "rollbackLabel": "롤백 명령",
+        "rollbackDocs": "롤백 단계"
       }
     },
     "runtime": {
