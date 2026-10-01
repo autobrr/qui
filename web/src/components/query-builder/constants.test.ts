@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
-import { CONTENT_TYPE_VALUES, getCapabilityReason } from "./constants"
+import { CONTENT_TYPE_VALUES, FIELD_REQUIREMENTS, getCapabilityReason } from "./constants"
 
 afterEach(async () => {
   await changeLanguage("en")
@@ -44,5 +44,14 @@ describe("getCapabilityReason", () => {
 
     expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
     expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    // Until #2726 gives a remote instance file identity, it shares the local access reason.
+    expect(getCapabilityReason("fileIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+  })
+})
+
+describe("FIELD_REQUIREMENTS", () => {
+  it("gates the hardlink scope fields on file identity, not local access", () => {
+    expect(FIELD_REQUIREMENTS.HARDLINK_SCOPE).toBe("fileIdentity")
+    expect(FIELD_REQUIREMENTS.HARDLINK_SCOPE_CROSS).toBe("fileIdentity")
   })
 })
