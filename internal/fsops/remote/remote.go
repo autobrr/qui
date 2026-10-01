@@ -374,15 +374,16 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		}
 		return nil, pathError("mkdir", p, syscall.ENOTDIR)
 	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-
+	// Any other answer walks up: a missing path is created from its first
+	// missing ancestor, and a path through a file, which OpenSSH reports as a
+	// bare failure rather than "not found", is named by that file's own stat.
 	var created []string
 	if parent := path.Dir(p); parent != p {
 		if created, err = mkdirAll(ctx, client, parent); err != nil {
 			return created, err
 		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
 	}
 	if err := awaitErr(ctx, func() error { return client.Mkdir(p) }); err != nil {
 		// A cancel while the request is on the wire may still land it on the
@@ -445,51 +446,33 @@ func removeDir(ctx context.Context, client *sftp.Client, dir string) error {
 		return readDirError(dir, err)
 	}
 	for _, fi := range entries {
-		child := path.Join(dir, fi.Name())
-		if fi.IsDir() {
-			err = removeAll(ctx, client, child)
-		} else {
-			err = remove(ctx, client, child)
-		}
-		if err != nil {
+		if err := removeListed(ctx, client, path.Join(dir, fi.Name()), fi.IsDir()); err != nil {
 			return err
 		}
 	}
 	return unlink(ctx, client, dir, true)
 }
 
-// removeAll is removeDir for a child the listing called a directory,
-// re-checked first: a symlink swapped in since is unlinked, never descended.
-func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
-	fi, err := lstat(ctx, client, dir)
+// removeListed removes one child a listing reported, after an lstat of its
+// own: an entry gone since is fine, a directory is descended only if it still
+// is one, and a non-directory swapped for a directory is refused rather than
+// removed through. Rmdir needs no such check, since it refuses anything but
+// a directory itself.
+func removeListed(ctx context.Context, client *sftp.Client, child string, wasDir bool) error {
+	fi, err := lstat(ctx, client, child)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if !fi.IsDir() {
-		return unlink(ctx, client, dir, false)
+	switch {
+	case fi.IsDir() && wasDir:
+		return removeDir(ctx, client, child)
+	case fi.IsDir():
+		return pathError("remove", child, errors.New("entry became a directory during removal"))
 	}
-	return removeDir(ctx, client, dir)
-}
-
-// remove unlinks one non-directory entry found by a listing, re-checking with
-// lstat first that it still is one: a directory swapped in under the name is
-// refused rather than removed through, and an entry already gone is fine.
-// Directories skip the check, since rmdir refuses anything but a directory.
-func remove(ctx context.Context, client *sftp.Client, p string) error {
-	fi, err := lstat(ctx, client, p)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if fi.IsDir() {
-		return pathError("remove", p, errors.New("entry became a directory during removal"))
-	}
-	return unlink(ctx, client, p, false)
+	return unlink(ctx, client, child, false)
 }
 
 // unlink sends the remove. Client.Remove retries a failed unlink as rmdir and
@@ -567,8 +550,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		return nil, err
 	}
 
-	// Every directory this call has seen or made, so a flat tree pays one
-	// stat for its root rather than one per file.
+	// A flat tree pays one stat for its directory rather than one per file.
 	known := map[string]struct{}{}
 	for _, fp := range plan.Files {
 		dir := path.Dir(fp.TargetPath)
@@ -578,12 +560,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 			if err != nil {
 				return fail(fmt.Errorf("create directory %s: %w", dir, err))
 			}
-			for d := dir; ; d = path.Dir(d) {
-				known[d] = struct{}{}
-				if d == plan.RootDir || path.Dir(d) == d {
-					break
-				}
-			}
+			known[dir] = struct{}{}
 		}
 		// Link first: an existing target makes it fail, and the lstat that
 		// names the cause is paid only then.

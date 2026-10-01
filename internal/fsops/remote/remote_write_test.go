@@ -44,7 +44,7 @@ func TestMkdirAll_FileInTheWay(t *testing.T) {
 	writeFile(t, file, "x")
 
 	err := b.MkdirAll(t.Context(), remotePath(dir, "file", "child"), fsutil.ContentDirMode)
-	require.Error(t, err)
+	require.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
 func TestRemove_File(t *testing.T) {
