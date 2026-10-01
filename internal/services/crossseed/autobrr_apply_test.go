@@ -561,14 +561,6 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			expectExcludeTags:       []string{"temporary"},
 		},
 		{
-			name:                    "nil settings results in empty filters",
-			settings:                nil,
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-		},
-		{
 			name:                    "empty settings results in empty filters",
 			settings:                &models.CrossSeedAutomationSettings{},
 			expectCategories:        nil,

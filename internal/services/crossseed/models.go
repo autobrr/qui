@@ -30,7 +30,7 @@ type CrossSeedRequest struct {
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 	// Category to apply to the cross-seeded torrent
 	Category string `json:"category,omitempty"`
-	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
+	// Tags to apply to the cross-seeded torrent (the Trigger's tags from settings)
 	Tags []string `json:"tags,omitempty"`
 	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
 	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
