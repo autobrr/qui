@@ -126,7 +126,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 	}
 
 	// POSIX and Windows forms are rejected on every host, and so are the two
-	// shapes qBittorrent never emits: a backslash inside a name and a
+	// shapes link mode already refuses: a backslash inside a name and a
 	// non-canonical path. The plan goes through hardlinktree's validator.
 	for _, name := range []string{
 		"../Show.S01E01.1080p.WEB.x264-GRP.mkv",

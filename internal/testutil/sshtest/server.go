@@ -487,8 +487,9 @@ func NewRSASigner() ssh.Signer {
 // the sftp server sees them.
 type requestCutter struct {
 	ssh.Channel
-	conn *ssh.ServerConn
-	mode func() SFTPMode
+	conn        *ssh.ServerConn
+	mode        func() SFTPMode
+	versionSent bool
 }
 
 func (t *requestCutter) Read(p []byte) (int, error) {
@@ -508,10 +509,13 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 }
 
 // Write strips the hardlink extension from the server's SSH_FXP_VERSION reply
-// when the mode asks for it. The version packet is the only one whose type
-// byte is 2 in the server-to-client direction, so matching it is enough.
+// when the mode asks for it. Only the first write is looked at: the version
+// packet is always the server's first send, and later writes may be payload
+// chunks (file data, names) whose bytes mean nothing to this parser.
 func (t *requestCutter) Write(p []byte) (int, error) {
-	if t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
+	first := !t.versionSent
+	t.versionSent = true
+	if !first || t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
 		return t.Channel.Write(p)
 	}
 	out := append([]byte(nil), p[:9]...)

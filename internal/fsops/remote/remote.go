@@ -416,26 +416,32 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 		return err
 	}
 	if opts.Recursive && fi.IsDir() {
-		return removeAll(ctx, client, p)
+		return removeDir(ctx, client, p)
 	}
 	return unlink(ctx, client, p, fi.IsDir())
 }
 
-// removeAll empties dir bottom-up and removes it. Client.RemoveAll is not
+// removeDir empties dir bottom-up and removes it. Client.RemoveAll is not
 // used: it Stats the root, so a symlinked root would empty the link's target.
 // Here every decision comes from lstat-shaped attrs, so a symlinked directory
 // is unlinked as a plain entry and never descended, on the root or below.
 //
-// SFTP v3 has no openat, so a directory swapped for a symlink between the
-// listing and the unlink can redirect the unlink. The re-lstat in remove
-// bounds that window to one round trip; closing it needs the exec tier.
+// SFTP v3 has no openat, so an entry swapped for a symlink between the
+// listing and the next request can redirect that request. Each child is
+// re-lstat'ed just before it is unlinked or descended, which bounds the
+// window to one round trip; closing it needs the exec tier.
 //
-// ponytail: serial, one extra round trip per file on top of the listing;
+// ponytail: serial, one extra round trip per entry on top of the listing;
 // nothing reachable in this release removes a large tree, and rm -rf -- over
 // exec (#2726) is the upgrade when one does.
-func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
+func removeDir(ctx context.Context, client *sftp.Client, dir string) error {
 	entries, err := readDir(ctx, client, dir)
 	if err != nil {
+		// Gone since the parent listing: nothing left to do, as for every
+		// other vanished entry on this walk.
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		return readDirError(dir, err)
 	}
 	for _, fi := range entries {
@@ -450,6 +456,22 @@ func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
 		}
 	}
 	return unlink(ctx, client, dir, true)
+}
+
+// removeAll is removeDir for a child the listing called a directory,
+// re-checked first: a symlink swapped in since is unlinked, never descended.
+func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
+	fi, err := lstat(ctx, client, dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return unlink(ctx, client, dir, false)
+	}
+	return removeDir(ctx, client, dir)
 }
 
 // remove unlinks one non-directory entry found by a listing, re-checking with
