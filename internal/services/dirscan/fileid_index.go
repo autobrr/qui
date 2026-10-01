@@ -6,7 +6,6 @@ package dirscan
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -77,8 +76,9 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 }
 
 func addTorrentFilesToFileIDIndex(ctx context.Context, index map[string]string, hash, savePath string, files qbt.TorrentFiles, backend fsops.Backend) (statErrors int) {
+	d := backend.Paths()
 	for _, file := range files {
-		absPath := filepath.Join(savePath, filepath.FromSlash(file.Name))
+		absPath := d.Join(savePath, d.FromSlash(file.Name))
 		// Stat, not Lstat: symlinked torrent data must index the target's
 		// identity or symlink-farm setups lose already-seeding detection.
 		info, err := backend.Stat(ctx, absPath)

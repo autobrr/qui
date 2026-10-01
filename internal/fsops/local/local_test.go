@@ -559,3 +559,7 @@ func TestWalkDir_IgnorePaths(t *testing.T) {
 	assert.Contains(t, relPaths, "keep.txt")
 	assert.NotContains(t, relPaths, "ignored.txt")
 }
+
+func TestPathsIsHostDialect(t *testing.T) {
+	require.Equal(t, fsops.HostPaths, NewBackend().Paths())
+}

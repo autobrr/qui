@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"maps"
 	"path"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -5053,12 +5052,12 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 // missing-files flag a file that exists (a skipped file is safe, a false
 // missing-files verdict can fire a destructive rule).
 //
-// basePath must be absolute in local form. An empty or relative save path would
-// otherwise join to a relative path that resolves against the process working
-// directory, so a file that exists would stat as missing.
-func buildFullPath(basePath, fileName string) (string, bool) {
-	base := filepath.FromSlash(basePath)
-	if base == "" || !filepath.IsAbs(base) {
+// basePath must be absolute in the backend's dialect. An empty or relative save
+// path would otherwise join to a relative path that resolves against the process
+// working directory, so a file that exists would stat as missing.
+func buildFullPath(d fsops.PathDialect, basePath, fileName string) (string, bool) {
+	base := d.FromSlash(basePath)
+	if base == "" || !d.IsAbs(base) {
 		return "", false
 	}
 	if fileName == "" || strings.ContainsRune(fileName, '\\') ||
@@ -5069,7 +5068,7 @@ func buildFullPath(basePath, fileName string) (string, bool) {
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
-	return filepath.Join(base, filepath.FromSlash(cleaned)), true
+	return d.Join(base, d.FromSlash(cleaned)), true
 }
 
 func hasWindowsDrivePrefix(p string) bool {
