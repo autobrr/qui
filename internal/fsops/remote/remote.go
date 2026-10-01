@@ -1,11 +1,12 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package remote implements the read half of fsops.Backend over SFTP, on the
-// pooled SSH connection the instance's stored credentials open. Write and
-// tree operations refuse with fsops.ErrUnsupported in this release. Remote
-// paths are slash-delimited, so this package uses path and never
-// path/filepath: the separator belongs to the remote host, not to ours.
+// Package remote implements fsops.Backend over SFTP, on the pooled SSH
+// connection the instance's stored credentials open. Reflinks and file
+// identity have no sftp operation and answer fsops.ErrUnsupported; hardlinks
+// need the server to advertise hardlink@openssh.com. Remote paths are
+// slash-delimited, so this package uses path and never path/filepath: the
+// separator belongs to the remote host, not to ours.
 package remote
 
 import (
@@ -19,6 +20,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/sftp"
 
@@ -74,7 +76,7 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	}
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
 	if err != nil {
-		return nil, readError("stat", p, err)
+		return nil, requestError("stat", p, err)
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -86,7 +88,7 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	}
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) })
 	if err != nil {
-		return nil, readError("lstat", p, err)
+		return nil, requestError("lstat", p, err)
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -121,7 +123,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	// fs.ErrNotExist from the call rather than as a lone channel entry.
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(root) })
 	if err != nil {
-		return nil, readError("lstat", root, err)
+		return nil, requestError("lstat", root, err)
 	}
 
 	ch := make(chan fsops.WalkEntry, 64)
@@ -259,7 +261,7 @@ func lost(err error) error {
 
 // readError is pathError for a failed sftp request: a server answer keeps
 // pkg/sftp's sentinel, a dropped transport becomes ErrConnectionLost.
-func readError(op, p string, err error) error {
+func requestError(op, p string, err error) error {
 	if lostConnection(err) {
 		err = lost(err)
 	}
@@ -274,7 +276,7 @@ func readDirError(p string, err error) error {
 	if errors.Is(err, io.EOF) {
 		return pathError("readdir", p, lost(err))
 	}
-	return readError("readdir", p, err)
+	return requestError("readdir", p, err)
 }
 
 func send(ctx context.Context, ch chan<- fsops.WalkEntry, entry fsops.WalkEntry) bool {
@@ -341,33 +343,233 @@ func statVFS(ctx context.Context, client *sftp.Client, op, p string) (*sftp.Stat
 	}
 	stat, err := await(ctx, func() (*sftp.StatVFS, error) { return client.StatVFS(p) })
 	if err != nil {
-		return nil, readError(op, p, err)
+		return nil, requestError(op, p, err)
 	}
 	return stat, nil
 }
 
-func (b *Backend) MkdirAll(ctx context.Context, _ string, _ fs.FileMode) error {
-	return readOnly(ctx, "mkdirall")
+// MkdirAll ignores perm: pkg/sftp sends SSH_FXP_MKDIR with empty attrs, so
+// the server's umask decides, the way it does for every file sftp creates.
+func (b *Backend) MkdirAll(ctx context.Context, p string, _ fs.FileMode) error {
+	client, err := b.client(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = mkdirAll(ctx, client, p)
+	return err
 }
 
-func (b *Backend) Remove(ctx context.Context, _ string, _ fsops.RemoveOptions) error {
-	return readOnly(ctx, "remove")
+// mkdirAll creates p and its missing ancestors and returns the directories
+// this call made, shallowest first, so a tree create can roll back exactly
+// those. Client.MkdirAll is not used: it reports nothing about what it made.
+// Stat follows a symlinked ancestor on purpose, as os.MkdirAll does: a link to
+// a directory is a directory for the purpose of creating children in it.
+func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, error) {
+	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
+	if err == nil {
+		if fi.IsDir() {
+			return nil, nil
+		}
+		return nil, pathError("mkdir", p, syscall.ENOTDIR)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return nil, requestError("stat", p, err)
+	}
+
+	var created []string
+	if parent := path.Dir(p); parent != p {
+		if created, err = mkdirAll(ctx, client, parent); err != nil {
+			return created, err
+		}
+	}
+	if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, client.Mkdir(p) }); err != nil {
+		// SSH_FX_FAILURE covers "exists" too: a concurrent attempt won the
+		// race, so the directory is there but not ours to record.
+		if fi, statErr := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) }); statErr == nil && fi.IsDir() {
+			return created, nil
+		}
+		return created, requestError("mkdir", p, err)
+	}
+	return append(created, p), nil
 }
 
-func (b *Backend) HardlinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-	return nil, readOnly(ctx, "hardlinktree")
+func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions) error {
+	client, err := b.client(ctx)
+	if err != nil {
+		return err
+	}
+	fi, err := lstat(ctx, client, p)
+	if err != nil {
+		return err
+	}
+	if opts.Recursive && fi.IsDir() {
+		return removeAll(ctx, client, p)
+	}
+	return remove(ctx, client, p, fi.IsDir())
+}
+
+// removeAll empties dir bottom-up and removes it. Client.RemoveAll is not
+// used: it Stats the root, so a symlinked root would empty the link's target.
+// Here every decision comes from lstat-shaped attrs, so a symlinked directory
+// is unlinked as a plain entry and never descended, on the root or below.
+//
+// SFTP v3 has no openat, so a directory swapped for a symlink between the
+// listing and the unlink can redirect the unlink. The re-lstat in remove
+// bounds that window to one round trip; closing it needs the exec tier.
+//
+// ponytail: serial, two round trips per entry on top of the listing; nothing
+// reachable in this release removes a large tree, and rm -rf -- over exec
+// (#2726) is the upgrade when one does.
+func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
+	entries, err := readDir(ctx, client, dir)
+	if err != nil {
+		return readDirError(dir, err)
+	}
+	for _, fi := range entries {
+		child := path.Join(dir, fi.Name())
+		if fi.IsDir() {
+			err = removeAll(ctx, client, child)
+		} else {
+			err = remove(ctx, client, child, false)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return remove(ctx, client, dir, true)
+}
+
+// remove unlinks one entry, re-checking with lstat first that it is still
+// what the caller saw: a directory swapped in under a file name is refused
+// rather than removed through, and an entry already gone is not an error.
+func remove(ctx context.Context, client *sftp.Client, p string, isDir bool) error {
+	fi, err := lstat(ctx, client, p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.IsDir() != isDir {
+		return pathError("remove", p, errors.New("entry changed type during removal"))
+	}
+	call := client.Remove
+	if isDir {
+		call = client.RemoveDirectory
+	}
+	if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, call(p) }); err != nil {
+		return requestError("remove", p, err)
+	}
+	return nil
+}
+
+func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, error) {
+	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) })
+	if err != nil {
+		return nil, requestError("lstat", p, err)
+	}
+	return fi, nil
+}
+
+const hardlinkExtension = "hardlink@openssh.com"
+
+// HardlinkTree mirrors hardlinktree.Create with one difference: a target that
+// already exists always fails. Locally a target that is already a link to the
+// source is skipped; sftp attrs carry no inode, so this backend cannot tell
+// that link from a stranger's file and refuses rather than guesses. A retry
+// after a crash therefore needs the partial tree removed by hand.
+func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	client, err := b.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Client.Link sends the extended packet unconditionally, so the gate is
+	// here, the way statVFS gates on its extension.
+	if _, ok := client.HasExtension(hardlinkExtension); !ok {
+		return nil, fmt.Errorf("hardlinktree: %w: server does not advertise %s", fsops.ErrUnsupported, hardlinkExtension)
+	}
+	if plan == nil || plan.RootDir == "" || len(plan.Files) == 0 {
+		return nil, errors.New("hardlinktree: plan is empty")
+	}
+
+	created := &fsops.TreeCreateResult{}
+	// Rollback runs on a context that outlives the caller's cancel: a tree
+	// half made because the job was cancelled is still ours to take back.
+	fail := func(err error) (*fsops.TreeCreateResult, error) {
+		if rollbackErr := b.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
+			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+		}
+		return nil, err
+	}
+
+	dirs, err := mkdirAll(ctx, client, plan.RootDir)
+	created.Dirs = append(created.Dirs, dirs...)
+	if err != nil {
+		return fail(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
+	}
+	for _, fp := range plan.Files {
+		dirs, err := mkdirAll(ctx, client, path.Dir(fp.TargetPath))
+		created.Dirs = append(created.Dirs, dirs...)
+		if err != nil {
+			return fail(fmt.Errorf("create directory %s: %w", path.Dir(fp.TargetPath), err))
+		}
+		if _, err := lstat(ctx, client, fp.TargetPath); err == nil {
+			return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fail(fmt.Errorf("check target: %w", err))
+		}
+		if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
+			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
+		}
+		created.Files = append(created.Files, fp.TargetPath)
+		created.Created++
+	}
+	return created, nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-	return nil, readOnly(ctx, "reflinktree")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("reflinktree: %w: sftp has no reflink operation", fsops.ErrUnsupported)
 }
 
+// RemoveTree is a path list, not a walk: each recorded file is unlinked, each
+// recorded directory removed deepest first and only when empty, so a
+// directory that gained a sibling torrent's files in the meantime stays.
 func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// A nil handle is nothing to remove, per the interface.
 	if created == nil {
-		return ctx.Err()
+		return nil
 	}
-	return readOnly(ctx, "removetree")
+	client, err := b.client(ctx)
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, f := range created.Files {
+		if err := remove(ctx, client, f, false); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	dirs := slices.Clone(created.Dirs)
+	slices.SortFunc(dirs, func(a, b string) int { return len(b) - len(a) })
+	for _, d := range dirs {
+		if err := remove(ctx, client, d, true); err != nil && firstErr == nil && !dirNotEmpty(ctx, client, d) {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// dirNotEmpty tells the rmdir failure RemoveTree expects from the ones it
+// reports: SSH_FX_FAILURE carries no errno, so the listing is the answer.
+func dirNotEmpty(ctx context.Context, client *sftp.Client, dir string) bool {
+	entries, err := readDir(ctx, client, dir)
+	return err == nil && len(entries) > 0
 }
 
 func (b *Backend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
@@ -375,16 +577,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, _ string) (bool, string, 
 		return false, "", err
 	}
 	return false, "reflinks are not available over sftp", nil
-}
-
-// readOnly is every mutating method's answer while this release ships reads
-// only; the op is named because the message reaches the user through a failed
-// job.
-func readOnly(ctx context.Context, op string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return fmt.Errorf("%s: %w: sftp backend is read-only in this release", op, fsops.ErrUnsupported)
 }
 
 // readDir goes through await although ReadDirContext takes ctx: pkg/sftp
