@@ -53,7 +53,6 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
 
     if (showBasicAuth) {
       if (data.basicPassword === "<redacted>") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { basicPassword, ...dataWithoutPassword } = data
         submitData = dataWithoutPassword
       } else {
@@ -81,7 +80,6 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
       }
       if (submitData.password === "") {
         // Omit empty password to preserve existing credentials
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, ...rest } = submitData
         submitData = rest
       }
@@ -94,7 +92,6 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
 
       if (submitData.apiKey === "<redacted>") {
         // Omit redacted placeholder to preserve existing API key
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { apiKey, ...rest } = submitData
         submitData = rest
       }
