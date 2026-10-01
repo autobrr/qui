@@ -114,6 +114,7 @@
   "errors": {
     "unknown": "Neznámá chyba",
     "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
     "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
     "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
   },

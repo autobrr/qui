@@ -114,6 +114,7 @@
   "errors": {
     "unknown": "Невідома помилка",
     "httpStatus": "Помилка HTTP! Статус: {{status}}",
+    "httpStatusHtml": "Помилка HTTP! Статус: {{status}} (сервер повернув сторінку помилки HTML)",
     "ssoHtmlResponse": "API повернув відповідь HTML замість JSON. Якщо ви за SSO-проксі (Cloudflare Access, Pangolin тощо), спробуйте оновити сторінку або знову відкрити URL у новій вкладці.",
     "torrentFileDownloadFailed": "Не вдалося завантажити торрент-файл: {{status}}"
   },

@@ -114,6 +114,7 @@
   "errors": {
     "unknown": "Unknown error",
     "httpStatus": "HTTP error! status: {{status}}",
+    "httpStatusHtml": "HTTP error! status: {{status}} (server returned HTML error page)",
     "ssoHtmlResponse": "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.",
     "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}"
   },

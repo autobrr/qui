@@ -534,7 +534,7 @@ class ApiClient {
         // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
         if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
           // Don't show raw HTML to user, provide a readable message
-          return { message: `${fallbackMessage} (server returned HTML error page)` }
+          return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
         }
 
         // Plain text error

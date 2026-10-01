@@ -114,6 +114,7 @@
   "errors": {
     "unknown": "未知错误",
     "httpStatus": "HTTP 错误！状态：{{status}}",
+    "httpStatusHtml": "HTTP 错误！状态：{{status}}（服务器返回了 HTML 错误页面）",
     "ssoHtmlResponse": "API 返回了 HTML 响应而不是 JSON。如果您位于 SSO 代理（Cloudflare Access、Pangolin 等）之后，请尝试刷新页面或在新标签页中重新打开该 URL。",
     "torrentFileDownloadFailed": "下载种子文件失败：{{status}}"
   },
