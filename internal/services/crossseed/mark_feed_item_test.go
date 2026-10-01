@@ -95,15 +95,15 @@ func TestMarkFeedItemWritesOnlyChangedOutcomes(t *testing.T) {
 
 func TestRunPruneLeavesFeedItemsSQLite(t *testing.T) {
 	t.Parallel()
-	runRunPruneLeavesFeedItems(t, testdb.NewMigratedSQLite)
+	checkRunPruneLeavesFeedItems(t, testdb.NewMigratedSQLite)
 }
 
 func TestRunPruneLeavesFeedItemsPostgresIntegration(t *testing.T) {
-	runRunPruneLeavesFeedItems(t, testdb.NewMigratedPostgres)
+	checkRunPruneLeavesFeedItems(t, testdb.NewMigratedPostgres)
 }
 
-// last_run_id's ON DELETE SET NULL made each run prune rewrite the feed rows that run wrote.
-func runRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+// CreateRun prunes the oldest run on every automation run; the feed rows written during it stay as they are.
+func checkRunPruneLeavesFeedItems(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 
 	ctx := t.Context()

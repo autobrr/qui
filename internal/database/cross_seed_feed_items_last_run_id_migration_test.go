@@ -22,7 +22,7 @@ func TestDropFeedItemsLastRunIDMigrationSQLite(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	// PRAGMA foreign_keys is per connection.
 	conn.SetMaxOpenConns(1)
-	checkDropFeedItemsLastRunIDMigration(t.Context(), t, conn, migrationsFS, "migrations/103_drop_cross_seed_feed_items_last_run_id.sql", "DATETIME", true)
+	checkDropFeedItemsLastRunIDMigration(t.Context(), t, conn, migrationsFS, "migrations/103_drop_cross_seed_feed_items_last_run_id.sql", true)
 }
 
 func TestDropFeedItemsLastRunIDMigrationPostgresIntegration(t *testing.T) {
@@ -32,11 +32,16 @@ func TestDropFeedItemsLastRunIDMigrationPostgresIntegration(t *testing.T) {
 	conn, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkDropFeedItemsLastRunIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/104_drop_cross_seed_feed_items_last_run_id.sql", "TIMESTAMP", false)
+	checkDropFeedItemsLastRunIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/104_drop_cross_seed_feed_items_last_run_id.sql", false)
 }
 
-func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, migration, timestampType string, sqlite bool) {
+func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, migration string, sqlite bool) {
 	t.Helper()
+
+	timestampType := "TIMESTAMP"
+	if sqlite {
+		timestampType = "DATETIME"
+	}
 
 	for _, stmt := range []string{
 		"CREATE TABLE torznab_indexers (id INTEGER PRIMARY KEY)",
@@ -85,28 +90,30 @@ func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, con
 	_, err = conn.ExecContext(ctx, "SELECT last_run_id FROM cross_seed_feed_items")
 	require.Error(t, err, "last_run_id should be gone")
 
-	rows, err := conn.QueryContext(ctx, "SELECT guid, indexer_id, title, last_status, info_hash FROM cross_seed_feed_items ORDER BY first_seen_at")
+	rows, err := conn.QueryContext(ctx, `SELECT guid, indexer_id, title, CAST(first_seen_at AS TEXT), CAST(last_seen_at AS TEXT), last_status, info_hash
+		FROM cross_seed_feed_items ORDER BY first_seen_at`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var got [][]any
 	for rows.Next() {
-		var guid, title, status string
+		var guid, title, firstSeen, lastSeen, status string
 		var indexerID int
 		var infoHash sql.NullString
-		require.NoError(t, rows.Scan(&guid, &indexerID, &title, &status, &infoHash))
-		got = append(got, []any{guid, indexerID, title, status, infoHash.String})
+		require.NoError(t, rows.Scan(&guid, &indexerID, &title, &firstSeen, &lastSeen, &status, &infoHash))
+		got = append(got, []any{guid, indexerID, title, firstSeen, lastSeen, status, infoHash.String})
 	}
 	require.NoError(t, rows.Err())
 	assert.Equal(t, [][]any{
-		{"with-run", 1, "Synthetic.Show.S01E01.1080p.WEB-DL.H.264-GRP", "processed", "0123456789abcdef0123456789abcdef01234567"},
-		{"without-run", 1, "Synthetic.Show.S01E02.1080p.WEB-DL.H.264-GRP", "skipped", ""},
+		{"with-run", 1, "Synthetic.Show.S01E01.1080p.WEB-DL.H.264-GRP", "2026-09-01 10:00:00", "2026-09-29 00:00:00", "processed", "0123456789abcdef0123456789abcdef01234567"},
+		{"without-run", 1, "Synthetic.Show.S01E02.1080p.WEB-DL.H.264-GRP", "2026-09-02 10:00:00", "2026-09-30 00:00:00", "skipped", ""},
 	}, got)
 
 	if sqlite {
-		var indexes int
-		require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_cross_seed_feed_items_indexer', 'idx_cross_seed_feed_items_last_seen')").Scan(&indexes))
-		assert.Equal(t, 2, indexes)
-		// Migration 092 dropped the touch trigger on purpose; the rebuild must not bring it back.
+		assert.Equal(t, []string{"guid", "indexer_id"}, queryStrings(ctx, t, conn, "SELECT name FROM pragma_table_info('cross_seed_feed_items') WHERE pk > 0 ORDER BY pk"))
+		assert.Equal(t, []string{"torznab_indexers indexer_id id CASCADE"}, queryStrings(ctx, t, conn, `SELECT "table" || ' ' || "from" || ' ' || "to" || ' ' || on_delete FROM pragma_foreign_key_list('cross_seed_feed_items')`))
+		assert.Equal(t, []string{"indexer_id 0"}, queryStrings(ctx, t, conn, "SELECT name || ' ' || \"desc\" FROM pragma_index_xinfo('idx_cross_seed_feed_items_indexer') WHERE key = 1"))
+		assert.Equal(t, []string{"last_seen_at 1"}, queryStrings(ctx, t, conn, "SELECT name || ' ' || \"desc\" FROM pragma_index_xinfo('idx_cross_seed_feed_items_last_seen') WHERE key = 1"))
+		// The touch trigger was dropped on purpose; the rebuild must not recreate it.
 		var triggers int
 		require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'cross_seed_feed_items'").Scan(&triggers))
 		assert.Zero(t, triggers)
@@ -114,4 +121,26 @@ func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, con
 		require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_foreign_key_check('cross_seed_feed_items')").Scan(&violations))
 		assert.Zero(t, violations)
 	}
+
+	_, err = conn.ExecContext(ctx, "DELETE FROM torznab_indexers WHERE id = 1")
+	require.NoError(t, err)
+	var remaining int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM cross_seed_feed_items").Scan(&remaining))
+	assert.Zero(t, remaining, "deleting the indexer should cascade to its feed rows")
+}
+
+func queryStrings(ctx context.Context, t *testing.T, conn *sql.DB, query string) []string {
+	t.Helper()
+
+	rows, err := conn.QueryContext(ctx, query)
+	require.NoError(t, err)
+	defer rows.Close()
+	var values []string
+	for rows.Next() {
+		var value string
+		require.NoError(t, rows.Scan(&value))
+		values = append(values, value)
+	}
+	require.NoError(t, rows.Err())
+	return values
 }
