@@ -26,7 +26,7 @@ func TestDefaultsFor(t *testing.T) {
 		CompletionSearchTags:           []string{"completion"},
 		WebhookTags:                    []string{"webhook"},
 		SkipAutoResumeRSS:              true,
-		SkipAutoResumeSeededSearch:     true,
+		SkipAutoResumeWebhook:          true,
 		RSSSourceCategories:            []string{"rss-in"},
 		RSSSourceTags:                  []string{"rss-tag"},
 		RSSSourceExcludeCategories:     []string{"rss-out"},
@@ -52,26 +52,39 @@ func TestDefaultsFor(t *testing.T) {
 		return d
 	}
 
+	// The second fixture turns the shared flags off. Across both fixtures each
+	// auto-resume setting has its own on/off pattern, so a Trigger that reads
+	// the wrong one fails.
+	sharedOff := &models.CrossSeedAutomationSettings{SkipAutoResumeRSS: true, SkipAutoResumeSeededSearch: true}
+
 	tests := []struct {
-		trigger trigger
-		want    triggerDefaults
+		trigger  trigger
+		settings *models.CrossSeedAutomationSettings
+		want     triggerDefaults
 	}{
-		{triggerRSS, shared(triggerDefaults{
+		{triggerRSS, settings, shared(triggerDefaults{
 			addTags:        []string{"rss"},
 			skipAutoResume: true,
 			sourceFilter:   sourceFilter{[]string{"rss-in"}, []string{"rss-tag"}, []string{"rss-out"}, []string{"rss-no"}},
 		})},
-		{triggerWebhook, shared(triggerDefaults{
-			addTags:      []string{"webhook"},
-			sourceFilter: sourceFilter{[]string{"hook-in"}, []string{"hook-tag"}, []string{"hook-out"}, []string{"hook-no"}},
+		{triggerWebhook, settings, shared(triggerDefaults{
+			addTags:        []string{"webhook"},
+			skipAutoResume: true,
+			sourceFilter:   sourceFilter{[]string{"hook-in"}, []string{"hook-tag"}, []string{"hook-out"}, []string{"hook-no"}},
 		})},
-		{triggerSeededSearch, shared(triggerDefaults{addTags: []string{"seeded"}, skipAutoResume: true})},
-		{triggerCompletion, shared(triggerDefaults{addTags: []string{"completion"}})},
+		{triggerSeededSearch, settings, shared(triggerDefaults{addTags: []string{"seeded"}})},
+		{triggerCompletion, settings, shared(triggerDefaults{addTags: []string{"completion"}})},
 		// Interactive apply: seeded search auto-resume, no tags, no source filters.
-		{triggerInteractiveApply, shared(triggerDefaults{skipAutoResume: true})},
+		{triggerInteractiveApply, settings, shared(triggerDefaults{})},
+
+		{triggerRSS, sharedOff, triggerDefaults{skipAutoResume: true}},
+		{triggerWebhook, sharedOff, triggerDefaults{}},
+		{triggerSeededSearch, sharedOff, triggerDefaults{skipAutoResume: true}},
+		{triggerCompletion, sharedOff, triggerDefaults{}},
+		{triggerInteractiveApply, sharedOff, triggerDefaults{skipAutoResume: true}},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, defaultsFor(tt.trigger, settings), "trigger %d", tt.trigger)
+		assert.Equal(t, tt.want, defaultsFor(tt.trigger, tt.settings), "trigger %d", tt.trigger)
 	}
 }
 
@@ -87,13 +100,12 @@ func TestTriggerDefaultsRequest(t *testing.T) {
 		startPaused:                  true,
 		category:                     "tv",
 	}
-	startPaused := true
 
 	assert.Equal(t, &CrossSeedRequest{
 		TorrentData:                   "ZGF0YQ==",
 		Category:                      "tv",
 		Tags:                          []string{"cross-seed"},
-		StartPaused:                   &startPaused,
+		StartPaused:                   new(true),
 		InheritSourceTags:             true,
 		IndexerName:                   "Indexer",
 		FindIndividualEpisodes:        true,
@@ -189,7 +201,6 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 	loader := func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 		return &models.CrossSeedAutomationSettings{SeededSearchTags: []string{"seeded"}, StartPaused: false, Category: &category}, nil
 	}
-	paused := true
 
 	tests := []struct {
 		name            string
@@ -198,7 +209,7 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 		wantStartPaused bool
 	}{
 		{"dialog tag and settings fallback", interactiveApplyRequest(true, nil), []string{"picked"}, false},
-		{"no tag and dialog paused", interactiveApplyRequest(false, &paused), nil, true},
+		{"no tag and dialog paused", interactiveApplyRequest(false, new(true)), nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -217,7 +228,6 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 
 func TestWebhookCategoryAndStartPausedFallback(t *testing.T) {
 	category := "setting"
-	paused := true
 	tests := []struct {
 		name            string
 		req             AutobrrApplyRequest
@@ -225,7 +235,7 @@ func TestWebhookCategoryAndStartPausedFallback(t *testing.T) {
 		wantStartPaused bool
 	}{
 		{"settings when the body has none", AutobrrApplyRequest{}, "setting", false},
-		{"body wins", AutobrrApplyRequest{Category: "body", StartPaused: &paused}, "body", true},
+		{"body wins", AutobrrApplyRequest{Category: "body", StartPaused: new(true)}, "body", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

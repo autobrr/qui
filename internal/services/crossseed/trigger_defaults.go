@@ -3,7 +3,11 @@
 
 package crossseed
 
-import "github.com/autobrr/qui/internal/models"
+import (
+	"slices"
+
+	"github.com/autobrr/qui/internal/models"
+)
 
 // trigger is how a cross-seed was found.
 type trigger int
@@ -83,21 +87,20 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 
 // request builds the CrossSeedRequest these defaults describe.
 func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest {
-	startPaused := d.startPaused
 	return &CrossSeedRequest{
 		TorrentData:                   torrentData,
 		Category:                      d.category,
-		Tags:                          append([]string(nil), d.addTags...),
-		StartPaused:                   &startPaused,
+		Tags:                          slices.Clone(d.addTags),
+		StartPaused:                   new(d.startPaused),
 		InheritSourceTags:             d.inheritSourceTags,
 		IndexerName:                   indexer,
 		FindIndividualEpisodes:        d.findIndividualEpisodes,
 		SkipAutoResume:                d.skipAutoResume,
 		SkipRecheck:                   d.skipRecheck,
 		SkipPieceBoundarySafetyCheck:  d.skipPieceBoundarySafetyCheck,
-		SourceFilterCategories:        append([]string(nil), d.sourceFilter.categories...),
-		SourceFilterTags:              append([]string(nil), d.sourceFilter.tags...),
-		SourceFilterExcludeCategories: append([]string(nil), d.sourceFilter.excludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), d.sourceFilter.excludeTags...),
+		SourceFilterCategories:        slices.Clone(d.sourceFilter.categories),
+		SourceFilterTags:              slices.Clone(d.sourceFilter.tags),
+		SourceFilterExcludeCategories: slices.Clone(d.sourceFilter.excludeCategories),
+		SourceFilterExcludeTags:       slices.Clone(d.sourceFilter.excludeTags),
 	}
 }

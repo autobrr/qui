@@ -177,7 +177,7 @@ The **Expected HTTP status** field needs an autobrr release with [autobrr/autobr
   5. The category of the matched torrent
 
   A season pack that qui builds from local episodes ignores the `category` field.
-- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui uses the `startPaused` automation setting, which you can set only through the API and which is on by default. With the default, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
+- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui uses the `startPaused` automation setting. You can set this setting only through the API, and it is on by default. With the default, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 The action performs the first torrent-file download in this flow. qui calculates the actual total from the torrent metadata.

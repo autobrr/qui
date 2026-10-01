@@ -5290,8 +5290,8 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 
 	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
-		// Keep the legacy path byte-for-byte compatible for clients that do not
-		// send announcement provenance.
+		// Clients that send no announcement provenance keep the legacy strict
+		// match.
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
 	} else {
 		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
