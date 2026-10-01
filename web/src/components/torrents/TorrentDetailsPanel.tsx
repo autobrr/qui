@@ -99,7 +99,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [fileSort, setFileSort] = useState(DEFAULT_FILE_SORT)
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
   const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
-  const hasLocalFilesystemAccess = instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false
+  const canReadContent = instances?.find(i => i.id === instanceId)?.capabilities.content ?? false
   const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
   const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
@@ -803,7 +803,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [])
 
-  const discScans = useDiscScans(instanceId, torrent?.hash ?? "", files, hasLocalFilesystemAccess)
+  const discScans = useDiscScans(instanceId, torrent?.hash ?? "", files, canReadContent)
   const [discReportPath, setDiscReportPath] = useState<string | null>(null)
   const { runsByPath: discRuns, start: { mutate: startDiscScan, reset: resetDiscScan } } = discScans
   const handleShowDiscReport = useCallback((discPath: string) => {
@@ -1642,10 +1642,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onSetFolderPriority={handleSetFolderPriority}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
-                onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
-                onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
+                onDownloadFile={canReadContent ? handleDownloadFile : undefined}
+                onShowMediaInfo={canReadContent ? handleShowMediaInfo : undefined}
                 discScans={discScans.runsByPath}
-                onShowDiscReport={hasLocalFilesystemAccess ? handleShowDiscReport : undefined}
+                onShowDiscReport={canReadContent ? handleShowDiscReport : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1704,10 +1704,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       onSetFolderPriority={handleSetFolderPriority}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
-                      onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
-                      onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
+                      onDownloadFile={canReadContent ? handleDownloadFile : undefined}
+                      onShowMediaInfo={canReadContent ? handleShowMediaInfo : undefined}
                       discScans={discScans.runsByPath}
-                      onShowDiscReport={hasLocalFilesystemAccess ? handleShowDiscReport : undefined}
+                      onShowDiscReport={canReadContent ? handleShowDiscReport : undefined}
                     />
                   </div>
                 </ScrollArea>

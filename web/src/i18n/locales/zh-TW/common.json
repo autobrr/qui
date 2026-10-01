@@ -66,6 +66,9 @@
     "allScope": "全部",
     "unified": "統一檢視"
   },
+  "titleBar": {
+    "speeds": "下載：{{download}} 上傳：{{upload}}"
+  },
   "unifiedScope": {
     "unified": "統一檢視",
     "collapseScope": "摺疊統一檢視",
@@ -109,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "未找到結果。"
+  },
+  "errors": {
+    "unknown": "未知錯誤",
+    "httpStatus": "HTTP 錯誤！狀態：{{status}}",
+    "httpStatusHtml": "HTTP 錯誤！狀態：{{status}}（伺服器傳回了 HTML 錯誤頁面）",
+    "ssoHtmlResponse": "API 傳回了 HTML 回應而非 JSON。如果您位於 SSO 代理（Cloudflare Access、Pangolin 等）之後，請嘗試重新整理頁面或在新分頁中重新開啟該 URL。",
+    "torrentFileDownloadFailed": "下載種子檔案失敗：{{status}}"
   },
   "status": {
     "disabled": "已停用",
@@ -158,9 +168,6 @@
     "waitingDescription": "重新載入以套用最新的 qui 版本。",
     "activatedTitle": "qui 已更新",
     "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
-  },
-  "apiErrors": {
-    "htmlErrorPage": "{{message}}（伺服器傳回了 HTML 錯誤頁面）"
   },
   "notFound": {
     "title": "迷路了？",

@@ -6,7 +6,6 @@ package dirscan
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -16,7 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerolog.Logger) (map[string]string, error) {
+func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (map[string]string, error) {
 	if s == nil || s.syncManager == nil {
 		return nil, nil
 	}
@@ -36,11 +35,6 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerol
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
-	}
-
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get backend: %w", err)
 	}
 
 	index := make(map[string]string, len(filesByHash))
@@ -82,8 +76,9 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 }
 
 func addTorrentFilesToFileIDIndex(ctx context.Context, index map[string]string, hash, savePath string, files qbt.TorrentFiles, backend fsops.Backend) (statErrors int) {
+	d := backend.Paths()
 	for _, file := range files {
-		absPath := filepath.Join(savePath, filepath.FromSlash(file.Name))
+		absPath := d.Join(savePath, d.FromSlash(file.Name))
 		// Stat, not Lstat: symlinked torrent data must index the target's
 		// identity or symlink-farm setups lose already-seeding detection.
 		info, err := backend.Stat(ctx, absPath)

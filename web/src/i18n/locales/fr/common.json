@@ -66,6 +66,9 @@
     "allScope": "TOUS",
     "unified": "Unifié"
   },
+  "titleBar": {
+    "speeds": "R : {{download}} E : {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unifié",
     "collapseScope": "Réduire la portée unifiée",
@@ -109,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "Aucun résultat trouvé."
+  },
+  "errors": {
+    "unknown": "Erreur inconnue",
+    "httpStatus": "Erreur HTTP ! Statut : {{status}}",
+    "httpStatusHtml": "Erreur HTTP ! Statut : {{status}} (le serveur a renvoyé une page d'erreur HTML)",
+    "ssoHtmlResponse": "L'API a renvoyé une réponse HTML au lieu de JSON. Si vous êtes derrière un proxy SSO (Cloudflare Access, Pangolin, etc.), essayez d'actualiser la page ou de rouvrir l'URL dans un nouvel onglet.",
+    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}"
   },
   "status": {
     "disabled": "Désactivé",
@@ -158,9 +168,6 @@
     "waitingDescription": "Rechargez pour appliquer la dernière version de qui.",
     "activatedTitle": "qui a été mis à jour",
     "activatedDescription": "Rechargez quand cela vous convient pour terminer l'installation de la dernière version."
-  },
-  "apiErrors": {
-    "htmlErrorPage": "{{message}} (le serveur a renvoyé une page d'erreur HTML)"
   },
   "notFound": {
     "title": "Oups ! Perdu dans l'essaim ?",

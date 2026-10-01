@@ -66,6 +66,9 @@
     "allScope": "VŠE",
     "unified": "Unifikované"
   },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unifikované",
     "collapseScope": "Sbalit unifikovaný rozsah",
@@ -109,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "Žádné výsledky."
+  },
+  "errors": {
+    "unknown": "Neznámá chyba",
+    "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
+    "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
   },
   "status": {
     "disabled": "Vypnuto",
@@ -158,9 +168,6 @@
     "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",
     "activatedTitle": "qui bylo aktualizováno",
     "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
-  },
-  "apiErrors": {
-    "htmlErrorPage": "{{message}} (server vrátil chybovou stránku HTML)"
   },
   "notFound": {
     "title": "Ajeje! Ztratil jsi se?",

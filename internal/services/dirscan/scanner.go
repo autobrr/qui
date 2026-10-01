@@ -87,7 +87,7 @@ func (s *Scanner) SetFileIDIndex(index map[string]string) {
 // ScanDirectory walks a directory and returns searchees.
 func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResult, error) {
 	result := &ScanResult{}
-	rootPath = filepath.Clean(rootPath)
+	rootPath = s.backend.Paths().Clean(rootPath)
 
 	dirEntries, err := s.backend.ReadDir(ctx, rootPath)
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 			continue
 		}
 
-		entryPath := filepath.Join(rootPath, entry.Name)
+		entryPath := s.backend.Paths().Join(rootPath, entry.Name)
 		s.processRootEntry(ctx, entry, entryPath, result)
 		if err := ctx.Err(); err != nil {
 			return result, fmt.Errorf("scan directory: %w", err)

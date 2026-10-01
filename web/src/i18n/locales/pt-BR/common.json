@@ -66,6 +66,9 @@
     "allScope": "TODOS",
     "unified": "Unificado"
   },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unificado",
     "collapseScope": "Recolher escopo unificado",
@@ -109,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "Nenhum resultado encontrado."
+  },
+  "errors": {
+    "unknown": "Erro desconhecido",
+    "httpStatus": "Erro HTTP! Status: {{status}}",
+    "httpStatusHtml": "Erro HTTP! Status: {{status}} (o servidor retornou uma página de erro HTML)",
+    "ssoHtmlResponse": "A API retornou uma resposta HTML em vez de JSON. Se você estiver atrás de um proxy SSO (Cloudflare Access, Pangolin etc.), tente atualizar a página ou reabrir a URL em uma nova aba.",
+    "torrentFileDownloadFailed": "Falha ao baixar o arquivo torrent: {{status}}"
   },
   "status": {
     "disabled": "Desativado",
@@ -158,9 +168,6 @@
     "waitingDescription": "Recarregue para aplicar a versão mais recente do qui.",
     "activatedTitle": "qui atualizado",
     "activatedDescription": "Recarregue quando for conveniente para concluir a instalação da versão mais recente."
-  },
-  "apiErrors": {
-    "htmlErrorPage": "{{message}} (o servidor retornou uma página de erro HTML)"
   },
   "notFound": {
     "title": "Ops! Perdido no swarm?",

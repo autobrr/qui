@@ -17,7 +17,7 @@ var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
 // These policies are derived from torrent content and override user settings.
 type AddPolicy struct {
 	// ForcePaused forces the torrent to be added in paused/stopped state
-	// regardless of user's StartPaused setting.
+	// regardless of the request's StartPaused.
 	ForcePaused bool
 
 	// DiscLayout indicates this is a disc-based media torrent (Blu-ray/DVD).

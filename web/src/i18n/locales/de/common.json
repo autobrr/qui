@@ -66,6 +66,9 @@
     "allScope": "ALLE",
     "unified": "Vereinheitlicht"
   },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Vereinheitlicht",
     "collapseScope": "Vereinheitlichten Bereich einklappen",
@@ -109,6 +112,13 @@
   },
   "feedback": {
     "noResultsFound": "Keine Ergebnisse gefunden."
+  },
+  "errors": {
+    "unknown": "Unbekannter Fehler",
+    "httpStatus": "HTTP-Fehler! Status: {{status}}",
+    "httpStatusHtml": "HTTP-Fehler! Status: {{status}} (Server hat eine HTML-Fehlerseite zurückgegeben)",
+    "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
+    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}"
   },
   "status": {
     "disabled": "Deaktiviert",
@@ -158,9 +168,6 @@
     "waitingDescription": "Neu laden, um die neueste qui-Version zu übernehmen.",
     "activatedTitle": "qui wurde aktualisiert",
     "activatedDescription": "Bei Gelegenheit neu laden, um die Installation der neuesten Version abzuschließen."
-  },
-  "apiErrors": {
-    "htmlErrorPage": "{{message}} (Server hat eine HTML-Fehlerseite zurückgegeben)"
   },
   "notFound": {
     "title": "Hoppla! Im Schwarm verloren?",

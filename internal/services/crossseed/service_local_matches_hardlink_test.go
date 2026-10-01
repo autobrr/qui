@@ -79,12 +79,12 @@ func hardlinkTestCandidate(candidateDir string) *qbittorrent.CrossInstanceTorren
 
 func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 	return &localMatchContext{
-		ctx:               context.Background(),
-		svc:               svc,
-		sourceInstanceID:  1,
-		sourceHash:        hlSourceHash,
-		sourceSavePath:    sourceDir,
-		sourceHasFSAccess: true,
+		ctx:                   context.Background(),
+		svc:                   svc,
+		sourceInstanceID:      1,
+		sourceHash:            hlSourceHash,
+		sourceSavePath:        sourceDir,
+		sourceHasFileIdentity: true,
 	}
 }
 
@@ -150,9 +150,9 @@ func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1}, candidate))
 
-	// Source instance lacks filesystem access.
+	// Source instance lacks trusted file identity.
 	matchCtx = hardlinkTestMatchCtx(svc, sourceDir)
-	matchCtx.sourceHasFSAccess = false
+	matchCtx.sourceHasFileIdentity = false
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, candidate))
 }
 

@@ -368,7 +368,7 @@ export function getOperatorsForField(field: string) {
 }
 
 // Capability types for disabling fields/states in query builder
-export type CapabilityKey = "trackerHealth" | "localFilesystemAccess"
+export type CapabilityKey = "trackerHealth" | "localFilesystemAccess" | "fileIdentity"
 
 export type Capabilities = Record<CapabilityKey, boolean>
 
@@ -404,8 +404,8 @@ export const FIELD_REQUIREMENTS = {
   TRACKER_STATUS: "trackerHealth",
   TRACKER_MESSAGE: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
-  HARDLINK_SCOPE: "localFilesystemAccess",
-  HARDLINK_SCOPE_CROSS: "localFilesystemAccess",
+  HARDLINK_SCOPE: "fileIdentity",
+  HARDLINK_SCOPE_CROSS: "fileIdentity",
 } as const;
 
 export const STATE_VALUE_REQUIREMENTS = {
@@ -424,8 +424,10 @@ export function getFieldLabel(field: string, t: TFunction): string {
 }
 
 /** Get translated reason a field or state value is unavailable on this instance */
-export function getCapabilityReason(capability: keyof typeof CAPABILITY_REASONS, t: TFunction): string {
-  return t(`queryBuilder.capabilityReasons.${capability}`, { ns: "automations", defaultValue: CAPABILITY_REASONS[capability] });
+export function getCapabilityReason(capability: CapabilityKey, t: TFunction): string {
+  // Only a local instance has file identity until #2726, so it shares that reason.
+  const reason = capability === "fileIdentity" ? "localFilesystemAccess" : capability;
+  return t(`queryBuilder.capabilityReasons.${reason}`, { ns: "automations", defaultValue: CAPABILITY_REASONS[reason] });
 }
 
 /** Get translated label for a field group */

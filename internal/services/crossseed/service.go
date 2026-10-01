@@ -501,7 +501,7 @@ type pendingResume struct {
 	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
 	budgetBytes        *int64
 	forgivenessGranted bool
-	// forgivenessEvalFailed marks that the LAST forgiveness or hardlink-gate
+	// forgivenessEvalFailed marks that the LAST forgiveness or linked-file check
 	// evaluation could not load its qBittorrent evidence; terminal branches keep
 	// the entry and retry instead of dropping it on a transient error.
 	forgivenessEvalFailed         bool
@@ -524,17 +524,17 @@ type pendingResume struct {
 	// would write into the source through the shared inode. Paths, not indexes:
 	// qBittorrent drops pad files from its file list and renumbers.
 	linkedPaths map[string]struct{}
-	// blockedLinkedFile names the linked file that tripped the gate on the last
+	// blockedLinkedFile names the linked file that tripped the check on the last
 	// evaluation, with its missing bytes.
 	blockedLinkedFile  string
 	blockedLinkedBytes int64
-	// blockedRun is the season pack history row to append when the gate blocks,
+	// blockedRun is the season pack history row to append when the check blocks,
 	// since the apply row was written before the recheck ran. nil for cross-seed
 	// adds, whose result already went back to the caller.
 	blockedRun *models.SeasonPackRun
 }
 
-// leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
+// leftPausedMsg names the linked file that tripped the linked-file check, else fallback.
 func (req *pendingResume) leftPausedMsg(fallback string) string {
 	if req.blockedLinkedFile == "" {
 		return fallback
@@ -809,12 +809,13 @@ func (s *Service) getBackendPool() *fsops.Pool {
 	return v.(*fsops.Pool)
 }
 
-func (s *Service) getBackendForInstance(ctx context.Context, instanceID int) (fsops.Backend, error) {
+func (s *Service) getBackendForInstance(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, error) {
 	pool := s.getBackendPool()
 	if pool == nil {
 		return nil, errors.New("backend pool not configured")
 	}
-	return pool.GetBackend(ctx, instanceID)
+	backend, _, err := pool.Require(ctx, instanceID, capability)
+	return backend, err
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service
@@ -882,12 +883,12 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Create match context with lazy file loading. Files are fetched only when
 	// content-path overlap or linked-copy verification needs them.
 	matchCtx := &localMatchContext{
-		ctx:               ctx,
-		svc:               s,
-		sourceInstanceID:  sourceInstanceID,
-		sourceHash:        sourceTorrent.Hash,
-		sourceSavePath:    sourceTorrent.SavePath,
-		sourceHasFSAccess: instanceHasLocalFSAccess(instances, sourceInstanceID),
+		ctx:                   ctx,
+		svc:                   s,
+		sourceInstanceID:      sourceInstanceID,
+		sourceHash:            sourceTorrent.Hash,
+		sourceSavePath:        sourceTorrent.SavePath,
+		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
 	}
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
@@ -1024,12 +1025,12 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
-	svc               *Service
-	sourceInstanceID  int
-	sourceHash        string
-	sourceSavePath    string
-	sourceHasFSAccess bool
+	ctx                   context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	svc                   *Service
+	sourceInstanceID      int
+	sourceHash            string
+	sourceSavePath        string
+	sourceHasFileIdentity bool
 
 	// Lazy-loaded source file data
 	fetched          bool
@@ -1096,7 +1097,7 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		return nil
 	}
 
-	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID)
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, models.CapabilityIdentity)
 	if err != nil {
 		// Unlike a per-file stat failure, a backend outage discards ALL
 		// hardlink evidence for the instance — record it so strict mode
@@ -1146,8 +1147,8 @@ func (s *Service) localLinkedMatchType(
 	candidateInstance *models.Instance,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 ) string {
-	if matchCtx == nil || !matchCtx.sourceHasFSAccess ||
-		candidateInstance == nil || !candidateInstance.HasLocalFilesystemAccess ||
+	if matchCtx == nil || !matchCtx.sourceHasFileIdentity ||
+		candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
 		candidate == nil || candidate.ContentPath == "" {
 		return ""
 	}
@@ -1169,7 +1170,7 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID)
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, models.CapabilityIdentity)
 	if err != nil {
 		// A backend outage discards all evidence for the candidate — record it
 		// so strict mode fails the check instead of reading "no cross-seeds".
@@ -1190,7 +1191,7 @@ func (s *Service) localLinkedMatchType(
 	if filesShareAllocation == nil {
 		return ""
 	}
-	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID)
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, models.CapabilityIdentity)
 	if err != nil {
 		if matchCtx.verificationErr == nil {
 			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)
@@ -1464,12 +1465,12 @@ func hasWindowsDrivePrefix(name string) bool {
 		name[1] == ':'
 }
 
-// instanceHasLocalFSAccess reports whether the instance with the given ID has
-// local filesystem access enabled.
-func instanceHasLocalFSAccess(instances []*models.Instance, instanceID int) bool {
+// instanceHasFileIdentity reports whether qui trusts the file identity of the
+// instance with the given ID.
+func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool {
 	for _, instance := range instances {
 		if instance.ID == instanceID {
-			return instance.HasLocalFilesystemAccess
+			return models.FilesystemCapabilitiesOf(instance).Identity
 		}
 	}
 	return false
@@ -1675,26 +1676,21 @@ type AutomationRunOptions struct {
 
 // SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	InstanceID                   int
-	Categories                   []string
-	Tags                         []string
-	ExcludeCategories            []string // Categories to exclude from source filtering
-	ExcludeTags                  []string // Tags to exclude from source filtering
-	IntervalSeconds              int
-	IndexerIDs                   []int
-	DisableTorznab               bool
-	CooldownMinutes              int
-	FindIndividualEpisodes       bool
-	RequestedBy                  string
-	StartPaused                  bool
-	CategoryOverride             *string
-	TagsOverride                 []string
-	InheritSourceTags            bool
-	SpecificHashes               []string
-	SkipAutoResume               bool
-	SkipRecheck                  bool
-	RescueTitleMismatches        bool
-	SkipPieceBoundarySafetyCheck bool
+	// triggerDefaults is filled from settings at run start; callers never set it.
+	triggerDefaults
+
+	InstanceID            int
+	Categories            []string
+	Tags                  []string
+	ExcludeCategories     []string // Categories to exclude from source filtering
+	ExcludeTags           []string // Tags to exclude from source filtering
+	IntervalSeconds       int
+	IndexerIDs            []int
+	DisableTorznab        bool
+	CooldownMinutes       int
+	RequestedBy           string
+	SpecificHashes        []string
+	RescueTitleMismatches bool
 	// EnsembleSeasonSearch adds virtual season-pack searches for groups of
 	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
 	// start; never set by callers.
@@ -3199,15 +3195,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	searchState := &searchRunState{
 		opts: SearchRunOptions{
-			InstanceID:                   instanceID,
-			FindIndividualEpisodes:       settings.FindIndividualEpisodes,
-			StartPaused:                  settings.StartPaused,
-			SkipAutoResume:               settings.SkipAutoResumeCompletion,
-			SkipRecheck:                  settings.SkipRecheck,
-			SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
-			CategoryOverride:             settings.Category,
-			TagsOverride:                 append([]string(nil), settings.CompletionSearchTags...),
-			InheritSourceTags:            settings.InheritSourceTags,
+			triggerDefaults: defaultsFor(triggerCompletion, settings),
+			InstanceID:      instanceID,
 		},
 	}
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
@@ -3401,31 +3390,13 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}
 	}
 
-	if settings != nil {
-		if opts.CategoryOverride == nil {
-			opts.CategoryOverride = settings.Category
-		}
-		// Use seeded search tags from settings for manual/background seeded search runs
-		if len(opts.TagsOverride) == 0 {
-			opts.TagsOverride = append([]string(nil), settings.SeededSearchTags...)
-		}
-		opts.InheritSourceTags = settings.InheritSourceTags
-		opts.StartPaused = settings.StartPaused
-		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
-		opts.SkipRecheck = settings.SkipRecheck
-		opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
-		opts.SkipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-		if !settings.FindIndividualEpisodes {
-			opts.FindIndividualEpisodes = false
-		} else if !opts.FindIndividualEpisodes {
-			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
-		}
-		// Targeted re-searches of specific torrents stay episode-scoped, and
-		// Gazelle-only runs have no TV indexers to ask for packs.
-		opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
-			len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
-	}
-	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
+	opts.triggerDefaults = defaultsFor(triggerSeededSearch, settings)
+	opts.addTags = normalizeStringSlice(opts.addTags)
+	opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
+	// Targeted re-searches of specific torrents stay episode-scoped, and
+	// Gazelle-only runs have no TV indexers to ask for packs.
+	opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
+		len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
 
 	if opts.DisableTorznab {
 		opts.IndexerIDs = []int{}
@@ -4481,28 +4452,8 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 }
 
 func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
-	startPaused := settings.StartPaused
-	skipIfExists := true
-	req := &CrossSeedRequest{
-		TorrentData:                   encodedTorrent,
-		TargetInstanceIDs:             append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                          append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:             settings.InheritSourceTags,
-		SkipIfExists:                  &skipIfExists,
-		IndexerName:                   sourceIndexer,
-		FindIndividualEpisodes:        settings.FindIndividualEpisodes,
-		SkipAutoResume:                settings.SkipAutoResumeRSS,
-		SkipRecheck:                   settings.SkipRecheck,
-		SkipPieceBoundarySafetyCheck:  settings.SkipPieceBoundarySafetyCheck,
-		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
-		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
-		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
-		StartPaused:                   &startPaused,
-	}
-	if settings.Category != nil {
-		req.Category = *settings.Category
-	}
+	req := defaultsFor(triggerRSS, settings).request(encodedTorrent, sourceIndexer)
+	req.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
 	return req
 }
 
@@ -5316,74 +5267,31 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		return nil, err
 	}
 
-	settings, settingsErr := s.GetAutomationSettings(ctx)
-	if settingsErr != nil {
-		log.Warn().Err(settingsErr).Msg("Failed to load automation settings for autobrr apply defaults")
-		settings = nil
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
-	findIndividualEpisodes := false
+	crossReq := defaultsFor(triggerWebhook, settings).request(req.TorrentData, req.Indexer)
+	crossReq.TargetInstanceIDs = targetInstanceIDs
+	if req.Category != "" {
+		crossReq.Category = req.Category
+	}
+	if req.StartPaused != nil {
+		crossReq.StartPaused = req.StartPaused
+	}
+	if len(req.Tags) > 0 {
+		crossReq.Tags = req.Tags
+	}
 	if req.FindIndividualEpisodes != nil {
-		findIndividualEpisodes = *req.FindIndividualEpisodes
-	} else if settings != nil {
-		findIndividualEpisodes = settings.FindIndividualEpisodes
+		crossReq.FindIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
-	// Use request tags if provided, otherwise fall back to webhook tags from settings
-	tags := req.Tags
-	if len(tags) == 0 && settings != nil {
-		tags = append([]string(nil), settings.WebhookTags...)
-	}
-
-	inheritSourceTags := false
-	if settings != nil {
-		inheritSourceTags = settings.InheritSourceTags
-	}
-
-	skipAutoResume := false
-	if settings != nil {
-		skipAutoResume = settings.SkipAutoResumeWebhook
-	}
-
-	skipRecheck := false
-	if settings != nil {
-		skipRecheck = settings.SkipRecheck
-	}
-
-	skipPieceBoundarySafetyCheck := false
-	if settings != nil {
-		skipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-	}
-
-	crossReq := &CrossSeedRequest{
-		TorrentData:                  req.TorrentData,
-		TargetInstanceIDs:            targetInstanceIDs,
-		Category:                     req.Category,
-		Tags:                         tags,
-		InheritSourceTags:            inheritSourceTags,
-		StartPaused:                  req.StartPaused,
-		SkipIfExists:                 req.SkipIfExists,
-		FindIndividualEpisodes:       findIndividualEpisodes,
-		SkipAutoResume:               skipAutoResume,
-		SkipRecheck:                  skipRecheck,
-		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-		IndexerName:                  req.Indexer,
-	}
-	// Pass webhook source filters so CrossSeed respects them when finding candidates
-	if settings != nil {
-		crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
-		crossReq.SourceFilterTags = append([]string(nil), settings.WebhookSourceTags...)
-		crossReq.SourceFilterExcludeCategories = append([]string(nil), settings.WebhookSourceExcludeCategories...)
-		crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
-	}
-
-	var (
-		resp *CrossSeedResponse
-		err  error
-	)
+	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
-		// Keep the legacy path byte-for-byte compatible for clients that do not
-		// send announcement provenance.
+		// Clients that send no announcement provenance keep the legacy strict
+		// match.
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
 	} else {
 		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
@@ -5466,7 +5374,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
 				continue
 			}
-			if settings != nil && !matchesWebhookSourceFilters(torrent, settings) {
+			if !matchesWebhookSourceFilters(torrent, settings) {
 				continue
 			}
 
@@ -5476,7 +5384,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			}
 			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, candidate, actualSize, announcementMatchPolicy{
 				findIndividualEpisodes: request.FindIndividualEpisodes,
-				rescueTitleMismatches:  settings != nil && settings.RescueTitleMismatches && !request.SkipRecheck,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !request.SkipRecheck,
 				allowUnknownSize:       false,
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
@@ -6649,7 +6557,7 @@ func pendingResumeBudgetForLog(req *pendingResume) int64 {
 // pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
 // Threshold mode compares verified progress. Budget mode compares missing bytes against the
 // budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
-// sidecar files. Hardlink entries then pass the linked-file gate.
+// sidecar files. Hardlink entries then pass the linked-file check.
 func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
 	req.forgivenessEvalFailed = false
 	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
@@ -6662,48 +6570,69 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 	return s.hardlinkResumeAllowed(instanceID, req)
 }
 
-// pieceStateReader is the sync-manager method the hardlink gate needs beyond
-// qbittorrentSync. Without piece states the entry retries until the absolute
-// timeout; the pin keeps the real sync manager on the gate without widening
-// qbittorrentSync for its test doubles.
-type pieceStateReader interface {
+// LinkedFileReader is what the ADR 0004 linked-file check reads: the file list
+// and the piece states of one torrent.
+type LinkedFileReader interface {
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
 }
 
-var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
+// The pin keeps the real sync manager on the check without widening
+// qbittorrentSync for its test doubles.
+var _ LinkedFileReader = (*qbittorrent.SyncManager)(nil)
 
 // hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
 // that no pending file shares. Fetch failures keep the entry for a retry.
-// Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
 func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 	defer cancel()
-	ctx = qbittorrent.WithForceFilesRefresh(ctx)
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
-	files := filesByHash[normalizeHash(req.hash)]
-	if err != nil || len(files) == 0 {
+	reader, ok := s.syncManager.(LinkedFileReader)
+	if !ok {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-	// Empty piece states would make every incomplete linked file look mismatched,
-	// which blocks the boundary packs the gate must let through; retry instead.
-	var pieces []qbt.PieceState
-	if reader, ok := s.syncManager.(pieceStateReader); ok {
-		pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash)
-	}
-	if err != nil || len(pieces) == 0 {
+	name, missing, err := MismatchedLinkedFile(ctx, reader, instanceID, req.hash, req.linkedPaths)
+	if err != nil {
 		req.forgivenessEvalFailed = true
 		return false
 	}
-
-	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
 	if name == "" {
 		return true
 	}
 	req.blockedLinkedFile = name
 	req.blockedLinkedBytes = missing
 	return false
+}
+
+// MismatchedLinkedFile runs the linked-file check before a hardlink add resumes.
+// It returns the first linked file whose failed pieces no pending file shares,
+// with its missing bytes, or "" when the resume is safe. linked holds torrent
+// paths. A failed or empty read returns an error: the caller retries and does
+// not resume. Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
+func MismatchedLinkedFile(ctx context.Context, reader LinkedFileReader, instanceID int, hash string, linked map[string]struct{}) (string, int64, error) {
+	ctx = qbittorrent.WithForceFilesRefresh(ctx)
+
+	filesByHash, err := reader.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	if err != nil {
+		return "", 0, fmt.Errorf("read file list: %w", err)
+	}
+	files := filesByHash[normalizeHash(hash)]
+	if len(files) == 0 {
+		return "", 0, errors.New("read file list: empty")
+	}
+	// Empty piece states would make every incomplete linked file look mismatched,
+	// which blocks the boundary packs the check must let through.
+	pieces, err := reader.GetTorrentPieceStates(ctx, instanceID, hash)
+	if err != nil {
+		return "", 0, fmt.Errorf("read piece states: %w", err)
+	}
+	if len(pieces) == 0 {
+		return "", 0, errors.New("read piece states: empty")
+	}
+
+	name, missing := mismatchedLinkedFile(files, pieces, linked)
+	return name, missing, nil
 }
 
 // mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
@@ -7131,7 +7060,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
-// recordBlockedResume appends the hardlink gate verdict to the season pack history.
+// recordBlockedResume appends the linked-file check verdict to the season pack history.
 func (s *Service) recordBlockedResume(req *pendingResume) {
 	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
 		return
@@ -10150,13 +10079,9 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load cross-seed settings for manual apply, using defaults")
+		return nil, err
 	}
-
-	startPaused := true
-	if req.StartPaused != nil {
-		startPaused = *req.StartPaused
-	}
+	defaults := defaultsFor(triggerInteractiveApply, settings)
 
 	useTag := req.UseTag
 	tagName := strings.TrimSpace(req.TagName)
@@ -10246,7 +10171,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				// Skip recheck blocks cached rescue results before a slot is
 				// reserved or the .torrent is downloaded; the guaranteed
 				// skipped_recheck verdict must not cost either.
-				if settings != nil && settings.SkipRecheck {
+				if defaults.skipRecheck {
 					resultChan <- selectionResult{idx, TorrentSearchAddResult{
 						Title:   title,
 						Indexer: indexerName,
@@ -10283,53 +10208,16 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
-			startPausedCopy := startPaused
-
-			// Determine tags for manual apply: use user's choice if provided, otherwise use seeded search tags
-			var applyTags []string
+			payload := defaults.request(base64.StdEncoding.EncodeToString(torrentBytes), indexerName)
+			payload.TargetInstanceIDs = []int{instanceID}
+			if req.StartPaused != nil {
+				payload.StartPaused = req.StartPaused
+			}
 			if useTag {
-				if tagName != "" {
-					applyTags = []string{tagName}
-				} else if settings != nil {
-					applyTags = append([]string(nil), settings.SeededSearchTags...)
-				}
+				payload.Tags = []string{tagName}
 			}
-
-			// Inherit source tags from settings for manual apply
-			inheritSourceTags := false
-			if settings != nil {
-				inheritSourceTags = settings.InheritSourceTags
-			}
-
-			// Determine skip auto-resume from seeded search setting (interactive dialog uses same setting)
-			skipAutoResume := false
-			if settings != nil {
-				skipAutoResume = settings.SkipAutoResumeSeededSearch
-			}
-
-			skipRecheck := false
-			if settings != nil {
-				skipRecheck = settings.SkipRecheck
-			}
-
-			skipPieceBoundarySafetyCheck := false
-			if settings != nil {
-				skipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-			}
-
-			payload := &CrossSeedRequest{
-				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
-				TargetInstanceIDs:            []int{instanceID},
-				StartPaused:                  &startPausedCopy,
-				Tags:                         applyTags,
-				InheritSourceTags:            inheritSourceTags,
-				IndexerName:                  indexerName,
-				FindIndividualEpisodes:       req.FindIndividualEpisodes,
-				SkipAutoResume:               skipAutoResume,
-				SkipRecheck:                  skipRecheck,
-				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-				SearchDecision:               cachedResult.SearchDecision.bindSource(instanceID, hash),
-			}
+			payload.FindIndividualEpisodes = req.FindIndividualEpisodes
+			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, hash)
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
 			if err != nil {
@@ -11463,7 +11351,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	searchResp, gazelleLookupCompleted, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		DisableTorznab:         searchDisableTorznab,
 		IndexerIDs:             allowedIndexerIDs,
-		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		FindIndividualEpisodes: state.opts.findIndividualEpisodes,
 		SkipGazelle:            skipGazelle,
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, state.gazelleClients)
@@ -11872,33 +11760,14 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, fmt.Errorf("download failed: %w", err)
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(data)
-	startPaused := state.opts.StartPaused
-	skipIfExists := true
-	request := &CrossSeedRequest{
-		TorrentData:                  encoded,
-		TargetInstanceIDs:            []int{state.opts.InstanceID},
-		StartPaused:                  &startPaused,
-		Tags:                         append([]string(nil), state.opts.TagsOverride...),
-		InheritSourceTags:            state.opts.InheritSourceTags,
-		Category:                     "",
-		IndexerName:                  match.Indexer,
-		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
-		SkipIfExists:                 &skipIfExists,
-		SkipAutoResume:               state.opts.SkipAutoResume,
-		SkipRecheck:                  state.opts.SkipRecheck,
-		SkipPieceBoundarySafetyCheck: state.opts.SkipPieceBoundarySafetyCheck,
-		// Pass seeded search filters so CrossSeed respects them when finding candidates
-		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
-		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
-		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
-		SearchDecision:                match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash),
-	}
-	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
-		cat := *state.opts.CategoryOverride
-		request.Category = cat
-	}
+	request := state.opts.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
+	request.TargetInstanceIDs = []int{state.opts.InstanceID}
+	// The run options carry the seeded search or completion source filters.
+	request.SourceFilterCategories = append([]string(nil), state.opts.Categories...)
+	request.SourceFilterTags = append([]string(nil), state.opts.Tags...)
+	request.SourceFilterExcludeCategories = append([]string(nil), state.opts.ExcludeCategories...)
+	request.SourceFilterExcludeTags = append([]string(nil), state.opts.ExcludeTags...)
+	request.SearchDecision = match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash)
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
 		result.Status = models.CrossSeedSearchResultStatusFailed
@@ -13801,14 +13670,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 	announcedCandidate := namedRelease{release: incomingRelease, rawName: req.TorrentName}
 
-	// Get automation settings for default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
-		settings = models.DefaultCrossSeedAutomationSettings()
-	}
-	if settings == nil {
-		settings = models.DefaultCrossSeedAutomationSettings()
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
+		return nil, err
 	}
 
 	findIndividualEpisodes := settings.FindIndividualEpisodes
@@ -14060,7 +13925,9 @@ func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, tor
 
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
 //
-// WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
+// WARNING: externalprograms limits how many programs run at the same time, but a launcher run
+// (a terminal emulator, or any run on Windows) releases its slot after the start, so rapid
+// injections can still start many concurrent processes.
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
 	if s.externalProgramService == nil {
 		return
@@ -14498,7 +14365,7 @@ func treeFilesTotalSize(files []hardlinktree.TorrentFile) int64 {
 }
 
 // linkedTreePaths collects the torrent paths of the linked tree files for the
-// hardlink resume gate.
+// linked-file check.
 func linkedTreePaths(linked []hardlinktree.TorrentFile) map[string]struct{} {
 	paths := make(map[string]struct{}, len(linked))
 	for _, file := range linked {

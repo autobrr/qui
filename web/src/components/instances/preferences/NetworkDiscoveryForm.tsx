@@ -4,18 +4,18 @@
  */
 
 import React from "react"
-import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Radar, Users, Shield } from "lucide-react"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
+import type { AppPreferences } from "@/types"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 interface NetworkDiscoveryFormProps {
   instanceId: number
@@ -52,53 +52,31 @@ function SwitchSetting({
 }
 
 export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscoveryFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.networkDiscovery">
+      {(preferences) => <NetworkDiscoveryFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function NetworkDiscoveryFields({ instanceId, preferences, onSuccess }: NetworkDiscoveryFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-
-  const form = useForm({
-    defaultValues: {
-      dht: false,
-      pex: false,
-      lsd: false,
-      encryption: 0,
-      anonymous_mode: false,
-      announce_to_all_tiers: false,
-      announce_to_all_trackers: false,
-      resolve_peer_countries: false,
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(t("preferences.networkDiscovery.toast.success"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(t("preferences.networkDiscovery.toast.error"))
-        console.error("Failed to update network discovery settings:", error)
-      }
-    },
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
+      dht: p.dht,
+      pex: p.pex,
+      lsd: p.lsd,
+      encryption: p.encryption,
+      anonymous_mode: p.anonymous_mode,
+      announce_to_all_tiers: p.announce_to_all_tiers,
+      announce_to_all_trackers: p.announce_to_all_trackers,
+      resolve_peer_countries: p.resolve_peer_countries,
+    }),
+    i18nPrefix: "preferences.networkDiscovery",
+    onSaved: onSuccess,
   })
-
-  React.useEffect(() => {
-    if (preferences) {
-      form.setFieldValue("dht", preferences.dht)
-      form.setFieldValue("pex", preferences.pex)
-      form.setFieldValue("lsd", preferences.lsd)
-      form.setFieldValue("encryption", preferences.encryption)
-      form.setFieldValue("anonymous_mode", preferences.anonymous_mode)
-      form.setFieldValue("announce_to_all_tiers", preferences.announce_to_all_tiers)
-      form.setFieldValue("announce_to_all_trackers", preferences.announce_to_all_trackers)
-      form.setFieldValue("resolve_peer_countries", preferences.resolve_peer_countries)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
-  }, [preferences])
-
-  if (isLoading || !preferences) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.networkDiscovery.loading")}</p>
-      </div>
-    )
-  }
 
   const getEncryptionLabel = (value: number) => {
     switch (value) {
