@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/autobrr/qui/internal/models"
@@ -37,8 +37,9 @@ func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 			return FreeSpaceSourceKeyQBittorrent
 		}
 
-		// Clean path for consistent keys
-		cleanPath := filepath.Clean(trimmed)
+		// path, not filepath: the source is a POSIX path on the host that
+		// holds the disk, which is not the qui host when access is over SSH.
+		cleanPath := path.Clean(trimmed)
 		return "path:" + cleanPath
 	default:
 		return FreeSpaceSourceKeyQBittorrent
