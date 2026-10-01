@@ -135,6 +135,20 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			usesFreeSpace: true,
 			wantErr:       true,
 		},
+		{
+			name:          "path source with SSH access is valid on every host",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+			usesFreeSpace: true,
+			wantErr:       false,
+		},
+		{
+			name:          "path source with SSH host but no host key pin returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key"},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
 		// Note: "path source with local access" validation is platform-dependent
 		// On Windows it returns 400 (not supported), on other platforms it's valid
 		// See TestValidateFreeSpaceSource_PlatformSpecific for platform-aware tests
@@ -224,7 +238,7 @@ func TestValidateRule_WindowsRejectsPathAlways(t *testing.T) {
 	}
 
 	// On Windows, should reject path source even when FREE_SPACE not used
-	ruleErr, ok := errors.AsType[*RuleError](ValidateRule(rule, nil))
+	ruleErr, ok := errors.AsType[*RuleError](ValidateRule(rule, &models.Instance{HasLocalFilesystemAccess: true}))
 	if !ok {
 		t.Fatalf("ValidateRule() on Windows: expected a RuleError")
 	}
@@ -898,9 +912,14 @@ func TestValidateRule(t *testing.T) {
 	}
 	local := &models.Instance{HasLocalFilesystemAccess: true}
 	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "100000000000"}
-	freeSpacePathMsg := "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	freeSpacePath := func(r *models.Automation) {
+		r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
+		r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
+	}
+	localFreeSpacePathMsg := ""
 	if runtime.GOOS == "windows" {
-		freeSpacePathMsg = errMsgWindowsPathSourceNotSupported
+		localFreeSpacePathMsg = errMsgWindowsPathSourceNotSupported
 	}
 
 	tests := []struct {
@@ -964,10 +983,10 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
 		{name: "release year out of range", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldRlsYear, Operator: models.OperatorEqual, Value: "1800"}}}),
 			wantMsg: "Release Year must be between " + strconv.Itoa(minRlsYear) + " and " + strconv.Itoa(time.Now().Year()+1)},
-		{name: "free space path source without local access", edit: func(r *models.Automation) {
-			r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
-			r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
-		}, wantMsg: freeSpacePathMsg},
+		{name: "free space path source without filesystem access", edit: freeSpacePath, instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired},
+		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
+		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
+		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
 	}
 
 	for _, tt := range tests {

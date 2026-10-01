@@ -1380,12 +1380,12 @@
         "defaultSource": "Standard (qBittorrent)",
         "pathSource": "Pfad auf dem Server",
         "pathSourceWindowsUnsupported": "Pfad auf dem Server (unter Windows nicht unterstützt)",
-        "pathSourceLocalAccessRequired": "Pfad auf dem Server (erfordert lokalen Zugriff)",
+        "pathSourceFilesystemAccessRequired": "Pfad auf dem Server (erfordert lokalen oder SSH-Zugriff)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Gib den Pfad ein, auf dem der freie Speicher geprüft werden soll (z. B. einen Mountpoint)",
         "errors": {
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
-          "localAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen Dateisystemzugriff.",
+          "filesystemAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen oder SSH-Dateisystemzugriff.",
           "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich."
         }
       },
@@ -1575,7 +1575,7 @@
         "switchedIntervalForFreeSpace": "Zum 5-Minuten-Intervall gewechselt, da Löschungen für freien Speicher eine Abkühlzeit von ~5 Minuten haben",
         "pathSourceUnsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt. Zum qBittorrent-Standard gewechselt.",
         "switchFreeSpaceSourceDefault": "Quelle für freien Speicher auf Standard (qBittorrent) umstellen",
-        "enableLocalAccessOrDefault": "Aktiviere den lokalen Dateisystemzugriff in den Instanzeinstellungen oder verwende Standard (qBittorrent)",
+        "setUpFilesystemAccessOrDefault": "Richte lokalen oder SSH-Dateisystemzugriff in den Instanzeinstellungen ein oder verwende Standard (qBittorrent)",
         "enterPathOrDefault": "Gib einen Pfad ein oder stelle die Quelle für freien Speicher zurück auf Standard (qBittorrent)",
         "addScoreRule": "Füge mindestens eine Score-Regel für die Score-Sortierung hinzu",
         "fieldMultiplierInvalid": "Der Feld-Multiplikator muss eine gültige Zahl sein",

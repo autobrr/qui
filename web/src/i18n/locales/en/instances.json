@@ -1380,12 +1380,12 @@
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
-        "pathSourceLocalAccessRequired": "Path on server (requires Local Access)",
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
-          "localAccessRequired": "Path-based free space source requires Local Filesystem Access.",
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access.",
           "pathRequired": "Path is required when using \"Path on server\"."
         }
       },
@@ -1575,7 +1575,7 @@
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
-        "enableLocalAccessOrDefault": "Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)",
+        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",
         "addScoreRule": "Add at least one score rule for Score sorting",
         "fieldMultiplierInvalid": "Field multiplier must be a valid number",
