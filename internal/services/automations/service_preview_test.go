@@ -39,7 +39,7 @@ func (q *testDBQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbint
 	return tx, nil
 }
 
-func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
+func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 	ctx := context.Background()
 
 	sqlDB, err := sql.Open("sqlite", ":memory:")
@@ -75,14 +75,13 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 	// Both tracker fields match display names, so both must load the map.
 	for _, field := range []ConditionField{FieldTracker, FieldTrackers} {
 		t.Run(string(field), func(t *testing.T) {
-			evalCtx := &EvalContext{}
 			cond := &RuleCondition{
 				Field:    field,
 				Operator: OperatorNotEqual,
 				Value:    "BHD",
 			}
 
-			s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
+			evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
 
 			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
 			assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
@@ -90,21 +89,20 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 	}
 }
 
-func TestSetupPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
+func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 	ctx := context.Background()
 
 	s := &Service{
 		trackerCustomizationStore: models.NewTrackerCustomizationStore(&mockQuerier{}),
 	}
 
-	evalCtx := &EvalContext{}
 	cond := &RuleCondition{
 		Field:    FieldTags,
 		Operator: OperatorEqual,
 		Value:    "tier1",
 	}
 
-	s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
+	evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
 
 	assert.Nil(t, evalCtx.TrackerDisplayNameByDomain)
 }

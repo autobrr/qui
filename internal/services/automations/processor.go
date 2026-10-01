@@ -269,7 +269,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Load the rule's free space source state before evaluating any conditions.
 	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
-	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+	if evalCtx != nil && ruleUsesCondition(rule, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 
@@ -705,8 +705,8 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 	return resolvedPath, true
 }
 
-// RenderMovePathSample renders a move path for a placeholder torrent, to check it on save.
-func RenderMovePathSample(path string) (string, error) {
+// renderMovePathSample renders a move path for a placeholder torrent, to check it on save.
+func renderMovePathSample(path string) (string, error) {
 	sample := qbt.Torrent{Name: "sample", Hash: strings.Repeat("0", 40), Category: "sample"}
 	return executePathTemplate(path, pathTemplateData(sample, "tracker"))
 }

@@ -55,6 +55,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Cross-seed added**: One successful apply into the client. One Search candidate can produce several. _Avoid_: Match, torrent added.
 - **Due candidate**: A Search candidate that still needs a search. _Avoid_: Total torrents, pending, remaining.
 
+## Instance configuration
+
+- **Preferences**: qBittorrent's own application preferences, which qui reads and writes through the qBittorrent WebAPI. _Avoid_: Settings (when qBittorrent stores the value).
+- **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
+
 ## Allowed Hosts
 
 - **Allowed Hosts**: The optional list of hostnames and IP addresses a request may use to reach qui. Empty means every host. _Avoid_: Host allowlist, host filter.

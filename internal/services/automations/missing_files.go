@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
@@ -35,9 +36,18 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, nil
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	// The callers gate on an instance snapshot taken before the hardlink index
+	// build, which can run for minutes. If local access was turned off since,
+	// the backend now points at the SSH host, where qBittorrent's paths need
+	// not exist, and every torrent would read as missing.
+	backend, mode, err := s.backendPool.Resolve(ctx, instanceID)
 	if err != nil {
 		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
+	}
+	if mode != models.FilesystemModeLocal {
+		log.Debug().Int("instanceID", instanceID).Str("mode", string(mode)).
+			Msg("automations: instance no longer has local filesystem access, skipping missing files detection")
+		return result, nil
 	}
 
 	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, completedHashes)

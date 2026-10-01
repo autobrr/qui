@@ -16,7 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerolog.Logger) (map[string]string, error) {
+func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (map[string]string, error) {
 	if s == nil || s.syncManager == nil {
 		return nil, nil
 	}
@@ -36,11 +36,6 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, l *zerol
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
-	}
-
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get backend: %w", err)
 	}
 
 	index := make(map[string]string, len(filesByHash))

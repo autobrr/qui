@@ -848,7 +848,7 @@ func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 			},
 		}},
 	}
-	evalCtx := &EvalContext{InstanceHasLocalAccess: true, HardlinkScopeByHash: index.ScopeByHash}
+	evalCtx := &EvalContext{InstanceHasFileIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
 	require.Empty(t, processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil))
 
 	// Known unlinked torrents still match the same delete rule.
@@ -893,7 +893,7 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 
 	// An independent OR match still requires verification when the rule uses hardlink data.
 	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
-	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasLocalAccess: true}, 0))
+	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasFileIdentity: true}, 0))
 	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
 	require.Contains(t, blocked, unknown)
 

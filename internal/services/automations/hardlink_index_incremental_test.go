@@ -270,7 +270,7 @@ func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 }
 
 // A delete is only re-verified when the rule consulted the index to choose its
-// candidates. Every route into setupDeleteHardlinkContext has to count, or a rule that
+// candidates. Every route into the hardlink index has to count, or a rule that
 // sorts or groups by hardlink data deletes on an index nobody re-read.
 func TestDeleteUsesHardlinkData(t *testing.T) {
 	t.Parallel()
