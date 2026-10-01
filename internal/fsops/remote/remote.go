@@ -475,7 +475,8 @@ func remove(ctx context.Context, client *sftp.Client, p string) error {
 // directory that cannot be unlinked would read as "not found" while it still
 // exists; a failure is therefore answered from our own lstat. The one case
 // that fallback can still remove is an empty directory swapped in under a
-// file name, which loses nothing.
+// file name, which loses nothing. A directory that is not empty is reported
+// as ENOTEMPTY, which SSH_FX_FAILURE does not carry and callers classify on.
 func unlink(ctx context.Context, client *sftp.Client, p string, isDir bool) error {
 	call := client.Remove
 	if isDir {
@@ -487,6 +488,12 @@ func unlink(ctx context.Context, client *sftp.Client, p string, isDir bool) erro
 	}
 	if _, statErr := lstat(ctx, client, p); errors.Is(statErr, fs.ErrNotExist) {
 		return nil
+	}
+	switch {
+	case isDir && dirNotEmpty(ctx, client, p):
+		err = syscall.ENOTEMPTY
+	case errors.Is(err, fs.ErrNotExist):
+		err = errors.New("server refused the remove and the entry still exists")
 	}
 	return requestError("remove", p, err)
 }
@@ -606,15 +613,15 @@ func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResul
 	dirs := slices.Clone(created.Dirs)
 	slices.SortFunc(dirs, func(a, b string) int { return len(b) - len(a) })
 	for _, d := range dirs {
-		if err := unlink(ctx, client, d, true); err != nil && firstErr == nil && !dirNotEmpty(ctx, client, d) {
+		if err := unlink(ctx, client, d, true); err != nil && firstErr == nil && !errors.Is(err, syscall.ENOTEMPTY) {
 			firstErr = err
 		}
 	}
 	return firstErr
 }
 
-// dirNotEmpty tells the rmdir failure RemoveTree expects from the ones it
-// reports: SSH_FX_FAILURE carries no errno, so the listing is the answer.
+// dirNotEmpty tells the rmdir failure callers tolerate from the ones they
+// report: SSH_FX_FAILURE carries no errno, so the listing is the answer.
 func dirNotEmpty(ctx context.Context, client *sftp.Client, dir string) bool {
 	entries, err := readDir(ctx, client, dir)
 	return err == nil && len(entries) > 0

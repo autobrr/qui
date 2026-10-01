@@ -6,6 +6,7 @@ package remote
 import (
 	"io/fs"
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,7 +69,8 @@ func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
 	sub := remotePath(dir, "sub")
 	writeFile(t, remotePath(sub, "f"), "x")
 
-	require.Error(t, b.Remove(t.Context(), sub, fsops.RemoveOptions{}))
+	// Callers classify on ENOTEMPTY, which SSH_FX_FAILURE alone does not carry.
+	require.ErrorIs(t, b.Remove(t.Context(), sub, fsops.RemoveOptions{}), syscall.ENOTEMPTY)
 	_, err := os.Stat(sub)
 	require.NoError(t, err)
 
