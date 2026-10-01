@@ -30,8 +30,8 @@ const (
 )
 
 // windowsLocalPathSource reports whether a path source would read a Windows
-// host's own disks. The path source takes POSIX paths, so only a remote
-// instance can use it on a Windows host.
+// host's own disks. The local backend could stat them, but the path check
+// accepts only a leading "/" and the local refusal from #1915 still holds.
 func windowsLocalPathSource(instance *models.Instance) bool {
 	return runtime.GOOS == "windows" && instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
 }
