@@ -4,10 +4,13 @@
 package remote
 
 import (
+	"context"
 	"io/fs"
 	"os"
+	"runtime"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +36,38 @@ func TestMkdirAll_WalksUpOverExistingPrefix(t *testing.T) {
 
 	// Idempotent, like os.MkdirAll.
 	require.NoError(t, b.MkdirAll(t.Context(), target, fsutil.ContentDirMode))
+
+	// The created list is what rollback removes, so a pre-existing prefix
+	// must never be on it.
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	created, err := mkdirAll(t.Context(), client, remotePath(dir, "a", "b", "c", "d", "e"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{remotePath(dir, "a", "b", "c", "d"), remotePath(dir, "a", "b", "c", "d", "e")}, created)
+}
+
+func TestMkdirAll_SymlinkedAncestorIsADirectory(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	target := remotePath(dir, "target")
+	require.NoError(t, os.Mkdir(target, 0o755))
+	link := remotePath(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	// Like os.MkdirAll: the child lands in the target, and the link itself
+	// is never recorded as created.
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	created, err := mkdirAll(t.Context(), client, remotePath(link, "child"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{remotePath(link, "child")}, created)
+	info, err := os.Stat(remotePath(target, "child"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
 }
 
 func TestMkdirAll_FileInTheWay(t *testing.T) {
@@ -244,4 +279,66 @@ func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
 
 	// Every other operation still works on that server.
 	require.NoError(t, b.MkdirAll(t.Context(), remotePath(dir, "plain"), fsutil.ContentDirMode))
+}
+
+func TestRemove_DeniedUnlinkNeverReportsMissing(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("0o555 permissions are not enforced on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	keep := remotePath(dir, "keep")
+	require.NoError(t, os.Mkdir(keep, 0o755))
+	ro := remotePath(dir, "ro")
+	require.NoError(t, os.Mkdir(ro, 0o755))
+	link := remotePath(ro, "link")
+	if err := os.Symlink(keep, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+	require.NoError(t, os.Chmod(ro, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+
+	// Client.Remove retries the denied unlink as rmdir and then names the
+	// error from a link-following Stat, which would read "not found" for a
+	// symlink that is still there. Our own lstat answers instead.
+	err := b.Remove(t.Context(), link, fsops.RemoveOptions{})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, fs.ErrNotExist)
+	_, err = os.Lstat(link)
+	require.NoError(t, err, "the link is still there")
+}
+
+func TestHardlinkTree_CancelledLinkCompletesAndRollsBack(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	// The root exists, so the first mutation on the wire is the Link.
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	server.SetSFTP(sshtest.SFTPHoldNextMutation)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		_, err := b.HardlinkTree(ctx, plan)
+		done <- err
+	}()
+	require.Eventually(t, func() bool { return server.HeldMutations() == 1 }, 5*time.Second, 10*time.Millisecond)
+
+	// Cancel while the link is held: the write is not abandoned, so once it
+	// lands it is recorded, and rollback takes it back.
+	cancel()
+	server.ReleaseStall()
+	err := <-done
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = os.Lstat(plan.Files[0].TargetPath)
+	require.ErrorIs(t, err, fs.ErrNotExist, "the link that landed after the cancel is rolled back")
+	_, err = os.Lstat(plan.Files[1].TargetPath)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }

@@ -377,7 +377,7 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 	// Any other answer walks up: a missing path is created from its first
 	// missing ancestor, and a path through a file, which OpenSSH reports as a
 	// bare failure rather than "not found", is named by that file's own stat.
-	var created []string
+	created := make([]string, 0, 1)
 	if parent := path.Dir(p); parent != p {
 		if created, err = mkdirAll(ctx, client, parent); err != nil {
 			return created, err
@@ -385,13 +385,7 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	if err := awaitErr(ctx, func() error { return client.Mkdir(p) }); err != nil {
-		// A cancel while the request is on the wire may still land it on the
-		// server, so the directory is recorded: rollback removes it only when
-		// empty, so recording a directory that never appeared costs nothing.
-		if ctx.Err() != nil {
-			return append(created, p), err
-		}
+	if err := awaitMutation(ctx, func() error { return client.Mkdir(p) }); err != nil {
 		// SSH_FX_FAILURE covers "exists" too: a concurrent attempt won the
 		// race, so the directory is there but not ours to record.
 		if fi, statErr := lstat(ctx, client, p); statErr == nil && fi.IsDir() {
@@ -399,7 +393,7 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		}
 		return created, requestError("mkdir", p, err)
 	}
-	return append(created, p), nil
+	return append(created, p), ctx.Err()
 }
 
 func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions) error {
@@ -487,8 +481,11 @@ func unlink(ctx context.Context, client *sftp.Client, p string, isDir bool) erro
 	if isDir {
 		call = client.RemoveDirectory
 	}
-	err := awaitErr(ctx, func() error { return call(p) })
-	if err == nil || ctx.Err() != nil {
+	err := awaitMutation(ctx, func() error { return call(p) })
+	if err == nil {
+		return ctx.Err()
+	}
+	if ctx.Err() != nil {
 		return err
 	}
 	if _, statErr := lstat(ctx, client, p); errors.Is(statErr, fs.ErrNotExist) {
@@ -564,13 +561,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		}
 		// Link first: an existing target makes it fail, and the lstat that
 		// names the cause is paid only then.
-		if err := awaitErr(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
-			if ctx.Err() != nil {
-				// The request may still land on the server; record the
-				// target so rollback takes it back if it did.
-				created.Files = append(created.Files, fp.TargetPath)
-				return fail(err)
-			}
+		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
 			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
 				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
 			}
@@ -578,6 +569,9 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		}
 		created.Files = append(created.Files, fp.TargetPath)
 		created.Created++
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
 	}
 	return created, nil
 }
@@ -665,10 +659,13 @@ func await[T any](ctx context.Context, call func() (T, error)) (T, error) {
 	}
 }
 
-// awaitErr is await for a call that only answers with an error.
-func awaitErr(ctx context.Context, call func() error) error {
-	_, err := await(ctx, func() (struct{}, error) { return struct{}{}, call() })
-	return err
+// awaitMutation runs a write and always waits for its answer. A read may be
+// abandoned at cancel because nothing changed; a write abandoned mid-flight
+// leaves the server in a state the caller cannot know, so the call completes
+// and the caller records what it made before honouring the cancel. The wait
+// is bounded by the connection's own timeout, as every request is.
+func awaitMutation(_ context.Context, call func() error) error {
+	return call()
 }
 
 // pathError re-attaches the path pkg/sftp drops: it normalises status errors to

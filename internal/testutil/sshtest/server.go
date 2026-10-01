@@ -68,6 +68,11 @@ const (
 	// extension list is process-global, so the version reply is edited on
 	// its way out instead.
 	SFTPNoHardlink
+	// SFTPHoldNextMutation serves sftp but holds the next mkdir, remove, rmdir
+	// or hardlink request before the server sees it, until ReleaseStall or
+	// the stall timer. Requests after that one pass. HeldMutations counts
+	// the hold, so a test can cancel its caller while the request is held.
+	SFTPHoldNextMutation
 )
 
 const hardlinkExtension = "hardlink@openssh.com"
@@ -94,6 +99,7 @@ type Server struct {
 	accepts         int
 	channels        int
 	stalledReadDirs int
+	heldMutations   int
 	live            map[*ssh.ServerConn]struct{}
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
@@ -205,7 +211,16 @@ func (s *Server) StalledReadDirs() int {
 	return s.stalledReadDirs
 }
 
-// ReleaseStall ends an SFTPStallReadDir stall. Safe to call more than once.
+// HeldMutations returns the number of mutation requests SFTPHoldNextMutation
+// has held, so a test can wait for the hold before it cancels.
+func (s *Server) HeldMutations() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.heldMutations
+}
+
+// ReleaseStall ends an SFTPStallReadDir or SFTPHoldNextMutation stall. Safe
+// to call more than once.
 func (s *Server) ReleaseStall() {
 	s.releaseStall()
 }
@@ -309,7 +324,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 }
 
 func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
-	cutter := &requestCutter{Channel: channel, conn: conn, mode: func() SFTPMode {
+	cutter := &requestCutter{Channel: channel, conn: conn, server: s, mode: func() SFTPMode {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		return s.sftpMode
@@ -490,6 +505,11 @@ type requestCutter struct {
 	conn        *ssh.ServerConn
 	mode        func() SFTPMode
 	versionSent bool
+	server      *Server
+	// bodyLeft is how many bytes of the current request body are still to
+	// be read; zero means the next read is a 4-byte length header. pkg/sftp
+	// reads a request as exactly those two reads.
+	bodyLen, bodyLeft int
 }
 
 func (t *requestCutter) Read(p []byte) (int, error) {
@@ -502,10 +522,42 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 		_ = t.conn.Close()
 	case SFTPCloseChannelOnNextRequest:
 		_ = t.Close()
+	case SFTPHoldNextMutation:
+		t.holdMutation(p[:n])
 	default:
 		// Every other mode lets the request through.
 	}
 	return n, err
+}
+
+// holdMutation follows the request framing and blocks on the first byte of a
+// mutation's body, which is its type, until the stall is released. One hold
+// only: the mode is cleared so rollback after the hold runs unhindered.
+func (t *requestCutter) holdMutation(b []byte) {
+	if t.bodyLeft == 0 {
+		if len(b) == 4 {
+			t.bodyLen = int(binary.BigEndian.Uint32(b))
+			t.bodyLeft = t.bodyLen
+		}
+		return
+	}
+	first := t.bodyLeft == t.bodyLen
+	t.bodyLeft = max(t.bodyLeft-len(b), 0)
+	if !first {
+		return
+	}
+	switch b[0] {
+	case 13, 14, 15, 200: // REMOVE, MKDIR, RMDIR, EXTENDED (hardlink)
+	default:
+		return
+	}
+	s := t.server
+	s.mu.Lock()
+	s.heldMutations++
+	s.sftpMode = SFTPServe
+	s.mu.Unlock()
+	s.stallStart.Do(func() { s.stallTimer = time.AfterFunc(stallTimeout, s.releaseStall) })
+	<-s.stallRelease
 }
 
 // Write strips the hardlink extension from the server's SSH_FXP_VERSION reply
