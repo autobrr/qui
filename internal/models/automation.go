@@ -40,9 +40,9 @@ type FreeSpaceSourceType string
 const (
 	// FreeSpaceSourceQBittorrent uses qBittorrent's reported free space (default download dir).
 	FreeSpaceSourceQBittorrent FreeSpaceSourceType = "qbittorrent"
-	// FreeSpaceSourcePath reads free space from a local filesystem path.
+	// FreeSpaceSourcePath reads free space at a path through the instance's
+	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
-	// Future: FreeSpaceSourceAgentPath for remote agent-based free space checks.
 )
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
