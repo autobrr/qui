@@ -132,12 +132,11 @@ describe("derived labels", () => {
     await i18next.changeLanguage("en")
     const labels = getPieceSizeOptions().map((option) => option.label)
     expect(labels).toEqual([
-      "Auto (recommended)",
       "16 KiB", "32 KiB", "64 KiB", "128 KiB", "256 KiB", "512 KiB",
       "1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB",
     ])
     await i18next.changeLanguage("fr")
-    expect(getPieceSizeOptions()[1].label).toBe("16 Kio")
+    expect(getPieceSizeOptions()[0].label).toBe("16 Kio")
   })
 
   it("keeps the filter multipliers in step with the ladder", async () => {

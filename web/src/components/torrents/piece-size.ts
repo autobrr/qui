@@ -25,13 +25,10 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
-// Each value is already the piece size in bytes, so the label is derived rather than repeated.
-// Built on call, not frozen at import: the unit is localized and a module-level array would
-// resolve it before i18next loads a language.
+// Fixed sizes only, since the dialog translates Auto; built on call because the unit label is localized.
 export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] =>
-  Object.values(TorrentPieceSize).map((value) => ({
-    value,
-    label: value === TorrentPieceSize.Auto ? "Auto (recommended)" : formatBytes(Number(value)),
-  }))
+  Object.values(TorrentPieceSize)
+    .filter((value) => value !== TorrentPieceSize.Auto)
+    .map((value) => ({ value, label: formatBytes(Number(value)) }))
 
 export type PieceSizeOption = ReturnType<typeof getPieceSizeOptions>[number]

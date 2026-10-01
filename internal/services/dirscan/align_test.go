@@ -321,7 +321,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 			{Name: "Linux.Distribution.Release.01/b.iso", Size: 5},
 		},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -408,7 +408,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		hash:  "deadbeef04",
 		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -473,7 +473,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		files:     qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		renameErr: errors.New("qBittorrent instance does not support folder renaming"),
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -530,7 +530,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		hash:  "deadbeef02",
 		files: qbt.TorrentFiles{{Name: "Release 01/a.iso", Size: 4}},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -591,7 +591,7 @@ func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(
 		files:      qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		recheckErr: errors.New("instance temporarily unreachable"),
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -651,7 +651,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		hash:  "deadbeef07",
 		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -724,7 +724,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		// qBittorrent stores the root-stripped path after a NoSubfolder add.
 		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -794,7 +794,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		hash:  "deadbeef10",
 		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -847,7 +847,7 @@ func TestInjector_waitForTorrentFiles_NeverVisibleFails(t *testing.T) {
 		files:             qbt.TorrentFiles{{Name: "a.iso", Size: 4}},
 		visibleAfterCalls: 1 << 30, // never becomes visible
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -873,7 +873,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		files:             qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		visibleAfterCalls: 5, // more polls than renameTorrentPath alone would attempt
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -922,7 +922,7 @@ func TestInjector_renameTorrentPath_UnconfirmedRenameFails(t *testing.T) {
 		files:    qbt.TorrentFiles{{Name: "Some.Release/a.mkv", Size: 4}},
 		filesErr: errors.New("files temporarily unavailable"),
 	}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
+	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

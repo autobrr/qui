@@ -12,7 +12,9 @@
     "generalSettings": "Allgemeine Einstellungen",
     "manageInstances": "Instanzen verwalten",
     "appearance": "Darstellung",
-    "instanceBackups": "Instanz-Backups"
+    "instanceBackups": "Instanz-Backups",
+    "backToSite": "Zurück zu getqui.com",
+    "docs": "Doku"
   },
   "sidebar": {
     "instances": "Instanzen",
@@ -64,6 +66,9 @@
     "allScope": "ALLE",
     "unified": "Vereinheitlicht"
   },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Vereinheitlicht",
     "collapseScope": "Vereinheitlichten Bereich einklappen",
@@ -98,8 +103,7 @@
     "copyPath": "Pfad kopieren",
     "scrollToTop": "Nach oben scrollen",
     "search": "Suchen",
-    "select": "Auswählen",
-    "toggle": "Umschalten"
+    "select": "Auswählen"
   },
   "placeholders": {
     "search": "Suchen...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Keine Ergebnisse gefunden."
+  },
+  "errors": {
+    "unknown": "Unbekannter Fehler",
+    "httpStatus": "HTTP-Fehler! Status: {{status}}",
+    "httpStatusHtml": "HTTP-Fehler! Status: {{status}} (Server hat eine HTML-Fehlerseite zurückgegeben)",
+    "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
+    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}"
   },
   "status": {
     "disabled": "Deaktiviert",
@@ -142,14 +153,19 @@
     "switchedToMode": "Zu Modus {{mode}} gewechselt",
     "switchedToTheme": "Zu Design {{theme}} gewechselt",
     "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",
-    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren.",
-    "custom": "Eigene"
+    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
   },
   "updateBanner": {
     "updateAvailable": "Update verfügbar",
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
     "viewRelease": "Release ansehen",
     "dismiss": "Verwerfen"
+  },
+  "pwaUpdate": {
+    "reload": "Neu laden",
+    "waitingDescription": "Neu laden, um die neueste qui-Version zu übernehmen.",
+    "activatedTitle": "qui wurde aktualisiert",
+    "activatedDescription": "Bei Gelegenheit neu laden, um die Installation der neuesten Version abzuschließen."
   },
   "notFound": {
     "title": "Hoppla! Im Schwarm verloren?",

@@ -65,13 +65,13 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 
-`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. When it flags a key, delete the key from every locale in the same change, or fix the scanner if the UI does use it.
 
 ## Adding Languages
 
 1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
+3. Add the locale to `localeRules` in `scripts/check-locale-coverage.mjs`, writing its plural categories by hand rather than from CLDR.
 4. Run `pnpm check:i18n`.
 5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
 
@@ -79,7 +79,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 ## Translation Rules
 
-- **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) directly into JSX.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`.
+- **Never hardcode user-facing text or raw backend values (e.g. `run.status`), in JSX or in the option tables JSX renders.** Create an `i18n` key in the relevant namespace and render it with `t()`.
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Byte and speed units and their decimal separator are the exception: they are localized, so render them through `web/src/lib/unit-format.ts` and never hardcode `KiB`, `MiB/s` or `Mbps`.

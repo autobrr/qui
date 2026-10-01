@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -37,7 +36,7 @@ func GetFreeSpaceBytesForSource(
 		if backend == nil {
 			return 0, errors.New("backend is required for path-based free space source")
 		}
-		p := filepath.Clean(strings.TrimSpace(resolved.Path))
+		p := backend.Paths().Clean(strings.TrimSpace(resolved.Path))
 		if p == "" || p == "." {
 			return 0, errors.New("free space source path is empty")
 		}

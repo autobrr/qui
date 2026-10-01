@@ -300,3 +300,5 @@ func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	}
 	return info
 }
+
+func (b *Backend) Paths() fsops.PathDialect { return fsops.HostPaths }

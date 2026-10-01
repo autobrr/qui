@@ -363,7 +363,7 @@ func (s *Service) manualMatchEffectiveSavePath(
 // FindMatchingBaseDir. Falls back to the first configured directory.
 func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) string {
 	first := ""
-	backend, backendErr := s.getBackendForInstance(ctx, instance.ID)
+	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
 	for dir := range strings.SplitSeq(instance.HardlinkBaseDir, ",") {
 		dir = strings.TrimSpace(dir)
 		if dir == "" {

@@ -536,3 +536,29 @@ func TestHandleCompletionUpdatesStartupAfterFailedRecheckFires(t *testing.T) {
 	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
+
+func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 11}
+	update := func(hashes ...string) {
+		torrents := make(map[string]qbt.Torrent, len(hashes))
+		for _, hash := range hashes {
+			torrents[hash] = qbt.Torrent{Hash: hash, State: qbt.TorrentStateDownloading}
+		}
+		data := &qbt.MainData{Torrents: torrents}
+		client.handleCompletionUpdates(data)
+		client.handleAddedUpdates(data)
+	}
+
+	// The merged map OnUpdate receives drops a removed torrent; TorrentsRemoved stays empty.
+	update("abc", "def")
+	update("def")
+
+	if _, ok := client.completionState["abc"]; ok || len(client.completionState) != 1 {
+		t.Fatalf("completionState kept removed torrent: %v", client.completionState)
+	}
+	if _, ok := client.addedState["abc"]; ok || len(client.addedState) != 1 {
+		t.Fatalf("addedState kept removed torrent: %v", client.addedState)
+	}
+}

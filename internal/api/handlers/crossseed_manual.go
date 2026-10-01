@@ -143,12 +143,14 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 	// Full pipeline parity with the other interactive flows: honor the saved
 	// tag-inheritance and piece-boundary preferences. SkipRecheck is not
 	// propagated because the recheck is the arbiter of a Manual match.
-	if settings, err := h.service.GetAutomationSettings(ctx); err == nil && settings != nil {
-		crossReq.InheritSourceTags = settings.InheritSourceTags
-		crossReq.SkipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-	} else if err != nil {
-		log.Warn().Err(err).Msg("Manual match apply: failed to load automation settings, using defaults")
+	settings, err := h.service.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Manual match apply: failed to load automation settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load cross-seed settings")
+		return
 	}
+	crossReq.InheritSourceTags = settings.InheritSourceTags
+	crossReq.SkipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
 
 	resp, err := h.service.CrossSeed(ctx, crossReq)
 	if err != nil {
