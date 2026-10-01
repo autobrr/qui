@@ -5269,17 +5269,21 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		return nil, err
 	}
 
-	settings, settingsErr := s.GetAutomationSettings(ctx)
-	if settingsErr != nil {
-		log.Warn().Err(settingsErr).Msg("Failed to load automation settings for autobrr apply defaults")
-		settings = &models.CrossSeedAutomationSettings{}
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
 	crossReq := defaultsFor(triggerWebhook, settings).request(req.TorrentData, req.Indexer)
 	crossReq.TargetInstanceIDs = targetInstanceIDs
-	crossReq.Category = req.Category
-	crossReq.StartPaused = req.StartPaused
 	crossReq.SkipIfExists = req.SkipIfExists
+	if req.Category != "" {
+		crossReq.Category = req.Category
+	}
+	if req.StartPaused != nil {
+		crossReq.StartPaused = req.StartPaused
+	}
 	if len(req.Tags) > 0 {
 		crossReq.Tags = req.Tags
 	}
@@ -5287,10 +5291,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		crossReq.FindIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
-	var (
-		resp *CrossSeedResponse
-		err  error
-	)
+	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
 		// Keep the legacy path byte-for-byte compatible for clients that do not
 		// send announcement provenance.
@@ -10081,15 +10082,9 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load cross-seed settings for manual apply, using defaults")
-		settings = &models.CrossSeedAutomationSettings{}
+		return nil, err
 	}
 	defaults := defaultsFor(triggerInteractiveApply, settings)
-
-	startPaused := true
-	if req.StartPaused != nil {
-		startPaused = *req.StartPaused
-	}
 
 	useTag := req.UseTag
 	tagName := strings.TrimSpace(req.TagName)
@@ -10216,11 +10211,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
-			startPausedCopy := startPaused
 			payload := defaults.request(base64.StdEncoding.EncodeToString(torrentBytes), indexerName)
 			payload.TargetInstanceIDs = []int{instanceID}
-			payload.Category = ""
-			payload.StartPaused = &startPausedCopy
+			if req.StartPaused != nil {
+				payload.StartPaused = req.StartPaused
+			}
 			if useTag {
 				payload.Tags = []string{tagName}
 			}
@@ -13680,14 +13675,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 	announcedCandidate := namedRelease{release: incomingRelease, rawName: req.TorrentName}
 
-	// Get automation settings for default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
-		settings = models.DefaultCrossSeedAutomationSettings()
-	}
-	if settings == nil {
-		settings = models.DefaultCrossSeedAutomationSettings()
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
+		return nil, err
 	}
 
 	findIndividualEpisodes := settings.FindIndividualEpisodes
