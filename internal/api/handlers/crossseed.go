@@ -40,8 +40,6 @@ var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 type automationSettingsRequest struct {
 	Enabled                        bool                            `json:"enabled"`
 	RunIntervalMinutes             int                             `json:"runIntervalMinutes"`
-	StartPaused                    bool                            `json:"startPaused"`
-	Category                       *string                         `json:"category"`
 	TargetInstanceIDs              []int                           `json:"targetInstanceIds"`
 	TargetIndexerIDs               []int                           `json:"targetIndexerIds"`
 	MaxResultsPerRun               int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
@@ -77,13 +75,11 @@ type automationSettingsRequest struct {
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled            *bool          `json:"enabled,omitempty"`
-	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
-	StartPaused        *bool          `json:"startPaused,omitempty"`
-	Category           optionalString `json:"category"`
-	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	Enabled            *bool  `json:"enabled,omitempty"`
+	RunIntervalMinutes *int   `json:"runIntervalMinutes,omitempty"`
+	TargetInstanceIDs  *[]int `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs   *[]int `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun   *int   `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	// RSS source filtering: filter which local torrents to search when checking RSS feeds
 	RSSSourceCategories        *[]string `json:"rssSourceCategories,omitempty"`
 	RSSSourceTags              *[]string `json:"rssSourceTags,omitempty"`
@@ -138,25 +134,6 @@ type automationSettingsPatchRequest struct {
 	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
 }
 
-type optionalString struct {
-	Set   bool
-	Value *string
-}
-
-func (o *optionalString) UnmarshalJSON(data []byte) error {
-	o.Set = true
-	if string(data) == "null" {
-		o.Value = nil
-		return nil
-	}
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	o.Value = &value
-	return nil
-}
-
 type optionalInt struct {
 	Set   bool
 	Value *int
@@ -197,8 +174,6 @@ func (r searchSettingsPatchRequest) isEmpty() bool {
 func (r automationSettingsPatchRequest) isEmpty() bool {
 	return r.Enabled == nil &&
 		r.RunIntervalMinutes == nil &&
-		r.StartPaused == nil &&
-		!r.Category.Set &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
@@ -256,21 +231,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.RunIntervalMinutes != nil {
 		settings.RunIntervalMinutes = *patch.RunIntervalMinutes
-	}
-	if patch.StartPaused != nil {
-		settings.StartPaused = *patch.StartPaused
-	}
-	if patch.Category.Set {
-		if patch.Category.Value == nil {
-			settings.Category = nil
-		} else {
-			trimmed := strings.TrimSpace(*patch.Category.Value)
-			if trimmed == "" {
-				settings.Category = nil
-			} else {
-				settings.Category = &trimmed
-			}
-		}
 	}
 	if patch.TargetInstanceIDs != nil {
 		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
@@ -1024,16 +984,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
-	category := req.Category
-	if category != nil {
-		trimmed := strings.TrimSpace(*category)
-		if trimmed == "" {
-			category = nil
-		} else {
-			category = &trimmed
-		}
-	}
-
 	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
 	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
 		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
@@ -1101,8 +1051,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                        req.Enabled,
 		RunIntervalMinutes:             req.RunIntervalMinutes,
-		StartPaused:                    req.StartPaused,
-		Category:                       category,
 		TargetInstanceIDs:              req.TargetInstanceIDs,
 		TargetIndexerIDs:               req.TargetIndexerIDs,
 		MaxResultsPerRun:               req.MaxResultsPerRun,

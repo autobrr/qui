@@ -38,8 +38,6 @@ type triggerDefaults struct {
 	skipRecheck                  bool
 	skipPieceBoundarySafetyCheck bool
 	findIndividualEpisodes       bool
-	startPaused                  bool
-	category                     string
 }
 
 // defaultsFor returns the settings for one trigger. Tags, auto-resume, and
@@ -52,10 +50,6 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 		skipRecheck:                  settings.SkipRecheck,
 		skipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
 		findIndividualEpisodes:       settings.FindIndividualEpisodes,
-		startPaused:                  settings.StartPaused,
-	}
-	if settings.Category != nil {
-		d.category = *settings.Category
 	}
 
 	switch t {
@@ -89,9 +83,8 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest {
 	return &CrossSeedRequest{
 		TorrentData:                   torrentData,
-		Category:                      d.category,
 		Tags:                          slices.Clone(d.addTags),
-		StartPaused:                   new(d.startPaused),
+		StartPaused:                   new(true),
 		InheritSourceTags:             d.inheritSourceTags,
 		IndexerName:                   indexer,
 		FindIndividualEpisodes:        d.findIndividualEpisodes,

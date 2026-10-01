@@ -19,7 +19,6 @@ import (
 )
 
 func TestDefaultsFor(t *testing.T) {
-	category := "tv"
 	settings := &models.CrossSeedAutomationSettings{
 		RSSAutomationTags:              []string{"rss"},
 		SeededSearchTags:               []string{"seeded"},
@@ -39,16 +38,12 @@ func TestDefaultsFor(t *testing.T) {
 		SkipRecheck:                    true,
 		SkipPieceBoundarySafetyCheck:   true,
 		FindIndividualEpisodes:         true,
-		StartPaused:                    true,
-		Category:                       &category,
 	}
 	shared := func(d triggerDefaults) triggerDefaults {
 		d.inheritSourceTags = true
 		d.skipRecheck = true
 		d.skipPieceBoundarySafetyCheck = true
 		d.findIndividualEpisodes = true
-		d.startPaused = true
-		d.category = "tv"
 		return d
 	}
 
@@ -97,13 +92,10 @@ func TestTriggerDefaultsRequest(t *testing.T) {
 		skipRecheck:                  true,
 		skipPieceBoundarySafetyCheck: true,
 		findIndividualEpisodes:       true,
-		startPaused:                  true,
-		category:                     "tv",
 	}
 
 	assert.Equal(t, &CrossSeedRequest{
 		TorrentData:                   "ZGF0YQ==",
-		Category:                      "tv",
 		Tags:                          []string{"cross-seed"},
 		StartPaused:                   new(true),
 		InheritSourceTags:             true,
@@ -197,9 +189,8 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 }
 
 func TestInteractiveApplyOverrides(t *testing.T) {
-	category := "cross"
 	loader := func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-		return &models.CrossSeedAutomationSettings{SeededSearchTags: []string{"seeded"}, StartPaused: false, Category: &category}, nil
+		return &models.CrossSeedAutomationSettings{SeededSearchTags: []string{"seeded"}}, nil
 	}
 
 	tests := []struct {
@@ -208,8 +199,8 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 		wantTags        []string
 		wantStartPaused bool
 	}{
-		{"dialog tag and settings fallback", interactiveApplyRequest(true, nil), []string{"picked"}, false},
-		{"no tag and dialog paused", interactiveApplyRequest(false, new(true)), nil, true},
+		{"dialog tag and paused default", interactiveApplyRequest(true, nil), []string{"picked"}, true},
+		{"no tag and dialog unpaused", interactiveApplyRequest(false, new(false)), nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -221,28 +212,27 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 			got := (*captured)[0]
 			assert.Equal(t, tt.wantTags, got.Tags)
 			assert.Equal(t, tt.wantStartPaused, *got.StartPaused)
-			assert.Equal(t, "cross", got.Category)
+			assert.Empty(t, got.Category)
 		})
 	}
 }
 
-func TestWebhookCategoryAndStartPausedFallback(t *testing.T) {
-	category := "setting"
+func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 	tests := []struct {
 		name            string
 		req             AutobrrApplyRequest
 		wantCategory    string
 		wantStartPaused bool
 	}{
-		{"settings when the body has none", AutobrrApplyRequest{}, "setting", false},
-		{"body wins", AutobrrApplyRequest{Category: "body", StartPaused: new(true)}, "body", true},
+		{"defaults when the body has none", AutobrrApplyRequest{}, "", true},
+		{"body wins", AutobrrApplyRequest{Category: "body", StartPaused: new(false)}, "body", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var captured *CrossSeedRequest
 			service := &Service{
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					return &models.CrossSeedAutomationSettings{Category: &category, StartPaused: false}, nil
+					return &models.CrossSeedAutomationSettings{}, nil
 				},
 				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 					captured = req

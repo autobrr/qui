@@ -172,12 +172,11 @@ The **Expected HTTP status** field needs an autobrr release with [autobrr/autobr
 - `category` (optional): The category for the added torrent. qui uses the first category that applies, in this order:
   1. The **Custom category** mode
   2. The `category` field
-  3. The `category` automation setting (you can set it only through the API)
-  4. The `indexer` field, in **Use indexer name as category** mode
-  5. The category of the matched torrent
+  3. The `indexer` field, in **Use indexer name as category** mode
+  4. The category of the matched torrent
 
   A season pack that qui builds from local episodes ignores the `category` field.
-- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui uses the `startPaused` automation setting. You can set this setting only through the API, and it is on by default. With the default, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
+- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 The action performs the first torrent-file download in this flow. qui calculates the actual total from the torrent metadata.
