@@ -14,9 +14,9 @@ import (
 // a local filesystem or an SSH-backed remote. It covers exactly the
 // operations qui's services need: syscall-level primitives (stat, walk,
 // mkdir, remove) plus the high-level tree operations (HardlinkTree,
-// ReflinkTree, RemoveTree) that create-and-rollback as a unit. Path
-// manipulation (filepath.Clean, filepath.Rel, etc.) is not part of this
-// interface — it stays as direct calls in service code.
+// ReflinkTree, RemoveTree) that create-and-rollback as a unit, and the path
+// dialect (Paths) that callers manipulate backend paths with, since a remote
+// backend's paths are not in the host's grammar.
 //
 // Every method accepts a context.Context and must respect cancellation.
 //
@@ -90,6 +90,10 @@ type Backend interface {
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
 	// --- Capabilities ---
+
+	// Paths is the dialect of this backend's filesystem. Every Join, Dir,
+	// IsAbs or Rel on a path that goes to or comes from this backend uses it.
+	Paths() PathDialect
 
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.

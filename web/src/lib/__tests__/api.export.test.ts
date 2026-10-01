@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest"
 
 import { APIError, api } from "@/lib/api"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 
 // Contract tests for the lib/api.ts "export" method group (issue #1931).
 //

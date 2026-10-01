@@ -51,13 +51,10 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 		}}}, nil
 	}
 
-	category := "cross-seed"
 	status, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:            []int{instanceID},
-		Category:                     &category,
 		RSSAutomationTags:            []string{"rss"},
 		InheritSourceTags:            true,
-		StartPaused:                  true,
 		SkipAutoResumeRSS:            true,
 		SkipPieceBoundarySafetyCheck: true,
 		RSSSourceCategories:          []string{"tv"},
@@ -80,7 +77,7 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	require.Equal(t, normalizeHash(sourceHash), captured.SearchDecision.SourceHash)
 	require.Equal(t, "codec mismatch", captured.SearchDecision.StrictMismatchReason)
 	require.Equal(t, []string{"codec"}, captured.SearchDecision.RelaxedDifferences)
-	require.Equal(t, category, captured.Category)
+	require.Empty(t, captured.Category)
 	require.Equal(t, []string{"rss"}, captured.Tags)
 	require.True(t, captured.InheritSourceTags)
 	require.True(t, *captured.StartPaused)

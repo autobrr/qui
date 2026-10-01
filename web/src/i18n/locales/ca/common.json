@@ -12,7 +12,9 @@
     "generalSettings": "Configuració general",
     "manageInstances": "Gestiona les instàncies",
     "appearance": "Aspecte",
-    "instanceBackups": "Còpies de seguretat de les instàncies"
+    "instanceBackups": "Còpies de seguretat de les instàncies",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentació"
   },
   "sidebar": {
     "instances": "Instàncies",
@@ -64,6 +66,9 @@
     "allScope": "TOTES",
     "unified": "Unificat"
   },
+  "titleBar": {
+    "speeds": "B: {{download}} P: {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unificat",
     "collapseScope": "Redueix l'àmbit unificat",
@@ -98,8 +103,7 @@
     "copyPath": "Copia el camí",
     "scrollToTop": "Vés a dalt de tot",
     "search": "Cerca",
-    "select": "Selecciona",
-    "toggle": "Commuta"
+    "select": "Selecciona"
   },
   "placeholders": {
     "search": "Cerca...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "No s'ha trobat cap resultat."
+  },
+  "errors": {
+    "unknown": "Error desconegut",
+    "httpStatus": "Error HTTP! Estat: {{status}}",
+    "httpStatusHtml": "Error HTTP! Estat: {{status}} (el servidor ha retornat una pàgina d'error HTML)",
+    "ssoHtmlResponse": "S'ha rebut una resposta HTML en lloc de JSON de l'API. Si ets darrere d'un servidor intermediari SSO (Cloudflare Access, Pangolin, etc.), prova d'actualitzar la pàgina o de tornar a obrir l'URL en una pestanya nova.",
+    "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}"
   },
   "status": {
     "disabled": "Desactivat",
@@ -142,14 +153,19 @@
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència.",
-    "custom": "Personalitzat"
+    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència."
   },
   "updateBanner": {
     "updateAvailable": "Actualització disponible",
     "versionAvailable": "La versió {{version}} ja està disponible",
     "viewRelease": "Mostra la versió",
     "dismiss": "Descarta"
+  },
+  "pwaUpdate": {
+    "reload": "Recarrega",
+    "waitingDescription": "Recarrega per aplicar la darrera versió de qui.",
+    "activatedTitle": "qui s'ha actualitzat",
+    "activatedDescription": "Recarrega quan et vagi bé per acabar d'instal·lar la darrera versió."
   },
   "notFound": {
     "title": "Ups! T'has perdut dins de l'eixam?",

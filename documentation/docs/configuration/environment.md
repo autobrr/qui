@@ -166,6 +166,10 @@ The built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/livene
 
 Configure the allow list in `config.toml`. It has no environment override.
 
+```bash
+QUI__EXTERNAL_PROGRAM_MAX_RUNNING=16  # Optional: how many external programs run at the same time (default: 8)
+```
+
 ## Default locations
 
 - **Linux/macOS**: `~/.config/qui/config.toml`

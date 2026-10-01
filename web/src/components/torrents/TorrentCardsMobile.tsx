@@ -2097,7 +2097,7 @@ export function TorrentCardsMobile({
                     size="sm"
                     className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                   >
-                    {t("mobileCards.sort")}: {currentSortOption.label}
+                    {t("mobileCards.sort")}: {t(currentSortOption.labelKey)}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
@@ -2108,7 +2108,7 @@ export function TorrentCardsMobile({
                   >
                     {TORRENT_SORT_OPTIONS.map(option => (
                       <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                        {option.label}
+                        {t(option.labelKey)}
                       </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>

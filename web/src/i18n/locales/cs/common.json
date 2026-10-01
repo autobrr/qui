@@ -12,7 +12,9 @@
     "generalSettings": "Obecná nastavení",
     "manageInstances": "Spravovat instance",
     "appearance": "Vzhled",
-    "instanceBackups": "Zálohy instance"
+    "instanceBackups": "Zálohy instance",
+    "backToSite": "Zpět na getqui.com",
+    "docs": "Dokumentace"
   },
   "sidebar": {
     "instances": "Instance",
@@ -64,6 +66,9 @@
     "allScope": "VŠE",
     "unified": "Unifikované"
   },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unifikované",
     "collapseScope": "Sbalit unifikovaný rozsah",
@@ -98,8 +103,7 @@
     "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat",
-    "toggle": "Přepnout"
+    "select": "Vybrat"
   },
   "placeholders": {
     "search": "Hledat...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Žádné výsledky."
+  },
+  "errors": {
+    "unknown": "Neznámá chyba",
+    "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
+    "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
   },
   "status": {
     "disabled": "Vypnuto",
@@ -142,14 +153,19 @@
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
-    "custom": "Vlastní"
+    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
+  },
+  "pwaUpdate": {
+    "reload": "Znovu načíst",
+    "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",
+    "activatedTitle": "qui bylo aktualizováno",
+    "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
   },
   "notFound": {
     "title": "Ajeje! Ztratil jsi se?",

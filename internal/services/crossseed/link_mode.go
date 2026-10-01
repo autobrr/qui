@@ -297,8 +297,8 @@ func (s *Service) processLinkMode(
 		return handleError(mode.name + " mode enabled but base directory is not configured")
 	}
 
-	// Verify instance has local filesystem access (required for links)
-	if !instance.HasLocalFilesystemAccess {
+	// Verify qui may write link trees on the instance
+	if !models.FilesystemCapabilitiesOf(instance).Write {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
@@ -335,7 +335,7 @@ func (s *Service) processLinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
-	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID, models.CapabilityWrite)
 	if err != nil {
 		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}

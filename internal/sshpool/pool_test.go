@@ -16,12 +16,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// pinnedInstanceAt is an instance at addr whose row carries a pin, as every
-// instance the pool dials does.
+// pinnedInstanceAt is an instance at addr whose row carries a key and a pin,
+// as every instance the pool dials does.
 func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
 
 	inst := instanceAt(t, addr)
+	inst.SSHKeyEncrypted = "enc-v1"
 	inst.SSHHostKeyEncrypted = "enc-v1"
 	return inst
 }
@@ -343,6 +344,31 @@ func TestPoolDialsFromTheRowNotTheSnapshot(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
+// A row that left remote mode is refused before any dial, and the refusal is
+// not memoised: the row, not the host, decides it.
+func TestPoolRefusesARowThatLeftRemoteMode(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	remote := pinnedInstanceAt(t, server.Addr)
+	local := *remote
+	local.HasLocalFilesystemAccess = true
+	creds := &fakeCreds{key: testClientKey, pin: hostKey.PublicKey().Marshal(), inst: &local}
+	pool := NewPool(NewDialer(creds))
+	t.Cleanup(pool.Close)
+
+	// The caller still holds the remote snapshot, while the row says local.
+	_, err := pool.SFTP(t.Context(), remote)
+	require.ErrorIs(t, err, ErrNotRemote)
+	assert.Zero(t, server.Accepts(), "an instance that left remote mode must not be dialed")
+
+	creds.inst = remote
+	_, err = pool.SFTP(t.Context(), remote)
+	require.NoError(t, err, "the refusal must not outlive the row that caused it")
+	assert.Equal(t, 1, server.Accepts())
+}
+
 // A failed row read is a local fault: it must not hold the host in backoff.
 func TestPoolRowReadFailureIsNotMemoised(t *testing.T) {
 	t.Parallel()
@@ -428,9 +454,73 @@ func TestPoolBackoffCaps(t *testing.T) {
 	assert.Equal(t, backoffMax, entry.backoff, "the delay stops doubling at the cap")
 }
 
+// Invalidate starts the retry schedule over: new values in the row are a
+// new host as far as the backoff is concerned.
+func TestPoolInvalidateResetsTheBackoff(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	inst := pinnedInstanceAt(t, sshtest.DeadAddr(t))
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	entry := func() *entry {
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+		return pool.conns[inst.ID]
+	}
+	for range 2 {
+		_, err := pool.SFTP(t.Context(), inst)
+		require.Error(t, err)
+		require.NoError(t, entry().lock(t.Context()))
+		entry().retryAt = time.Now().Add(-time.Second)
+		entry().unlock()
+	}
+	require.NoError(t, entry().lock(t.Context()))
+	require.Equal(t, 2*backoffStart, entry().backoff)
+	entry().unlock()
+
+	pool.Invalidate(inst.ID)
+	_, err := pool.SFTP(t.Context(), inst)
+	require.Error(t, err)
+	require.NoError(t, entry().lock(t.Context()))
+	assert.Equal(t, backoffStart, entry().backoff, "the first failure after Invalidate waits the starting delay")
+	entry().unlock()
+}
+
+// sshd can close the sftp channel and keep the transport up. The pool must
+// not keep handing out that dead client: the connection is closed, and the
+// next caller redials.
+func TestPoolRedialsAfterTheSFTPChannelCloses(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+	dir := t.TempDir()
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	server.SetSFTP(sshtest.SFTPCloseChannelOnNextRequest)
+	_, err = client.Stat(dir)
+	require.Error(t, err)
+	server.SetSFTP(sshtest.SFTPServe)
+
+	require.Eventually(t, func() bool {
+		again, err := pool.SFTP(t.Context(), inst)
+		if err != nil || again == client {
+			return false
+		}
+		_, err = again.Stat(dir)
+		return err == nil
+	}, 5*time.Second, 20*time.Millisecond)
+	assert.Equal(t, 2, server.Accepts())
+}
+
 // A connection nobody uses is closed by the keepalive loop, and the next
-// caller redials: this is how the pool lets go of an instance that left
-// remote mode.
+// caller redials.
 func TestPoolClosesIdleConnection(t *testing.T) {
 	t.Parallel()
 

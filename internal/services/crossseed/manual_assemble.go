@@ -54,7 +54,7 @@ func manualAssemblyUnavailableReason(inst *models.Instance) string {
 		return ""
 	}
 	switch {
-	case !inst.HasLocalFilesystemAccess:
+	case !models.FilesystemCapabilitiesOf(inst).Write:
 		return "no_filesystem_access"
 	case !inst.UseHardlinks && !inst.UseReflinks:
 		return "no_link_mode"
