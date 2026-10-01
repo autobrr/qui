@@ -184,15 +184,17 @@ test("uk requires _few and _many", (t) => {
   assert.match(result.stdout, /\[Plural Forms] 2 errors\n {2}- common\.items_few\n {2}- common\.items_many\n/)
 })
 
-test("a missing _one is reported once, by Missing Keys", (t) => {
-  const f = fixture(t, "uk")
-  f.write(english, { items_few: "{{count}} f", items_many: "{{count}} m", items_other: "{{count}} o" })
+for (const locale of ["cs", "uk"]) {
+  test(`${locale}: a missing _one is reported once, by Missing Keys`, (t) => {
+    const f = fixture(t, locale)
+    f.write(english, { items_few: "{{count}} f", items_many: "{{count}} m", items_other: "{{count}} o" })
 
-  const result = f.run("uk")
-  assert.equal(result.status, 1, result.stdout + result.stderr)
-  assert.match(result.stdout, /\[Missing Keys] 1 error\n {2}- common\.items_one:/)
-  assert.doesNotMatch(result.stdout, /\[Plural Forms]/)
-})
+    const result = f.run(locale)
+    assert.equal(result.status, 1, result.stdout + result.stderr)
+    assert.match(result.stdout, /\[Missing Keys] 1 error\n {2}- common\.items_one:/)
+    assert.doesNotMatch(result.stdout, /\[Plural Forms]/)
+  })
+}
 
 // An unsuffixed key is i18next's last-resort in-language lookup: it answers every category the
 // locale omits, so a base carrying one needs no _few or _many.
@@ -214,7 +216,7 @@ for (const locale of ["cs", "uk"]) {
 
     const result = f.run(locale)
     assert.equal(result.status, 1, result.stdout + result.stderr)
-    assert.match(result.stdout, /\[Plural Forms] \d errors?\n {2}- common\.items_few\n/)
+    assert.match(result.stdout, new RegExp(`\\[Plural Forms] ${locale === "uk" ? "2 errors" : "1 error"}\\n {2}- common\\.items_few\\n`))
   })
 
   test(`${locale}: placeholders and markup are checked on locale-only plural forms`, (t) => {
