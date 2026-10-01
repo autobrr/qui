@@ -214,8 +214,7 @@
     "durationUnits": {
       "minutes": "minuts",
       "hours": "hores",
-      "days": "dies",
-      "seconds": "segons"
+      "days": "dies"
     },
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",

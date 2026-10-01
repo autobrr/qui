@@ -101,8 +101,7 @@
     "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat",
-    "toggle": "Přepnout"
+    "select": "Vybrat"
   },
   "placeholders": {
     "search": "Hledat...",
@@ -152,8 +151,7 @@
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
-    "custom": "Vlastní"
+    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",

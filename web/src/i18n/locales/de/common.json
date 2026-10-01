@@ -101,8 +101,7 @@
     "copyPath": "Pfad kopieren",
     "scrollToTop": "Nach oben scrollen",
     "search": "Suchen",
-    "select": "Auswählen",
-    "toggle": "Umschalten"
+    "select": "Auswählen"
   },
   "placeholders": {
     "search": "Suchen...",
@@ -152,8 +151,7 @@
     "switchedToMode": "Zu Modus {{mode}} gewechselt",
     "switchedToTheme": "Zu Design {{theme}} gewechselt",
     "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",
-    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren.",
-    "custom": "Eigene"
+    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
   },
   "updateBanner": {
     "updateAvailable": "Update verfügbar",

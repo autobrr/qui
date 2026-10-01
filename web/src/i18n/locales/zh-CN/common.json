@@ -101,8 +101,7 @@
     "copyPath": "复制路径",
     "scrollToTop": "回到顶部",
     "search": "搜索",
-    "select": "选择",
-    "toggle": "切换"
+    "select": "选择"
   },
   "placeholders": {
     "search": "搜索...",
@@ -152,8 +151,7 @@
     "switchedToMode": "已切换到{{mode}}模式",
     "switchedToTheme": "已切换到{{theme}}主题",
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
-    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。",
-    "custom": "自定义"
+    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",

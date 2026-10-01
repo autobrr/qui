@@ -101,8 +101,7 @@
     "copyPath": "Copia percorso",
     "scrollToTop": "Scorri in alto",
     "search": "Cerca",
-    "select": "Seleziona",
-    "toggle": "Attiva/disattiva"
+    "select": "Seleziona"
   },
   "placeholders": {
     "search": "Cerca...",
@@ -152,8 +151,7 @@
     "switchedToMode": "Passato alla modalità {{mode}}",
     "switchedToTheme": "Passato al tema {{theme}}",
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza.",
-    "custom": "Personalizzato"
+    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",
