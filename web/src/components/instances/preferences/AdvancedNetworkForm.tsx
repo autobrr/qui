@@ -4,7 +4,6 @@
  */
 
 import React from "react"
-import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -12,12 +11,13 @@ import { Switch } from "@/components/ui/switch"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Settings, HardDrive, Zap, Ban, Radio, AlertTriangle } from "lucide-react"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePreferencesForm } from "@/hooks/usePreferencesForm"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import type { AppPreferences } from "@/types"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
+import { PreferencesSection } from "./PreferencesSection"
 
 interface AdvancedNetworkFormProps {
   instanceId: number
@@ -98,112 +98,61 @@ function NumberInput({
 }
 
 export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFormProps) {
+  return (
+    <PreferencesSection instanceId={instanceId} i18nPrefix="preferences.advancedNetwork">
+      {(preferences) => <AdvancedNetworkFields instanceId={instanceId} preferences={preferences} onSuccess={onSuccess} />}
+    </PreferencesSection>
+  )
+}
+
+function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedNetworkFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
-
-  const form = useForm({
-    defaultValues: {
+  const { form, isUpdating } = usePreferencesForm({
+    instanceId,
+    preferences,
+    toForm: (p) => ({
       // Tracker settings
-      announce_ip: "",
+      announce_ip: p.announce_ip,
 
       // Performance settings
-      limit_lan_peers: false,
-      limit_tcp_overhead: false,
-      limit_utp_rate: false,
-      peer_tos: 0,
-      socket_backlog_size: 0,
-      send_buffer_watermark: 0,
-      send_buffer_low_watermark: 0,
-      send_buffer_watermark_factor: 0,
-      max_concurrent_http_announces: 0,
-      request_queue_size: 0,
-      stop_tracker_timeout: 0,
+      limit_lan_peers: p.limit_lan_peers,
+      limit_tcp_overhead: p.limit_tcp_overhead,
+      limit_utp_rate: p.limit_utp_rate,
+      peer_tos: p.peer_tos,
+      socket_backlog_size: p.socket_backlog_size,
+      send_buffer_watermark: p.send_buffer_watermark,
+      send_buffer_low_watermark: p.send_buffer_low_watermark,
+      send_buffer_watermark_factor: p.send_buffer_watermark_factor,
+      max_concurrent_http_announces: p.max_concurrent_http_announces,
+      request_queue_size: p.request_queue_size,
+      stop_tracker_timeout: p.stop_tracker_timeout,
 
       // Disk I/O settings
-      async_io_threads: 0,
-      hashing_threads: 0,
-      file_pool_size: 0,
-      disk_cache: 0,
-      disk_cache_ttl: 0,
-      disk_queue_size: 0,
-      disk_io_type: 0,
-      disk_io_read_mode: 0,
-      disk_io_write_mode: 0,
-      checking_memory_use: 0,
-      memory_working_set_limit: 0,
-      enable_coalesce_read_write: false,
+      async_io_threads: p.async_io_threads,
+      hashing_threads: p.hashing_threads,
+      file_pool_size: p.file_pool_size,
+      disk_cache: p.disk_cache,
+      disk_cache_ttl: p.disk_cache_ttl,
+      disk_queue_size: p.disk_queue_size,
+      disk_io_type: p.disk_io_type,
+      disk_io_read_mode: p.disk_io_read_mode,
+      disk_io_write_mode: p.disk_io_write_mode,
+      checking_memory_use: p.checking_memory_use,
+      memory_working_set_limit: p.memory_working_set_limit,
+      enable_coalesce_read_write: p.enable_coalesce_read_write,
 
       // Peer behavior
-      peer_turnover: 0,
-      peer_turnover_cutoff: 0,
-      peer_turnover_interval: 0,
+      peer_turnover: p.peer_turnover,
+      peer_turnover_cutoff: p.peer_turnover_cutoff,
+      peer_turnover_interval: p.peer_turnover_interval,
 
       // Security & filtering
-      block_peers_on_privileged_ports: false,
-    },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(t("preferences.advancedNetwork.toast.success"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(t("preferences.advancedNetwork.toast.error"))
-        console.error("Failed to update advanced network settings:", error)
-      }
-    },
+      block_peers_on_privileged_ports: p.block_peers_on_privileged_ports,
+    }),
+    i18nPrefix: "preferences.advancedNetwork",
+    onSaved: onSuccess,
   })
-
-  React.useEffect(() => {
-    if (preferences) {
-      // Tracker settings
-      form.setFieldValue("announce_ip", preferences.announce_ip)
-
-      // Performance settings
-      form.setFieldValue("limit_lan_peers", preferences.limit_lan_peers)
-      form.setFieldValue("limit_tcp_overhead", preferences.limit_tcp_overhead)
-      form.setFieldValue("limit_utp_rate", preferences.limit_utp_rate)
-      form.setFieldValue("peer_tos", preferences.peer_tos)
-      form.setFieldValue("socket_backlog_size", preferences.socket_backlog_size)
-      form.setFieldValue("send_buffer_watermark", preferences.send_buffer_watermark)
-      form.setFieldValue("send_buffer_low_watermark", preferences.send_buffer_low_watermark)
-      form.setFieldValue("send_buffer_watermark_factor", preferences.send_buffer_watermark_factor)
-      form.setFieldValue("max_concurrent_http_announces", preferences.max_concurrent_http_announces)
-      form.setFieldValue("request_queue_size", preferences.request_queue_size)
-      form.setFieldValue("stop_tracker_timeout", preferences.stop_tracker_timeout)
-
-      // Disk I/O settings
-      form.setFieldValue("async_io_threads", preferences.async_io_threads)
-      form.setFieldValue("hashing_threads", preferences.hashing_threads)
-      form.setFieldValue("file_pool_size", preferences.file_pool_size)
-      form.setFieldValue("disk_cache", preferences.disk_cache)
-      form.setFieldValue("disk_cache_ttl", preferences.disk_cache_ttl)
-      form.setFieldValue("disk_queue_size", preferences.disk_queue_size)
-      form.setFieldValue("disk_io_type", preferences.disk_io_type)
-      form.setFieldValue("disk_io_read_mode", preferences.disk_io_read_mode)
-      form.setFieldValue("disk_io_write_mode", preferences.disk_io_write_mode)
-      form.setFieldValue("checking_memory_use", preferences.checking_memory_use)
-      form.setFieldValue("memory_working_set_limit", preferences.memory_working_set_limit)
-      form.setFieldValue("enable_coalesce_read_write", preferences.enable_coalesce_read_write)
-
-      // Peer behavior
-      form.setFieldValue("peer_turnover", preferences.peer_turnover)
-      form.setFieldValue("peer_turnover_cutoff", preferences.peer_turnover_cutoff)
-      form.setFieldValue("peer_turnover_interval", preferences.peer_turnover_interval)
-
-      // Security & filtering
-      form.setFieldValue("block_peers_on_privileged_ports", preferences.block_peers_on_privileged_ports)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
-  }, [preferences])
-
-  if (isLoading || !preferences) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">{t("preferences.advancedNetwork.loading")}</p>
-      </div>
-    )
-  }
 
   return (
     <PreferencesFormShell

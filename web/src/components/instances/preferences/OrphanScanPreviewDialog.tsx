@@ -47,13 +47,6 @@ export function OrphanScanPreviewDialog({
   const confirmMutation = useConfirmOrphanScanDeletion(instanceId)
 
   useEffect(() => {
-    if (!open) {
-      setOffset(0)
-      setFiles([])
-    }
-  }, [open])
-
-  useEffect(() => {
     const page = runQuery.data?.files
     if (!page) return
 

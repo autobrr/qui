@@ -21,21 +21,14 @@ func usesSavePathVariable(path string) bool {
 	return strings.Contains(path, categorySavePathVariable) || strings.Contains(path, defaultSavePathVariable)
 }
 
-// rulesUseSavePathVariables reports whether any enabled rule's move path or
-// export save path references .CategorySavePath or .DefaultSavePath.
-func rulesUseSavePathVariables(rules []*models.Automation) bool {
-	for _, rule := range rules {
-		if rule == nil || !rule.Enabled || rule.Conditions == nil {
-			continue
-		}
-		if move := rule.Conditions.Move; move != nil && move.Enabled && usesSavePathVariable(move.Path) {
-			return true
-		}
-		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && usesSavePathVariable(export.SavePath) {
-			return true
-		}
+// ruleTemplatesUseSavePaths reports whether an enabled move path or export save
+// path references .CategorySavePath or .DefaultSavePath.
+func ruleTemplatesUseSavePaths(ac *models.ActionConditions) bool {
+	if move := ac.Move; move != nil && move.Enabled && usesSavePathVariable(move.Path) {
+		return true
 	}
-	return false
+	export := ac.ExportToInstance
+	return export != nil && export.Enabled && usesSavePathVariable(export.SavePath)
 }
 
 // qbtInvalidPathChars matches Utils::Fs::toValidPath, which qBittorrent applies

@@ -363,7 +363,7 @@ func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
 	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
 }
 
-func TestRulesUseTrackerEntryData(t *testing.T) {
+func TestNeedsForTrackerEntries(t *testing.T) {
 	deleteRule := func(cond *models.RuleCondition) *models.Automation {
 		return &models.Automation{
 			Enabled: true,
@@ -401,12 +401,12 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, rulesUseTrackerEntryData(tt.rules))
+			require.Equal(t, tt.want, NeedsFor(tt.rules).TrackerEntries)
 		})
 	}
 }
 
-func TestRulesUseTrackerDisplayName(t *testing.T) {
+func TestNeedsForTrackerNames(t *testing.T) {
 	rule := func(ac *models.ActionConditions) *models.Automation {
 		return &models.Automation{Enabled: true, Conditions: ac}
 	}
@@ -463,7 +463,7 @@ func TestRulesUseTrackerDisplayName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, rulesUseTrackerDisplayName([]*models.Automation{tt.rule}))
+			require.Equal(t, tt.want, NeedsFor([]*models.Automation{tt.rule}).TrackerNames)
 		})
 	}
 }

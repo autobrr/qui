@@ -145,7 +145,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, syncManager, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,
@@ -886,7 +886,10 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
-	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
+	// validateDirectory admitted the instance on local access from an earlier
+	// read. If local access was turned off since, the scan must not walk the
+	// SSH host at the local path.
+	backend, err := s.backendPool.LocalBackend(ctx, dir.TargetInstanceID)
 	if err != nil {
 		l.Warn().Err(err).Msg("dirscan: no filesystem backend, failing scan")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("no filesystem backend: %v", err), dir.TargetInstanceID, l)
@@ -899,7 +902,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	// This is best-effort; if it fails, scanning continues without seeding skips.
 	fileIDIndex := make(map[string]string)
 	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, l); err != nil {
+		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
 		} else if len(index) > 0 {
 			fileIDIndex = index

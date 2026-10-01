@@ -2771,8 +2771,8 @@ func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
 	}
 }
 
-// requireLocalAccess checks that the instance has local filesystem access enabled.
-func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+// requireContentAccess checks that qui may read the instance's file content.
+func (h *TorrentsHandler) requireContentAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	if h.instanceStore == nil {
 		log.Error().Msg("Instance store not configured")
 		RespondError(w, http.StatusInternalServerError, "Instance store not configured")
@@ -2793,7 +2793,7 @@ func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Requ
 		RespondError(w, http.StatusNotFound, "Instance not found")
 		return false
 	}
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		RespondError(w, http.StatusForbidden, "Instance does not have local filesystem access enabled")
 		return false
 	}
@@ -3022,7 +3022,7 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 		return resolvedTorrentContentFile{}, false
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireContentAccess(w, r, instanceID) {
 		return resolvedTorrentContentFile{}, false
 	}
 
@@ -3246,7 +3246,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireContentAccess(w, r, instanceID) {
 		return
 	}
 

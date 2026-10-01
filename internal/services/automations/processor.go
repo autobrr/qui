@@ -267,7 +267,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Load the rule's free space source state before evaluating any conditions.
 	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
-	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+	if evalCtx != nil && ruleUsesCondition(rule, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 

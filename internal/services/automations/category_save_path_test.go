@@ -153,17 +153,30 @@ func TestResolveMovePath_DefaultSavePath(t *testing.T) {
 	require.False(t, ok, "map not loaded skips the move")
 }
 
-func TestRulesUseSavePathVariables(t *testing.T) {
+func TestNeedsForSavePaths(t *testing.T) {
 	rule := func(enabled bool, conds *models.ActionConditions) *models.Automation {
 		return &models.Automation{Enabled: enabled, Conditions: conds}
 	}
-	movePath := &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "{{.CategorySavePath}}/done"}}
+	move := func(enabled bool, path string) *models.ActionConditions {
+		return &models.ActionConditions{Move: &models.MoveAction{Enabled: enabled, Path: path}}
+	}
 	exportPath := &models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "{{ .CategorySavePath }}"}}
 
-	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, movePath)}))
-	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, exportPath)}))
-	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(false, movePath)}))
-	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: false, Path: "{{.CategorySavePath}}"}})}))
-	require.False(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Category}}"}})}))
-	require.True(t, rulesUseSavePathVariables([]*models.Automation{rule(true, &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "{{.DefaultSavePath}}/archive"}})}))
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{name: "move uses CategorySavePath", rule: rule(true, move(true, "{{.CategorySavePath}}/done")), want: true},
+		{name: "move uses DefaultSavePath", rule: rule(true, move(true, "{{.DefaultSavePath}}/archive")), want: true},
+		{name: "export uses CategorySavePath", rule: rule(true, exportPath), want: true},
+		{name: "disabled rule", rule: rule(false, move(true, "{{.CategorySavePath}}/done"))},
+		{name: "disabled move action", rule: rule(true, move(false, "{{.CategorySavePath}}/done"))},
+		{name: "other variables only", rule: rule(true, move(true, "/data/{{.Category}}"))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NeedsFor([]*models.Automation{tt.rule}).SavePaths)
+		})
+	}
 }
