@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -221,4 +222,22 @@ func TestReflinkTree_Unsupported(t *testing.T) {
 	b, _ := newBackend(t)
 	_, err := b.ReflinkTree(t.Context(), linkPlan(t, t.TempDir()))
 	assert.ErrorIs(t, err, fsops.ErrUnsupported)
+}
+
+func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
+	t.Parallel()
+
+	b, server := newBackend(t)
+	server.SetSFTP(sshtest.SFTPNoHardlink)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+
+	created, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, fsops.ErrUnsupported)
+	assert.Nil(t, created)
+	_, err = os.Lstat(plan.RootDir)
+	assert.ErrorIs(t, err, fs.ErrNotExist, "nothing is created before the gate")
+
+	// Every other operation still works on that server.
+	require.NoError(t, b.MkdirAll(t.Context(), remotePath(dir, "plain"), fsutil.ContentDirMode))
 }

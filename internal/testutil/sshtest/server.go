@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/binary"
 	"io"
 	"net"
 	"os"
@@ -62,7 +63,14 @@ const (
 	// SFTPStatEOF serves an empty in-memory tree and answers every stat and
 	// lstat with SSH_FX_EOF, which pkg/sftp hands its caller as io.EOF.
 	SFTPStatEOF
+	// SFTPNoHardlink serves sftp from a server that does not advertise
+	// hardlink@openssh.com, the way a non-OpenSSH server does. pkg/sftp's
+	// extension list is process-global, so the version reply is edited on
+	// its way out instead.
+	SFTPNoHardlink
 )
+
+const hardlinkExtension = "hardlink@openssh.com"
 
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
@@ -497,4 +505,30 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 		// Every other mode lets the request through.
 	}
 	return n, err
+}
+
+// Write strips the hardlink extension from the server's SSH_FXP_VERSION reply
+// when the mode asks for it. The version packet is the only one whose type
+// byte is 2 in the server-to-client direction, so matching it is enough.
+func (t *requestCutter) Write(p []byte) (int, error) {
+	if t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
+		return t.Channel.Write(p)
+	}
+	out := append([]byte(nil), p[:9]...)
+	rest := p[9:]
+	for len(rest) >= 8 {
+		nameLen := binary.BigEndian.Uint32(rest)
+		name := rest[4 : 4+nameLen]
+		dataLen := binary.BigEndian.Uint32(rest[4+nameLen:])
+		pair := rest[:8+nameLen+dataLen]
+		rest = rest[len(pair):]
+		if string(name) != hardlinkExtension {
+			out = append(out, pair...)
+		}
+	}
+	binary.BigEndian.PutUint32(out, uint32(len(out)-4))
+	if _, err := t.Channel.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
