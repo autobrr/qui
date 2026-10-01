@@ -113,7 +113,7 @@ func TestIsPathInsideBase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isPathInsideBase(tt.basePath, tt.fullPath)
+			result := isPathInsideBase(fsops.HostPaths, tt.basePath, tt.fullPath)
 			if result != tt.expected {
 				t.Errorf("isPathInsideBase(%q, %q) = %v, want %v",
 					tt.basePath, tt.fullPath, result, tt.expected)
@@ -154,7 +154,7 @@ func TestIsPathInsideBase_RelativeCleanedPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isPathInsideBase(tt.basePath, tt.fullPath)
+			result := isPathInsideBase(fsops.HostPaths, tt.basePath, tt.fullPath)
 			if result != tt.expected {
 				t.Errorf("isPathInsideBase(%q, %q) = %v, want %v",
 					tt.basePath, tt.fullPath, result, tt.expected)
@@ -168,12 +168,12 @@ func TestIsPathInsideBase_OSSpecific(t *testing.T) {
 	basePath := filepath.Join("data", "torrents")
 	fullPath := filepath.Join("data", "torrents", "file.mkv")
 
-	if !isPathInsideBase(basePath, fullPath) {
+	if !isPathInsideBase(fsops.HostPaths, basePath, fullPath) {
 		t.Errorf("Expected relative path inside base to return true")
 	}
 
 	escapingPath := filepath.Join("data", "torrents", "..", "other", "file.txt")
-	if isPathInsideBase(basePath, escapingPath) {
+	if isPathInsideBase(fsops.HostPaths, basePath, escapingPath) {
 		t.Errorf("Expected escaping path to return false")
 	}
 }
@@ -957,11 +957,11 @@ func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 		`AC\DC - Back In Black.mkv`,
 		`dir/AC\DC.mkv`,
 	} {
-		if _, ok := buildFullPath(base, name); ok {
+		if _, ok := buildFullPath(fsops.HostPaths, base, name); ok {
 			t.Errorf("expected %q to be rejected", name)
 		}
 	}
-	if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); !ok {
+	if _, ok := buildFullPath(fsops.HostPaths, base, "Show.S01/episode.mkv"); !ok {
 		t.Error("expected a normal relative name to be accepted")
 	}
 
@@ -995,7 +995,7 @@ func TestConditionsRequireLocalAccess_HardlinkScopeCross(t *testing.T) {
 
 func TestBuildFullPathRejectsNonAbsoluteBase(t *testing.T) {
 	for _, base := range []string{"", ".", "relative/dir"} {
-		if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); ok {
+		if _, ok := buildFullPath(fsops.HostPaths, base, "Show.S01/episode.mkv"); ok {
 			t.Errorf("buildFullPath(%q, ...) = ok, want rejected: a relative join resolves against the working directory", base)
 		}
 	}
