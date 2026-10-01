@@ -57,7 +57,7 @@ func TestRemove_File(t *testing.T) {
 
 	require.NoError(t, b.Remove(t.Context(), file, fsops.RemoveOptions{}))
 	_, err := os.Lstat(file)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
@@ -94,9 +94,9 @@ func TestRemove_Recursive_LeavesSymlinkTargetIntact(t *testing.T) {
 	require.NoError(t, b.Remove(t.Context(), tree, fsops.RemoveOptions{Recursive: true}))
 
 	_, err := os.Lstat(tree)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = os.Stat(remotePath(keep, "precious"))
-	assert.NoError(t, err, "the link target must survive")
+	require.NoError(t, err, "the link target must survive")
 }
 
 func TestRemove_Recursive_SymlinkRootRemovesLinkOnly(t *testing.T) {
@@ -114,9 +114,9 @@ func TestRemove_Recursive_SymlinkRootRemovesLinkOnly(t *testing.T) {
 	require.NoError(t, b.Remove(t.Context(), link, fsops.RemoveOptions{Recursive: true}))
 
 	_, err := os.Lstat(link)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = os.Stat(remotePath(keep, "precious"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestRemove_Missing(t *testing.T) {
@@ -124,7 +124,7 @@ func TestRemove_Missing(t *testing.T) {
 
 	b, _ := newBackend(t)
 	err := b.Remove(t.Context(), remotePath(t.TempDir(), "nope"), fsops.RemoveOptions{Recursive: true})
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 // linkPlan is a two-file plan rooted under dir, with one nested target.
@@ -168,11 +168,11 @@ func TestHardlinkTree_CreateAndRemoveTree(t *testing.T) {
 
 	require.NoError(t, b.RemoveTree(t.Context(), created))
 	_, err = os.Lstat(plan.RootDir)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = os.Stat(remotePath(dir, "links"))
-	assert.NoError(t, err, "the pre-existing prefix stays")
+	require.NoError(t, err, "the pre-existing prefix stays")
 	_, err = os.Stat(plan.Files[0].SourcePath)
-	assert.NoError(t, err, "sources are untouched")
+	require.NoError(t, err, "sources are untouched")
 }
 
 func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
@@ -191,9 +191,9 @@ func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	assert.Nil(t, created)
 
 	_, err = os.Lstat(plan.Files[0].TargetPath)
-	assert.ErrorIs(t, err, fs.ErrNotExist, "the link made before the conflict is rolled back")
+	require.ErrorIs(t, err, fs.ErrNotExist, "the link made before the conflict is rolled back")
 	_, err = os.Stat(plan.Files[1].TargetPath)
-	assert.NoError(t, err, "the pre-existing target is not ours to remove")
+	require.NoError(t, err, "the pre-existing target is not ours to remove")
 }
 
 func TestRemoveTree_SkipsNonEmptyDir(t *testing.T) {
@@ -210,9 +210,9 @@ func TestRemoveTree_SkipsNonEmptyDir(t *testing.T) {
 	require.NoError(t, b.RemoveTree(t.Context(), created))
 
 	_, err = os.Lstat(plan.Files[0].TargetPath)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = os.Stat(stranger)
-	assert.NoError(t, err, "a directory holding someone else's file stays")
+	require.NoError(t, err, "a directory holding someone else's file stays")
 	require.NoError(t, b.RemoveTree(t.Context(), nil))
 }
 
@@ -221,7 +221,7 @@ func TestReflinkTree_Unsupported(t *testing.T) {
 
 	b, _ := newBackend(t)
 	_, err := b.ReflinkTree(t.Context(), linkPlan(t, t.TempDir()))
-	assert.ErrorIs(t, err, fsops.ErrUnsupported)
+	require.ErrorIs(t, err, fsops.ErrUnsupported)
 }
 
 func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
@@ -236,7 +236,7 @@ func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
 	require.ErrorIs(t, err, fsops.ErrUnsupported)
 	assert.Nil(t, created)
 	_, err = os.Lstat(plan.RootDir)
-	assert.ErrorIs(t, err, fs.ErrNotExist, "nothing is created before the gate")
+	require.ErrorIs(t, err, fs.ErrNotExist, "nothing is created before the gate")
 
 	// Every other operation still works on that server.
 	require.NoError(t, b.MkdirAll(t.Context(), remotePath(dir, "plain"), fsutil.ContentDirMode))

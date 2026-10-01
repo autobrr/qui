@@ -83,7 +83,7 @@ func TestLive_WriteOperations(t *testing.T) {
 	// A previous run that died mid-way leaves its tree; clear it first.
 	_ = b.Remove(ctx, root, fsops.RemoveOptions{Recursive: true})
 	t.Cleanup(func() {
-		assert.NoError(t, b.Remove(context.WithoutCancel(ctx), root, fsops.RemoveOptions{Recursive: true}))
+		require.NoError(t, b.Remove(context.WithoutCancel(ctx), root, fsops.RemoveOptions{Recursive: true}))
 	})
 
 	writeRemote := func(name string) {
@@ -126,14 +126,14 @@ func TestLive_WriteOperations(t *testing.T) {
 		assert.Equal(t, 2, created.Created)
 		for _, fp := range plan.Files {
 			_, err := b.Lstat(ctx, fp.TargetPath)
-			assert.NoError(t, err, fp.TargetPath)
+			require.NoError(t, err, fp.TargetPath)
 		}
 	})
 	if created != nil {
 		step("removetree", func() {
 			require.NoError(t, b.RemoveTree(ctx, created))
 			_, err := b.Lstat(ctx, links)
-			assert.ErrorIs(t, err, fs.ErrNotExist)
+			require.ErrorIs(t, err, fs.ErrNotExist)
 		})
 		step("hardlinktree forced failure", func() {
 			// The second target is pre-created, so the first link must be
@@ -143,9 +143,9 @@ func TestLive_WriteOperations(t *testing.T) {
 			_, err := b.HardlinkTree(ctx, plan)
 			require.Error(t, err)
 			_, err = b.Lstat(ctx, plan.Files[0].TargetPath)
-			assert.ErrorIs(t, err, fs.ErrNotExist)
+			require.ErrorIs(t, err, fs.ErrNotExist)
 			_, err = b.Lstat(ctx, plan.Files[1].TargetPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 
@@ -158,8 +158,8 @@ func TestLive_WriteOperations(t *testing.T) {
 		require.NoError(t, client.Symlink(keep, path.Join(orphan, "a", "linkdir")))
 		require.NoError(t, b.Remove(ctx, orphan, fsops.RemoveOptions{Recursive: true}))
 		_, err := b.Lstat(ctx, orphan)
-		assert.ErrorIs(t, err, fs.ErrNotExist)
+		require.ErrorIs(t, err, fs.ErrNotExist)
 		_, err = b.Lstat(ctx, path.Join(keep, "precious"))
-		assert.NoError(t, err, "the link target must survive")
+		require.NoError(t, err, "the link target must survive")
 	})
 }

@@ -376,7 +376,7 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		return nil, requestError("stat", p, err)
 	}
 
-	var created []string
+	created := make([]string, 0, 1)
 	if parent := path.Dir(p); parent != p {
 		if created, err = mkdirAll(ctx, client, parent); err != nil {
 			return created, err
