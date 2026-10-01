@@ -122,13 +122,11 @@
     "cacheSource": "Джерело: {{source}} · Область: {{scope}}",
     "refreshReadyIn": "Доступно через {{seconds}} с",
     "refreshFromIndexers": "Оновити з індексаторів",
-    "noValue": "-",
     "categoryFallback": "Категорія {{id}}",
     "noResultsFor": "Нічого не знайдено за запитом «{{query}}»",
     "enterQuery": "Введіть пошуковий запит для початку",
     "free": "Безкоштовно",
-    "freeNeutral": "Нейтрально",
-    "noInfoUrlAvailable": "URL із додатковою інформацією недоступний"
+    "freeNeutral": "Нейтрально"
   },
   "historyMeta": "{{type}} · {{count}} результатів · {{timestamp}}",
   "table": {

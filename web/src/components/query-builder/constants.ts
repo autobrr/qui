@@ -6,6 +6,9 @@
 import type { TFunction } from "i18next";
 import type { ConditionField } from "@/types";
 
+// find-hardcoded-i18n-literals.mjs skips this file: its English is only a t() defaultValue.
+// A table rendered raw, instead of through a getTranslated* helper, ships English unnoticed.
+
 // Clock fields cycle, so a BETWEEN range whose minimum is above its maximum wraps
 // past the end of the field. Mirrors ConditionField.WrapsBetween in the backend.
 export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([
@@ -18,121 +21,121 @@ export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<Cond
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
-  NAME: { label: "Name", type: "string" as const, description: "Torrent name" },
-  HASH: { label: "Hash", type: "string" as const, description: "Torrent info hash" },
-  INFOHASH_V1: { label: "Infohash v1", type: "string" as const, description: "BitTorrent v1 info hash" },
-  INFOHASH_V2: { label: "Infohash v2", type: "string" as const, description: "BitTorrent v2 info hash" },
-  MAGNET_URI: { label: "Magnet URI", type: "string" as const, description: "Magnet link for the torrent" },
-  CATEGORY: { label: "Category", type: "string" as const, description: "Torrent category" },
-  TAGS: { label: "Tags", type: "string" as const, description: "Comma-separated tags" },
-  SAVE_PATH: { label: "Save Path", type: "string" as const, description: "Download location" },
-  CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
-  DOWNLOAD_PATH: { label: "Download Path", type: "string" as const, description: "Session download path from qBittorrent" },
-  CREATED_BY: { label: "Created By", type: "string" as const, description: "Torrent creator metadata" },
+  NAME: { label: "Name", type: "string" as const },
+  HASH: { label: "Hash", type: "string" as const },
+  INFOHASH_V1: { label: "Infohash v1", type: "string" as const },
+  INFOHASH_V2: { label: "Infohash v2", type: "string" as const },
+  MAGNET_URI: { label: "Magnet URI", type: "string" as const },
+  CATEGORY: { label: "Category", type: "string" as const },
+  TAGS: { label: "Tags", type: "string" as const },
+  SAVE_PATH: { label: "Save Path", type: "string" as const },
+  CONTENT_PATH: { label: "Content Path", type: "string" as const },
+  DOWNLOAD_PATH: { label: "Download Path", type: "string" as const },
+  CREATED_BY: { label: "Created By", type: "string" as const },
   // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
   // FIELD_GROUPS so it is no longer offered, and kept here so saved rules that
-  // already use it still render a label, a type, and help text.
-  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "Same as Tracker: any tracker of the torrent (URL, domain, or display name)" },
-  CONTENT_TYPE: { label: "Content Type", type: "string" as const, description: "Detected content type (movie, tv, music, etc) from release parsing" },
-  EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const, description: "Parsed item key (title/year or SxxEyy) for grouping across trackers" },
-  RLS_SOURCE: { label: "Source (RLS)", type: "string" as const, description: "Parsed source (normalized: WEBDL, WEBRIP, BLURAY, etc)" },
-  RLS_RESOLUTION: { label: "Resolution (RLS)", type: "string" as const, description: "Parsed resolution (e.g. 1080P, 2160P)" },
-  RLS_CODEC: { label: "Codec (RLS)", type: "string" as const, description: "Parsed video codec (normalized: AVC, HEVC, etc)" },
-  RLS_HDR: { label: "HDR (RLS)", type: "string" as const, description: "Parsed HDR tags (e.g. DV, HDR10, HDR)" },
-  RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const, description: "Parsed audio tags (e.g. DTS, TRUEHD, AAC)" },
-  RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const, description: "Parsed audio channels (e.g. 5.1, 7.1)" },
-  RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
-  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const, description: "Year parsed from the torrent name (e.g. 2021). Best for movies and dated releases; most TV episodes (e.g. S14E05) have no year and never match any comparison operator (the NOT toggle inverts that, so it matches yearless releases)." },
-  STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
-  TRACKER: { label: "Tracker", type: "string" as const, description: "Any tracker of the torrent (URL, domain, or display name)" },
-  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
-  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
-  COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
+  // already use it still render a label and a type.
+  TRACKERS: { label: "Trackers (All)", type: "string" as const },
+  CONTENT_TYPE: { label: "Content Type", type: "string" as const },
+  EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const },
+  RLS_SOURCE: { label: "Source (RLS)", type: "string" as const },
+  RLS_RESOLUTION: { label: "Resolution (RLS)", type: "string" as const },
+  RLS_CODEC: { label: "Codec (RLS)", type: "string" as const },
+  RLS_HDR: { label: "HDR (RLS)", type: "string" as const },
+  RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const },
+  RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const },
+  RLS_GROUP: { label: "Group (RLS)", type: "string" as const },
+  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const },
+  STATE: { label: "State", type: "state" as const },
+  TRACKER: { label: "Tracker", type: "string" as const },
+  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const },
+  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const },
+  COMMENT: { label: "Comment", type: "string" as const },
 
   // Size fields (bytes)
-  SIZE: { label: "Size", type: "bytes" as const, description: "Selected file size" },
-  TOTAL_SIZE: { label: "Total Size", type: "bytes" as const, description: "Total torrent size" },
-  COMPLETED: { label: "Completed", type: "bytes" as const, description: "Completed bytes" },
-  DOWNLOADED: { label: "Downloaded", type: "bytes" as const, description: "Total downloaded" },
-  DOWNLOADED_SESSION: { label: "Downloaded (Session)", type: "bytes" as const, description: "Downloaded in current session" },
-  UPLOADED: { label: "Uploaded", type: "bytes" as const, description: "Total uploaded" },
-  UPLOADED_SESSION: { label: "Uploaded (Session)", type: "bytes" as const, description: "Uploaded in current session" },
-  AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const, description: "Remaining to download" },
-  FREE_SPACE: { label: "Free Space", type: "bytes" as const, description: "Free space on the instance's filesystem" },
+  SIZE: { label: "Size", type: "bytes" as const },
+  TOTAL_SIZE: { label: "Total Size", type: "bytes" as const },
+  COMPLETED: { label: "Completed", type: "bytes" as const },
+  DOWNLOADED: { label: "Downloaded", type: "bytes" as const },
+  DOWNLOADED_SESSION: { label: "Downloaded (Session)", type: "bytes" as const },
+  UPLOADED: { label: "Uploaded", type: "bytes" as const },
+  UPLOADED_SESSION: { label: "Uploaded (Session)", type: "bytes" as const },
+  AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const },
+  FREE_SPACE: { label: "Free Space", type: "bytes" as const },
 
   // Timestamp-backed fields represented as ages (seconds since event)
-  ADDED_ON: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
-  COMPLETION_ON: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
-  LAST_ACTIVITY: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
-  SEEN_COMPLETE: { label: "Seen Complete Age", type: "duration" as const, description: "Time since torrent was last seen complete" },
+  ADDED_ON: { label: "Added Age", type: "duration" as const },
+  COMPLETION_ON: { label: "Completed Age", type: "duration" as const },
+  LAST_ACTIVITY: { label: "Inactive Time", type: "duration" as const },
+  SEEN_COMPLETE: { label: "Seen Complete Age", type: "duration" as const },
 
   // Duration fields (seconds)
-  ETA: { label: "ETA", type: "duration" as const, description: "Estimated seconds to completion" },
-  REANNOUNCE: { label: "Reannounce In", type: "duration" as const, description: "Seconds until next reannounce" },
-  SEEDING_TIME: { label: "Seeding Time", type: "duration" as const, description: "Time spent seeding" },
-  TIME_ACTIVE: { label: "Time Active", type: "duration" as const, description: "Total active time" },
-  MAX_SEEDING_TIME: { label: "Max Seeding Time", type: "duration" as const, description: "Configured max seeding time" },
-  MAX_INACTIVE_SEEDING_TIME: { label: "Max Inactive Seeding Time", type: "duration" as const, description: "Configured max inactive seeding time" },
-  SEEDING_TIME_LIMIT: { label: "Seeding Time Limit", type: "duration" as const, description: "Torrent seeding time limit" },
-  INACTIVE_SEEDING_TIME_LIMIT: { label: "Inactive Seeding Time Limit", type: "duration" as const, description: "Torrent inactive seeding time limit" },
-  ADDED_ON_AGE: { label: "Added Age (legacy)", type: "duration" as const, description: "Legacy alias for Added Age" },
-  COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const, description: "Legacy alias for Completed Age" },
-  LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const, description: "Legacy alias for Inactive Time" },
+  ETA: { label: "ETA", type: "duration" as const },
+  REANNOUNCE: { label: "Reannounce In", type: "duration" as const },
+  SEEDING_TIME: { label: "Seeding Time", type: "duration" as const },
+  TIME_ACTIVE: { label: "Time Active", type: "duration" as const },
+  MAX_SEEDING_TIME: { label: "Max Seeding Time", type: "duration" as const },
+  MAX_INACTIVE_SEEDING_TIME: { label: "Max Inactive Seeding Time", type: "duration" as const },
+  SEEDING_TIME_LIMIT: { label: "Seeding Time Limit", type: "duration" as const },
+  INACTIVE_SEEDING_TIME_LIMIT: { label: "Inactive Seeding Time Limit", type: "duration" as const },
+  ADDED_ON_AGE: { label: "Added Age (legacy)", type: "duration" as const },
+  COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const },
+  LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const },
 
   // System Time fields
-  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const, description: "Current system hour (0-23)" },
-  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const, description: "Current system minute (0-59)" },
-  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const, description: "Current system day of week (0=Sun to 6=Sat)" },
-  SYSTEM_DAY: { label: "System Day", type: "integer" as const, description: "Current system day of month (1-31)" },
-  SYSTEM_MONTH: { label: "System Month", type: "integer" as const, description: "Current system month (1-12)" },
-  SYSTEM_YEAR: { label: "System Year", type: "integer" as const, description: "Current system year" },
+  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const },
+  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const },
+  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const },
+  SYSTEM_DAY: { label: "System Day", type: "integer" as const },
+  SYSTEM_MONTH: { label: "System Month", type: "integer" as const },
+  SYSTEM_YEAR: { label: "System Year", type: "integer" as const },
 
   // Float fields
-  RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
-  RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
-  MAX_RATIO: { label: "Max Ratio", type: "float" as const, description: "Maximum ratio value from qBittorrent" },
-  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const, description: "Uploaded / total torrent size. Cross-seed-safe alternative to RATIO." },
-  PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
-  AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
-  POPULARITY: { label: "Popularity", type: "float" as const, description: "Swarm popularity metric" },
+  RATIO: { label: "Ratio", type: "float" as const },
+  RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const },
+  MAX_RATIO: { label: "Max Ratio", type: "float" as const },
+  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const },
+  PROGRESS: { label: "Progress", type: "percentage" as const },
+  AVAILABILITY: { label: "Availability", type: "float" as const },
+  POPULARITY: { label: "Popularity", type: "float" as const },
 
   // Speed fields (bytes/s)
-  DL_SPEED: { label: "Download Speed", type: "speed" as const, description: "Current download speed" },
-  UP_SPEED: { label: "Upload Speed", type: "speed" as const, description: "Current upload speed" },
-  DL_LIMIT: { label: "Download Limit", type: "speed" as const, description: "Configured download speed limit" },
-  UP_LIMIT: { label: "Upload Limit", type: "speed" as const, description: "Configured upload speed limit" },
+  DL_SPEED: { label: "Download Speed", type: "speed" as const },
+  UP_SPEED: { label: "Upload Speed", type: "speed" as const },
+  DL_LIMIT: { label: "Download Limit", type: "speed" as const },
+  UP_LIMIT: { label: "Upload Limit", type: "speed" as const },
 
   // Count fields
-  NUM_SEEDS: { label: "Active Seeders", type: "integer" as const, description: "Seeders currently connected to" },
-  NUM_LEECHS: { label: "Active Leechers", type: "integer" as const, description: "Leechers currently connected to" },
-  NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const, description: "Total seeders in swarm (tracker-reported)" },
-  NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
-  TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
-  PRIORITY: { label: "Queue Priority", type: "integer" as const, description: "Torrent queue priority value" },
-  GROUP_SIZE: { label: "Group Size", type: "integer" as const, description: "Number of torrents in the selected group for this condition" },
+  NUM_SEEDS: { label: "Active Seeders", type: "integer" as const },
+  NUM_LEECHS: { label: "Active Leechers", type: "integer" as const },
+  NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const },
+  NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const },
+  TRACKERS_COUNT: { label: "Trackers", type: "integer" as const },
+  PRIORITY: { label: "Queue Priority", type: "integer" as const },
+  GROUP_SIZE: { label: "Group Size", type: "integer" as const },
 
   // Boolean fields
-  PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
-  AUTO_MANAGED: { label: "Auto-managed", type: "boolean" as const, description: "Managed by automatic torrent management" },
-  FIRST_LAST_PIECE_PRIO: { label: "First/Last Piece Priority", type: "boolean" as const, description: "First and last pieces are prioritized" },
-  FORCE_START: { label: "Force Start", type: "boolean" as const, description: "Ignores queue limits and starts immediately" },
-  SEQUENTIAL_DOWNLOAD: { label: "Sequential Download", type: "boolean" as const, description: "Downloads pieces sequentially" },
-  SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const, description: "Super-seeding mode enabled" },
-  IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
-  HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
-  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const, description: "Some files are set to Do not download" },
-  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
-  EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
-  SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
-  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
-  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
-  CROSS_SEED_TAGS: { label: "Cross-seed Tags", type: "string" as const, description: "Tags across this torrent and its same-instance cross-seeds" },
-  SEASON_PACK_STATUS: { label: "Season pack status", type: "seasonPackStatus" as const, description: "Whether this torrent is a season pack, an episode covered by a season pack of the same release on this instance, or an episode with no such pack. Empty for movies and names without a season." },
-  SEASON_PACK_STATUS_ANY_INSTANCE: { label: "Season pack status (any instance)", type: "seasonPackStatus" as const, description: "Same as Season pack status, but a season pack on any active instance counts" },
+  PRIVATE: { label: "Private", type: "boolean" as const },
+  AUTO_MANAGED: { label: "Auto-managed", type: "boolean" as const },
+  FIRST_LAST_PIECE_PRIO: { label: "First/Last Piece Priority", type: "boolean" as const },
+  FORCE_START: { label: "Force Start", type: "boolean" as const },
+  SEQUENTIAL_DOWNLOAD: { label: "Sequential Download", type: "boolean" as const },
+  SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const },
+  IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const },
+  HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const },
+  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const },
+  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const },
+  EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const },
+  SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const },
+  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const },
+  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const },
+  CROSS_SEED_TAGS: { label: "Cross-seed Tags", type: "string" as const },
+  SEASON_PACK_STATUS: { label: "Season pack status", type: "seasonPackStatus" as const },
+  SEASON_PACK_STATUS_ANY_INSTANCE: { label: "Season pack status (any instance)", type: "seasonPackStatus" as const },
 
   // Enum-like fields
-  HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
-  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
+  HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const },
+  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const },
 } as const;
 
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
@@ -363,19 +366,6 @@ export function getOperatorsForField(field: string) {
 
   return baseOperators;
 }
-
-export const DURATION_UNITS = [
-  { value: 1, label: "seconds" },
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
-];
-
-export const SPEED_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
-];
 
 // Capability types for disabling fields/states in query builder
 export type CapabilityKey = "trackerHealth" | "localFilesystemAccess" | "fileIdentity"
