@@ -10,7 +10,8 @@ import { FileText, Home } from "lucide-react"
 export const isDemo = import.meta.env.VITE_DEMO === "1"
 
 // The way back to the site. Same origin, so plain paths; target=_top leaves the landing page iframe.
+// labelKey is a key in the common namespace.
 export const demoLinks = [
-  { href: "/", label: "Back to getqui.com", icon: Home },
-  { href: "/docs/intro", label: "Docs", icon: FileText },
+  { href: "/", labelKey: "nav.backToSite", icon: Home },
+  { href: "/docs/intro", labelKey: "nav.docs", icon: FileText },
 ]
