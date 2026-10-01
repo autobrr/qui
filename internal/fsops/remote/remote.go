@@ -74,9 +74,9 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
+	fi, err := stat(ctx, client, p)
 	if err != nil {
-		return nil, requestError("stat", p, err)
+		return nil, err
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -86,9 +86,9 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	if err != nil {
 		return nil, err
 	}
-	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) })
+	fi, err := lstat(ctx, client, p)
 	if err != nil {
-		return nil, requestError("lstat", p, err)
+		return nil, err
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -121,9 +121,9 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	}
 	// A missing root errors before the goroutine, so the caller sees
 	// fs.ErrNotExist from the call rather than as a lone channel entry.
-	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(root) })
+	fi, err := lstat(ctx, client, root)
 	if err != nil {
-		return nil, requestError("lstat", root, err)
+		return nil, err
 	}
 
 	ch := make(chan fsops.WalkEntry, 64)
@@ -259,7 +259,7 @@ func lost(err error) error {
 	return &connectionLostError{msg: fsops.ErrConnectionLost.Error() + ": " + err.Error(), kept: kept}
 }
 
-// readError is pathError for a failed sftp request: a server answer keeps
+// requestError is pathError for a failed sftp request: a server answer keeps
 // pkg/sftp's sentinel, a dropped transport becomes ErrConnectionLost.
 func requestError(op, p string, err error) error {
 	if lostConnection(err) {
@@ -268,7 +268,7 @@ func requestError(op, p string, err error) error {
 	return pathError(op, p, err)
 }
 
-// readDirError is readError for a directory listing. pkg/sftp takes the
+// readDirError is requestError for a directory listing. pkg/sftp takes the
 // server's SSH_FX_EOF as the end of the listing, so an io.EOF that still
 // escapes it comes from a request sent on a channel that had closed, or from
 // a server that answered the opendir itself with SSH_FX_EOF.
@@ -361,11 +361,13 @@ func (b *Backend) MkdirAll(ctx context.Context, p string, _ fs.FileMode) error {
 
 // mkdirAll creates p and its missing ancestors and returns the directories
 // this call made, shallowest first, so a tree create can roll back exactly
-// those. Client.MkdirAll is not used: it reports nothing about what it made.
-// Stat follows a symlinked ancestor on purpose, as os.MkdirAll does: a link to
-// a directory is a directory for the purpose of creating children in it.
+// those. It is hardlinktree.MkdirAllTracked over sftp, with two differences
+// the local one does not need: Stat instead of Lstat, so a symlinked ancestor
+// counts as a directory the way os.MkdirAll treats it, and a file in the way
+// is refused up front rather than left for the server's mkdir to refuse.
+// Client.MkdirAll is not used: it reports nothing about what it made.
 func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, error) {
-	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
+	fi, err := stat(ctx, client, p)
 	if err == nil {
 		if fi.IsDir() {
 			return nil, nil
@@ -373,19 +375,25 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		return nil, pathError("mkdir", p, syscall.ENOTDIR)
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return nil, requestError("stat", p, err)
+		return nil, err
 	}
 
-	created := make([]string, 0, 1)
+	var created []string
 	if parent := path.Dir(p); parent != p {
 		if created, err = mkdirAll(ctx, client, parent); err != nil {
 			return created, err
 		}
 	}
-	if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, client.Mkdir(p) }); err != nil {
+	if err := awaitErr(ctx, func() error { return client.Mkdir(p) }); err != nil {
+		// A cancel while the request is on the wire may still land it on the
+		// server, so the directory is recorded: rollback removes it only when
+		// empty, so recording a directory that never appeared costs nothing.
+		if ctx.Err() != nil {
+			return append(created, p), err
+		}
 		// SSH_FX_FAILURE covers "exists" too: a concurrent attempt won the
 		// race, so the directory is there but not ours to record.
-		if fi, statErr := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) }); statErr == nil && fi.IsDir() {
+		if fi, statErr := lstat(ctx, client, p); statErr == nil && fi.IsDir() {
 			return created, nil
 		}
 		return created, requestError("mkdir", p, err)
@@ -400,12 +408,17 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 	}
 	fi, err := lstat(ctx, client, p)
 	if err != nil {
+		// Recursive mirrors os.RemoveAll, which is content with a path that
+		// is already gone; plain Remove mirrors os.Remove, which is not.
+		if opts.Recursive && errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
 	if opts.Recursive && fi.IsDir() {
 		return removeAll(ctx, client, p)
 	}
-	return remove(ctx, client, p, fi.IsDir())
+	return unlink(ctx, client, p, fi.IsDir())
 }
 
 // removeAll empties dir bottom-up and removes it. Client.RemoveAll is not
@@ -417,9 +430,9 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 // listing and the unlink can redirect the unlink. The re-lstat in remove
 // bounds that window to one round trip; closing it needs the exec tier.
 //
-// ponytail: serial, two round trips per entry on top of the listing; nothing
-// reachable in this release removes a large tree, and rm -rf -- over exec
-// (#2726) is the upgrade when one does.
+// ponytail: serial, one extra round trip per file on top of the listing;
+// nothing reachable in this release removes a large tree, and rm -rf -- over
+// exec (#2726) is the upgrade when one does.
 func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
 	entries, err := readDir(ctx, client, dir)
 	if err != nil {
@@ -430,19 +443,20 @@ func removeAll(ctx context.Context, client *sftp.Client, dir string) error {
 		if fi.IsDir() {
 			err = removeAll(ctx, client, child)
 		} else {
-			err = remove(ctx, client, child, false)
+			err = remove(ctx, client, child)
 		}
 		if err != nil {
 			return err
 		}
 	}
-	return remove(ctx, client, dir, true)
+	return unlink(ctx, client, dir, true)
 }
 
-// remove unlinks one entry, re-checking with lstat first that it is still
-// what the caller saw: a directory swapped in under a file name is refused
-// rather than removed through, and an entry already gone is not an error.
-func remove(ctx context.Context, client *sftp.Client, p string, isDir bool) error {
+// remove unlinks one non-directory entry found by a listing, re-checking with
+// lstat first that it still is one: a directory swapped in under the name is
+// refused rather than removed through, and an entry already gone is fine.
+// Directories skip the check, since rmdir refuses anything but a directory.
+func remove(ctx context.Context, client *sftp.Client, p string) error {
 	fi, err := lstat(ctx, client, p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -450,17 +464,39 @@ func remove(ctx context.Context, client *sftp.Client, p string, isDir bool) erro
 	if err != nil {
 		return err
 	}
-	if fi.IsDir() != isDir {
-		return pathError("remove", p, errors.New("entry changed type during removal"))
+	if fi.IsDir() {
+		return pathError("remove", p, errors.New("entry became a directory during removal"))
 	}
+	return unlink(ctx, client, p, false)
+}
+
+// unlink sends the remove. Client.Remove retries a failed unlink as rmdir and
+// then names the error from a link-following Stat, so a symlink to a
+// directory that cannot be unlinked would read as "not found" while it still
+// exists; a failure is therefore answered from our own lstat. The one case
+// that fallback can still remove is an empty directory swapped in under a
+// file name, which loses nothing.
+func unlink(ctx context.Context, client *sftp.Client, p string, isDir bool) error {
 	call := client.Remove
 	if isDir {
 		call = client.RemoveDirectory
 	}
-	if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, call(p) }); err != nil {
-		return requestError("remove", p, err)
+	err := awaitErr(ctx, func() error { return call(p) })
+	if err == nil || ctx.Err() != nil {
+		return err
 	}
-	return nil
+	if _, statErr := lstat(ctx, client, p); errors.Is(statErr, fs.ErrNotExist) {
+		return nil
+	}
+	return requestError("remove", p, err)
+}
+
+func stat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, error) {
+	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
+	if err != nil {
+		return nil, requestError("stat", p, err)
+	}
+	return fi, nil
 }
 
 func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, error) {
@@ -502,23 +538,36 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		return nil, err
 	}
 
-	dirs, err := mkdirAll(ctx, client, plan.RootDir)
-	created.Dirs = append(created.Dirs, dirs...)
-	if err != nil {
-		return fail(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
-	}
+	// Every directory this call has seen or made, so a flat tree pays one
+	// stat for its root rather than one per file.
+	known := map[string]struct{}{}
 	for _, fp := range plan.Files {
-		dirs, err := mkdirAll(ctx, client, path.Dir(fp.TargetPath))
-		created.Dirs = append(created.Dirs, dirs...)
-		if err != nil {
-			return fail(fmt.Errorf("create directory %s: %w", path.Dir(fp.TargetPath), err))
+		dir := path.Dir(fp.TargetPath)
+		if _, ok := known[dir]; !ok {
+			dirs, err := mkdirAll(ctx, client, dir)
+			created.Dirs = append(created.Dirs, dirs...)
+			if err != nil {
+				return fail(fmt.Errorf("create directory %s: %w", dir, err))
+			}
+			for d := dir; ; d = path.Dir(d) {
+				known[d] = struct{}{}
+				if d == plan.RootDir || path.Dir(d) == d {
+					break
+				}
+			}
 		}
-		if _, err := lstat(ctx, client, fp.TargetPath); err == nil {
-			return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return fail(fmt.Errorf("check target: %w", err))
-		}
-		if _, err := await(ctx, func() (struct{}, error) { return struct{}{}, client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
+		// Link first: an existing target makes it fail, and the lstat that
+		// names the cause is paid only then.
+		if err := awaitErr(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
+			if ctx.Err() != nil {
+				// The request may still land on the server; record the
+				// target so rollback takes it back if it did.
+				created.Files = append(created.Files, fp.TargetPath)
+				return fail(err)
+			}
+			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
+				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+			}
 			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 		}
 		created.Files = append(created.Files, fp.TargetPath)
@@ -534,16 +583,15 @@ func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*f
 	return nil, fmt.Errorf("reflinktree: %w: sftp has no reflink operation", fsops.ErrUnsupported)
 }
 
-// RemoveTree is a path list, not a walk: each recorded file is unlinked, each
-// recorded directory removed deepest first and only when empty, so a
-// directory that gained a sibling torrent's files in the meantime stays.
+// RemoveTree is hardlinktree.Created.Rollback over sftp: each recorded file
+// is unlinked, each recorded directory removed deepest first and only when
+// empty, so a directory that gained a sibling torrent's files stays. The
+// algorithm is repeated rather than shared because the local one is bound to
+// os.Remove and an errno; a second copy is smaller than the seam.
 func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	// A nil handle is nothing to remove, per the interface.
 	if created == nil {
-		return nil
+		return ctx.Err()
 	}
 	client, err := b.client(ctx)
 	if err != nil {
@@ -551,14 +599,14 @@ func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResul
 	}
 	var firstErr error
 	for _, f := range created.Files {
-		if err := remove(ctx, client, f, false); err != nil && firstErr == nil {
+		if err := unlink(ctx, client, f, false); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	dirs := slices.Clone(created.Dirs)
 	slices.SortFunc(dirs, func(a, b string) int { return len(b) - len(a) })
 	for _, d := range dirs {
-		if err := remove(ctx, client, d, true); err != nil && firstErr == nil && !dirNotEmpty(ctx, client, d) {
+		if err := unlink(ctx, client, d, true); err != nil && firstErr == nil && !dirNotEmpty(ctx, client, d) {
 			firstErr = err
 		}
 	}
@@ -609,6 +657,12 @@ func await[T any](ctx context.Context, call func() (T, error)) (T, error) {
 	case result := <-done:
 		return result.value, result.err
 	}
+}
+
+// awaitErr is await for a call that only answers with an error.
+func awaitErr(ctx context.Context, call func() error) error {
+	_, err := await(ctx, func() (struct{}, error) { return struct{}{}, call() })
+	return err
 }
 
 // pathError re-attaches the path pkg/sftp drops: it normalises status errors to

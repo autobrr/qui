@@ -123,8 +123,10 @@ func TestRemove_Missing(t *testing.T) {
 	t.Parallel()
 
 	b, _ := newBackend(t)
-	err := b.Remove(t.Context(), remotePath(t.TempDir(), "nope"), fsops.RemoveOptions{Recursive: true})
-	require.ErrorIs(t, err, fs.ErrNotExist)
+	missing := remotePath(t.TempDir(), "nope")
+	// Like os.RemoveAll and os.Remove respectively.
+	require.NoError(t, b.Remove(t.Context(), missing, fsops.RemoveOptions{Recursive: true}))
+	require.ErrorIs(t, b.Remove(t.Context(), missing, fsops.RemoveOptions{}), fs.ErrNotExist)
 }
 
 // linkPlan is a two-file plan rooted under dir, with one nested target.
