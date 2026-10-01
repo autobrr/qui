@@ -124,8 +124,9 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install msitools
-        run: sudo apt-get update && sudo apt-get install -y msitools
+      # Ubuntu ships wixl in its own package, not in msitools.
+      - name: Install wixl
+        run: sudo apt-get update && sudo apt-get install -y wixl
 
       - name: Prepare release signing key
         if: startsWith(github.ref, 'refs/tags/')

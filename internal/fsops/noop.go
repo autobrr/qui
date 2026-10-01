@@ -70,3 +70,5 @@ func (noopBackend) RemoveTree(ctx context.Context, created *TreeCreateResult) er
 func (noopBackend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
 	return false, "", noopErr(ctx)
 }
+
+func (noopBackend) Paths() PathDialect { return HostPaths }

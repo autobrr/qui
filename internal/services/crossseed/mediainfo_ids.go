@@ -65,11 +65,11 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return mediaIDsToExternalIDs(entry.IDType, entry.IDValue)
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil
 	}
 
-	backend, err := s.getBackendForInstance(ctx, instance.ID)
+	backend, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityContent)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrent.Name).Msg("[CROSSSEED-SEARCH] no filesystem backend for media ID lookup; not caching")
 		return nil

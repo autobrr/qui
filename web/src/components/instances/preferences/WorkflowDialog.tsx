@@ -752,17 +752,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
-  const hasLocalFilesystemAccess = useMemo(
-    () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
-    [instances, instanceId]
-  )
+  const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
+  const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
       trackerHealth: supportsTrackerHealth,
       localFilesystemAccess: hasLocalFilesystemAccess,
+      fileIdentity: hasFileIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess]
+    [supportsTrackerHealth, hasLocalFilesystemAccess, hasFileIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -3791,16 +3791,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       type="checkbox"
                                       checked={formState.exprIncludeHardlinks}
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      disabled={!hasLocalFilesystemAccess}
+                                      disabled={!hasFileIdentity}
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
-                                    <span className={!hasLocalFilesystemAccess ? "opacity-50" : ""}>
+                                    <span className={!hasFileIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasLocalFilesystemAccess ? (
+                                  {hasFileIdentity ? (
                                     <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
                                   ) : (
                                     <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>

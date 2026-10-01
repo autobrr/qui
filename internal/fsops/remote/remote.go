@@ -50,13 +50,21 @@ var errNoIdentity = errors.New("file identity is not available over sftp")
 const statvfsExtension = "statvfs@openssh.com"
 
 // client is the context check plus the pooled connection every method opens
-// with. A pool error (unpinned host, dial failure, mismatch) is returned as-is
-// so callers can tell a broken connection from a broken path.
+// with. A pool error (dial failure, mismatch, instance no longer remote) is
+// marked ErrConnectionLost and carries no path, so callers can tell a broken
+// connection from a broken path. The pool's own sentinels stay matchable.
 func (b *Backend) client(ctx context.Context) (*sftp.Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return b.pool.SFTP(ctx, b.inst)
+	client, err := b.pool.SFTP(ctx, b.inst)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, lost(err)
+	}
+	return client, nil
 }
 
 func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -66,7 +74,7 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	}
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Stat(p) })
 	if err != nil {
-		return nil, pathError("stat", p, err)
+		return nil, readError("stat", p, err)
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -78,7 +86,7 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	}
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(p) })
 	if err != nil {
-		return nil, pathError("lstat", p, err)
+		return nil, readError("lstat", p, err)
 	}
 	return lstatInfo(fi, p), nil
 }
@@ -88,9 +96,9 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 	if err != nil {
 		return nil, err
 	}
-	entries, err := client.ReadDirContext(ctx, p)
+	entries, err := readDir(ctx, client, p)
 	if err != nil {
-		return nil, pathError("readdir", p, err)
+		return nil, readDirError(p, err)
 	}
 
 	result := make([]fsops.DirEntry, 0, len(entries))
@@ -113,7 +121,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	// fs.ErrNotExist from the call rather than as a lone channel entry.
 	fi, err := await(ctx, func() (os.FileInfo, error) { return client.Lstat(root) })
 	if err != nil {
-		return nil, pathError("lstat", root, err)
+		return nil, readError("lstat", root, err)
 	}
 
 	ch := make(chan fsops.WalkEntry, 64)
@@ -152,16 +160,17 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		// The connection failed, not the directory: one Err entry carrying
 		// ErrConnectionLost ends the walk rather than repeating the error for
 		// every directory left, and tells the consumer the tree is cut short.
-		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: fmt.Errorf("%w: %w", fsops.ErrConnectionLost, err)})
+		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
 		return false
 	}
-	entries, err := client.ReadDirContext(ctx, dir)
+	entries, err := readDir(ctx, client, dir)
 	if err != nil {
 		if ctx.Err() != nil {
 			return false
 		}
-		if lostConnection(err) {
-			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: pathError("readdir", dir, fmt.Errorf("%w: %w", fsops.ErrConnectionLost, err))})
+		err = readDirError(dir, err)
+		if errors.Is(err, fsops.ErrConnectionLost) {
+			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
 			return false
 		}
 		// An unreadable directory is one entry with Err and the walk goes on,
@@ -169,7 +178,7 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 		return send(ctx, ch, fsops.WalkEntry{
 			Path: dir, IsDir: true,
 			RelPath: rel,
-			Err:     pathError("readdir", dir, err),
+			Err:     err,
 		})
 	}
 
@@ -210,12 +219,62 @@ func ignoredDirName(name string, opts fsops.WalkOptions) bool {
 	})
 }
 
-// lostConnection tells a readdir that failed because the transport went away
+// lostConnection tells a request that failed because the transport went away
 // from one the server refused: pkg/sftp answers every request in flight with
 // ErrSSHFxConnectionLost when its connection closes, and a closed socket
-// surfaces as net.ErrClosed or io.EOF.
+// surfaces as net.ErrClosed. io.EOF is not here, because pkg/sftp also returns
+// it for a server's SSH_FX_EOF answer. readDirError is where it counts.
 func lostConnection(err error) bool {
-	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
+	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed)
+}
+
+// poolSentinels are the answers sshpool gives on purpose. They say why the
+// pool would not serve the read, which a caller may want to tell apart.
+var poolSentinels = []error{sshpool.ErrConnect, sshpool.ErrPinUnusable, sshpool.ErrPoolClosed, sshpool.ErrNotRemote}
+
+// connectionLostError is ErrConnectionLost plus whichever pool sentinels its cause
+// carries. The rest of the cause is text only, because a redial refused with
+// EACCES carries an errno that matches fs.ErrPermission, and a consumer that
+// steps over denied directories would read the cut as one.
+type connectionLostError struct {
+	msg  string
+	kept []error
+}
+
+func (e *connectionLostError) Error() string   { return e.msg }
+func (e *connectionLostError) Unwrap() []error { return e.kept }
+
+func lost(err error) error {
+	kept := []error{fsops.ErrConnectionLost}
+	for _, sentinel := range poolSentinels {
+		if errors.Is(err, sentinel) {
+			kept = append(kept, sentinel)
+		}
+	}
+	if mismatch, ok := errors.AsType[*sshpool.MismatchError](err); ok {
+		kept = append(kept, mismatch)
+	}
+	return &connectionLostError{msg: fsops.ErrConnectionLost.Error() + ": " + err.Error(), kept: kept}
+}
+
+// readError is pathError for a failed sftp request: a server answer keeps
+// pkg/sftp's sentinel, a dropped transport becomes ErrConnectionLost.
+func readError(op, p string, err error) error {
+	if lostConnection(err) {
+		err = lost(err)
+	}
+	return pathError(op, p, err)
+}
+
+// readDirError is readError for a directory listing. pkg/sftp takes the
+// server's SSH_FX_EOF as the end of the listing, so an io.EOF that still
+// escapes it comes from a request sent on a channel that had closed, or from
+// a server that answered the opendir itself with SSH_FX_EOF.
+func readDirError(p string, err error) error {
+	if errors.Is(err, io.EOF) {
+		return pathError("readdir", p, lost(err))
+	}
+	return readError("readdir", p, err)
 }
 
 func send(ctx context.Context, ch chan<- fsops.WalkEntry, entry fsops.WalkEntry) bool {
@@ -282,7 +341,7 @@ func statVFS(ctx context.Context, client *sftp.Client, op, p string) (*sftp.Stat
 	}
 	stat, err := await(ctx, func() (*sftp.StatVFS, error) { return client.StatVFS(p) })
 	if err != nil {
-		return nil, pathError(op, p, err)
+		return nil, readError(op, p, err)
 	}
 	return stat, nil
 }
@@ -326,6 +385,13 @@ func readOnly(ctx context.Context, op string) error {
 		return err
 	}
 	return fmt.Errorf("%s: %w: sftp backend is read-only in this release", op, fsops.ErrUnsupported)
+}
+
+// readDir goes through await although ReadDirContext takes ctx: pkg/sftp
+// closes the handle with context.Background() on the way out, so a server
+// that never answers the readdir holds the call past ctx.
+func readDir(ctx context.Context, client *sftp.Client, p string) ([]os.FileInfo, error) {
+	return await(ctx, func() ([]os.FileInfo, error) { return client.ReadDirContext(ctx, p) })
 }
 
 // await runs an sftp call that takes no context and returns as soon as ctx is
@@ -389,3 +455,5 @@ func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {
 	}
 	return entry
 }
+
+func (b *Backend) Paths() fsops.PathDialect { return fsops.SlashPaths }
