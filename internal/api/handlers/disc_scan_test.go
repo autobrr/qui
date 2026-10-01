@@ -118,7 +118,7 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	scanner := &fakeScanner{started: make(chan string, 8), release: make(chan struct{})}
 	service.SetScanner(scanner.scan)
 
-	handler := NewDiscScanHandler(service, store, resolver, instanceStore, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	handler := NewDiscScanHandler(service, store, resolver, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	router := chi.NewRouter()
 	router.Route("/api/instances/{instanceID}", func(r chi.Router) {
 		r.Get("/torrents/{hash}/disc-scans", handler.ListForTorrent)
@@ -205,7 +205,6 @@ func TestDiscScanStart_RefusesRemoteModeInstance(t *testing.T) {
 	fx := newDiscScanFixture(t, false)
 
 	store := remoteModeStore{fx.instances}
-	fx.handler.instances = store
 	// The factory stands in for a remote host where the save path exists.
 	fx.handler.backendPool = fsops.NewPoolWithRemote(store, localbackend.NewBackend(), func(*models.Instance) fsops.Backend {
 		return localbackend.NewBackend()

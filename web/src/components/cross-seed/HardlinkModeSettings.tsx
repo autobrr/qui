@@ -103,7 +103,7 @@ export function HardlinkModeSettings({
     const form = getForm(instance)
 
     // Validate before saving
-    if ((form.useHardlinks || form.useReflinks) && !instance.hasLocalFilesystemAccess) {
+    if ((form.useHardlinks || form.useReflinks) && !instance.capabilities.write) {
       const mode = form.useReflinks ? "reflink" : "hardlink"
       toast.error(t("toast.cannotEnableMode", { mode }), {
         description: t("toast.noLocalFilesystemAccess", { name: instance.name }),
@@ -193,7 +193,7 @@ export function HardlinkModeSettings({
             {activeInstances.map((instance) => {
               const form = getForm(instance)
               const isDirty = dirtyMap[instance.id] ?? false
-              const canEnableModes = instance.hasLocalFilesystemAccess
+              const canEnableModes = instance.capabilities.write
 
               return (
                 <AccordionItem

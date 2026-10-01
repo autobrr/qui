@@ -32,6 +32,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
+import { ALL_LEVELS_SET, ALL_LOG_LEVELS, usePersistedLogLevels, type LogLevel } from "@/hooks/usePersistedLogLevels"
 import { api } from "@/lib/api"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { LogSettingsUpdate } from "@/types"
@@ -250,8 +251,6 @@ function LogSettingsForm() {
   return <LogSettingsFormInner settings={settings} />
 }
 
-type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
-
 interface RawLogLine {
   id: number
   text: string
@@ -283,11 +282,9 @@ const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
   error: "bg-red-500/20 text-red-400",
 }
 
-const VALID_LEVELS = new Set<LogLevel>(["trace", "debug", "info", "warn", "error"])
-
 function normalizeLevel(raw: string | undefined): LogLevel {
   const level = raw?.toLowerCase()
-  if (level && VALID_LEVELS.has(level as LogLevel)) {
+  if (level && ALL_LEVELS_SET.has(level as LogLevel)) {
     return level as LogLevel
   }
   // Coerce fatal/panic to error
@@ -517,8 +514,6 @@ function LogEntryDialog({
   )
 }
 
-const ALL_LOG_LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error"]
-
 // Buffer limits: soft cap when following live, hard cap always
 const LOG_SOFT_CAP = 1000
 const LOG_HARD_CAP = 10000
@@ -530,7 +525,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
   const [autoScroll, setAutoScroll] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(new Set(ALL_LOG_LEVELS))
+  const [selectedLevels, setSelectedLevels] = usePersistedLogLevels()
   const [searchQuery, setSearchQuery] = useState("")
   const [droppedWhilePaused, setDroppedWhilePaused] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<ParsedLogEntry | null>(null)
