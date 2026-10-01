@@ -531,8 +531,8 @@ type searchRunRequest struct {
 	// torrent bypasses it, so newly added indexers still backfill everything.
 	MaxAddedAgeDays int `json:"maxAddedAgeDays"`
 
-	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
-	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
+	// TODO: Expose per-run overrides of the seeded search settings (find individual
+	// episodes, start paused, category, tags) when the API needs them.
 }
 
 type CrossSeedBlocklistRequest struct {

@@ -142,11 +142,14 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 **Action setup in autobrr:**
 
-| Field       | Value                                                                |
-| ----------- | -------------------------------------------------------------------- |
-| Action Type | `Webhook`                                                            |
-| Name        | `qui cross-seed`                                                     |
-| Endpoint    | `http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY` |
+| Field                | Value                                                                |
+| -------------------- | -------------------------------------------------------------------- |
+| Action Type          | `Webhook`                                                            |
+| Name                 | `qui cross-seed`                                                     |
+| Endpoint             | `http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY` |
+| Expected HTTP status | `200`                                                                |
+
+The **Expected HTTP status** field needs an autobrr release with [autobrr/autobrr#2494](https://github.com/autobrr/autobrr/pull/2494). Without it, autobrr marks the action as done for every status.
 
 **Payload (JSON):**
 
@@ -166,9 +169,15 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `instanceIds` (optional): Target instances (omit to apply to any matching instance)
 - `indexer` (optional): The autobrr indexer identifier (for example `hdb`). If you enable "Use indexer name as category", qui uses this value as the category. Otherwise qui ignores it.
 - `tags` (optional): Override the webhook tags from settings
-- `category` (optional): Override the category. Takes precedence over `indexer`.
-- `startPaused` (optional): Override whether qui adds torrents paused
-- `skipIfExists` (optional): Skip the add if the torrent already exists
+- `category` (optional): The category for the added torrent. qui uses the first category that applies, in this order:
+  1. The **Custom category** mode
+  2. The `category` field
+  3. The `category` automation setting (you can set it only through the API)
+  4. The `indexer` field, in **Use indexer name as category** mode
+  5. The category of the matched torrent
+
+  A season pack that qui builds from local episodes ignores the `category` field.
+- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui uses the `startPaused` automation setting. You can set this setting only through the API, and it is on by default. With the default, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 The action performs the first torrent-file download in this flow. qui calculates the actual total from the torrent metadata.
@@ -231,6 +240,8 @@ Use these filters when:
 :::note
 Exclude filters take precedence over include filters. Tag matching is case-sensitive. If you configure both category and tag include filters, a torrent must pass both checks. It must match at least one allowed category and at least one allowed tag.
 :::
+
+If qui cannot read its settings, `/check` and `/apply` fail instead of ignoring these filters. A failed `/check` rejects the release. For a failed `/apply`, qui sends a webhook failure notification, and autobrr shows the action as failed when **Expected HTTP status** is set.
 
 Configure in qui UI: **Cross-Seed > Webhook**
 
