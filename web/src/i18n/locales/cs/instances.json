@@ -1415,12 +1415,12 @@
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
-        "pathSourceLocalAccessRequired": "Cesta na serveru (vyžaduje místní přístup)",
+        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje místní přístup nebo SSH)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
-          "localAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému.",
+          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému nebo přístup přes SSH.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\"."
         }
       },
@@ -1610,7 +1610,7 @@
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
-        "enableLocalAccessOrDefault": "Povolit místní přístup k souborovému systému v nastavení instance, nebo použít výchozí (qBittorrent)",
+        "setUpFilesystemAccessOrDefault": "Nastavte místní přístup k souborovému systému nebo přístup přes SSH v nastavení instance, nebo použijte výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",
         "addScoreRule": "Přidat alespoň jedno pravidlo skóre pro řazení skóre",
         "fieldMultiplierInvalid": "Multiplikátor pole musí být platné číslo",
