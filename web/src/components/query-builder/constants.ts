@@ -33,8 +33,8 @@ export const CONDITION_FIELDS = {
   DOWNLOAD_PATH: { type: "string" as const },
   CREATED_BY: { type: "string" as const },
   // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
-  // FIELD_GROUPS so it is no longer offered, and kept here so constants.test.ts
-  // still checks the locale key that saved rules using it render.
+  // FIELD_GROUPS so it is no longer offered, and kept here because the locale-key
+  // test reads these keys, so it still covers the label saved rules using it render.
   TRACKERS: { type: "string" as const },
   CONTENT_TYPE: { type: "string" as const },
   EFFECTIVE_NAME: { type: "string" as const },

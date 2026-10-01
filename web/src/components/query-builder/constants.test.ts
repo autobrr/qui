@@ -102,12 +102,14 @@ describe("query-builder translation keys", () => {
 })
 
 describe("getFieldLabel", () => {
-  it("renders the locale string, with no fallback of its own", async () => {
+  it("has no fallback of its own when the key is missing", async () => {
     const fields = Object.keys(constants.CONDITION_FIELDS)
     const empty = createInstance()
     await empty.init({ lng: "en", resources: {} })
     expect(fields.map((field) => constants.getFieldLabel(field, empty.t))).toEqual(fields.map((field) => `queryBuilder.fields.${field}`))
+  })
 
+  it("renders the locale string", async () => {
     const withKey = createInstance()
     await withKey.init({ lng: "en", resources: { en: { translation: { queryBuilder: { fields: { SAVE_PATH: "probe-string" } } } } } })
     expect(constants.getFieldLabel("SAVE_PATH", withKey.t)).toBe("probe-string")
