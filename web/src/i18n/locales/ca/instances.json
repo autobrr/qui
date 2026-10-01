@@ -1087,12 +1087,12 @@
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
-        "pathSourceLocalAccessRequired": "Camí al servidor (cal accés local)",
+        "pathSourceFilesystemAccessRequired": "Camí al servidor (cal accés local o SSH)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
-          "localAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local.",
+          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor»."
         }
       },
@@ -1270,7 +1270,7 @@
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
-        "enableLocalAccessOrDefault": "Activa l'accés al sistema de fitxers local a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
+        "setUpFilesystemAccessOrDefault": "Configura l'accés al sistema de fitxers local o per SSH a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "addScoreRule": "Afegeix com a mínim una regla de puntuació per ordenar per puntuació",
         "fieldMultiplierInvalid": "El multiplicador de camp ha de ser un número vàlid",

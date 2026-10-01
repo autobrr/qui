@@ -755,6 +755,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
   const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  // A Windows host refuses the path source only for an instance it reads locally.
+  const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
+  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
@@ -1321,17 +1324,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds, t])
 
-  // Auto-switch free space source from "path" to "qbittorrent" on Windows (not supported)
+  // Auto-switch free space source from "path" to "qbittorrent" on a Windows host with local access.
   // This must run during hydration to handle legacy workflows opened on Windows.
   // Only toast after hydration to avoid noise when opening dialogs.
   useEffect(() => {
-    if (!supportsFreeSpacePathSource && formState.exprFreeSpaceSourceType === "path") {
+    if (pathSourceWindowsBlocked && formState.exprFreeSpaceSourceType === "path") {
       setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
       if (!isHydrating.current) {
         toast.warning(t("preferences.workflowDialog.toast.pathSourceUnsupportedWindows"))
       }
     }
-  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType, t])
+  }, [pathSourceWindowsBlocked, formState.exprFreeSpaceSourceType, t])
 
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
@@ -1341,14 +1344,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // Reject if path source is selected but not supported (safety net for edge cases)
-    if (!supportsFreeSpacePathSource) {
+    if (pathSourceWindowsBlocked) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.unsupportedWindows"))
       toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
       return false
     }
-    if (!hasLocalFilesystemAccess) {
-      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
-      toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
+    if (!pathSourceAvailable) {
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.filesystemAccessRequired"))
+      toast.error(t("preferences.workflowDialog.toast.setUpFilesystemAccessOrDefault"))
       return false
     }
 
@@ -1361,7 +1364,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
+  }, [pathSourceAvailable, pathSourceWindowsBlocked, t])
 
   const validateCategory = useCallback((state: FormState): boolean => {
     if (state.categoryEnabled && state.exprCategory === undefined) {
@@ -1376,11 +1379,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       return true
     }
-    if (!supportsFreeSpacePathSource || !hasLocalFilesystemAccess) {
+    if (!pathSourceAvailable) {
       return false
     }
     return state.exprFreeSpaceSourcePath.trim() !== ""
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+  }, [pathSourceAvailable])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
@@ -3918,12 +3921,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
-                        <SelectItem value="path" disabled={!hasLocalFilesystemAccess || !supportsFreeSpacePathSource}>
-                          {!supportsFreeSpacePathSource? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !hasLocalFilesystemAccess? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
+                        <SelectItem value="path" disabled={!pathSourceAvailable}>
+                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceFilesystemAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    {formState.exprFreeSpaceSourceType === "path" && supportsFreeSpacePathSource && (
+                    {formState.exprFreeSpaceSourceType === "path" && !pathSourceWindowsBlocked && (
                       <div className="flex flex-col gap-1">
                         <div className="relative">
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />

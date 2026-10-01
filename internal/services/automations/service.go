@@ -981,14 +981,9 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 		return nil
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		// The rule needs FREE_SPACE; evaluating without it would silently
-		// treat the disk as having no data. Fail the setup instead.
-		return fmt.Errorf("no filesystem backend for free space check: %w", err)
-	}
-
-	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource, backend)
+	// The rule needs FREE_SPACE; evaluating without it would silently
+	// treat the disk as having no data. Fail the setup instead.
+	freeSpace, err := s.freeSpaceBytes(ctx, instance, rule.FreeSpaceSource)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
 		return fmt.Errorf("failed to get free space: %w", err)
@@ -1968,15 +1963,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				continue
 			}
 
-			// Get free space for this source
-			backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
-			if backendErr != nil {
-				log.Warn().Err(backendErr).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: no backend for free space")
-				wrapped := fmt.Errorf("failed to get backend for free space source %s: %w", sourceKey, backendErr)
-				s.notifyAutomationFailure(ctx, instanceID, wrapped)
-				return nil, wrapped
-			}
-			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource, backend)
+			freeSpace, err := s.freeSpaceBytes(ctx, instance, r.FreeSpaceSource)
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
 				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)

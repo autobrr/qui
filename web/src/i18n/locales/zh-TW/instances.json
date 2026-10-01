@@ -1389,12 +1389,12 @@
         "defaultSource": "預設（qBittorrent）",
         "pathSource": "伺服器路徑",
         "pathSourceWindowsUnsupported": "伺服器路徑（Windows 不支援）",
-        "pathSourceLocalAccessRequired": "伺服器路徑（需要本機存取權限）",
+        "pathSourceFilesystemAccessRequired": "伺服器路徑（需要本機或 SSH 存取權限）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "輸入要檢查可用空間的路徑（例如掛載點）",
         "errors": {
           "unsupportedWindows": "Windows 不支援基於路徑的可用空間來源。",
-          "localAccessRequired": "基於路徑的可用空間來源需要本機檔案系統存取權限。",
+          "filesystemAccessRequired": "基於路徑的可用空間來源需要本機或 SSH 檔案系統存取權限。",
           "pathRequired": "使用\"伺服器路徑\"時，路徑為必填項。"
         }
       },
@@ -1584,7 +1584,7 @@
         "switchedIntervalForFreeSpace": "已切換到 5 分鐘間隔，因為可用空間刪除有約 5 分鐘的冷卻時間",
         "pathSourceUnsupportedWindows": "Windows 不支援基於路徑的可用空間來源。已切換到 qBittorrent 預設值。",
         "switchFreeSpaceSourceDefault": "將可用空間來源切換為預設（qBittorrent）",
-        "enableLocalAccessOrDefault": "請在實例設定中啟用本機檔案系統存取，或使用預設（qBittorrent）",
+        "setUpFilesystemAccessOrDefault": "請在實例設定中設定本機或 SSH 檔案系統存取，或使用預設（qBittorrent）",
         "enterPathOrDefault": "請輸入路徑或將可用空間來源切換回預設（qBittorrent）",
         "addScoreRule": "得分排序至少需要一條得分規則",
         "fieldMultiplierInvalid": "欄位乘數必須是有效數字",
