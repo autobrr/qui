@@ -5035,15 +5035,14 @@ paths:
                   example: [1, 2]
                 category:
                   type: string
-                  description: Category to apply when adding the torrent
+                  description: Category to apply when adding the torrent. When omitted, qui uses the category setting. The Custom category mode wins over this value.
                 tags:
                   type: array
                   items:
                     type: string
                 startPaused:
                   type: boolean
-                skipIfExists:
-                  type: boolean
+                  description: Add the torrent paused. When omitted, qui uses the start paused setting (on by default) and resumes the torrent after verification unless auto-resume is off for the webhook.
                 findIndividualEpisodes:
                   type: boolean
                 indexer:

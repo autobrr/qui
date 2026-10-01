@@ -4452,10 +4452,8 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 }
 
 func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
-	skipIfExists := true
 	req := defaultsFor(triggerRSS, settings).request(encodedTorrent, sourceIndexer)
 	req.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
-	req.SkipIfExists = &skipIfExists
 	return req
 }
 
@@ -5277,7 +5275,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 
 	crossReq := defaultsFor(triggerWebhook, settings).request(req.TorrentData, req.Indexer)
 	crossReq.TargetInstanceIDs = targetInstanceIDs
-	crossReq.SkipIfExists = req.SkipIfExists
 	if req.Category != "" {
 		crossReq.Category = req.Category
 	}
@@ -11763,10 +11760,8 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, fmt.Errorf("download failed: %w", err)
 	}
 
-	skipIfExists := true
 	request := state.opts.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
 	request.TargetInstanceIDs = []int{state.opts.InstanceID}
-	request.SkipIfExists = &skipIfExists
 	// The run options carry the seeded search or completion source filters.
 	request.SourceFilterCategories = append([]string(nil), state.opts.Categories...)
 	request.SourceFilterTags = append([]string(nil), state.opts.Tags...)

@@ -32,8 +32,6 @@ type CrossSeedRequest struct {
 	Category string `json:"category,omitempty"`
 	// Tags to apply to the cross-seeded torrent (the Trigger's tags from settings)
 	Tags []string `json:"tags,omitempty"`
-	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
-	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
 	// InheritSourceTags controls whether to also copy tags from the matched source torrent.
@@ -492,11 +490,10 @@ type AutobrrApplyRequest struct {
 	// downloaded metainfo info.name used for replay validation.
 	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
-	InstanceIDs  []int    `json:"instanceIds,omitempty"`
-	Category     string   `json:"category,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	StartPaused  *bool    `json:"startPaused,omitempty"`
-	SkipIfExists *bool    `json:"skipIfExists,omitempty"`
+	InstanceIDs []int    `json:"instanceIds,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	StartPaused *bool    `json:"startPaused,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 	// Indexer is autobrr's stable indexer identifier (for example "hdb").

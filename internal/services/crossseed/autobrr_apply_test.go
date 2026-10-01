@@ -637,13 +637,12 @@ func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	}
 
 	_, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
-		TorrentData:  base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
-		TorrentName:  announcedName,
-		InstanceIDs:  []int{instance.ID},
-		Indexer:      "tracker-a",
-		Category:     "incoming",
-		Tags:         []string{"from-webhook"},
-		SkipIfExists: new(true),
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+		Indexer:     "tracker-a",
+		Category:    "incoming",
+		Tags:        []string{"from-webhook"},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, captured)
