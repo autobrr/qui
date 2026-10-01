@@ -20,7 +20,7 @@ import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -59,6 +59,16 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
   }
 
   return { successToday, failedToday, lastActivity }
+}
+
+// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
+function SettingsSummary({ parts }: { parts: string[] }) {
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
+      {i < parts.length - 1 && " "}
+    </Fragment>
+  ))
 }
 
 export function ReannounceOverview({
@@ -171,14 +181,13 @@ export function ReannounceOverview({
     started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   }
 
-  const getSettingsSummary = (settings: InstanceReannounceSettings | undefined): string => {
-    if (!settings) return t("preferences.reannounceOverview.notConfigured")
+  const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
     const parts: string[] = []
     parts.push(t("preferences.reannounceOverview.summaryWait", { seconds: settings.initialWaitSeconds }))
     parts.push(t("preferences.reannounceOverview.summaryRetry", { seconds: settings.reannounceIntervalSeconds }))
     parts.push(t("preferences.reannounceOverview.summaryMax", { count: settings.maxRetries }))
     if (settings.aggressive) parts.push(t("preferences.reannounceOverview.summaryQuick"))
-    return parts.join(" · ")
+    return parts
   }
 
   if (!instances || instances.length === 0) {
@@ -251,11 +260,11 @@ export function ReannounceOverview({
 
               return (
                 <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
-                  <div className="grid grid-cols-[1fr_auto] items-center px-6">
-                    <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-medium truncate">{instance.name}</span>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center px-6">
+                    <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                      <div className="flex items-center justify-between gap-3 w-full min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                          <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
                             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
                               {t("preferences.reannounceOverview.today", { count: stats.successToday })}
@@ -269,7 +278,7 @@ export function ReannounceOverview({
                         </div>
 
                         {isEnabled && stats.lastActivity && (
-                          <span className="text-xs text-muted-foreground hidden sm:block">
+                          <span className="text-xs text-muted-foreground hidden sm:block shrink-0 whitespace-nowrap">
                             {formatRelativeTime(stats.lastActivity)}
                           </span>
                         )}
@@ -314,10 +323,11 @@ export function ReannounceOverview({
                   <AccordionContent className="px-6 pb-4">
                     <div className="space-y-4">
                       {/* Settings summary */}
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-                        <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
+                        {/* A zero basis without min-w-0 moves the button down only once the widest summary pair stops fitting beside it. */}
+                        <div className="space-y-0.5 flex-1">
                           <p className="text-sm text-muted-foreground">
-                            {getSettingsSummary(settings)}
+                            {settings ? <SettingsSummary parts={getSettingsSummaryParts(settings)} /> : t("preferences.reannounceOverview.notConfigured")}
                           </p>
                           {settings?.monitorAll ? (
                             <p className="text-xs text-muted-foreground/70">{t("preferences.reannounceOverview.monitoringAllStalled")}</p>
