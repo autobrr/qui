@@ -1676,26 +1676,21 @@ type AutomationRunOptions struct {
 
 // SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	InstanceID                   int
-	Categories                   []string
-	Tags                         []string
-	ExcludeCategories            []string // Categories to exclude from source filtering
-	ExcludeTags                  []string // Tags to exclude from source filtering
-	IntervalSeconds              int
-	IndexerIDs                   []int
-	DisableTorznab               bool
-	CooldownMinutes              int
-	FindIndividualEpisodes       bool
-	RequestedBy                  string
-	StartPaused                  bool
-	CategoryOverride             *string
-	TagsOverride                 []string
-	InheritSourceTags            bool
-	SpecificHashes               []string
-	SkipAutoResume               bool
-	SkipRecheck                  bool
-	RescueTitleMismatches        bool
-	SkipPieceBoundarySafetyCheck bool
+	// triggerDefaults is filled from settings at run start; callers never set it.
+	triggerDefaults
+
+	InstanceID            int
+	Categories            []string
+	Tags                  []string
+	ExcludeCategories     []string // Categories to exclude from source filtering
+	ExcludeTags           []string // Tags to exclude from source filtering
+	IntervalSeconds       int
+	IndexerIDs            []int
+	DisableTorznab        bool
+	CooldownMinutes       int
+	RequestedBy           string
+	SpecificHashes        []string
+	RescueTitleMismatches bool
 	// EnsembleSeasonSearch adds virtual season-pack searches for groups of
 	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
 	// start; never set by callers.
@@ -3200,15 +3195,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	searchState := &searchRunState{
 		opts: SearchRunOptions{
-			InstanceID:                   instanceID,
-			FindIndividualEpisodes:       settings.FindIndividualEpisodes,
-			StartPaused:                  settings.StartPaused,
-			SkipAutoResume:               settings.SkipAutoResumeCompletion,
-			SkipRecheck:                  settings.SkipRecheck,
-			SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
-			CategoryOverride:             settings.Category,
-			TagsOverride:                 append([]string(nil), settings.CompletionSearchTags...),
-			InheritSourceTags:            settings.InheritSourceTags,
+			triggerDefaults: defaultsFor(triggerCompletion, settings),
+			InstanceID:      instanceID,
 		},
 	}
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
@@ -3402,31 +3390,13 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}
 	}
 
-	if settings != nil {
-		if opts.CategoryOverride == nil {
-			opts.CategoryOverride = settings.Category
-		}
-		// Use seeded search tags from settings for manual/background seeded search runs
-		if len(opts.TagsOverride) == 0 {
-			opts.TagsOverride = append([]string(nil), settings.SeededSearchTags...)
-		}
-		opts.InheritSourceTags = settings.InheritSourceTags
-		opts.StartPaused = settings.StartPaused
-		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
-		opts.SkipRecheck = settings.SkipRecheck
-		opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
-		opts.SkipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-		if !settings.FindIndividualEpisodes {
-			opts.FindIndividualEpisodes = false
-		} else if !opts.FindIndividualEpisodes {
-			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
-		}
-		// Targeted re-searches of specific torrents stay episode-scoped, and
-		// Gazelle-only runs have no TV indexers to ask for packs.
-		opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
-			len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
-	}
-	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
+	opts.triggerDefaults = defaultsFor(triggerSeededSearch, settings)
+	opts.addTags = normalizeStringSlice(opts.addTags)
+	opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
+	// Targeted re-searches of specific torrents stay episode-scoped, and
+	// Gazelle-only runs have no TV indexers to ask for packs.
+	opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
+		len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
 
 	if opts.DisableTorznab {
 		opts.IndexerIDs = []int{}
@@ -4482,28 +4452,8 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 }
 
 func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
-	startPaused := settings.StartPaused
-	skipIfExists := true
-	req := &CrossSeedRequest{
-		TorrentData:                   encodedTorrent,
-		TargetInstanceIDs:             append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                          append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:             settings.InheritSourceTags,
-		SkipIfExists:                  &skipIfExists,
-		IndexerName:                   sourceIndexer,
-		FindIndividualEpisodes:        settings.FindIndividualEpisodes,
-		SkipAutoResume:                settings.SkipAutoResumeRSS,
-		SkipRecheck:                   settings.SkipRecheck,
-		SkipPieceBoundarySafetyCheck:  settings.SkipPieceBoundarySafetyCheck,
-		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
-		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
-		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
-		StartPaused:                   &startPaused,
-	}
-	if settings.Category != nil {
-		req.Category = *settings.Category
-	}
+	req := defaultsFor(triggerRSS, settings).request(encodedTorrent, sourceIndexer)
+	req.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
 	return req
 }
 
@@ -5317,74 +5267,31 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		return nil, err
 	}
 
-	settings, settingsErr := s.GetAutomationSettings(ctx)
-	if settingsErr != nil {
-		log.Warn().Err(settingsErr).Msg("Failed to load automation settings for autobrr apply defaults")
-		settings = nil
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
-	findIndividualEpisodes := false
+	crossReq := defaultsFor(triggerWebhook, settings).request(req.TorrentData, req.Indexer)
+	crossReq.TargetInstanceIDs = targetInstanceIDs
+	if req.Category != "" {
+		crossReq.Category = req.Category
+	}
+	if req.StartPaused != nil {
+		crossReq.StartPaused = req.StartPaused
+	}
+	if len(req.Tags) > 0 {
+		crossReq.Tags = req.Tags
+	}
 	if req.FindIndividualEpisodes != nil {
-		findIndividualEpisodes = *req.FindIndividualEpisodes
-	} else if settings != nil {
-		findIndividualEpisodes = settings.FindIndividualEpisodes
+		crossReq.FindIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
-	// Use request tags if provided, otherwise fall back to webhook tags from settings
-	tags := req.Tags
-	if len(tags) == 0 && settings != nil {
-		tags = append([]string(nil), settings.WebhookTags...)
-	}
-
-	inheritSourceTags := false
-	if settings != nil {
-		inheritSourceTags = settings.InheritSourceTags
-	}
-
-	skipAutoResume := false
-	if settings != nil {
-		skipAutoResume = settings.SkipAutoResumeWebhook
-	}
-
-	skipRecheck := false
-	if settings != nil {
-		skipRecheck = settings.SkipRecheck
-	}
-
-	skipPieceBoundarySafetyCheck := false
-	if settings != nil {
-		skipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-	}
-
-	crossReq := &CrossSeedRequest{
-		TorrentData:                  req.TorrentData,
-		TargetInstanceIDs:            targetInstanceIDs,
-		Category:                     req.Category,
-		Tags:                         tags,
-		InheritSourceTags:            inheritSourceTags,
-		StartPaused:                  req.StartPaused,
-		SkipIfExists:                 req.SkipIfExists,
-		FindIndividualEpisodes:       findIndividualEpisodes,
-		SkipAutoResume:               skipAutoResume,
-		SkipRecheck:                  skipRecheck,
-		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-		IndexerName:                  req.Indexer,
-	}
-	// Pass webhook source filters so CrossSeed respects them when finding candidates
-	if settings != nil {
-		crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
-		crossReq.SourceFilterTags = append([]string(nil), settings.WebhookSourceTags...)
-		crossReq.SourceFilterExcludeCategories = append([]string(nil), settings.WebhookSourceExcludeCategories...)
-		crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
-	}
-
-	var (
-		resp *CrossSeedResponse
-		err  error
-	)
+	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
-		// Keep the legacy path byte-for-byte compatible for clients that do not
-		// send announcement provenance.
+		// Clients that send no announcement provenance keep the legacy strict
+		// match.
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
 	} else {
 		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
@@ -5467,7 +5374,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
 				continue
 			}
-			if settings != nil && !matchesWebhookSourceFilters(torrent, settings) {
+			if !matchesWebhookSourceFilters(torrent, settings) {
 				continue
 			}
 
@@ -5477,7 +5384,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			}
 			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, candidate, actualSize, announcementMatchPolicy{
 				findIndividualEpisodes: request.FindIndividualEpisodes,
-				rescueTitleMismatches:  settings != nil && settings.RescueTitleMismatches && !request.SkipRecheck,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !request.SkipRecheck,
 				allowUnknownSize:       false,
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
@@ -10172,13 +10079,9 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load cross-seed settings for manual apply, using defaults")
+		return nil, err
 	}
-
-	startPaused := true
-	if req.StartPaused != nil {
-		startPaused = *req.StartPaused
-	}
+	defaults := defaultsFor(triggerInteractiveApply, settings)
 
 	useTag := req.UseTag
 	tagName := strings.TrimSpace(req.TagName)
@@ -10268,7 +10171,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				// Skip recheck blocks cached rescue results before a slot is
 				// reserved or the .torrent is downloaded; the guaranteed
 				// skipped_recheck verdict must not cost either.
-				if settings != nil && settings.SkipRecheck {
+				if defaults.skipRecheck {
 					resultChan <- selectionResult{idx, TorrentSearchAddResult{
 						Title:   title,
 						Indexer: indexerName,
@@ -10305,53 +10208,16 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
-			startPausedCopy := startPaused
-
-			// Determine tags for manual apply: use user's choice if provided, otherwise use seeded search tags
-			var applyTags []string
+			payload := defaults.request(base64.StdEncoding.EncodeToString(torrentBytes), indexerName)
+			payload.TargetInstanceIDs = []int{instanceID}
+			if req.StartPaused != nil {
+				payload.StartPaused = req.StartPaused
+			}
 			if useTag {
-				if tagName != "" {
-					applyTags = []string{tagName}
-				} else if settings != nil {
-					applyTags = append([]string(nil), settings.SeededSearchTags...)
-				}
+				payload.Tags = []string{tagName}
 			}
-
-			// Inherit source tags from settings for manual apply
-			inheritSourceTags := false
-			if settings != nil {
-				inheritSourceTags = settings.InheritSourceTags
-			}
-
-			// Determine skip auto-resume from seeded search setting (interactive dialog uses same setting)
-			skipAutoResume := false
-			if settings != nil {
-				skipAutoResume = settings.SkipAutoResumeSeededSearch
-			}
-
-			skipRecheck := false
-			if settings != nil {
-				skipRecheck = settings.SkipRecheck
-			}
-
-			skipPieceBoundarySafetyCheck := false
-			if settings != nil {
-				skipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
-			}
-
-			payload := &CrossSeedRequest{
-				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
-				TargetInstanceIDs:            []int{instanceID},
-				StartPaused:                  &startPausedCopy,
-				Tags:                         applyTags,
-				InheritSourceTags:            inheritSourceTags,
-				IndexerName:                  indexerName,
-				FindIndividualEpisodes:       req.FindIndividualEpisodes,
-				SkipAutoResume:               skipAutoResume,
-				SkipRecheck:                  skipRecheck,
-				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-				SearchDecision:               cachedResult.SearchDecision.bindSource(instanceID, hash),
-			}
+			payload.FindIndividualEpisodes = req.FindIndividualEpisodes
+			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, hash)
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
 			if err != nil {
@@ -11485,7 +11351,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	searchResp, gazelleLookupCompleted, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		DisableTorznab:         searchDisableTorznab,
 		IndexerIDs:             allowedIndexerIDs,
-		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		FindIndividualEpisodes: state.opts.findIndividualEpisodes,
 		SkipGazelle:            skipGazelle,
 		RescueTitleMismatches:  state.opts.RescueTitleMismatches,
 	}, state.gazelleClients)
@@ -11894,33 +11760,14 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, fmt.Errorf("download failed: %w", err)
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(data)
-	startPaused := state.opts.StartPaused
-	skipIfExists := true
-	request := &CrossSeedRequest{
-		TorrentData:                  encoded,
-		TargetInstanceIDs:            []int{state.opts.InstanceID},
-		StartPaused:                  &startPaused,
-		Tags:                         append([]string(nil), state.opts.TagsOverride...),
-		InheritSourceTags:            state.opts.InheritSourceTags,
-		Category:                     "",
-		IndexerName:                  match.Indexer,
-		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
-		SkipIfExists:                 &skipIfExists,
-		SkipAutoResume:               state.opts.SkipAutoResume,
-		SkipRecheck:                  state.opts.SkipRecheck,
-		SkipPieceBoundarySafetyCheck: state.opts.SkipPieceBoundarySafetyCheck,
-		// Pass seeded search filters so CrossSeed respects them when finding candidates
-		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
-		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
-		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
-		SearchDecision:                match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash),
-	}
-	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
-		cat := *state.opts.CategoryOverride
-		request.Category = cat
-	}
+	request := state.opts.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
+	request.TargetInstanceIDs = []int{state.opts.InstanceID}
+	// The run options carry the seeded search or completion source filters.
+	request.SourceFilterCategories = append([]string(nil), state.opts.Categories...)
+	request.SourceFilterTags = append([]string(nil), state.opts.Tags...)
+	request.SourceFilterExcludeCategories = append([]string(nil), state.opts.ExcludeCategories...)
+	request.SourceFilterExcludeTags = append([]string(nil), state.opts.ExcludeTags...)
+	request.SearchDecision = match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash)
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
 		result.Status = models.CrossSeedSearchResultStatusFailed
@@ -13823,14 +13670,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 	announcedCandidate := namedRelease{release: incomingRelease, rawName: req.TorrentName}
 
-	// Get automation settings for default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
-		settings = models.DefaultCrossSeedAutomationSettings()
-	}
-	if settings == nil {
-		settings = models.DefaultCrossSeedAutomationSettings()
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
+		return nil, err
 	}
 
 	findIndividualEpisodes := settings.FindIndividualEpisodes

@@ -455,3 +455,5 @@ func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {
 	}
 	return entry
 }
+
+func (b *Backend) Paths() fsops.PathDialect { return fsops.SlashPaths }

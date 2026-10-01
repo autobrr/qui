@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1079,22 +1080,77 @@ func (a *ExportToInstanceAction) Validate() error {
 
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
-	if ac == nil {
-		return true
+	for range ac.Conditions() {
+		return false
 	}
-	return ac.SpeedLimits == nil &&
-		ac.ShareLimits == nil &&
-		ac.Pause == nil &&
-		ac.Resume == nil &&
-		ac.Recheck == nil &&
-		ac.Reannounce == nil &&
-		ac.Delete == nil &&
-		len(ac.TagActions()) == 0 &&
-		ac.Category == nil &&
-		ac.Move == nil &&
-		ac.ExternalProgram == nil &&
-		ac.AutoManagement == nil &&
-		ac.ExportToInstance == nil
+	return true
+}
+
+// ActionCondition is one configured action's condition, as ActionConditions.Conditions yields it.
+type ActionCondition struct {
+	Path      string // JSON pointer to the condition, for example "/conditions/move/condition"
+	Enabled   bool
+	Condition *RuleCondition
+}
+
+// Conditions yields every configured action with its condition, which can be nil. Each caller
+// decides whether a disabled action counts. An AutoManagement action counts as enabled whenever
+// it exists, because its Enabled field is the ATM value that it sets.
+func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
+	return func(yield func(ActionCondition) bool) {
+		if ac == nil {
+			return
+		}
+		emit := func(name string, enabled bool, cond *RuleCondition) bool {
+			return yield(ActionCondition{Path: "/conditions/" + name + "/condition", Enabled: enabled, Condition: cond})
+		}
+		if ac.SpeedLimits != nil && !emit("speedLimits", ac.SpeedLimits.Enabled, ac.SpeedLimits.Condition) {
+			return
+		}
+		if ac.ShareLimits != nil && !emit("shareLimits", ac.ShareLimits.Enabled, ac.ShareLimits.Condition) {
+			return
+		}
+		if ac.Pause != nil && !emit("pause", ac.Pause.Enabled, ac.Pause.Condition) {
+			return
+		}
+		if ac.Resume != nil && !emit("resume", ac.Resume.Enabled, ac.Resume.Condition) {
+			return
+		}
+		if ac.Recheck != nil && !emit("recheck", ac.Recheck.Enabled, ac.Recheck.Condition) {
+			return
+		}
+		if ac.Reannounce != nil && !emit("reannounce", ac.Reannounce.Enabled, ac.Reannounce.Condition) {
+			return
+		}
+		if ac.Delete != nil && !emit("delete", ac.Delete.Enabled, ac.Delete.Condition) {
+			return
+		}
+		for i, tag := range ac.TagActions() {
+			var enabled bool
+			var cond *RuleCondition
+			if tag != nil {
+				enabled, cond = tag.Enabled, tag.Condition
+			}
+			if !emit("tags/"+strconv.Itoa(i), enabled, cond) {
+				return
+			}
+		}
+		if ac.Category != nil && !emit("category", ac.Category.Enabled, ac.Category.Condition) {
+			return
+		}
+		if ac.Move != nil && !emit("move", ac.Move.Enabled, ac.Move.Condition) {
+			return
+		}
+		if ac.ExternalProgram != nil && !emit("externalProgram", ac.ExternalProgram.Enabled, ac.ExternalProgram.Condition) {
+			return
+		}
+		if ac.AutoManagement != nil && !emit("autoManagement", true, ac.AutoManagement.Condition) {
+			return
+		}
+		if ac.ExportToInstance != nil {
+			emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition)
+		}
+	}
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.

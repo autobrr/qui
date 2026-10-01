@@ -56,6 +56,7 @@ const SYNCED_KEYS = new Set<string>([
   TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
+  "qui-log-levels",
 ])
 const SYNCED_PREFIXES = [
   "qui-start-paused-instance-",

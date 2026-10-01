@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { LocalCrossSeedMatch, Torrent } from "@/types"
+import type { FilesystemCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
@@ -32,13 +32,13 @@ export const isInsideBase = (path: string, base: string): boolean => {
 
 /**
  * Check if a torrent is hardlink-managed based on instance config and paths.
- * Only returns true if the instance has hardlink mode enabled AND has local access.
+ * Only returns true if the instance has hardlink mode enabled AND qui can write its files.
  */
 export const isHardlinkManaged = (
   match: { save_path?: string; content_path?: string },
-  instance: { useHardlinks?: boolean; hasLocalFilesystemAccess?: boolean; hardlinkBaseDir?: string } | undefined
+  instance: { useHardlinks?: boolean; capabilities?: Pick<FilesystemCapabilities, "write">; hardlinkBaseDir?: string } | undefined
 ): boolean => {
-  if (!instance?.useHardlinks || !instance?.hasLocalFilesystemAccess) return false
+  if (!instance?.useHardlinks || !instance?.capabilities?.write) return false
   const base = normalizePath(instance.hardlinkBaseDir || "")
   if (!base) return false
   const savePath = normalizePath(match.save_path || "")

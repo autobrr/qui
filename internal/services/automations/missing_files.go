@@ -70,6 +70,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 
 func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) map[string]bool {
 	result := make(map[string]bool)
+	d := backend.Paths()
 
 	for hash, files := range filesByHash {
 		torrent := torrentByHash[hash]
@@ -82,7 +83,7 @@ func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrent
 				allPathsValid = false
 				continue
 			}
-			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+			fullPath, ok := buildFullPath(d, torrent.SavePath, f.Name)
 			if !ok {
 				allPathsValid = false
 				continue
