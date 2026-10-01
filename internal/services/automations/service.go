@@ -883,18 +883,11 @@ func (c *previewConfig) normalize() {
 	}
 }
 
-// initPreviewEvalContext initializes an EvalContext for preview with common setup.
-func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, torrents []qbt.Torrent) (*EvalContext, *models.Instance) {
-	evalCtx := &EvalContext{}
-	if s != nil {
-		evalCtx.ReleaseParser = s.releaseParser
-	}
-
-	instance, err := s.instanceStore.Get(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
-	}
-
+// buildEvalContext fills an EvalContext with the data that needs asks for. The live run,
+// the preview, and the dry run all build their context here. The instance can be nil when
+// the preview could not load it; the filesystem data then stays unloaded.
+func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance *models.Instance, torrents []qbt.Torrent, needs RuleNeeds) (*EvalContext, *HardlinkIndex) {
+	evalCtx := &EvalContext{ReleaseParser: s.releaseParser}
 	if instance != nil {
 		evalCtx.setFilesystemAccess(instance)
 	}
@@ -902,65 +895,89 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
-	// Get health counts from background cache
-	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-		if len(healthCounts.UnregisteredSet) > 0 {
+	if s.syncManager != nil {
+		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-		}
-		if len(healthCounts.TrackerDownSet) > 0 {
 			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-		}
-		if len(healthCounts.TrackerErrorSet) > 0 {
 			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
 		}
 	}
 
-	return evalCtx, instance
+	// The cached index provides scope detection AND hardlink grouping in a single build.
+	var hardlinkIndex *HardlinkIndex
+	if evalCtx.InstanceHasFileIdentity && (needs.HardlinkScope || needs.HardlinkCrossScope || needs.HardlinkSignature) {
+		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
+		if hardlinkIndex != nil {
+			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+			if needs.HardlinkSignature {
+				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+			}
+			if needs.HardlinkCrossScope {
+				hardlinkIndex.crossScopeMu.Lock()
+				if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
+					s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+				}
+				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+				hardlinkIndex.crossScopeMu.Unlock()
+			}
+		}
+	}
+
+	if evalCtx.InstanceHasLocalAccess && needs.MissingFiles {
+		missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
+		} else {
+			evalCtx.HasMissingFilesByHash = missing
+		}
+	}
+
+	if needs.SkippedFiles {
+		skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
+		} else {
+			evalCtx.HasSkippedFilesByHash = skipped
+		}
+	}
+
+	if needs.CrossMatch != (CrossMatchNeeds{}) {
+		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs.CrossMatch))
+	}
+
+	if needs.SeasonPack {
+		evalCtx.SeasonPackSet = buildSeasonPackSet(s.releaseParser, torrents)
+	}
+	if needs.SeasonPackAnyInstance {
+		evalCtx.SeasonPackSetAnyInstance = s.buildAnyInstanceSeasonPackSet(ctx)
+	}
+
+	if needs.TrackerNames && s.trackerCustomizationStore != nil {
+		customizations, err := s.trackerCustomizationStore.List(ctx)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
+		} else {
+			evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+		}
+	}
+
+	return evalCtx, hardlinkIndex
 }
 
-// setupPreviewCrossMatchContext populates all cross-match hash sets (same-instance
-// and other-instance) in evalCtx based on which fields the condition or sorting config uses.
-func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID int, rule *models.Automation, cond *RuleCondition, evalCtx *EvalContext) {
-	if evalCtx == nil || rule == nil {
-		return
-	}
-
-	needs := CrossMatchNeeds{
-		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnSameInstance),
-		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnSameInstance),
-		SameTags:     ConditionUsesField(cond, FieldCrossSeedTags) || sortingConfigUsesField(rule.SortingConfig, FieldCrossSeedTags),
-		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnOtherInstance),
-		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnOtherInstance),
-	}
-	if !needs.SameExists && !needs.SameSeeding && !needs.SameTags && !needs.OtherExists && !needs.OtherSeeding {
-		return
-	}
-
-	s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
-}
-
-func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
-	if evalCtx == nil || cond == nil || evalCtx.TrackerDisplayNameByDomain != nil {
-		return
-	}
-	if s == nil || s.trackerCustomizationStore == nil {
-		return
-	}
-	if !ConditionUsesField(cond, FieldTracker) && !ConditionUsesField(cond, FieldTrackers) {
-		return
-	}
-
-	customizations, err := s.trackerCustomizationStore.List(ctx)
+// previewEvalContext builds the evaluation context for a preview of one rule. A preview goes
+// on without the instance when it cannot load it.
+func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent) (*EvalContext, *HardlinkIndex, *models.Instance) {
+	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for preview tracker matching")
-		return
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
 	}
-	evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+	evalCtx, hardlinkIndex := s.buildEvalContext(ctx, instanceID, instance, torrents, previewNeeds(rule))
+	return evalCtx, hardlinkIndex, instance
 }
 
 // setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
 func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rule *models.Automation, evalCtx *EvalContext, instance *models.Instance) error {
-	if instance == nil || !rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+	if instance == nil || !ruleUsesCondition(rule, FieldFreeSpace) {
 		return nil
 	}
 
@@ -1016,17 +1033,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
-	var deleteCondition *RuleCondition
-	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
-		deleteCondition = rule.Conditions.Delete.Condition
-		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
-		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
-		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Delete.Condition, torrents, evalCtx)
-	}
-	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
-	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
-	s.setupSkippedFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx)
+	evalCtx, hardlinkIndex, instance := s.previewEvalContext(ctx, instanceID, rule, torrents)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1060,90 +1067,6 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 
 	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash, cpIndex)
-}
-
-// setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
-func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) *HardlinkIndex {
-	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Identity {
-		return nil
-	}
-	needsHardlinkScope, needsCrossScope, needsHardlinkSignatureGrouping := deleteHardlinkNeeds(rule)
-	if !needsHardlinkScope && !needsHardlinkSignatureGrouping && !needsCrossScope {
-		return nil
-	}
-
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
-	if hardlinkIndex != nil {
-		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
-		if needsHardlinkSignatureGrouping {
-			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
-		}
-		if needsCrossScope {
-			hardlinkIndex.crossScopeMu.Lock()
-			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
-				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-			}
-			crossScope := hardlinkIndex.CrossScopeByHash
-			hardlinkIndex.crossScopeMu.Unlock()
-			if crossScope != nil {
-				evalCtx.HardlinkCrossScopeByHash = crossScope
-			}
-		}
-	}
-	return hardlinkIndex
-}
-
-// setupMissingFilesContext sets up missing files detection if needed for preview sorting/conditions.
-func (s *Service) setupMissingFilesContext(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	cond *RuleCondition,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	instance *models.Instance,
-) {
-	if instance == nil || !instance.HasLocalFilesystemAccess {
-		return
-	}
-	if rule == nil {
-		return
-	}
-
-	if !ConditionUsesField(cond, FieldHasMissingFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasMissingFiles) {
-		return
-	}
-
-	missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
-		return
-	}
-	evalCtx.HasMissingFilesByHash = missing
-}
-
-// setupSkippedFilesContext sets up skipped files detection if needed for preview sorting/conditions.
-func (s *Service) setupSkippedFilesContext(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	cond *RuleCondition,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-) {
-	if rule == nil {
-		return
-	}
-	if !ConditionUsesField(cond, FieldHasSkippedFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasSkippedFiles) {
-		return
-	}
-
-	skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
-		return
-	}
-	evalCtx.HasSkippedFilesByHash = skipped
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1585,15 +1508,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
-	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
-		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
-		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
-		s.setupPreviewSeasonPackContext(ctx, rule, rule.Conditions.Category.Condition, torrents, evalCtx)
-	}
-	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
-	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
-	s.setupSkippedFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx)
+	evalCtx, _, instance := s.previewEvalContext(ctx, instanceID, rule, torrents)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1640,45 +1555,6 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 		blockCategories:   cat.BlockIfCrossSeedInCategories,
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
-	}
-}
-
-// setupCategoryHardlinkContext sets up hardlink index if needed for category preview.
-func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
-	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Identity {
-		return
-	}
-	if rule.Conditions == nil || rule.Conditions.Category == nil {
-		return
-	}
-
-	cond := rule.Conditions.Category.Condition
-	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope)
-	needsCrossScope := ConditionUsesField(cond, FieldHardlinkScopeCross) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
-	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
-	if !needsHardlinkScope && !needsHardlinkSignatureGrouping && !needsCrossScope {
-		return
-	}
-
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
-	if hardlinkIndex != nil {
-		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
-		if needsHardlinkSignatureGrouping {
-			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
-		}
-		if needsCrossScope {
-			hardlinkIndex.crossScopeMu.Lock()
-			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
-				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-			}
-			crossScope := hardlinkIndex.CrossScopeByHash
-			hardlinkIndex.crossScopeMu.Unlock()
-			if crossScope != nil {
-				evalCtx.HardlinkCrossScopeByHash = crossScope
-			}
-		}
 	}
 }
 
@@ -1877,30 +1753,20 @@ func (s *Service) buildCategoryPreviewResult(
 	return result
 }
 
-// deleteHardlinkNeeds reports which hardlink data a rule's delete needs: the
-// single-instance scope, the cross-instance scope, and the signature groups. A rule that
-// sorts or groups by that data picks its delete batch from the index just as surely as
-// one that conditions on it.
-//
-// Both the code that loads the data and the code that re-verifies the deletions must
-// agree on this answer, so they read it from here rather than each deciding again.
-func deleteHardlinkNeeds(rule *models.Automation) (scope, cross, grouping bool) {
-	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
-		return false, false, false
-	}
-	cond := rule.Conditions.Delete.Condition
-	scope = rule.Conditions.Delete.IncludeHardlinks ||
-		ConditionUsesField(cond, FieldHardlinkScope) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope)
-	cross = ConditionUsesField(cond, FieldHardlinkScopeCross) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
-	return scope, cross, ruleUsesHardlinkSignatureGrouping(rule)
-}
-
-// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink state.
+// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink state:
+// the delete condition, the sorting, includeHardlinks, or hardlink signature grouping. A
+// rule that sorts or groups by that data picks its delete batch from the index just as
+// surely as one that conditions on it.
 func deleteUsesHardlinkData(rule *models.Automation) bool {
-	scope, cross, grouping := deleteHardlinkNeeds(rule)
-	return scope || cross || grouping
+	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return false
+	}
+	deleteOnly := *rule
+	deleteOnly.Enabled = true
+	deleteOnly.Conditions = &models.ActionConditions{Delete: rule.Conditions.Delete}
+	needs := NeedsFor([]*models.Automation{&deleteOnly})
+	return rule.Conditions.Delete.IncludeHardlinks || needs.HardlinkScope || needs.HardlinkCrossScope ||
+		ruleUsesHardlinkSignatureGrouping(rule)
 }
 
 // blockedDeleteCandidates returns the queued deletions that must not run because their
@@ -2062,7 +1928,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, nil
 	}
 
-	if rulesUseTrackerEntryData(eligibleRules) {
+	needs := NeedsFor(eligibleRules)
+	if needs.TrackerEntries {
 		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
 		if trackerDataMissing(torrents) {
 			log.Debug().
@@ -2080,91 +1947,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	// Initialize evaluation context
-	evalCtx := &EvalContext{ReleaseParser: s.releaseParser}
-	evalCtx.setFilesystemAccess(instance)
-
-	// Build category index for EXISTS_IN/CONTAINS_IN operators
-	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
-
-	// Get health counts for isUnregistered condition evaluation
-	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-		evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
-	}
-
-	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
-	// The cached index provides scope detection AND hardlink grouping in a single build.
-	var hardlinkIndex *HardlinkIndex
-	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
-	needsCrossScope := rulesUseCondition(eligibleRules, FieldHardlinkScopeCross)
-	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
-	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping || needsCrossScope
-	if evalCtx.InstanceHasFileIdentity && needsHardlinkIndex {
-		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
-		if hardlinkIndex != nil {
-			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
-			if needsHardlinkSignatureGrouping {
-				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
-			}
-			if needsCrossScope {
-				hardlinkIndex.crossScopeMu.Lock()
-				if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
-					s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-				}
-				crossScope := hardlinkIndex.CrossScopeByHash
-				hardlinkIndex.crossScopeMu.Unlock()
-				if crossScope != nil {
-					evalCtx.HardlinkCrossScopeByHash = crossScope
-				}
-			}
-		}
-	}
-
-	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
-	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
-		missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
-		} else {
-			evalCtx.HasMissingFilesByHash = missing
-		}
-	}
-
-	// On-demand skipped files detection (only if rules use HAS_SKIPPED_FILES)
-	if rulesUseCondition(eligibleRules, FieldHasSkippedFiles) {
-		skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
-		} else {
-			evalCtx.HasSkippedFilesByHash = skipped
-		}
-	}
-
-	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)
-	needs := CrossMatchNeeds{
-		SameExists:   rulesUseCondition(eligibleRules, FieldExistsOnSameInstance),
-		SameSeeding:  rulesUseCondition(eligibleRules, FieldSeedingOnSameInstance),
-		SameTags:     rulesUseCondition(eligibleRules, FieldCrossSeedTags),
-		OtherExists:  rulesUseCondition(eligibleRules, FieldExistsOnOtherInstance),
-		OtherSeeding: rulesUseCondition(eligibleRules, FieldSeedingOnOtherInstance),
-	}
-	if needs.SameExists || needs.SameSeeding || needs.SameTags || needs.OtherExists || needs.OtherSeeding {
-		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
-	}
-
-	// On-demand season pack sets (only if rules use SEASON_PACK_STATUS*)
-	if rulesUseCondition(eligibleRules, FieldSeasonPackStatus) {
-		evalCtx.SeasonPackSet = buildSeasonPackSet(s.releaseParser, torrents)
-	}
-	if rulesUseCondition(eligibleRules, FieldSeasonPackStatusAnyInstance) {
-		evalCtx.SeasonPackSetAnyInstance = s.buildAnyInstanceSeasonPackSet(ctx)
-	}
+	evalCtx, hardlinkIndex := s.buildEvalContext(ctx, instanceID, instance, torrents, needs)
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
-	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
+	if needs.FreeSpace {
 		// Initialize per-rule free space states.
 		// Each rule gets its own projection state (keyed by source + rule ID),
 		// ensuring rules with different thresholds on the same disk don't interfere.
@@ -2227,17 +2014,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if rulesNeedCrossSeedFiles(eligibleRules) {
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
-	}
-
-	// Load tracker display names when needed by tagging, .Tracker path templates, or TRACKER/TRACKERS conditions.
-	// KISS: only load customizations when a rule actually references them.
-	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker) || rulesUseCondition(eligibleRules, FieldTrackers)) && s.trackerCustomizationStore != nil {
-		customizations, err := s.trackerCustomizationStore.List(ctx)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
-		} else {
-			evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
-		}
 	}
 
 	// Ensure lastApplied map is initialized for this instance
@@ -5028,57 +4804,11 @@ func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
 }
 
 func actionConditionsUseField(ac *models.ActionConditions, field ConditionField) bool {
-	if ac == nil {
-		return false
-	}
-	conds := make([]*models.RuleCondition, 0, 10)
-	if ac.SpeedLimits != nil && ac.SpeedLimits.Enabled {
-		conds = append(conds, ac.SpeedLimits.Condition)
-	}
-	if ac.ShareLimits != nil && ac.ShareLimits.Enabled {
-		conds = append(conds, ac.ShareLimits.Condition)
-	}
-	if ac.Pause != nil && ac.Pause.Enabled {
-		conds = append(conds, ac.Pause.Condition)
-	}
-	if ac.Resume != nil && ac.Resume.Enabled {
-		conds = append(conds, ac.Resume.Condition)
-	}
-	if ac.Recheck != nil && ac.Recheck.Enabled {
-		conds = append(conds, ac.Recheck.Condition)
-	}
-	if ac.Reannounce != nil && ac.Reannounce.Enabled {
-		conds = append(conds, ac.Reannounce.Condition)
-	}
-	if ac.AutoManagement != nil {
-		conds = append(conds, ac.AutoManagement.Condition)
-	}
-	if ac.Delete != nil && ac.Delete.Enabled {
-		conds = append(conds, ac.Delete.Condition)
-	}
-	if ac.Category != nil && ac.Category.Enabled {
-		conds = append(conds, ac.Category.Condition)
-	}
-	if ac.Move != nil && ac.Move.Enabled {
-		conds = append(conds, ac.Move.Condition)
-	}
-	if ac.ExternalProgram != nil && ac.ExternalProgram.Enabled {
-		conds = append(conds, ac.ExternalProgram.Condition)
-	}
-	if ac.ExportToInstance != nil && ac.ExportToInstance.Enabled {
-		conds = append(conds, ac.ExportToInstance.Condition)
-	}
-	for _, cond := range conds {
-		if conditionTreeUsesField(cond, field) {
+	for c := range ac.Conditions() {
+		if c.Enabled && conditionTreeUsesField(c.Condition, field) {
 			return true
 		}
 	}
-	for _, action := range ac.TagActions() {
-		if action != nil && action.Enabled && conditionTreeUsesField(action.Condition, field) {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -5119,20 +4849,11 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	return false
 }
 
-// rulesUseTrackerEntryData reports whether any rule needs the per-torrent tracker
-// list. Rules without a tracker condition skip hydration entirely.
-func rulesUseTrackerEntryData(rules []*models.Automation) bool {
-	return rulesUseCondition(rules, FieldTracker) ||
-		rulesUseCondition(rules, FieldTrackers) ||
-		rulesUseCondition(rules, FieldTrackerStatus) ||
-		rulesUseCondition(rules, FieldTrackerMessage)
-}
-
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
 	if s == nil || s.syncManager == nil || rule == nil {
 		return torrents
 	}
-	if !rulesUseTrackerEntryData([]*models.Automation{rule}) {
+	if !previewNeeds(rule).TrackerEntries {
 		return torrents
 	}
 
@@ -5151,54 +4872,6 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 // torrent list is not missing data: it says nothing about hydration.
 func trackerDataMissing(torrents []qbt.Torrent) bool {
 	return len(torrents) > 0 && !slices.ContainsFunc(torrents, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 })
-}
-
-// rulesUseCondition checks if any enabled rule uses the given field.
-func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
-	for _, rule := range rules {
-		if ruleUsesCondition(rule, field) {
-			return true
-		}
-	}
-	return false
-}
-
-// rulesUseTrackerDisplayName reports whether any enabled rule needs the tracker display-name map.
-// The "Tracker" match pairs with the key resolveMovePath passes to path templates, so it also catches {{ index . "Tracker" }}.
-func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
-	for _, rule := range rules {
-		if rule.Conditions == nil || !rule.Enabled {
-			continue
-		}
-		if move := rule.Conditions.Move; move != nil && move.Enabled && strings.Contains(move.Path, "Tracker") {
-			return true
-		}
-		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && strings.Contains(export.SavePath, "Tracker") {
-			return true
-		}
-		for _, tag := range rule.Conditions.TagActions() {
-			if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// rulesUseIncludeHardlinks checks if any enabled delete rule has IncludeHardlinks enabled
-// with the include-cross-seeds mode (the only mode that can actually expand hardlink groups).
-func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
-	for _, rule := range rules {
-		if rule.Conditions == nil || !rule.Enabled {
-			continue
-		}
-		del := rule.Conditions.Delete
-		// IncludeHardlinks only makes sense with the include-cross-seeds delete mode
-		if del != nil && del.Enabled && del.IncludeHardlinks && del.Mode == DeleteModeWithFilesIncludeCrossSeeds {
-			return true
-		}
-	}
-	return false
 }
 
 func ruleUsesIncludeCrossSeedsDelete(rule *models.Automation) bool {
@@ -5280,10 +4953,6 @@ func rulesNeedHardlinkSignatureMap(rules []*models.Automation) bool {
 		}
 	}
 	return false
-}
-
-func rulesUseHardlinkSignatureGrouping(rules []*models.Automation) bool {
-	return slices.ContainsFunc(rules, ruleUsesHardlinkSignatureGrouping)
 }
 
 func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
@@ -5487,52 +5156,11 @@ func (s *Service) recordDryRunActivities(
 
 	createdActivities := make([]*models.AutomationActivity, 0)
 
-	// Dry-run grouping expansion should behave like live runs when local filesystem access is available.
+	// The dry run reuses the live run's context, so grouping expansion reads the same hardlink data.
 	dryRunEvalCtx := evalCtx
 	if dryRunEvalCtx == nil {
 		dryRunEvalCtx = &EvalContext{ReleaseParser: s.releaseParser}
-	} else if dryRunEvalCtx.ReleaseParser == nil {
-		dryRunEvalCtx.ReleaseParser = s.releaseParser
 	}
-	if s.instanceStore != nil && ruleByID != nil {
-		instance, err := s.instanceStore.Get(ctx, instanceID)
-		if err == nil && instance != nil {
-			dryRunEvalCtx.setFilesystemAccess(instance)
-			if dryRunEvalCtx.InstanceHasFileIdentity {
-				needsHardlinkSignature := false
-				needsDryRunCrossScope := false
-				for _, rule := range ruleByID {
-					if ruleUsesHardlinkSignatureGrouping(rule) {
-						needsHardlinkSignature = true
-					}
-					if ruleUsesCondition(rule, FieldHardlinkScopeCross) {
-						needsDryRunCrossScope = true
-					}
-				}
-				if needsHardlinkSignature || needsDryRunCrossScope {
-					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
-					if hardlinkIndex != nil {
-						dryRunEvalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
-						if needsHardlinkSignature {
-							dryRunEvalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
-						}
-						if needsDryRunCrossScope {
-							hardlinkIndex.crossScopeMu.Lock()
-							if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
-								s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-							}
-							crossScope := hardlinkIndex.CrossScopeByHash
-							hardlinkIndex.crossScopeMu.Unlock()
-							if crossScope != nil {
-								dryRunEvalCtx.HardlinkCrossScopeByHash = crossScope
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
 		detailsJSON, _ := json.Marshal(details)
 		activity := &models.AutomationActivity{
