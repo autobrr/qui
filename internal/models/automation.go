@@ -170,7 +170,6 @@ type Automation struct {
 	InstanceID      int               `json:"instanceId"`
 	Name            string            `json:"name"`
 	TrackerPattern  string            `json:"trackerPattern"`
-	TrackerDomains  []string          `json:"trackerDomains,omitempty"`
 	Conditions      *ActionConditions `json:"conditions"`
 	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default sorting (oldest first)
@@ -216,19 +215,8 @@ func splitPatterns(pattern string) []string {
 	return parts
 }
 
-func normalizeTrackerPattern(pattern string, domains []string) string {
-	if len(domains) > 0 {
-		pattern = strings.Join(domains, ",")
-	}
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" {
-		return ""
-	}
-	parts := splitPatterns(pattern)
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, ",")
+func normalizeTrackerPattern(pattern string) string {
+	return strings.Join(splitPatterns(pattern), ",")
 }
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
@@ -281,7 +269,6 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		automation.Enabled = SQLiteIntToBool(enabled)
 		automation.DryRun = SQLiteIntToBool(dryRun)
 		automation.Notify = SQLiteIntToBool(notify)
-		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 		if intervalSeconds.Valid {
 			v := int(intervalSeconds.Int64)
@@ -357,7 +344,6 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	automation.Enabled = SQLiteIntToBool(enabled)
 	automation.DryRun = SQLiteIntToBool(dryRun)
 	automation.Notify = SQLiteIntToBool(notify)
-	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 	if intervalSeconds.Valid {
 		v := int(intervalSeconds.Int64)
@@ -413,7 +399,7 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		}
 	}
 
-	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern)
 
 	sortOrder := automation.SortOrder
 	if sortOrder == 0 {
@@ -487,7 +473,7 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		}
 	}
 
-	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern)
 
 	conditionsJSON, err := json.Marshal(automation.Conditions)
 	if err != nil {

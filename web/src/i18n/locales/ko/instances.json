@@ -740,8 +740,7 @@
           "invalidJson": "잘못된 JSON 형식",
           "notObject": "JSON 객체가 필요합니다",
           "missingName": "'name' 필드가 없거나 잘못되었습니다",
-          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다",
-          "missingTracker": "'trackerDomains'(문자열 배열) 또는 'trackerPattern'을 지정해야 합니다"
+          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다"
         }
       },
       "editJsonDialog": {
@@ -821,6 +820,7 @@
       "description": "다운로드 디렉터리를 스캔하여 정리할 고아 파일을 식별합니다.",
       "noLocalAccess": "로컬 접근 없음",
       "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 항목 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
+      "remoteLimits": "원격 인스턴스에서는 삭제와 자동 정리가 아직 실행되지 않습니다. 또한 qui는 두 경로가 같은 파일인지 구분할 수 없으므로, 바인드 마운트처럼 두 번째 경로로 접근 가능한 파일은 토렌트가 사용 중이어도 목록에 표시될 수 있습니다.",
       "on": "켜짐",
       "off": "꺼짐",
       "summaryGrace": "유예 {{grace}}분",
@@ -831,6 +831,7 @@
       "cancel": "취소",
       "autoCleanupEnabled": "자동 정리 활성화됨 (≤{{max}}개 파일)",
       "autoCleanupDisabled": "자동 정리 비활성화됨",
+      "autoCleanupRemote": "원격 인스턴스는 자동 정리 없음",
       "pathsIgnored_other": " · 경로 {{count}}개 무시됨",
       "scanNow": "지금 스캔",
       "configure": "구성",
@@ -872,6 +873,7 @@
     "orphanScanPreview": {
       "title": "고아 항목 미리 보기",
       "description": "이번 실행에서 삭제될 파일과 디렉터리를 검토하세요.",
+      "remoteDescription": "이번 스캔에서 찾은 파일과 디렉터리를 검토하세요.",
       "itemsCount_other": "항목 {{count}}개 · {{size}}",
       "truncated": " (잘림)",
       "path": "경로",
@@ -885,6 +887,7 @@
       "exportCSV": "CSV 내보내기",
       "close": "닫기",
       "deleteItems": "삭제",
+      "remoteDeleteUnavailable": "이 스캔은 원격 인스턴스에서 실행되었으며, 원격 인스턴스에서는 삭제가 아직 지원되지 않습니다. 목록을 내보낸 후 서버에서 직접 파일을 삭제하세요.",
       "statusLabels": {
         "pending": "대기 중",
         "deleted": "삭제됨",
@@ -1351,12 +1354,12 @@
         "defaultSource": "기본값(qBittorrent)",
         "pathSource": "서버의 경로",
         "pathSourceWindowsUnsupported": "서버의 경로(Windows에서 지원되지 않음)",
-        "pathSourceFilesystemAccessRequired": "서버의 경로(로컬 또는 SSH 접근 필요)",
+        "pathSourceLocalAccessRequired": "서버의 경로(로컬 접근 필요)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "여유 공간을 확인할 경로를 입력하세요(예: 마운트 지점)",
         "errors": {
           "unsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다.",
-          "filesystemAccessRequired": "경로 기반 여유 공간 소스에는 로컬 또는 SSH 파일시스템 접근이 필요합니다.",
+          "localAccessRequired": "경로 기반 여유 공간 소스에는 로컬 파일시스템 접근이 필요합니다.",
           "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다."
         }
       },
@@ -1546,7 +1549,7 @@
         "switchedIntervalForFreeSpace": "여유 공간 삭제에는 약 5분의 대기 시간이 있으므로 5분 간격으로 전환했습니다",
         "pathSourceUnsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다. qBittorrent 기본값으로 전환했습니다.",
         "switchFreeSpaceSourceDefault": "여유 공간 소스를 기본값(qBittorrent)으로 전환",
-        "setUpFilesystemAccessOrDefault": "인스턴스 설정에서 로컬 또는 SSH 파일시스템 접근을 설정하거나 기본값(qBittorrent)을 사용하세요",
+        "enableLocalAccessOrDefault": "인스턴스 설정에서 로컬 파일시스템 접근을 활성화하거나 기본값(qBittorrent)을 사용하세요",
         "enterPathOrDefault": "경로를 입력하거나 여유 공간 소스를 기본값(qBittorrent)으로 다시 전환하세요",
         "addScoreRule": "점수 정렬을 위해 점수 규칙을 하나 이상 추가하세요",
         "fieldMultiplierInvalid": "필드 곱셈기는 유효한 숫자여야 합니다",

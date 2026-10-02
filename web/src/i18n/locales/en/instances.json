@@ -758,8 +758,7 @@
           "invalidJson": "Invalid JSON format",
           "notObject": "Expected a JSON object",
           "missingName": "Missing or invalid 'name' field",
-          "missingConditions": "Missing or invalid 'conditions' field",
-          "missingTracker": "Must specify either 'trackerDomains' (array of strings) or 'trackerPattern'"
+          "missingConditions": "Missing or invalid 'conditions' field"
         }
       },
       "editJsonDialog": {
@@ -839,6 +838,7 @@
       "description": "Scans download directories and identifies orphan files for cleanup.",
       "noLocalAccess": "No Local Access",
       "noLocalAccessTooltip": "qui and qBittorrent must run on the same machine. Enable \"Local Filesystem Access\" in instance settings to use orphan scanning.",
+      "remoteLimits": "Deletion and auto-cleanup do not run on remote instances yet. qui also cannot tell when two paths are the same file, so a file reachable at a second path, such as through a bind mount, can be listed even when a torrent uses it.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Grace {{grace}}min",
@@ -850,6 +850,7 @@
       "cancel": "Cancel",
       "autoCleanupEnabled": "Auto-cleanup enabled (≤{{max}} files)",
       "autoCleanupDisabled": "Auto-cleanup disabled",
+      "autoCleanupRemote": "No auto-cleanup on remote instances",
       "pathsIgnored_one": " · {{count}} path ignored",
       "pathsIgnored_other": " · {{count}} paths ignored",
       "scanNow": "Scan Now",
@@ -895,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Orphan Preview",
       "description": "Review the files and directories this run will remove.",
+      "remoteDescription": "Review the files and directories this scan found.",
       "itemsCount_one": "{{count}} item · {{size}}",
       "itemsCount_other": "{{count}} items · {{size}}",
       "truncated": " (truncated)",
@@ -909,6 +911,7 @@
       "exportCSV": "Export CSV",
       "close": "Close",
       "deleteItems": "Delete",
+      "remoteDeleteUnavailable": "This scan ran on a remote instance, where deleting is not supported yet. Export the list to remove the files on the server yourself.",
       "statusLabels": {
         "pending": "Pending",
         "deleted": "Deleted",
@@ -1380,12 +1383,12 @@
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)",
+        "pathSourceLocalAccessRequired": "Path on server (requires Local Access)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access.",
+          "localAccessRequired": "Path-based free space source requires Local Filesystem Access.",
           "pathRequired": "Path is required when using \"Path on server\"."
         }
       },
@@ -1575,7 +1578,7 @@
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
-        "setUpFilesystemAccessOrDefault": "Set up local or SSH filesystem access in instance settings, or use Default (qBittorrent)",
+        "enableLocalAccessOrDefault": "Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",
         "addScoreRule": "Add at least one score rule for Score sorting",
         "fieldMultiplierInvalid": "Field multiplier must be a valid number",

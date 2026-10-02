@@ -26,7 +26,7 @@ Frontend and i18n rules for work under `web/`.
   - **Nothing auto-cleans the DOM or mocks.** Add `afterEach(cleanup)` in files where more than one test renders, and call `cleanup()` or `unmount()` yourself between two `render` calls inside the same test. Add `afterEach(() => vi.restoreAllMocks())` when a test spies on a global such as `Storage.prototype.setItem`. RTL registers its own cleanup only when a global `afterEach` exists, and `globals: false` removes it; `restoreMocks` is not set either. Without this a second `render` leaves the first in the DOM and `getBy*` throws "Found multiple elements".
   - No jest-dom matchers (`toBeInTheDocument`, `toHaveTextContent`, …) — assert plain DOM: `el.textContent`, `el.getAttribute(...)`, `expect(node).toBeNull()`.
   - When mounting components with effects, mock their boundaries (`@/lib/api`, router, context providers, `useVirtualizer`, query hooks) and return a **stable singleton** from each mock — fresh objects per render loop effects and OOM the worker. Use `vi.hoisted()` for values referenced inside `vi.mock` factories.
-- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI runs the full suite via `make test-frontend`.
+- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI gates for `web/`: `lint.yml` runs eslint on changed files and `pnpm check:i18n`; `release.yml` runs `pnpm test`, `pnpm tsc --noEmit`, and the build.
 
 ## React Effects
 
@@ -39,7 +39,7 @@ Frontend and i18n rules for work under `web/`.
 
 ## i18n
 
-Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
+11 locales live under `web/src/i18n/locales/<lang>/`, each with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
@@ -65,7 +65,11 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 
-`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. When it flags a key, delete the key from every locale in the same change, or fix the scanner if the UI does use it.
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key in a literal `t("…")` call or a `labelKey`, `titleKey`, `placeholderKey`, or `descriptionKey` string exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. When it flags a key, delete the key from every locale in the same change, or teach the scanner to see the reference if the UI does use it.
+
+A data-only file that holds key properties but never calls `useTranslation` names its namespace with a `// i18n-namespace: <ns>` comment after its imports. A key written as `"ns:key"` names its own namespace and needs no directive: `resolveNamespaceAndKey` in `web/scripts/check-i18n-keys-lib.mjs` splits it.
+
+No UI text names SSH until #2917 ships. Read rollout step 4 in `docs/remote-backend-design.md` before you add remote-instance text.
 
 ## Adding Languages
 

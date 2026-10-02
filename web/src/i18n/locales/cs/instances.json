@@ -776,8 +776,7 @@
           "invalidJson": "Neplatný formát JSON",
           "notObject": "Očekáván objekt JSON",
           "missingName": "Chybí nebo je neplatné pole 'name'",
-          "missingConditions": "Chybí nebo je neplatné pole 'conditions'",
-          "missingTracker": "Musíte zadat 'trackerDomains' (pole řetězců) nebo 'trackerPattern'"
+          "missingConditions": "Chybí nebo je neplatné pole 'conditions'"
         }
       },
       "editJsonDialog": {
@@ -857,6 +856,7 @@
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
       "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
       "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
+      "remoteLimits": "Mazání a automatické vyčištění na vzdálených instancích zatím neběží. qui také nepozná, že dvě cesty vedou ke stejnému souboru, takže soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent.",
       "on": "Zapnuto",
       "off": "Vypnuto",
       "summaryGrace": "Lhůta {{grace}}min",
@@ -870,6 +870,7 @@
       "cancel": "Zrušit",
       "autoCleanupEnabled": "Automatické vyčištění zapnuto (≤{{max}} souborů)",
       "autoCleanupDisabled": "Automatické vyčištění vypnuto",
+      "autoCleanupRemote": "Vzdálené instance se automaticky nečistí",
       "pathsIgnored_one": " · {{count}} cesta ignorována",
       "pathsIgnored_few": " · {{count}} cesty ignorovány",
       "pathsIgnored_other": " · {{count}} cest ignorováno",
@@ -922,6 +923,7 @@
     "orphanScanPreview": {
       "title": "Náhled sirotků",
       "description": "Zkontrolujte soubory a adresáře, které tento běh odstraní.",
+      "remoteDescription": "Zkontrolujte soubory a adresáře, které toto vyhledávání našlo.",
       "itemsCount_one": "{{count}} položka · {{size}}",
       "itemsCount_few": "{{count}} položky · {{size}}",
       "itemsCount_many": "{{count}} položek · {{size}}",
@@ -938,6 +940,7 @@
       "exportCSV": "Exportovat CSV",
       "close": "Zavřít",
       "deleteItems": "Smazat",
+      "remoteDeleteUnavailable": "Toto vyhledávání proběhlo na vzdálené instanci, kde mazání zatím není podporováno. Exportujte seznam a soubory na serveru odstraňte sami.",
       "toast": {
         "deletionStarted": "Smazání spuštěno",
         "deletionDescription": "Nepárové soubory a opuštěné adresáře jsou odstraňovány",
@@ -1415,12 +1418,12 @@
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
-        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje místní přístup nebo SSH)",
+        "pathSourceLocalAccessRequired": "Cesta na serveru (vyžaduje místní přístup)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
-          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému nebo přístup přes SSH.",
+          "localAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\"."
         }
       },
@@ -1610,7 +1613,7 @@
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
-        "setUpFilesystemAccessOrDefault": "Nastavte místní přístup k souborovému systému nebo přístup přes SSH v nastavení instance, nebo použijte výchozí (qBittorrent)",
+        "enableLocalAccessOrDefault": "Povolit místní přístup k souborovému systému v nastavení instance, nebo použít výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",
         "addScoreRule": "Přidat alespoň jedno pravidlo skóre pro řazení skóre",
         "fieldMultiplierInvalid": "Multiplikátor pole musí být platné číslo",

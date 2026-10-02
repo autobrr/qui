@@ -41,7 +41,7 @@ const { instances, runsQuery, firstPage, secondPage, setFilesFound, idleQuery, i
     },
   }
   return {
-    instances: [{ id: 1, name: "Seedbox", isActive: true, hasLocalFilesystemAccess: true }],
+    instances: [{ id: 1, name: "Seedbox", isActive: true, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, write: true, content: true } }],
     runsQuery: { data: [run], isLoading: false },
     firstPage,
     secondPage,

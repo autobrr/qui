@@ -29,6 +29,8 @@ const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => 
     name: "seedbox-europe-west-archive-01",
     isActive: true,
     hasLocalFilesystemAccess: true,
+    filesystemMode: "local",
+    capabilities: { read: true, identity: true, write: true, content: true },
   }
   const settings = {
     instanceId: 1,
