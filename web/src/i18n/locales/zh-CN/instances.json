@@ -1350,12 +1350,12 @@
         "defaultSource": "默认（qBittorrent）",
         "pathSource": "服务器路径",
         "pathSourceWindowsUnsupported": "服务器路径（Windows 不支持）",
-        "pathSourceFilesystemAccessRequired": "服务器路径（需要本地或 SSH 访问权限）",
+        "pathSourceLocalAccessRequired": "服务器路径（需要本地访问权限）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "输入要检查可用空间的路径（例如挂载点）",
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
-          "filesystemAccessRequired": "基于路径的可用空间来源需要本地或 SSH 文件系统访问权限。",
+          "localAccessRequired": "基于路径的可用空间来源需要本地文件系统访问权限。",
           "pathRequired": "使用\"服务器路径\"时，路径为必填项。"
         }
       },
@@ -1545,7 +1545,7 @@
         "switchedIntervalForFreeSpace": "已切换到 5 分钟间隔，因为可用空间删除有约 5 分钟的冷却时间",
         "pathSourceUnsupportedWindows": "Windows 不支持基于路径的可用空间来源。已切换到 qBittorrent 默认值。",
         "switchFreeSpaceSourceDefault": "将可用空间来源切换为默认（qBittorrent）",
-        "setUpFilesystemAccessOrDefault": "请在实例设置中配置本地或 SSH 文件系统访问，或使用默认（qBittorrent）",
+        "enableLocalAccessOrDefault": "请在实例设置中启用本地文件系统访问，或使用默认（qBittorrent）",
         "enterPathOrDefault": "请输入路径或将可用空间来源切换回默认（qBittorrent）",
         "addScoreRule": "得分排序至少需要一条得分规则",
         "fieldMultiplierInvalid": "字段乘数必须是有效数字",

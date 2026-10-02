@@ -25,8 +25,8 @@ func (e *RuleError) Error() string { return e.Message }
 func ruleError(msg string) error { return &RuleError{Message: msg} }
 
 const (
-	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows with local filesystem access. Use the default qBittorrent free space instead."
-	errMsgPathSourceAccessRequired      = "Free space path source requires local or SSH filesystem access. Set it up in instance settings first."
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+	errMsgPathSourceAccessRequired      = "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
 )
 
 // windowsLocalPathSource reports whether a path source would read a Windows
