@@ -62,6 +62,7 @@ export function OrphanScanPreviewDialog({
 
   const run = runQuery.data
   const totalItems = run?.filesFound ?? 0
+  const deleteUnavailable = run?.filesystemMode === "remote"
   const hasMore = files.length < totalItems
 
   const totalSize = useMemo(() => {
@@ -131,7 +132,7 @@ export function OrphanScanPreviewDialog({
         <DialogHeader>
           <DialogTitle>{t("preferences.orphanScanPreview.title")}</DialogTitle>
           <DialogDescription>
-            {t("preferences.orphanScanPreview.description")}
+            {deleteUnavailable ? t("preferences.orphanScanPreview.remoteDescription") : t("preferences.orphanScanPreview.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -227,6 +228,10 @@ export function OrphanScanPreviewDialog({
           )}
         </div>
 
+        {deleteUnavailable && (
+          <p className="text-sm text-muted-foreground">{t("preferences.orphanScanPreview.remoteDeleteUnavailable")}</p>
+        )}
+
         <DialogFooter className="mt-4 sm:justify-between">
           <div>
             {totalItems > 0 && (
@@ -253,7 +258,7 @@ export function OrphanScanPreviewDialog({
             <Button
               variant="destructive"
               onClick={handleConfirm}
-              disabled={confirmMutation.isPending || !run || run.status !== "preview_ready"}
+              disabled={confirmMutation.isPending || !run || run.status !== "preview_ready" || deleteUnavailable}
             >
               {confirmMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -282,7 +282,10 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if entry.Err != nil {
-			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root {
+			// A backend that wraps both errors must not have its cut read as a
+			// denied subtree. Skipping it would take a cut-short tree as complete.
+			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
+				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
 				continue
 			}
 			return nil, nil, false, entry.Err

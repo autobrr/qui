@@ -838,6 +838,7 @@
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
       "noLocalAccess": "Nessun accesso locale",
       "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
+      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote. Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolleranza {{grace}}min",
@@ -849,6 +850,7 @@
       "cancel": "Annulla",
       "autoCleanupEnabled": "Pulizia automatica abilitata (≤{{max}} file)",
       "autoCleanupDisabled": "Pulizia automatica disabilitata",
+      "autoCleanupRemote": "Nessuna pulizia automatica sulle istanze remote",
       "pathsIgnored_one": " · {{count}} percorso ignorato",
       "pathsIgnored_other": " · {{count}} percorsi ignorati",
       "scanNow": "Scansiona ora",
@@ -894,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Anteprima orfani",
       "description": "Esamina i file e le cartelle che questa esecuzione rimuoverà.",
+      "remoteDescription": "Esamina i file e le cartelle trovati da questa scansione.",
       "itemsCount_one": "{{count}} elemento · {{size}}",
       "itemsCount_other": "{{count}} elementi · {{size}}",
       "truncated": " (troncato)",
@@ -908,6 +911,7 @@
       "exportCSV": "Esporta CSV",
       "close": "Chiudi",
       "deleteItems": "Elimina",
+      "remoteDeleteUnavailable": "Questa scansione è stata eseguita su un'istanza remota, dove l'eliminazione non è ancora supportata. Esporta l'elenco per rimuovere tu stesso i file sul server.",
       "toast": {
         "deletionStarted": "Eliminazione avviata",
         "deletionDescription": "I file orfani e le cartelle abbandonate sono in fase di rimozione",
