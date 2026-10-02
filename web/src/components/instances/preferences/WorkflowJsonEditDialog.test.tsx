@@ -38,7 +38,6 @@ const rule: Automation = {
   instanceId: 1,
   name: "Old name",
   trackerPattern: "a.com",
-  trackerDomains: ["a.com"],
   conditions: { schemaVersion: "1" },
   enabled: true,
   dryRun: false,
@@ -64,7 +63,6 @@ describe("WorkflowJsonEditDialog", () => {
     expect(parsed).toEqual({
       name: "Old name",
       trackerPattern: "a.com",
-      trackerDomains: ["a.com"],
       conditions: { schemaVersion: "1" },
       intervalSeconds: 120,
     })
@@ -89,7 +87,7 @@ describe("WorkflowJsonEditDialog", () => {
     mocks.updateAutomation.mockResolvedValue({ ...rule, name: "New name" })
     const { editor, onOpenChange } = renderDialog()
     fireEvent.change(editor, {
-      target: { value: JSON.stringify({ name: "New name", trackerDomains: ["b.com"], conditions: { schemaVersion: "1" }, dryRun: true }) },
+      target: { value: JSON.stringify({ name: "New name", trackerPattern: "b.com,!c.com", conditions: { schemaVersion: "1" }, dryRun: true }) },
     })
     fireEvent.click(screen.getByText("preferences.workflowsOverview.editJsonDialog.save"))
 
@@ -98,21 +96,21 @@ describe("WorkflowJsonEditDialog", () => {
       name: "New name",
       enabled: true,
       sortOrder: 4,
-      trackerPattern: "b.com",
-      trackerDomains: ["b.com"],
+      trackerPattern: "b.com,!c.com",
       conditions: { schemaVersion: "1" },
       freeSpaceSource: undefined,
       sortingConfig: undefined,
       dryRun: true,
       notify: true,
     })
+    expect(mocks.updateAutomation.mock.calls[0][2]).not.toHaveProperty("trackerDomains")
     expect(mocks.toastSuccess).toHaveBeenCalled()
   })
 
   it("keeps the dialog open with the text when the backend rejects the save", async () => {
     mocks.updateAutomation.mockRejectedValue(new Error("rule name already exists"))
     const { editor, onOpenChange } = renderDialog()
-    const text = JSON.stringify({ name: "Dup", trackerDomains: [], conditions: { schemaVersion: "1" } })
+    const text = JSON.stringify({ name: "Dup", trackerPattern: "", conditions: { schemaVersion: "1" } })
     fireEvent.change(editor, { target: { value: text } })
     fireEvent.click(screen.getByText("preferences.workflowsOverview.editJsonDialog.save"))
 

@@ -758,8 +758,7 @@
           "invalidJson": "Formato JSON inválido",
           "notObject": "Esperado um objeto JSON",
           "missingName": "Campo 'name' ausente ou inválido",
-          "missingConditions": "Campo 'conditions' ausente ou inválido",
-          "missingTracker": "Informe 'trackerDomains' (lista de strings) ou 'trackerPattern'"
+          "missingConditions": "Campo 'conditions' ausente ou inválido"
         }
       },
       "editJsonDialog": {
@@ -1380,12 +1379,12 @@
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
-        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)",
+        "pathSourceLocalAccessRequired": "Localização Manual (Requer que o Acesso Local esteja ativado)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
-          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso local ou SSH ao sistema de arquivos.",
+          "localAccessRequired": "A origem de espaço livre por caminho requer o \"Acesso ao Sistema de Arquivos Local\".",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
         }
       },
@@ -1575,7 +1574,7 @@
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
-        "setUpFilesystemAccessOrDefault": "Configure o acesso local ou SSH ao sistema de arquivos nas configurações da instância, ou use o Padrão (qBittorrent)",
+        "enableLocalAccessOrDefault": "Ative o Acesso ao Sistema de Arquivos Local nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\"",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
         "fieldMultiplierInvalid": "O multiplicador de campo deve ser um número válido.",

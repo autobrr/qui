@@ -1356,8 +1356,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return false
     }
     if (!pathSourceAvailable) {
-      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.filesystemAccessRequired"))
-      toast.error(t("preferences.workflowDialog.toast.setUpFilesystemAccessOrDefault"))
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
+      toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
       return false
     }
 
@@ -1635,7 +1635,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return {
       name: input.name,
-      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
       trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
@@ -3928,7 +3927,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <SelectContent>
                         <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
                         <SelectItem value="path" disabled={!pathSourceAvailable}>
-                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceFilesystemAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
+                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
