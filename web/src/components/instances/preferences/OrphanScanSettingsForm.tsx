@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
 import { Button } from "@/components/ui/button"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,7 +23,7 @@ import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
   instanceId: number
-  /** The instance is reached over SSH, where auto-cleanup does not run yet. */
+  /** The instance is remote, where deletion and auto-cleanup do not run yet. */
   isRemote?: boolean
   onSuccess?: () => void
   /** Form ID for external submit button. When provided, the internal submit button is hidden. */
@@ -362,12 +363,7 @@ export function OrphanScanSettingsForm({
         </div>
 
         <div className="space-y-4">
-          {isRemote && (
-            <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs text-muted-foreground">
-              <Info className="h-4 w-4 shrink-0" />
-              <p>{t("preferences.orphanScanOverview.remoteLimits")}</p>
-            </div>
-          )}
+          {isRemote && <OrphanScanRemoteLimits />}
 
           <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
             <div className="flex items-center gap-2">

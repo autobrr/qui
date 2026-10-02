@@ -62,20 +62,20 @@ function renderForm(isRemote: boolean) {
   )
 }
 
-it("notes beside auto-cleanup that it does not run over SSH", () => {
+it("notes beside auto-cleanup that it does not run on a remote instance", () => {
   const { container } = renderForm(true)
 
   expect(container.textContent).toContain("preferences.orphanScanOverview.remoteLimits")
   expect(container.querySelector("#auto-cleanup-enabled")).not.toBeNull()
 })
 
-it("shows no SSH note for a local instance", () => {
+it("shows no remote note for a local instance", () => {
   const { container } = renderForm(false)
 
   expect(container.textContent).not.toContain("preferences.orphanScanOverview.remoteLimits")
 })
 
-it("keeps the SSH note out from between the auto-cleanup toggle and its threshold", () => {
+it("keeps the remote note out from between the auto-cleanup toggle and its threshold", () => {
   settingsQuery.data.autoCleanupEnabled = true
   const { container } = renderForm(true)
 

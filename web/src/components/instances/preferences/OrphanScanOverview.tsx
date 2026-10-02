@@ -4,6 +4,7 @@
  */
 
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
+import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -427,12 +428,7 @@ function InstanceOrphanScanItem({
             </div>
           </div>
 
-          {instance.filesystemMode === "remote" && (
-            <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs text-muted-foreground">
-              <Info className="h-4 w-4 shrink-0" />
-              <p>{t("preferences.orphanScanOverview.remoteLimits")}</p>
-            </div>
-          )}
+          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits />}
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
