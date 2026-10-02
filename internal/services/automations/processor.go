@@ -791,16 +791,25 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
-		action := ""
-		assertTag := false
+		// action is the local change; assert is the steady-state decision a
+		// matching copy that already looks right still pushes across its
+		// cross-seed siblings (any-match-wins, and siblings added after the
+		// first run). Full-mode removals happen on non-matches and stay local.
+		action, assert := "", ""
 		switch tagMode {
 		case models.TagModeAdd:
-			if !hasTag && matchesCondition {
+			switch {
+			case !hasTag && matchesCondition:
 				action = "add"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
 		case models.TagModeRemove:
-			if hasTag && matchesCondition {
+			switch {
+			case hasTag && matchesCondition:
 				action = "remove"
+			case !hasTag && matchesCondition:
+				assert = "remove"
 			}
 		default: // full (incl. unknown/empty)
 			switch {
@@ -809,45 +818,32 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 			case hasTag && !matchesCondition:
 				action = "remove"
 			case hasTag && matchesCondition:
-				assertTag = true
+				assert = "add"
 			}
 		}
-		if action == "" {
-			// Full-mode steady state: a matching copy that already carries the
-			// tag makes no local change, but it must still assert the tag
-			// across its cross-seed siblings — otherwise a non-matching
-			// sibling's full-mode removal would strip a release that still
-			// matches (any-match-wins).
-			if assertTag && expandCrossSeeds && rule != nil {
-				if state.tagExpandByTag == nil {
-					state.tagExpandByTag = make(map[string]tagExpandIntent)
-				}
-				state.tagExpandByTag[managedTag] = tagExpandIntent{
-					rule:            ruleRef{id: rule.ID, name: rule.Name},
-					action:          "add",
-					resetFromClient: resetFromClient,
-				}
+		if action != "" {
+			state.tagActions[managedTag] = action
+			if rule != nil {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			if matchesCondition {
+				assert = action
+			}
+		}
+		// A later rule's decision without expansion clears earlier intent (last rule wins).
+		if assert == "" || !expandCrossSeeds || rule == nil {
+			if action != "" {
+				delete(state.tagExpandByTag, managedTag)
 			}
 			continue
 		}
-		state.tagActions[managedTag] = action
-		if rule != nil {
-			state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+		if state.tagExpandByTag == nil {
+			state.tagExpandByTag = make(map[string]tagExpandIntent)
 		}
-		// Cross-seed expansion propagates only decisions made on condition-matching
-		// torrents (full-mode removals happen on non-matches and stay local). A later
-		// rule's decision without expansion clears earlier intent (last rule wins).
-		if expandCrossSeeds && matchesCondition && rule != nil {
-			if state.tagExpandByTag == nil {
-				state.tagExpandByTag = make(map[string]tagExpandIntent)
-			}
-			state.tagExpandByTag[managedTag] = tagExpandIntent{
-				rule:            ruleRef{id: rule.ID, name: rule.Name},
-				action:          action,
-				resetFromClient: resetFromClient,
-			}
-		} else {
-			delete(state.tagExpandByTag, managedTag)
+		state.tagExpandByTag[managedTag] = tagExpandIntent{
+			rule:            ruleRef{id: rule.ID, name: rule.Name},
+			action:          assert,
+			resetFromClient: resetFromClient,
 		}
 	}
 

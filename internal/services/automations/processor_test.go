@@ -2579,6 +2579,55 @@ func TestProcessTorrents_Tag_FullMode_AlreadyTaggedMatchRecordsAssertIntent(t *t
 	}, state.tagExpandByTag["managed"])
 }
 
+func TestProcessTorrents_Tag_AddRemoveMode_SteadyStateRecordsAssertIntent(t *testing.T) {
+	// A cross-seed copy added after the first run must still receive the
+	// decision, so steady state asserts the mode's action across siblings.
+	tests := []struct {
+		name       string
+		mode       string
+		currentTag string
+		want       string
+	}{
+		{name: "add mode already tagged", mode: models.TagModeAdd, currentTag: "managed", want: "add"},
+		{name: "remove mode already untagged", mode: models.TagModeRemove, currentTag: "", want: "remove"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := qbittorrent.NewSyncManager(nil, nil)
+			torrents := []qbt.Torrent{{Hash: "abc123", Name: "Matching Torrent", Tags: tt.currentTag}}
+			rule := &models.Automation{
+				ID:             7,
+				Enabled:        true,
+				Name:           "Managed cross-seed tag",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					SchemaVersion: "1",
+					Tags: []*models.TagAction{{
+						Enabled:           true,
+						Tags:              []string{"managed"},
+						Mode:              tt.mode,
+						IncludeCrossSeeds: true,
+						Condition: &models.RuleCondition{
+							Field:    models.FieldName,
+							Operator: models.OperatorContains,
+							Value:    "Matching",
+						},
+					}},
+				},
+			}
+
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+			state, ok := states["abc123"]
+			require.True(t, ok, "expected intent-only state to be kept")
+			require.NotContains(t, state.tagActions, "managed", "no local change for an already-correct copy")
+			require.Equal(t, tagExpandIntent{
+				rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
+				action: tt.want,
+			}, state.tagExpandByTag["managed"])
+		})
+	}
+}
+
 func TestProcessTorrents_Tag_IncludeCrossSeeds_TrackerAsTagNeverRecordsIntent(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
