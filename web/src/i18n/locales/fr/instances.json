@@ -752,8 +752,7 @@
           "invalidJson": "Format JSON invalide",
           "notObject": "Un objet JSON est attendu",
           "missingName": "Champ 'name' manquant ou invalide",
-          "missingConditions": "Champ 'conditions' manquant ou invalide",
-          "missingTracker": "Vous devez indiquer 'trackerDomains' (tableau de chaînes) ou 'trackerPattern'"
+          "missingConditions": "Champ 'conditions' manquant ou invalide"
         }
       },
       "editJsonDialog": {

@@ -793,8 +793,7 @@
           "invalidJson": "Format JSON no vàlid",
           "notObject": "S'espera un objecte JSON",
           "missingName": "Falta el camp 'name' o no és vàlid",
-          "missingConditions": "Falta el camp 'conditions' o no és vàlid",
-          "missingTracker": "Cal indicar 'trackerDomains' (llista de cadenes) o 'trackerPattern'"
+          "missingConditions": "Falta el camp 'conditions' o no és vàlid"
         }
       },
       "editJsonDialog": {

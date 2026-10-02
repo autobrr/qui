@@ -740,8 +740,7 @@
           "invalidJson": "JSON 格式无效",
           "notObject": "需要一个 JSON 对象",
           "missingName": "缺少或无效的 'name' 字段",
-          "missingConditions": "缺少或无效的 'conditions' 字段",
-          "missingTracker": "必须指定 'trackerDomains'（字符串数组）或 'trackerPattern'"
+          "missingConditions": "缺少或无效的 'conditions' 字段"
         }
       },
       "editJsonDialog": {

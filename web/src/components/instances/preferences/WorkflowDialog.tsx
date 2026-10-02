@@ -1635,7 +1635,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return {
       name: input.name,
-      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
       trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
