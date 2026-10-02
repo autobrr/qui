@@ -7,7 +7,6 @@ import (
 	"context"
 	"io/fs"
 	"os"
-	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -281,64 +280,110 @@ func TestHardlinkTree_ServerWithoutExtension(t *testing.T) {
 	require.NoError(t, b.MkdirAll(t.Context(), remotePath(dir, "plain"), fsutil.ContentDirMode))
 }
 
-func TestRemove_DeniedUnlinkNeverReportsMissing(t *testing.T) {
-	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("0o555 permissions are not enforced on Windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
-	}
-
-	b, _ := newBackend(t)
-	dir := t.TempDir()
-	keep := remotePath(dir, "keep")
-	require.NoError(t, os.Mkdir(keep, 0o755))
-	ro := remotePath(dir, "ro")
-	require.NoError(t, os.Mkdir(ro, 0o755))
-	link := remotePath(ro, "link")
-	if err := os.Symlink(keep, link); err != nil {
-		t.Skipf("symlinks unsupported: %v", err)
-	}
-	require.NoError(t, os.Chmod(ro, 0o555))
-	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
-
-	// Client.Remove retries the denied unlink as rmdir and then names the
-	// error from a link-following Stat, which would read "not found" for a
-	// symlink that is still there. Our own lstat answers instead.
-	err := b.Remove(t.Context(), link, fsops.RemoveOptions{})
-	require.Error(t, err)
-	require.NotErrorIs(t, err, fs.ErrNotExist)
-	_, err = os.Lstat(link)
-	require.NoError(t, err, "the link is still there")
-}
-
-func TestHardlinkTree_CancelledLinkCompletesAndRollsBack(t *testing.T) {
+func TestRemove_RefusedUnlinkNeverReportsMissing(t *testing.T) {
 	t.Parallel()
 
 	b, server := newBackend(t)
-	dir := t.TempDir()
-	plan := linkPlan(t, dir)
-	// The root exists, so the first mutation on the wire is the Link.
-	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
-	server.SetSFTP(sshtest.SFTPHoldNextMutation)
+	server.SetSFTP(sshtest.SFTPRefuseRemove)
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	// Remove and rmdir fail with different errors, so Client.Remove names the
+	// error from a link-following Stat, which reads "not found" for this
+	// dangling link. Our own lstat answers instead.
+	require.NoError(t, client.Symlink("/missing", "/link"))
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() {
-		_, err := b.HardlinkTree(ctx, plan)
-		done <- err
-	}()
+	err = b.Remove(t.Context(), "/link", fsops.RemoveOptions{})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, fs.ErrNotExist)
+	_, err = client.Lstat("/link")
+	require.NoError(t, err, "the link is still there")
+}
+
+// cancelHeldWrite cancels once the server holds a write, then checks the
+// call is still waiting for it before the server answers.
+func cancelHeldWrite(t *testing.T, server *sshtest.Server, cancel context.CancelFunc, done <-chan error) error {
+	t.Helper()
 	require.Eventually(t, func() bool { return server.HeldMutations() == 1 }, 5*time.Second, 10*time.Millisecond)
-
-	// Cancel while the link is held: the write is not abandoned, so once it
-	// lands it is recorded, and rollback takes it back.
 	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("returned before its held write was answered: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
 	server.ReleaseStall()
-	err := <-done
-	require.ErrorIs(t, err, context.Canceled)
-	_, err = os.Lstat(plan.Files[0].TargetPath)
-	require.ErrorIs(t, err, fs.ErrNotExist, "the link that landed after the cancel is rolled back")
-	_, err = os.Lstat(plan.Files[1].TargetPath)
-	require.ErrorIs(t, err, fs.ErrNotExist)
+	return <-done
+}
+
+func TestHardlinkTree_CancelledWriteCompletesAndRollsBack(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		rootExists bool
+		landed     []string
+	}{
+		// Without the root, the first write on the wire is the Mkdir of
+		// its first missing ancestor; with it, the Link.
+		{name: "mkdir", landed: []string{"links"}},
+		{name: "link", rootExists: true, landed: []string{"links", "Show.S01", "one.mkv"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			b, server := newBackend(t)
+			dir := t.TempDir()
+			plan := linkPlan(t, dir)
+			if tc.rootExists {
+				require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+			}
+			server.SetSFTP(sshtest.SFTPHoldNextMutation)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error, 1)
+			go func() {
+				_, err := b.HardlinkTree(ctx, plan)
+				done <- err
+			}()
+
+			err := cancelHeldWrite(t, server, cancel, done)
+			require.ErrorIs(t, err, context.Canceled)
+			_, err = os.Lstat(remotePath(append([]string{dir}, tc.landed...)...))
+			require.ErrorIs(t, err, fs.ErrNotExist, "the write that landed after the cancel is rolled back")
+			_, err = os.Lstat(plan.Files[1].TargetPath)
+			require.ErrorIs(t, err, fs.ErrNotExist)
+		})
+	}
+}
+
+func TestRemove_CancelledRemoveCompletes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		opts fsops.RemoveOptions
+		// remove is the path removed, held the entry whose remove is held.
+		remove, held string
+	}{
+		{name: "file", remove: "f", held: "f"},
+		{name: "tree", opts: fsops.RemoveOptions{Recursive: true}, remove: "d", held: "d/f"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			b, server := newBackend(t)
+			dir := t.TempDir()
+			writeFile(t, remotePath(dir, "f"), "f")
+			writeFile(t, remotePath(dir, "d", "f"), "f")
+			server.SetSFTP(sshtest.SFTPHoldNextMutation)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error, 1)
+			go func() { done <- b.Remove(ctx, remotePath(dir, tc.remove), tc.opts) }()
+
+			err := cancelHeldWrite(t, server, cancel, done)
+			require.ErrorIs(t, err, context.Canceled)
+			_, err = os.Lstat(remotePath(dir, tc.held))
+			require.ErrorIs(t, err, fs.ErrNotExist, "the held remove landed before the call returned")
+		})
+	}
 }

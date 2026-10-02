@@ -469,10 +469,10 @@ func removeListed(ctx context.Context, client *sftp.Client, child string, wasDir
 	return unlink(ctx, client, child, false)
 }
 
-// unlink sends the remove. Client.Remove retries a failed unlink as rmdir and
-// then names the error from a link-following Stat, so a symlink to a
-// directory that cannot be unlinked would read as "not found" while it still
-// exists; a failure is therefore answered from our own lstat. The one case
+// unlink sends the remove. Client.Remove retries a failed unlink as rmdir and,
+// when the two fail differently, names the error from a link-following Stat,
+// so a dangling symlink that cannot be unlinked would read as "not found"
+// while it still exists; a failure is therefore answered from our own lstat. The one case
 // that fallback can still remove is an empty directory swapped in under a
 // file name, which loses nothing. A directory that is not empty is reported
 // as ENOTEMPTY, which SSH_FX_FAILURE does not carry and callers classify on.
@@ -516,8 +516,6 @@ func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, err
 	return fi, nil
 }
 
-const hardlinkExtension = "hardlink@openssh.com"
-
 // HardlinkTree mirrors hardlinktree.Create with one difference: a target that
 // already exists always fails. Locally a target that is already a link to the
 // source is skipped; sftp attrs carry no inode, so this backend cannot tell
@@ -530,8 +528,8 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	}
 	// Client.Link sends the extended packet unconditionally, so the gate is
 	// here, the way statVFS gates on its extension.
-	if _, ok := client.HasExtension(hardlinkExtension); !ok {
-		return nil, fmt.Errorf("hardlinktree: %w: server does not advertise %s", fsops.ErrUnsupported, hardlinkExtension)
+	if _, ok := client.HasExtension(sshpool.HardlinkExtension); !ok {
+		return nil, fmt.Errorf("hardlinktree: %w: server does not advertise %s", fsops.ErrUnsupported, sshpool.HardlinkExtension)
 	}
 	if plan == nil || plan.RootDir == "" || len(plan.Files) == 0 {
 		return nil, errors.New("hardlinktree: plan is empty")
@@ -662,8 +660,10 @@ func await[T any](ctx context.Context, call func() (T, error)) (T, error) {
 // awaitMutation runs a write and always waits for its answer. A read may be
 // abandoned at cancel because nothing changed; a write abandoned mid-flight
 // leaves the server in a state the caller cannot know, so the call completes
-// and the caller records what it made before honouring the cancel. The wait
-// is bounded by the connection's own timeout, as every request is.
+// and the caller records what it made before honouring the cancel. pkg/sftp
+// gives a request no timeout, so only an answer or a closed connection ends
+// the wait: about 45 s when keepalives fail, the pool's idle close when they
+// do not, and no bound while other callers keep that instance busy.
 func awaitMutation(_ context.Context, call func() error) error {
 	return call()
 }

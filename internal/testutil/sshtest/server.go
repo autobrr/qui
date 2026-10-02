@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -73,6 +74,11 @@ const (
 	// the stall timer. Requests after that one pass. HeldMutations counts
 	// the hold, so a test can cancel its caller while the request is held.
 	SFTPHoldNextMutation
+	// SFTPRefuseRemove serves an empty in-memory tree that refuses every
+	// remove with "permission denied" and every rmdir with a bare failure,
+	// the way two different errnos reach a client. pkg/sftp's Client.Remove
+	// then names the error from a link-following Stat.
+	SFTPRefuseRemove
 )
 
 const hardlinkExtension = "hardlink@openssh.com"
@@ -297,7 +303,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			switch mode {
 			case SFTPStall:
 				<-stalled
-			case SFTPStallReadDir, SFTPStatEOF:
+			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove:
 				s.serveInMemSFTP(channel, mode)
 			default:
 				s.serveSFTP(conn, channel)
@@ -324,11 +330,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 }
 
 func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
-	cutter := &requestCutter{Channel: channel, conn: conn, server: s, mode: func() SFTPMode {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.sftpMode
-	}}
+	cutter := &requestCutter{Channel: channel, conn: conn, server: s}
 	server, err := sftp.NewServer(cutter)
 	if err != nil {
 		return
@@ -343,6 +345,9 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 func (s *Server) serveInMemSFTP(channel ssh.Channel, mode SFTPMode) {
 	handlers := sftp.InMemHandler()
 	handlers.FileList = inMemLister{inner: handlers.FileList, server: s, mode: mode}
+	if mode == SFTPRefuseRemove {
+		handlers.FileCmd = removeRefuser{handlers.FileCmd}
+	}
 	server := sftp.NewRequestServer(channel, handlers)
 	defer func() { _ = server.Close() }()
 	_ = server.Serve()
@@ -360,10 +365,32 @@ func (l inMemLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 	switch {
 	case l.mode == SFTPStallReadDir && r.Method == "List":
 		return l, nil
-	case l.mode == SFTPStatEOF && (r.Method == "Stat" || r.Method == "Lstat"):
+	case l.mode == SFTPStatEOF && r.Method == "Stat":
 		return nil, io.EOF
 	}
 	return l.inner.Filelist(r)
+}
+
+// Lstat keeps the in-memory tree's own lstat: without it pkg/sftp answers an
+// lstat as a link-following stat.
+func (l inMemLister) Lstat(r *sftp.Request) (sftp.ListerAt, error) {
+	if l.mode == SFTPStatEOF {
+		return nil, io.EOF
+	}
+	return l.inner.(sftp.LstatFileLister).Lstat(r)
+}
+
+// removeRefuser implements SFTPRefuseRemove.
+type removeRefuser struct{ sftp.FileCmder }
+
+func (c removeRefuser) Filecmd(r *sftp.Request) error {
+	switch r.Method {
+	case "Remove":
+		return os.ErrPermission
+	case "Rmdir":
+		return errors.New("rmdir refused")
+	}
+	return c.FileCmder.Filecmd(r)
 }
 
 // ListAt is the stalled listing.
@@ -503,13 +530,18 @@ func NewRSASigner() ssh.Signer {
 type requestCutter struct {
 	ssh.Channel
 	conn        *ssh.ServerConn
-	mode        func() SFTPMode
 	versionSent bool
 	server      *Server
 	// bodyLeft is how many bytes of the current request body are still to
 	// be read; zero means the next read is a 4-byte length header. pkg/sftp
 	// reads a request as exactly those two reads.
 	bodyLen, bodyLeft int
+}
+
+func (t *requestCutter) mode() SFTPMode {
+	t.server.mu.Lock()
+	defer t.server.mu.Unlock()
+	return t.server.sftpMode
 }
 
 func (t *requestCutter) Read(p []byte) (int, error) {
