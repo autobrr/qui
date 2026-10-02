@@ -52,7 +52,7 @@ func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *ht
 	}
 
 	if !models.FilesystemCapabilitiesOf(instance).Has(models.CapabilityRead) {
-		RespondError(w, http.StatusForbidden, "Orphan scanning requires filesystem access. Enable 'Local Filesystem Access' in instance settings, or configure SSH access with a confirmed host key.")
+		RespondError(w, http.StatusForbidden, "Orphan scanning requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		return false
 	}
 
@@ -444,7 +444,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
-			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for instances reached over SSH. The preview is kept.")
+			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for remote instances. The preview is kept.")
 			return
 		}
 		if errors.Is(err, orphanscan.ErrFilesystemModeChanged) {

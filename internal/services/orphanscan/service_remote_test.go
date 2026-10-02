@@ -479,7 +479,7 @@ func TestMaybeAutoCleanup_RemoteRunKeepsItsPreviewWithAWarning(t *testing.T) {
 	run := f.scan(t, "scheduled")
 
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
-	require.Contains(t, run.ErrorMessage, "Automatic cleanup does not run for instances reached over SSH")
+	require.Contains(t, run.ErrorMessage, "Automatic cleanup does not run for remote instances")
 	f.requireNothingDeleted(t)
 	f.requireNoFailureEvent(t)
 }
@@ -857,6 +857,6 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "failed", run.Status)
-	require.Contains(t, run.ErrorMessage, "same SSH host")
+	require.Contains(t, run.ErrorMessage, "remote instance on the same host")
 	f.requireNothingDeleted(t)
 }

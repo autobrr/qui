@@ -130,8 +130,8 @@ func TestBuildFileMap_FailsWhenOverlapPeerUnavailable(t *testing.T) {
 		peer    *models.Instance
 		want    string
 	}{
-		{"remote scan, remote peer", remoteInstance(1, "box.example", 22), remoteInstance(2, "box.example", 22), "other instance on the same SSH host"},
-		{"local scan, SSH-only peer", mounted, remoteInstance(2, "box.example", 22), "other instance on the same SSH host"},
+		{"remote scan, remote peer", remoteInstance(1, "box.example", 22), remoteInstance(2, "box.example", 22), "other remote instance on the same host"},
+		{"local scan, SSH-only peer", mounted, remoteInstance(2, "box.example", 22), "other remote instance on the same host"},
 		{"local scan, local peer", localInstance(1), localInstance(2), "other local-access instance"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

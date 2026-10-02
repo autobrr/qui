@@ -96,7 +96,7 @@ it("shows a partial-scan warning before allowing manual deletion", () => {
   expect(confirmMutation.mutate).toHaveBeenCalledWith(1, expect.any(Object))
 })
 
-it("keeps Delete disabled for a run scanned over SSH, says why inline and does not promise removal", () => {
+it("keeps Delete disabled for a remote run, says why inline and does not promise removal", () => {
   runQuery.data.filesystemMode = "remote"
   const { getByRole } = render(
     <TooltipProvider>
@@ -113,7 +113,7 @@ it("keeps Delete disabled for a run scanned over SSH, says why inline and does n
   expect(confirmMutation.mutate).not.toHaveBeenCalled()
 })
 
-it("offers Delete for a local run without the SSH note", () => {
+it("offers Delete for a local run without the remote note", () => {
   const { getByRole } = render(
     <TooltipProvider>
       <OrphanScanPreviewDialog open onOpenChange={() => {}} instanceId={1} runId={1} />

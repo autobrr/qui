@@ -142,7 +142,7 @@ func TestOrphanScan_ConfirmConflictsNameTheirReason(t *testing.T) {
 	remoteRun := previewRun(models.FilesystemModeRemote)
 	unsupported := confirm(remoteRun)
 	require.Equal(t, http.StatusConflict, unsupported.Code, unsupported.Body.String())
-	require.Contains(t, unsupported.Body.String(), "over SSH")
+	require.Contains(t, unsupported.Body.String(), "remote instances")
 	kept, err := store.GetRun(t.Context(), remoteRun)
 	require.NoError(t, err)
 	require.Equal(t, "preview_ready", kept.Status)

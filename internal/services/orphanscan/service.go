@@ -1109,7 +1109,7 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
 			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
-			warning := "Automatic cleanup does not run for instances reached over SSH yet. Review the preview instead."
+			warning := "Automatic cleanup does not run for remote instances yet. Review the preview instead."
 			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
 				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
 				return
@@ -1831,7 +1831,7 @@ func overlapPeerLabel(scanned, inst *models.Instance) string {
 	if inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote {
 		return "local-access instance"
 	}
-	return "instance on the same SSH host"
+	return "remote instance on the same host"
 }
 
 func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {

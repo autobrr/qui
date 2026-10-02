@@ -271,7 +271,7 @@ function InstanceOrphanScanItem({
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
+            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noLocalAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>

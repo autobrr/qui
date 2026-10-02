@@ -5908,7 +5908,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan settings
-      description: Get orphan file scanning settings for an instance. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Get orphan file scanning settings for an instance. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -5919,14 +5919,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanSettings'
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Instance not found
     put:
       tags:
         - Orphan Scan
       summary: Update orphan scan settings
-      description: Update orphan file scanning settings for an instance. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Update orphan file scanning settings for an instance. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -5945,7 +5945,7 @@ paths:
         '400':
           description: Invalid settings (e.g., non-absolute ignore paths)
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Instance not found
 
@@ -5954,7 +5954,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Trigger orphan scan
-      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan over SSH cannot be confirmed, so the new scan cancels it instead of returning 409.
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance cannot be confirmed, so the new scan cancels it instead of returning 409.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -5970,7 +5970,7 @@ paths:
                     format: int64
                     description: ID of the created scan run
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Instance not found
         '409':
@@ -5981,7 +5981,7 @@ paths:
       tags:
         - Orphan Scan
       summary: List orphan scan runs
-      description: Get recent orphan scan runs for an instance. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Get recent orphan scan runs for an instance. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: limit
@@ -6002,7 +6002,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/OrphanScanRun'
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Instance not found
 
@@ -6011,7 +6011,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan run
-      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6044,14 +6044,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanRunWithFiles'
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Run not found
     delete:
       tags:
         - Orphan Scan
       summary: Cancel orphan scan run
-      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6075,7 +6075,7 @@ paths:
         '400':
           description: Run already finished
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Run not found
         '409':
@@ -6086,7 +6086,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Confirm orphan file deletion
-      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access or SSH access with a confirmed host key.
+      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6110,9 +6110,9 @@ paths:
         '400':
           description: Run is not in preview_ready status
         '409':
-          description: A scan or deletion is already in progress for this instance. Also returned when the run was scanned over SSH, where deletion is not supported yet and the run stays preview_ready, and when the instance's filesystem access changed since the scan, which marks the run failed.
+          description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance, where deletion is not supported yet and the run stays preview_ready, and when the instance's filesystem access changed since the scan, which marks the run failed.
         '403':
-          description: Instance has neither local filesystem access nor SSH access with a confirmed host key
+          description: Instance does not have local filesystem access enabled
         '404':
           description: Run not found
 
