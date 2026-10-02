@@ -204,3 +204,17 @@ test("ignores commented-out key properties", () => {
 
   assert.deepEqual(collectKeyPropertyErrors(source), [])
 })
+
+test("resolves a namespace prefix in a key property", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export const items = [
+      { labelKey: "common:nav.dashboard" },
+      { labelKey: "common:nav.dashbaord" },
+    ]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: common.nav.dashbaord",
+  ])
+})

@@ -106,8 +106,9 @@ export function collectMissingKeysForSource({
       continue
     }
 
-    const [, property, key] = match
-    const namespace = (property === "titleKey" && titleNamespace) || defaultNamespace || directiveNamespace
+    const [, property, rawKey] = match
+    const fileNamespace = (property === "titleKey" && titleNamespace) || defaultNamespace || directiveNamespace
+    const { namespace, key } = resolveNamespaceAndKey(rawKey, undefined, fileNamespace)
     if (!namespace) {
       missingKeys.add(`${relativePath}: key properties have no namespace; add "// i18n-namespace: <ns>" to the file`)
       continue
