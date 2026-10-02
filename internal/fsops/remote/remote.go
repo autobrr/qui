@@ -19,6 +19,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/pkg/sftp"
 
@@ -135,51 +136,126 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
 			return
 		}
-		b.walk(ctx, ch, root, ".", opts)
+		b.walk(ctx, ch, root, opts)
 	}()
 	return ch, nil
 }
 
-// walk lists dir and recurses into its subdirectories. EmitStatErrors needs no
-// handling here: readdir carries the attrs, so there is no per-entry stat left
-// to fail.
+// walkWorkers is how many directories one walk lists at a time over its sftp
+// session, which pipelines the requests.
 //
-// ponytail: four round trips per directory (opendir, readdir, the readdir
-// that answers EOF, close), walked serially; a bounded walk over sibling
-// directories is the lever on a key that forbids exec, and the exec-tier find
-// sweep is the upgrade when a deep tree makes the latency hurt.
-func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel string, opts fsops.WalkOptions) bool {
+// ponytail: a package constant; a WalkOptions field is the upgrade if a host
+// ever needs tuning.
+const walkWorkers = 8
+
+type walkJob struct{ dir, rel string }
+
+// walk lists the tree under root with walkWorkers workers draining one
+// directory queue: a worker lists a directory, emits its entries in lexical
+// order, enqueues its subdirectories and takes the next. Each directory costs
+// opendir, readdir, the readdir that answers EOF and close, a round trip
+// apiece, so wall clock falls by the worker count. The order that survives is
+// the one fsops.Backend promises: lexical within a directory, and a
+// directory's own entry before anything beneath it.
+//
+// EmitStatErrors needs no handling here: readdir carries the attrs, so there
+// is no per-entry stat left to fail.
+func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, root string, opts fsops.WalkOptions) {
+	w := &walker{b: b, ch: ch, opts: opts, queue: make(chan walkJob, walkWorkers)}
+	w.ctx, w.cancel = context.WithCancel(ctx)
+	defer w.cancel()
+
+	w.enqueue(walkJob{dir: root, rel: "."})
+	go func() {
+		w.pending.Wait()
+		close(w.queue)
+	}()
+	var workers sync.WaitGroup
+	for range walkWorkers {
+		workers.Go(w.work)
+	}
+	workers.Wait()
+
+	// The connection failed, not a directory: one Err entry carrying
+	// ErrConnectionLost ends the walk rather than repeating the error for
+	// every directory left, and tells the consumer the tree is cut short. It
+	// is sent after every worker has stopped so nothing follows it.
+	if w.cut != nil {
+		send(ctx, ch, *w.cut)
+	}
+}
+
+type walker struct {
+	b      *Backend
+	ch     chan<- fsops.WalkEntry
+	opts   fsops.WalkOptions
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	queue   chan walkJob
+	pending sync.WaitGroup // directories queued or being listed
+
+	once sync.Once
+	cut  *fsops.WalkEntry
+}
+
+// enqueue never blocks the caller: a worker that waited on a full queue while
+// every other worker did the same would deadlock the walk.
+func (w *walker) enqueue(job walkJob) {
+	w.pending.Add(1)
+	go func() {
+		select {
+		case w.queue <- job:
+		case <-w.ctx.Done():
+			w.pending.Done()
+		}
+	}()
+}
+
+func (w *walker) work() {
+	for {
+		select {
+		case job, ok := <-w.queue:
+			if !ok {
+				return
+			}
+			w.list(job)
+			w.pending.Done()
+		case <-w.ctx.Done():
+			return
+		}
+	}
+}
+
+func (w *walker) list(job walkJob) {
+	ctx, opts := w.ctx, w.opts
 	// The client is taken from the pool per directory, not once per walk: each
 	// take marks the connection used, so a walk longer than the idle limit is
 	// not closed underneath itself, and a reconnect mid-walk is picked up.
-	client, err := b.client(ctx)
-	if err != nil {
-		if ctx.Err() != nil {
-			return false
+	client, err := w.b.client(ctx)
+	var entries []os.FileInfo
+	if err == nil {
+		entries, err = readDir(ctx, client, job.dir)
+		if err != nil {
+			err = readDirError(job.dir, err)
 		}
-		// The connection failed, not the directory: one Err entry carrying
-		// ErrConnectionLost ends the walk rather than repeating the error for
-		// every directory left, and tells the consumer the tree is cut short.
-		send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
-		return false
 	}
-	entries, err := readDir(ctx, client, dir)
 	if err != nil {
 		if ctx.Err() != nil {
-			return false
+			return
 		}
-		err = readDirError(dir, err)
+		entry := fsops.WalkEntry{Path: job.dir, IsDir: true, RelPath: job.rel, Err: err}
 		if errors.Is(err, fsops.ErrConnectionLost) {
-			send(ctx, ch, fsops.WalkEntry{Path: dir, IsDir: true, RelPath: rel, Err: err})
-			return false
+			w.once.Do(func() {
+				w.cut = &entry
+				w.cancel()
+			})
+			return
 		}
 		// An unreadable directory is one entry with Err and the walk goes on,
 		// as it does locally: a scan must not die on one denied subtree.
-		return send(ctx, ch, fsops.WalkEntry{
-			Path: dir, IsDir: true,
-			RelPath: rel,
-			Err:     err,
-		})
+		send(ctx, w.ch, entry)
+		return
 	}
 
 	// Local walks are lexical; sftp hands back whatever order the server used.
@@ -187,26 +263,22 @@ func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, dir, rel 
 
 	for _, fi := range entries {
 		name := fi.Name()
-		childPath := path.Join(dir, name)
-
+		childPath := path.Join(job.dir, name)
 		if (opts.SkipHidden && strings.HasPrefix(name, ".")) ||
 			(fi.IsDir() && ignoredDirName(name, opts)) ||
 			slices.Contains(opts.IgnorePaths, childPath) {
 			continue
 		}
-
-		childRel := path.Join(rel, name)
-		if !send(ctx, ch, walkEntry(fi, childPath, childRel, opts.WantFileID)) {
-			return false
+		childRel := path.Join(job.rel, name)
+		if !send(ctx, w.ch, walkEntry(fi, childPath, childRel, opts.WantFileID)) {
+			return
 		}
-
 		// readdir attrs are lstat-style, so a symlinked directory reports
 		// IsDir false and is never descended.
-		if fi.IsDir() && !b.walk(ctx, ch, childPath, childRel, opts) {
-			return false
+		if fi.IsDir() {
+			w.enqueue(walkJob{dir: childPath, rel: childRel})
 		}
 	}
-	return true
 }
 
 // ignoredDirName matches case-insensitively: these are OS/NAS metadata dirs
