@@ -841,7 +841,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// A mode change mid-scan cuts a remote walk short as a lost connection. The
 	// roots walked before it would otherwise land as a preview no confirm can use.
 	reloaded, err := s.instances.Get(ctx, instanceID)
-	if err != nil || reloaded == nil {
+	if err != nil {
 		if ctx.Err() != nil {
 			s.markCanceled(ctx, instanceID, runID)
 			return
@@ -1811,27 +1811,28 @@ func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *mod
 		return nil, err
 	}
 
-	remote := models.FilesystemAccessMode(scanned) == models.FilesystemModeRemote
 	candidates := make([]*models.Instance, 0, len(instances))
 	for _, inst := range instances {
 		if inst == nil || inst.ID == scanned.ID || !inst.IsActive {
 			continue
 		}
-		sameEndpoint := scanned.SSHHost != "" && inst.SSHHost == scanned.SSHHost && inst.SSHPort == scanned.SSHPort
-		if sameEndpoint || (!remote && inst.HasLocalFilesystemAccess) {
+		if _, ok := overlapPeer(scanned, inst); ok {
 			candidates = append(candidates, inst)
 		}
 	}
 	return candidates, nil
 }
 
-// overlapPeerLabel names why inst is a candidate, mirroring getOverlapCandidateInstances,
-// so a local scan blocked by an SSH-only peer does not call it local-access.
-func overlapPeerLabel(scanned, inst *models.Instance) string {
-	if inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote {
-		return "local-access instance"
+// overlapPeer reports whether inst can protect scanned's files and names why, so a
+// local scan blocked by a remote-only peer does not call it local-access.
+func overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
+	switch {
+	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
+		return "local-access instance", true
+	case scanned.SSHHost != "" && inst.SSHHost == scanned.SSHHost && inst.SSHPort == scanned.SSHPort:
+		return "remote instance on the same host", true
 	}
-	return "remote instance on the same host"
+	return "", false
 }
 
 func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {
@@ -1939,7 +1940,7 @@ func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, ba
 		return nil, err
 	}
 	for _, inst := range candidates {
-		peer := overlapPeerLabel(scanned, inst)
+		peer, _ := overlapPeer(scanned, inst)
 		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(
