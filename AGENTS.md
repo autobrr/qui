@@ -15,7 +15,7 @@ Repo rules for AI agents working on qui.
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
-- User docs: `documentation/docs/`; internal notes: `docs/`
+- User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
@@ -120,7 +120,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
   - No tracker URL that carries a path, query, or key: torrent pages, announce URLs, passkeys, `.torrent` links. Bare hostnames and tracker names stay allowed; the code and docs use them.
   - No release name copied word for word from a user report or a torrent client. Build an equivalent name: keep each token that matters, change the title and the group. Make sure the new name still causes the bug before you publish it.
   - Naming a work in prose, or building a name from a real title and group tag, is allowed. The rule is about strings copied from someone's client, not about which words you use.
-  - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; `docs/` is committed and counts as published.
+  - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; tracked files under `docs/` count as published.
   - New test fixtures and code comments use names built by the rule above. Do not sweep the existing ones.
   - Screenshots: capture from an instance you fill with synthetic torrents. If the bug shows only on a real library, blur the name, tracker, and save path columns.
 
