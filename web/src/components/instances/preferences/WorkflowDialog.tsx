@@ -1383,6 +1383,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return true
   }, [t])
 
+  const validateTags = useCallback((state: FormState): boolean => {
+    if (!state.tagEnabled) return true
+    const validationError = validateTagActions(state.exprTagActions, t)
+    if (validationError) {
+      toast.error(validationError)
+      return false
+    }
+    return true
+  }, [t])
+
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
@@ -1928,13 +1938,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!validateExportTarget(dryRunInput)) {
       return
     }
-    if (dryRunInput.tagEnabled) {
-      const validationError = validateTagActions(dryRunInput.exprTagActions, t)
-      if (validationError) {
-        toast.error(validationError)
-        return
-      }
-    }
+    if (!validateTags(dryRunInput)) return
 
     setLatestDryRunStartedAt(new Date().toISOString())
     setLatestDryRunEvents([])
@@ -1965,6 +1969,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     if (checked && !validateCategory(formState)) return
+    if (checked && !validateTags(formState)) return
     if (checked && !validateExportTarget(formState)) {
       return
     }
@@ -1989,7 +1994,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, isTagRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, isTagRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource, validateTags])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2180,13 +2185,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
-    if (submitState.tagEnabled) {
-      const validationError = validateTagActions(submitState.exprTagActions, t)
-      if (validationError) {
-        toast.error(validationError)
-        return
-      }
-    }
+    if (!validateTags(submitState)) return
     if (!validateCategory(submitState)) return
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
@@ -2234,6 +2233,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const handleConfirmSave = () => {
     if (!validateCategory(formState)) return
+    if (!validateTags(formState)) return
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
     // Drop any preview still in flight; the user chose to save without it.
