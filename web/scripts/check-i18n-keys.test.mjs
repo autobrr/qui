@@ -197,12 +197,14 @@ test("ignores commented-out key properties", () => {
   const source = `
     // i18n-namespace: torrents
     export const options = [
-      { value: "name", labelKey: "columns.name" },
+      { value: "name", labelKey: "columns.nmae" },
       // { value: "size", labelKey: "columns.szie" },
     ]
   `
 
-  assert.deepEqual(collectKeyPropertyErrors(source), [])
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.columns.nmae",
+  ])
 })
 
 test("resolves a namespace prefix in a key property", () => {
