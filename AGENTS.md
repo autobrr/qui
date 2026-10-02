@@ -74,7 +74,7 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
-- A test row must fail against the code before the change. A row that expects no output needs a live positive case beside it.
+- A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 
 ## Comments
 
