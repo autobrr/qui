@@ -135,6 +135,30 @@ func TestRemove_Recursive_LeavesSymlinkTargetIntact(t *testing.T) {
 	require.NoError(t, err, "the link target must survive")
 }
 
+func TestRemove_Recursive_ChildSwappedForSymlinkIsNotDescended(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	keep := remotePath(dir, "keep")
+	writeFile(t, remotePath(keep, "precious"), "x")
+	// The listing saw a directory here; by the time the child is removed it
+	// is a symlink to keep, the swap SFTP v3 cannot rule out.
+	child := remotePath(dir, "child")
+	if err := os.Symlink(keep, child); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+
+	require.NoError(t, removeListed(t.Context(), client, child, true))
+
+	_, err = os.Lstat(child)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = os.Stat(remotePath(keep, "precious"))
+	require.NoError(t, err, "the link target must survive")
+}
+
 func TestRemove_Recursive_SymlinkRootRemovesLinkOnly(t *testing.T) {
 	t.Parallel()
 
@@ -320,12 +344,15 @@ func TestHardlinkTree_CancelledWriteCompletesAndRollsBack(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		rootExists bool
+		oneFile    bool
 		landed     []string
 	}{
 		// Without the root, the first write on the wire is the Mkdir of
 		// its first missing ancestor; with it, the Link.
 		{name: "mkdir", landed: []string{"links"}},
 		{name: "link", rootExists: true, landed: []string{"links", "Show.S01", "one.mkv"}},
+		// The last write in the plan: no later request fails on the cancel.
+		{name: "last link", rootExists: true, oneFile: true, landed: []string{"links", "Show.S01", "one.mkv"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -333,6 +360,10 @@ func TestHardlinkTree_CancelledWriteCompletesAndRollsBack(t *testing.T) {
 			b, server := newBackend(t)
 			dir := t.TempDir()
 			plan := linkPlan(t, dir)
+			second := plan.Files[1].TargetPath
+			if tc.oneFile {
+				plan.Files = plan.Files[:1]
+			}
 			if tc.rootExists {
 				require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
 			}
@@ -349,7 +380,7 @@ func TestHardlinkTree_CancelledWriteCompletesAndRollsBack(t *testing.T) {
 			require.ErrorIs(t, err, context.Canceled)
 			_, err = os.Lstat(remotePath(append([]string{dir}, tc.landed...)...))
 			require.ErrorIs(t, err, fs.ErrNotExist, "the write that landed after the cancel is rolled back")
-			_, err = os.Lstat(plan.Files[1].TargetPath)
+			_, err = os.Lstat(second)
 			require.ErrorIs(t, err, fs.ErrNotExist)
 		})
 	}

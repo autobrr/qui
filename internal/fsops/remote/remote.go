@@ -375,8 +375,9 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		return nil, pathError("mkdir", p, syscall.ENOTDIR)
 	}
 	// Any other answer walks up: a missing path is created from its first
-	// missing ancestor, and a path through a file, which OpenSSH reports as a
-	// bare failure rather than "not found", is named by that file's own stat.
+	// missing ancestor, and a path through a file, which OpenSSH reports as
+	// "not found" and pkg/sftp's server as a bare failure, is named by that
+	// file's own stat.
 	created := make([]string, 0, 1)
 	if parent := path.Dir(p); parent != p {
 		if created, err = mkdirAll(ctx, client, parent); err != nil {
