@@ -193,15 +193,15 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	// sees this run as active. A refused insert rolls the cancel back.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'canceled'
-		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0 AND filesystem_mode = 'remote'
-	`, instanceID); err != nil {
+		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0 AND filesystem_mode = ?
+	`, instanceID, string(FilesystemModeRemote)); err != nil {
 		return 0, fmt.Errorf("cancel remote orphan scan preview: %w", err)
 	}
 
 	var id int64
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, filesystem_mode)
-		SELECT ?, 'pending', ?, 'none'
+		SELECT ?, 'pending', ?, ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM orphan_scan_runs
 			WHERE instance_id = ?
@@ -209,7 +209,7 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 			       OR (status = 'preview_ready' AND files_found > 0))
 		)
 		RETURNING id
-	`, instanceID, triggeredBy, instanceID).Scan(&id)
+	`, instanceID, triggeredBy, string(FilesystemModeNone), instanceID).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrRunAlreadyActive
@@ -494,10 +494,10 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
-		       OR (status = 'preview_ready' AND files_found > 0 AND filesystem_mode <> 'remote'))
+		       OR (status = 'preview_ready' AND files_found > 0 AND filesystem_mode <> ?))
 		ORDER BY started_at DESC
 		LIMIT 1
-	`, instanceID)
+	`, instanceID, string(FilesystemModeRemote))
 
 	return s.scanRun(row)
 }
