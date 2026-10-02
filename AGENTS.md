@@ -74,6 +74,7 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
+- A test row must fail against the code before the change. A row that expects no output needs a live positive case beside it.
 
 ## Comments
 
@@ -96,7 +97,7 @@ qui must work on Windows and Unix-like hosts.
 
 ## Frontend
 
-Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `web/`, i18n, React components, or frontend tests.
+Frontend-specific rules live in `web/AGENTS.md`. Read that file before you edit, spec, or review a change to `web/`, i18n, React components, or frontend tests.
 
 ## API / Database
 

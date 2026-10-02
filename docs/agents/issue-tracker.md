@@ -25,6 +25,7 @@ In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writ
 ## Issues
 
 - **Create**: `gh issue create --title "..." --body "..."`. Use a heredoc for a multi-line body.
+  A `ready-for-agent` body is a document an agent executes. Write it with the `writing-for-agents` skill, not as a chat note: Symptom, Mechanism, Fix steps, Done when. Name symbols, not line numbers.
 - **Read**: `gh issue view <number> --json title,state,labels,body,comments`. Do not use `--comments` here: in a non-TTY shell it prints only the comments, and nothing when there are none.
 - **List**: `gh issue list --state open --label ready-for-agent --json number,title,body,labels`.
 - **Comment**: `gh issue comment <number> --body "..."`.
