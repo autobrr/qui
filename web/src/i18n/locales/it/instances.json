@@ -850,7 +850,7 @@
       "cancel": "Annulla",
       "autoCleanupEnabled": "Pulizia automatica abilitata (≤{{max}} file)",
       "autoCleanupDisabled": "Pulizia automatica disabilitata",
-      "autoCleanupRemote": "Nessuna pulizia auto sulle istanze remote",
+      "autoCleanupRemote": "Nessuna pulizia automatica sulle istanze remote",
       "pathsIgnored_one": " · {{count}} percorso ignorato",
       "pathsIgnored_other": " · {{count}} percorsi ignorati",
       "scanNow": "Scansiona ora",

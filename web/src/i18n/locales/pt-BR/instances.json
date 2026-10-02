@@ -911,7 +911,7 @@
       "exportCSV": "Exportar CSV",
       "close": "Fechar",
       "deleteItems": "Excluir",
-      "remoteDeleteUnavailable": "Esta varredura foi feita em uma instância remota, onde a exclusão ainda não é suportada. Exporte a lista para remover os arquivos no servidor você mesmo.",
+      "remoteDeleteUnavailable": "Esta varredura foi feita em uma instância remota, onde a exclusão ainda não é suportada. Exporte a lista para remover você mesmo os arquivos no servidor.",
       "statusLabels": {
         "pending": "Pendente",
         "deleted": "Excluído",

@@ -844,7 +844,7 @@
       "cancel": "Annuler",
       "autoCleanupEnabled": "Nettoyage automatique activé (≤{{max}} fichiers)",
       "autoCleanupDisabled": "Nettoyage automatique désactivé",
-      "autoCleanupRemote": "Pas de nettoyage auto sur instance distante",
+      "autoCleanupRemote": "Pas de nettoyage automatique sur les instances distantes",
       "pathsIgnored_one": " · {{count}} chemin ignoré",
       "pathsIgnored_other": " · {{count}} chemins ignorés",
       "scanNow": "Analyser maintenant",
