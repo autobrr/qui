@@ -4,8 +4,11 @@
 package remote
 
 import (
+	"context"
 	"fmt"
 	"path"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,4 +84,35 @@ func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	assert.Equal(t, []string{"a", "b", "c"}, byDir["."])
 	assert.Equal(t, []string{"x", "y"}, byDir["a"])
 	assert.Equal(t, []string{"a", "z"}, byDir["b"])
+}
+
+// walkGoroutines counts goroutines still inside walk or the walker, which is
+// what a cancelled walk used to leave behind: a closer waiting on queued jobs
+// that no worker would take.
+func walkGoroutines() int {
+	buf := make([]byte, 1<<20)
+	stacks := string(buf[:runtime.Stack(buf, true)])
+	return strings.Count(stacks, "fsops/remote.(*Backend).walk") + strings.Count(stacks, "fsops/remote.(*walker)")
+}
+
+// A cancelled walk ends every goroutine it started, whether the consumer
+// cancels or a worker cuts the walk on a lost connection. Not parallel: the
+// stack scan must see only this test's walker.
+func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
+	const dirs = 200
+	b, server := newBackend(t)
+	server.SetLatency(5 * time.Millisecond)
+	dir := t.TempDir()
+	writeWideTree(t, dir, dirs)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	ch, err := b.WalkDir(ctx, remotePath(dir), fsops.WalkOptions{})
+	require.NoError(t, err)
+	for range 20 {
+		<-ch
+	}
+	cancel()
+	for range ch { //nolint:revive // drain
+	}
+	assert.Eventually(t, func() bool { return walkGoroutines() == 0 }, 2*time.Second, 10*time.Millisecond, "walker goroutines left after cancel")
 }

@@ -161,15 +161,22 @@ type walkJob struct{ dir, rel string }
 // EmitStatErrors needs no handling here: readdir carries the attrs, so there
 // is no per-entry stat left to fail.
 func (b *Backend) walk(ctx context.Context, ch chan<- fsops.WalkEntry, root string, opts fsops.WalkOptions) {
-	w := &walker{b: b, ch: ch, opts: opts, queue: make(chan walkJob, walkWorkers)}
+	w := &walker{b: b, ch: ch, opts: opts}
 	w.ctx, w.cancel = context.WithCancel(ctx)
 	defer w.cancel()
+	w.cond.L = &w.mu
+	// A cancel, from the consumer or from a worker that lost the connection,
+	// has to wake the workers parked in next, which cond.Wait cannot see. The
+	// lock is taken first so a worker between its ctx check and its Wait
+	// cannot miss the broadcast.
+	stop := context.AfterFunc(w.ctx, func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.cond.Broadcast()
+	})
+	defer stop()
 
 	w.enqueue(walkJob{dir: root, rel: "."})
-	go func() {
-		w.pending.Wait()
-		close(w.queue)
-	}()
 	var workers sync.WaitGroup
 	for range walkWorkers {
 		workers.Go(w.work)
@@ -192,38 +199,55 @@ type walker struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	queue   chan walkJob
-	pending sync.WaitGroup // directories queued or being listed
+	// The queue is a slice, not a channel: a channel send would have to park
+	// a goroutine per directory beyond its buffer, and jobs left in a buffer
+	// after a cancel kept their pending count and leaked the walk.
+	mu      sync.Mutex
+	cond    sync.Cond
+	jobs    []walkJob
+	pending int // directories queued or being listed
 
 	once sync.Once
 	cut  *fsops.WalkEntry
 }
 
-// enqueue never blocks the caller: a worker that waited on a full queue while
-// every other worker did the same would deadlock the walk.
 func (w *walker) enqueue(job walkJob) {
-	w.pending.Add(1)
-	go func() {
-		select {
-		case w.queue <- job:
-		case <-w.ctx.Done():
-			w.pending.Done()
-		}
-	}()
+	w.mu.Lock()
+	w.jobs = append(w.jobs, job)
+	w.pending++
+	w.mu.Unlock()
+	w.cond.Signal()
+}
+
+// next hands out the next directory, or false once nothing is queued and no
+// worker is listing, so nothing more can be queued, or the walk is cancelled.
+func (w *walker) next() (walkJob, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for len(w.jobs) == 0 && w.pending > 0 && w.ctx.Err() == nil {
+		w.cond.Wait()
+	}
+	if len(w.jobs) == 0 || w.ctx.Err() != nil {
+		return walkJob{}, false
+	}
+	job := w.jobs[0]
+	w.jobs = w.jobs[1:]
+	return job, true
 }
 
 func (w *walker) work() {
 	for {
-		select {
-		case job, ok := <-w.queue:
-			if !ok {
-				return
-			}
-			w.list(job)
-			w.pending.Done()
-		case <-w.ctx.Done():
+		job, ok := w.next()
+		if !ok {
 			return
 		}
+		w.list(job)
+		w.mu.Lock()
+		w.pending--
+		w.mu.Unlock()
+		// Every parked worker re-checks: the last listing to finish is what
+		// lets them all return.
+		w.cond.Broadcast()
 	}
 }
 
