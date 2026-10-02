@@ -437,11 +437,12 @@ scratch directories and a temporarily added, uniquely tagged
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
 4. Frontend. Lands last. It is the only UI path that sets up SSH access,
-   so it gates the rollout for users. Until #2917 ships, no user-facing
-   text names SSH: locales, API error messages, swagger, and
-   `documentation/`. `web/scripts/no-ssh-in-locales.test.mjs` checks only
-   the locales. Text that only a remote instance renders says "remote
-   instance". (#2916 Decisions)
+   so it gates the rollout for users. Until #2917 ships, no UI text names
+   SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
+   locales. Text that only a remote instance renders says "remote
+   instance" and stays. Text a local user also sees keeps its develop
+   wording, and the slice adds it to the reverse list in #2917's body.
+   (#2916 Decisions)
 5. Feature rollout per service, degraded-mode UX. Most consumers still
    admit an instance on `HasLocalFilesystemAccess` rather than on its
    filesystem mode: orphan scan (handler and service filters), automations
