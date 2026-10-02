@@ -776,8 +776,7 @@
           "invalidJson": "Neplatný formát JSON",
           "notObject": "Očekáván objekt JSON",
           "missingName": "Chybí nebo je neplatné pole 'name'",
-          "missingConditions": "Chybí nebo je neplatné pole 'conditions'",
-          "missingTracker": "Musíte zadat 'trackerDomains' (pole řetězců) nebo 'trackerPattern'"
+          "missingConditions": "Chybí nebo je neplatné pole 'conditions'"
         }
       },
       "editJsonDialog": {

@@ -758,8 +758,7 @@
           "invalidJson": "Formato JSON inválido",
           "notObject": "Esperado um objeto JSON",
           "missingName": "Campo 'name' ausente ou inválido",
-          "missingConditions": "Campo 'conditions' ausente ou inválido",
-          "missingTracker": "Informe 'trackerDomains' (lista de strings) ou 'trackerPattern'"
+          "missingConditions": "Campo 'conditions' ausente ou inválido"
         }
       },
       "editJsonDialog": {

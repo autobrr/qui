@@ -856,7 +856,6 @@ Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUA
 {
   "name": "Remove Upgraded Torrents",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "delete": {
@@ -964,7 +963,6 @@ If torrents have no media library hardlinks, this rule tags them with `noHL`, ev
 {
   "name": "Tag noHL (multi-instance)",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1020,7 +1018,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Season pack",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1034,7 +1031,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Packed episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1048,7 +1044,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Unpacked episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [

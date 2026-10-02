@@ -44,8 +44,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		return ruleError("Name is required")
 	}
 
-	// Require either "*" (all trackers) or at least one tracker domain/pattern
-	if len(rule.TrackerDomains) == 0 && strings.TrimSpace(rule.TrackerPattern) == "" {
+	if strings.TrimSpace(rule.TrackerPattern) == "" {
 		return ruleError("Select at least one tracker or enable 'Apply to all'")
 	}
 
