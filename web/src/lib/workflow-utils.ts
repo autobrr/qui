@@ -213,7 +213,8 @@ export function parseImportJSON(jsonString: string): { data: WorkflowImport; err
     sortingConfig: obj.sortingConfig as SortingConfig | undefined,
   }
 
-  if (Array.isArray(obj.trackerDomains)) {
+  // One non-string element makes the backend reject the whole request, so drop the array instead.
+  if (Array.isArray(obj.trackerDomains) && obj.trackerDomains.every((el: unknown) => typeof el === "string")) {
     data.trackerDomains = obj.trackerDomains
   }
 

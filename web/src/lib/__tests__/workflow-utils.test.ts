@@ -261,6 +261,17 @@ describe("parseImportJSON", () => {
     )
   })
 
+  it("drops a trackerDomains array with a non-string element", () => {
+    const result = parseImportJSON(JSON.stringify({
+      name: "x",
+      conditions: { schemaVersion: "1" },
+      trackerPattern: "a.com",
+      trackerDomains: ["b.com", 1],
+    }))
+    expect(result.data?.trackerPattern).toBe("a.com")
+    expect(result.data).not.toHaveProperty("trackerDomains")
+  })
+
   it("leaves a missing tracker to the backend", () => {
     const result = parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } }))
     expect(result.error).toBeNull()
