@@ -436,7 +436,8 @@ scratch directories and a temporarily added, uniquely tagged
    - 3d (#2725): SFTP write operations.
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
-4. Frontend.
+4. Frontend. Lands last. It is the only UI path that sets up SSH access,
+   so it gates the rollout for users.
 5. Feature rollout per service, degraded-mode UX. Most consumers still
    admit an instance on `HasLocalFilesystemAccess` rather than on its
    filesystem mode: automations
@@ -447,9 +448,10 @@ scratch directories and a temporarily added, uniquely tagged
    local mode, not the flag), and two routes that read file content, which
    no `Backend` method covers yet: the torrents handler's local-access
    routes and the proxy mediainfo route. The exception is the free-space
-   path source: its preview and scheduled-run paths resolve the backend
-   and call `Statfs` with no mode check, so a remote-mode instance already
-   reports remote free space, and that is the intended figure. A gate
+   path source: its preview and scheduled-run paths call `Statfs` only
+   after `Pool.Require` grants the Read capability, and rule save
+   validation also checks Read. A remote-mode instance has Read, so it
+   already reports remote free space, and that is the intended figure. A gate
    reads the instance before the work starts, so the reads after it
    resolve backend and mode from one later read and refuse every mode but
    local. The hardlink index, dirscan and the sync manager's cleanup do

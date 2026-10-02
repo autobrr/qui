@@ -1383,12 +1383,12 @@
         "defaultSource": "Predefinito (qBittorrent)",
         "pathSource": "Percorso sul server",
         "pathSourceWindowsUnsupported": "Percorso sul server (non supportato su Windows)",
-        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)",
+        "pathSourceLocalAccessRequired": "Percorso sul server (richiede l'Accesso locale)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Inserisci il percorso su cui controllare lo spazio libero (es., un punto di montaggio)",
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
-          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o tramite SSH.",
+          "localAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'Accesso al filesystem locale.",
           "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\"."
         }
       },
@@ -1578,7 +1578,7 @@
         "switchedIntervalForFreeSpace": "Passato all'intervallo di 5 minuti perché le eliminazioni per Spazio libero hanno un'attesa di circa 5 minuti",
         "pathSourceUnsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows. Passato al valore predefinito di qBittorrent.",
         "switchFreeSpaceSourceDefault": "Cambia l'origine dello spazio libero in Predefinito (qBittorrent)",
-        "setUpFilesystemAccessOrDefault": "Configura l'accesso al filesystem locale o tramite SSH nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)",
+        "enableLocalAccessOrDefault": "Abilita l'accesso al filesystem locale nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)",
         "enterPathOrDefault": "Inserisci un percorso o riporta l'origine dello spazio libero su Predefinito (qBittorrent)",
         "addScoreRule": "Aggiungi almeno una regola di punteggio per l'ordinamento per Punteggio",
         "fieldMultiplierInvalid": "Il moltiplicatore del campo deve essere un numero valido",

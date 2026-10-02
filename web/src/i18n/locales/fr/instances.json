@@ -1377,12 +1377,12 @@
         "defaultSource": "Par défaut (qBittorrent)",
         "pathSource": "Chemin sur le serveur",
         "pathSourceWindowsUnsupported": "Chemin sur le serveur (non supporté sur Windows)",
-        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (requiert un accès local ou SSH)",
+        "pathSourceLocalAccessRequired": "Chemin sur le serveur (requiert Accès local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Entrez le chemin pour vérifier l'espace libre",
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
-          "filesystemAccessRequired": "Source d'espace basée sur un chemin requiert un accès local ou SSH au système de fichiers.",
+          "localAccessRequired": "Source d'espace basée sur un chemin requiert l'accès local.",
           "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'."
         }
       },
@@ -1572,7 +1572,7 @@
         "switchedIntervalForFreeSpace": "Basculé sur un intervalle de 5m en raison du délai de nettoyage de l'Espace libre",
         "pathSourceUnsupportedWindows": "Source basée sur un chemin non supportée sur Windows. Basculement sur qBittorrent par défaut.",
         "switchFreeSpaceSourceDefault": "Basculer la source d'espace libre sur Défaut (qBittorrent)",
-        "setUpFilesystemAccessOrDefault": "Configurer l'accès local ou SSH au système de fichiers dans les paramètres de l'instance, ou utiliser Défaut (qBittorrent)",
+        "enableLocalAccessOrDefault": "Activer l'accès local dans les paramètres de l'instance, ou utiliser Défaut (qBittorrent)",
         "enterPathOrDefault": "Entrez un chemin ou basculez la source d'espace sur Défaut (qBittorrent)",
         "addScoreRule": "Ajouter au moins une règle pour le tri par Score",
         "fieldMultiplierInvalid": "Le multiplicateur de champ doit être un nombre",

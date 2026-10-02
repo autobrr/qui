@@ -1144,13 +1144,13 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Path on server | Reads free space from a specific filesystem path |
 
 :::note
-Path on server requires local or SSH filesystem access on the instance. With SSH access, qui reads the free space on the SSH host. If qui cannot reach the SSH host, the run fails and sends a notification. qui does not fall back to qBittorrent's value, because that value can come from a different disk.
+Path on server requires "Local Filesystem Access" enabled on the instance.
 :::
 
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-When qui runs on Windows, Path on server works only for an instance with SSH access. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
+qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching
