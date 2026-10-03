@@ -47,8 +47,14 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 				both, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, column, order, "", FilterOptions{}, ids)
 				require.NoError(t, err)
 
+				// The single-instance view has no instance column. The rows of
+				// each instance keep their name order in each direction.
+				singleColumn, singleOrder := column, order
+				if column == "instance" {
+					singleColumn, singleOrder = "name", "asc"
+				}
 				for _, id := range ids {
-					single, err := sm.GetTorrentsWithFilters(t.Context(), id, 0, 0, column, order, "", FilterOptions{})
+					single, err := sm.GetTorrentsWithFilters(t.Context(), id, 0, 0, singleColumn, singleOrder, "", FilterOptions{})
 					require.NoError(t, err)
 					scoped, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, column, order, "", FilterOptions{}, []int{id})
 					require.NoError(t, err)

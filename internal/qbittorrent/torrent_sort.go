@@ -81,19 +81,16 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 			cmp.Compare(torrents[a].InstanceID, torrents[b].InstanceID),
 		)
 	}
-	order := sm.torrentOrder(rows, health, column, desc, func(a, b int) int {
-		return cmp.Or(compareInstance(a, b), a-b)
-	})
+	tie := func(a, b int) int { return cmp.Or(compareInstance(a, b), a-b) }
 
 	if column != "instance" {
-		sortByIndex(torrents, order)
+		sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, tie))
 		return
 	}
+	// The rows of each instance keep their name order in each direction.
+	byName := sm.torrentOrder(rows, health, "name", false, tie)
 	sortByIndex(torrents, func(a, b int) int {
-		if result := compareInstance(a, b); result != 0 {
-			return flipIf(desc, result)
-		}
-		return order(a, b)
+		return cmp.Or(flipIf(desc, compareInstance(a, b)), byName(a, b))
 	})
 }
 
