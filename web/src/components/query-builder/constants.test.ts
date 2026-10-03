@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
-import type { TFunction } from "i18next"
+import { createInstance, type TFunction } from "i18next"
 import { CONTENT_TYPE_VALUES, FIELD_REQUIREMENTS, getCapabilityReason } from "./constants"
 import * as constants from "./constants"
 
@@ -98,5 +98,28 @@ describe("query-builder translation keys", () => {
     const missing = [...requested].filter((key) => !i18n.exists(key, { ns: "automations", lng: "en" }))
     expect(missing).toEqual([])
     expect(requested.size).toBeGreaterThan(fields.length)
+  })
+})
+
+describe("getFieldLabel", () => {
+  it("has no fallback of its own when the key is missing", async () => {
+    const fields = Object.keys(constants.CONDITION_FIELDS)
+    const empty = createInstance()
+    await empty.init({ lng: "en", resources: {} })
+    expect(fields.map((field) => constants.getFieldLabel(field, empty.t))).toEqual(fields.map((field) => `queryBuilder.fields.${field}`))
+  })
+
+  it("renders the locale string", async () => {
+    const withKey = createInstance()
+    await withKey.init({ lng: "en", resources: { en: { translation: { queryBuilder: { fields: { SAVE_PATH: "probe-string" } } } } } })
+    expect(constants.getFieldLabel("SAVE_PATH", withKey.t)).toBe("probe-string")
+  })
+})
+
+// Field names live in the locale files; an English label here would only duplicate them.
+describe("CONDITION_FIELDS", () => {
+  it("has no label on any field", () => {
+    const labelled = Object.entries(constants.CONDITION_FIELDS).flatMap(([field, def]) => ("label" in def ? [field] : []))
+    expect(labelled).toEqual([])
   })
 })
