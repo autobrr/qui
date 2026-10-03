@@ -336,11 +336,11 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 func TestComputeSearchTimeoutExcludesQueueWait(t *testing.T) {
 	t.Parallel()
 
-	prowlarr := []*models.TorznabIndexer{{Backend: models.TorznabBackendProwlarr}}
-	native := []*models.TorznabIndexer{{Backend: models.TorznabBackendNative}}
+	prowlarr := []*models.TorznabIndexer{{TimeoutSeconds: 5, Backend: models.TorznabBackendProwlarr}}
+	native := []*models.TorznabIndexer{{TimeoutSeconds: 5, Backend: models.TorznabBackendNative}}
 	mixed := []*models.TorznabIndexer{
-		{Backend: models.TorznabBackendProwlarr},
-		{Backend: models.TorznabBackendNative},
+		{TimeoutSeconds: 5, Backend: models.TorznabBackendProwlarr},
+		{TimeoutSeconds: 5, Backend: models.TorznabBackendNative},
 	}
 
 	if got := computeSearchTimeout(prowlarr); got != timeouts.DefaultSearchTimeout {

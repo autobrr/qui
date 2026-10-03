@@ -1806,7 +1806,16 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
-	return timeouts.AdaptiveSearchTimeout(len(indexers))
+	timeout := timeouts.AdaptiveSearchTimeout(len(indexers))
+	// The execution deadline must allow each client's configured HTTP timeout.
+	for _, indexer := range indexers {
+		seconds := indexer.TimeoutSeconds
+		if seconds <= 0 {
+			seconds = defaultIndexerTimeoutSeconds
+		}
+		timeout = max(timeout, time.Duration(seconds)*time.Second)
+	}
+	return timeout
 }
 
 func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
