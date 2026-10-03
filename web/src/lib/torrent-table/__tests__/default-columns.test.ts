@@ -8,10 +8,11 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import { createColumns } from "@/components/torrents/TorrentTableColumns"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
+import i18n from "@/i18n"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
 function columnIds(isUnifiedView: boolean): string[] {
-  return createColumns(false, undefined, "bytes", undefined, undefined, undefined, true, isUnifiedView)
+  return createColumns({ incognitoMode: false, showInstanceColumn: isUnifiedView }, i18n.getFixedT(null, "torrents"))
     .map(col => col.id ?? (col as { accessorKey?: string }).accessorKey ?? "")
 }
 

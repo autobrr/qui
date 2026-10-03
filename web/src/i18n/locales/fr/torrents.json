@@ -1614,6 +1614,7 @@
   "stateLabels": {
     "downloading": "Téléchargement",
     "metaDL": "Récupération des métadonnées",
+    "forcedMetaDL": "(F) Récupération des métadonnées",
     "allocating": "Allocation",
     "stalledDL": "En attente",
     "queuedDL": "File d'attente",
@@ -1631,8 +1632,10 @@
     "error": "Erreur",
     "missingFiles": "Fichiers manquants",
     "checkingResumeData": "Vérification des données de reprise",
-    "moving": "Déplacement"
+    "moving": "Déplacement",
+    "unknown": "Inconnu"
   },
+  "stateLabelFallback": "Non reconnu",
   "details": {
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",

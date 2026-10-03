@@ -1614,6 +1614,7 @@
   "stateLabels": {
     "downloading": "Baixando",
     "metaDL": "Buscando Metadados",
+    "forcedMetaDL": "(F) Buscando Metadados",
     "allocating": "Alocando",
     "stalledDL": "Estagnado",
     "queuedDL": "Na Fila",
@@ -1631,8 +1632,10 @@
     "error": "Erro",
     "missingFiles": "Arquivos Ausentes",
     "checkingResumeData": "Verificando Dados de Retomada",
-    "moving": "Movendo"
+    "moving": "Movendo",
+    "unknown": "Desconhecido"
   },
+  "stateLabelFallback": "Não reconhecido",
   "details": {
     "failedToUpdatePriorities": "Falha ao atualizar prioridades dos arquivos",
     "failedToRenameFile": "Falha ao renomear arquivo",

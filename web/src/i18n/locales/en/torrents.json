@@ -1614,6 +1614,7 @@
   "stateLabels": {
     "downloading": "Downloading",
     "metaDL": "Fetching Metadata",
+    "forcedMetaDL": "(F) Fetching Metadata",
     "allocating": "Allocating",
     "stalledDL": "Stalled",
     "queuedDL": "Queued",
@@ -1631,8 +1632,10 @@
     "error": "Error",
     "missingFiles": "Missing Files",
     "checkingResumeData": "Checking Resume Data",
-    "moving": "Moving"
+    "moving": "Moving",
+    "unknown": "Unknown"
   },
+  "stateLabelFallback": "Unrecognized",
   "details": {
     "failedToUpdatePriorities": "Failed to update file priorities",
     "failedToRenameFile": "Failed to rename file",
