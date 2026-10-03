@@ -961,6 +961,10 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
+	if needs.SavePaths && s.syncManager != nil {
+		evalCtx.CategorySavePaths = s.loadCategorySavePaths(ctx, instanceID)
+	}
+
 	return evalCtx, hardlinkIndex
 }
 
@@ -4834,6 +4838,27 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	}
 
 	return false
+}
+
+// loadCategorySavePaths returns nil on error, which fails every template that
+// uses .CategorySavePath instead of moving torrents to a wrong path.
+func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map[string]string {
+	categories, err := s.syncManager.GetCategories(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load categories for category save paths")
+		return nil
+	}
+	prefs, err := s.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load default save path for category save paths")
+		return nil
+	}
+	nest, err := s.syncManager.CategorySavePathsNest(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to check subcategory paths for category save paths")
+		return nil
+	}
+	return buildCategorySavePaths(categories, prefs.SavePath, nest)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {

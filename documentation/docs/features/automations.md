@@ -633,15 +633,17 @@ Options:
 
 qui evaluates the move path as a **Go template** for each torrent. Use a fixed path (for example `/data/archive`) or template actions to build paths from torrent properties.
 
-**Available template variables:**
+**Available template variables.** A **path segment** is a folder name on its own, so it needs a root in front of it, as in `/data/{{ .Category }}`. An **absolute path** already names a location and works on its own. The path qui sends to qBittorrent must be absolute either way.
 
-| Variable | Description |
-| --- | --- |
-| `.Name` | Torrent display name |
-| `.Hash` | Info hash |
-| `.Category` | qBittorrent category |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
-| `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| Variable | Kind | Description |
+| --- | --- | --- |
+| `.Name` | Path segment | Torrent display name |
+| `.Hash` | Path segment | Info hash |
+| `.Category` | Path segment | qBittorrent category. A subcategory contains a `/`, so `tv/anime` renders as two folders. |
+| `.IsolationFolderName` | Path segment | Filesystem-safe folder name (hash or sanitized name) |
+| `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | Absolute path | The save path qBittorrent uses for the torrent's category with Automatic Torrent Management. See [Category save path](#category-save-path). |
+| `.DefaultSavePath` | Absolute path | qBittorrent's default save path, from its settings |
 
 **Template function:**
 
@@ -656,6 +658,26 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}`
+- Under the category's save path: `{{.CategorySavePath}}/done`
+- Under the default save path: `{{.DefaultSavePath}}/archive`
+
+#### Category save path
+
+`.CategorySavePath` follows the same rules as qBittorrent's Automatic Torrent Management:
+
+- No category: the default save path from qBittorrent's settings.
+- Category with an absolute save path: that path.
+- Category with a relative save path: the default save path, then that path. For example, `shows` becomes `/downloads/shows`.
+- Category with no save path: the default save path, then the category name. For example, `music` becomes `/downloads/music`.
+- Subcategory with no save path, such as `tv/anime`: this depends on the qBittorrent version.
+  - qBittorrent 5.2 and later, or 5.0 and 5.1 with subcategories turned on: the parent category's save path, then the last part of the name. If `tv` saves to `/media/tv`, `tv/anime` becomes `/media/tv/anime`.
+  - qBittorrent 4.x, or 5.0 and 5.1 with subcategories turned off: the default save path, then the full name: `/downloads/tv/anime`.
+
+qBittorrent replaces the characters `:?"*<>|` in a category name with a space when it turns the name into a folder. qui does the same.
+
+Neither variable ends with a separator, so write `{{.CategorySavePath}}/done`. Some qBittorrent versions report save paths with a trailing `/`, and qui drops it. A bare root such as `/` stays as it is.
+
+If the torrent's category no longer exists in qBittorrent, qui skips the move or export for that torrent.
 
 ### Auto management
 
@@ -740,13 +762,15 @@ When multiple rules match the same torrent with Export to Instance actions, the 
 
 The save path field supports Go templates, the same as the [Move action](#move-path-templates).
 
-| Variable | Description |
-| --- | --- |
-| `.Name` | Torrent display name |
-| `.Hash` | Info hash |
-| `.Category` | qBittorrent category (on source instance) |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
-| `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| Variable | Kind | Description |
+| --- | --- | --- |
+| `.Name` | Path segment | Torrent display name |
+| `.Hash` | Path segment | Info hash |
+| `.Category` | Path segment | qBittorrent category (on source instance). A subcategory contains a `/`. |
+| `.IsolationFolderName` | Path segment | Filesystem-safe folder name (hash or sanitized name) |
+| `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | Absolute path | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
+| `.DefaultSavePath` | Absolute path | The source instance's default save path |
 
 | Function | Description |
 | --- | --- |
