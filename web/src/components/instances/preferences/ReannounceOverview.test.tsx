@@ -23,6 +23,11 @@ vi.mock("@/components/instances/preferences/ReannounceEnableWarning", () => ({
   ReannounceEnableWarningDialog: () => null,
 }))
 
+// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
+vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
+  SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
+}))
+
 // Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, activityQueries, queryClient, formatters } = vi.hoisted(() => {
   const settings = {
@@ -114,19 +119,15 @@ describe("ReannounceOverview instance card", () => {
     expect(name!.classList.contains("wrap-anywhere")).toBe(true)
   })
 
-  it("keeps each settings summary pair on one line", () => {
-    const { container } = renderExpanded()
+  it("passes one settings summary pair per setting", () => {
+    const { getByTestId } = renderExpanded()
 
-    const spans = Array.from(container.querySelectorAll("p > span.whitespace-nowrap"))
-    const pairs = spans.map((el) => el.textContent)
-    expect(pairs).toEqual([
-      "preferences.reannounceOverview.summaryWait(15) ·",
-      "preferences.reannounceOverview.summaryRetry(7) ·",
-      "preferences.reannounceOverview.summaryMax(50) ·",
+    expect(JSON.parse(getByTestId("settings-summary").textContent!)).toEqual([
+      "preferences.reannounceOverview.summaryWait(15)",
+      "preferences.reannounceOverview.summaryRetry(7)",
+      "preferences.reannounceOverview.summaryMax(50)",
       "preferences.reannounceOverview.summaryQuick",
     ])
-    // Only a plain space between pairs, so a wrapped line never starts with "·".
-    expect(spans[0]!.parentElement!.textContent).toBe(pairs.join(" "))
   })
 
   it("shows the not configured text when the instance has no reannounce settings", () => {

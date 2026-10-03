@@ -5,6 +5,7 @@
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,7 +21,7 @@ import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
-import { Fragment, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -59,16 +60,6 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
   }
 
   return { successToday, failedToday, lastActivity }
-}
-
-// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
-function SettingsSummary({ parts }: { parts: string[] }) {
-  return parts.map((part, i) => (
-    <Fragment key={i}>
-      <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
-      {i < parts.length - 1 && " "}
-    </Fragment>
-  ))
 }
 
 export function ReannounceOverview({

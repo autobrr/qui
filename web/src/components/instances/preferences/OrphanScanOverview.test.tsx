@@ -22,6 +22,11 @@ vi.mock("@/components/instances/preferences/OrphanScanPreviewDialog", () => ({
   OrphanScanPreviewDialog: () => null,
 }))
 
+// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
+vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
+  SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
+}))
+
 // Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => {
   const instance = {
@@ -125,17 +130,13 @@ describe("OrphanScanOverview instance card", () => {
     expect(label!.closest("button")!.classList.contains("h-auto")).toBe(true)
   })
 
-  it("builds the settings summary from one key per pair and keeps each pair on one line", () => {
-    const { container } = renderExpanded()
+  it("builds the settings summary from one key per pair", () => {
+    const { getByTestId } = renderExpanded()
 
-    const spans = Array.from(container.querySelectorAll("p > span.whitespace-nowrap"))
-    const pairs = spans.map((el) => el.textContent)
-    expect(pairs).toEqual([
-      "preferences.orphanScanOverview.summaryGrace(10)\u00a0·",
-      "preferences.orphanScanOverview.summaryInterval(24)\u00a0·",
+    expect(JSON.parse(getByTestId("settings-summary").textContent!)).toEqual([
+      "preferences.orphanScanOverview.summaryGrace(10)",
+      "preferences.orphanScanOverview.summaryInterval(24)",
       "preferences.orphanScanOverview.summaryMax(1000)",
     ])
-    // Only a plain space between pairs, so a wrapped line never starts with "·".
-    expect(spans[0]!.parentElement!.textContent).toBe(pairs.join(" "))
   })
 })
