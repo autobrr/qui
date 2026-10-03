@@ -905,10 +905,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrentsByStatus(torrents, true, true)
+	sm.sortTorrents(torrents, "state", true, true, nil)
 	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
-	sm.sortTorrentsByStatus(torrents, false, true)
+	sm.sortTorrents(torrents, "state", false, true, nil)
 	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
 }
 
@@ -934,7 +934,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrentsByStatusWithTrackerHealth(torrents, false, true, cachedHealth)
+	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
 	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
 
 	unsupportedTorrents := []qbt.Torrent{
@@ -944,7 +944,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
-	sm.sortTorrentsByStatusWithTrackerHealth(unsupportedTorrents, false, false, cachedHealth)
+	sm.sortTorrents(unsupportedTorrents, "state", false, false, cachedHealth)
 	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
@@ -974,10 +974,10 @@ func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrentsByStatus(torrents, true, false)
+	sm.sortTorrents(torrents, "state", true, false, nil)
 	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
 
-	sm.sortTorrentsByStatus(torrents, false, false)
+	sm.sortTorrents(torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
 }
 
@@ -998,7 +998,7 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrentsByStatus(torrents, false, false)
+	sm.sortTorrents(torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
