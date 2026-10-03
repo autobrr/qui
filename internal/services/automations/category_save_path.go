@@ -42,7 +42,7 @@ var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
 // its parent's path or under the default path with its full name.
 func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, nest bool) map[string]string {
 	resolved := make(map[string]string, len(categories)+1)
-	resolved[""] = defaultSavePath
+	resolved[""] = trimTrailingSeparators(defaultSavePath)
 
 	var resolve func(name string) string
 	resolve = func(name string) string {
@@ -61,6 +61,7 @@ func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath 
 		if !isAbsoluteRemotePath(p) {
 			p = joinRemotePath(base, p)
 		}
+		p = trimTrailingSeparators(p)
 		// A missing parent still resolves implicitly, but must not become a
 		// known category: a torrent in it has no category save path.
 		if _, known := categories[name]; known {
@@ -82,6 +83,18 @@ func isAbsoluteRemotePath(p string) bool {
 		return true
 	}
 	return len(p) >= 2 && p[1] == ':' && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z'))
+}
+
+// trimTrailingSeparators keeps "{{.CategorySavePath}}/x" from rendering "//x", which never matches the stored path.
+func trimTrailingSeparators(p string) string {
+	trimmed := strings.TrimRight(p, `/\`)
+	switch {
+	case trimmed == "" && p != "":
+		return p[:1]
+	case len(trimmed) == 2 && trimmed[1] == ':' && len(p) > 2:
+		return p[:3]
+	}
+	return trimmed
 }
 
 // joinRemotePath joins with the separator the base already uses, so a Windows

@@ -34,7 +34,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 			},
 			defaultPath: "/downloads/",
 			want: map[string]string{
-				"":       "/downloads/",
+				"":       "/downloads",
 				"movies": "/media/movies",
 				"tv":     "/downloads/shows",
 				"music":  "/downloads/music",
@@ -82,6 +82,37 @@ func TestBuildCategorySavePaths(t *testing.T) {
 			},
 		},
 		{
+			name: "trailing separators as qBittorrent reports them are dropped",
+			nest: true,
+			categories: map[string]qbt.Category{
+				"tvs":       {Name: "tvs", SavePath: "/media/tv/"},
+				"tvs/anime": {Name: "tvs/anime"},
+				"rel":       {Name: "rel", SavePath: "shows/"},
+				"win":       {Name: "win", SavePath: `D:\media\`},
+			},
+			defaultPath: "/downloads/",
+			want: map[string]string{
+				"":          "/downloads",
+				"tvs":       "/media/tv",
+				"tvs/anime": "/media/tv/anime",
+				"rel":       "/downloads/shows",
+				"win":       `D:\media`,
+			},
+		},
+		{
+			name: "roots keep their separator",
+			categories: map[string]qbt.Category{
+				"music": {Name: "music"},
+				"drive": {Name: "drive", SavePath: `D:\`},
+			},
+			defaultPath: "/",
+			want: map[string]string{
+				"":      "/",
+				"music": "/music",
+				"drive": `D:\`,
+			},
+		},
+		{
 			name: "windows default save path",
 			categories: map[string]qbt.Category{
 				"movies": {Name: "movies"},
@@ -90,7 +121,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 			},
 			defaultPath: `C:\Downloads\`,
 			want: map[string]string{
-				"":       `C:\Downloads\`,
+				"":       `C:\Downloads`,
 				"movies": `C:\Downloads\movies`,
 				"tv":     `D:\media\tv`,
 				"unc":    `\\nas\share`,
@@ -102,6 +133,41 @@ func TestBuildCategorySavePaths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, buildCategorySavePaths(tt.categories, tt.defaultPath, tt.nest))
 		})
+	}
+}
+
+func TestTrimTrailingSeparators(t *testing.T) {
+	tests := map[string]string{
+		"":              "",
+		"/":             "/",
+		"//":            "/",
+		"/downloads/":   "/downloads",
+		"/downloads//":  "/downloads",
+		"/downloads":    "/downloads",
+		"shows/":        "shows",
+		`\`:             `\`,
+		`C:\`:           `C:\`,
+		"C:/":           "C:/",
+		"C:":            "C:",
+		`C:\Downloads\`: `C:\Downloads`,
+		`\\nas\share\`:  `\\nas\share`,
+	}
+	for in, want := range tests {
+		require.Equal(t, want, trimTrailingSeparators(in), "input %q", in)
+	}
+}
+
+func TestResolveMovePath_TrailingSeparatorSavePaths(t *testing.T) {
+	evalCtx := &EvalContext{CategorySavePaths: buildCategorySavePaths(map[string]qbt.Category{
+		"tvs": {Name: "tvs", SavePath: "/media/tv/"},
+	}, "/downloads/", true)}
+	for path, want := range map[string]string{
+		"{{.DefaultSavePath}}/x":  "/downloads/x",
+		"{{.CategorySavePath}}/x": "/media/tv/x",
+	} {
+		got, ok := resolveMovePath(path, qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: "tvs"}, nil, evalCtx)
+		require.True(t, ok, path)
+		require.Equal(t, want, got, path)
 	}
 }
 

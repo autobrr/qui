@@ -675,6 +675,8 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 
 qBittorrent replaces the characters `:?"*<>|` in a category name with a space when it turns the name into a folder. qui does the same.
 
+Neither variable ends with a separator, so write `{{.CategorySavePath}}/done`. Some qBittorrent versions report save paths with a trailing `/`, and qui drops it. A bare root such as `/` stays as it is.
+
 If the torrent's category no longer exists in qBittorrent, qui skips the move or export for that torrent.
 
 ### Auto management
