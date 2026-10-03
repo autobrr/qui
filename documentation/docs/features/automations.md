@@ -747,6 +747,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Category` | qBittorrent category (on source instance) |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CurrentSavePath` | The torrent's save path on the source instance. Export only: in a Move path it would change after every move. |
 
 | Function | Description |
 | --- | --- |
