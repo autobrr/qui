@@ -121,18 +121,17 @@ func sortGoldenColumns() []string {
 	return columns
 }
 
-// TestSingleInstanceSortGolden pins the order GetTorrentsWithFilters gives each
-// sort column. Rewrite the golden file with:
-//
-//	go test ./internal/qbittorrent -run TestSingleInstanceSortGolden -update
-func TestSingleInstanceSortGolden(t *testing.T) {
-	t.Parallel()
+// newSortTestClient starts a fake qBittorrent that serves the generated
+// library, the tracker lists that trackers gives each torrent, and a Web API
+// version with tracker health.
+func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.TorrentTracker) *Client {
+	t.Helper()
 
 	torrents := sortGoldenTorrents()
 	trackersByHash := make(map[string][]qbt.TorrentTracker, len(torrents))
 	mainTorrents := make(map[string]qbt.Torrent, len(torrents))
 	for i, torrent := range torrents {
-		trackersByHash[torrent.Hash] = sortGoldenTrackers(i)
+		trackersByHash[torrent.Hash] = trackers(i)
 		mainTorrents[torrent.Hash] = torrent
 	}
 	mainData, err := json.Marshal(map[string]any{"rid": 1, "full_update": true, "torrents": mainTorrents})
@@ -158,12 +157,23 @@ func TestSingleInstanceSortGolden(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(instanceID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
 	require.True(t, client.supportsTrackerInclude(), "state sort must see tracker health")
-	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+	return client
+}
+
+// TestSingleInstanceSortGolden pins the order GetTorrentsWithFilters gives each
+// sort column. Rewrite the golden file with:
+//
+//	go test ./internal/qbittorrent -run TestSingleInstanceSortGolden -update
+func TestSingleInstanceSortGolden(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: newSortTestClient(t, 1, sortGoldenTrackers)}}, nil)
+	torrents := sortGoldenTorrents()
 
 	var got strings.Builder
 	for _, column := range sortGoldenColumns() {
