@@ -10,10 +10,12 @@ import { makeTorrent } from "@/test/mockTorrent"
 import { cleanup, fireEvent, render } from "@testing-library/react"
 import type { Torrent } from "@/types"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import "@/i18n"
 
 // Presentational component: stub i18n with a passthrough translator so we can
 // render without bootstrapping the real i18next instance.
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({
     t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
   }),

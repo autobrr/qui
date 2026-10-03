@@ -18,6 +18,7 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type { CrossInstanceTorrent, Torrent, TorznabSearchResult } from "@/types"
 
 export interface ColumnFilter {
@@ -137,21 +138,27 @@ function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
+// Saved filters store these values, so only the labels are translated: a translated value would
+// miss FILTER_UNIT_BYTES and send NaN to the backend. PiB is left out; nobody filters at that size.
+const FILTER_UNIT_LADDER: SizeUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
+
+// Built per call, not at import, so the labels follow a language switch.
+export function getSizeUnitOptions(): { value: SizeUnit; label: string }[] {
+  return FILTER_UNIT_LADDER.map((unit) => ({ value: unit, label: unitLabel(unit) }))
+}
+
+export function getSpeedUnitOptions(): { value: SpeedUnit; label: string }[] {
+  return FILTER_UNIT_LADDER.map((unit) => ({ value: `${unit}/s`, label: unitLabel(unit, true) }))
+}
+
+// A speed filter is its size filter per second, so both spellings resolve to the same
+// magnitude. The "/s" is part of the stored SpeedUnit value, not something this layer chooses.
+const FILTER_UNIT_BYTES: Record<SizeUnit | SpeedUnit, number> = Object.fromEntries(
+  FILTER_UNIT_LADDER.flatMap((unit) => [[unit, BYTES_PER_UNIT[unit]], [`${unit}/s`, BYTES_PER_UNIT[unit]]])
+) as Record<SizeUnit | SpeedUnit, number>
+
 export function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
-  const k = 1024
-  const unitMultipliers: Record<SizeUnit | SpeedUnit, number> = {
-    B: 1,
-    KiB: k,
-    MiB: k ** 2,
-    GiB: k ** 3,
-    TiB: k ** 4,
-    "B/s": 1,
-    "KiB/s": k,
-    "MiB/s": k ** 2,
-    "GiB/s": k ** 3,
-    "TiB/s": k ** 4,
-  }
-  return Math.floor(value * unitMultipliers[unit])
+  return Math.floor(value * FILTER_UNIT_BYTES[unit])
 }
 
 function convertDateToTimestamp(dateStr: string): number {
