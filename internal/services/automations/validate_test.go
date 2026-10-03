@@ -931,7 +931,6 @@ func TestValidateRule(t *testing.T) {
 		{name: "valid", edit: func(*models.Automation) {}},
 		{name: "name required", edit: func(r *models.Automation) { r.Name = "" }, wantMsg: "Name is required"},
 		{name: "tracker required", edit: func(r *models.Automation) { r.TrackerPattern = " " }, wantMsg: "Select at least one tracker or enable 'Apply to all'"},
-		{name: "tracker domains are enough", edit: func(r *models.Automation) { r.TrackerPattern, r.TrackerDomains = "", []string{"tracker.example"} }},
 		{name: "no actions", edit: withConditions(&models.ActionConditions{}), wantMsg: "At least one action must be configured"},
 		{name: "export without target", edit: withConditions(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true}}), wantMsg: "Export to instance requires a target instance"},
 		{name: "export to itself", edit: withConditions(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 1}}), wantMsg: "Export target cannot be the same as the source instance"},

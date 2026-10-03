@@ -758,8 +758,7 @@
           "invalidJson": "Ungültiges JSON-Format",
           "notObject": "Ein JSON-Objekt wird erwartet",
           "missingName": "Feld 'name' fehlt oder ist ungültig",
-          "missingConditions": "Feld 'conditions' fehlt oder ist ungültig",
-          "missingTracker": "Entweder 'trackerDomains' (Array aus Strings) oder 'trackerPattern' muss angegeben werden"
+          "missingConditions": "Feld 'conditions' fehlt oder ist ungültig"
         }
       },
       "editJsonDialog": {
@@ -839,6 +838,7 @@
       "description": "Durchsucht Download-Verzeichnisse und identifiziert Orphan-Dateien zum Aufräumen.",
       "noLocalAccess": "Kein lokaler Zugriff",
       "noLocalAccessTooltip": "qui und qBittorrent müssen auf derselben Maschine laufen. Aktiviere \"Lokaler Dateisystemzugriff\" in den Instanzeinstellungen, um den Orphan-Scan zu nutzen.",
+      "remoteLimits": "Löschen und Auto-Cleanup laufen auf Remote-Instanzen noch nicht. qui erkennt außerdem nicht, wenn zwei Pfade dieselbe Datei sind. Eine Datei, die über einen zweiten Pfad erreichbar ist, etwa per Bind-Mount, kann daher gelistet werden, obwohl ein Torrent sie nutzt.",
       "on": "An",
       "off": "Aus",
       "summaryGrace": "Schonfrist {{grace}}min",
@@ -850,6 +850,7 @@
       "cancel": "Abbrechen",
       "autoCleanupEnabled": "Auto-Cleanup aktiviert (≤{{max}} Dateien)",
       "autoCleanupDisabled": "Auto-Cleanup deaktiviert",
+      "autoCleanupRemote": "Kein Auto-Cleanup auf Remote-Instanzen",
       "pathsIgnored_one": " · {{count}} Pfad ignoriert",
       "pathsIgnored_other": " · {{count}} Pfade ignoriert",
       "scanNow": "Jetzt scannen",
@@ -895,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Orphan-Vorschau",
       "description": "Prüfe die Dateien und Verzeichnisse, die dieser Lauf entfernt.",
+      "remoteDescription": "Prüfe die Dateien und Verzeichnisse, die dieser Scan gefunden hat.",
       "itemsCount_one": "{{count}} Eintrag · {{size}}",
       "itemsCount_other": "{{count}} Einträge · {{size}}",
       "truncated": " (gekürzt)",
@@ -909,6 +911,7 @@
       "exportCSV": "CSV exportieren",
       "close": "Schließen",
       "deleteItems": "Löschen",
+      "remoteDeleteUnavailable": "Dieser Scan lief auf einer Remote-Instanz, wo Löschen noch nicht unterstützt wird. Exportiere die Liste, um die Dateien selbst auf dem Server zu entfernen.",
       "statusLabels": {
         "pending": "Ausstehend",
         "deleted": "Gelöscht",
@@ -1380,12 +1383,12 @@
         "defaultSource": "Standard (qBittorrent)",
         "pathSource": "Pfad auf dem Server",
         "pathSourceWindowsUnsupported": "Pfad auf dem Server (unter Windows nicht unterstützt)",
-        "pathSourceFilesystemAccessRequired": "Pfad auf dem Server (erfordert lokalen oder SSH-Zugriff)",
+        "pathSourceLocalAccessRequired": "Pfad auf dem Server (erfordert lokalen Zugriff)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Gib den Pfad ein, auf dem der freie Speicher geprüft werden soll (z. B. einen Mountpoint)",
         "errors": {
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
-          "filesystemAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen oder SSH-Dateisystemzugriff.",
+          "localAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen Dateisystemzugriff.",
           "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich."
         }
       },
@@ -1575,7 +1578,7 @@
         "switchedIntervalForFreeSpace": "Zum 5-Minuten-Intervall gewechselt, da Löschungen für freien Speicher eine Abkühlzeit von ~5 Minuten haben",
         "pathSourceUnsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt. Zum qBittorrent-Standard gewechselt.",
         "switchFreeSpaceSourceDefault": "Quelle für freien Speicher auf Standard (qBittorrent) umstellen",
-        "setUpFilesystemAccessOrDefault": "Richte lokalen oder SSH-Dateisystemzugriff in den Instanzeinstellungen ein oder verwende Standard (qBittorrent)",
+        "enableLocalAccessOrDefault": "Aktiviere den lokalen Dateisystemzugriff in den Instanzeinstellungen oder verwende Standard (qBittorrent)",
         "enterPathOrDefault": "Gib einen Pfad ein oder stelle die Quelle für freien Speicher zurück auf Standard (qBittorrent)",
         "addScoreRule": "Füge mindestens eine Score-Regel für die Score-Sortierung hinzu",
         "fieldMultiplierInvalid": "Der Feld-Multiplikator muss eine gültige Zahl sein",

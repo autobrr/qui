@@ -21,6 +21,10 @@ const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 // thing being probed, so its output is not trusted to be short.
 const outputLimit = 8 << 10
 
+// HardlinkExtension is the sftp extension a server advertises when it can
+// make hard links.
+const HardlinkExtension = "hardlink@openssh.com"
+
 // probe reports what the server lets us do. A sub-probe the server refuses
 // leaves its flag false; a probe the connection did not survive (the request
 // was cancelled, or the deadline fired) is an error, never a partial report
@@ -37,7 +41,7 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 	if sftpClient, err := sftp.NewClient(client); err == nil {
 		capabilities.SFTP = true
 		_, capabilities.Statvfs = sftpClient.HasExtension("statvfs@openssh.com")
-		_, capabilities.Hardlink = sftpClient.HasExtension("hardlink@openssh.com")
+		_, capabilities.Hardlink = sftpClient.HasExtension(HardlinkExtension)
 		_, capabilities.Limits = sftpClient.HasExtension("limits@openssh.com")
 		_ = sftpClient.Close()
 	}
