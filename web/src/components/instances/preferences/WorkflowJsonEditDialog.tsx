@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { JsonEditor } from "@/components/ui/json-editor"
 import { api } from "@/lib/api"

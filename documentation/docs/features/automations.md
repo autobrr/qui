@@ -341,13 +341,13 @@ qui evaluates the regex against the raw tags string. The delimiter-aware pattern
 
 ### Live impact preview and dry-run
 
-When you edit workflows, qui provides immediate feedback for delete and category workflows:
+When you edit workflows, qui provides immediate feedback for delete, category, and tag workflows:
 
 - When conditions and actions change, the **Live impact preview** in the workflow dialog updates.
 - It shows the current **impacted count** and a preview list of matching torrents.
-- For category rules, the preview summary splits direct matches and cross-seed expansions.
+- For category and tag rules, the preview summary splits direct matches and cross-seed expansions.
 
-When you enable a delete or category workflow, qui opens a confirmation dialog that loads the same preview. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to enable the workflow at once. The workflow then acts on every matching torrent on its next run.
+When you enable a delete, category, or tag workflow, qui opens a confirmation dialog that loads the same preview. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to enable the workflow at once. The workflow then acts on every matching torrent on its next run.
 
 To run a dry-run immediately without waiting for interval execution:
 
@@ -593,6 +593,7 @@ Options:
 - **Managed / Replace in Client**: `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies them to current matches.
 - **Use tracker name as tag**: Derive the tag from the tracker domain.
 - **Use display name**: Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain.
+- **Include affected cross-seeds**: Apply the tag decision to cross-seeds of each matching torrent (torrents with matching ContentPath AND SavePath). A tag added to or removed from one copy reaches every copy. In `full` mode, a copy that still matches keeps the tag on all its cross-seeds, even when a sibling no longer matches. This option is not available with **Use tracker name as tag**, because cross-seeds sit on different trackers.
 
 Behavior reference:
 

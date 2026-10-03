@@ -415,6 +415,7 @@ interface FormScoreRule {
 type TagActionForm = {
   tags: string[]
   mode: "full" | "add" | "remove"
+  includeCrossSeeds: boolean
   deleteFromClient: boolean
   useTrackerAsTag: boolean
   useDisplayName: boolean
@@ -424,6 +425,7 @@ function createDefaultTagAction(): TagActionForm {
   return {
     tags: [],
     mode: "full",
+    includeCrossSeeds: false,
     deleteFromClient: false,
     useTrackerAsTag: false,
     useDisplayName: false,
@@ -1160,6 +1162,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprTagActions = resolvedTagActions.map((action) => ({
               tags: action.tags ?? [],
               mode: action.mode ?? "full",
+              includeCrossSeeds: action.includeCrossSeeds ?? false,
               deleteFromClient: action.deleteFromClient ?? false,
               useTrackerAsTag: action.useTrackerAsTag ?? false,
               useDisplayName: action.useDisplayName ?? false,
@@ -1380,6 +1383,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return true
   }, [t])
 
+  const validateTags = useCallback((state: FormState): boolean => {
+    if (!state.tagEnabled) return true
+    const validationError = validateTagActions(state.exprTagActions, t)
+    if (validationError) {
+      toast.error(validationError)
+      return false
+    }
+    return true
+  }, [t])
+
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
@@ -1508,6 +1521,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           enabled: true,
           tags: action.tags,
           mode: action.mode,
+          includeCrossSeeds: action.includeCrossSeeds,
           deleteFromClient: action.deleteFromClient,
           useTrackerAsTag: action.useTrackerAsTag,
           useDisplayName: action.useDisplayName,
@@ -1650,6 +1664,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
+  const isTagRule = formState.tagEnabled && !formState.deleteEnabled && !formState.categoryEnabled
   const previewCategory = (previewInput?.exprCategory ?? formState.exprCategory) || t("preferences.workflowDialog.uncategorized")
 
   // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
@@ -1824,7 +1840,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const livePreviewPayload = useMemo(() => {
     if (!open) return null
-    if (!(isDeleteRule || isCategoryRule)) return null
+    if (!(isDeleteRule || isCategoryRule || isTagRule)) return null
     if (isDeleteRule && !formState.actionCondition) return null
     if (isCategoryRule && formState.exprCategory === undefined) return null
     if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
@@ -1846,6 +1862,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     hasValidFreeSpaceSourceForLivePreview,
     isCategoryRule,
     isDeleteRule,
+    isTagRule,
     livePreviewPageSize,
     open,
   ])
@@ -1920,13 +1937,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!validateExportTarget(dryRunInput)) {
       return
     }
-    if (dryRunInput.tagEnabled) {
-      const validationError = validateTagActions(dryRunInput.exprTagActions, t)
-      if (validationError) {
-        toast.error(validationError)
-        return
-      }
-    }
+    if (!validateTags(dryRunInput)) return
 
     setLatestDryRunStartedAt(new Date().toISOString())
     setLatestDryRunEvents([])
@@ -1957,11 +1968,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     if (checked && !validateCategory(formState)) return
+    if (checked && !validateTags(formState)) return
     if (checked && !validateExportTarget(formState)) {
       return
     }
 
-    if (checked && (isDeleteRule || isCategoryRule)) {
+    if (checked && (isDeleteRule || isCategoryRule || isTagRule)) {
       const nextState = {
         ...formState,
         enabled: true,
@@ -1981,7 +1993,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, isTagRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource, validateTags])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2172,13 +2184,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
-    if (submitState.tagEnabled) {
-      const validationError = validateTagActions(submitState.exprTagActions, t)
-      if (validationError) {
-        toast.error(validationError)
-        return
-      }
-    }
+    if (!validateTags(submitState)) return
     if (!validateCategory(submitState)) return
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
@@ -2226,6 +2232,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const handleConfirmSave = () => {
     if (!validateCategory(formState)) return
+    if (!validateTags(formState)) return
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
     // Drop any preview still in flight; the user chose to save without it.
@@ -3370,6 +3377,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                           ...item,
                                           useTrackerAsTag: checked,
                                           useDisplayName: checked ? item.useDisplayName : false,
+                                          includeCrossSeeds: checked ? false : item.includeCrossSeeds,
                                           tags: checked ? [] : item.tags,
                                         }
                                       }),
@@ -3411,6 +3419,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
+                                  </div>
+                                )}
+                                {!tagAction.useTrackerAsTag && (
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      id={`include-crossseeds-tag-${index}`}
+                                      checked={tagAction.includeCrossSeeds}
+                                      onCheckedChange={(checked) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, includeCrossSeeds: checked } : item),
+                                      }))}
+                                    />
+                                    <Label htmlFor={`include-crossseeds-tag-${index}`} className="text-sm cursor-pointer whitespace-nowrap">
+                                      {t("preferences.workflowDialog.tag.includeAffectedCrossSeeds")}
+                                    </Label>
                                   </div>
                                 )}
                               </div>
@@ -4228,9 +4251,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           setShowConfirmDialog(open)
         }}
         title={
-          isDeleteRule? (formState.enabled? t("preferences.workflowDialog.preview.confirmDeleteRule"): t("preferences.workflowDialog.preview.previewDeleteRule")): t("preferences.workflowDialog.preview.confirmCategoryChange", {
+          isDeleteRule? (formState.enabled? t("preferences.workflowDialog.preview.confirmDeleteRule"): t("preferences.workflowDialog.preview.previewDeleteRule")): isCategoryRule? t("preferences.workflowDialog.preview.confirmCategoryChange", {
             category: previewCategory,
-          })
+          }): t("preferences.workflowDialog.preview.confirmTagChange")
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (
@@ -4250,7 +4273,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSave")}</p>
                 </>
               )
-            ) : (
+            ) : isCategoryRule ? (
               <>
                 <p>
                   {t("preferences.workflowDialog.preview.categoryPrefix")}{" "}
@@ -4259,6 +4282,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <> {t("preferences.workflowDialog.preview.and")} <strong>{previewResult.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: previewResult.crossSeedCount })}</>
                   ) : null}
                   {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{previewCategory}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
+              </>
+            ) : (
+              <>
+                <p>
+                  {t("preferences.workflowDialog.preview.tagPrefix")}{" "}
+                  <strong>{(previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0) })}
+                  {previewResult.crossSeedCount ? (
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{previewResult.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: previewResult.crossSeedCount })}</>
+                  ) : null}.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
               </>
