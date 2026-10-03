@@ -23,7 +23,7 @@ Hardlink mode is an opt-in cross-seeding strategy. qui creates a hardlinked copy
 - qui must have permission to read the instance content paths and write to the hardlink base directory.
 
 :::tip Multi-filesystem setups
-If your downloads span multiple filesystems (for example `/mnt/disk1` and `/mnt/disk2`), set **multiple base directories** separated by commas. qui selects the first directory that is on the same filesystem as the source files.
+If your downloads span multiple filesystems (for example `/mnt/disk1` and `/mnt/disk2`), set **multiple base directories** separated by commas. qui selects a directory that is on the same filesystem as the source files. When several directories match, qui tries first the directory that shares the longest path prefix with the source files. Some hosts, such as OrbStack on macOS, report one device for several disks. On such a host, if a link fails with a cross-device error, qui tries the next directory.
 
 Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 :::
