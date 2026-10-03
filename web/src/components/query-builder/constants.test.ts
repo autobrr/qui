@@ -68,7 +68,7 @@ describe("query-builder translation keys", () => {
       return options?.defaultValue ?? key
     }) as TFunction
 
-    const fields = Object.keys(constants.CONDITION_FIELDS)
+    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
     for (const field of fields) {
       constants.getFieldLabel(field, recordingT)
     }
@@ -103,7 +103,7 @@ describe("query-builder translation keys", () => {
 
 describe("getFieldLabel", () => {
   it("has no fallback of its own when the key is missing", async () => {
-    const fields = Object.keys(constants.CONDITION_FIELDS)
+    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
     const empty = createInstance()
     await empty.init({ lng: "en", resources: {} })
     expect(fields.map((field) => constants.getFieldLabel(field, empty.t))).toEqual(fields.map((field) => `queryBuilder.fields.${field}`))
@@ -113,13 +113,5 @@ describe("getFieldLabel", () => {
     const withKey = createInstance()
     await withKey.init({ lng: "en", resources: { en: { translation: { queryBuilder: { fields: { SAVE_PATH: "probe-string" } } } } } })
     expect(constants.getFieldLabel("SAVE_PATH", withKey.t)).toBe("probe-string")
-  })
-})
-
-// Field names live in the locale files; an English label here would only duplicate them.
-describe("CONDITION_FIELDS", () => {
-  it("has no label on any field", () => {
-    const labelled = Object.entries(constants.CONDITION_FIELDS).flatMap(([field, def]) => ("label" in def ? [field] : []))
-    expect(labelled).toEqual([])
   })
 })

@@ -7,7 +7,7 @@ import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
 import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
-  CONDITION_FIELDS,
+  CONDITION_FIELD_TYPES,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -308,10 +308,10 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
   "TRACKERS_COUNT",
 ])
 
-const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
 
-const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
