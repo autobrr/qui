@@ -17,6 +17,8 @@ Manage indexers under **Settings > Indexers**.
 
 Click **Discover** to import indexers from Prowlarr or Jackett in one step. Enter the server URL and API key, click **Discover**, and select the indexers to import. qui saves the connection, so future imports from the same server do not ask for the API key again. Click **Add single** to add one indexer by hand.
 
+The indexer timeout controls how long qui waits for its HTTP response (30 seconds by default). Search execution allows at least the longest timeout among the selected indexers. Time spent queued for a scheduler slot or rate limit does not consume this execution budget. A caller cancellation or earlier caller deadline can still end the search sooner.
+
 Each indexer row has actions to test the connection and to sync its capabilities (the categories and search modes the indexer reports).
 
 ## Run a search
