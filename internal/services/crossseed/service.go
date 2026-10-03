@@ -5229,6 +5229,8 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		Success:    true,
 		Status:     "added",
 		Message:    fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", resp.MatchedEpisodes, resp.TotalEpisodes),
+		// Name the assembled pack so run results and notification samples show what was added.
+		MatchedTorrent: &MatchedTorrent{Name: torrentName},
 	}
 	for i := range response.Results {
 		if response.Results[i].InstanceID == resp.InstanceID {
