@@ -665,24 +665,37 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// resolveMovePath returns the path to use for a move. The path is executed as a
-// Go template with data; paths with no template actions are unchanged. sanitize
-// is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
+// resolveMovePath returns the path to use for a move.
 func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	return executePathTemplate(path, pathTemplateData(torrent, state, evalCtx))
+}
+
+// resolveExportSavePath adds .CurrentSavePath, which Move paths lack: a Move built on it moves again every run.
+func resolveExportSavePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	data := pathTemplateData(torrent, state, evalCtx)
+	data["CurrentSavePath"] = torrent.SavePath
+	return executePathTemplate(path, data)
+}
+
+func pathTemplateData(torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) map[string]any {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
 
-	data := map[string]any{
+	return map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"SavePath":            torrent.SavePath,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
+}
 
+// executePathTemplate executes path as a Go template with data; paths with no
+// template actions are unchanged. sanitize is available in templates for safe
+// path segments (e.g. {{ sanitize .Name }}).
+func executePathTemplate(path string, data map[string]any) (resolved string, ok bool) {
 	tmpl, err := template.New("movePath").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
