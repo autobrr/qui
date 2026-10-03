@@ -116,6 +116,30 @@ func TestOrphanScan_RoutesAdmitLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
+func TestOrphanScan_RoutesAnswerNotFoundForUnknownInstance(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "orphan-scan-unknown-instance")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	router := newOrphanScanRouter(NewOrphanScanHandler(models.NewOrphanScanStore(db), instances, nil))
+
+	for _, route := range []struct{ method, path, body string }{
+		{http.MethodGet, "/settings", ""},
+		{http.MethodPut, "/settings", "{}"},
+		{http.MethodPost, "/scan", ""},
+		{http.MethodGet, "/runs", ""},
+		{http.MethodGet, "/runs/999", ""},
+		{http.MethodPost, "/runs/999/confirm", ""},
+		{http.MethodDelete, "/runs/999", ""},
+	} {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), route.method, "/api/instances/404/orphan-scan"+route.path, strings.NewReader(route.body)))
+			require.Equal(t, http.StatusNotFound, resp.Code, resp.Body.String())
+			require.JSONEq(t, `{"error":"Instance not found"}`, resp.Body.String())
+		})
+	}
+}
+
 func TestOrphanScan_ConfirmConflictsNameTheirReason(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "orphan-scan-confirm-conflicts")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
