@@ -16,7 +16,7 @@ Repo rules for AI agents working on qui.
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
 - User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
-- Docker/compose/release files: repo root
+- Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
 
