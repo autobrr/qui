@@ -91,9 +91,9 @@ jobs:
           sqlite3 "$SQLITE_DB" <<'SQL'
           PRAGMA foreign_keys = OFF;
           INSERT OR IGNORE INTO cross_seed_feed_items (
-            guid, indexer_id, title, first_seen_at, last_seen_at, last_status, last_run_id, info_hash
+            guid, indexer_id, title, first_seen_at, last_seen_at, last_status, info_hash
           ) VALUES (
-            'ci-orphan-guid', 999999, 'orphan row', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'pending', NULL, NULL
+            'ci-orphan-guid', 999999, 'orphan row', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'pending', NULL
           );
           SQL
 
@@ -197,8 +197,7 @@ jobs:
               expected_count="$(sqlite3 "$SQLITE_DB" "
                 SELECT COUNT(*)
                 FROM cross_seed_feed_items f
-                WHERE EXISTS (SELECT 1 FROM torznab_indexers i WHERE i.id = f.indexer_id)
-                  AND (f.last_run_id IS NULL OR EXISTS (SELECT 1 FROM cross_seed_runs r WHERE r.id = f.last_run_id));
+                WHERE EXISTS (SELECT 1 FROM torznab_indexers i WHERE i.id = f.indexer_id);
               ")"
               orphan_indexer_count="$(sqlite3 "$SQLITE_DB" "
                 SELECT COUNT(*)
@@ -206,19 +205,12 @@ jobs:
                 LEFT JOIN torznab_indexers i ON i.id = f.indexer_id
                 WHERE i.id IS NULL;
               ")"
-              orphan_run_count="$(sqlite3 "$SQLITE_DB" "
-                SELECT COUNT(*)
-                FROM cross_seed_feed_items f
-                LEFT JOIN cross_seed_runs r ON r.id = f.last_run_id
-                WHERE f.last_run_id IS NOT NULL AND r.id IS NULL;
-              ")"
 
               {
                 echo "cross_seed_feed_items sqlite_count=$sqlite_count"
                 echo "cross_seed_feed_items postgres_count=$pg_count"
                 echo "cross_seed_feed_items expected_count=$expected_count"
                 echo "cross_seed_feed_items orphan_indexer_count=$orphan_indexer_count"
-                echo "cross_seed_feed_items orphan_run_count=$orphan_run_count"
               } | tee "$DIAG_CROSSSEED"
 
               if [ "$pg_count" != "$expected_count" ]; then

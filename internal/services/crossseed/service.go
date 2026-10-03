@@ -3828,7 +3828,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.TotalFeedItems++
 
 		if alreadyHandled && lastStatus == models.CrossSeedFeedItemStatusProcessed {
-			s.markFeedItem(ctx, result, lastStatus, lastStatus, run.ID, nil)
+			s.markFeedItem(ctx, result, lastStatus, lastStatus, nil)
 			continue
 		}
 
@@ -3841,7 +3841,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		}
 
 		processed++
-		s.markFeedItem(ctx, result, lastStatus, status, run.ID, infoHash)
+		s.markFeedItem(ctx, result, lastStatus, status, infoHash)
 	}
 
 	completed := time.Now().UTC()
@@ -4234,7 +4234,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 // or pending when the item has no row. Skipped and failed items are retried
 // on every poll, so an unchanged outcome only refreshes last_seen_at: the
 // full upsert would rewrite and lock every feed row on every poll.
-func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, previous, status models.CrossSeedFeedItemStatus, runID int64, infoHash *string) {
+func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, previous, status models.CrossSeedFeedItemStatus, infoHash *string) {
 	if s.automationStore == nil {
 		return
 	}
@@ -4246,17 +4246,11 @@ func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult,
 		return
 	}
 
-	var runPtr *int64
-	if runID > 0 {
-		runPtr = &runID
-	}
-
 	item := &models.CrossSeedFeedItem{
 		GUID:       result.GUID,
 		IndexerID:  result.IndexerID,
 		Title:      result.Title,
 		LastStatus: status,
-		LastRunID:  runPtr,
 		InfoHash:   infoHash,
 	}
 
