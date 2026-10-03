@@ -18,9 +18,11 @@ import (
 // fakeInstanceStore implements instanceGetter for tests.
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
+	gets      int
 }
 
 func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	s.gets++
 	inst, ok := s.instances[id]
 	if !ok {
 		return nil, nil
@@ -35,6 +37,7 @@ func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
 	return &LstatInfo{}, nil
 }
 func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
+func (f fakeBackend) Paths() PathDialect                                { return HostPaths }
 func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
 	return nil, nil
 }
@@ -60,12 +63,16 @@ func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, err
 	return false, "", nil
 }
 
+func remoteFactory(backend Backend) func(*models.Instance) Backend {
+	return func(*models.Instance) Backend { return backend }
+}
+
 func TestPool_LocalAccess(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
 		1: {ID: 1, HasLocalFilesystemAccess: true},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local)
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 1)
 	require.NoError(t, err)
@@ -77,7 +84,7 @@ func TestPool_NoAccess(t *testing.T) {
 		2: {ID: 2, HasLocalFilesystemAccess: false},
 	}}
 	local := fakeBackend{kind: "local"}
-	pool := NewPool(store, local)
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
 
 	backend, err := pool.GetBackend(context.Background(), 2)
 	require.NoError(t, err)
@@ -90,20 +97,129 @@ func TestPool_NoAccess(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 }
 
-func TestPool_RemoteNotImplemented(t *testing.T) {
+func TestPool_RemoteAccess(t *testing.T) {
+	remote := fakeBackend{kind: "remote"}
+	instance := &models.Instance{ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{3: instance}}
+
+	var got *models.Instance
+	pool := NewPoolWithRemote(store, fakeBackend{kind: "local"}, func(inst *models.Instance) Backend {
+		got = inst
+		return remote
+	})
+
+	backend, err := pool.GetBackend(context.Background(), 3)
+	require.NoError(t, err)
+	assert.Equal(t, Backend(remote), backend)
+	// The factory gets the loaded row, not just the id: the remote backend
+	// dials from the instance's own SSH columns.
+	assert.Same(t, instance, got)
+}
+
+func TestPool_RemoteInstanceWithoutFactoryFailsLoudly(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
-		3: {ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
 	}}
 	pool := NewPool(store, fakeBackend{kind: "local"})
 
 	backend, err := pool.GetBackend(context.Background(), 3)
-	require.ErrorIs(t, err, ErrRemoteBackendNotImplemented)
+	require.ErrorIs(t, err, ErrRemoteBackendNotWired, "a pool without a remote factory must not pass a remote instance off as unconfigured")
 	assert.Nil(t, backend)
+}
+
+func TestPool_ResolveReturnsTheModeItRoutedBy(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	remote := fakeBackend{kind: "remote"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPoolWithRemote(store, local, remoteFactory(remote))
+
+	for _, tc := range []struct {
+		id          int
+		wantMode    models.FilesystemMode
+		wantBackend Backend
+	}{
+		{1, models.FilesystemModeLocal, local},
+		{2, models.FilesystemModeNone, noopBackend{}},
+		{3, models.FilesystemModeRemote, remote},
+	} {
+		backend, mode, err := pool.Resolve(context.Background(), tc.id)
+		require.NoError(t, err)
+		assert.Equal(t, tc.wantMode, mode, "instance %d", tc.id)
+		assert.Equal(t, tc.wantBackend, backend, "instance %d", tc.id)
+	}
+}
+
+func TestPool_LocalBackendRefusesEveryOtherMode(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+
+	backend, err := pool.LocalBackend(context.Background(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, local, backend)
+
+	for _, id := range []int{2, 3} {
+		backend, err := pool.LocalBackend(context.Background(), id)
+		require.ErrorIs(t, err, ErrNotLocal, "instance %d", id)
+		assert.Nil(t, backend, "instance %d", id)
+	}
+}
+
+func TestPool_RequireGrantsByMode(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	remote := fakeBackend{kind: "remote"}
+	instances := map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}
+
+	for _, tc := range []struct {
+		id          int
+		capability  models.FilesystemCapability
+		wantBackend Backend
+	}{
+		{1, models.CapabilityRead, local},
+		{1, models.CapabilityIdentity, local},
+		{1, models.CapabilityWrite, local},
+		{1, models.CapabilityContent, local},
+		{2, models.CapabilityRead, nil},
+		{2, models.CapabilityIdentity, nil},
+		{2, models.CapabilityWrite, nil},
+		{2, models.CapabilityContent, nil},
+		{3, models.CapabilityRead, remote},
+		{3, models.CapabilityIdentity, nil},
+		{3, models.CapabilityWrite, nil},
+		{3, models.CapabilityContent, nil},
+	} {
+		store := &fakeInstanceStore{instances: instances}
+		pool := NewPoolWithRemote(store, local, remoteFactory(remote))
+
+		backend, instance, err := pool.Require(t.Context(), tc.id, tc.capability)
+		assert.Equal(t, 1, store.gets, "instance %d %s", tc.id, tc.capability)
+		if tc.wantBackend == nil {
+			require.ErrorIs(t, err, ErrNotCapable, "instance %d %s", tc.id, tc.capability)
+			assert.Nil(t, backend)
+			assert.Nil(t, instance)
+			continue
+		}
+		require.NoError(t, err, "instance %d %s", tc.id, tc.capability)
+		assert.Equal(t, tc.wantBackend, backend, "instance %d %s", tc.id, tc.capability)
+		assert.Same(t, instances[tc.id], instance, "instance %d %s", tc.id, tc.capability)
+	}
 }
 
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
-	pool := NewPool(store, fakeBackend{})
+	pool := NewPoolWithRemote(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))
 
 	_, err := pool.GetBackend(context.Background(), 999)
 	require.Error(t, err)

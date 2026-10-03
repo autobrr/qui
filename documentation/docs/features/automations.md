@@ -170,7 +170,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 
 | Field | Description |
 | --- | --- |
-| Content Type | Derived from release name parsing (useful for grouping, can be empty) |
+| Content Type | Derived from release name parsing (useful for grouping): `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, or `unknown`. `book` also covers magazines; courses are `unknown` |
 | Effective Name | Normalized title derived from release parsing (useful for grouping, can be empty) |
 | Release Source | Parsed release specifier (for example `WEBDL`, `WEBRIP`, `BLURAY`, can be empty) |
 | Release Resolution | Parsed release specifier (for example `1080p`, can be empty) |
@@ -655,11 +655,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By category: `/data/{{.Category}}` → for example `/data/movies`
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
-- By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
-
-:::note
-If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
-:::
+- By tracker: `/data/{{.Tracker}}`
 
 ### Auto management
 
@@ -861,7 +857,6 @@ Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUA
 {
   "name": "Remove Upgraded Torrents",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "delete": {
@@ -969,7 +964,6 @@ If torrents have no media library hardlinks, this rule tags them with `noHL`, ev
 {
   "name": "Tag noHL (multi-instance)",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1025,7 +1019,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Season pack",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1039,7 +1032,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Packed episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1053,7 +1045,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Unpacked episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1160,12 +1151,24 @@ Path on server requires "Local Filesystem Access" enabled on the instance.
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-qui does not support Path on server on Windows, and Free Space always uses qBittorrent's reported free space there. The UI disables the option and switches legacy workflows back to the default when you open them.
+qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching
 
 qui groups torrents by action value and sends them to qBittorrent in batches of up to 50 hashes per API call.
+
+## Rules as JSON
+
+A rule can move as JSON. The rule menu has two entries, and the **Import** button sits above the rule list:
+
+- **Export JSON** copies the rule to the clipboard.
+- **Edit as JSON** opens the rule's JSON in an editor. Save updates the rule in place. The rule keeps its enabled state and its position in the list.
+- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list.
+
+The JSON carries the name, the tracker fields, the conditions, the sorting config, the free space source, the interval, dry-run, and notify. It does not carry the id, the instance id, the enabled state, or the sort order. The export omits `intervalSeconds` at the default 15 minutes, `dryRun` when off, and `notify` when on; when you remove one of these keys, the rule goes back to that default.
+
+The editor highlights the JSON and underlines syntax errors as you type. Save runs the same checks as Import. When qui rejects the JSON, the editor stays open with your text.
 
 ## Activity log
 

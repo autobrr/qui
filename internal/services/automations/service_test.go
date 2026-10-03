@@ -363,7 +363,7 @@ func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
 	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
 }
 
-func TestRulesUseTrackerEntryData(t *testing.T) {
+func TestNeedsForTrackerEntries(t *testing.T) {
 	deleteRule := func(cond *models.RuleCondition) *models.Automation {
 		return &models.Automation{
 			Enabled: true,
@@ -401,7 +401,69 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, rulesUseTrackerEntryData(tt.rules))
+			require.Equal(t, tt.want, NeedsFor(tt.rules).TrackerEntries)
+		})
+	}
+}
+
+func TestNeedsForTrackerNames(t *testing.T) {
+	rule := func(ac *models.ActionConditions) *models.Automation {
+		return &models.Automation{Enabled: true, Conditions: ac}
+	}
+
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "display-name tag action",
+			rule: rule(&models.ActionConditions{Tag: &models.TagAction{Enabled: true, UseTrackerAsTag: true, UseDisplayName: true}}),
+			want: true,
+		},
+		{
+			name: "move path uses Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}),
+			want: true,
+		},
+		{
+			name: "export save path uses Tracker",
+			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
+			want: true,
+		},
+		{
+			name: "move path uses index Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: `/data/{{ index . "Tracker" }}`}}),
+			want: true,
+		},
+		{
+			name: "disabled move path uses Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Path: "/data/{{.Tracker}}"}}),
+			want: false,
+		},
+		{
+			name: "disabled export save path uses Tracker",
+			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{SavePath: "/data/{{.Tracker}}"}}),
+			want: false,
+		},
+		{
+			name: "paths without Tracker",
+			rule: rule(&models.ActionConditions{
+				Move:             &models.MoveAction{Enabled: true, Path: "/data/{{.Category}}"},
+				ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{.IsolationFolderName}}"},
+			}),
+			want: false,
+		},
+		{
+			name: "disabled rule",
+			rule: &models.Automation{Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NeedsFor([]*models.Automation{tt.rule}).TrackerNames)
 		})
 	}
 }

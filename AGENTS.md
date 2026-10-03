@@ -15,7 +15,7 @@ Repo rules for AI agents working on qui.
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
-- User docs: `documentation/docs/`; internal notes: `docs/`
+- User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
@@ -47,8 +47,8 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 
 ## Lint / Format
 
-- `make precommit` = fmt + gofix changed files + lint changed files.
-- `make lint` = changed files only.
+- `make precommit` = fmt + gofix on changed files, then `make lint`.
+- `make lint` = golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`.
 - `make lint-json` writes `lint-report.json`.
 - `make fmt` = gofmt + frontend eslint fix on changed files.
 - Avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested.
@@ -74,6 +74,7 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
+- A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 
 ## Comments
 
@@ -96,7 +97,7 @@ qui must work on Windows and Unix-like hosts.
 
 ## Frontend
 
-Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `web/`, i18n, React components, or frontend tests.
+Frontend-specific rules live in `web/AGENTS.md`. Read that file before you edit, spec, or review a change to `web/`, i18n, React components, or frontend tests.
 
 ## API / Database
 
@@ -112,7 +113,6 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end-to-end work first, then UI. A dependency in another repo is its own PR there.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
@@ -121,7 +121,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
   - No tracker URL that carries a path, query, or key: torrent pages, announce URLs, passkeys, `.torrent` links. Bare hostnames and tracker names stay allowed; the code and docs use them.
   - No release name copied word for word from a user report or a torrent client. Build an equivalent name: keep each token that matters, change the title and the group. Make sure the new name still causes the bug before you publish it.
   - Naming a work in prose, or building a name from a real title and group tag, is allowed. The rule is about strings copied from someone's client, not about which words you use.
-  - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; `docs/` is committed and counts as published.
+  - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; tracked files under `docs/` count as published.
   - New test fixtures and code comments use names built by the rule above. Do not sweep the existing ones.
   - Screenshots: capture from an instance you fill with synthetic torrents. If the bug shows only on a real library, blur the name, tracker, and save path columns.
 

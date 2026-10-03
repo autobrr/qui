@@ -26,7 +26,7 @@ Frontend and i18n rules for work under `web/`.
   - **Nothing auto-cleans the DOM or mocks.** Add `afterEach(cleanup)` in files where more than one test renders, and call `cleanup()` or `unmount()` yourself between two `render` calls inside the same test. Add `afterEach(() => vi.restoreAllMocks())` when a test spies on a global such as `Storage.prototype.setItem`. RTL registers its own cleanup only when a global `afterEach` exists, and `globals: false` removes it; `restoreMocks` is not set either. Without this a second `render` leaves the first in the DOM and `getBy*` throws "Found multiple elements".
   - No jest-dom matchers (`toBeInTheDocument`, `toHaveTextContent`, …) — assert plain DOM: `el.textContent`, `el.getAttribute(...)`, `expect(node).toBeNull()`.
   - When mounting components with effects, mock their boundaries (`@/lib/api`, router, context providers, `useVirtualizer`, query hooks) and return a **stable singleton** from each mock — fresh objects per render loop effects and OOM the worker. Use `vi.hoisted()` for values referenced inside `vi.mock` factories.
-- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI runs the full suite via `make test-frontend`.
+- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI gates for `web/`: `lint.yml` runs eslint on changed files and `pnpm check:i18n`; `release.yml` runs `pnpm test`, `pnpm tsc --noEmit`, and the build.
 
 ## React Effects
 
@@ -39,7 +39,7 @@ Frontend and i18n rules for work under `web/`.
 
 ## i18n
 
-Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
+11 locales live under `web/src/i18n/locales/<lang>/`, each with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
@@ -48,6 +48,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 ## i18n Commands
 
 - `pnpm check:i18n`
+- `pnpm check:i18n:plural-keys`
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:unused`
@@ -64,13 +65,17 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
 
-`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
+`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key in a literal `t("…")` call or a `labelKey`, `titleKey`, `placeholderKey`, or `descriptionKey` string exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. When it flags a key, delete the key from every locale in the same change, or teach the scanner to see the reference if the UI does use it.
+
+A data-only file that holds key properties but never calls `useTranslation` names its namespace with a `// i18n-namespace: <ns>` comment after its imports. A key written as `"ns:key"` names its own namespace and needs no directive: `resolveNamespaceAndKey` in `web/scripts/check-i18n-keys-lib.mjs` splits it.
+
+No UI text names SSH until #2917 ships. Read rollout step 4 in `docs/remote-backend-design.md` before you add remote-instance text.
 
 ## Adding Languages
 
 1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
+3. Add the locale to `localeRules` in `scripts/check-locale-coverage.mjs`, writing its plural categories by hand rather than from CLDR.
 4. Run `pnpm check:i18n`.
 5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
 
@@ -78,11 +83,19 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 ## Translation Rules
 
-- **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) directly into JSX.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`.
+- **Never hardcode user-facing text or raw backend values (e.g. `run.status`), in JSX or in the option tables JSX renders.** Create an `i18n` key in the relevant namespace and render it with `t()`.
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
-- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` also needs `_few` (2-4) and `uk` needs `_few` and `_many`, or i18next renders the raw key at those counts. The pre-v4 `_plural` suffix no longer resolves — never add one.
+- Plurals use the i18next v4 CLDR suffixes:
+  - English needs `_one` and `_other`.
+  - Chinese and Korean take `_other` alone.
+  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and no count reaches one: item counts are whole numbers, and relative-time counts are floored in `src/lib/dateTimeUtils.ts`.
+  - `uk` needs `_one`, `_few`, `_many` and `_other`.
+- A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
+- An unsuffixed base key beside the suffixed ones answers every category the locale omits, with one string. Use it only for text that does not change with the count. The base key also hides a missing form from `pnpm check:i18n`, so `cs` or `uk` can show the wrong form, for example "2 trackerů". A base key must exist in English and in every locale, or the missing-keys and extra-keys checks reject it.
+- Never add the pre-v4 `_plural` suffix. i18next does not resolve it in any locale.
+- `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` asks i18next whether each locale can resolve every plural base at nine counts, and fails on the ones it cannot, since the app serves English for those.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
 

@@ -29,3 +29,55 @@ func FilesystemAccessMode(inst *Instance) FilesystemMode {
 	}
 	return FilesystemModeNone
 }
+
+// FilesystemCapability names one thing qui can do with an instance's files.
+type FilesystemCapability string
+
+const (
+	// CapabilityRead is listing, stat, and walking paths.
+	CapabilityRead FilesystemCapability = "read"
+	// CapabilityIdentity is trusting a file's identity (device and inode) to
+	// find hardlinks. Only a kernel-attested identity counts.
+	CapabilityIdentity FilesystemCapability = "identity"
+	// CapabilityWrite is creating and removing link trees.
+	CapabilityWrite FilesystemCapability = "write"
+	// CapabilityContent is reading file bytes.
+	CapabilityContent FilesystemCapability = "content"
+)
+
+// FilesystemCapabilities is what qui can do with one instance's files.
+type FilesystemCapabilities struct {
+	Read     bool `json:"read"`
+	Identity bool `json:"identity"`
+	Write    bool `json:"write"`
+	Content  bool `json:"content"`
+}
+
+func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
+	switch capability {
+	case CapabilityRead:
+		return c.Read
+	case CapabilityIdentity:
+		return c.Identity
+	case CapabilityWrite:
+		return c.Write
+	case CapabilityContent:
+		return c.Content
+	}
+	return false
+}
+
+// FilesystemCapabilitiesOf is the one place that maps an instance's
+// filesystem mode to what qui may do with its files. A remote instance gets
+// Write with #2942, once the SFTP writes from #2725 are in, and Identity with
+// the exec tier (#2726).
+func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
+	switch FilesystemAccessMode(inst) {
+	case FilesystemModeLocal:
+		return FilesystemCapabilities{Read: true, Identity: true, Write: true, Content: true}
+	case FilesystemModeRemote:
+		return FilesystemCapabilities{Read: true}
+	case FilesystemModeNone:
+	}
+	return FilesystemCapabilities{}
+}

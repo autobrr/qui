@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -45,13 +47,11 @@ type CategoryMappingRule struct {
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
 	// RSS Automation settings
-	Enabled            bool    `json:"enabled"`            // Enable/disable RSS automation
-	RunIntervalMinutes int     `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
-	StartPaused        bool    `json:"startPaused"`        // RSS: start added torrents paused
-	Category           *string `json:"category,omitempty"` // RSS: category for added torrents
-	TargetInstanceIDs  []int   `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int   `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int     `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	Enabled            bool  `json:"enabled"`            // Enable/disable RSS automation
+	RunIntervalMinutes int   `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
+	TargetInstanceIDs  []int `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
+	TargetIndexerIDs   []int `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
+	MaxResultsPerRun   int   `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
 	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
 	// Empty arrays mean "all" (no filtering).
@@ -148,8 +148,6 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	return &CrossSeedAutomationSettings{
 		Enabled:            false, // RSS automation disabled by default
 		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
-		StartPaused:        true,
-		Category:           nil,
 		TargetInstanceIDs:  []int{},
 		TargetIndexerIDs:   []int{},
 		MaxResultsPerRun:   50,
@@ -409,8 +407,13 @@ func (s *CrossSeedStore) RewriteLegacyCredentials(ctx context.Context) (int, err
 	})
 }
 
+// apiKeyRedacted reports a stored secret as set only when qui can decrypt it.
+// The code that uses the secret reports the decrypt failure, so this path stays quiet.
 func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 	if strings.TrimSpace(encrypted) == "" {
+		return ""
+	}
+	if _, err := s.decrypt(encrypted); err != nil {
 		return ""
 	}
 	return domain.RedactedStr
@@ -419,7 +422,7 @@ func (s *CrossSeedStore) apiKeyRedacted(encrypted string) string {
 // GetSettings returns the current automation settings or defaults.
 func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationSettings, error) {
 	query := `
-		SELECT enabled, run_interval_minutes, start_paused, category,
+		SELECT enabled, run_interval_minutes,
 		       target_instance_ids, target_indexer_ids,
 		       max_results_per_run,
 		       rss_source_categories, rss_source_tags,
@@ -452,13 +455,12 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	row := s.db.QueryRowContext(ctx, query)
 
 	var settings CrossSeedAutomationSettings
-	var category sql.NullString
 	var instancesJSON, indexersJSON sql.NullString
 	var rssSourceCategories, rssSourceTags, rssSourceExcludeCategories, rssSourceExcludeTags sql.NullString
 	var webhookSourceCategories, webhookSourceTags, webhookSourceExcludeCategories, webhookSourceExcludeTags sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
-	var enabled, startPaused int
+	var enabled int
 	var findIndividualEpisodes, useCategoryFromIndexer int
 	var pooledPartialCompletionEnabled int
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
@@ -478,8 +480,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	err := row.Scan(
 		&enabled,
 		&settings.RunIntervalMinutes,
-		&startPaused,
-		&category,
 		&instancesJSON,
 		&indexersJSON,
 		&settings.MaxResultsPerRun,
@@ -537,10 +537,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 			return DefaultCrossSeedAutomationSettings(), nil
 		}
 		return nil, fmt.Errorf("query settings: %w", err)
-	}
-
-	if category.Valid {
-		settings.Category = &category.String
 	}
 
 	if runExternalProgramID.Valid {
@@ -624,7 +620,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	}
 
 	settings.Enabled = SQLiteIntToBool(enabled)
-	settings.StartPaused = SQLiteIntToBool(startPaused)
 	settings.FindIndividualEpisodes = SQLiteIntToBool(findIndividualEpisodes)
 	settings.PooledPartialCompletionEnabled = SQLiteIntToBool(pooledPartialCompletionEnabled)
 	settings.UseCategoryFromIndexer = SQLiteIntToBool(useCategoryFromIndexer)
@@ -719,9 +714,10 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 		}
 	}
 	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {
-		pin, err = s.decrypt(pinEnc.String)
-		if err != nil {
-			return "", "", fmt.Errorf("decrypt tvdb pin: %w", err)
+		// The UI cannot clear a PIN it shows as unset, so a stale PIN must not block a new key.
+		if pin, err = s.decrypt(pinEnc.String); err != nil {
+			log.Warn().Err(err).Msg("Ignoring the stored TVDB PIN: it does not decrypt, most likely because sessionSecret changed")
+			pin = ""
 		}
 	}
 	return apiKey, pin, nil
@@ -926,7 +922,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 
 	query := `
 		INSERT INTO cross_seed_settings (
-			id, enabled, run_interval_minutes, start_paused, category,
+			id, enabled, run_interval_minutes,
 			target_instance_ids, target_indexer_ids,
 			max_results_per_run,
 			rss_source_categories, rss_source_tags,
@@ -952,13 +948,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
 			run_interval_minutes = excluded.run_interval_minutes,
-			start_paused = excluded.start_paused,
-			category = excluded.category,
 			target_instance_ids = excluded.target_instance_ids,
 			target_indexer_ids = excluded.target_indexer_ids,
 			max_results_per_run = excluded.max_results_per_run,
@@ -1016,17 +1010,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		runExternalProgramID = *settings.RunExternalProgramID
 	}
 
-	var category any
-	if settings.Category != nil {
-		category = *settings.Category
-	}
-
 	_, err = s.db.ExecContext(ctx, query,
 		1,
 		BoolToSQLite(settings.Enabled),
 		settings.RunIntervalMinutes,
-		BoolToSQLite(settings.StartPaused),
-		category,
 		instanceJSON,
 		indexerJSON,
 		settings.MaxResultsPerRun,

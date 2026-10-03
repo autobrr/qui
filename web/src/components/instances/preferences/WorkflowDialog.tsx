@@ -310,11 +310,9 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
 
 const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for simple sorting" }))
 
 const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for score multipliers" }))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
   return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
@@ -656,9 +654,23 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
+// Kept out of the locale strings: i18next would treat "{{ }}" as interpolation.
+const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
+
+const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
+const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
+
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
+  const simpleSortDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
+    return SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
+  const scoreMultiplierDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForScoreMultiplier")
+    return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
@@ -746,17 +758,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
-  const hasLocalFilesystemAccess = useMemo(
-    () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
-    [instances, instanceId]
-  )
+  const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
+  const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  // A Windows host refuses the path source only for an instance it reads locally.
+  const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
+  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
       trackerHealth: supportsTrackerHealth,
       localFilesystemAccess: hasLocalFilesystemAccess,
+      fileIdentity: hasFileIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess]
+    [supportsTrackerHealth, hasLocalFilesystemAccess, hasFileIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -776,6 +791,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     inputRef: freeSpacePathInputRef,
     listRef: freeSpaceListRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
+
+  const pathTemplateHelp = (docsUrl: string) => (
+    <>
+      {t("preferences.workflowDialog.templateHelp.absolutePath")}{" "}
+      <code className="whitespace-nowrap">{PATH_TEMPLATE_EXAMPLE}</code>
+      <br />
+      {t("preferences.workflowDialog.templateHelp.intro")}{" "}
+      <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+        {t("preferences.workflowDialog.templateHelp.learnMore")}
+      </a>
+    </>
+  )
 
   // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
   const dropdownContainerRef = useRef<HTMLDivElement>(null)
@@ -1303,17 +1330,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds, t])
 
-  // Auto-switch free space source from "path" to "qbittorrent" on Windows (not supported)
+  // Auto-switch free space source from "path" to "qbittorrent" on a Windows host with local access.
   // This must run during hydration to handle legacy workflows opened on Windows.
   // Only toast after hydration to avoid noise when opening dialogs.
   useEffect(() => {
-    if (!supportsFreeSpacePathSource && formState.exprFreeSpaceSourceType === "path") {
+    if (pathSourceWindowsBlocked && formState.exprFreeSpaceSourceType === "path") {
       setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
       if (!isHydrating.current) {
         toast.warning(t("preferences.workflowDialog.toast.pathSourceUnsupportedWindows"))
       }
     }
-  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType, t])
+  }, [pathSourceWindowsBlocked, formState.exprFreeSpaceSourceType, t])
 
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
@@ -1323,12 +1350,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // Reject if path source is selected but not supported (safety net for edge cases)
-    if (!supportsFreeSpacePathSource) {
+    if (pathSourceWindowsBlocked) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.unsupportedWindows"))
       toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
       return false
     }
-    if (!hasLocalFilesystemAccess) {
+    if (!pathSourceAvailable) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
       toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
       return false
@@ -1343,7 +1370,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
+  }, [pathSourceAvailable, pathSourceWindowsBlocked, t])
 
   const validateCategory = useCallback((state: FormState): boolean => {
     if (state.categoryEnabled && state.exprCategory === undefined) {
@@ -1358,11 +1385,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       return true
     }
-    if (!supportsFreeSpacePathSource || !hasLocalFilesystemAccess) {
+    if (!pathSourceAvailable) {
       return false
     }
     return state.exprFreeSpaceSourcePath.trim() !== ""
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+  }, [pathSourceAvailable])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
@@ -1608,7 +1635,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return {
       name: input.name,
-      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
       trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
@@ -2339,7 +2365,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <FieldCombobox
                       value={formState.simpleSortField}
                       onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
-                      disabledFields={SIMPLE_SORT_DISABLED_FIELDS}
+                      disabledFields={simpleSortDisabledFields}
                     />
                     <div className="flex items-center border rounded-md">
                       <Button
@@ -2430,7 +2456,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
                               }}
-                              disabledFields={SCORE_MULTIPLIER_DISABLED_FIELDS}
+                              disabledFields={scoreMultiplierDisabledFields}
                             />
 
                             <span className="text-sm text-muted-foreground">x</span>
@@ -3599,7 +3625,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <Label className="text-xs">
                             {t("preferences.workflowDialog.export.savePathLabel")}
                             <FieldHelp>
-                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
+                              {t("preferences.workflowDialog.export.savePathHelp")} {pathTemplateHelp(EXPORT_PATH_DOCS_URL)}
                             </FieldHelp>
                           </Label>
                           <Input
@@ -3773,16 +3799,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       type="checkbox"
                                       checked={formState.exprIncludeHardlinks}
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      disabled={!hasLocalFilesystemAccess}
+                                      disabled={!hasFileIdentity}
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
-                                    <span className={!hasLocalFilesystemAccess ? "opacity-50" : ""}>
+                                    <span className={!hasFileIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasLocalFilesystemAccess ? (
+                                  {hasFileIdentity ? (
                                     <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
                                   ) : (
                                     <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
@@ -3810,7 +3836,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.move.newSavePath")}</Label>
+                          <Label className="text-xs">
+                            {t("preferences.workflowDialog.move.newSavePath")}
+                            <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
+                          </Label>
                           <Input
                             type="text"
                             value={formState.exprMovePath}
@@ -3897,12 +3926,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
-                        <SelectItem value="path" disabled={!hasLocalFilesystemAccess || !supportsFreeSpacePathSource}>
-                          {!supportsFreeSpacePathSource? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !hasLocalFilesystemAccess? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
+                        <SelectItem value="path" disabled={!pathSourceAvailable}>
+                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    {formState.exprFreeSpaceSourceType === "path" && supportsFreeSpacePathSource && (
+                    {formState.exprFreeSpaceSourceType === "path" && !pathSourceWindowsBlocked && (
                       <div className="flex flex-col gap-1">
                         <div className="relative">
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />

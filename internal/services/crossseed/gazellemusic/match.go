@@ -5,6 +5,7 @@ package gazellemusic
 
 import (
 	"context"
+	"errors"
 	"math"
 	"path"
 	"path/filepath"
@@ -63,6 +64,9 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 		}
 
 		results, err := c.SearchByFilename(ctx, query)
+		if errors.Is(err, ErrAccessDenied) {
+			return nil, err
+		}
 		if err != nil {
 			lookupErr = err
 			continue
@@ -95,6 +99,9 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 			}
 
 			torrentResp, err := c.GetTorrent(ctx, r.TorrentID)
+			if errors.Is(err, ErrAccessDenied) {
+				return nil, err
+			}
 			if err != nil {
 				lookupErr = err
 				continue

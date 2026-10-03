@@ -66,8 +66,11 @@ type EvalContext struct {
 	HasMissingFilesByHash map[string]bool
 	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
 	HasSkippedFilesByHash map[string]bool
-	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
+	// InstanceHasLocalAccess gates the missing-files field. #2933 lifts it to Read.
 	InstanceHasLocalAccess bool
+	// InstanceHasFileIdentity gates the hardlink fields, apart from
+	// InstanceHasLocalAccess so a remote instance never reads them as known.
+	InstanceHasFileIdentity bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
@@ -384,30 +387,9 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 	return result, true
 }
 
-func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
-	switch field {
-	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles:
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-	case FieldSeasonPackStatus:
-		return ctx != nil && ctx.SeasonPackSet != nil
-	case FieldSeasonPackStatusAnyInstance:
-		return ctx != nil && ctx.SeasonPackSetAnyInstance != nil
-	default:
-		return true
-	}
-
-	var known bool
-	switch field {
-	case FieldHardlinkScope:
-		_, known = ctx.HardlinkScopeByHash[hash]
-	case FieldHardlinkScopeCross:
-		_, known = ctx.HardlinkCrossScopeByHash[hash]
-	case FieldHasMissingFiles:
-		_, known = ctx.HasMissingFilesByHash[hash]
-	}
-	return known
+func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
+	ctx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
+	ctx.InstanceHasFileIdentity = models.FilesystemCapabilitiesOf(instance).Identity
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.

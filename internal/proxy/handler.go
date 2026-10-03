@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
@@ -122,8 +121,15 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
+	// Fallback when an instance has no client transport. Tuned from autobrr's sharedhttp.Transport.
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.MaxIdleConnsPerHost = 10
+	baseTransport.ResponseHeaderTimeout = 120 * time.Second
+	baseTransport.ReadBufferSize = 64 << 10
+	baseTransport.WriteBufferSize = 64 << 10
+
 	// Configure the reverse proxy with retry logic for transient network errors
-	retryTransport := NewRetryTransportWithSelector(sharedhttp.Transport, func(req *http.Request) http.RoundTripper {
+	retryTransport := NewRetryTransportWithSelector(baseTransport, func(req *http.Request) http.RoundTripper {
 		proxyCtx, ok := getProxyContext(req.Context())
 		if !ok || proxyCtx == nil || proxyCtx.httpClient == nil || proxyCtx.httpClient.Transport == nil {
 			return nil
@@ -666,7 +672,7 @@ func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.In
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have local filesystem access enabled"}
 	}
 

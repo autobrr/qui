@@ -62,14 +62,20 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	backend, err := h.backendPool.GetBackend(ctx, instanceID)
+	// BDInfo runs on the qui host, so only an instance whose files are local
+	// may be scanned: a remote-mode instance would pass the save-path Stat
+	// over SFTP and then scan a path that does not exist here.
+	backend, _, err := h.backendPool.Require(ctx, instanceID, models.CapabilityContent)
 	if err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
+		switch {
+		case errors.Is(err, models.ErrInstanceNotFound):
 			RespondError(w, http.StatusNotFound, "Instance not found")
-			return
+		case errors.Is(err, fsops.ErrNotCapable):
+			RespondError(w, http.StatusForbidden, "Disc scanning requires local filesystem access")
+		default:
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("discscan: failed to get filesystem backend")
+			RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("discscan: failed to get filesystem backend")
-		RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
 		return
 	}
 
@@ -103,13 +109,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		contentPath = torrents[0].ContentPath
 	}
 
-	// The save path Stat is the access gate: the noop backend of an instance
-	// without filesystem access fails it with ErrNoFilesystemAccess.
 	if _, err := backend.Stat(ctx, props.SavePath); err != nil {
-		if errors.Is(err, fsops.ErrNoFilesystemAccess) {
-			RespondError(w, http.StatusForbidden, "Instance does not have filesystem access")
-			return
-		}
 		RespondError(w, http.StatusNotFound, "Disc not found on disk")
 		return
 	}

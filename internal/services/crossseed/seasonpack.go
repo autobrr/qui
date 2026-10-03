@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -368,8 +369,11 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
 	}
 
-	// Check if torrent already exists on any eligible instance.
+	// The exists check runs on blocked instances too, so a blocked copy is never
+	// duplicated elsewhere. Runs before tree creation: by addSeasonPack the tree exists.
 	hashes := collectHashes(prep.meta)
+	unblocked := make([]*models.Instance, 0, len(prep.eligible))
+	blockedID := 0
 	for _, inst := range prep.eligible {
 		if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, hashes); err != nil {
 			message := fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, err)
@@ -385,7 +389,26 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 				Message: fmt.Sprintf("torrent already exists on instance %d", inst.ID),
 			}, nil
 		}
+		if s.blocklistStore != nil {
+			if _, blocked, err := s.blocklistStore.FindBlocked(ctx, inst.ID, hashes); err != nil {
+				message := fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", inst.ID, err)
+				s.recordApplyRun(ctx, req.TorrentName, "blocklist_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
+				return &SeasonPackApplyResponse{Reason: "blocklist_check_failed", Message: message}, nil
+			} else if blocked {
+				blockedID = cmp.Or(blockedID, inst.ID)
+				continue
+			}
+		}
+		unblocked = append(unblocked, inst)
 	}
+	if len(unblocked) == 0 {
+		s.recordApplyRun(ctx, req.TorrentName, "blocked", "", blockedID, 0, prep.totalEpisodes, 0, "")
+		return &SeasonPackApplyResponse{
+			Reason:  "blocked",
+			Message: fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedID),
+		}, nil
+	}
+	prep.eligible = unblocked
 
 	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
 	if err != nil {
@@ -443,11 +466,12 @@ func (s *Service) addSeasonPack(
 	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, prep.torrentBytes, opts); err != nil {
 		// Roll back with the backend that created the tree: a fresh resolve on
 		// the live ctx fails when the run was cancelled, silently skipping
-		// rollback (same shape as dirscan's linkBackend threading).
+		// rollback. dirscan's injector resolves one backend up front for the
+		// same reason.
 		backend := planBuild.backend
 		if backend == nil {
 			var backendErr error
-			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID); backendErr != nil {
+			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID, models.CapabilityWrite); backendErr != nil {
 				log.Warn().Err(backendErr).Str("torrentName", torrentName).Msg("season pack: no backend to rollback after add failure")
 			}
 		}
@@ -570,7 +594,7 @@ func (s *Service) planSeasonPack(
 		return nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
 	}
 
-	backend, err := s.getBackendForInstance(ctx, inst.ID)
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
 	if err != nil {
 		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
 	}
@@ -614,7 +638,7 @@ func (s *Service) planSeasonPack(
 }
 
 func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instance, planBuild *seasonPackPlanBuild, linkMode string) error {
-	backend, err := s.getBackendForInstance(ctx, inst.ID)
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
 	if err != nil {
 		return err
 	}
@@ -912,12 +936,12 @@ func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[e
 	return episodes
 }
 
-// filterLinkEligible returns instances that have local filesystem access
-// and either hardlink or reflink mode enabled.
+// filterLinkEligible returns instances where qui may write link trees and
+// either hardlink or reflink mode is enabled.
 func filterLinkEligible(instances []*models.Instance) []*models.Instance {
 	var eligible []*models.Instance
 	for _, inst := range instances {
-		if !inst.HasLocalFilesystemAccess {
+		if !models.FilesystemCapabilitiesOf(inst).Write {
 			continue
 		}
 		switch {
@@ -1575,14 +1599,13 @@ func buildSeasonPackPlan(
 			continue
 		}
 
-		targetPath, ok := safeSeasonPackJoin(plan.RootDir, pf.Name)
-		if !ok {
-			return nil, fmt.Errorf("%w: invalid pack target path %q", errLayoutMismatch, pf.Name)
+		// hardlinktree validates the torrent path, the same check link mode's
+		// plans go through, and the backends trust the plan.
+		filePlan, err := hardlinktree.BuildSingleFilePlan(plan.RootDir, pf.Name, localFile.sourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid pack target path %q: %w", errLayoutMismatch, pf.Name, err)
 		}
-		plan.Files = append(plan.Files, hardlinktree.FilePlan{
-			SourcePath: localFile.sourcePath,
-			TargetPath: targetPath,
-		})
+		plan.Files = append(plan.Files, filePlan.Files...)
 		build.materializedPaths[pf.Name] = struct{}{}
 		build.linkedBytes += pf.Size
 	}
@@ -1845,7 +1868,7 @@ func (s *Service) recordApplyRun(
 	switch reason {
 	case "applied":
 		run.Status = "applied"
-	case "already_exists", "skipped_recheck":
+	case "already_exists", "blocked", "skipped_recheck":
 		run.Status = "skipped"
 	default:
 		run.Status = "failed"

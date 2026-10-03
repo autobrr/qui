@@ -69,6 +69,20 @@ func (f *fakeSync) List(ctx context.Context) ([]*models.Instance, error) {
 	return f.listInstances(ctx)
 }
 
+// Get reads the listInstances stub, so a test flips an instance's mode in one place.
+func (f *fakeSync) Get(ctx context.Context, id int) (*models.Instance, error) {
+	instances, err := f.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, inst := range instances {
+		if inst != nil && inst.ID == id {
+			return inst, nil
+		}
+	}
+	return nil, models.ErrInstanceNotFound
+}
+
 func (f *fakeSync) GetLastCompletedRun(ctx context.Context, instanceID int) (*models.OrphanScanRun, error) {
 	if f.getLastCompletedRun == nil {
 		return nil, errNotStubbed
@@ -90,7 +104,7 @@ func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[strin
 	return f.getCategories(ctx, instanceID)
 }
 
-func (f *fakeSync) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+func (f *fakeSync) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
 	if f.subcategoriesEnabled == nil {
 		return false, errNotStubbed
 	}

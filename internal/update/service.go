@@ -6,6 +6,7 @@ package update
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/autobrr/qui/pkg/version"
@@ -25,7 +26,7 @@ type Service struct {
 	latestRelease  *version.Release
 	lastChecked    time.Time
 	lastTag        string
-	isEnabled      bool
+	isEnabled      atomic.Bool
 }
 
 // NewService creates a new update Service instance.
@@ -34,8 +35,8 @@ func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent stri
 		log:            log.With().Str("component", "update").Logger(),
 		currentVersion: currentVersion,
 		releaseChecker: version.NewChecker("autobrr", "qui", userAgent),
-		isEnabled:      enabled,
 	}
+	svc.isEnabled.Store(enabled)
 	return svc
 }
 
@@ -80,7 +81,7 @@ func (s *Service) GetLatestRelease(_ context.Context) *version.Release {
 
 // CheckUpdates triggers a refresh of the latest release information if updates are enabled.
 func (s *Service) CheckUpdates(ctx context.Context) {
-	if !s.isEnabled {
+	if !s.isEnabled.Load() {
 		s.log.Trace().Msg("skipping update check - disabled in config")
 		return
 	}
@@ -125,7 +126,7 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
-	s.isEnabled = enabled
+	s.isEnabled.Store(enabled)
 	if !enabled {
 		s.mu.Lock()
 		s.latestRelease = nil

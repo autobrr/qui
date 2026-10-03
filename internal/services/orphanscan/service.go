@@ -41,15 +41,16 @@ type syncReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error)
+	CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error)
 }
 
 type clientReadiness interface {
 	Client(ctx context.Context, instanceID int) (healthChecker, error)
 }
 
-type instanceLister interface {
+type instanceReader interface {
 	List(ctx context.Context) ([]*models.Instance, error)
+	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
 type lastRunReader interface {
@@ -73,7 +74,7 @@ type Service struct {
 	store       *models.OrphanScanStore
 	sync        syncReader
 	clients     clientReadiness
-	instances   instanceLister
+	instances   instanceReader
 	lastRuns    lastRunReader
 	notifier    notifications.Notifier
 	backendPool *fsops.Pool
@@ -366,8 +367,8 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	now := time.Now()
 	for _, inst := range instances {
-		// Gate 1: instance must be active and have filesystem access
-		if !inst.IsActive || !inst.HasLocalFilesystemAccess {
+		// Gate 1: instance must be active and able to read its files
+		if !inst.IsActive || !models.FilesystemCapabilitiesOf(inst).Has(models.CapabilityRead) {
 			continue
 		}
 
@@ -377,19 +378,23 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 			continue
 		}
 
-		// Gate 3: check if scan is due (last completed + interval <= now)
-		lastRun, err := s.lastRuns.GetLastCompletedRun(ctx, inst.ID)
+		// Gate 3: check if scan is due (last finished scan + interval <= now)
+		lastRun, err := s.store.GetLastFinishedScan(ctx, inst.ID)
 		if err != nil {
 			continue
 		}
 
 		interval := time.Duration(settings.ScanIntervalHours) * time.Hour
 		var nextDue time.Time
-		if lastRun == nil {
+		switch {
+		case lastRun == nil:
 			nextDue = now // Never run, due now
-		} else if lastRun.CompletedAt != nil {
+		case lastRun.Status == "preview_ready":
+			// A preview records no finish time. Its start is at most one walk earlier.
+			nextDue = lastRun.StartedAt.Add(interval)
+		case lastRun.CompletedAt != nil:
 			nextDue = lastRun.CompletedAt.Add(interval)
-		} else {
+		default:
 			continue // No completion time, skip
 		}
 
@@ -559,6 +564,29 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 		return fmt.Errorf("%w: %s", ErrInvalidRunStatus, run.Status)
 	}
 
+	instance, err := s.instances.Get(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("load instance %d: %w", instanceID, err)
+	}
+	if current := models.FilesystemAccessMode(instance); current != run.FilesystemMode {
+		logModeChanged(runID, run.FilesystemMode, current)
+		// Conditional on preview_ready, so a racing confirm cannot fail a run that is already deleting.
+		failed, updateErr := s.store.FailPreviewReadyRun(ctx, runID, FilesystemModeChangedMessage)
+		if updateErr != nil {
+			return fmt.Errorf("fail run %d after a filesystem access change: %w", runID, updateErr)
+		}
+		// ErrFilesystemModeChanged means this call failed the run, which a scheduled caller notifies about.
+		if !failed {
+			return fmt.Errorf("%w: the run is no longer preview_ready", ErrInvalidRunStatus)
+		}
+		s.emitRun(instanceID, runID)
+		return ErrFilesystemModeChanged
+	}
+	// Refused before the lock and without touching the run, so the preview stays reviewable.
+	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
+	}
+
 	mu := s.getInstanceMutex(instanceID)
 	if !mu.TryLock() {
 		return ErrScanInProgress
@@ -581,6 +609,21 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}()
 
 	return nil
+}
+
+// canDeleteOrphans reports whether caps can delete a preview. It needs Identity
+// as well as Write, because the walker spots a second path to a torrent's file
+// (a bind mount inside the scanned tree) only by its file identity.
+func canDeleteOrphans(caps models.FilesystemCapabilities) bool {
+	return caps.Write && caps.Identity
+}
+
+// logModeChanged records the modes a refused run was scanned under and would
+// have deleted under. A preview walked under another mode was never reviewed as
+// paths on this backend, and its protection was chosen for the old one.
+func logModeChanged(runID int64, runMode, current models.FilesystemMode) {
+	log.Info().Int64("run", runID).Str("scannedWith", string(runMode)).Str("now", string(current)).
+		Msg("orphanscan: refusing deletion, filesystem access changed since the scan")
 }
 
 func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) {
@@ -626,15 +669,27 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, "backend pool not configured")
 		return
 	}
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityRead)
 	if err != nil {
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
+		return
+	}
+	// The label comes from the row the backend was built from. Deletion trusts
+	// it, so a scan that cannot record it stops here instead of leaving a
+	// preview labeled "none".
+	mode := models.FilesystemAccessMode(instance)
+	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode); err != nil {
+		if ctx.Err() != nil {
+			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled while saving filesystem mode")
+			return
+		}
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save filesystem mode: %v", err))
 		return
 	}
 
 	// Build file map
 	scope := scopeFromSettings(settings)
-	result, err := s.buildFileMap(ctx, instanceID, backend, scope)
+	result, err := s.buildFileMap(ctx, instance, backend, scope)
 	if err != nil {
 		// Check if this was a cancellation - preserve canceled status instead of marking failed
 		if ctx.Err() != nil {
@@ -781,6 +836,24 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	var bytesFound int64
 	for _, o := range allOrphans {
 		bytesFound += o.Size
+	}
+
+	// A mode change mid-scan cuts a remote walk short as a lost connection. The
+	// roots walked before it would otherwise land as a preview no confirm can use.
+	reloaded, err := s.instances.Get(ctx, instanceID)
+	if err != nil {
+		if ctx.Err() != nil {
+			s.markCanceled(ctx, instanceID, runID)
+			return
+		}
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
+		return
+	}
+	if current := models.FilesystemAccessMode(reloaded); current != mode {
+		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).
+			Msg("orphanscan: failing scan, filesystem access changed while it ran")
+		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
+		return
 	}
 
 	inaccessible := slices.Concat(walkErrors, missingRoots)
@@ -1021,6 +1094,29 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 
 	// Trigger deletion - ConfirmDeletion runs in a goroutine
 	if err := s.ConfirmDeletion(ctx, instanceID, runID); err != nil {
+		// ConfirmDeletion failed the run without notifying, and nobody watches a scheduled run.
+		if errors.Is(err, ErrFilesystemModeChanged) {
+			startedAt, completedAt := s.getRunTimes(ctx, runID)
+			s.notify(ctx, notifications.Event{
+				Type:            notifications.EventOrphanScanFailed,
+				InstanceID:      instanceID,
+				OrphanScanRunID: runID,
+				ErrorMessage:    FilesystemModeChangedMessage,
+				StartedAt:       startedAt,
+				CompletedAt:     completedAt,
+			})
+			return
+		}
+		if errors.Is(err, fsops.ErrNotCapable) {
+			log.Info().Err(err).Int64("run", runID).Msg("orphanscan: skipping auto-cleanup, this filesystem access cannot delete")
+			warning := "Automatic cleanup does not run for remote instances yet. Review the preview instead."
+			if warnErr := s.store.UpdateRunWarning(ctx, runID, warning); warnErr != nil {
+				log.Error().Err(warnErr).Int64("run", runID).Msg("orphanscan: failed to record the skipped auto-cleanup")
+				return
+			}
+			s.emitRun(instanceID, runID)
+			return
+		}
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: auto-cleanup failed to start deletion")
 	}
 }
@@ -1028,9 +1124,14 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int64) {
 	log.Info().Int("instance", instanceID).Int64("run", runID).Msg("orphanscan: starting deletion")
 
-	// Update status to deleting
-	if err := s.store.UpdateRunStatus(ctx, runID, "deleting"); err != nil {
+	// Conditional on preview_ready, so a run a concurrent confirm just failed cannot go on to delete.
+	started, err := s.store.StartRunDeletion(ctx, runID)
+	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
+		return
+	}
+	if !started {
+		log.Info().Int64("run", runID).Msg("orphanscan: run is no longer ready for review, deleting nothing")
 		return
 	}
 	s.emitRun(instanceID, runID)
@@ -1046,9 +1147,27 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, "backend pool not configured")
 		return
 	}
-	deleteBackend, err := s.backendPool.GetBackend(ctx, instanceID)
+	// ConfirmDeletion admitted this run on the instance's mode and
+	// capabilities, but the instance can change before this goroutine runs.
+	deleteBackend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityWrite)
+	if errors.Is(err, fsops.ErrNotCapable) {
+		log.Info().Err(err).Int64("run", runID).Msg("orphanscan: refusing deletion, filesystem access changed after the confirm")
+		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+		return
+	}
 	if err != nil {
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
+		return
+	}
+	mode := models.FilesystemAccessMode(instance)
+	if mode != run.FilesystemMode {
+		logModeChanged(runID, run.FilesystemMode, mode)
+		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
+		return
+	}
+	// Require(Write) alone is not enough while a backend can gain Write before Identity.
+	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+		s.failRun(ctx, runID, instanceID, "Deleting orphan files needs write access and file identity, and this instance's filesystem access lacks one of them.")
 		return
 	}
 
@@ -1095,7 +1214,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	scope.AbandonedDirs = true
 
 	// Build fresh file map for re-checking
-	fileMapResult, err := s.buildFileMap(ctx, instanceID, deleteBackend, scope)
+	fileMapResult, err := s.buildFileMap(ctx, instance, deleteBackend, scope)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
@@ -1678,22 +1797,42 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}, nil
 }
 
-func (s *Service) getOtherLocalInstances(ctx context.Context, excludeInstanceID int) ([]*models.Instance, error) {
+// getOverlapCandidateInstances returns the other instances whose torrents can
+// protect scanned's files. Overlap compares path strings, which only mean the
+// same file on one filesystem. Instances stored against the same SSH host and
+// port pair in both modes, whatever their key, pin or local flag, since a
+// seedbox can be reached over SSH by one instance and through a mount by
+// another. A local scan also pairs with every local instance. The endpoint and
+// mode come from scanned, the row the walk's backend was built from, so a later
+// edit cannot pick peers for an endpoint the walk never touched.
+func (s *Service) getOverlapCandidateInstances(ctx context.Context, scanned *models.Instance) ([]*models.Instance, error) {
 	instances, err := s.instances.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	local := make([]*models.Instance, 0, len(instances))
+	candidates := make([]*models.Instance, 0, len(instances))
 	for _, inst := range instances {
-		if inst == nil || inst.ID == excludeInstanceID {
+		if inst == nil || inst.ID == scanned.ID || !inst.IsActive {
 			continue
 		}
-		if inst.IsActive && inst.HasLocalFilesystemAccess {
-			local = append(local, inst)
+		if _, ok := overlapPeer(scanned, inst); ok {
+			candidates = append(candidates, inst)
 		}
 	}
-	return local, nil
+	return candidates, nil
+}
+
+// overlapPeer reports whether inst can protect scanned's files and names why, so a
+// local scan blocked by a remote-only peer does not call it local-access.
+func overlapPeer(scanned, inst *models.Instance) (label string, ok bool) {
+	switch {
+	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
+		return "local-access instance", true
+	case scanned.SSHHost != "" && inst.SSHHost == scanned.SSHHost && inst.SSHPort == scanned.SSHPort:
+		return "remote instance on the same host", true
+	}
+	return "", false
 }
 
 func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {
@@ -1770,10 +1909,12 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 	return result, nil
 }
 
-// buildFileMap builds the protection map and scan roots for instanceID. Roots
-// the operator declared through scope join the set before overlap detection
-// runs, so torrents another local instance seeds under them stay protected.
-func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsops.Backend, scope scanScope) (*buildFileMapResult, error) {
+// buildFileMap builds the protection map and scan roots for scanned, the row
+// backend was built from. Roots the operator declared through scope join the
+// set before overlap detection runs, so torrents another instance on the same
+// filesystem seeds under them stay protected.
+func (s *Service) buildFileMap(ctx context.Context, scanned *models.Instance, backend fsops.Backend, scope scanScope) (*buildFileMapResult, error) {
+	instanceID := scanned.ID
 	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute, backend)
 	if err != nil {
 		return nil, err
@@ -1787,30 +1928,31 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsop
 	result.declaredOnlyRoots = rootsNoTorrentPointsAt(extraRoots, result.scanRoots)
 	// Deletion stays bounded by the roots the run recorded, so those roots must
 	// take part in overlap detection even when the settings behind them have
-	// since changed. Without this a file another local instance picked up after
-	// the preview would be missing from the protection map.
+	// since changed. Without this a file another instance picked up after the
+	// preview would be missing from the protection map.
 	extraRoots = append(extraRoots, scope.PersistedRoots...)
 	if len(extraRoots) > 0 {
 		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend)
 	}
 
-	otherLocalInstances, err := s.getOtherLocalInstances(ctx, instanceID)
+	candidates, err := s.getOverlapCandidateInstances(ctx, scanned)
 	if err != nil {
 		return nil, err
 	}
-	for _, inst := range otherLocalInstances {
+	for _, inst := range candidates {
+		peer, _ := overlapPeer(scanned, inst)
 		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, inst.ID)
 		if rootsErr != nil {
 			return nil, fmt.Errorf(
-				"could not determine scan roots for other local-access instance (id=%d name=%q): %w",
-				inst.ID, inst.Name, rootsErr,
+				"could not determine scan roots for other %s (id=%d name=%q): %w",
+				peer, inst.ID, inst.Name, rootsErr,
 			)
 		}
 
 		if !scanRootsOverlap(result.scanRoots, otherRoots) {
 			confirmedRoots, err := s.buildInstanceScanRoots(ctx, inst.ID, 90*time.Second)
 			if err != nil {
-				return nil, fmt.Errorf("could not confirm non-overlapping scan roots for other local-access instance (id=%d name=%q): %w", inst.ID, inst.Name, err)
+				return nil, fmt.Errorf("could not confirm non-overlapping scan roots for other %s (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 			}
 			if !scanRootsOverlap(result.scanRoots, confirmedRoots) {
 				continue
@@ -1819,7 +1961,7 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsop
 
 		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute, backend)
 		if err != nil {
-			return nil, fmt.Errorf("overlapping local-access instance unavailable (id=%d name=%q): %w", inst.ID, inst.Name, err)
+			return nil, fmt.Errorf("overlapping %s unavailable (id=%d name=%q): %w", peer, inst.ID, inst.Name, err)
 		}
 
 		added := result.fileMap.MergeFrom(otherResult.fileMap)

@@ -70,18 +70,6 @@ export function formatDurationCompact(seconds: number): string {
   return `${Math.floor(seconds / 86400)}d`
 }
 
-export function formatErrorMessage(error: string | undefined): string {
-  if (!error) return "Unknown error"
-
-  const normalized = error.trim()
-  if (!normalized) return "Unknown error"
-
-  const cleaned = normalized.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
-  if (!cleaned) return "Unknown error"
-
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
-}
-
 export async function copyTextToClipboard(text: string): Promise<void> {
   const hasClipboardApi = typeof navigator !== "undefined" && "clipboard" in navigator
   const canUseAsyncApi = hasClipboardApi && typeof window !== "undefined" && window.isSecureContext
@@ -177,12 +165,7 @@ export function formatErrorReason(reason: string): string {
   return reason
 }
 
-/**
- * Parse tracker domains from an Automation.
- * Returns trackerDomains array if present, otherwise parses trackerPattern.
- * @param rule - The automation to parse domains from
- * @returns Array of tracker domain strings
- */
+/** Tracker domains from an Automation's trackerPattern, with the "!" exclude prefix removed. */
 export function parseTrackerDomains(rule: Automation): string[] {
   return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }

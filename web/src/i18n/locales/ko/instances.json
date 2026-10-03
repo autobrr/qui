@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Deluge, rTorrent 또는 Transmission을 사용 중이신가요? <docs>마이그레이션 도구로 qBittorrent로 옮기세요</docs>",
   "card": {
     "status": {
       "disabled": "비활성화됨",
@@ -10,8 +11,7 @@
       "disableInstance": "인스턴스 비활성화",
       "enableInstance": "인스턴스 활성화",
       "moveUp": "위로 이동",
-      "moveDown": "아래로 이동",
-      "instanceSettings": "인스턴스 설정"
+      "moveDown": "아래로 이동"
     },
     "actions": {
       "edit": "편집",
@@ -66,8 +66,6 @@
       "skipTlsDescription": "자체 서명되었거나 신뢰할 수 없는 인증서를 사용하는 qBittorrent 인스턴스에 대한 연결을 허용합니다.",
       "localFilesystemAccess": "로컬 파일시스템 접근",
       "localFilesystemDescription": "qui가 이 인스턴스의 다운로드 경로에 접근할 수 있으면 활성화하세요(자동화의 하드링크 감지에 필요).",
-      "authBypass": "인증 우회",
-      "authBypassDescription": "qBittorrent이 localhost 또는 허용 목록 IP에 대해 인증을 우회할 때 활성화하세요",
       "username": "사용자 이름",
       "password": "비밀번호",
       "httpBasicAuth": "HTTP 기본 인증",
@@ -196,8 +194,6 @@
         "skipTlsDescription": "자체 서명되었거나 신뢰할 수 없는 인증서를 사용하는 qBittorrent 인스턴스에 대한 연결을 허용합니다.",
         "localFilesystemAccess": "로컬 파일시스템 접근",
         "localFilesystemDescription": "qui가 이 인스턴스의 다운로드 경로에 접근할 수 있으면 활성화하세요(자동화의 하드링크 감지에 필요).",
-        "qbittorrentLogin": "qBittorrent 로그인",
-        "qbittorrentLoginDescription": "qBittorrent이 localhost 또는 허용 목록 IP에 대해 인증을 우회하면 비활성화하세요.",
         "httpBasicAuth": "HTTP 기본 인증",
         "httpBasicAuthDescription": "qBittorrent이 기본 인증이 있는 리버스 프록시 뒤에 있으면 활성화하세요",
         "username": "사용자 이름",
@@ -251,7 +247,6 @@
       "friday": "금요일",
       "saturday": "토요일",
       "sunday": "일요일",
-      "schedule": "예약",
       "start": "시작",
       "end": "종료",
       "timeLabel": "{{label}} 시간",
@@ -587,48 +582,16 @@
       "enable": "활성화"
     },
     "workflows": {
-      "title": "워크플로",
-      "description": "자동 제한 및 삭제.",
-      "applyNow": "지금 적용",
-      "addRule": "규칙 추가",
-      "loadingRules": "규칙 불러오는 중...",
-      "noAutomations": "아직 자동화가 없습니다. 트래커별 제한을 적용하려면 하나 추가하세요.",
-      "noActionsSet": "설정된 작업 없음",
-      "disabled": "비활성화됨",
       "allTrackers": "모든 트래커",
-      "edit": "편집",
-      "speedLimits": "속도 제한",
-      "shareLimits": "공유 제한",
       "pause": "일시 정지",
       "recheck": "재확인",
       "reannounce": "재요청",
-      "autoTmmOn": "AutoTMM 켜짐",
-      "autoTmmOff": "AutoTMM 꺼짐",
-      "delete": "삭제",
-      "externalProgram": "외부 프로그램",
-      "upload": "업로드",
-      "download": "다운로드",
-      "ratio": "비율",
-      "seedTime": "시드 시간",
-      "minuteSuffix": "분",
-      "deleteWithFilesPreserveCrossSeeds": "파일과 함께 삭제(cross-seed 유지)",
-      "deleteWithFilesIncludeCrossSeeds": "파일과 함께 삭제(cross-seed 포함)",
-      "deleteWithFiles": "파일과 함께 삭제",
-      "deleteKeepFiles": "삭제(파일 유지)",
-      "moveToCategory": "카테고리로 이동: {{category}}",
-      "programId": "프로그램 ID: {{id}}",
-      "trackerDerivedTag": "트래커 파생 태그",
-      "noTags": "태그 없음",
-      "fullSync": "전체 동기화",
-      "addOnly": "추가만",
-      "removeOnly": "제거만",
-      "actionCount_other": "작업 {{count}}개"
+      "minuteSuffix": "분"
     },
     "workflowsOverview": {
       "title": "워크플로",
       "tooltip": "조건 기반 자동화 규칙. 작업: 속도 제한, 공유 제한, 일시 정지, 재개, 삭제, 태그 및 카테고리 변경.\n트래커, 카테고리, 태그, 비율, 시드 시간, 크기 등으로 토렌트를 일치시킵니다.\nCross-seed 및 하드링크를 인식하여 공유 파일을 잃지 않고 안전하게 삭제하거나 이동합니다.",
       "description": "조건부 규칙으로 토렌트 관리를 자동화합니다.",
-      "noInstancesTitle": "워크플로",
       "noInstancesDescription": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",
       "activeCount": "{{enabled}}/{{total}} 활성",
       "today": "오늘 {{count}}개",
@@ -666,7 +629,6 @@
       "dryRun": "모의 실행",
       "removed": "제거됨",
       "executed": "실행됨",
-      "hashCopied": "해시가 복사되었습니다",
       "copyHash": "해시 복사",
       "original": "원본: {{domain}}",
       "programLabel": "프로그램: {{name}}",
@@ -695,6 +657,7 @@
       "runDryRunNow": "지금 모의 실행",
       "duplicate": "복제",
       "copyTo": "복사 대상...",
+      "editJSON": "JSON으로 편집",
       "exportJSON": "JSON 내보내기",
       "dragToReorder": "드래그하여 워크플로 순서 변경",
       "actions": {
@@ -769,11 +732,24 @@
         "title": "워크플로 가져오기",
         "description": "가져올 워크플로 JSON을 붙여 넣으세요. 워크플로는 비활성화된 상태로 생성되어 끝에 추가됩니다.",
         "placeholder": "워크플로 JSON 붙여 넣기...",
-        "invalidImportData": "잘못된 가져오기 데이터",
         "importFailed": "워크플로를 가져오지 못했습니다",
         "cancel": "취소",
         "importing": "가져오는 중...",
-        "import": "가져오기"
+        "import": "가져오기",
+        "errors": {
+          "invalidJson": "잘못된 JSON 형식",
+          "notObject": "JSON 객체가 필요합니다",
+          "missingName": "'name' 필드가 없거나 잘못되었습니다",
+          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다"
+        }
+      },
+      "editJsonDialog": {
+        "title": "\"{{name}}\" JSON으로 편집",
+        "description": "워크플로 JSON을 편집합니다. 워크플로는 활성화 상태와 위치를 유지합니다.",
+        "saveFailed": "워크플로를 저장하지 못했습니다",
+        "cancel": "취소",
+        "saving": "저장 중...",
+        "save": "저장"
       },
       "toast": {
         "workflowDeleted": "워크플로가 삭제되었습니다",
@@ -789,6 +765,7 @@
         "createdWorkflow": "\"{{name}}\"을(를) 생성했습니다",
         "copiedWorkflow": "\"{{name}}\"을(를) {{instance}}(으)로 복사했습니다",
         "importedWorkflow": "\"{{name}}\"을(를) 가져왔습니다",
+        "updatedWorkflow": "\"{{name}}\" 업데이트됨",
         "createFailed": "워크플로를 생성하지 못했습니다",
         "reorderFailed": "워크플로 순서를 변경하지 못했습니다",
         "exportedTorrents": "토렌트 {{count}}개를 CSV로 내보냈습니다",
@@ -843,14 +820,18 @@
       "description": "다운로드 디렉터리를 스캔하여 정리할 고아 파일을 식별합니다.",
       "noLocalAccess": "로컬 접근 없음",
       "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 항목 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
+      "remoteLimits": "원격 인스턴스에서는 삭제와 자동 정리가 아직 실행되지 않습니다. 또한 qui는 두 경로가 같은 파일인지 구분할 수 없으므로, 바인드 마운트처럼 두 번째 경로로 접근 가능한 파일은 토렌트가 사용 중이어도 목록에 표시될 수 있습니다.",
       "on": "켜짐",
       "off": "꺼짐",
-      "settingsSummary": "유예 {{grace}}분 · 간격 {{interval}}시간 · 최대 {{max}}개 항목",
+      "summaryGrace": "유예 {{grace}}분",
+      "summaryInterval": "간격 {{interval}}시간",
+      "summaryMax": "최대 {{max}}개 항목",
       "loading": "불러오는 중...",
       "itemsSummary_other": "항목 {{count}}개 ({{size}})",
       "cancel": "취소",
       "autoCleanupEnabled": "자동 정리 활성화됨 (≤{{max}}개 파일)",
       "autoCleanupDisabled": "자동 정리 비활성화됨",
+      "autoCleanupRemote": "원격 인스턴스는 자동 정리 없음",
       "pathsIgnored_other": " · 경로 {{count}}개 무시됨",
       "scanNow": "지금 스캔",
       "configure": "구성",
@@ -892,6 +873,7 @@
     "orphanScanPreview": {
       "title": "고아 항목 미리 보기",
       "description": "이번 실행에서 삭제될 파일과 디렉터리를 검토하세요.",
+      "remoteDescription": "이번 스캔에서 찾은 파일과 디렉터리를 검토하세요.",
       "itemsCount_other": "항목 {{count}}개 · {{size}}",
       "truncated": " (잘림)",
       "path": "경로",
@@ -905,6 +887,7 @@
       "exportCSV": "CSV 내보내기",
       "close": "닫기",
       "deleteItems": "삭제",
+      "remoteDeleteUnavailable": "이 스캔은 원격 인스턴스에서 실행되었으며, 원격 인스턴스에서는 삭제가 아직 지원되지 않습니다. 목록을 내보낸 후 서버에서 직접 파일을 삭제하세요.",
       "statusLabels": {
         "pending": "대기 중",
         "deleted": "삭제됨",
@@ -1085,7 +1068,6 @@
       "retentionTooltip": "최근 성공 100개, 실패 100개, 건너뜀 50개를 유지합니다",
       "showSkipped": "건너뛴 항목 표시",
       "hideSkipped": "건너뛴 항목 숨기기",
-      "confirmEnableImmediately": "확인하면 이 규칙이 즉시 활성화됩니다.",
       "filterPlaceholder": "이름 또는 해시로 필터링...",
       "failedToLoadActivity": "활동을 불러오지 못했습니다",
       "checkConnectionToInstance": "인스턴스 연결을 확인하세요.",
@@ -1223,7 +1205,7 @@
         "noOtherInstances": "사용 가능한 다른 인스턴스가 없습니다.",
         "savePathLabel": "대상의 저장 경로(선택 사항)",
         "savePathPlaceholder": "예: /data/torrents",
-        "savePathHelp": "토렌트 콘텐츠의 상위 디렉터리입니다. 카테고리 기본값을 사용하려면 비워 두세요. 템플릿을 지원합니다:",
+        "savePathHelp": "토렌트 콘텐츠의 상위 디렉터리입니다. 카테고리 기본값을 사용하려면 비워 두세요.",
         "categoryLabel": "대상의 카테고리(선택 사항)",
         "selectTargetFirst": "먼저 대상 인스턴스를 선택하세요",
         "loadingCategories": "카테고리 불러오는 중...",
@@ -1255,7 +1237,9 @@
         "conditional": "조건부",
         "addScore": "점수 추가:",
         "addFieldMultiplier": "필드 곱셈기 추가",
-        "addBonus": "보너스 추가"
+        "addBonus": "보너스 추가",
+        "notSupportedForSimpleSort": "단순 정렬에서 지원되지 않음",
+        "notSupportedForScoreMultiplier": "점수 곱셈기에서 지원되지 않음"
       },
       "conditionsLabel": "조건(선택 사항)",
       "actions": {
@@ -1356,6 +1340,11 @@
         "skipIfCrossSeedsDontMatch": "cross-seed가 규칙의 조건과 일치하지 않으면 건너뛰기",
         "aboutSkipping": "cross-seed가 있을 때 이동 건너뛰기 정보",
         "skipDescription": "동일한 cross-seed 그룹에 규칙의 조건과 일치하지 않는 다른 토렌트가 있으면 이동을 건너뜁니다. 그렇지 않으면 규칙의 조건과 일치하지 않더라도 모든 cross-seed가 이동됩니다."
+      },
+      "templateHelp": {
+        "absolutePath": "절대 경로여야 합니다. 값은 경로 안에 넣습니다. 예:",
+        "intro": "Go 템플릿을 지원합니다.",
+        "learnMore": "자세히 알아보기"
       },
       "freeSpace": {
         "title": "여유 공간 소스",

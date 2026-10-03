@@ -498,8 +498,10 @@ paths:
       description: |
         Execute an external program for one or more torrents.
 
-        The program is launched asynchronously, and this endpoint returns immediately after starting the process.
-        The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
+        The program runs asynchronously, and this endpoint returns immediately after qui queues it.
+        qui runs a limited number of programs at the same time, so the program can start up to 30 minutes later, or not start at all.
+        The activity log records the result.
+        The 'success' field in the response indicates whether qui queued the program, not whether it started or completed successfully.
 
         The program path and arguments are passed through variable substitution where placeholders
         like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
@@ -3916,9 +3918,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                  - type: object
+                    properties:
+                      warning:
+                        type: string
+                        description: Set when qui saved a new OPS or RED API key but could not check it with the tracker
         '400':
-          description: Invalid request body
+          description: Invalid request body, or the tracker rejected a new OPS or RED API key
         '500':
           description: Failed to update automation settings
     patch:
@@ -3938,9 +3946,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                allOf:
+                  - $ref: '#/components/schemas/CrossSeedAutomationSettings'
+                  - type: object
+                    properties:
+                      warning:
+                        type: string
+                        description: Set when qui saved a new OPS or RED API key but could not check it with the tracker
         '400':
-          description: Invalid request body
+          description: Invalid request body, or the tracker rejected a new OPS or RED API key
         '500':
           description: Failed to update automation settings
 
@@ -5021,15 +5035,14 @@ paths:
                   example: [1, 2]
                 category:
                   type: string
-                  description: Category to apply when adding the torrent
+                  description: Category to apply when adding the torrent. When omitted, qui uses the indexer name in "Use indexer name as category" mode, else the category of the matched torrent. The Custom category mode wins over this value.
                 tags:
                   type: array
                   items:
                     type: string
                 startPaused:
                   type: boolean
-                skipIfExists:
-                  type: boolean
+                  description: Add the torrent paused. When omitted, qui adds it paused and resumes it after verification unless auto-resume is off for the webhook.
                 findIndividualEpisodes:
                   type: boolean
                 indexer:
@@ -5543,6 +5556,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system/restart:
+    post:
+      tags:
+        - System
+      summary: Restart qui
+      description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      responses:
+        '202':
+          description: The restart started
+        '403':
+          description: Restart is not available, for example in an app container
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: An update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The binary is missing, is not a regular file, or is not executable. qui keeps running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/system/update:
+    post:
+      tags:
+        - System
+      summary: Install a release
+      description: Downloads the release with this exact tag, checks its signature, and replaces the binary. qui keeps the previous binary as qui-v<old version>.bak next to it and deletes older backups. After the 200 response qui restarts. On an install error the binary and the process do not change. When qui refuses the restart after the install, it returns 500, the new binary stays in place, and the old process keeps running. Only one update or restart runs at a time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfUpdateRequest'
+      responses:
+        '200':
+          description: The new binary is in place. qui restarts next.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateResponse'
+        '400':
+          description: The version is missing or is not valid semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Self-update is not available, for example in an app container or for a development build
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: GitHub has no release with that tag, or no asset for this OS and architecture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The tag is not newer than the running version, or an update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The binary swap failed, for example with a permission error, or the new binary is installed but qui refused the restart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: GitHub returned an error, such as a rate limit, or the signature check failed. The error carries the message word for word.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/backups/import:
     post:
       tags:
@@ -5857,7 +5954,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Trigger orphan scan
-      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID.
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance cannot be confirmed, so the new scan cancels it instead of returning 409.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6013,7 +6110,7 @@ paths:
         '400':
           description: Run is not in preview_ready status
         '409':
-          description: A scan or deletion is already in progress for this instance
+          description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance, where deletion is not supported yet and the run stays preview_ready, and when the instance's filesystem access changed since the scan, which marks the run failed.
         '403':
           description: Instance does not have local filesystem access enabled
         '404':
@@ -6592,6 +6689,36 @@ components:
         error:
           type: string
 
+    SelfUpdateRequest:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          description: The release tag to install
+          example: v1.31.0
+
+    SelfUpdateResponse:
+      type: object
+      required:
+        - version
+        - rollbackCommand
+        - backupError
+      properties:
+        version:
+          type: string
+          description: The installed version, without a v prefix, in the same format as GET /api/version
+          example: 1.31.0
+        rollbackCommand:
+          type: string
+          description: The command that restores the backup, one line for each replaced binary. Empty when qui found no backup.
+          example: mv '/home/user/bin/qui-v1.30.0.bak' '/home/user/bin/qui'
+        backupError:
+          type: string
+          description: Empty when the backup exists. Otherwise it names the path that qui checked and the cause.
+          example: ""
+
     TorznabSearchRequest:
       type: object
       properties:
@@ -6962,7 +7089,27 @@ components:
           type: string
           enum: [none, local, remote]
           description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
+        capabilities:
+          $ref: '#/components/schemas/FilesystemCapabilities'
 
+
+    FilesystemCapabilities:
+      type: object
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
+      required: [read, identity, write, content]
+      properties:
+        read:
+          type: boolean
+          description: qui can list, stat, and walk paths.
+        identity:
+          type: boolean
+          description: qui trusts file identity (device and inode) to find hardlinks.
+        write:
+          type: boolean
+          description: qui can create and remove hardlink and reflink trees.
+        content:
+          type: boolean
+          description: qui can read file content, for downloads, MediaInfo, and Disc scans.
 
     SSHHostKeyRequest:
       type: object
@@ -7598,6 +7745,8 @@ components:
       required:
         - version
         - updateAvailable
+        - selfUpdate
+        - restart
       properties:
         version:
           type: string
@@ -7610,6 +7759,14 @@ components:
         updateAvailable:
           type: boolean
           description: Whether a newer release than the running version is available
+          example: true
+        selfUpdate:
+          type: boolean
+          description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
+          example: true
+        restart:
+          type: boolean
+          description: Whether qui can restart itself. False in an app container.
           example: true
 
     QBittorrentBuildInfo:
@@ -7928,17 +8085,12 @@ components:
           description: Enable Gazelle matching for OPS/RED torrents
         redactedApiKey:
           type: string
-          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Redacted (RED) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         orpheusApiKey:
           type: string
-          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        startPaused:
-          type: boolean
-        category:
-          type: string
-          nullable: true
         tags:
           type: array
           items:
@@ -8061,10 +8213,10 @@ components:
           description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
-          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+          description: TVDB API key for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         seasonPackTvdbPin:
           type: string
-          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
+          description: TVDB subscriber PIN for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
 
     CrossSeedAutomationSettings:
       type: object
@@ -8076,17 +8228,12 @@ components:
           description: Enable Gazelle matching for OPS/RED torrents
         redactedApiKey:
           type: string
-          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Redacted (RED) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         orpheusApiKey:
           type: string
-          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
+          description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        startPaused:
-          type: boolean
-        category:
-          type: string
-          nullable: true
         tags:
           type: array
           items:
@@ -8211,10 +8358,10 @@ components:
           description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
-          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+          description: TVDB API key for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         seasonPackTvdbPin:
           type: string
-          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
+          description: TVDB subscriber PIN for season pack metadata resolution. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         createdAt:
           type: string
           format: date-time
@@ -9256,6 +9403,10 @@ components:
         partial:
           type: boolean
           description: True when some selected scan paths could not be scanned. Automatic cleanup is skipped for this run.
+        filesystemMode:
+          type: string
+          enum: [none, local, remote]
+          description: How qui reached the instance's files when this run scanned them. Deletion is refused for `remote` runs and for runs whose mode no longer matches the instance.
         errorMessage:
           type: string
           nullable: true

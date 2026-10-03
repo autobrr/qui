@@ -86,6 +86,7 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	h.sshPool.Invalidate(instanceID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -107,6 +108,7 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	h.sshPool.Invalidate(instanceID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -254,6 +256,9 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
+	// A refusal memoised against the old pin ends here; the next dial checks
+	// the host against the pin the user just confirmed.
+	h.sshPool.Invalidate(instance.ID)
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 

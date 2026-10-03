@@ -143,6 +143,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -153,6 +154,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+	c.viper.SetDefault("externalProgramMaxRunning", 8)
 
 	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
@@ -251,6 +253,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("externalProgramMaxRunning", envPrefix+"EXTERNAL_PROGRAM_MAX_RUNNING")
+	c.viper.BindEnv("disableSelfUpdate", envPrefix+"DISABLE_SELF_UPDATE")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -381,6 +385,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 		c.Config.QbittorrentTimeout = 60
 	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.DisableSelfUpdate = c.viper.GetBool("disableSelfUpdate")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -393,6 +398,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
 	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramMaxRunning = c.viper.GetInt("externalProgramMaxRunning")
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
 	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
@@ -650,6 +656,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: true
 #checkForUpdates = true
 
+# Hide Self-update in the web UI. "qui update" from the shell still works (requires restart)
+# Package maintainers who pin the qui version should set this to true.
+# Default: false
+#disableSelfUpdate = false
+
 # Tracker icon fetching
 # Disable to prevent qui from requesting tracker favicons from remote trackers.
 # Default: true
@@ -698,6 +709,11 @@ sessionSecret = "{{ .sessionSecret }}"
 #       "/usr/local/bin/my-script",
 #       "/home/user/bin",
 #]
+
+# Maximum number of external programs that run at the same time (requires restart)
+# Other programs wait for a free slot. A value of 0 or less uses the default.
+# Default: 8
+#externalProgramMaxRunning = 8
 
 # OpenID Connect (OIDC) Configuration
 # Enable OIDC authentication
@@ -962,6 +978,15 @@ func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
 	}
 	return dir, nil
+}
+
+// SetDefaultLogPath sets the log path that applies when the config file, the
+// environment, and the flags set none. A config reload keeps it.
+func (c *AppConfig) SetDefaultLogPath(path string) {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	c.viper.SetDefault("logPath", path)
+	c.Config.LogPath = c.viper.GetString("logPath")
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.

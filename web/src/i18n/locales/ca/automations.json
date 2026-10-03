@@ -28,10 +28,12 @@
     "selectState": "Selecciona un estat",
     "selectScope": "Selecciona un àmbit",
     "selectTrackerStatus": "Selecciona un estat",
+    "selectContentType": "Selecciona un tipus de contingut",
     "true": "Cert",
     "false": "Fals",
     "selectCategory": "Selecciona una categoria",
     "uncategorized": "Sense categoria",
+    "customContentType": "{{value}} (no admès)",
     "regexEnabled": "Regex activada",
     "enableRegex": "Activa la regex",
     "selectField": "Selecciona un camp",
@@ -108,6 +110,7 @@
       "RATIO": "Ràtio",
       "RATIO_LIMIT": "Límit de ràtio",
       "MAX_RATIO": "Ràtio màxima",
+      "UPLOADED_OVER_SIZE": "Pujat / Mida",
       "PROGRESS": "Progrés",
       "AVAILABILITY": "Disponibilitat",
       "POPULARITY": "Popularitat",
@@ -139,7 +142,8 @@
       "CROSS_SEED_TAGS": "Etiquetes dels cross-seed",
       "SEASON_PACK_STATUS": "Estat del paquet de temporada",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Estat del paquet de temporada (qualsevol instància)",
-      "HARDLINK_SCOPE": "Àmbit dels hardlinks"
+      "HARDLINK_SCOPE": "Àmbit dels hardlinks",
+      "HARDLINK_SCOPE_CROSS": "Àmbit dels hardlinks (entre instàncies)"
     },
     "fieldGroups": {
       "Identity": "Identitat",
@@ -184,6 +188,7 @@
       "stalled_downloading": "Baixada encallada",
       "errored": "Error",
       "tracker_down": "Tracker caigut",
+      "tracker_error": "Error del tracker",
       "checking": "Verificant",
       "checkingResumeData": "Verificant les dades de represa",
       "moving": "Movent",
@@ -212,8 +217,7 @@
     "durationUnits": {
       "minutes": "minuts",
       "hours": "hores",
-      "days": "dies",
-      "seconds": "segons"
+      "days": "dies"
     },
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",

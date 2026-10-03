@@ -421,10 +421,6 @@
       "loadingDescription": "Caricamento dei temi disponibili...",
       "description": "Scegli tra i temi disponibili. I temi premium richiedono una licenza valida.",
       "verificationUnavailable": "Verifica della licenza non disponibile. Il cambio dei temi premium è temporaneamente disabilitato.",
-      "freeBadge": "Gratuito",
-      "freeThemes": "Temi gratuiti",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Temi Premium",
       "notLoaded": "Temi premium non caricati",
       "notLoadedDescription": "Configura",
       "notLoadedAnd": "ed esegui",
@@ -541,16 +537,13 @@
       "copiedVerify": "Comando di verifica copiato",
       "failedCopyVerify": "Copia del comando di verifica non riuscita",
       "toasts": {
-        "activationSuccess": "Licenza attivata con successo!",
         "activationSuccessPremium": "Accesso Premium attivato! Grazie!",
         "paymentCompleted": "Pagamento completato. Aggiungi la tua chiave di licenza premium per terminare la configurazione.",
         "paymentNotCompleted": "Il pagamento non è stato completato correttamente.",
         "returnedFromCheckout": "Tornato dal checkout. Aggiungi la tua chiave di licenza premium quando sei pronto.",
         "keyCopied": "Chiave di licenza copiata negli appunti",
         "copyFailed": "Copia della chiave di licenza non riuscita",
-        "removedFromMachine": "Licenza rimossa da questa macchina",
-        "refreshedAll": "Tutte le licenze aggiornate con successo",
-        "refreshFailed": "Aggiornamento delle licenze non riuscito"
+        "removedFromMachine": "Licenza rimossa da questa macchina"
       }
     },
     "custom": {
@@ -559,7 +552,6 @@
       "lockedTitle": "I temi personalizzati sono una funzione premium",
       "lockedDescription": "Sblocca il premium per caricare i tuoi file CSS dei temi da una cartella sul disco.",
       "unlockCta": "Sblocca premium",
-      "directoryLabel": "Cartella dei temi",
       "refresh": "Aggiorna",
       "detectedCount": "Temi trovati: {{total}}",
       "parseErrorsTitle": "Impossibile analizzare questi file:",
@@ -662,10 +654,6 @@
   },
   "indexers": {
     "title": "Indexer Torznab",
-    "addIndexer": "Aggiungi indexer",
-    "autodiscoverProwlarr": "Rilevamento automatico da Prowlarr",
-    "noIndexers": "Nessun indexer configurato per il momento.",
-    "noIndexersDescription": "Aggiungi un indexer compatibile con Torznab per abilitare le ricerche cross-seed automatiche.",
     "deleteIndexer": "Elimina indexer",
     "deleteIndexerDescription": "Vuoi davvero eliminare \"{{name}}\"? Questa azione non può essere annullata.",
     "deleteAllIndexers": "Elimina tutti gli indexer",
@@ -674,8 +662,6 @@
       "loadFailed": "Caricamento degli indexer non riuscito",
       "deletedSuccess": "Indexer eliminato",
       "deleteFailed": "Eliminazione dell'indexer non riuscita",
-      "allDeletedSuccess": "Tutti gli indexer sono stati eliminati",
-      "allDeletedFailed": "Eliminazione di tutti gli indexer non riuscita",
       "deleteAllSuccess": "Eliminati tutti i {{count}} indexer",
       "deleteAllPartial": "{{success}} indexer eliminati, {{failed}} non riusciti: {{names}}",
       "testSuccess": "Test della connessione riuscito",
@@ -800,7 +786,6 @@
         "importSuccess": "Operazione riuscita: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} con avvisi)",
         "moreWarnings": "...e altri {{count}} avvisi",
-        "importErrors": "{{details}}",
         "moreErrors": "...e altri {{count}} errori",
         "created": "{{count}} creati",
         "updated": "{{count}} aggiornati",
@@ -861,10 +846,6 @@
     },
     "activity": {
       "title": "Attività dello scheduler",
-      "idle": "Inattivo",
-      "queueLength": "Coda",
-      "workers": "Worker",
-      "cooldown": "Attesa",
       "running": "In esecuzione",
       "queued": "In coda",
       "rateLimited": "Limite di frequenza raggiunto",
@@ -997,6 +978,39 @@
         "upToDateDetail": "È in esecuzione l'ultima versione",
         "notCheckedYet": "Non ancora verificato",
         "lastChecked": "Ultimo controllo {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Riavvia",
+      "confirmTitle": "Riavviare qui?",
+      "confirmDescription": "qui si arresta come in un normale arresto, poi si avvia di nuovo. Le attività in corso, come ricerche cross-seed, automazioni, backup e scansioni orfani, si interrompono. La pagina si ricarica quando qui torna disponibile.",
+      "confirm": "Riavvia",
+      "overlay": {
+        "restartingTitle": "Riavvio di qui…",
+        "restartingDetail": "La pagina si ricarica quando qui risponde di nuovo.",
+        "slowTitle": "qui non ha ancora risposto",
+        "slowDetail": "qui potrebbe essere ancora in avvio, e questa pagina continua ad attendere. Controlla i log di qui. Se hai cambiato la porta o l'URL di base, apri qui al nuovo indirizzo."
+      }
+    },
+    "update": {
+      "button": "Installa aggiornamento",
+      "confirmTitle": "Installare l'aggiornamento?",
+      "confirmDescription": "qui scarica la nuova versione, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. La pagina si ricarica quando qui è di nuovo attivo.",
+      "runningWork": "Il lavoro in corso, come ricerche cross-seed, automazioni, backup e scansioni degli orfani, si ferma.",
+      "currentVersion": "Versione attuale",
+      "targetVersion": "Nuova versione",
+      "releaseNotes": "Note di rilascio",
+      "confirm": "Installa aggiornamento",
+      "overlay": {
+        "notAppliedTitle": "L'aggiornamento non è stato applicato",
+        "notAppliedDetail": "qui è di nuovo attivo, ma con una versione diversa. Controlla i log di qui.",
+        "installedTitle": "qui è stato aggiornato",
+        "installedDetail": "Ricarica la pagina per aprire la nuova versione.",
+        "reload": "Ricarica la pagina",
+        "noBackup": "qui è stato aggiornato, ma non ha conservato alcun backup: {{error}}. Per il rollback, scarica manualmente la versione precedente.",
+        "rollbackIntro": "Se la nuova versione non si avvia, esegui questo comando, poi avvia di nuovo qui:",
+        "rollbackLabel": "Comando di rollback",
+        "rollbackDocs": "Passaggi per il rollback"
       }
     },
     "runtime": {

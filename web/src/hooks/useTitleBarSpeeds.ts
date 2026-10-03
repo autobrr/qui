@@ -12,6 +12,7 @@ import { isSpreadsheetDisguiseActive, spreadsheetDocumentTitle, useSpreadsheetDi
 import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 const DEFAULT_DOCUMENT_TITLE = "qui"
 
@@ -62,6 +63,7 @@ export function useTitleBarSpeeds({
   foregroundSpeeds,
   backgroundSpeeds: backgroundSpeedsOverride,
 }: UseTitleBarSpeedsOptions) {
+  const { t } = useTranslation("common")
   const [speedUnit] = useSpeedUnits()
   const disguised = useSpreadsheetDisguise()
   const baseTitle = useRouteTitle()
@@ -179,17 +181,14 @@ export function useTitleBarSpeeds({
 
     const downloadSpeed = effectiveSpeeds.dl ?? 0
     const uploadSpeed = effectiveSpeeds.up ?? 0
-    const speedTitle = `D: ${formatSpeedWithUnit(downloadSpeed, speedUnit)} U: ${formatSpeedWithUnit(uploadSpeed, speedUnit)}`
+    const speedTitle = t("titleBar.speeds", {
+      download: formatSpeedWithUnit(downloadSpeed, speedUnit),
+      upload: formatSpeedWithUnit(uploadSpeed, speedUnit),
+    })
 
-    if (mode === "dashboard") {
-      const nextTitle = `${speedTitle} | Dashboard`
-      document.title = nextTitle
-      lastSpeedTitleRef.current = nextTitle
-    } else {
-      const instanceSuffix = ` | ${instanceName || baseTitle}`
-      const nextTitle = `${speedTitle}${instanceSuffix}`
-      document.title = nextTitle
-      lastSpeedTitleRef.current = nextTitle
-    }
-  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
+    // On the dashboard route, baseTitle is the translated "Dashboard" route title.
+    const nextTitle = `${speedTitle} | ${mode === "dashboard" ? baseTitle : instanceName || baseTitle}`
+    document.title = nextTitle
+    lastSpeedTitleRef.current = nextTitle
+  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit, t])
 }

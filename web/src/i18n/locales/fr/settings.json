@@ -421,10 +421,6 @@
       "loadingDescription": "Chargement des thèmes disponibles...",
       "description": "Choisissez parmi les thèmes. Les thèmes premium nécessitent une licence valide.",
       "verificationUnavailable": "Vérification de licence indisponible. Le changement de thème premium est désactivé.",
-      "freeBadge": "Gratuit",
-      "freeThemes": "Thèmes Gratuits",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Thèmes Premium",
       "notLoaded": "Thèmes premium non chargés",
       "notLoadedDescription": "Configurer",
       "notLoadedAnd": "et exécutez",
@@ -541,16 +537,13 @@
       "copiedVerify": "Commande de vérification copiée",
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
-        "activationSuccess": "Licence activée avec succès !",
         "activationSuccessPremium": "Accès Premium activé ! Merci !",
         "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence premium pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
         "keyCopied": "Clé copiée dans le presse-papiers",
         "copyFailed": "Échec de la copie de la clé",
-        "removedFromMachine": "Licence retirée de cette machine",
-        "refreshedAll": "Licences rafraîchies avec succès",
-        "refreshFailed": "Échec du rafraîchissement des licences"
+        "removedFromMachine": "Licence retirée de cette machine"
       }
     },
     "custom": {
@@ -559,7 +552,6 @@
       "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
       "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
       "unlockCta": "Débloquer le premium",
-      "directoryLabel": "Dossier des thèmes",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
@@ -662,10 +654,6 @@
   },
   "indexers": {
     "title": "Indexeurs Torznab",
-    "addIndexer": "Ajouter un indexeur",
-    "autodiscoverProwlarr": "Autodécouverte depuis Prowlarr",
-    "noIndexers": "Aucun indexeur configuré pour le moment.",
-    "noIndexersDescription": "Ajoutez un indexeur compatible Torznab pour activer les recherches cross-seed automatisées.",
     "deleteIndexer": "Supprimer l'indexeur",
     "deleteIndexerDescription": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
     "deleteAllIndexers": "Supprimer tous les indexeurs",
@@ -674,8 +662,6 @@
       "loadFailed": "Échec du chargement des indexeurs",
       "deletedSuccess": "Indexeur supprimé",
       "deleteFailed": "Échec de la suppression de l'indexeur",
-      "allDeletedSuccess": "Tous les indexeurs ont été supprimés",
-      "allDeletedFailed": "Échec de la suppression de tous les indexeurs",
       "deleteAllSuccess": "Les {{count}} indexeurs ont été supprimés",
       "deleteAllPartial": "{{success}} indexeurs supprimés, {{failed}} échecs : {{names}}",
       "testSuccess": "Test de connexion réussi",
@@ -821,7 +807,6 @@
         "importSuccess": "Succès : {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} avec avertissements)",
         "moreWarnings": "...et {{count}} avertissements supplémentaires",
-        "importErrors": "{{details}}",
         "moreErrors": "...et {{count}} erreurs supplémentaires",
         "created": "{{count}} créés",
         "updated": "{{count}} mis à jour",
@@ -882,10 +867,6 @@
     },
     "activity": {
       "title": "Activité du planificateur",
-      "idle": "Inactif",
-      "queueLength": "File d'attente",
-      "workers": "Travailleurs",
-      "cooldown": "Temps d'attente",
       "running": "En cours",
       "queued": "En attente",
       "rateLimited": "Limité en taux",
@@ -997,6 +978,39 @@
         "upToDateDetail": "Utilise la dernière version",
         "notCheckedYet": "Pas encore vérifié",
         "lastChecked": "Dernière vérification {{date}}"
+      }
+    },
+    "restart": {
+      "button": "Redémarrer",
+      "confirmTitle": "Redémarrer qui ?",
+      "confirmDescription": "qui s'arrête comme lors d'un arrêt normal, puis redémarre. Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent. La page se recharge quand qui est de retour.",
+      "confirm": "Redémarrer",
+      "overlay": {
+        "restartingTitle": "Redémarrage de qui…",
+        "restartingDetail": "La page se recharge quand qui répond de nouveau.",
+        "slowTitle": "qui n'a pas encore répondu",
+        "slowDetail": "qui est peut-être encore en train de démarrer, et cette page continue d'attendre. Consultez les journaux de qui. Si vous avez changé le port ou l'URL de base, ouvrez qui à la nouvelle adresse."
+      }
+    },
+    "update": {
+      "button": "Installer la mise à jour",
+      "confirmTitle": "Installer la mise à jour ?",
+      "confirmDescription": "qui télécharge la nouvelle version, vérifie sa signature et garde le binaire actuel en sauvegarde. Puis qui redémarre. La page se recharge quand qui est de retour.",
+      "runningWork": "Les tâches en cours, comme les recherches cross-seed, les automatisations, les sauvegardes et les analyses d'orphelins, s'arrêtent.",
+      "currentVersion": "Version actuelle",
+      "targetVersion": "Nouvelle version",
+      "releaseNotes": "Notes de version",
+      "confirm": "Installer la mise à jour",
+      "overlay": {
+        "notAppliedTitle": "La mise à jour ne s'est pas appliquée",
+        "notAppliedDetail": "qui est de retour, mais avec une autre version. Consultez les journaux de qui.",
+        "installedTitle": "qui a été mis à jour",
+        "installedDetail": "Rechargez la page pour ouvrir la nouvelle version.",
+        "reload": "Recharger la page",
+        "noBackup": "qui a été mis à jour, mais n'a gardé aucune sauvegarde : {{error}}. Pour revenir en arrière, téléchargez l'ancienne version manuellement.",
+        "rollbackIntro": "Si la nouvelle version ne démarre pas, exécutez cette commande, puis redémarrez qui :",
+        "rollbackLabel": "Commande de retour en arrière",
+        "rollbackDocs": "Étapes du retour en arrière"
       }
     },
     "runtime": {

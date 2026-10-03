@@ -12,7 +12,9 @@
     "generalSettings": "常规设置",
     "manageInstances": "管理实例",
     "appearance": "外观",
-    "instanceBackups": "实例备份"
+    "instanceBackups": "实例备份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文档"
   },
   "sidebar": {
     "instances": "实例",
@@ -22,8 +24,8 @@
     "version": "版本 {{version}}",
     "language": "语言",
     "viewOnGitHub": "在 GitHub 上查看",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "showSidebar": "显示侧边栏",
     "hideSidebar": "隐藏侧边栏"
@@ -58,11 +60,14 @@
     "torrentCreationTasksTitle": "种子创建任务",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "allScope": "全部",
     "unified": "统一视图"
+  },
+  "titleBar": {
+    "speeds": "下载：{{download}} 上传：{{upload}}"
   },
   "unifiedScope": {
     "unified": "统一视图",
@@ -81,8 +86,8 @@
     "noActiveClients": "没有活动的客户端",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
-    "rssRunning": "RSS 运行中",
-    "rssEnabled": "RSS 已启用",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
     "scanRunning": "扫描运行中",
     "logout": "退出登录",
     "version": "版本 {{version}}",
@@ -98,8 +103,7 @@
     "copyPath": "复制路径",
     "scrollToTop": "回到顶部",
     "search": "搜索",
-    "select": "选择",
-    "toggle": "切换"
+    "select": "选择"
   },
   "placeholders": {
     "search": "搜索...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "未找到结果。"
+  },
+  "errors": {
+    "unknown": "未知错误",
+    "httpStatus": "HTTP 错误！状态：{{status}}",
+    "httpStatusHtml": "HTTP 错误！状态：{{status}}（服务器返回了 HTML 错误页面）",
+    "ssoHtmlResponse": "API 返回了 HTML 响应而不是 JSON。如果您位于 SSO 代理（Cloudflare Access、Pangolin 等）之后，请尝试刷新页面或在新标签页中重新打开该 URL。",
+    "torrentFileDownloadFailed": "下载种子文件失败：{{status}}"
   },
   "status": {
     "disabled": "已禁用",
@@ -117,6 +128,18 @@
     "unknown": "未知",
     "trackerError": "Tracker 错误",
     "unreachable": "无法连接"
+  },
+  "contentTypeLabels": {
+    "movie": "电影",
+    "tv": "电视剧",
+    "music": "音乐",
+    "audiobook": "有声书",
+    "book": "图书",
+    "comic": "漫画",
+    "game": "游戏",
+    "app": "应用",
+    "adult": "成人",
+    "unknown": "未知"
   },
   "themeToggle": {
     "changeTheme": "切换主题",
@@ -130,14 +153,19 @@
     "switchedToMode": "已切换到{{mode}}模式",
     "switchedToTheme": "已切换到{{theme}}主题",
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
-    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。",
-    "custom": "自定义"
+    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 现已可用",
     "viewRelease": "查看发布",
     "dismiss": "关闭"
+  },
+  "pwaUpdate": {
+    "reload": "重新加载",
+    "waitingDescription": "重新加载以应用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便时请重新加载，以完成最新版本的安装。"
   },
   "notFound": {
     "title": "迷路了？",

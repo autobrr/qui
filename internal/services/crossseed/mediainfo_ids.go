@@ -65,11 +65,11 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return mediaIDsToExternalIDs(entry.IDType, entry.IDValue)
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil
 	}
 
-	backend, err := s.getBackendForInstance(ctx, instance.ID)
+	backend, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityContent)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrent.Name).Msg("[CROSSSEED-SEARCH] no filesystem backend for media ID lookup; not caching")
 		return nil
@@ -152,7 +152,8 @@ func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string,
 	})
 
 	var bestPath string
-	forEachLocalTorrentFile(ctx, backend, savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ *fsops.LstatInfo) bool {
+	// Best-effort lookup: an unresolvable name just means no mediainfo source here.
+	_ = forEachLocalTorrentFile(ctx, backend, savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ *fsops.LstatInfo) bool {
 		bestPath = fullPath
 		return false
 	})

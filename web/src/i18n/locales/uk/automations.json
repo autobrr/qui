@@ -32,6 +32,7 @@
     "false": "Ні",
     "selectCategory": "Вибрати категорію",
     "uncategorized": "Без категорії",
+    "customContentType": "{{value}} (не підтримується)",
     "regexEnabled": "Regex увімкнено",
     "enableRegex": "Увімкнути regex",
     "selectField": "Вибрати поле",
@@ -105,6 +106,7 @@
       "RATIO": "Співвідношення",
       "RATIO_LIMIT": "Ліміт співвідношення",
       "MAX_RATIO": "Макс. співвідношення",
+      "UPLOADED_OVER_SIZE": "Вивантажено / Розмір",
       "PROGRESS": "Прогрес",
       "AVAILABILITY": "Доступність",
       "POPULARITY": "Популярність",
@@ -137,6 +139,7 @@
       "SEASON_PACK_STATUS": "Статус сезонного паку",
       "SEASON_PACK_STATUS_ANY_INSTANCE": "Статус сезонного паку (будь-який інстанс)",
       "HARDLINK_SCOPE": "Область жорстких посилань",
+      "HARDLINK_SCOPE_CROSS": "Область жорстких посилань (між інстансами)",
       "TRACKER_STATUS": "Статус трекера",
       "TRACKER_MESSAGE": "Повідомлення трекера",
       "RLS_YEAR": "Рік (RLS)"
@@ -184,6 +187,7 @@
       "stalled_downloading": "Зависає (завантаження)",
       "errored": "Помилка",
       "tracker_down": "Трекер недоступний",
+      "tracker_error": "Помилка трекера",
       "checking": "Перевірка",
       "checkingResumeData": "Перевірка даних відновлення",
       "moving": "Переміщення",
@@ -204,14 +208,14 @@
     "durationUnits": {
       "minutes": "хвилин",
       "hours": "годин",
-      "days": "днів",
-      "seconds": "секунд"
+      "days": "днів"
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",
       "localFilesystemAccess": "Потребує локального доступу до файлової системи"
     },
     "selectTrackerStatus": "Вибрати статус",
+    "selectContentType": "Вибрати тип вмісту",
     "trackerStatuses": {
       "not_contacted": "Не зв'язувалися",
       "working": "Працює",

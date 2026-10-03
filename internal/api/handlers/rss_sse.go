@@ -21,6 +21,7 @@ import (
 // RSSSSEHandler manages Server-Sent Events for RSS updates
 type RSSSSEHandler struct {
 	getRSSItems func(context.Context, int, bool) (qbt.RSSItems, error)
+	shutdown    <-chan struct{}
 
 	// Client management
 	mu      sync.RWMutex
@@ -59,10 +60,11 @@ type FeedsUpdatePayload struct {
 	Timestamp  int64           `json:"timestamp"`
 }
 
-// NewRSSSSEHandler creates a new RSS SSE handler
-func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager) *RSSSSEHandler {
+// NewRSSSSEHandler creates a new RSS SSE handler. Every stream ends when shutdown closes.
+func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager, shutdown <-chan struct{}) *RSSSSEHandler {
 	return &RSSSSEHandler{
 		getRSSItems: syncManager.GetRSSItems,
+		shutdown:    shutdown,
 		clients:     make(map[int]map[*rssSSEClient]struct{}),
 		pollers:     make(map[int]context.CancelFunc),
 	}
@@ -133,6 +135,8 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-client.done:
 			return
+		case <-h.shutdown:
+			return
 		case event := <-client.events:
 			if err := h.sendEvent(w, flusher, event); err != nil {
 				log.Debug().Err(err).Int("instanceID", instanceID).Msg("RSS SSE send error")
@@ -191,7 +195,7 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 	}
 	h.mu.Unlock()
 
-	// Stop poller outside of h.mu to avoid lock-order inversions with h.pollerMu.
+	// Stop poller outside of h.mu: stopPoller takes h.mu under h.pollerMu.
 	if shouldStopPoller {
 		h.stopPoller(instanceID)
 	}
@@ -235,6 +239,16 @@ func (h *RSSSSEHandler) ensurePoller(instanceID int) {
 func (h *RSSSSEHandler) stopPoller(instanceID int) {
 	h.pollerMu.Lock()
 	defer h.pollerMu.Unlock()
+
+	// A viewer can join between removeClient dropping the last one and this
+	// stop; its ensurePoller saw the old poller, so keep it. Lock order is
+	// pollerMu, then mu.
+	h.mu.RLock()
+	hasClients := len(h.clients[instanceID]) > 0
+	h.mu.RUnlock()
+	if hasClients {
+		return
+	}
 
 	if cancel, exists := h.pollers[instanceID]; exists {
 		cancel()

@@ -419,10 +419,6 @@
       "loadingDescription": "正在加载可用主题...",
       "description": "从可用主题中选择。高级主题需要有效的许可证。",
       "verificationUnavailable": "许可证验证不可用。高级主题切换暂时禁用。",
-      "freeBadge": "免费",
-      "freeThemes": "免费主题",
-      "premiumBadge": "高级",
-      "premiumThemes": "高级主题",
       "notLoaded": "高级主题未加载",
       "notLoadedDescription": "配置",
       "notLoadedAnd": "并运行",
@@ -539,16 +535,13 @@
       "copiedVerify": "验证命令已复制",
       "failedCopyVerify": "复制验证命令失败",
       "toasts": {
-        "activationSuccess": "许可证激活成功！",
         "activationSuccessPremium": "高级访问已激活！感谢您的支持！",
         "paymentCompleted": "支付完成。请添加您的高级许可证密钥以完成设置。",
         "paymentNotCompleted": "支付未成功完成。",
         "returnedFromCheckout": "已从结账返回。准备好后请添加您的高级许可证密钥。",
         "keyCopied": "许可证密钥已复制到剪贴板",
         "copyFailed": "复制许可证密钥失败",
-        "removedFromMachine": "许可证已从此设备移除",
-        "refreshedAll": "所有许可证刷新成功",
-        "refreshFailed": "刷新许可证失败"
+        "removedFromMachine": "许可证已从此设备移除"
       }
     },
     "custom": {
@@ -557,7 +550,6 @@
       "lockedTitle": "自定义主题是高级功能",
       "lockedDescription": "解锁高级版即可从磁盘目录加载你自己的主题 CSS 文件。",
       "unlockCta": "解锁高级版",
-      "directoryLabel": "主题目录",
       "refresh": "刷新",
       "detectedCount": "找到的主题：{{total}}",
       "parseErrorsTitle": "无法解析以下文件：",
@@ -660,10 +652,6 @@
   },
   "indexers": {
     "title": "Torznab 索引器",
-    "addIndexer": "添加索引器",
-    "autodiscoverProwlarr": "从 Prowlarr 自动发现",
-    "noIndexers": "尚未配置索引器。",
-    "noIndexersDescription": "添加一个 Torznab 兼容的索引器以启用自动 cross-seed 搜索。",
     "deleteIndexer": "删除索引器",
     "deleteIndexerDescription": "确定要删除「{{name}}」吗？此操作无法撤销。",
     "deleteAllIndexers": "删除所有索引器",
@@ -672,8 +660,6 @@
       "loadFailed": "加载索引器失败",
       "deletedSuccess": "索引器已删除",
       "deleteFailed": "删除索引器失败",
-      "allDeletedSuccess": "所有索引器已删除",
-      "allDeletedFailed": "删除所有索引器失败",
       "deleteAllSuccess": "已删除全部 {{count}} 个索引器",
       "deleteAllPartial": "已删除 {{success}} 个索引器，{{failed}} 个失败：{{names}}",
       "testSuccess": "连接测试成功",
@@ -819,7 +805,6 @@
         "importSuccess": "成功：{{details}}",
         "importWithWarnings": "{{details}}（{{warningCount}} 个有警告）",
         "moreWarnings": "...还有 {{count}} 个警告",
-        "importErrors": "{{details}}",
         "moreErrors": "...还有 {{count}} 个错误",
         "created": "{{count}} 个已创建",
         "updated": "{{count}} 个已更新",
@@ -879,10 +864,6 @@
     },
     "activity": {
       "title": "调度器活动",
-      "idle": "空闲",
-      "queueLength": "队列",
-      "workers": "工作线程",
-      "cooldown": "冷却",
       "running": "运行中",
       "queued": "排队中",
       "rateLimited": "速率受限",
@@ -994,6 +975,39 @@
         "upToDateDetail": "正在运行最新版本",
         "notCheckedYet": "尚未检查",
         "lastChecked": "上次检查 {{date}}"
+      }
+    },
+    "restart": {
+      "button": "重启",
+      "confirmTitle": "重启 qui？",
+      "confirmDescription": "qui 会像正常停止时一样关闭，然后重新启动。正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。qui 恢复后页面会自动重新加载。",
+      "confirm": "重启",
+      "overlay": {
+        "restartingTitle": "正在重启 qui…",
+        "restartingDetail": "qui 再次响应后页面会重新加载。",
+        "slowTitle": "qui 尚未响应",
+        "slowDetail": "qui 可能仍在启动，此页面会继续等待。请查看 qui 日志。如果你更改了端口或基础 URL，请在新地址打开 qui。"
+      }
+    },
+    "update": {
+      "button": "安装更新",
+      "confirmTitle": "安装更新？",
+      "confirmDescription": "qui 会下载新版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。qui 恢复后页面会自动重新加载。",
+      "runningWork": "正在运行的任务，例如交叉做种搜索、自动化、备份和孤立文件扫描，都会停止。",
+      "currentVersion": "当前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "发行说明",
+      "confirm": "安装更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢复，但运行的是其他版本。请查看 qui 日志。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新加载页面以打开新版本。",
+        "reload": "重新加载页面",
+        "noBackup": "qui 已更新，但未保留备份：{{error}}。如需回滚，请手动下载旧版本。",
+        "rollbackIntro": "如果新版本无法启动，请运行此命令，然后再次启动 qui：",
+        "rollbackLabel": "回滚命令",
+        "rollbackDocs": "回滚步骤"
       }
     },
     "runtime": {

@@ -1066,6 +1066,8 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         username: "admin",
         tlsSkipVerify: false,
         hasLocalFilesystemAccess: false,
+        capabilities: { read: false, identity: false, write: false, content: false },
+        filesystemMode: "none",
         useHardlinks: false,
         hardlinkBaseDir: "",
         hardlinkDirPreset: "flat",

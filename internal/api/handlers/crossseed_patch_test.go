@@ -6,6 +6,9 @@ package handlers
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -13,8 +16,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
 		Enabled:                false,
 		RunIntervalMinutes:     120,
-		StartPaused:            true,
-		Category:               new("tv"),
 		RSSAutomationTags:      []string{"old"},
 		SeededSearchTags:       []string{"old"},
 		CompletionSearchTags:   []string{"old"},
@@ -30,12 +31,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		OrpheusAPIKey:          "",
 	}
 
-	newCategory := " movies "
 	patch := automationSettingsPatchRequest{
 		Enabled:                new(true),
 		RunIntervalMinutes:     new(45),
-		StartPaused:            new(false),
-		Category:               optionalString{Set: true, Value: &newCategory},
 		RSSAutomationTags:      &[]string{"new"},
 		SeededSearchTags:       &[]string{"new-seeded"},
 		TargetInstanceIDs:      &[]int{3, 4},
@@ -57,12 +55,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	}
 	if existing.RunIntervalMinutes != 45 {
 		t.Fatalf("expected run interval 45, got %d", existing.RunIntervalMinutes)
-	}
-	if existing.StartPaused {
-		t.Fatalf("expected startPaused to be false")
-	}
-	if existing.Category == nil || *existing.Category != "movies" {
-		t.Fatalf("expected category 'movies', got %#v", existing.Category)
 	}
 	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "new" {
 		t.Fatalf("unexpected rss automation tags: %#v", existing.RSSAutomationTags)
@@ -113,7 +105,7 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
 		Enabled:              true,
 		RunIntervalMinutes:   60,
-		Category:             new("tv"),
+		RunExternalProgramID: new(42),
 		RSSAutomationTags:    []string{"keep"},
 		SeededSearchTags:     []string{"keep-seeded"},
 		CompletionSearchTags: []string{"keep-completion"},
@@ -121,7 +113,7 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	}
 
 	patch := automationSettingsPatchRequest{
-		Category: optionalString{Set: true, Value: nil}, // explicit clear
+		RunExternalProgramID: optionalInt{Set: true, Value: nil}, // explicit clear
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -132,8 +124,8 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	if existing.RunIntervalMinutes != 60 {
 		t.Fatalf("expected runIntervalMinutes to remain 60")
 	}
-	if existing.Category != nil {
-		t.Fatalf("expected category to be cleared")
+	if existing.RunExternalProgramID != nil {
+		t.Fatalf("expected runExternalProgramID to be cleared")
 	}
 	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "keep" {
 		t.Fatalf("expected rss automation tags to stay unchanged, got %#v", existing.RSSAutomationTags)
@@ -223,4 +215,19 @@ func TestApplyAutomationSettingsPatch_SeasonPackCategory(t *testing.T) {
 	if existing.SeasonPackCategory != "tv-uhd" {
 		t.Fatalf("expected trimmed seasonPackCategory, got %q", existing.SeasonPackCategory)
 	}
+}
+
+func TestApplyAutomationSettingsPatch_KeepsStoredSecretsUnlessNamed(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{}
+	patch := automationSettingsPatchRequest{
+		Enabled:       new(true),
+		OrpheusAPIKey: new(""),
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	require.Equal(t, domain.RedactedStr, existing.RedactedAPIKey)
+	require.Empty(t, existing.OrpheusAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBPIN)
 }

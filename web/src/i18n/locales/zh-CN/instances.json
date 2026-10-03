@@ -1,4 +1,5 @@
 {
+  "migrationHint": "正在使用 Deluge、rTorrent 或 Transmission？<docs>使用我们的迁移工具迁移到 qBittorrent</docs>",
   "card": {
     "status": {
       "disabled": "已禁用",
@@ -10,8 +11,7 @@
       "disableInstance": "禁用实例",
       "enableInstance": "启用实例",
       "moveUp": "上移",
-      "moveDown": "下移",
-      "instanceSettings": "实例设置"
+      "moveDown": "下移"
     },
     "actions": {
       "edit": "编辑",
@@ -66,8 +66,6 @@
       "skipTlsDescription": "允许连接使用自签名或其他不受信任证书的 qBittorrent 实例。",
       "localFilesystemAccess": "本地文件系统访问",
       "localFilesystemDescription": "如果 qui 能访问此实例的下载路径，请启用此选项（自动化中的硬链接检测需要此功能）。",
-      "authBypass": "认证绕过",
-      "authBypassDescription": "当 qBittorrent 对本地或白名单 IP 绕过认证时启用",
       "username": "用户名",
       "password": "密码",
       "httpBasicAuth": "HTTP 基本认证",
@@ -196,8 +194,6 @@
         "skipTlsDescription": "允许连接使用自签名或其他不受信任证书的 qBittorrent 实例。",
         "localFilesystemAccess": "本地文件系统访问",
         "localFilesystemDescription": "如果 qui 能访问此实例的下载路径，请启用此选项（自动化中的硬链接检测需要此功能）。",
-        "qbittorrentLogin": "qBittorrent 登录",
-        "qbittorrentLoginDescription": "如果 qBittorrent 对本地或白名单 IP 绕过认证，请禁用此选项。",
         "httpBasicAuth": "HTTP 基本认证",
         "httpBasicAuthDescription": "如果你的 qBittorrent 位于启用了基本认证的反向代理之后，请启用此选项",
         "username": "用户名",
@@ -251,7 +247,6 @@
       "friday": "周五",
       "saturday": "周六",
       "sunday": "周日",
-      "schedule": "计划",
       "start": "开始",
       "end": "结束",
       "timeLabel": "{{label}}时间",
@@ -587,48 +582,16 @@
       "enable": "启用"
     },
     "workflows": {
-      "title": "工作流",
-      "description": "自动限制和删除。",
-      "applyNow": "立即应用",
-      "addRule": "添加规则",
-      "loadingRules": "正在加载规则...",
-      "noAutomations": "暂无自动化规则。添加一条规则以开始执行按 Tracker 限制。",
-      "noActionsSet": "未设置操作",
-      "disabled": "已禁用",
       "allTrackers": "所有 Tracker",
-      "edit": "编辑",
-      "speedLimits": "速度限制",
-      "shareLimits": "分享限制",
       "pause": "暂停",
       "recheck": "重新校验",
       "reannounce": "重新汇报",
-      "autoTmmOn": "AutoTMM 开",
-      "autoTmmOff": "AutoTMM 关",
-      "delete": "删除",
-      "externalProgram": "外部程序",
-      "upload": "上传",
-      "download": "下载",
-      "ratio": "分享率",
-      "seedTime": "做种时间",
-      "minuteSuffix": "分",
-      "deleteWithFilesPreserveCrossSeeds": "删除并清除文件（保留辅种）",
-      "deleteWithFilesIncludeCrossSeeds": "删除并清除文件（包含辅种）",
-      "deleteWithFiles": "删除并清除文件",
-      "deleteKeepFiles": "删除（保留文件）",
-      "moveToCategory": "移动到分类：{{category}}",
-      "programId": "程序 ID：{{id}}",
-      "trackerDerivedTag": "Tracker 衍生标签",
-      "noTags": "无标签",
-      "fullSync": "完全同步",
-      "addOnly": "仅添加",
-      "removeOnly": "仅移除",
-      "actionCount_other": "{{count}} 个操作"
+      "minuteSuffix": "分"
     },
     "workflowsOverview": {
       "title": "工作流",
       "tooltip": "基于条件的自动化规则。操作包括：速度限制、分享限制、暂停、恢复、删除、标签和分类更改。\n按 Tracker、分类、标签、分享率、做种时间、大小等匹配种子。\n辅种和硬链接感知，安全地删除或移动而不丢失共享文件。",
       "description": "通过条件规则自动化种子管理。",
-      "noInstancesTitle": "工作流",
       "noInstancesDescription": "未配置实例。请在设置中添加实例以使用此服务。",
       "activeCount": "{{enabled}}/{{total}} 活跃",
       "today": "今日 {{count}} 条",
@@ -666,7 +629,6 @@
       "dryRun": "模拟运行",
       "removed": "已移除",
       "executed": "已执行",
-      "hashCopied": "哈希已复制",
       "copyHash": "复制哈希",
       "original": "原始：{{domain}}",
       "programLabel": "程序：{{name}}",
@@ -695,6 +657,7 @@
       "runDryRunNow": "立即模拟运行",
       "duplicate": "复制",
       "copyTo": "复制到...",
+      "editJSON": "以 JSON 编辑",
       "exportJSON": "导出 JSON",
       "dragToReorder": "拖拽以重新排序工作流",
       "actions": {
@@ -769,11 +732,24 @@
         "title": "导入工作流",
         "description": "粘贴工作流 JSON 以导入。工作流将以禁用状态创建并追加到末尾。",
         "placeholder": "粘贴工作流 JSON...",
-        "invalidImportData": "导入数据无效",
         "importFailed": "导入工作流失败",
         "cancel": "取消",
         "importing": "导入中...",
-        "import": "导入"
+        "import": "导入",
+        "errors": {
+          "invalidJson": "JSON 格式无效",
+          "notObject": "需要一个 JSON 对象",
+          "missingName": "缺少或无效的 'name' 字段",
+          "missingConditions": "缺少或无效的 'conditions' 字段"
+        }
+      },
+      "editJsonDialog": {
+        "title": "以 JSON 编辑“{{name}}”",
+        "description": "编辑工作流 JSON。工作流保持其启用状态和位置。",
+        "saveFailed": "保存工作流失败",
+        "cancel": "取消",
+        "saving": "保存中...",
+        "save": "保存"
       },
       "toast": {
         "workflowDeleted": "工作流已删除",
@@ -789,6 +765,7 @@
         "createdWorkflow": "已创建\"{{name}}\"",
         "copiedWorkflow": "已将\"{{name}}\"复制到 {{instance}}",
         "importedWorkflow": "已导入\"{{name}}\"",
+        "updatedWorkflow": "已更新“{{name}}”",
         "createFailed": "创建工作流失败",
         "reorderFailed": "重新排序工作流失败",
         "exportedTorrents": "已导出 {{count}} 个种子到 CSV",
@@ -843,14 +820,18 @@
       "description": "扫描下载目录并识别孤立文件以进行清理。",
       "noLocalAccess": "无本地访问权限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
+      "remoteLimits": "删除和自动清理暂时无法在远程实例上运行。qui 也无法判断两个路径是否指向同一文件，因此可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。",
       "on": "开",
       "off": "关",
-      "settingsSummary": "宽限期 {{grace}} 分钟 · 间隔 {{interval}} 小时 · 最多 {{max}} 个项目",
+      "summaryGrace": "宽限期 {{grace}} 分钟",
+      "summaryInterval": "间隔 {{interval}} 小时",
+      "summaryMax": "最多 {{max}} 个项目",
       "loading": "加载中...",
       "itemsSummary_other": "{{count}} 个项目（{{size}}）",
       "cancel": "取消",
       "autoCleanupEnabled": "自动清理已启用（≤{{max}} 个文件）",
       "autoCleanupDisabled": "自动清理已禁用",
+      "autoCleanupRemote": "远程实例不自动清理",
       "pathsIgnored_other": " · {{count}} 个路径已忽略",
       "scanNow": "立即扫描",
       "configure": "配置",
@@ -892,6 +873,7 @@
     "orphanScanPreview": {
       "title": "孤立项目预览",
       "description": "查看本次运行将删除的文件和目录。",
+      "remoteDescription": "查看本次扫描找到的文件和目录。",
       "itemsCount_other": "{{count}} 个项目 · {{size}}",
       "truncated": "（已截断）",
       "path": "路径",
@@ -905,6 +887,7 @@
       "exportCSV": "导出 CSV",
       "close": "关闭",
       "deleteItems": "删除",
+      "remoteDeleteUnavailable": "此扫描在远程实例上进行，远程实例暂不支持删除。请导出列表，然后自行在服务器上删除这些文件。",
       "statusLabels": {
         "pending": "等待中",
         "deleted": "已删除",
@@ -1085,7 +1068,6 @@
       "retentionTooltip": "保留最近 100 条成功、100 条失败、50 条跳过的记录",
       "showSkipped": "显示已跳过",
       "hideSkipped": "隐藏已跳过",
-      "confirmEnableImmediately": "确认后将立即启用此规则。",
       "filterPlaceholder": "按名称或哈希筛选...",
       "failedToLoadActivity": "加载活动失败",
       "checkConnectionToInstance": "请检查与实例的连接。",
@@ -1223,7 +1205,7 @@
         "noOtherInstances": "没有其他可用实例。",
         "savePathLabel": "目标上的保存路径（可选）",
         "savePathPlaceholder": "例如 /data/torrents",
-        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。支持模板：",
+        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。",
         "categoryLabel": "目标上的分类（可选）",
         "selectTargetFirst": "请先选择目标实例",
         "loadingCategories": "正在加载分类...",
@@ -1255,7 +1237,9 @@
         "conditional": "条件",
         "addScore": "添加得分：",
         "addFieldMultiplier": "添加字段乘数",
-        "addBonus": "添加奖励分"
+        "addBonus": "添加奖励分",
+        "notSupportedForSimpleSort": "不支持简单排序",
+        "notSupportedForScoreMultiplier": "不支持得分乘数"
       },
       "conditionsLabel": "条件（可选）",
       "actions": {
@@ -1356,6 +1340,11 @@
         "skipIfCrossSeedsDontMatch": "如果辅种不匹配规则条件则跳过",
         "aboutSkipping": "关于辅种存在时跳过移动",
         "skipDescription": "如果同一辅种组中有其他种子不匹配规则条件，则跳过移动。否则，所有辅种都将被移动，即使它们不匹配规则条件。"
+      },
+      "templateHelp": {
+        "absolutePath": "必须是绝对路径。值要写在路径中，例如",
+        "intro": "支持 Go 模板。",
+        "learnMore": "了解更多"
       },
       "freeSpace": {
         "title": "可用空间来源",

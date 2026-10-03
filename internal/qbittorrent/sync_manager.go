@@ -39,7 +39,7 @@ import (
 
 // backendPoolGetter provides filesystem backends per instance.
 type backendPoolGetter interface {
-	GetBackend(ctx context.Context, instanceID int) (fsops.Backend, error)
+	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
 // FilesManager interface for caching torrent files.
@@ -405,7 +405,14 @@ type SyncManager struct {
 	trackerHealthMu      sync.RWMutex
 	trackerHealthCache   map[int]*TrackerHealthCounts
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
+	trackerHealthKick    map[int]chan struct{}      // early-pass requests, see KickTrackerHealthRefresh
 	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
+	// qBittorrent reports "updating" right after an announce, so a kicked pass
+	// waits the settle delay after the latest kick for the outcome to land. Kicked
+	// passes are full-library rebuilds, so they are rate-limited; the ticker still
+	// catches anything a burst coalesces away.
+	trackerHealthKickSettle   time.Duration
+	trackerHealthKickInterval time.Duration
 
 	// Validated tracker mapping cache - avoids stale MainData.Trackers entries.
 	// trackerMappingGen moves on every mapping write, for any instance, so
@@ -469,7 +476,10 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		fileFetchMaxConcurrent:    16,
 		trackerHealthCache:        make(map[int]*TrackerHealthCounts),
 		trackerHealthCancel:       make(map[int]context.CancelFunc),
+		trackerHealthKick:         make(map[int]chan struct{}),
 		trackerHealthRefresh:      60 * time.Second,
+		trackerHealthKickSettle:   3 * time.Second,
+		trackerHealthKickInterval: 10 * time.Second,
 		validatedTrackerMapping:   make(map[int]*ValidatedTrackerMapping),
 		trackerDisplayNameCache:   ttlcache.New[string, map[string]string](ttlcache.SetDefaultTTL(60 * time.Second)),
 	}
@@ -601,9 +611,24 @@ func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
 	// Use context.Background() to ensure the background loop isn't tied to any request lifetime
 	refreshCtx, cancel := context.WithCancel(context.Background())
 	sm.trackerHealthCancel[instanceID] = cancel
+	kick := make(chan struct{}, 1)
+	sm.trackerHealthKick[instanceID] = kick
 	sm.trackerHealthMu.Unlock()
 
-	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID)
+	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID, kick)
+}
+
+// KickTrackerHealthRefresh asks the instance's health loop for an early pass, so a
+// reannounce shows on the badge without waiting for the next tick.
+func (sm *SyncManager) KickTrackerHealthRefresh(instanceID int) {
+	sm.trackerHealthMu.RLock()
+	kick := sm.trackerHealthKick[instanceID]
+	sm.trackerHealthMu.RUnlock()
+
+	select {
+	case kick <- struct{}{}:
+	default:
+	}
 }
 
 // StopTrackerHealthRefresh stops the background tracker health refresh for an instance.
@@ -615,11 +640,12 @@ func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
 		cancel()
 		delete(sm.trackerHealthCancel, instanceID)
 	}
+	delete(sm.trackerHealthKick, instanceID)
 	delete(sm.trackerHealthCache, instanceID)
 }
 
 // trackerHealthRefreshLoop runs in the background and periodically refreshes tracker health counts.
-func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int) {
+func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int, kick <-chan struct{}) {
 	log.Debug().Int("instanceID", instanceID).Msg("Starting tracker health refresh loop")
 
 	// Do an initial refresh immediately
@@ -628,12 +654,22 @@ func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID 
 	ticker := time.NewTicker(sm.trackerHealthRefresh)
 	defer ticker.Stop()
 
+	// Kicks that arrive while a kicked pass is pending join it and push it out,
+	// so every kick gets the full settle delay.
+	kickTimer := time.NewTimer(0)
+	kickTimer.Stop()
+	var lastKicked time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
 			return
 		case <-ticker.C:
+			sm.refreshTrackerHealthCounts(ctx, instanceID)
+		case <-kick:
+			kickTimer.Reset(max(sm.trackerHealthKickSettle, time.Until(lastKicked.Add(sm.trackerHealthKickInterval))))
+		case <-kickTimer.C:
+			lastKicked = time.Now()
 			sm.refreshTrackerHealthCounts(ctx, instanceID)
 		}
 	}
@@ -692,15 +728,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	sm.seedFallbackTrackerMappingFromMainData(instanceID, torrents, resolveMainData(syncManager, mainDataReadCached), started)
 
-	// Enrich torrents with tracker data
-	enriched, _, remaining := sm.enrichTorrentsWithTrackerData(refreshCtx, client, torrents, nil)
-	if len(remaining) > 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("failedToEnrich", len(remaining)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Some torrents failed tracker enrichment during health refresh")
-	}
+	enriched, fetchErr := client.refreshTrackers(refreshCtx, torrents)
 	if err := refreshCtx.Err(); err != nil {
 		log.Debug().
 			Err(err).
@@ -710,29 +738,24 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 			Msg("Tracker health refresh stopped before full hydration completed")
 		return
 	}
-
-	if !sm.applyTrackerHealthRefreshResult(instanceID, torrents, enriched, remaining, started) {
+	// Keep the previous snapshot rather than publish a library with no tracker data.
+	if fetchErr != nil {
+		log.Debug().
+			Err(fetchErr).
+			Int("instanceID", instanceID).
+			Int("torrentCount", len(torrents)).
+			Dur("elapsed", time.Since(started)).
+			Msg("Tracker health refresh fetch failed, keeping previous snapshot")
 		return
 	}
 
+	sm.applyTrackerHealthRefreshResult(instanceID, torrents, enriched, started)
 	sm.notifyTrackerHealthUpdated(instanceID)
 }
 
-// applyTrackerHealthRefreshResult promotes a fully hydrated tracker-health pass
-// into the shared cache and validated mapping. It returns false when hydration is
-// partial so callers do not replace a complete previous snapshot with incomplete
-// tracker counts or domain mappings.
-func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents, enriched []qbt.Torrent, remaining []string, started time.Time) bool {
-	if len(remaining) > 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("failedToEnrich", len(remaining)).
-			Int("totalTorrents", len(torrents)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Skipping tracker health cache and mapping update after partial hydration")
-		return false
-	}
-
+// applyTrackerHealthRefreshResult promotes a hydrated tracker-health pass
+// into the shared cache and validated mapping.
+func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents, enriched []qbt.Torrent, started time.Time) {
 	// Build health counts and hash sets
 	counts := &TrackerHealthCounts{
 		UnregisteredSet: make(map[string]struct{}),
@@ -800,7 +823,6 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents,
 		Msg("Refreshed tracker health counts and validated tracker mapping")
 
 	sm.setValidatedTrackerMappingWithMetrics(instanceID, mapping, len(torrents), started, "hydrated")
-	return true
 }
 
 // notifyTrackerHealthUpdated wakes stream subscribers after tracker health cache writes.
@@ -2447,8 +2469,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		}
 		err = client.RecheckCtx(recheckCtx, canonicalHashes)
 	case "reannounce":
-		// No cache update needed - no visible state change
 		err = client.ReAnnounceTorrentsCtx(ctx, canonicalHashes)
+		if err == nil {
+			sm.KickTrackerHealthRefresh(instanceID)
+		}
 	case "increasePriority":
 		err = client.IncreasePriorityCtx(ctx, canonicalHashes)
 	case "decreasePriority":
@@ -2577,27 +2601,25 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	syncManager *qbt.SyncManager,
 	hashes []string,
 ) ([]managedDeleteCleanupTarget, fsops.Backend) {
-	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
+	pool := sm.getBackendPool()
+	if pool == nil || syncManager == nil {
 		return nil, nil
 	}
-
-	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
-	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+	// The base dir and the backend come from one read: a base dir read before
+	// local access was turned off is a local path the SSH host need not have.
+	backend, instance, err := pool.Require(ctx, instanceID, models.CapabilityWrite)
+	if err != nil {
+		if !errors.Is(err, fsops.ErrNotCapable) {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
+		}
+		return nil, nil
+	}
+	if strings.TrimSpace(instance.HardlinkBaseDir) == "" {
 		return nil, nil
 	}
 
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrents) == 0 {
-		return nil, nil
-	}
-
-	pool := sm.getBackendPool()
-	if pool == nil {
-		return nil, nil
-	}
-	backend, err := pool.GetBackend(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
 		return nil, nil
 	}
 
@@ -4332,6 +4354,8 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
+		// lastSeen stops one snapshot, or one taken before this call, from counting as a stable poll.
+		lastSeen := syncMgr.LastSuccessfulSyncTime()
 		for len(pending) > 0 {
 			select {
 			case <-ctx.Done():
@@ -4340,9 +4364,12 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			case <-ticker.C:
 			}
 
-			if err := syncMgr.Sync(ctx); err != nil {
-				log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
-				continue
+			// Pollers for the same instance share the sync; fetch maindata only when no new sync landed since the last poll.
+			if !syncMgr.LastSuccessfulSyncTime().After(lastSeen) {
+				if err := syncMgr.Sync(ctx); err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
+					continue
+				}
 			}
 
 			requested := make([]string, 0, len(pending))
@@ -4354,6 +4381,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			if len(torrentMap) < len(requested) {
 				torrentMap = syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{})
 			}
+			lastSeen = syncMgr.LastSuccessfulSyncTime()
 			if len(torrentMap) == 0 {
 				continue
 			}
@@ -5304,15 +5332,21 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
-// SubcategoriesEnabled reports whether an instance nests categories. qBittorrent
-// 5.2 dropped use_subcategories, so the preference cannot be read on its own.
-// resolveUseSubcategories below answers the same from main data.
-func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+// CategorySavePathsNest reports whether an instance resolves a category with an
+// empty save path under its parent category's save path, as Automatic Torrent
+// Management does on qBittorrent 5.0+ with subcategories on. qBittorrent 5.2
+// dropped use_subcategories, so the preference cannot be read on its own.
+func (sm *SyncManager) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
-	if !client.SupportsSubcategories() {
+	// A client that keeps syncing skips health checks, so after an in-place
+	// upgrade from 4.6 its cached capabilities would still say "flat".
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		return false, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
+	}
+	if !client.NestsCategorySavePaths() {
 		return false, nil
 	}
 	if client.SubcategoriesAlwaysEnabled() {

@@ -1,4 +1,5 @@
 {
+  "migrationHint": "Usi Deluge, rTorrent o Transmission? <docs>Migra a qBittorrent con il nostro strumento di migrazione</docs>",
   "card": {
     "status": {
       "disabled": "Disabilitato",
@@ -10,8 +11,7 @@
       "disableInstance": "Disabilita istanza",
       "enableInstance": "Abilita istanza",
       "moveUp": "Sposta su",
-      "moveDown": "Sposta giù",
-      "instanceSettings": "Impostazioni istanza"
+      "moveDown": "Sposta giù"
     },
     "actions": {
       "edit": "Modifica",
@@ -66,8 +66,6 @@
       "skipTlsDescription": "Consenti le connessioni a istanze qBittorrent che usano certificati autofirmati o comunque non attendibili.",
       "localFilesystemAccess": "Accesso al filesystem locale",
       "localFilesystemDescription": "Abilita se qui può accedere ai percorsi di download di questa istanza (necessario per il rilevamento degli hardlink nelle automazioni).",
-      "authBypass": "Bypass dell'autenticazione",
-      "authBypassDescription": "Abilita quando qBittorrent ignora l'autenticazione per localhost o per gli IP in whitelist",
       "username": "Nome utente",
       "password": "Password",
       "httpBasicAuth": "Autenticazione HTTP Basic",
@@ -196,8 +194,6 @@
         "skipTlsDescription": "Consenti le connessioni alle istanze qBittorrent che utilizzano certificati auto-firmati o comunque non attendibili.",
         "localFilesystemAccess": "Accesso al filesystem locale",
         "localFilesystemDescription": "Abilita se qui può accedere ai percorsi di download di questa istanza (necessario per il rilevamento degli hardlink nelle automazioni).",
-        "qbittorrentLogin": "Accesso qBittorrent",
-        "qbittorrentLoginDescription": "Disabilita se qBittorrent ignora l'autenticazione per localhost o per gli IP nella whitelist.",
         "httpBasicAuth": "Autenticazione HTTP Basic",
         "httpBasicAuthDescription": "Abilita se il tuo qBittorrent è dietro un reverse proxy con Basic Auth",
         "username": "Nome utente",
@@ -251,7 +247,6 @@
       "friday": "Venerdì",
       "saturday": "Sabato",
       "sunday": "Domenica",
-      "schedule": "Pianificazione",
       "start": "Inizio",
       "end": "Fine",
       "timeLabel": "Orario {{label}}",
@@ -587,49 +582,16 @@
       "enable": "Abilita"
     },
     "workflows": {
-      "title": "Workflow",
-      "description": "Limiti e cancellazione automatici.",
-      "applyNow": "Applica ora",
-      "addRule": "Aggiungi regola",
-      "loadingRules": "Caricamento regole...",
-      "noAutomations": "Ancora nessuna automazione. Aggiungine una per iniziare ad applicare limiti per tracker.",
-      "noActionsSet": "Nessuna azione definita",
-      "disabled": "Disabilitato",
       "allTrackers": "Tutti i tracker",
-      "edit": "Modifica",
-      "speedLimits": "Limiti di velocità",
-      "shareLimits": "Limiti di condivisione",
       "pause": "Metti in pausa",
       "recheck": "Riverifica",
       "reannounce": "Riannuncia",
-      "autoTmmOn": "AutoTMM attivo",
-      "autoTmmOff": "AutoTMM disattivato",
-      "delete": "Elimina",
-      "externalProgram": "Programma esterno",
-      "upload": "Caricamento",
-      "download": "Download",
-      "ratio": "Rapporto",
-      "seedTime": "Tempo di seed",
-      "minuteSuffix": "m",
-      "deleteWithFilesPreserveCrossSeeds": "Elimina con i file (conserva i cross-seed)",
-      "deleteWithFilesIncludeCrossSeeds": "Elimina con i file (includi i cross-seed)",
-      "deleteWithFiles": "Elimina con i file",
-      "deleteKeepFiles": "Elimina (mantieni i file)",
-      "moveToCategory": "Sposta nella categoria: {{category}}",
-      "programId": "ID programma: {{id}}",
-      "trackerDerivedTag": "Tag derivato dal tracker",
-      "noTags": "Nessun tag",
-      "fullSync": "Sincronizzazione completa",
-      "addOnly": "Solo aggiunta",
-      "removeOnly": "Solo rimozione",
-      "actionCount_one": "{{count}} azione",
-      "actionCount_other": "{{count}} azioni"
+      "minuteSuffix": "m"
     },
     "workflowsOverview": {
       "title": "Workflow",
       "tooltip": "Regole di automazione basate su condizioni. Azioni: limiti di velocità, limiti di condivisione, pausa, ripresa, eliminazione, tag e modifiche di categoria.\nAbbina i torrent per tracker, categoria, tag, rapporto, tempo di seed, dimensione e altro.\nConsapevole di cross-seed e hardlink: elimina o sposta in sicurezza senza perdere i file condivisi.",
       "description": "Automatizza la gestione dei torrent con regole condizionali.",
-      "noInstancesTitle": "Workflow",
       "noInstancesDescription": "Nessuna istanza configurata. Aggiungine una in Impostazioni per usare questo servizio.",
       "activeCount": "{{enabled}}/{{total}} attivi",
       "today": "{{count}} oggi",
@@ -667,7 +629,6 @@
       "dryRun": "Dry run",
       "removed": "Rimosso",
       "executed": "Eseguito",
-      "hashCopied": "Hash copiato",
       "copyHash": "Copia hash",
       "original": "Originale: {{domain}}",
       "programLabel": "Programma: {{name}}",
@@ -697,6 +658,7 @@
       "runDryRunNow": "Esegui un dry run ora",
       "duplicate": "Duplica",
       "copyTo": "Copia in...",
+      "editJSON": "Modifica come JSON",
       "exportJSON": "Esporta JSON",
       "dragToReorder": "Trascina per riordinare il workflow",
       "actions": {
@@ -788,11 +750,24 @@
         "title": "Importa workflow",
         "description": "Incolla un workflow JSON da importare. Il workflow verrà creato disabilitato e aggiunto alla fine.",
         "placeholder": "Incolla il workflow JSON...",
-        "invalidImportData": "Dati di importazione non validi",
         "importFailed": "Importazione del workflow non riuscita",
         "cancel": "Annulla",
         "importing": "Importazione in corso...",
-        "import": "Importa"
+        "import": "Importa",
+        "errors": {
+          "invalidJson": "Formato JSON non valido",
+          "notObject": "È atteso un oggetto JSON",
+          "missingName": "Campo 'name' mancante o non valido",
+          "missingConditions": "Campo 'conditions' mancante o non valido"
+        }
+      },
+      "editJsonDialog": {
+        "title": "Modifica \"{{name}}\" come JSON",
+        "description": "Modifica il JSON del workflow. Il workflow mantiene lo stato di abilitazione e la posizione.",
+        "saveFailed": "Salvataggio del workflow non riuscito",
+        "cancel": "Annulla",
+        "saving": "Salvataggio...",
+        "save": "Salva"
       },
       "toast": {
         "workflowDeleted": "Workflow eliminato",
@@ -808,6 +783,7 @@
         "createdWorkflow": "Creato \"{{name}}\"",
         "copiedWorkflow": "Copiato \"{{name}}\" su {{instance}}",
         "importedWorkflow": "Importato \"{{name}}\"",
+        "updatedWorkflow": "\"{{name}}\" aggiornato",
         "createFailed": "Creazione del workflow non riuscita",
         "reorderFailed": "Riordino dei workflow non riuscito",
         "exportedTorrents": "{{count}} torrent esportati in CSV",
@@ -862,15 +838,19 @@
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
       "noLocalAccess": "Nessun accesso locale",
       "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
+      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote. Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
       "on": "On",
       "off": "Off",
-      "settingsSummary": "Tolleranza {{grace}}min · Intervallo {{interval}}h · Max {{max}} elementi",
+      "summaryGrace": "Tolleranza {{grace}}min",
+      "summaryInterval": "Intervallo {{interval}}h",
+      "summaryMax": "Max {{max}} elementi",
       "loading": "Caricamento...",
       "itemsSummary_one": "{{count}} elemento ({{size}})",
       "itemsSummary_other": "{{count}} elementi ({{size}})",
       "cancel": "Annulla",
       "autoCleanupEnabled": "Pulizia automatica abilitata (≤{{max}} file)",
       "autoCleanupDisabled": "Pulizia automatica disabilitata",
+      "autoCleanupRemote": "Nessuna pulizia automatica sulle istanze remote",
       "pathsIgnored_one": " · {{count}} percorso ignorato",
       "pathsIgnored_other": " · {{count}} percorsi ignorati",
       "scanNow": "Scansiona ora",
@@ -916,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Anteprima orfani",
       "description": "Esamina i file e le cartelle che questa esecuzione rimuoverà.",
+      "remoteDescription": "Esamina i file e le cartelle trovati da questa scansione.",
       "itemsCount_one": "{{count}} elemento · {{size}}",
       "itemsCount_other": "{{count}} elementi · {{size}}",
       "truncated": " (troncato)",
@@ -930,6 +911,7 @@
       "exportCSV": "Esporta CSV",
       "close": "Chiudi",
       "deleteItems": "Elimina",
+      "remoteDeleteUnavailable": "Questa scansione è stata eseguita su un'istanza remota, dove l'eliminazione non è ancora supportata. Esporta l'elenco per rimuovere tu stesso i file sul server.",
       "toast": {
         "deletionStarted": "Eliminazione avviata",
         "deletionDescription": "I file orfani e le cartelle abbandonate sono in fase di rimozione",
@@ -1114,7 +1096,6 @@
       "retentionTooltip": "Conserva gli ultimi 100 riusciti, 100 falliti, 50 ignorati",
       "showSkipped": "Mostra ignorati",
       "hideSkipped": "Nascondi ignorati",
-      "confirmEnableImmediately": "La conferma abiliterà questa regola immediatamente.",
       "filterPlaceholder": "Filtra per nome o hash...",
       "failedToLoadActivity": "Caricamento dell'attività non riuscito",
       "checkConnectionToInstance": "Verifica la connessione all'istanza.",
@@ -1253,7 +1234,7 @@
         "noOtherInstances": "Nessun'altra istanza disponibile.",
         "savePathLabel": "Percorso di salvataggio sulla destinazione (facoltativo)",
         "savePathPlaceholder": "es. /data/torrents",
-        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria. Supporta i template:",
+        "savePathHelp": "Cartella padre per il contenuto del torrent. Lascia vuoto per usare il valore predefinito della categoria.",
         "categoryLabel": "Categoria sulla destinazione (facoltativo)",
         "selectTargetFirst": "Seleziona prima un'istanza di destinazione",
         "loadingCategories": "Caricamento delle categorie...",
@@ -1285,7 +1266,9 @@
         "conditional": "Condizionale",
         "addScore": "Aggiungi punteggio:",
         "addFieldMultiplier": "Aggiungi moltiplicatore di campo",
-        "addBonus": "Aggiungi bonus"
+        "addBonus": "Aggiungi bonus",
+        "notSupportedForSimpleSort": "Non supportato per l'ordinamento semplice",
+        "notSupportedForScoreMultiplier": "Non supportato per i moltiplicatori di punteggio"
       },
       "conditionsLabel": "Condizioni (facoltativo)",
       "actions": {
@@ -1386,6 +1369,11 @@
         "skipIfCrossSeedsDontMatch": "Ignora se i cross-seed non corrispondono alle condizioni della regola",
         "aboutSkipping": "Informazioni sull'ignorare lo spostamento se esistono cross-seed",
         "skipDescription": "Ignora lo spostamento se ci sono altri torrent nello stesso gruppo di cross-seed che non corrispondono alle condizioni della regola. Altrimenti, tutti i cross-seed verranno spostati, anche se non corrispondono alle condizioni della regola."
+      },
+      "templateHelp": {
+        "absolutePath": "Deve essere un percorso assoluto. I valori vanno al suo interno, ad esempio",
+        "intro": "Supporta i template Go.",
+        "learnMore": "Scopri di più"
       },
       "freeSpace": {
         "title": "Origine dello spazio libero",

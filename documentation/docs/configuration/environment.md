@@ -117,6 +117,7 @@ QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remo
 
 ```bash
 QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
+QUI__DISABLE_SELF_UPDATE=true  # Optional: turn off Self-update, for packages that control the qui version (default: false)
 ```
 
 ## Profiling (pprof)
@@ -164,6 +165,10 @@ The built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/livene
 ## External programs
 
 Configure the allow list in `config.toml`. It has no environment override.
+
+```bash
+QUI__EXTERNAL_PROGRAM_MAX_RUNNING=16  # Optional: how many external programs run at the same time (default: 8)
+```
 
 ## Default locations
 
