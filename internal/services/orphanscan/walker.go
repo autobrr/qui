@@ -99,12 +99,12 @@ type scanWalker struct {
 	seenDirs    map[string]*AbandonedDir
 
 	orphanUnits map[string]*OrphanFile
-	// Values are each unit's first file in lexical walk order, see keepFirstInWalkOrder.
-	discUnitsInUse map[string]string
-	discUnitPaths  map[string]string
-	discUnitCache  map[string]discUnitDecision
-	seenFileIDs    map[hardlink.FileID]struct{}
-	truncated      bool
+	// Each disc unit's first in-use and first orphan file in lexical walk order, see keepFirstInWalkOrder.
+	discUnitFirstInUse  map[string]string
+	discUnitFirstOrphan map[string]string
+	discUnitCache       map[string]discUnitDecision
+	seenFileIDs         map[hardlink.FileID]struct{}
+	truncated           bool
 }
 
 func newScanWalker(
@@ -114,21 +114,21 @@ func newScanWalker(
 	backend fsops.Backend, collectDirs bool,
 ) *scanWalker {
 	return &scanWalker{
-		ctx:            ctx,
-		root:           root,
-		tfm:            tfm,
-		ignorePaths:    ignorePaths,
-		gracePeriod:    gracePeriod,
-		maxFiles:       maxFiles,
-		unitFilter:     unitFilter,
-		backend:        backend,
-		orphanUnits:    make(map[string]*OrphanFile),
-		discUnitsInUse: make(map[string]string),
-		discUnitCache:  make(map[string]discUnitDecision),
-		discUnitPaths:  make(map[string]string),
-		seenFileIDs:    make(map[hardlink.FileID]struct{}),
-		collectDirs:    collectDirs,
-		seenDirs:       make(map[string]*AbandonedDir),
+		ctx:                 ctx,
+		root:                root,
+		tfm:                 tfm,
+		ignorePaths:         ignorePaths,
+		gracePeriod:         gracePeriod,
+		maxFiles:            maxFiles,
+		unitFilter:          unitFilter,
+		backend:             backend,
+		orphanUnits:         make(map[string]*OrphanFile),
+		discUnitFirstInUse:  make(map[string]string),
+		discUnitCache:       make(map[string]discUnitDecision),
+		discUnitFirstOrphan: make(map[string]string),
+		seenFileIDs:         make(map[hardlink.FileID]struct{}),
+		collectDirs:         collectDirs,
+		seenDirs:            make(map[string]*AbandonedDir),
 	}
 }
 
@@ -179,7 +179,7 @@ func (w *scanWalker) markInUse(unitPath, path string, isDiscUnit bool) {
 	if !isDiscUnit {
 		return
 	}
-	keepFirstInWalkOrder(w.discUnitsInUse, unitPath, path)
+	keepFirstInWalkOrder(w.discUnitFirstInUse, unitPath, path)
 	delete(w.orphanUnits, unitPath)
 }
 
@@ -210,7 +210,7 @@ func walksBefore(a, b string) bool {
 }
 
 func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
-	_, ok := w.discUnitsInUse[unitPath]
+	_, ok := w.discUnitFirstInUse[unitPath]
 	return ok
 }
 
@@ -227,7 +227,7 @@ func containingDiscUnit(normUnit string, discRoots map[string]string) (string, b
 }
 
 func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
-	if len(w.discUnitPaths) == 0 {
+	if len(w.discUnitFirstOrphan) == 0 {
 		return
 	}
 
@@ -235,9 +235,9 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 	// merge into one on a case-sensitive filesystem.
 	// Not presized: containingDiscUnit iterates it per orphan, and filtered units would leave it sparse.
 	discRoots := make(map[string]string)
-	for du, firstOrphan := range w.discUnitPaths {
+	for du, firstOrphan := range w.discUnitFirstOrphan {
 		// Keeps what the lexical local walk reports: siblings are hidden only when an orphan disc file comes first.
-		if firstInUse, ok := w.discUnitsInUse[du]; ok && walksBefore(firstInUse, firstOrphan) {
+		if firstInUse, ok := w.discUnitFirstInUse[du]; ok && walksBefore(firstInUse, firstOrphan) {
 			continue
 		}
 		discRoots[cleanPath(du)] = du
@@ -375,7 +375,7 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 		if isDiscUnit {
-			keepFirstInWalkOrder(w.discUnitPaths, unitPath, path)
+			keepFirstInWalkOrder(w.discUnitFirstOrphan, unitPath, path)
 			if w.isDiscUnitInUse(unitPath) {
 				continue
 			}
