@@ -846,6 +846,8 @@ Hardlink scope detection depends on the kernel reporting accurate `nlink` values
 
 On affected filesystems, every torrent appears to have scope `none` because nlink is always 1. qui has no workaround for this kernel and filesystem limitation. If you suspect this issue, run `stat` on a file with hardlinks and read the "Links" count.
 
+Hardlink scope does not detect reflinks (also called block clones). A reflink is a separate file with its own inode. Cloning does not raise its `nlink` count, even when the file shares its data with another file. A torrent whose files reach your library only through reflinks therefore gets scope `none`, and a "Remove Upgraded Torrents" rule can delete it. Tools such as `cp --reflink`, `fclones dedupe`, and ZFS block cloning make reflinks. Torrents that qui adds in [reflink mode](./cross-seed/hardlink-mode.md#reflink-mode-alternative) also get scope `none`. If your rules depend on `HARDLINK_SCOPE`, use hardlinks for the library link. For example, use `fclones link` instead of `fclones dedupe`.
+
 Hardlinks cannot span different filesystems. If your torrent data and media library live on separate filesystems, or on Docker volumes with different host paths, Sonarr and Radarr copy files instead. Scope detection then finds nothing.
 
 #### Example: Remove Upgraded Torrents
