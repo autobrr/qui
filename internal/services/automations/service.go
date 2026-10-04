@@ -1837,6 +1837,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	return nil
 }
 
+// actionRunOrder lists the actions in the order applyRulesForInstance sends them. Only
+// tests read it: run_order_test.go pins the run to it, and the rule editor mirrors it as
+// ACTION_RUN_ORDER in web/src/lib/workflow-utils.ts.
+var actionRunOrder = []string{
+	"speedLimits",
+	"shareLimits",
+	"pause",
+	"resume",
+	"recheck",
+	"reannounce",
+	"autoManagement",
+	"tag",
+	"category",
+	"move",
+	"externalProgram",
+	"exportToInstance",
+	"delete",
+}
+
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
 	if len(rules) == 0 {
 		return nil, nil
