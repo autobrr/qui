@@ -86,9 +86,7 @@ func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	assert.Equal(t, []string{"a", "z"}, byDir["b"])
 }
 
-// walkGoroutines counts goroutines still inside walk or the walker, which is
-// what a cancelled walk used to leave behind: a closer waiting on queued jobs
-// that no worker would take.
+// walkGoroutines counts goroutines still inside walk or the walker.
 func walkGoroutines() int {
 	buf := make([]byte, 1<<20)
 	stacks := string(buf[:runtime.Stack(buf, true)])
@@ -99,20 +97,32 @@ func walkGoroutines() int {
 // cancels or a worker cuts the walk on a lost connection. Not parallel: the
 // stack scan must see only this test's walker.
 func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
-	const dirs = 200
-	b, server := newBackend(t)
-	server.SetLatency(5 * time.Millisecond)
-	dir := t.TempDir()
-	writeWideTree(t, dir, dirs)
+	tests := []struct {
+		name string
+		stop func(b *Backend, cancel context.CancelFunc)
+	}{
+		{name: "consumer cancels", stop: func(_ *Backend, cancel context.CancelFunc) { cancel() }},
+		{name: "connection lost", stop: func(b *Backend, _ context.CancelFunc) { b.pool.Close() }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const dirs = 200
+			b, server := newBackend(t)
+			server.SetLatency(5 * time.Millisecond)
+			dir := t.TempDir()
+			writeWideTree(t, dir, dirs)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	ch, err := b.WalkDir(ctx, remotePath(dir), fsops.WalkOptions{})
-	require.NoError(t, err)
-	for range 20 {
-		<-ch
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ch, err := b.WalkDir(ctx, remotePath(dir), fsops.WalkOptions{})
+			require.NoError(t, err)
+			for range 20 {
+				<-ch
+			}
+			tt.stop(b, cancel)
+			for range ch { //nolint:revive // drain
+			}
+			assert.Eventually(t, func() bool { return walkGoroutines() == 0 }, 2*time.Second, 10*time.Millisecond, "walker goroutines left after the walk stopped")
+		})
 	}
-	cancel()
-	for range ch { //nolint:revive // drain
-	}
-	assert.Eventually(t, func() bool { return walkGoroutines() == 0 }, 2*time.Second, 10*time.Millisecond, "walker goroutines left after cancel")
 }

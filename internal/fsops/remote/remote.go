@@ -202,8 +202,7 @@ type walker struct {
 	cancel context.CancelFunc
 
 	// The queue is a slice, not a channel: a channel send would have to park
-	// a goroutine per directory beyond its buffer, and jobs left in a buffer
-	// after a cancel kept their pending count and leaked the walk.
+	// a goroutine per directory beyond its buffer.
 	mu      sync.Mutex
 	cond    sync.Cond
 	jobs    []walkJob
