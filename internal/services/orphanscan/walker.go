@@ -235,7 +235,6 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 
 	// Do not fold: two real sibling directories that differ only by case would
 	// merge into one on a case-sensitive filesystem.
-	// Not presized: containingDiscUnit iterates it per orphan, and filtered units would leave it sparse.
 	discRoots := make(map[string]string)
 	for du, firstOrphan := range w.discUnitFirstOrphan {
 		// Keeps what the lexical local walk reports: siblings are hidden only when an orphan disc file comes first.
