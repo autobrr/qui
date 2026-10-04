@@ -138,3 +138,15 @@ State required checks run, skipped/deferred checks with reason, and unresolved f
 - Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
 - Triage: labels equal the five role names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. `ready-for-agent` (`bug` only) creates the linked issue and closes the discussion. Do not post the brief on the discussion.
 - Domain docs: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
+## Code Review Rules
+
+These rules are for AI PR reviewers. The agent workflow rules in this file (precommit, field test, commit gate, PR body format) are for coding agents. Do not apply them to PR authors.
+
+- Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
+- Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
+- When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
+- Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
+- Treat a change to the SQL of a migration that already exists on `develop`, or a rename of one, as P1. Migrations are tracked by file name only: installs that ran it never run the new SQL, and a renamed file runs again.
+  Safe path: put the change in a new migration.
