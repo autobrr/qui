@@ -148,5 +148,5 @@ These rules are for AI PR reviewers. The agent workflow rules in this file (prec
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
 - Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
-- Treat an edit to a migration that already exists on `develop` as P1. Installs that ran it never run it again.
+- Treat a change to the SQL of a migration that already exists on `develop`, or a rename of one, as P1. Migrations are tracked by file name only: installs that ran it never run the new SQL, and a renamed file runs again.
   Safe path: put the change in a new migration.

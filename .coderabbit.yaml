@@ -19,7 +19,7 @@ reviews:
   poem: false
   path_instructions:
     - path: "internal/database/{migrations,postgres_migrations}/**"
-      instructions: "Flag any edit to a migration file that already exists on the base branch. Released installs have applied it, so the change belongs in a new migration."
+      instructions: "Flag a change to the SQL of a migration file that already exists on the base branch, or a rename of one. Migrations are tracked by file name only, so released installs never run the changed SQL, and a renamed file runs again. The change belongs in a new migration."
   pre_merge_checks:
     docstrings:
       mode: "off"
