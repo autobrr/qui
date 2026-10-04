@@ -547,7 +547,7 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFilesPreserveCrossSeeds` | Remove files, but keep them if qui detects cross-seeds |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
-If a delete depends on hardlinks (a hardlink condition, or include hardlinks) and they changed since the rule decided, qui skips the delete for that run and decides again on the next one.
+In a live run, if a delete depends on hardlink data and the hardlinks changed or can't be read when qui checks them again, qui skips the delete for that run and decides again on the next one. A dry run does not check them again. See [Unknown scope and safety behavior](#unknown-scope-and-safety-behavior).
 
 **Optional grouping (advanced):**
 
@@ -1082,7 +1082,7 @@ qui sends an API call only when the torrent's current setting differs from the t
 
 ### Processing order
 
-- **Delete wins.** When a rule chooses delete for a torrent, qui evaluates no further rules for it and drops the actions earlier rules chose. Nothing else in the run touches it: cross-seed and group expansion of category and move leave it out, and a torrent the delete pulls in (for example a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode) gets none of its own actions.
+- **Delete wins.** When a rule chooses delete for a torrent, qui evaluates no further rules for it and drops the actions earlier rules chose. A torrent qui deletes gets nothing else in the run: cross-seed and group expansion of category and move leave it out, and a torrent the delete pulls in (for example a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode) gets none of its own actions.
 - **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
