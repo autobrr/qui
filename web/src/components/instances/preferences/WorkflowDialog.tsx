@@ -2221,8 +2221,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    // For delete and category rules, show preview as a last warning before enabling.
-    const needsPreview = (isDeleteRule || isCategoryRule) && submitState.enabled
+    // For delete, category and tag rules, show preview as a last warning before enabling.
+    const needsPreview = (isDeleteRule || isCategoryRule || isTagRule) && submitState.enabled
     if (needsPreview) {
       startPreview(submitState)
     } else {
@@ -2602,7 +2602,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </div>
                   )}
 
-                  {(isDeleteRule || isCategoryRule) && (
+                  {(isDeleteRule || isCategoryRule || isTagRule) && (
                     <div className="rounded-md border bg-muted/20 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium">{t("preferences.workflowDialog.liveImpactPreview")}</p>
@@ -2622,7 +2622,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
-                            {isCategoryRule ? t("preferences.workflowDialog.torrentsImpactedWithCrossSeeds", { total: livePreviewResult.totalMatches, direct: (livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0), crossSeeds: livePreviewResult.crossSeedCount ?? 0 }) : t("preferences.workflowDialog.torrentsImpacted", { total: livePreviewResult.totalMatches })}
+                            {(isCategoryRule || isTagRule) ? t("preferences.workflowDialog.torrentsImpactedWithCrossSeeds", { total: livePreviewResult.totalMatches, direct: (livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0), crossSeeds: livePreviewResult.crossSeedCount ?? 0 }) : t("preferences.workflowDialog.torrentsImpacted", { total: livePreviewResult.totalMatches })}
                           </p>
                           {livePreviewResult.examples.length > 0 ? (
                             <div className="space-y-1">

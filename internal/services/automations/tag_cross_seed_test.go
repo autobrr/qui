@@ -770,3 +770,56 @@ func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
 	assert.False(t, byHash["trigger"].IsCrossSeed)
 	assert.True(t, byHash["sibling"].IsCrossSeed)
 }
+
+func TestPreviewTag_ManagedResetCountsReAdds(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{syncManager: sm}
+
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd, managed"},
+		{Hash: "tagged-sibling", Name: "Already Tagged Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
+		{Hash: "unrelated", Name: "Unrelated", SavePath: "/data", ContentPath: "/data/other", Tags: "managed"},
+	}
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
+	}
+
+	rule := tagExpansionRule(&models.TagAction{
+		Enabled:           true,
+		Tags:              []string{"managed"},
+		Mode:              models.TagModeAdd,
+		IncludeCrossSeeds: true,
+		DeleteFromClient:  true,
+		Condition: &models.RuleCondition{
+			Field:    models.FieldTags,
+			Operator: models.OperatorContains,
+			Value:    "abcd",
+		},
+	})
+	evalCtx := &EvalContext{}
+
+	// The live path deletes "managed" from the client first, so re-adding it to
+	// the trigger and its sibling is a real change the preview must count.
+	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
+	directSet := make(map[string]struct{}, len(states))
+	for hash, state := range states {
+		if tagStateChangesTags(state) {
+			directSet[hash] = struct{}{}
+		}
+	}
+	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet, "already-tagged trigger is re-added after the reset")
+
+	s.expandTagStatesForCrossSeeds(context.Background(), 1, states, torrents, torrentByHash, map[int]*models.Automation{1: rule}, evalCtx)
+
+	crossSeedSet := make(map[string]struct{})
+	for hash, state := range states {
+		if _, direct := directSet[hash]; direct {
+			continue
+		}
+		if tagStateChangesTags(state) {
+			crossSeedSet[hash] = struct{}{}
+		}
+	}
+	require.Equal(t, map[string]struct{}{"tagged-sibling": {}}, crossSeedSet, "already-tagged sibling is re-added after the reset")
+}

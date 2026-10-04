@@ -1640,7 +1640,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition ?? enableConfirm.rule.conditions?.tags?.[0]?.condition ?? enableConfirm.rule.conditions?.tag?.condition) : null}
+        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition ?? enableConfirm.rule.conditions?.tags?.find(action => action?.enabled && action?.condition)?.condition ?? enableConfirm.rule.conditions?.tag?.condition) : null}
         onConfirm={confirmEnableRule}
         previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}

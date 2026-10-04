@@ -68,6 +68,7 @@ type torrentDesiredState struct {
 	tagActions     map[string]string // tag -> "add" | "remove"
 	tagRuleByTag   map[string]ruleRef
 	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
+	tagResetTags   map[string]struct{}        // tags re-added after a managed reset: a real change even when already present
 
 	// Category (last rule wins)
 	category                  *string
@@ -826,6 +827,7 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 			if rule != nil {
 				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
 			}
+			markTagReset(state, managedTag, resetFromClient && action == "add")
 			if matchesCondition {
 				assert = action
 			}
@@ -848,6 +850,19 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 	}
 
 	return matchesCondition
+}
+
+// markTagReset records or clears a managed-reset re-add for tag, so the preview
+// counts it as the live path does (the tag is wholesale-deleted first).
+func markTagReset(state *torrentDesiredState, tag string, reset bool) {
+	if !reset {
+		delete(state.tagResetTags, tag)
+		return
+	}
+	if state.tagResetTags == nil {
+		state.tagResetTags = make(map[string]struct{})
+	}
+	state.tagResetTags[tag] = struct{}{}
 }
 
 // hasActions returns true if the state has any actions to execute.

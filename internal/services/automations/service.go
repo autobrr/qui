@@ -1858,6 +1858,9 @@ func tagStateChangesTags(state *torrentDesiredState) bool {
 	}
 	for tag, action := range state.tagActions {
 		_, has := state.currentTags[tag]
+		if _, reset := state.tagResetTags[tag]; reset {
+			has = false
+		}
 		if (action == "add" && !has) || (action == "remove" && has) {
 			return true
 		}
@@ -4909,6 +4912,7 @@ func (s *Service) expandTagStatesForCrossSeeds(
 				}
 				sibState.tagActions[tag] = intent.action
 				sibState.tagRuleByTag[tag] = intent.rule
+				markTagReset(sibState, tag, intent.resetFromClient && intent.action == "add")
 			}
 		}
 	}
