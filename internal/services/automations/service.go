@@ -2162,10 +2162,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Track hashes that have been processed for hardlink expansion
 	includedHardlinkHashes := make(map[string]struct{})
 
+	// Settle the delete set before any other batch, so no action or expansion reaches a torrent the run deletes.
 	for hash, state := range states {
 		torrent := torrentByHash[hash]
 
-		// If torrent is marked for deletion, skip all other actions
 		if state.shouldDelete {
 			deleteMode := state.deleteMode
 			var actualMode string
@@ -2382,8 +2382,52 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					s.mu.Unlock()
 				}
 			}
+		}
+	}
+
+	// Candidates chosen with hardlink data are re-read off disk first. The index may be
+	// up to hardlinkIndexTTL behind for link changes no torrent reported, which is fine
+	// for tagging and not fine here. A blocked candidate leaves the delete set, so
+	// expansion still keeps it with its cross-seeds.
+	if !dryRun {
+		recheckCtx, cancelRecheck := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
+		blocked := s.blockedDeleteCandidates(recheckCtx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID)
+		cancelRecheck()
+		if len(blocked) > 0 {
+			for mode, hashes := range deleteHashesByMode {
+				kept := hashes[:0]
+				for _, hash := range hashes {
+					reason, isBlocked := blocked[hash]
+					if !isBlocked {
+						kept = append(kept, hash)
+						continue
+					}
+
+					pending := pendingByHash[hash]
+					delete(pendingByHash, hash)
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("name", pending.torrentName).
+						Str("ruleName", pending.ruleName).
+						Str("reason", reason).
+						Msg("automations: skipped delete, hardlink state changed since the rule decided")
+				}
+				deleteHashesByMode[mode] = kept
+			}
+		}
+	}
+
+	for hash, state := range states {
+		// A delete trigger gets no other action, even when its delete was skipped or blocked.
+		if state.shouldDelete {
 			continue
 		}
+		// Another torrent's delete expansion pulled this one in.
+		if _, deleting := pendingByHash[hash]; deleting {
+			continue
+		}
+		torrent := torrentByHash[hash]
 
 		// Speed limits - only add to batch if current doesn't match desired
 		if state.uploadLimitKiB != nil {
@@ -3291,6 +3335,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				if t.Category == category {
 					continue // Already in target category
 				}
+				if _, deleting := pendingByHash[t.Hash]; deleting {
+					continue
+				}
 				if _, exists := expandedSet[t.Hash]; exists {
 					continue // Already in batch
 				}
@@ -3516,6 +3563,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						if _, exists := movedHashes[memberHash]; exists {
 							continue
 						}
+						if _, deleting := pendingByHash[memberHash]; deleting {
+							continue
+						}
 						memberTorrent, ok := torrentByHash[memberHash]
 						if !ok {
 							continue
@@ -3548,6 +3598,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 				if _, exists := movedHashes[t.Hash]; exists {
 					continue // Already moved
+				}
+				if _, deleting := pendingByHash[t.Hash]; deleting {
+					continue
 				}
 				if key, ok := makeCrossSeedKey(t); ok {
 					if _, matched := legacyKeysToExpand[key]; matched {
@@ -3655,34 +3708,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
-	//
-	// Candidates chosen with hardlink data are re-read off disk first. The index may be
-	// up to hardlinkIndexTTL behind for link changes no torrent reported, which is fine
-	// for tagging and not fine here.
-	if blocked := s.blockedDeleteCandidates(ctx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID); len(blocked) > 0 {
-		for mode, hashes := range deleteHashesByMode {
-			kept := hashes[:0]
-			for _, hash := range hashes {
-				reason, isBlocked := blocked[hash]
-				if !isBlocked {
-					kept = append(kept, hash)
-					continue
-				}
-
-				pending := pendingByHash[hash]
-				delete(pendingByHash, hash)
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Str("name", pending.torrentName).
-					Str("ruleName", pending.ruleName).
-					Str("reason", reason).
-					Msg("automations: skipped delete, hardlink state changed since the rule decided")
-			}
-			deleteHashesByMode[mode] = kept
-		}
-	}
-
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {
 			continue
@@ -5354,6 +5379,9 @@ func (s *Service) recordDryRunActivities(
 					if _, exists := expandedSet[t.Hash]; exists {
 						continue
 					}
+					if _, deleting := pendingByHash[t.Hash]; deleting {
+						continue
+					}
 					if state, hasState := states[t.Hash]; hasState && state.category != nil {
 						if *state.category != category {
 							continue
@@ -5523,6 +5551,9 @@ func (s *Service) recordDryRunActivities(
 							if _, exists := movedHashes[memberHash]; exists {
 								continue
 							}
+							if _, deleting := pendingByHash[memberHash]; deleting {
+								continue
+							}
 							memberTorrent, ok := torrentByHash[memberHash]
 							if !ok {
 								continue
@@ -5552,6 +5583,9 @@ func (s *Service) recordDryRunActivities(
 						continue
 					}
 					if _, exists := movedHashes[t.Hash]; exists {
+						continue
+					}
+					if _, deleting := pendingByHash[t.Hash]; deleting {
 						continue
 					}
 					if key, ok := makeCrossSeedKey(t); ok {
