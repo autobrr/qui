@@ -26,8 +26,7 @@ export interface WorkflowExport {
 /** Parsed import JSON. Hand-written JSON can still carry trackerDomains; the backend reads it when trackerPattern is empty. */
 export type WorkflowImport = WorkflowExport & { trackerDomains?: string[] }
 
-// The order one automation run applies actions in. Mirrors actionRunOrder in
-// internal/services/automations/service.go, which __tests__/workflow-utils.test.ts enforces.
+// The order one automation run applies actions in; a test holds it equal to the backend's actionRunOrder.
 export const ACTION_RUN_ORDER = [
   "speedLimits",
   "shareLimits",

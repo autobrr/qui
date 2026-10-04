@@ -928,7 +928,7 @@
         "title": "Acció",
         "addAction": "Afegeix una acció",
         "selectAction": "Selecciona una acció...",
-        "runOrderHelp": "Les accions s'executen en l'ordre que es mostra. Cada acció veu el torrent tal com era quan va començar l'execució, de manera que un programa extern que s'executa després d'un moviment encara rep la ruta de desament antiga.",
+        "runOrderHelp": "Les accions s'executen en l'ordre que es mostra. Cada acció veu el torrent tal com era quan va començar l'execució, de manera que un programa extern que s'executa després d'un moviment encara rep el camí de desada antic.",
         "speedLimits": "Límits de velocitat",
         "shareLimits": "Límits de compartició",
         "pause": "Atura",

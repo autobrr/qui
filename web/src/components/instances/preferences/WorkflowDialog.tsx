@@ -3471,7 +3471,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     )}
 
-                    {/* External Program */}
+                    {/* Move */}
                     {formState.moveEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
@@ -3533,6 +3533,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     )}
 
+                    {/* External Program */}
                     {formState.externalProgramEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">

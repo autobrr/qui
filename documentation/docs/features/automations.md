@@ -1080,13 +1080,13 @@ When several rules give the same torrent the same kind of action:
 
 - **First match wins** for delete and move actions. A delete ends processing for that torrent, and qui evaluates no further rules.
 - **Last rule wins** for speed limits, share limits, auto management, category, external program, and export to instance actions.
-- **Last rule wins** between pause and resume. A later pause cancels an earlier resume, and the reverse.
+- Pause applies only to a running torrent and resume only to a stopped one, so a run never does both to the same torrent.
 - **Any match** triggers recheck and reannounce. No rule turns them off.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
 ### Run order
 
-When one run gives a torrent several actions, qui sends them to qBittorrent in this order:
+When one run gives a torrent several actions, qui applies them in this order:
 
 1. Speed limits
 2. Share limits
@@ -1115,6 +1115,7 @@ A run reads the torrent list once, when it starts. Every rule and every action i
 - conditions, even when an earlier rule in the same run changed the field;
 - path template variables such as `.Category` in Move and Export to Instance paths;
 - the checks that skip a torrent that already has the target value;
+- cross-seed checks;
 - the torrent details passed to an external program, such as its save path and category.
 
 There are two exceptions. The Free Space projection adds up across the torrents in a run (see [Free Space condition behavior](#free-space-condition-behavior)). Before a delete, qui reads the hardlink state from disk again.

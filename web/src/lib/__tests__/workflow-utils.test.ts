@@ -332,10 +332,9 @@ describe("toExportJSON", () => {
   })
 })
 
-// The editor's order is a copy of the backend's run order, so read the Go source
-// and fail when the two lists drift.
+// ACTION_RUN_ORDER copies the backend's actionRunOrder, so fail when the two drift.
 describe("ACTION_RUN_ORDER", () => {
-  it("matches actionRunOrder in internal/services/automations/service.go", () => {
+  it("matches the backend's actionRunOrder", () => {
     const source = readFileSync(resolve(import.meta.dirname, "../../../../internal/services/automations/service.go"), "utf8")
 
     const slice = source.match(/^var actionRunOrder = \[\]string\{\n([^}]*)\}/m)
