@@ -2385,10 +2385,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Candidates chosen with hardlink data are re-read off disk first. The index may be
-	// up to hardlinkIndexTTL behind for link changes no torrent reported, which is fine
-	// for tagging and not fine here. A blocked candidate leaves the delete set, so
-	// expansion still keeps it with its cross-seeds.
+	// A blocked candidate leaves the delete set, so expansion still keeps it with its cross-seeds.
 	if !dryRun {
 		recheckCtx, cancelRecheck := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 		blocked := s.blockedDeleteCandidates(recheckCtx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID)
