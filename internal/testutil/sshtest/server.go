@@ -99,6 +99,7 @@ type Server struct {
 	exec ExecMode
 
 	mu              sync.Mutex
+	latency         time.Duration
 	sftpMode        SFTPMode
 	dials           int
 	auths           int
@@ -236,7 +237,11 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 	s.mu.Lock()
 	s.dials++
+	latency := s.latency
 	s.mu.Unlock()
+	if latency > 0 {
+		conn = newLatencyConn(conn, latency, &s.wg)
+	}
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
@@ -424,6 +429,16 @@ func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 }
 
+// SetLatency delays every byte the server sends on connections accepted from
+// now on by d, the way a distant host does. Delivery is deferred, not
+// serialised: requests the client pipelines still overlap, so a test can
+// show what concurrency buys against a round trip rather than a slow server.
+func (s *Server) SetLatency(d time.Duration) {
+	s.mu.Lock()
+	s.latency = d
+	s.mu.Unlock()
+}
+
 // SetSFTP sets what later sftp subsystem requests get.
 func (s *Server) SetSFTP(mode SFTPMode) {
 	s.mu.Lock()
@@ -560,6 +575,65 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 		// Every other mode lets the request through.
 	}
 	return n, err
+}
+
+// latencyConn defers each write by a fixed delay through an ordered queue, so
+// bytes arrive late but in order and later writes do not wait for earlier ones.
+type latencyConn struct {
+	net.Conn
+	delay time.Duration
+	queue chan delayed
+	done  chan struct{}
+	once  sync.Once
+}
+
+type delayed struct {
+	at   time.Time
+	data []byte
+}
+
+func newLatencyConn(conn net.Conn, delay time.Duration, wg *sync.WaitGroup) *latencyConn {
+	c := &latencyConn{Conn: conn, delay: delay, queue: make(chan delayed, 1024), done: make(chan struct{})}
+	wg.Go(c.forward)
+	return c
+}
+
+func (c *latencyConn) forward() {
+	for {
+		select {
+		case <-c.done:
+			return
+		case d := <-c.queue:
+			timer := time.NewTimer(time.Until(d.at))
+			select {
+			case <-timer.C:
+			case <-c.done:
+				timer.Stop()
+				return
+			}
+			if _, err := c.Conn.Write(d.data); err != nil {
+				// A dead peer must surface as a write error, not a queue that
+				// accepts 1024 more writes and then blocks.
+				c.once.Do(func() { close(c.done) })
+				return
+			}
+		}
+	}
+}
+
+func (c *latencyConn) Write(p []byte) (int, error) {
+	data := append([]byte(nil), p...)
+	select {
+	case c.queue <- delayed{at: time.Now().Add(c.delay), data: data}:
+		return len(p), nil
+	case <-c.done:
+		return 0, net.ErrClosed
+	}
+}
+
+func (c *latencyConn) Close() error {
+	c.once.Do(func() { close(c.done) })
+	return c.Conn.Close()
 }
 
 // holdMutation follows the request framing and blocks on the first byte of a
