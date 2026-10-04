@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Keys not set here come from the CodeRabbit dashboard.
+inheritance: true
+early_access: false
+tone_instructions: "Be brief. Report bugs, data loss, races, security, and Windows/Unix path errors. Do not repeat golangci-lint, ESLint, or gofmt findings. Do not ask for docstrings or comments that restate the code."
+reviews:
+  allow_author_approval: false # authors cannot run @coderabbitai approve or resolve on their own PRs
+  high_level_summary: false
+  collapse_walkthrough: true
+  changed_files_summary: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  suggested_reviewers: false
+  suggested_labels: false
+  assess_linked_issues: false
+  poem: false
+  path_instructions:
+    - path: "internal/database/{migrations,postgres_migrations}/**"
+      instructions: "Flag a change to the SQL of a migration file that already exists on the base branch, or a rename of one. Migrations are tracked by file name only, so released installs never run the changed SQL, and a renamed file runs again. The change belongs in a new migration."
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+  finishing_touches:
+    unit_tests:
+      enabled: false
+  tools:
+    biome:
+      enabled: false # no biome.json: it lints web/ with generic rules beside the repo's ESLint
+    languagetool:
+      enabled: false
+    vale:
+      enabled: false
+chat:
+  art: false
