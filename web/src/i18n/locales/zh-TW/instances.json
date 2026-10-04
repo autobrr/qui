@@ -1246,6 +1246,7 @@
         "title": "操作",
         "addAction": "新增操作",
         "selectAction": "選擇操作...",
+        "runOrderHelp": "動作會依顯示的順序執行。每個動作看到的都是本次執行開始時的種子狀態，因此在移動之後執行的外部程式仍會收到舊的儲存路徑。",
         "speedLimits": "速度限制",
         "shareLimits": "分享限制",
         "pause": "暫停",

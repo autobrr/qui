@@ -1310,6 +1310,7 @@
         "title": "Akce",
         "addAction": "Přidat akci",
         "selectAction": "Vybrat akci...",
+        "runOrderHelp": "Akce se provádějí v zobrazeném pořadí. Každá akce vidí torrent ve stavu, v jakém byl na začátku běhu, takže externí program spuštěný po přesunu stále dostane starou cestu pro uložení.",
         "speedLimits": "Omezení rychlosti",
         "shareLimits": "Omezení sdílení",
         "pause": "Pozastavit",

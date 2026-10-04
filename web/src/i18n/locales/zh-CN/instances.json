@@ -1246,6 +1246,7 @@
         "title": "操作",
         "addAction": "添加操作",
         "selectAction": "选择操作...",
+        "runOrderHelp": "操作按显示的顺序执行。每个操作看到的都是本次运行开始时的种子状态，因此在移动之后运行的外部程序仍会收到旧的保存路径。",
         "speedLimits": "速度限制",
         "shareLimits": "分享限制",
         "pause": "暂停",

@@ -65,7 +65,7 @@ import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_RUN_ORDER, getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode, type WorkflowActionType } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
@@ -117,10 +117,10 @@ const CONTENT_LAYOUT_OPTIONS = [
 
 const CONTENT_LAYOUT_VALUES = CONTENT_LAYOUT_OPTIONS.map(o => o.value)
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
+type ActionType = WorkflowActionType
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance"]
+const COMBINABLE_ACTIONS: ActionType[] = ACTION_RUN_ORDER.filter(action => action !== "delete")
 
 const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   speedLimits: "preferences.workflowDialog.actions.speedLimits",
@@ -580,21 +580,7 @@ const emptyFormState: FormState = {
 
 // Helper to get enabled actions from form state
 function getEnabledActions(state: FormState): ActionType[] {
-  const actions: ActionType[] = []
-  if (state.speedLimitsEnabled) actions.push("speedLimits")
-  if (state.shareLimitsEnabled) actions.push("shareLimits")
-  if (state.pauseEnabled) actions.push("pause")
-  if (state.resumeEnabled) actions.push("resume")
-  if (state.recheckEnabled) actions.push("recheck")
-  if (state.reannounceEnabled) actions.push("reannounce")
-  if (state.autoManagementEnabled) actions.push("autoManagement")
-  if (state.deleteEnabled) actions.push("delete")
-  if (state.tagEnabled) actions.push("tag")
-  if (state.categoryEnabled) actions.push("category")
-  if (state.moveEnabled) actions.push("move")
-  if (state.externalProgramEnabled) actions.push("externalProgram")
-  if (state.exportToInstanceEnabled) actions.push("exportToInstance")
-  return actions
+  return ACTION_RUN_ORDER.filter(action => state[`${action}Enabled`])
 }
 
 // Helper to set an action enabled/disabled
@@ -2729,7 +2715,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {/* Actions section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label>{t("preferences.workflowDialog.actions.title")}</Label>
+                    <Label>
+                      {t("preferences.workflowDialog.actions.title")}
+                      <FieldHelp>{t("preferences.workflowDialog.actions.runOrderHelp")}</FieldHelp>
+                    </Label>
                     {/* Add action dropdown - only show if Delete is not enabled, at least one action exists, and there are available actions to add */}
                     {!formState.deleteEnabled && enabledActionsCount > 0 && (() => {
                       const enabledActions = getEnabledActions(formState)
@@ -2802,18 +2791,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectValue placeholder={t("preferences.workflowDialog.actions.selectAction")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="speedLimits">{t("preferences.workflowDialog.actions.speedLimits")}</SelectItem>
-                        <SelectItem value="shareLimits">{t("preferences.workflowDialog.actions.shareLimits")}</SelectItem>
-                        <SelectItem value="pause">{t("preferences.workflowDialog.actions.pause")}</SelectItem>
-                        <SelectItem value="resume">{t("preferences.workflowDialog.actions.resume")}</SelectItem>
-                        <SelectItem value="recheck">{t("preferences.workflowDialog.actions.recheck")}</SelectItem>
-                        <SelectItem value="reannounce">{t("preferences.workflowDialog.actions.reannounce")}</SelectItem>
-                        <SelectItem value="tag">{t("preferences.workflowDialog.actions.tag")}</SelectItem>
-                        <SelectItem value="category">{t("preferences.workflowDialog.actions.category")}</SelectItem>
-                        <SelectItem value="move">{t("preferences.workflowDialog.actions.move")}</SelectItem>
-                        <SelectItem value="externalProgram">{t("preferences.workflowDialog.actions.externalProgram")}</SelectItem>
-                        <SelectItem value="autoManagement">{t("preferences.workflowDialog.actions.autoManagement")}</SelectItem>
-                        <SelectItem value="exportToInstance">{t("preferences.workflowDialog.actions.exportToInstance")}</SelectItem>
+                        {COMBINABLE_ACTIONS.map(action => (
+                          <SelectItem key={action} value={action}>{t(ACTION_LABEL_KEYS[action])}</SelectItem>
+                        ))}
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.actions.deleteStandalone")}</SelectItem>
                       </SelectContent>
                     </Select>
@@ -3492,6 +3472,67 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     )}
 
                     {/* External Program */}
+                    {formState.moveEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.move")}</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, moveEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">
+                            {t("preferences.workflowDialog.move.newSavePath")}
+                            <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
+                          </Label>
+                          <Input
+                            type="text"
+                            value={formState.exprMovePath}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
+                            placeholder={t("preferences.workflowDialog.move.placeholder")}
+                          />
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Switch
+                            id="block-if-cross-seed"
+                            className="mt-0.5 shrink-0"
+                            checked={formState.exprMoveBlockIfCrossSeed}
+                            onCheckedChange={(checked) => setFormState(prev => ({
+                              ...prev,
+                              exprMoveBlockIfCrossSeed: checked,
+                            }))}
+                          />
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer">
+                              {t("preferences.workflowDialog.move.skipIfCrossSeedsDontMatch")}
+                            </Label>
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
+                                    aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
+                                  >
+                                    <Info className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[320px]">
+                                  <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {formState.externalProgramEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
@@ -3821,66 +3862,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     )}
 
-                    {formState.moveEnabled && (
-                      <div className="rounded-lg border p-3 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.move")}</Label>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => setFormState(prev => ({ ...prev, moveEnabled: false }))}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">
-                            {t("preferences.workflowDialog.move.newSavePath")}
-                            <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
-                          </Label>
-                          <Input
-                            type="text"
-                            value={formState.exprMovePath}
-                            onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
-                            placeholder={t("preferences.workflowDialog.move.placeholder")}
-                          />
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Switch
-                            id="block-if-cross-seed"
-                            className="mt-0.5 shrink-0"
-                            checked={formState.exprMoveBlockIfCrossSeed}
-                            onCheckedChange={(checked) => setFormState(prev => ({
-                              ...prev,
-                              exprMoveBlockIfCrossSeed: checked,
-                            }))}
-                          />
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer">
-                              {t("preferences.workflowDialog.move.skipIfCrossSeedsDontMatch")}
-                            </Label>
-                            <TooltipProvider delayDuration={150}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
-                                    aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
-                                  >
-                                    <Info className="h-3.5 w-3.5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[320px]">
-                                  <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
 

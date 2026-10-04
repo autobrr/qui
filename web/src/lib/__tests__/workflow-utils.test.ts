@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import {
+  ACTION_RUN_ORDER,
   fromImportFormat,
   generateUniqueName,
   getTrackerMatchMode,
@@ -325,5 +329,20 @@ describe("toExportJSON", () => {
     }
     expect(toExportJSON(data)).toBe(JSON.stringify(data, null, 2))
     expect(toExportJSON(data)).toContain("\n  \"name\": \"x\"")
+  })
+})
+
+// The editor's order is a copy of the backend's run order, so read the Go source
+// and fail when the two lists drift.
+describe("ACTION_RUN_ORDER", () => {
+  it("matches actionRunOrder in internal/services/automations/service.go", () => {
+    const source = readFileSync(resolve(import.meta.dirname, "../../../../internal/services/automations/service.go"), "utf8")
+
+    const slice = source.match(/^var actionRunOrder = \[\]string\{\n([^}]*)\}/m)
+    expect(slice).not.toBeNull()
+    const goKeys = [...slice![1].matchAll(/^\t"(\w+)",$/gm)].map(m => m[1])
+
+    expect(goKeys.length).toBeGreaterThan(0)
+    expect([...ACTION_RUN_ORDER]).toEqual(goKeys)
   })
 })

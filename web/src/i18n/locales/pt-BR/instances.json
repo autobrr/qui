@@ -1275,6 +1275,7 @@
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
         "selectAction": "Qual ação...",
+        "runOrderHelp": "As ações são executadas na ordem mostrada. Cada ação vê o torrent como ele estava quando a execução começou, então um programa externo executado após uma movimentação ainda recebe o caminho de salvamento antigo.",
         "speedLimits": "Limites de Velocidade",
         "shareLimits": "Limites de Ratio / Compartilhamento",
         "pause": "Pausar o torrent",

@@ -1275,6 +1275,7 @@
         "title": "Action",
         "addAction": "Add action",
         "selectAction": "Select an action...",
+        "runOrderHelp": "Actions run in the order shown. Each action sees the torrent as it was when the run started, so an external program that runs after a move still gets the old save path.",
         "speedLimits": "Speed limits",
         "shareLimits": "Share limits",
         "pause": "Pause",

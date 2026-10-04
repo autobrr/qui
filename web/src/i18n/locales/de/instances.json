@@ -1275,6 +1275,7 @@
         "title": "Aktion",
         "addAction": "Aktion hinzufügen",
         "selectAction": "Aktion auswählen...",
+        "runOrderHelp": "Aktionen laufen in der angezeigten Reihenfolge. Jede Aktion sieht den Torrent so, wie er zu Beginn des Durchlaufs war. Ein externes Programm, das nach einem Verschieben läuft, erhält daher noch den alten Speicherpfad.",
         "speedLimits": "Geschwindigkeitsbegrenzungen",
         "shareLimits": "Share-Limits",
         "pause": "Pausieren",
