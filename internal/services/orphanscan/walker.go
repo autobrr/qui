@@ -219,8 +219,9 @@ func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
 // inner root could lose its size, depending on map order (#3002).
 func outermostDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
 	outermost := ""
-	// A disc unit always sits below the scan root, so skip the filesystem root.
-	for dir := filepath.Dir(normUnit); dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+	// Not filepath.Dir: it cleans each parent again, and normUnit is already clean.
+	const sep = string(filepath.Separator)
+	for dir, _, ok := strings.CutLast(normUnit, sep); ok && dir != ""; dir, _, ok = strings.CutLast(dir, sep) {
 		if discUnitPath, ok := discRoots[dir]; ok {
 			outermost = discUnitPath
 		}
