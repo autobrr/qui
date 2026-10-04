@@ -21,7 +21,7 @@ Each tool limits only its own requests. When both run, Prowlarr, Jackett, and yo
 
 Both tools add the tag `cross-seed` by default. qui does not start a completion search for a torrent that has this tag, so torrents that the standalone app added do not start new qui searches when they complete.
 
-The default categories are different. qui adds `.cross` to the category of the matched torrent. The standalone app keeps the category of the matched torrent, adds `.cross-seed` when `duplicateCategories` is on, or uses `cross-seed-link` for linked torrents.
+The default categories are different. qui adds `.cross` to the category of the matched torrent. The standalone app keeps the category of the matched torrent, adds `.cross-seed` when `duplicateCategories` is on, or uses `cross-seed-link` for linked torrents. With linking on, `duplicateCategories` adds the marker as a tag instead.
 
 ## Move to qui
 
@@ -47,7 +47,7 @@ You do not have to remove anything. The torrents that the standalone app added c
 | `skipRecheck` | **Skip recheck** in [rules](./rules.md). The meaning is different, see below. |
 | `rssCadence` | RSS Automation **Run interval** |
 | `delay`, `excludeRecentSearch` | Library Scan interval and **Cooldown** |
-| `includeSingleEpisodes` | Library Scan **Skip individual episodes** |
+| `includeSingleEpisodes` | Turn Library Scan **Skip individual episodes** off to include episodes. For episodes from season packs, use **Cross-seed episodes from packs** in [rules](./rules.md). |
 | `seasonFromEpisodes` | [Season pack assembly](./season-packs.md) |
 | `dataDirs` | [Dir Scan](./dir-scan.md) |
 | `duplicateCategories` | **Category Affix** in [rules](./rules.md) |
