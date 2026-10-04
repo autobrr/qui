@@ -12,6 +12,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func TestPartialPoolPropagationPairIncompatibleRecognizesWindowsHardlinkError(t *testing.T) {
-	require.True(t, partialPoolPropagationPairIncompatible(windows.ERROR_NOT_SAME_DEVICE))
+func TestIsCrossDeviceLinkErrorRecognizesWindowsHardlinkError(t *testing.T) {
+	require.True(t, isCrossDeviceLinkError(windows.ERROR_NOT_SAME_DEVICE))
 }

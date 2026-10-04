@@ -16,7 +16,7 @@ Repo rules for AI agents working on qui.
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
 - User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
-- Docker/compose/release files: repo root
+- Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
 
@@ -74,6 +74,7 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
+- A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 
 ## Comments
 
@@ -96,7 +97,7 @@ qui must work on Windows and Unix-like hosts.
 
 ## Frontend
 
-Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `web/`, i18n, React components, or frontend tests.
+Frontend-specific rules live in `web/AGENTS.md`. Read that file before you edit, spec, or review a change to `web/`, i18n, React components, or frontend tests.
 
 ## API / Database
 

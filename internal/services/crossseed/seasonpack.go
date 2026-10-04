@@ -1599,14 +1599,13 @@ func buildSeasonPackPlan(
 			continue
 		}
 
-		targetPath, ok := safeSeasonPackJoin(plan.RootDir, pf.Name)
-		if !ok {
-			return nil, fmt.Errorf("%w: invalid pack target path %q", errLayoutMismatch, pf.Name)
+		// hardlinktree validates the torrent path, the same check link mode's
+		// plans go through, and the backends trust the plan.
+		filePlan, err := hardlinktree.BuildSingleFilePlan(plan.RootDir, pf.Name, localFile.sourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid pack target path %q: %w", errLayoutMismatch, pf.Name, err)
 		}
-		plan.Files = append(plan.Files, hardlinktree.FilePlan{
-			SourcePath: localFile.sourcePath,
-			TargetPath: targetPath,
-		})
+		plan.Files = append(plan.Files, filePlan.Files...)
 		build.materializedPaths[pf.Name] = struct{}{}
 		build.linkedBytes += pf.Size
 	}

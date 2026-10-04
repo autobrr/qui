@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -911,5 +912,18 @@ func TestWalkScanRoot_PermissionError(t *testing.T) {
 				t.Fatalf("child permission error must remain skipped: %v", err)
 			}
 		})
+	}
+}
+
+func TestWalkScanRoot_LostConnectionIsNeverSkipped(t *testing.T) {
+	root := t.TempDir()
+	lost := fmt.Errorf("%w: %w", fsops.ErrConnectionLost, fs.ErrPermission)
+	backend := &fakeWalkBackend{
+		Backend: newTestBackend(),
+		entries: []fsops.WalkEntry{{Path: filepath.Join(root, "child"), Err: lost}},
+	}
+	_, _, err := walkScanRoot(t.Context(), root, NewTorrentFileMap(), nil, 0, 0, backend)
+	if !errors.Is(err, fsops.ErrConnectionLost) {
+		t.Fatalf("a lost connection must fail the scan, got %v", err)
 	}
 }

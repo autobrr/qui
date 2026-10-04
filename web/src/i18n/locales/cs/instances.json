@@ -856,6 +856,7 @@
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
       "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
       "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
+      "remoteLimits": "Mazání a automatické vyčištění na vzdálených instancích zatím neběží. qui také nepozná, že dvě cesty vedou ke stejnému souboru, takže soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent.",
       "on": "Zapnuto",
       "off": "Vypnuto",
       "summaryGrace": "Lhůta {{grace}}min",
@@ -869,6 +870,7 @@
       "cancel": "Zrušit",
       "autoCleanupEnabled": "Automatické vyčištění zapnuto (≤{{max}} souborů)",
       "autoCleanupDisabled": "Automatické vyčištění vypnuto",
+      "autoCleanupRemote": "Vzdálené instance se automaticky nečistí",
       "pathsIgnored_one": " · {{count}} cesta ignorována",
       "pathsIgnored_few": " · {{count}} cesty ignorovány",
       "pathsIgnored_other": " · {{count}} cest ignorováno",
@@ -921,6 +923,7 @@
     "orphanScanPreview": {
       "title": "Náhled sirotků",
       "description": "Zkontrolujte soubory a adresáře, které tento běh odstraní.",
+      "remoteDescription": "Zkontrolujte soubory a adresáře, které toto vyhledávání našlo.",
       "itemsCount_one": "{{count}} položka · {{size}}",
       "itemsCount_few": "{{count}} položky · {{size}}",
       "itemsCount_many": "{{count}} položek · {{size}}",
@@ -937,6 +940,7 @@
       "exportCSV": "Exportovat CSV",
       "close": "Zavřít",
       "deleteItems": "Smazat",
+      "remoteDeleteUnavailable": "Toto vyhledávání proběhlo na vzdálené instanci, kde mazání zatím není podporováno. Exportujte seznam a soubory na serveru odstraňte sami.",
       "toast": {
         "deletionStarted": "Smazání spuštěno",
         "deletionDescription": "Nepárové soubory a opuštěné adresáře jsou odstraňovány",

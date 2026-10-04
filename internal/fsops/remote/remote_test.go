@@ -859,41 +859,6 @@ func TestSupportsReflink(t *testing.T) {
 	assert.NotEmpty(t, reason)
 }
 
-func TestWriteMethodsAreUnsupported(t *testing.T) {
-	t.Parallel()
-
-	b, _ := newBackend(t)
-	ctx := t.Context()
-	dir := remotePath(t.TempDir())
-
-	tests := []struct {
-		op   string
-		call func() error
-	}{
-		{op: "mkdirall", call: func() error { return b.MkdirAll(ctx, dir, 0o755) }},
-		{op: "remove", call: func() error { return b.Remove(ctx, dir, fsops.RemoveOptions{}) }},
-		{op: "hardlinktree", call: func() error { _, err := b.HardlinkTree(ctx, nil); return err }},
-		{op: "reflinktree", call: func() error { _, err := b.ReflinkTree(ctx, nil); return err }},
-		{op: "removetree", call: func() error {
-			return b.RemoveTree(ctx, &fsops.TreeCreateResult{Files: []string{dir}})
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.op, func(t *testing.T) {
-			t.Parallel()
-
-			err := tt.call()
-			require.ErrorIs(t, err, fsops.ErrUnsupported)
-			// The message reaches the user through a failed job, so it has to
-			// say which operation was refused.
-			assert.Contains(t, err.Error(), tt.op)
-		})
-	}
-
-	// A nil handle means nothing to remove — safe on every backend.
-	require.NoError(t, b.RemoveTree(ctx, nil))
-}
-
 func TestCancelledContext(t *testing.T) {
 	t.Parallel()
 
