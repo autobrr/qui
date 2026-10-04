@@ -1116,7 +1116,7 @@ A run reads the torrent list once, when it starts. Every rule and every action i
 
 There are two exceptions. The Free Space projection adds up across the torrents in a run (see [Free Space condition behavior](#free-space-condition-behavior)). Before a delete, qui reads the hardlink state from disk again.
 
-A later run sees the new values. That run comes at least 2 minutes later (see Debouncing under [How automations work](#how-automations-work)), and only once the rule's interval has passed.
+A later live run sees the new values. That run comes at least 2 minutes later (see Debouncing under [How automations work](#how-automations-work)), and only once the rule's interval has passed. A dry run skips the 2-minute wait, and **Dry-run now** also skips the interval, so a dry run can show the new values sooner.
 
 Examples:
 
