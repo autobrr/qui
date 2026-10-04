@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # Keys not set here come from the CodeRabbit dashboard.
 inheritance: true
+early_access: false
 tone_instructions: "Be brief. Report bugs, data loss, races, security, and Windows/Unix path errors. Do not repeat golangci-lint, ESLint, or gofmt findings. Do not ask for docstrings or comments that restate the code."
 reviews:
   high_level_summary: false
@@ -12,6 +13,8 @@ reviews:
   in_progress_fortune: false
   sequence_diagrams: false
   suggested_reviewers: false
+  suggested_labels: false
+  assess_linked_issues: false
   poem: false
   path_instructions:
     - path: "internal/database/{migrations,postgres_migrations}/**"
@@ -19,6 +22,21 @@ reviews:
   pre_merge_checks:
     docstrings:
       mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+  finishing_touches:
+    unit_tests:
+      enabled: false
   tools:
     biome:
       enabled: false # no biome.json: it lints web/ with generic rules beside the repo's ESLint
+    languagetool:
+      enabled: false
+    vale:
+      enabled: false
+chat:
+  art: false
