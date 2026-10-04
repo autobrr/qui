@@ -316,7 +316,6 @@ export interface Automation {
   instanceId: number
   name: string
   trackerPattern: string
-  trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig
@@ -332,7 +331,6 @@ export interface Automation {
 export interface AutomationInput {
   name: string
   trackerPattern?: string
-  trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig

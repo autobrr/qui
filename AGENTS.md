@@ -16,7 +16,7 @@ Repo rules for AI agents working on qui.
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
 - User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
-- Docker/compose/release files: repo root
+- Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
 
@@ -74,6 +74,7 @@ Before opening or updating a PR, complete these steps for the full PR diff:
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
+- A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 
 ## Comments
 
@@ -96,7 +97,7 @@ qui must work on Windows and Unix-like hosts.
 
 ## Frontend
 
-Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `web/`, i18n, React components, or frontend tests.
+Frontend-specific rules live in `web/AGENTS.md`. Read that file before you edit, spec, or review a change to `web/`, i18n, React components, or frontend tests.
 
 ## API / Database
 
@@ -136,4 +137,16 @@ State required checks run, skipped/deferred checks with reason, and unresolved f
 
 - Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
 - Triage: labels equal the five role names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. `ready-for-agent` (`bug` only) creates the linked issue and closes the discussion. Do not post the brief on the discussion.
-- Domain docs: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+- Domain docs: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
+## Code Review Rules
+
+These rules are for AI PR reviewers. The agent workflow rules in this file (precommit, field test, commit gate, PR body format) are for coding agents. Do not apply them to PR authors.
+
+- Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
+- Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
+- When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
+- Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
+- Treat a change to the SQL of a migration that already exists on `develop`, or a rename of one, as P1. Migrations are tracked by file name only: installs that ran it never run the new SQL, and a renamed file runs again.
+  Safe path: put the change in a new migration.

@@ -125,19 +125,34 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		},
 	}
 
-	_, err := buildSeasonPackPlan(
-		qbt.TorrentFiles{{Name: "../Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10}},
-		&packRelease,
-		"Show.S01.1080p.WEB.x264-GRP",
-		t.TempDir(),
-		localFiles,
-		normalizerForService(nil),
-		nil,
-		nil,
-	)
+	// POSIX and Windows forms are rejected on every host, and so are the two
+	// shapes link mode already refuses: a backslash inside a name and a
+	// non-canonical path. The plan goes through hardlinktree's validator.
+	for _, name := range []string{
+		"../Show.S01E01.1080p.WEB.x264-GRP.mkv",
+		"/Show.S01E01.1080p.WEB.x264-GRP.mkv",
+		`\Show.S01E01.1080p.WEB.x264-GRP.mkv`,
+		"C:/Show.S01E01.1080p.WEB.x264-GRP.mkv",
+		"//server/share/Show.S01E01.1080p.WEB.x264-GRP.mkv",
+		`Show.S01\Show.S01E01.1080p.WEB.x264-GRP.mkv`,
+		"Show.S01//Show.S01E01.1080p.WEB.x264-GRP.mkv",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := buildSeasonPackPlan(
+				qbt.TorrentFiles{{Name: name, Size: 10}},
+				&packRelease,
+				"Show.S01.1080p.WEB.x264-GRP",
+				t.TempDir(),
+				localFiles,
+				normalizerForService(nil),
+				nil,
+				nil,
+			)
 
-	require.ErrorIs(t, err, errLayoutMismatch)
-	require.ErrorContains(t, err, "invalid pack target path")
+			require.ErrorIs(t, err, errLayoutMismatch)
+			require.ErrorContains(t, err, "invalid pack target path")
+		})
+	}
 }
 
 // TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from

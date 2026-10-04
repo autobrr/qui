@@ -741,8 +741,7 @@
           "invalidJson": "JSON 格式无效",
           "notObject": "需要一个 JSON 对象",
           "missingName": "缺少或无效的 'name' 字段",
-          "missingConditions": "缺少或无效的 'conditions' 字段",
-          "missingTracker": "必须指定 'trackerDomains'（字符串数组）或 'trackerPattern'"
+          "missingConditions": "缺少或无效的 'conditions' 字段"
         }
       },
       "editJsonDialog": {
@@ -822,6 +821,7 @@
       "description": "扫描下载目录并识别孤立文件以进行清理。",
       "noLocalAccess": "无本地访问权限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
+      "remoteLimits": "删除和自动清理暂时无法在远程实例上运行。qui 也无法判断两个路径是否指向同一文件，因此可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。",
       "on": "开",
       "off": "关",
       "summaryGrace": "宽限期 {{grace}} 分钟",
@@ -832,6 +832,7 @@
       "cancel": "取消",
       "autoCleanupEnabled": "自动清理已启用（≤{{max}} 个文件）",
       "autoCleanupDisabled": "自动清理已禁用",
+      "autoCleanupRemote": "远程实例不自动清理",
       "pathsIgnored_other": " · {{count}} 个路径已忽略",
       "scanNow": "立即扫描",
       "configure": "配置",
@@ -873,6 +874,7 @@
     "orphanScanPreview": {
       "title": "孤立项目预览",
       "description": "查看本次运行将删除的文件和目录。",
+      "remoteDescription": "查看本次扫描找到的文件和目录。",
       "itemsCount_other": "{{count}} 个项目 · {{size}}",
       "truncated": "（已截断）",
       "path": "路径",
@@ -886,6 +888,7 @@
       "exportCSV": "导出 CSV",
       "close": "关闭",
       "deleteItems": "删除",
+      "remoteDeleteUnavailable": "此扫描在远程实例上进行，远程实例暂不支持删除。请导出列表，然后自行在服务器上删除这些文件。",
       "statusLabels": {
         "pending": "等待中",
         "deleted": "已删除",
@@ -1353,12 +1356,12 @@
         "defaultSource": "默认（qBittorrent）",
         "pathSource": "服务器路径",
         "pathSourceWindowsUnsupported": "服务器路径（Windows 不支持）",
-        "pathSourceFilesystemAccessRequired": "服务器路径（需要本地或 SSH 访问权限）",
+        "pathSourceLocalAccessRequired": "服务器路径（需要本地访问权限）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "输入要检查可用空间的路径（例如挂载点）",
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
-          "filesystemAccessRequired": "基于路径的可用空间来源需要本地或 SSH 文件系统访问权限。",
+          "localAccessRequired": "基于路径的可用空间来源需要本地文件系统访问权限。",
           "pathRequired": "使用\"服务器路径\"时，路径为必填项。"
         }
       },
@@ -1550,7 +1553,7 @@
         "switchedIntervalForFreeSpace": "已切换到 5 分钟间隔，因为可用空间删除有约 5 分钟的冷却时间",
         "pathSourceUnsupportedWindows": "Windows 不支持基于路径的可用空间来源。已切换到 qBittorrent 默认值。",
         "switchFreeSpaceSourceDefault": "将可用空间来源切换为默认（qBittorrent）",
-        "setUpFilesystemAccessOrDefault": "请在实例设置中配置本地或 SSH 文件系统访问，或使用默认（qBittorrent）",
+        "enableLocalAccessOrDefault": "请在实例设置中启用本地文件系统访问，或使用默认（qBittorrent）",
         "enterPathOrDefault": "请输入路径或将可用空间来源切换回默认（qBittorrent）",
         "addScoreRule": "得分排序至少需要一条得分规则",
         "fieldMultiplierInvalid": "字段乘数必须是有效数字",

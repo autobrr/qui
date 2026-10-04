@@ -794,8 +794,7 @@
           "invalidJson": "Format JSON no vàlid",
           "notObject": "S'espera un objecte JSON",
           "missingName": "Falta el camp 'name' o no és vàlid",
-          "missingConditions": "Falta el camp 'conditions' o no és vàlid",
-          "missingTracker": "Cal indicar 'trackerDomains' (llista de cadenes) o 'trackerPattern'"
+          "missingConditions": "Falta el camp 'conditions' o no és vàlid"
         }
       },
       "editJsonDialog": {
@@ -1051,12 +1050,12 @@
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
-        "pathSourceFilesystemAccessRequired": "Camí al servidor (cal accés local o SSH)",
+        "pathSourceLocalAccessRequired": "Camí al servidor (cal accés local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
-          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH.",
+          "localAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor»."
         }
       },
@@ -1236,7 +1235,7 @@
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
-        "setUpFilesystemAccessOrDefault": "Configura l'accés al sistema de fitxers local o per SSH a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
+        "enableLocalAccessOrDefault": "Activa l'accés al sistema de fitxers local a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "addScoreRule": "Afegeix com a mínim una regla de puntuació per ordenar per puntuació",
         "fieldMultiplierInvalid": "El multiplicador de camp ha de ser un número vàlid",
@@ -1462,6 +1461,7 @@
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
       "noLocalAccess": "Sense accés local",
       "noLocalAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
+      "remoteLimits": "La supressió i la neteja automàtica encara no funcionen en instàncies remotes. A més, qui no pot saber quan dos camins són el mateix fitxer, de manera que un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi.",
       "on": "Activada",
       "off": "Desactivada",
       "summaryGrace": "Marge {{grace}} min",
@@ -1471,6 +1471,7 @@
       "cancel": "Cancel·la",
       "autoCleanupEnabled": "Neteja automàtica activada (≤{{max}} fitxers)",
       "autoCleanupDisabled": "Neteja automàtica desactivada",
+      "autoCleanupRemote": "Sense neteja automàtica en instàncies remotes",
       "scanNow": "Explora ara",
       "configure": "Configura",
       "totalSize": "Mida total: {{size}}",
@@ -1518,6 +1519,7 @@
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",
       "description": "Revisa els fitxers i els directoris que aquesta execució suprimirà.",
+      "remoteDescription": "Revisa els fitxers i els directoris que ha trobat aquesta exploració.",
       "truncated": " (truncat)",
       "path": "Camí",
       "size": "Mida",
@@ -1545,6 +1547,7 @@
       "itemsCount_one": "{{count}} element · {{size}}",
       "itemsCount_other": "{{count}} elements · {{size}}",
       "deleteItems": "Elimina",
+      "remoteDeleteUnavailable": "Aquesta exploració s'ha fet en una instància remota, on la supressió encara no és compatible. Exporta la llista per suprimir tu mateix els fitxers al servidor.",
       "directory": "Directori",
       "noItems": "No hi ha res per mostrar."
     },

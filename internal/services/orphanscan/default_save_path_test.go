@@ -220,7 +220,7 @@ func TestBuildFileMap_DefaultSavePathRootIsOptIn(t *testing.T) {
 
 	svc := newDefaultSavePathService(defaultSavePath, torrentSavePath)
 
-	off, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
+	off, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap (toggle off): %v", err)
 	}
@@ -228,7 +228,7 @@ func TestBuildFileMap_DefaultSavePathRootIsOptIn(t *testing.T) {
 		t.Fatalf("default save path %q must not be scanned while the toggle is off: %v", defaultSavePath, off.scanRoots)
 	}
 
-	on, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{DefaultSavePath: true})
+	on, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{DefaultSavePath: true})
 	if err != nil {
 		t.Fatalf("buildFileMap (toggle on): %v", err)
 	}
@@ -253,7 +253,7 @@ func TestBuildFileMap_DefaultSavePathFailureFailsTheScan(t *testing.T) {
 
 	// An unresolvable default save path must not degrade into a narrower scan
 	// that reports clean; discussion #2365.
-	if _, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{DefaultSavePath: true}); err == nil {
+	if _, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{DefaultSavePath: true}); err == nil {
 		t.Fatal("expected buildFileMap to fail when the default save path cannot be resolved")
 	}
 }
@@ -303,7 +303,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{DefaultSavePath: true})
+	result, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{DefaultSavePath: true})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}

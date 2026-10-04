@@ -13,6 +13,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -14523,25 +14524,28 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
 }
 
-// FindMatchingBaseDir returns the first configured base directory on the same
+// ErrNoMatchingBaseDir means no configured base directory is on the same
 // filesystem as the source path.
-func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend) (string, error) {
+var ErrNoMatchingBaseDir = errors.New("no base directory on same filesystem as source")
+
+// LinkIntoMatchingBaseDir walks the configured base directories in rankBaseDirs
+// order and calls link for each one on the same filesystem as sourcePath. It
+// stops at the first result that is not a cross-device error: SameFilesystem
+// compares device IDs, and some hosts (OrbStack VirtioFS) report one ID for
+// several disks, so link() can still reject a dir that passed. hardlinktree.Create
+// rolls back its partial tree before it returns the error.
+func LinkIntoMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend, link func(baseDir string) error) error {
 	if backend == nil {
-		return "", errors.New("filesystem backend is nil")
+		return errors.New("filesystem backend is nil")
 	}
-	if strings.TrimSpace(configuredDirs) == "" {
-		return "", errors.New("base directory not configured")
+	dirs := splitBaseDirs(configuredDirs)
+	if len(dirs) == 0 {
+		return fmt.Errorf("%w: base directory not configured", ErrNoMatchingBaseDir)
 	}
 
-	dirs := strings.Split(configuredDirs, ",")
-	var lastErr error
+	var lastErr, linkErr error
 
-	for _, dir := range dirs {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-
+	for _, dir := range rankBaseDirs(dirs, sourcePath) {
 		if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
@@ -14552,16 +14556,54 @@ func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath 
 			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
 			continue
 		}
+		if !sameFS {
+			continue
+		}
 
-		if sameFS {
-			return dir, nil
+		if linkErr = link(dir); !isCrossDeviceLinkError(linkErr) {
+			return linkErr
+		}
+		log.Warn().Err(linkErr).Str("baseDir", dir).Msg("cross-device link in base dir, trying the next one")
+	}
+
+	if linkErr != nil {
+		return linkErr
+	}
+	if lastErr != nil {
+		return fmt.Errorf("%w (last error: %w)", ErrNoMatchingBaseDir, lastErr)
+	}
+	return ErrNoMatchingBaseDir
+}
+
+func splitBaseDirs(configuredDirs string) []string {
+	var dirs []string
+	for dir := range strings.SplitSeq(configuredDirs, ",") {
+		if dir = strings.TrimSpace(dir); dir != "" {
+			dirs = append(dirs, dir)
 		}
 	}
+	return dirs
+}
 
-	if lastErr != nil {
-		return "", fmt.Errorf("no base directory on same filesystem as source (last error: %w)", lastErr)
+// rankBaseDirs orders dirs by the number of leading path components they share
+// with source, so the dir on the source's own disk comes first. Ties keep the
+// configured order.
+func rankBaseDirs(dirs []string, source string) []string {
+	ranked := slices.Clone(dirs)
+	slices.SortStableFunc(ranked, func(a, b string) int {
+		return cmp.Compare(sharedPathComponents(b, source), sharedPathComponents(a, source))
+	})
+	return ranked
+}
+
+func sharedPathComponents(a, b string) int {
+	aParts := strings.Split(filepath.Clean(a), string(filepath.Separator))
+	bParts := strings.Split(filepath.Clean(b), string(filepath.Separator))
+	n := 0
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
+		n++
 	}
-	return "", errors.New("no base directory on same filesystem as source")
+	return n
 }
 
 func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
