@@ -187,16 +187,23 @@ func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
 	return ok
 }
 
-func containingDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
-	for normDisc, discUnitPath := range discRoots {
-		if normUnit == normDisc {
+// outermostDiscUnit returns the outermost disc root that contains normUnit.
+// Inner disc roots also fold into the outer root, so a unit folded into an
+// inner root could lose its size, depending on map order (#3002).
+func outermostDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
+	outermost := ""
+	for normDisc := range discRoots {
+		if normUnit == normDisc || !isPathUnderNormalized(normUnit, normDisc) {
 			continue
 		}
-		if isPathUnderNormalized(normUnit, normDisc) {
-			return discUnitPath, true
+		if outermost == "" || len(normDisc) < len(outermost) {
+			outermost = normDisc
 		}
 	}
-	return "", false
+	if outermost == "" {
+		return "", false
+	}
+	return discRoots[outermost], true
 }
 
 func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
@@ -212,7 +219,7 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 	}
 
 	for unit, entry := range w.orphanUnits {
-		discUnitPath, ok := containingDiscUnit(cleanPath(unit), discRoots)
+		discUnitPath, ok := outermostDiscUnit(cleanPath(unit), discRoots)
 		if !ok {
 			continue
 		}
