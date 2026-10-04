@@ -3640,6 +3640,17 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute external programs (async, fire-and-forget)
 	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
 
+	exportExecutions, waitingExports := exportsAfterMoves(exportExecutions, movedHashes)
+	if len(waitingExports) > 0 {
+		s.mu.Lock()
+		for _, exec := range waitingExports {
+			delete(s.inFlightExports, fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash))
+		}
+		s.mu.Unlock()
+		log.Debug().Int("instanceID", instanceID).Int("count", len(waitingExports)).
+			Msg("automations: exports wait for a later run, their torrents are moving")
+	}
+
 	// Execute export to instance — collect results before notification
 	exportResults := s.executeExportToInstance(ctx, instanceID, exportExecutions)
 
@@ -5406,6 +5417,7 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// Moves (include cross-seed expansion)
+	movedHashes := make(map[string]struct{})
 	if len(moveBatches) > 0 {
 		sortedPaths := make([]string, 0, len(moveBatches))
 		for path := range moveBatches {
@@ -5413,7 +5425,6 @@ func (s *Service) recordDryRunActivities(
 		}
 		sort.Strings(sortedPaths)
 
-		movedHashes := make(map[string]struct{})
 		plannedCounts := make(map[string]int)
 		plannedHashesByPath := make(map[string][]string)
 		previewEvalCtx := dryRunEvalCtx
@@ -5592,6 +5603,7 @@ func (s *Service) recordDryRunActivities(
 	}
 
 	// Export to instance
+	exportExecutions, _ = exportsAfterMoves(exportExecutions, movedHashes)
 	if len(exportExecutions) > 0 {
 		const alreadyExistsReason = "Already exists on target instance"
 		successByTarget := make(map[int][]string)
@@ -5991,6 +6003,19 @@ type pendingExportToInstance struct {
 	ruleID           int
 	ruleName         string
 	failureReason    string
+}
+
+// exportsAfterMoves holds back exports whose .CurrentSavePath is about to change: qBittorrent reports the old path until a move ends.
+func exportsAfterMoves(exports []pendingExportToInstance, moved map[string]struct{}) (ready, waiting []pendingExportToInstance) {
+	for _, exec := range exports {
+		_, movesNow := moved[exec.hash]
+		if (movesNow || exec.torrent.State == qbt.TorrentStateMoving) && exec.failureReason == "" && strings.Contains(exec.action.SavePath, "CurrentSavePath") {
+			waiting = append(waiting, exec)
+			continue
+		}
+		ready = append(ready, exec)
+	}
+	return ready, waiting
 }
 
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
