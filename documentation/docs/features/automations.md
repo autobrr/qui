@@ -510,13 +510,9 @@ If the connected qBittorrent instance supports these fields, they appear in the 
 
 Pause matching torrents. qui pauses only torrents that are not already stopped.
 
-If a resume action is also present, the last action wins.
-
 ### Resume
 
 Resume matching torrents. qui resumes only torrents that are not already running.
-
-If a pause action is also present, the last action wins.
 
 ### Force recheck
 
