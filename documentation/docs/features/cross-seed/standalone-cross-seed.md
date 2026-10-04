@@ -42,7 +42,8 @@ You do not have to remove anything. The torrents that the standalone app added c
 | `torznab` | **Settings → Indexers** |
 | `linkDirs`, `linkType` | Hardlink or reflink mode for each instance. qui has no symlink mode. |
 | `flatLinking` | **Directory organization**: `flat`, `by-tracker`, or `by-instance` |
-| `matchMode: partial`, `autoResumeMaxDownload` | **Max auto-start download** in [rules](./rules.md) |
+| `matchMode` | No setting. qui accepts matches with extra files and rechecks them. Dir Scan has **Allow partial matches**. |
+| `autoResumeMaxDownload` | **Max auto-start download** in [rules](./rules.md) |
 | `skipRecheck` | **Skip recheck** in [rules](./rules.md). The meaning is different, see below. |
 | `rssCadence` | RSS Automation **Run interval** |
 | `delay`, `excludeRecentSearch` | Library Scan interval and **Cooldown** |
@@ -53,9 +54,11 @@ You do not have to remove anything. The torrents that the standalone app added c
 | `blockList` | [Blocklist](./overview.md#blocklist) for each instance. It accepts infohashes only. |
 
 :::warning Skip recheck is not the same setting
-In the standalone app, `skipRecheck` adds the torrent and does not recheck it. In qui, **Skip recheck** does not add a cross-seed that needs a recheck.
+In the standalone app, `skipRecheck` adds the torrent without a recheck, except for partial matches and disc layouts. In qui, **Skip recheck** does not add a cross-seed that needs a recheck.
 :::
 
-qui has no equivalent for these standalone settings: symlink links, `action: save`, `excludeOlder`, and blocklist entries by name, tracker, or size.
+qui has no equivalent for these standalone settings: symlink links, `action: save`, `excludeOlder`, `searchCadence`, and blocklist entries by name, tracker, or size.
+
+A Library Scan runs only when you start it. For continuous discovery, use RSS Automation, Auto-Search on Completion, or [autobrr](./autobrr.md).
 
 The standalone app also supports torrent clients other than qBittorrent. qui supports only qBittorrent.
