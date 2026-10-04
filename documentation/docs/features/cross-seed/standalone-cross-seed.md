@@ -41,17 +41,17 @@ You do not have to remove anything. The torrents that the standalone app added c
 |---|---|
 | `torznab` | **Settings → Indexers** |
 | `linkDirs`, `linkType` | Hardlink or reflink mode for each instance. qui has no symlink mode. |
-| `flatLinking` | **Directory organization**: `flat`, `by-tracker`, or `by-instance` |
+| `flatLinking` | **Directory organization**. No preset matches `flatLinking: true`, because the qui `flat` preset puts each torrent in its own folder. `by-tracker` is the closest match for the standalone default. |
 | `matchMode` | No setting. qui accepts matches with extra files and rechecks them. Dir Scan has **Allow partial matches**. |
 | `autoResumeMaxDownload` | **Max auto-start download** in [rules](./rules.md) |
 | `skipRecheck` | **Skip recheck** in [rules](./rules.md). The meaning is different, see below. |
 | `rssCadence` | RSS Automation **Run interval** |
 | `delay`, `excludeRecentSearch` | Library Scan interval and **Cooldown** |
 | `includeSingleEpisodes` | Turn Library Scan **Skip individual episodes** off to include episodes. For episodes from season packs, use **Cross-seed episodes from packs** in [rules](./rules.md). |
-| `seasonFromEpisodes` | [Season pack assembly](./season-packs.md) |
+| `seasonFromEpisodes` | [Season pack assembly](./season-packs.md). Set the coverage threshold to the standalone value multiplied by 100. The standalone default `1` is 100%, and the qui default is 75%. `null` means off. |
 | `dataDirs` | [Dir Scan](./dir-scan.md) |
 | `duplicateCategories` | **Category Affix** in [rules](./rules.md) |
-| `blockList` | [Blocklist](./overview.md#blocklist) for each instance. It accepts infohashes only. |
+| `blockList` | No direct equivalent. The qui [Blocklist](./overview.md#blocklist) only stops an infohash from being added again. To keep a torrent out of searches, use the category and tag filters of each discovery method. |
 
 :::warning Skip recheck is not the same setting
 In the standalone app, `skipRecheck` adds the torrent without a recheck, except for partial matches and disc layouts. In qui, **Skip recheck** does not add a cross-seed that needs a recheck.
