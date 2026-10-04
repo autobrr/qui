@@ -4,6 +4,7 @@ inheritance: true
 early_access: false
 tone_instructions: "Be brief. Report bugs, data loss, races, security, and Windows/Unix path errors. Do not repeat golangci-lint, ESLint, or gofmt findings. Do not ask for docstrings or comments that restate the code."
 reviews:
+  allow_author_approval: false # authors cannot run @coderabbitai approve or resolve on their own PRs
   high_level_summary: false
   collapse_walkthrough: true
   changed_files_summary: false
