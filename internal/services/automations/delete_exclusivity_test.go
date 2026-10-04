@@ -84,7 +84,7 @@ func (s *writeStub) writes() map[string][]string {
 }
 
 type stubTorrent struct {
-	hash, name, tags string
+	hash, name, tags, tracker string
 }
 
 // newWriteStubService serves the torrents from one save path, each with its own single file.
@@ -95,8 +95,8 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 	entries := make([]string, 0, len(torrents))
 	files := make(map[string]string, len(torrents))
 	for _, tor := range torrents {
-		entries = append(entries, fmt.Sprintf(`"%s":{"name":"%s","ratio":2,"progress":1,"size":1000,"state":"stoppedUP","save_path":"/data/old","content_path":"/data/old/%s.mkv","tags":"%s"}`,
-			tor.hash, tor.name, tor.name, tor.tags))
+		entries = append(entries, fmt.Sprintf(`"%s":{"name":"%s","ratio":2,"progress":1,"size":1000,"state":"stoppedUP","save_path":"/data/old","content_path":"/data/old/%s.mkv","tags":"%s","tracker":"%s"}`,
+			tor.hash, tor.name, tor.name, tor.tags, tor.tracker))
 		files[tor.hash] = fmt.Sprintf(`[{"index":0,"name":"%s.mkv","size":1000,"progress":1,"priority":1}]`, tor.name)
 	}
 	stub := &writeStub{torrents: "{" + strings.Join(entries, ",") + "}", files: files, hashes: make(map[string][]string)}
@@ -178,13 +178,14 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		y = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		z = "dddddddddddddddddddddddddddddddddddddddd"
 		w = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		v = "cccccccccccccccccccccccccccccccccccccccc"
 	)
 	// Same name, different hash: X and Y are cross-seeds. Z and W are one release in two resolutions.
 	crossSeeds := func(xTags string) []stubTorrent {
-		return []stubTorrent{{x, "Example.Show.S01E01.1080p.WEB-DL-GRP", xTags}, {y, "Example.Show.S01E01.1080p.WEB-DL-GRP", "mv"}}
+		return []stubTorrent{{x, "Example.Show.S01E01.1080p.WEB-DL-GRP", xTags, ""}, {y, "Example.Show.S01E01.1080p.WEB-DL-GRP", "mv", ""}}
 	}
 	release := func(zTags string) []stubTorrent {
-		return []stubTorrent{{z, "Example.Movie.2021.1080p.BluRay.x264-GRP", zTags}, {w, "Example.Movie.2021.2160p.BluRay.x265-GRP", "mv"}}
+		return []stubTorrent{{z, "Example.Movie.2021.1080p.BluRay.x264-GRP", zTags, ""}, {w, "Example.Movie.2021.2160p.BluRay.x265-GRP", "mv", ""}}
 	}
 	moveTagAndCategory := moveRule("")
 	moveTagAndCategory.Conditions.Tags = []*models.TagAction{{Enabled: true, Tags: []string{"moved"}, Mode: "add", Condition: tagsContain("mv")}}
@@ -194,6 +195,9 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		tagsContain("del"),
 		{Field: models.FieldHardlinkScope, Operator: models.OperatorEqual, Value: HardlinkScopeNone},
 	}}
+	groupDeleteOnTrackerA := deleteRule(DeleteModeKeepFiles, tagsContain("del"))
+	groupDeleteOnTrackerA.TrackerPattern = "a.example"
+	groupDeleteOnTrackerA.Conditions.Delete.GroupID = GroupCrossSeedContentSavePath
 	// A rule ahead of the delete rule gives the delete trigger an action of its own.
 	tagBeforeDelete := &models.Automation{
 		ID: 3, Name: "tag", TrackerPattern: "*", Enabled: true,
@@ -239,9 +243,19 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		},
 		{
 			name:     "a cross-seed pulled into the delete gets none of its own actions",
-			torrents: crossSeeds("del"),
+			torrents: append(crossSeeds("del"), stubTorrent{v, "Example.Show.S01E02.1080p.WEB-DL-GRP", "mv", ""}),
 			rules:    []*models.Automation{deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del")), moveTagAndCategory},
-			want:     map[string][]string{"delete": {x, y}},
+			want:     map[string][]string{"move": {v}, "category": {v}, "tag": {v}, "delete": {x, y}},
+		},
+		{
+			// Group strictness checks the delete condition, not the rule's tracker pattern, so Y joins X's delete.
+			name: "a member pulled into a keep-files group delete gets none of its own actions",
+			torrents: []stubTorrent{
+				{x, "Example.Show.S01E01.1080p.WEB-DL-GRP", "del", "https://a.example/announce"},
+				{y, "Example.Show.S01E01.1080p.WEB-DL-GRP", "del,mv", "https://b.example/announce"},
+			},
+			rules: []*models.Automation{groupDeleteOnTrackerA, moveRule("")},
+			want:  map[string][]string{"delete": {x, y}},
 		},
 		{
 			name:     "a delete the hardlink re-check blocks leaves the torrent to expansion but not to its own actions",
