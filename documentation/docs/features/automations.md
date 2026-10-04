@@ -356,6 +356,7 @@ To run a dry-run immediately without waiting for interval execution:
 
 A dry-run executes the current workflow configuration as a simulation and writes results to automation activity.
 A dry-run reports the same torrents as the live impact preview, because it deletes nothing.
+Dry-run rules and live rules run in separate passes, so a dry run does not see what live rules do in the same cycle.
 
 No-match behavior:
 
@@ -545,6 +546,8 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFiles` | Remove with files |
 | `deleteWithFilesPreserveCrossSeeds` | Remove files, but keep them if qui detects cross-seeds |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
+
+If a delete depends on hardlinks (a hardlink condition, or include hardlinks) and they changed since the rule decided, qui skips the delete for that run and decides again on the next one.
 
 **Optional grouping (advanced):**
 
@@ -1079,10 +1082,7 @@ qui sends an API call only when the torrent's current setting differs from the t
 
 ### Processing order
 
-- **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
-- **A torrent the run deletes gets no other action in that run.** qui drops the actions that earlier rules chose for it. Cross-seed and group expansion of category and move leave it out. A torrent that a delete pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode, gets none of its own actions either.
-  - If qui holds back a delete because the torrent's hardlinks changed since the rule decided, the torrent is not deleted, and expansion can still include it. If a rule chose delete for that torrent itself, it still gets none of its own other actions in that run.
-  - Dry-run rules and live rules run separately, so this applies only between rules of the same kind.
+- **Delete wins.** When a rule chooses delete for a torrent, qui evaluates no further rules for it and drops the actions earlier rules chose. Nothing else in the run touches it: cross-seed and group expansion of category and move leave it out, and a torrent the delete pulls in (for example a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode) gets none of its own actions.
 - **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
