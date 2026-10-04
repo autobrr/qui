@@ -747,7 +747,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Category` | qBittorrent category (on source instance) |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
 | `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
-| `.CurrentSavePath` | The torrent's save path on the source instance. Export only: in a Move path it would change after every move. While the torrent is moving, or when the same run moves it, the export waits for a later run and uses the new path. |
+| `.CurrentSavePath` | The torrent's save path on the source instance. Export only: in a Move path it would change after every move. The export waits for a later run while the torrent is moving, or when a Move action in the same run moves it. It does not wait for a category change or for auto management turned on in the same run: under Auto TMM those also move the files, and the export uses the old path. |
 
 | Function | Description |
 | --- | --- |
