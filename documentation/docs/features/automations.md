@@ -424,6 +424,7 @@ Group expansion uses strict semantics:
 - Every member in the expanded group must satisfy the action condition checks for that rule.
 - If any member fails or qui cannot resolve the group, qui skips the entire grouped action.
 - If `groupId` is set, there is no "trigger-only fallback".
+- qui leaves out a member that the same run deletes, and applies the action to the other members. The deleted member still counts for the strict check.
 
 Built-in group IDs:
 
@@ -618,6 +619,7 @@ Options:
 - **Include affected cross-seeds**: Also move cross-seeds (torrents with matching ContentPath AND SavePath).
 - **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include affected cross-seeds".
 - **Strict grouped matching**: If you set `groupId`, category expansion applies only when all group members satisfy the category rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seed exists in categories**: If another cross-seed is in a protected category, prevent the move.
 
 ### Move
@@ -627,6 +629,7 @@ Move torrents to a different path on disk. If AutoTMM is off, use this action to
 Options:
 - **Group ID (advanced)**: Expand moves to all torrents in the specified group (see [Grouping](#grouping)). qui resolves the move path for the matched torrent and applies it to the whole group.
 - **Strict grouped matching**: If you set `groupId`, move expansion is all-or-none. Every member must satisfy the move rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seeds don't match the rule's conditions**: If the torrent has cross-seeds that do not match the rule's conditions, skip the move. If **Group ID** is set, qui ignores this option.
 
 #### Move path templates
@@ -1077,6 +1080,9 @@ qui sends an API call only when the torrent's current setting differs from the t
 ### Processing order
 
 - **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
+- **A torrent the run deletes gets no other action in that run.** qui drops the actions that earlier rules chose for it. Cross-seed and group expansion of category and move leave it out. A torrent that a delete pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode, gets none of its own actions either.
+  - If qui holds back a delete because the torrent's hardlinks changed since the rule decided, the torrent is not deleted, and expansion can still include it. If a rule chose delete for that torrent itself, it still gets none of its own other actions in that run.
+  - Dry-run rules and live rules run separately, so this applies only between rules of the same kind.
 - **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 
