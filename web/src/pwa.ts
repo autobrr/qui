@@ -114,6 +114,11 @@ export function setupPWAAutoUpdate(): void {
       wb.register({ immediate: true }).catch((error) => {
         console.error("Service worker registration failed", error)
       })
+
+      // A phone PWA resumes from the background without a navigation, so the browser never checks for a new sw.js.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") void wb.update()
+      })
     })
     .catch((error) => {
       console.error("Failed to load Workbox for PWA registration", error)
