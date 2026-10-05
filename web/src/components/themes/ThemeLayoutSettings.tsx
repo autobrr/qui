@@ -35,6 +35,8 @@ export function ThemeLayoutSettings() {
         // server theme, so its local theme never reaches the server.
         const appliedId = getCurrentTheme().id
         const current = storedThemeSelection(getCurrentThemeMode(), appliedId, getStoredVariation(appliedId) ?? undefined)
+        // Turning the split off later pulls the default slot, so it must exist.
+        if (!data?.default) await api.updateThemeSettings(current, "default")
         await api.updateThemeSettings(localOnly && data?.default ? data.default : current, "mobile")
       } else {
         await api.deleteMobileThemeSettings()
