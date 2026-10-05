@@ -8641,9 +8641,10 @@ func alternateConnectorQuery(query string) (string, bool) {
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
 // renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name, and last the parsed subtitle joined to the title. A
-// candidate counts only when its normalized form differs from the primary
-// query, so the retry never repeats the query that already returned nothing.
+// of the release name, then the parsed subtitle joined to the title, and last
+// the title without its season numeral. A candidate counts only when its
+// normalized form differs from the primary query, so the retry never repeats
+// the query that already returned nothing.
 // Returns ("", false) when no distinct alternate title exists.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
 	primary := stringutils.NormalizeForMatching(primaryQuery)
@@ -8654,7 +8655,7 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 		parsed := releases.DefaultParser.Parse(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release))
+	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
