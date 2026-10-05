@@ -288,6 +288,12 @@ Both buttons sit on the directory details card, next to the run history.
 
 Neither button starts a scan. Trigger a scan with **Scan Now**, or wait for the next scheduled run.
 
+### Search cache
+
+Dir Scan reuses cached indexer results from the [search cache](../search.md#search-cache). A cached result stays for the cache TTL, which is 24 hours at minimum. Dir Scan has no setting that bypasses the cache, so a scan after a reset can still get the same results.
+
+To clear the cached results of one indexer, open **Settings > Indexers**, edit the indexer, and save it. qui deletes the cached searches of an indexer when you save it.
+
 ### Scheduled vs manual scans
 
 - **Scheduled scans** run at the configured interval (minimum 60 minutes).
