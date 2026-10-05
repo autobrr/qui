@@ -559,6 +559,17 @@
       "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
       "noneFound": "Nenalezeny žádné vlastní motivy. Vložte soubor .css do adresáře motivů a klikněte na Obnovit.",
       "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů."
+    },
+    "layout": {
+      "mobileSplit": "Samostatný motiv pro mobilní rozložení",
+      "mobileSplitHelp": "Mobilní rozložení (okno užší než 768 px) a desktopové rozložení si každé ponechá vlastní motiv, režim a variantu. Toto nastavení platí pro všechny prohlížeče.",
+      "localOnly": "Ponechat motiv tohoto prohlížeče lokálně",
+      "localOnlyHelp": "Tento prohlížeč nepřebírá motiv ze serveru a neodesílá na server své změny motivu. Toto nastavení platí jen pro tento prohlížeč.",
+      "changesMobile": "Mění mobilní motiv",
+      "changesDesktop": "Mění desktopový motiv",
+      "changesLocal": "Mění jen motiv tohoto prohlížeče",
+      "saveError": "Nastavení motivu se nepodařilo uložit",
+      "mobileSplitOffWarning": "Vypnutím se mobilní motiv smaže."
     }
   },
   "arrInstances": {

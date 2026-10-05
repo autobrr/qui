@@ -557,6 +557,17 @@
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
       "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
       "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
+    },
+    "layout": {
+      "mobileSplit": "Eigenes Theme für das mobile Layout",
+      "mobileSplitHelp": "Das mobile Layout (ein Fenster unter 768 px Breite) und das Desktop-Layout behalten jeweils ihr eigenes Theme, ihren Modus und ihre Variante. Diese Einstellung gilt für jeden Browser.",
+      "localOnly": "Theme dieses Browsers lokal halten",
+      "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
+      "changesMobile": "Ändert das mobile Theme",
+      "changesDesktop": "Ändert das Desktop-Theme",
+      "changesLocal": "Ändert nur das Theme dieses Browsers",
+      "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
+      "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }
   },
   "arrInstances": {

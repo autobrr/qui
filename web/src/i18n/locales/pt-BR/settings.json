@@ -557,6 +557,17 @@
       "parseErrorsTitle": "Não foi possível analisar estes arquivos:",
       "noneFound": "Nenhum tema personalizado encontrado. Coloque um arquivo .css no diretório de temas e clique em Atualizar.",
       "loadError": "Não foi possível carregar os temas personalizados. Verifique os logs do servidor e as permissões do diretório de temas."
+    },
+    "layout": {
+      "mobileSplit": "Tema separado para o layout móvel",
+      "mobileSplitHelp": "O layout móvel (uma janela com menos de 768 px de largura) e o layout de desktop mantêm cada um seu próprio tema, modo e variação. Esta configuração vale para todos os navegadores.",
+      "localOnly": "Manter o tema deste navegador local",
+      "localOnlyHelp": "Este navegador não obtém o tema do servidor e não envia suas alterações de tema ao servidor. Esta configuração vale apenas para este navegador.",
+      "changesMobile": "Altera o tema móvel",
+      "changesDesktop": "Altera o tema de desktop",
+      "changesLocal": "Altera apenas o tema deste navegador",
+      "saveError": "Falha ao salvar a configuração do tema",
+      "mobileSplitOffWarning": "Desativar esta opção exclui o tema móvel."
     }
   },
   "arrInstances": {

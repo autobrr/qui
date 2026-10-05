@@ -557,6 +557,17 @@
       "parseErrorsTitle": "Could not parse these files:",
       "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh.",
       "loadError": "Couldn't load custom themes. Check the server logs and the themes directory permissions."
+    },
+    "layout": {
+      "mobileSplit": "Separate theme for mobile layout",
+      "mobileSplitHelp": "The mobile layout (a window less than 768 px wide) and the desktop layout each keep their own theme, mode, and variation. This setting applies to every browser.",
+      "localOnly": "Keep this browser's theme local",
+      "localOnlyHelp": "This browser does not take the theme from the server and does not send its theme changes to the server. This setting applies only to this browser.",
+      "changesMobile": "Changes the mobile theme",
+      "changesDesktop": "Changes the desktop theme",
+      "changesLocal": "Changes the theme of this browser only",
+      "saveError": "Failed to save the theme setting",
+      "mobileSplitOffWarning": "Turning this off deletes the mobile theme."
     }
   },
   "arrInstances": {

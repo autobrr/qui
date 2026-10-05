@@ -25,6 +25,20 @@ qui stores your theme selection in its database, so it [syncs across devices](./
 
 If your premium license lapses, qui applies the default theme instead. If you use a built-in premium theme, qui preserves your stored selection and restores the theme when you renew the license.
 
+### A separate theme for the mobile layout
+
+qui shows the mobile layout when the window is less than 768 px wide. qui uses the window width, not the device type. A narrow desktop window also shows the mobile layout.
+
+To use a different theme on the mobile layout, turn on **Separate theme for mobile layout** below the theme grid. The mobile layout then starts with your current theme. After that, a theme change on the mobile layout changes only the mobile theme. A theme change on the desktop layout changes only the desktop theme. The theme, the light, dark, or auto mode, and the variation split together. A line under the theme grid tells you which theme the picker changes. qui stores this setting in its database, so it applies to every browser.
+
+To change the mobile theme, use a phone or a narrow window. When you turn the setting off, qui deletes the mobile theme, and every layout shows the desktop theme.
+
+### Keep the theme of one browser local
+
+To keep a theme on one browser only, for example on a shared computer, turn on **Keep this browser's theme local**. This browser then does not take the theme from the server and does not send its theme changes to the server. It keeps one theme for both layouts. The setting applies only to this browser.
+
+When you turn the setting off, the browser shows the theme from the server again. Your other devices do not change.
+
 ## Where to put theme files
 
 qui reads custom themes from a directory on disk. By default, this directory is a `themes` folder next to your configuration file:
