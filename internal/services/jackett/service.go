@@ -4366,11 +4366,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 
 		// Create Prowlarr client for this instance
-		timeout := indexers[0].TimeoutSeconds
-		if timeout <= 0 {
-			timeout = 30
-		}
-		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, indexers[0].TimeoutSeconds)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

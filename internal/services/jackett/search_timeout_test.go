@@ -5,10 +5,7 @@ package jackett
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
-	"slices"
 	"testing"
 	"time"
 
@@ -46,7 +43,7 @@ func TestComputeSearchTimeoutHonorsIndexerTimeouts(t *testing.T) {
 	}
 }
 
-func TestQueuedSearchAllowsSlowIndexerResponse(t *testing.T) {
+func TestQueuedSearchAllowsIndexerTimeout(t *testing.T) {
 	for _, scheduled := range []bool{false, true} {
 		name := "direct"
 		if scheduled {
@@ -54,42 +51,31 @@ func TestQueuedSearchAllowsSlowIndexerResponse(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				select {
-				case <-r.Context().Done():
-					return
-				case <-time.After(15 * time.Second):
-				}
-				w.Header().Set("Content-Type", "application/rss+xml")
-				_, _ = w.Write([]byte(`<rss version="2.0"><channel><item><title>Example.Search.Result</title><guid>example-result</guid><link>https://example.com/download/1</link></item></channel></rss>`))
-			}))
-			defer server.Close()
-			idx := &models.TorznabIndexer{ID: 1, Name: "Test", BaseURL: server.URL, Backend: models.TorznabBackendProwlarr, IndexerID: "1", TimeoutSeconds: 30, Enabled: true}
+			idx := &models.TorznabIndexer{ID: 1, Name: "Test", TimeoutSeconds: 30, Enabled: true}
 			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{idx}})
 			defer service.searchScheduler.Stop()
-			if !scheduled {
-				service.searchScheduler = nil
+			service.searchExecutor = func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+				deadline, ok := ctx.Deadline()
+				if !ok || time.Until(deadline) < 29*time.Second {
+					t.Errorf("execution deadline = %v (set %v), want at least the 30s indexer timeout", time.Until(deadline), ok)
+				}
+				return nil, []int{idx.ID}, nil
 			}
 			done := make(chan struct{})
-			err := service.executeQueuedSearch(t.Context(), []*models.TorznabIndexer{idx}, url.Values{"q": {"Example"}}, nil, nil, func(_ uint64, results []Result, coverage []int, err error) {
-				defer close(done)
-				if err != nil {
-					t.Errorf("search failed: %v", err)
-					return
-				}
-				if len(results) != 1 || results[0].Title != "Example.Search.Result" {
-					t.Errorf("unexpected results: %+v", results)
-				}
-				if !slices.Equal(coverage, []int{1}) {
-					t.Errorf("coverage = %v, want [1]", coverage)
-				}
-			})
+			resultCallback := func(uint64, []Result, []int, error) { close(done) }
+			var err error
+			// executeQueuedSearch skips the scheduler when searchExecutor is set.
+			if scheduled {
+				err = service.searchIndexersWithScheduler(t.Context(), []*models.TorznabIndexer{idx}, nil, nil, nil, resultCallback)
+			} else {
+				err = service.executeQueuedSearch(t.Context(), []*models.TorznabIndexer{idx}, nil, nil, nil, resultCallback)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			select {
 			case <-done:
-			case <-time.After(35 * time.Second):
+			case <-time.After(5 * time.Second):
 				t.Fatal("search did not complete")
 			}
 		})
