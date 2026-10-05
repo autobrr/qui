@@ -4948,6 +4948,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
+			if season := seasonFromTitleNumeral(candidateRelease); season > 0 && season == targetRelease.Series {
+				// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
+				withSeason := *candidateRelease
+				withSeason.Series = season
+				candidateRelease = &withSeason
+			}
 			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
@@ -8641,9 +8647,10 @@ func alternateConnectorQuery(query string) (string, bool) {
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
 // renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name, and last the parsed subtitle joined to the title. A
-// candidate counts only when its normalized form differs from the primary
-// query, so the retry never repeats the query that already returned nothing.
+// of the release name, then the parsed subtitle joined to the title, and last
+// the title without its season numeral. A candidate counts only when its
+// normalized form differs from the primary query, so the retry never repeats
+// the query that already returned nothing.
 // Returns ("", false) when no distinct alternate title exists.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
 	primary := stringutils.NormalizeForMatching(primaryQuery)
@@ -8654,7 +8661,7 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 		parsed := releases.DefaultParser.Parse(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release))
+	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8965,6 +8972,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
+	if searchSource.numeralSeason {
+		// The main query stays as on a plain title; matching and the retry use the season.
+		withoutSeason := *searchRelease
+		withoutSeason.Series = 0
+		queryRelease = &withoutSeason
+	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9268,12 +9281,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if !contentInfo.IsMusic && searchRelease.Series > 0 && searchReq.Season == nil {
-			season := searchRelease.Series
+		if !contentInfo.IsMusic && queryRelease.Series > 0 && searchReq.Season == nil {
+			season := queryRelease.Series
 			searchReq.Season = &season
 
-			if searchRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := searchRelease.Episode
+			if queryRelease.Episode > 0 && searchReq.Episode == nil {
+				episode := queryRelease.Episode
 				searchReq.Episode = &episode
 			}
 		}
@@ -9350,6 +9363,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
+		if searchSource.numeralSeason {
+			gatherIn.altTitleSeason = new(searchRelease.Series)
+		}
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
