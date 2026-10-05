@@ -379,9 +379,8 @@ func titleWithoutSeasonNumeral(release *rls.Release) string {
 		return ""
 	}
 	title, last, ok := strings.CutLast(release.Title, " ")
-	// Runs per library torrent per search, so reject on the first letter before romanNumeral allocates.
-	// Numerals below 40 start with I, V, or X.
-	if !ok || last == "" || strings.IndexByte("IVXivx", last[0]) < 0 || !strings.EqualFold(last, romanNumeral(release.Series)) {
+	// Runs per library torrent per search, so reject a word with a non-numeral letter before romanNumeral allocates.
+	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" || !strings.EqualFold(last, romanNumeral(release.Series)) {
 		return ""
 	}
 	return strings.TrimSpace(title)

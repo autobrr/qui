@@ -108,6 +108,13 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
+			name:         "season numeral that starts with L is dropped",
+			primaryQuery: "Long Running Show L",
+			releaseName:  "Long.Running.Show.L.S50.1080p.WEB.h264-GRP",
+			wantTitle:    "Long Running Show",
+			wantOK:       true,
+		},
+		{
 			name:         "movie sequel numeral is kept",
 			primaryQuery: "Rocky III",
 			releaseName:  "Rocky.III.1982.1080p.BluRay.x264-GRP",
