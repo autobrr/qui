@@ -81,6 +81,10 @@ vi.mock("@/utils/theme", () => ({
   getThemeVariation: () => null,
 }))
 
+vi.mock("@/components/themes/ThemeLayoutSettings", () => ({
+  ThemeLayoutSettings: () => null,
+}))
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
