@@ -8966,6 +8966,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
+	if searchSource.numeralSeason {
+		// The main query stays as on a plain title; matching and the retry use the season.
+		withoutSeason := *searchRelease
+		withoutSeason.Series = 0
+		queryRelease = &withoutSeason
+	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9269,12 +9275,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if !contentInfo.IsMusic && searchRelease.Series > 0 && searchReq.Season == nil {
-			season := searchRelease.Series
+		if !contentInfo.IsMusic && queryRelease.Series > 0 && searchReq.Season == nil {
+			season := queryRelease.Series
 			searchReq.Season = &season
 
-			if searchRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := searchRelease.Episode
+			if queryRelease.Episode > 0 && searchReq.Episode == nil {
+				episode := queryRelease.Episode
 				searchReq.Episode = &episode
 			}
 		}

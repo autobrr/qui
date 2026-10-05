@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -469,4 +471,106 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	require.Equal(t, "added", result.Status)
 	require.Equal(t, []fileRenameInstruction{{oldPath: incomingRoot, newPath: matchedRoot}}, sync.folderRenames,
 		"a file-derived incoming pack must not be mistaken for an episode and skip required root alignment")
+}
+
+func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
+	t.Parallel()
+
+	episodeFiles := func(format string, episodes ...int) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, len(episodes))
+		for _, ep := range episodes {
+			files = append(files, qbt.TorrentFile{Name: fmt.Sprintf(format, ep), Size: 1_000_000})
+		}
+		return files
+	}
+	tests := []struct {
+		name        string
+		torrentName string
+		files       qbt.TorrentFiles
+		wantSeries  int
+		wantNumeral bool
+	}{
+		{
+			name:        "numeral is the season of a pack with no other season",
+			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+			wantSeries:  2,
+			wantNumeral: true,
+		},
+		{
+			name:        "file season wins over the numeral",
+			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - S03E%02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+			wantSeries:  3,
+		},
+		{
+			name:        "numeral above X is part of the title",
+			torrentName: "[GRP] Kaiju Squad 100 XI [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 XI - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+		},
+		{
+			name:        "single episode keeps its absolute number",
+			torrentName: "[GRP] Kaiju Squad 100 II - 07 [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 7),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+			parsed := service.releaseCache.Parse(tt.torrentName)
+
+			view := service.applyTargetReleaseViewFromFiles(tt.torrentName, parsed, tt.files, true)
+			require.Equal(t, tt.wantSeries, view.release.Series)
+			require.Equal(t, tt.wantNumeral, view.numeralSeason)
+		})
+	}
+}
+
+// The downloaded torrent keeps its original root folder, so only the "II"
+// carries the season, while the local copy sits in a renamed "Season 02" folder.
+func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "c6d7f67e4726bc80b43cad4a471f36a8de32d456"
+		name       = "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]"
+	)
+	torrentBytes := createTestTorrent(t, name, []string{
+		"[GRP] Kaiju Squad 100 II - 01 [BDRip 1080p HEVC FLAC].mkv",
+		"[GRP] Kaiju Squad 100 II - 02 [BDRip 1080p HEVC FLAC].mkv",
+	}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+	localFiles := slices.Clone(meta.Files)
+	for i := range localFiles {
+		localFiles[i].Name = strings.Replace(localFiles[i].Name, name, "Season 02 [BD]", 1)
+	}
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: name, SavePath: "/downloads", Progress: 1}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: localFiles,
+		})},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
+		TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
+		TargetInstanceIDs:            []int{instanceID},
+		SkipPieceBoundarySafetyCheck: true,
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassExactSizeFallback,
+			SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+			SourceInstanceID:     instanceID,
+			SourceHash:           sourceHash,
+			StrictMismatchReason: "source mismatch",
+			RelaxedDifferences:   []string{"source"},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
 }
