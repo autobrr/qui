@@ -88,7 +88,8 @@ A comment caches what the code cannot show: why this shape, the bug a guard prev
 
 qui must work on Windows and Unix-like hosts.
 
-- Local filesystem paths: `filepath.Join`, `filepath.Clean`, `filepath.Rel`, `filepath.Separator`.
+- Host-only paths (data dir, backups): `filepath.Join`, `filepath.Clean`, `filepath.Rel`, `filepath.Separator`.
+- Paths to or from an `fsops.Backend`, including save paths from qBittorrent: use `backend.Paths()`. A remote backend uses slash paths, and host `filepath` changes them on a Windows host.
 - Slash-delimited formats only: `path` for torrent-internal file names, URLs, API payloads.
 - At torrent/API -> local FS boundaries: validate slash paths, then convert with `filepath.FromSlash`.
 - Traversal checks must reject POSIX + Windows escaping on every OS: leading `/`, leading `\`, drive letters, UNC, `..`.
