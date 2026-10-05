@@ -528,49 +528,70 @@ func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
 	}
 }
 
-// The downloaded torrent keeps its original root folder, so only the "II"
-// carries the season, while the local copy sits in a renamed "Season 02" folder.
+// Only the "II" carries the season of these packs. The downloaded torrent keeps
+// its original root folder; the local copy can sit in a renamed "Season 02" one.
 func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 	const (
 		instanceID = 1
 		sourceHash = "c6d7f67e4726bc80b43cad4a471f36a8de32d456"
 		name       = "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]"
 	)
-	torrentBytes := createTestTorrent(t, name, []string{
-		"[GRP] Kaiju Squad 100 II - 01 [BDRip 1080p HEVC FLAC].mkv",
-		"[GRP] Kaiju Squad 100 II - 02 [BDRip 1080p HEVC FLAC].mkv",
-	}, 256*1024)
-	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
-	require.NoError(t, err)
-	localFiles := slices.Clone(meta.Files)
-	for i := range localFiles {
-		localFiles[i].Name = strings.Replace(localFiles[i].Name, name, "Season 02 [BD]", 1)
-	}
-
-	instance := &models.Instance{ID: instanceID, Name: "main"}
-	existing := qbt.Torrent{Hash: sourceHash, Name: name, SavePath: "/downloads", Progress: 1}
-	service := &Service{
-		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
-			sourceHash: localFiles,
-		})},
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-	}
-
-	resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
-		TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
-		TargetInstanceIDs:            []int{instanceID},
-		SkipPieceBoundarySafetyCheck: true,
-		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "source mismatch",
-			RelaxedDifferences:   []string{"source"},
+	tests := []struct {
+		name      string
+		localRoot string
+		decision  searchDecisionProvenance
+	}{
+		{
+			name:      "local copy in a renamed season folder",
+			localRoot: "Season 02 [BD]",
+			decision: searchDecisionProvenance{
+				Class:                searchCandidateClassExactSizeFallback,
+				SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+				StrictMismatchReason: "source mismatch",
+				RelaxedDifferences:   []string{"source"},
+			},
 		},
-	})
-	require.NoError(t, err)
-	require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+		{
+			name:      "local copy in the original folder",
+			localRoot: name,
+			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrentBytes := createTestTorrent(t, name, []string{
+				"[GRP] Kaiju Squad 100 II - 01 [BDRip 1080p HEVC FLAC].mkv",
+				"[GRP] Kaiju Squad 100 II - 02 [BDRip 1080p HEVC FLAC].mkv",
+			}, 256*1024)
+			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+			require.NoError(t, err)
+			localFiles := slices.Clone(meta.Files)
+			for i := range localFiles {
+				localFiles[i].Name = strings.Replace(localFiles[i].Name, name, tt.localRoot, 1)
+			}
+
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{Hash: sourceHash, Name: name, SavePath: "/downloads", Progress: 1}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: localFiles,
+				})},
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			decision := tt.decision
+			decision.SourceInstanceID = instanceID
+			decision.SourceHash = sourceHash
+
+			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
+				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs:            []int{instanceID},
+				SkipPieceBoundarySafetyCheck: true,
+				SearchDecision:               decision,
+			})
+			require.NoError(t, err)
+			require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+		})
+	}
 }
