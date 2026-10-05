@@ -379,7 +379,9 @@ func titleWithoutSeasonNumeral(release *rls.Release) string {
 		return ""
 	}
 	title, last, ok := strings.CutLast(release.Title, " ")
-	if !ok || !strings.EqualFold(last, romanNumeral(release.Series)) {
+	// Runs per library torrent per search, so reject on the first letter before romanNumeral allocates.
+	// Numerals below 40 start with I, V, or X.
+	if !ok || last == "" || strings.IndexByte("IVXivx", last[0]) < 0 || !strings.EqualFold(last, romanNumeral(release.Series)) {
 		return ""
 	}
 	return strings.TrimSpace(title)
@@ -426,6 +428,10 @@ func rawAKATitleParts(rawName string) []string {
 }
 
 func addNormalizedTitle(titles map[string]struct{}, title string) {
+	// NormalizeForMatching does a cache lookup even for "", and most releases have no Alt.
+	if title == "" {
+		return
+	}
 	normalized := stringutils.NormalizeForMatching(title)
 	if normalized != "" {
 		titles[normalized] = struct{}{}
