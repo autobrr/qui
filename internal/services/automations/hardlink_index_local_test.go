@@ -19,7 +19,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // These tests cover the hardlink index reads that run after the caller
@@ -177,7 +176,7 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	fid := createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow},
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
-	deficits := map[hardlink.FileID]*fileIDTracker{fid: {nlink: 2, uniquePathCount: 1}}
+	deficits := map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1}}
 	state := &hardlinkBuildState{seenPaths: map[string]struct{}{}}
 
 	stats := service.scanOtherInstancesForDeficits(t.Context(), instanceID, []int{instanceID + 1}, deficits, state)

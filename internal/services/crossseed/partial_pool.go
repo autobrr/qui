@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -2033,7 +2034,8 @@ func partialPoolSameFile(sourcePath, targetPath string) bool {
 		return false
 	}
 	targetID, _, err := hardlink.GetFileID(targetInfo, targetPath)
-	return err == nil && sourceID == targetID
+	// Both paths are on the qui host; the pool hardlinks locally.
+	return err == nil && fsops.SameFile(sourceID, nil, targetID, nil)
 }
 
 func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {

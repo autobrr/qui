@@ -240,7 +240,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	if !slices.Equal(gotRoots, wantRoots) {
 		t.Fatalf("scanRoots mismatch: got=%v want=%v", gotRoots, wantRoots)
 	}
-	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend()); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
+	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend(), nil); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
 		t.Fatalf("metadataIgnoreRoots mismatch: got=%v want=%v", got, []string{filepath.Clean(metadataRoot)})
 	}
 }

@@ -360,7 +360,7 @@ func TestDeletionIgnorePathsProtectFreshUnavailableRoots(t *testing.T) {
 	ignorePaths, err := NormalizeIgnorePaths(scanIgnorePaths(context.Background(), nil, []string{root}, &buildFileMapResult{
 		metadataRoots: []string{metadataRoot},
 		skippedRoots:  []string{skippedRoot},
-	}, local.NewBackend()))
+	}, local.NewBackend(), nil))
 	if err != nil {
 		t.Fatalf("NormalizeIgnorePaths: %v", err)
 	}

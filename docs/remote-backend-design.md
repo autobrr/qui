@@ -89,8 +89,8 @@ Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, implemented in the remote-backend PR** (raised by com6056
-on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
+fixed-size form, landed in #2970 before the remote backend uses it**
+(raised by com6056 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
 across develop's consumers, so the ripple is the same size now or later.
@@ -103,18 +103,22 @@ well-defined, and `IsZero()` then means "no identity" rather than "a
 backend wrote zeros" (load-bearing: the hardlink index trusts any FileID
 returned without error, so zeroes-as-identity would collapse torrents
 into one delete-safe group). `Bytes()` returns the tagged form: dirscan
-keys its FileID index on `string(FileID.Bytes())` and persists it as
-`dir_scan_files.file_id` under a partial index on
+persists it as `dir_scan_files.file_id` under a partial index on
 `(directory_id, file_id)` matched by rename detection, so the encoding
-change ships with a migration (or a read path accepting the legacy
-widths) whenever it lands. Consumer churn is otherwise unchanged: `==`,
-map keys, and `IsZero()` all survive; the churn is per-platform
+change ships with a migration that sets `dir_scan_files.file_id` to
+NULL; there is no legacy read path, the next scan fills the column
+again. `IsZero()` survives unchanged; `==` and bare map keys give way
+to the helper below, and the rest of the churn is per-platform
 constructors and test literals.
 
 Guard regardless of representation: FileID comparisons are only valid
 within one backend/host, and `==` still compiles cross-host, so
-comparisons go through a helper that takes the backend scope (or the
-scope rides in the value). Remote-sourced identity is always kind 3, even
+comparisons go through `fsops.SameFile`, which takes the two instances
+the IDs came from, and indexes key on `fsops.FileKey`, the ID bound to
+its instance. IDs of different kinds never match; two kind 3 IDs match
+only when both instances have the same SSH host and port. The bytes a
+unix ID stores are still the device and inode, under the tag.
+Remote-sourced identity is always kind 3, even
 when the remote is unix and the bytes are a `dev`/`ino`: it is parsed
 from command output on a host qui does not control, and the tag keeps
 peer-asserted identity type-distinct from kernel-attested identity. Peer

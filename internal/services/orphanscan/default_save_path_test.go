@@ -122,7 +122,7 @@ func TestPruneNestedScanRoots_PreservesRootsThroughSymlinks(t *testing.T) {
 		}
 		var found []OrphanFile
 		for _, walkRoot := range walkRoots {
-			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(), nil, 0, 0, backend)
+			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(), nil, 0, 0, backend, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

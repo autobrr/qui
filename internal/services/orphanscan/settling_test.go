@@ -277,17 +277,17 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 		context.Background(),
 		[]string{scanRoot},
 		[]string{nestedRoot, scanRoot, base, filepath.Join(base, "elsewhere")},
-		local.NewBackend(),
+		local.NewBackend(), nil,
 	)
 	assert.Equal(t, []string{filepath.Clean(nestedRoot)}, got)
-	assert.Empty(t, metadataIgnoreRoots(context.Background(), []string{scanRoot, nestedRoot}, []string{nestedRoot}, local.NewBackend()))
+	assert.Empty(t, metadataIgnoreRoots(context.Background(), []string{scanRoot, nestedRoot}, []string{nestedRoot}, local.NewBackend(), nil))
 
 	stagedFile := filepath.Join(nestedRoot, "pending.bin")
 	orphanFile := filepath.Join(scanRoot, "orphan.bin")
 	writeOldFile(t, stagedFile)
 	writeOldFile(t, orphanFile)
 
-	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100, local.NewBackend())
+	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100, local.NewBackend(), nil)
 	require.NoError(t, err)
 	assert.False(t, truncated)
 	assert.Equal(t, []string{normalizePath(orphanFile)}, orphanPaths(orphans))
@@ -310,7 +310,7 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 		assert.Equal(t, []string{filepath.Clean(upperRoot)}, metadataIgnoreRoots(context.Background(),
 			[]string{caseRoot, lowerRoot},
 			[]string{upperRoot},
-			local.NewBackend(),
+			local.NewBackend(), nil,
 		))
 	})
 }
@@ -443,7 +443,7 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 
 	if _, err := os.Lstat(lower); err == nil {
 		// Case-insensitive filesystem: one directory, two spellings, walk once.
-		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(context.Background(), []string{upper, lower}, local.NewBackend()))
+		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(context.Background(), []string{upper, lower}, local.NewBackend(), nil))
 		return
 	}
 
@@ -452,7 +452,7 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	require.NoError(t, os.MkdirAll(lower, 0o755))
 	missing := filepath.Join(base, "Gone")
 	roots := []string{upper, lower, missing, strings.ToLower(missing)}
-	assert.Equal(t, roots, dedupeCaseVariantRoots(context.Background(), roots, local.NewBackend()))
+	assert.Equal(t, roots, dedupeCaseVariantRoots(context.Background(), roots, local.NewBackend(), nil))
 
 	// A symlink whose name is a case variant of its target must not evict the
 	// target: filepath.WalkDir does not follow a symlinked scan root, so the
@@ -463,7 +463,7 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	if err := os.Symlink(linked, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	assert.Equal(t, []string{link, linked}, dedupeCaseVariantRoots(context.Background(), []string{link, linked}, local.NewBackend()))
+	assert.Equal(t, []string{link, linked}, dedupeCaseVariantRoots(context.Background(), []string{link, linked}, local.NewBackend(), nil))
 }
 
 func TestRootIdentityChecksUseBackend(t *testing.T) {
@@ -481,6 +481,6 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(t.Context(), []string{upper, lower}, backend))
-	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend))
+	assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(t.Context(), []string{upper, lower}, backend, nil))
+	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend, nil))
 }

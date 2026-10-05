@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -167,7 +168,7 @@ func TestSelectEligibleRootWork_SkipCountsOnlyPendingEpisodes(t *testing.T) {
 			paths[0]: {FilePath: paths[0], Status: models.DirScanFileStatusNoMatch, SearchedIndexerIDs: []int{1}},
 			paths[1]: {FilePath: paths[1], Status: models.DirScanFileStatusNoMatch, SearchedIndexerIDs: []int{1}},
 		},
-		byFileID: map[string]*models.DirScanFile{},
+		byFileID: map[fsops.FileKey]*models.DirScanFile{},
 	}
 	enabled := map[int]struct{}{1: {}}
 
