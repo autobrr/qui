@@ -36,6 +36,5 @@ func IsClientDisconnect(err error) bool {
 		strings.Contains(msg, "broken pipe") ||
 		strings.Contains(msg, "use of closed network connection") ||
 		strings.Contains(msg, "forcibly closed by the remote host") ||
-		strings.Contains(msg, "connection was aborted") ||
-		strings.Contains(msg, "wsasend:")
+		strings.Contains(msg, "connection was aborted")
 }

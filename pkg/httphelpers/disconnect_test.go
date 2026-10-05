@@ -31,6 +31,7 @@ func TestIsClientDisconnect(t *testing.T) {
 		{name: "flattened context canceled", err: errors.New("Get: context canceled"), want: true},
 		{name: "windows aborted", err: errors.New("wsasend: An established connection was aborted by the software in your host machine."), want: true},
 		{name: "windows forcibly closed", err: errors.New("write tcp 127.0.0.1:1->127.0.0.1:2: wsasend: An existing connection was forcibly closed by the remote host."), want: true},
+		{name: "windows wsasend invalid argument", err: errors.New("write tcp 127.0.0.1:1->127.0.0.1:2: wsasend: An invalid argument was supplied."), want: false},
 		{name: "unrelated", err: io.ErrShortWrite, want: false},
 		{name: "unsupported json value", err: errors.New("json: unsupported type: chan int"), want: false},
 	}
