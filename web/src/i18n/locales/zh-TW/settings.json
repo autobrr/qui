@@ -563,7 +563,7 @@
       "localOnlyHelp": "此瀏覽器不會從伺服器取得主題，也不會將其主題變更傳送到伺服器。此設定僅適用於此瀏覽器。",
       "changesMobile": "變更行動主題",
       "changesDesktop": "變更桌面主題",
-      "changesLocal": "僅變更此瀏覽器的主題",
+      "changesLocal": "僅變更此瀏覽器的主題。若要變更行動版面配置設定，請關閉本機設定。",
       "saveError": "儲存主題設定失敗",
       "mobileSplitOffWarning": "關閉此設定會刪除行動主題。"
     }

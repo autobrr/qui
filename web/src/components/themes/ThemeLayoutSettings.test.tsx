@@ -71,4 +71,15 @@ describe("ThemeLayoutSettings", () => {
       [{ themeId: "nord", mode: "dark" }, "mobile"],
     ])
   })
+
+  it("disables the split while this browser keeps its theme local", async () => {
+    localStorage.setItem("qui-theme-local-only", "true")
+    mockApi.getThemeSettings.mockResolvedValue({})
+    renderSettings()
+
+    await waitFor(() => expect(mockApi.getThemeSettings).toHaveBeenCalled())
+    const split = screen.getByRole("switch", { name: "themes.layout.mobileSplit" })
+    await act(async () => {})
+    expect(split.hasAttribute("disabled")).toBe(true)
+  })
 })

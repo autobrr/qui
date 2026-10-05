@@ -565,7 +565,7 @@
       "localOnlyHelp": "Ce navigateur ne récupère pas le thème depuis le serveur et n'envoie pas ses changements de thème au serveur. Ce paramètre s'applique uniquement à ce navigateur.",
       "changesMobile": "Modifie le thème mobile",
       "changesDesktop": "Modifie le thème bureau",
-      "changesLocal": "Modifie uniquement le thème de ce navigateur",
+      "changesLocal": "Modifie uniquement le thème de ce navigateur. Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
       "saveError": "Impossible d'enregistrer le paramètre de thème",
       "mobileSplitOffWarning": "La désactivation supprime le thème mobile."
     }

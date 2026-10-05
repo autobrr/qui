@@ -565,7 +565,7 @@
       "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
       "changesMobile": "Ändert das mobile Theme",
       "changesDesktop": "Ändert das Desktop-Theme",
-      "changesLocal": "Ändert nur das Theme dieses Browsers",
+      "changesLocal": "Ändert nur das Theme dieses Browsers. Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
       "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
       "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }

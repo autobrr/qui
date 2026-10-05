@@ -35,7 +35,7 @@ To change the mobile theme, use a phone or a narrow window. When you turn the se
 
 ### Keep the theme of one browser local
 
-To keep a theme on one browser only, for example on a shared computer, turn on **Keep this browser's theme local**. This browser then does not take the theme from the server and does not send its theme changes to the server. It keeps one theme for both layouts. The setting applies only to this browser.
+To keep a theme on one browser only, for example on a shared computer, turn on **Keep this browser's theme local**. This browser then does not take the theme from the server and does not send its theme changes to the server. It keeps one theme for both layouts. The setting applies only to this browser. If this setting is on, you cannot change **Separate theme for mobile layout** in this browser.
 
 When you turn the setting off, the browser shows the theme from the server again. Your other devices do not change.
 

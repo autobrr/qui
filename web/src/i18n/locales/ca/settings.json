@@ -565,7 +565,7 @@
       "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
       "changesMobile": "Canvia el tema mòbil",
       "changesDesktop": "Canvia el tema d'escriptori",
-      "changesLocal": "Canvia només el tema d'aquest navegador",
+      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
       "saveError": "No s'ha pogut desar l'opció del tema",
       "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }

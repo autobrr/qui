@@ -565,7 +565,7 @@
       "localOnlyHelp": "Questo browser non prende il tema dal server e non invia al server le sue modifiche al tema. Questa impostazione vale solo per questo browser.",
       "changesMobile": "Modifica il tema mobile",
       "changesDesktop": "Modifica il tema desktop",
-      "changesLocal": "Modifica solo il tema di questo browser",
+      "changesLocal": "Modifica solo il tema di questo browser. Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
       "saveError": "Impossibile salvare l'impostazione del tema",
       "mobileSplitOffWarning": "Disattivandola, il tema mobile viene eliminato."
     }

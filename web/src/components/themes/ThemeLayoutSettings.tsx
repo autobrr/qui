@@ -31,13 +31,12 @@ export function ThemeLayoutSettings() {
     try {
       if (on) {
         // The mobile layout starts from the current theme, so nothing changes
-        // until a new mobile theme is picked. A local-only browser copies the
-        // server theme, so its local theme never reaches the server.
+        // until a new mobile theme is picked.
         const appliedId = getCurrentTheme().id
         const current = storedThemeSelection(getCurrentThemeMode(), appliedId, getStoredVariation(appliedId) ?? undefined)
         // Turning the split off later pulls the default slot, so it must exist.
         if (!data?.default) await api.updateThemeSettings(current, "default")
-        await api.updateThemeSettings(localOnly && data?.default ? data.default : current, "mobile")
+        await api.updateThemeSettings(current, "mobile")
       } else {
         await api.deleteMobileThemeSettings()
       }
@@ -55,7 +54,8 @@ export function ThemeLayoutSettings() {
     <div className="space-y-3">
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="flex items-center gap-2">
-        <Switch id="theme-mobile-split" checked={split} disabled={!data} onCheckedChange={(on) => void setSplit(on)} />
+        {/* Turning the split on writes this browser's theme, which a local-only browser must not send. */}
+        <Switch id="theme-mobile-split" checked={split} disabled={!data || localOnly} onCheckedChange={(on) => void setSplit(on)} />
         <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
         <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
       </div>

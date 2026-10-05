@@ -567,7 +567,7 @@
       "localOnlyHelp": "Tento prohlížeč nepřebírá motiv ze serveru a neodesílá na server své změny motivu. Toto nastavení platí jen pro tento prohlížeč.",
       "changesMobile": "Mění mobilní motiv",
       "changesDesktop": "Mění desktopový motiv",
-      "changesLocal": "Mění jen motiv tohoto prohlížeče",
+      "changesLocal": "Mění jen motiv tohoto prohlížeče. Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
       "saveError": "Nastavení motivu se nepodařilo uložit",
       "mobileSplitOffWarning": "Vypnutím se mobilní motiv smaže."
     }
