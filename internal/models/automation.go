@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,9 +40,9 @@ type FreeSpaceSourceType string
 const (
 	// FreeSpaceSourceQBittorrent uses qBittorrent's reported free space (default download dir).
 	FreeSpaceSourceQBittorrent FreeSpaceSourceType = "qbittorrent"
-	// FreeSpaceSourcePath reads free space from a local filesystem path.
+	// FreeSpaceSourcePath reads free space at a path through the instance's
+	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
-	// Future: FreeSpaceSourceAgentPath for remote agent-based free space checks.
 )
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
@@ -169,7 +170,6 @@ type Automation struct {
 	InstanceID      int               `json:"instanceId"`
 	Name            string            `json:"name"`
 	TrackerPattern  string            `json:"trackerPattern"`
-	TrackerDomains  []string          `json:"trackerDomains,omitempty"`
 	Conditions      *ActionConditions `json:"conditions"`
 	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default sorting (oldest first)
@@ -215,19 +215,8 @@ func splitPatterns(pattern string) []string {
 	return parts
 }
 
-func normalizeTrackerPattern(pattern string, domains []string) string {
-	if len(domains) > 0 {
-		pattern = strings.Join(domains, ",")
-	}
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" {
-		return ""
-	}
-	parts := splitPatterns(pattern)
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, ",")
+func normalizeTrackerPattern(pattern string) string {
+	return strings.Join(splitPatterns(pattern), ",")
 }
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
@@ -280,7 +269,6 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		automation.Enabled = SQLiteIntToBool(enabled)
 		automation.DryRun = SQLiteIntToBool(dryRun)
 		automation.Notify = SQLiteIntToBool(notify)
-		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 		if intervalSeconds.Valid {
 			v := int(intervalSeconds.Int64)
@@ -356,7 +344,6 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	automation.Enabled = SQLiteIntToBool(enabled)
 	automation.DryRun = SQLiteIntToBool(dryRun)
 	automation.Notify = SQLiteIntToBool(notify)
-	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 	if intervalSeconds.Valid {
 		v := int(intervalSeconds.Int64)
@@ -412,7 +399,7 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		}
 	}
 
-	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern)
 
 	sortOrder := automation.SortOrder
 	if sortOrder == 0 {
@@ -486,7 +473,7 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		}
 	}
 
-	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern)
 
 	conditionsJSON, err := json.Marshal(automation.Conditions)
 	if err != nil {
@@ -1079,22 +1066,77 @@ func (a *ExportToInstanceAction) Validate() error {
 
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
-	if ac == nil {
-		return true
+	for range ac.Conditions() {
+		return false
 	}
-	return ac.SpeedLimits == nil &&
-		ac.ShareLimits == nil &&
-		ac.Pause == nil &&
-		ac.Resume == nil &&
-		ac.Recheck == nil &&
-		ac.Reannounce == nil &&
-		ac.Delete == nil &&
-		len(ac.TagActions()) == 0 &&
-		ac.Category == nil &&
-		ac.Move == nil &&
-		ac.ExternalProgram == nil &&
-		ac.AutoManagement == nil &&
-		ac.ExportToInstance == nil
+	return true
+}
+
+// ActionCondition is one configured action's condition, as ActionConditions.Conditions yields it.
+type ActionCondition struct {
+	Path      string // JSON pointer to the condition, for example "/conditions/move/condition"
+	Enabled   bool
+	Condition *RuleCondition
+}
+
+// Conditions yields every configured action with its condition, which can be nil. Each caller
+// decides whether a disabled action counts. An AutoManagement action counts as enabled whenever
+// it exists, because its Enabled field is the ATM value that it sets.
+func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
+	return func(yield func(ActionCondition) bool) {
+		if ac == nil {
+			return
+		}
+		emit := func(name string, enabled bool, cond *RuleCondition) bool {
+			return yield(ActionCondition{Path: "/conditions/" + name + "/condition", Enabled: enabled, Condition: cond})
+		}
+		if ac.SpeedLimits != nil && !emit("speedLimits", ac.SpeedLimits.Enabled, ac.SpeedLimits.Condition) {
+			return
+		}
+		if ac.ShareLimits != nil && !emit("shareLimits", ac.ShareLimits.Enabled, ac.ShareLimits.Condition) {
+			return
+		}
+		if ac.Pause != nil && !emit("pause", ac.Pause.Enabled, ac.Pause.Condition) {
+			return
+		}
+		if ac.Resume != nil && !emit("resume", ac.Resume.Enabled, ac.Resume.Condition) {
+			return
+		}
+		if ac.Recheck != nil && !emit("recheck", ac.Recheck.Enabled, ac.Recheck.Condition) {
+			return
+		}
+		if ac.Reannounce != nil && !emit("reannounce", ac.Reannounce.Enabled, ac.Reannounce.Condition) {
+			return
+		}
+		if ac.Delete != nil && !emit("delete", ac.Delete.Enabled, ac.Delete.Condition) {
+			return
+		}
+		for i, tag := range ac.TagActions() {
+			var enabled bool
+			var cond *RuleCondition
+			if tag != nil {
+				enabled, cond = tag.Enabled, tag.Condition
+			}
+			if !emit("tags/"+strconv.Itoa(i), enabled, cond) {
+				return
+			}
+		}
+		if ac.Category != nil && !emit("category", ac.Category.Enabled, ac.Category.Condition) {
+			return
+		}
+		if ac.Move != nil && !emit("move", ac.Move.Enabled, ac.Move.Condition) {
+			return
+		}
+		if ac.ExternalProgram != nil && !emit("externalProgram", ac.ExternalProgram.Enabled, ac.ExternalProgram.Condition) {
+			return
+		}
+		if ac.AutoManagement != nil && !emit("autoManagement", true, ac.AutoManagement.Condition) {
+			return
+		}
+		if ac.ExportToInstance != nil {
+			emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition)
+		}
+	}
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.

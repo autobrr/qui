@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Refresh All",
-    "addFolder": "Add Folder",
-    "addFeed": "Add Feed",
     "articles": "Articles",
     "unread": "{{count}} unread",
     "markAllAsRead": "Mark all as read",

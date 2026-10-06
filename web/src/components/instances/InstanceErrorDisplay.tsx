@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { formatErrorMessage } from "@/lib/utils"
+import { formatErrorMessage } from "@/lib/format-error-message"
 import type { InstanceResponse } from "@/types"
 import { AlertCircle, ChevronDown, Edit, XCircle } from "lucide-react"
 import { useState } from "react"

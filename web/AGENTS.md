@@ -1,100 +1,32 @@
 # AGENTS.md
 
-Frontend and i18n rules for work under `web/`.
+Frontend rules for work under `web/`. i18n and translation rules live in `web/src/i18n/AGENTS.md`.
 
 ## Frontend
 
 - React 19 + Vite + TypeScript + Tailwind v4.
-- Source: `web/src`; static assets: `web/public`.
-- Production bundle must stay synced to `internal/web/dist` via `make frontend` or `make build`.
 - Organize React modules by feature within `web/src/{pages,routes,components}`.
-- File names should be descriptive, e.g. `torrent-table.tsx`.
-- Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
-- Frontend tests: Vitest + React Testing Library. A test lives in a `__tests__/` folder in the directory of the code it covers (`components/cross-seed/__tests__/`), or as `*.test.tsx` beside the file in directories that still do that. One directory uses one of the two.
 - Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
-- Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
-- Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
-- Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
-- Status text, computed previews, section intros, and empty states are not field help. The rule does not apply to them.
-- If the help text only repeats the label, delete it. Do not move it to a tooltip.
 
 ## Frontend Tests
 
-- Keep `*.test.ts(x)` specs in the directory of the change, in its `__tests__/` folder where one exists. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
-- Vitest runs with `globals: false` + jsdom. There **is** a setup file (`web/src/test/setup.ts`), but it only runs the MSW server lifecycle:
+- Vitest + React Testing Library. A new test goes in the `__tests__/` folder of the directory it covers (`components/cross-seed/__tests__/`) where that folder exists, else beside the file as `*.test.ts(x)`.
+- Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
+- Vitest runs with `globals: false` + jsdom. There **is** a setup file (`web/src/test/setup.ts`), but it only runs the MSW server lifecycle and stubs `localStorage` when Node has none:
   - Import test globals explicitly: `import { describe, it, expect, vi } from "vitest"`; use `render` / `renderHook` / `act` from `@testing-library/react`.
   - **Nothing auto-cleans the DOM or mocks.** Add `afterEach(cleanup)` in files where more than one test renders, and call `cleanup()` or `unmount()` yourself between two `render` calls inside the same test. Add `afterEach(() => vi.restoreAllMocks())` when a test spies on a global such as `Storage.prototype.setItem`. RTL registers its own cleanup only when a global `afterEach` exists, and `globals: false` removes it; `restoreMocks` is not set either. Without this a second `render` leaves the first in the DOM and `getBy*` throws "Found multiple elements".
   - No jest-dom matchers (`toBeInTheDocument`, `toHaveTextContent`, …) — assert plain DOM: `el.textContent`, `el.getAttribute(...)`, `expect(node).toBeNull()`.
   - When mounting components with effects, mock their boundaries (`@/lib/api`, router, context providers, `useVirtualizer`, query hooks) and return a **stable singleton** from each mock — fresh objects per render loop effects and OOM the worker. Use `vi.hoisted()` for values referenced inside `vi.mock` factories.
-- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI runs the full suite via `make test-frontend`.
-
-## React Effects
-
-- Use `useEffect` only to sync with external systems: DOM, subscriptions, network.
-- Avoid derived state in Effects; calculate during render or use `useMemo` for expensive compute.
-- Put user-driven logic in event handlers.
-- To reset state, prefer a `key` or render-time adjustment.
-- Fetch Effects must guard stale responses with cleanup/abort.
-- Reference: https://react.dev/learn/you-might-not-need-an-effect
+- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI gates for `web/`: `lint.yml` runs eslint on changed files and `pnpm check:i18n`; `release.yml` runs `pnpm test`, `pnpm tsc --noEmit`, and the build.
 
 ## i18n
 
-Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
-
-`common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
-
-English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`, `ca`.
-
-## i18n Commands
-
-- `pnpm check:i18n`
-- `pnpm check:i18n:plural-keys`
-- `pnpm check:i18n:hardcoded`
-- `pnpm check:i18n:raw-backend-values`
-- `pnpm check:i18n:unused`
-- `pnpm check:i18n:zh-cn`
-- `pnpm check:i18n:zh-tw`
-- `pnpm check:i18n:fr`
-- `pnpm check:i18n:de`
-- `pnpm check:i18n:cs`
-- `pnpm check:i18n:it`
-- `pnpm check:i18n:ko`
-- `pnpm check:i18n:uk`
-- `pnpm check:i18n:pt-br`
-- `pnpm check:i18n:ca`
-
-Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
-
-`check:i18n` checks both directions: `check-i18n-keys.mjs` that every key the UI asks for exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. The second one is a ratchet over a backlog of keys that were already dead when it landed — its `knownUnusedKeys` list may shrink, never grow. Drop a key from that list only in the change that deletes it from every locale.
-
-## Adding Languages
-
-1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
-2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
-4. Run `pnpm check:i18n`.
-5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
-
-Coverage must compare against English for missing/extra keys, interpolation placeholders, HTML tag parity, plural forms, empty strings, encoding, and JSON validity.
-
-## Translation Rules
-
-- **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) directly into JSX.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`.
-- Read English namespace JSON and relevant UI first; translate in product context.
-- Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
-- Keep a glossary for product names and torrent/domain terms.
-- Plurals use the i18next v4 CLDR suffixes:
-  - English needs `_one` and `_other`.
-  - Chinese and Korean take `_other` alone.
-  - `cs` needs `_one`, `_few` and `_other`. `_many` is optional, because Czech uses it only for decimals and no count reaches one: item counts are whole numbers, and relative-time counts are floored in `src/lib/dateTimeUtils.ts`.
-  - `uk` needs `_one`, `_few`, `_many` and `_other`.
-- A locale that omits a category it needs shows the English string at those counts. i18next resolves a missing category against `fallbackLng`, never against another category in the same language. The gap therefore looks like a working translation.
-- An unsuffixed base key beside the suffixed ones answers every category the locale omits, with one string. Use it only for text that does not change with the count. The base key also hides a missing form from `pnpm check:i18n`, so `cs` or `uk` can show the wrong form, for example "2 trackerů". A base key must exist in English and in every locale, or the missing-keys and extra-keys checks reject it.
-- Never add the pre-v4 `_plural` suffix. i18next does not resolve it in any locale.
-- `pnpm check:i18n` enforces these rules. `check-legacy-plural-keys.mjs` rejects `_plural` in every locale, including `en`. `src/i18n/plurals.test.ts` asks i18next whether each locale can resolve every plural base at nine counts, and fails on the ones it cannot, since the app serves English for those.
-- Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
-- Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
+- **Never hardcode user-facing text or raw backend values (e.g. `run.status`), in JSX or in the option tables JSX renders.** Create an `i18n` key in the relevant namespace and render it with `t()`.
 - Translation fallbacks rely on the English locale only. Never hardcode one — not as `defaultValue: "English"`, not as `t(…) ?? "English"`. A computed key the checker cannot read falls back to another translated key (`defaultValue: t("…unknown")`), never to a raw backend value. A call that has to break this documents why in place.
+- When you touch UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks, run `pnpm check:i18n`. `web/package.json` has a `check:i18n:*` script for each single check and each locale.
+- `check:i18n` checks both directions: `check-i18n-keys.mjs` that every key in a literal `t("…")` call or a `labelKey`, `titleKey`, `placeholderKey`, or `descriptionKey` string exists, and `find-unused-i18n-keys.mjs` that every English key is still reachable from `web/src`. When it flags a key, delete the key from every locale in the same change, or teach the scanner to see the reference if the UI does use it.
+- A data-only file that holds key properties but never calls `useTranslation` names its namespace with a `// i18n-namespace: <ns>` comment after its imports. A key written as `"ns:key"` names its own namespace and needs no directive: `resolveNamespaceAndKey` in `web/scripts/check-i18n-keys-lib.mjs` splits it.
+- No UI text names SSH until #2917 ships. Before you add remote-instance text, read rollout step 4 in `docs/remote-backend-design.md`.
 
 ## Torrent Details Note
 

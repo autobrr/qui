@@ -421,10 +421,6 @@
       "loadingDescription": "Chargement des thèmes disponibles...",
       "description": "Choisissez parmi les thèmes. Les thèmes premium nécessitent une licence valide.",
       "verificationUnavailable": "Vérification de licence indisponible. Le changement de thème premium est désactivé.",
-      "freeBadge": "Gratuit",
-      "freeThemes": "Thèmes Gratuits",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Thèmes Premium",
       "notLoaded": "Thèmes premium non chargés",
       "notLoadedDescription": "Configurer",
       "notLoadedAnd": "et exécutez",
@@ -541,16 +537,13 @@
       "copiedVerify": "Commande de vérification copiée",
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
-        "activationSuccess": "Licence activée avec succès !",
         "activationSuccessPremium": "Accès Premium activé ! Merci !",
         "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence premium pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
         "keyCopied": "Clé copiée dans le presse-papiers",
         "copyFailed": "Échec de la copie de la clé",
-        "removedFromMachine": "Licence retirée de cette machine",
-        "refreshedAll": "Licences rafraîchies avec succès",
-        "refreshFailed": "Échec du rafraîchissement des licences"
+        "removedFromMachine": "Licence retirée de cette machine"
       }
     },
     "custom": {
@@ -559,12 +552,22 @@
       "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
       "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
       "unlockCta": "Débloquer le premium",
-      "directoryLabel": "Dossier des thèmes",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
       "noneFound": "Aucun thème personnalisé trouvé. Déposez un fichier .css dans le dossier des thèmes puis cliquez sur Actualiser.",
       "loadError": "Impossible de charger les thèmes personnalisés. Vérifiez les journaux du serveur et les permissions du dossier des thèmes."
+    },
+    "layout": {
+      "mobileSplit": "Thème distinct pour la disposition mobile",
+      "mobileSplitHelp": "La disposition mobile (une fenêtre de moins de 768 px de large) et la disposition bureau gardent chacune leur thème, leur mode et leur variante. Ce paramètre s'applique à tous les navigateurs.",
+      "localOnly": "Garder le thème de ce navigateur en local",
+      "localOnlyHelp": "Ce navigateur ne récupère pas le thème depuis le serveur et n'envoie pas ses changements de thème au serveur. Ce paramètre s'applique uniquement à ce navigateur.",
+      "changesMobile": "Modifie le thème mobile",
+      "changesDesktop": "Modifie le thème bureau",
+      "changesLocal": "Modifie uniquement le thème de ce navigateur. Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
+      "saveError": "Impossible d'enregistrer le paramètre de thème",
+      "mobileSplitOffWarning": "La désactivation supprime le thème mobile."
     }
   },
   "arrInstances": {
@@ -662,10 +665,6 @@
   },
   "indexers": {
     "title": "Indexeurs Torznab",
-    "addIndexer": "Ajouter un indexeur",
-    "autodiscoverProwlarr": "Autodécouverte depuis Prowlarr",
-    "noIndexers": "Aucun indexeur configuré pour le moment.",
-    "noIndexersDescription": "Ajoutez un indexeur compatible Torznab pour activer les recherches cross-seed automatisées.",
     "deleteIndexer": "Supprimer l'indexeur",
     "deleteIndexerDescription": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
     "deleteAllIndexers": "Supprimer tous les indexeurs",
@@ -674,8 +673,6 @@
       "loadFailed": "Échec du chargement des indexeurs",
       "deletedSuccess": "Indexeur supprimé",
       "deleteFailed": "Échec de la suppression de l'indexeur",
-      "allDeletedSuccess": "Tous les indexeurs ont été supprimés",
-      "allDeletedFailed": "Échec de la suppression de tous les indexeurs",
       "deleteAllSuccess": "Les {{count}} indexeurs ont été supprimés",
       "deleteAllPartial": "{{success}} indexeurs supprimés, {{failed}} échecs : {{names}}",
       "testSuccess": "Test de connexion réussi",
@@ -821,7 +818,6 @@
         "importSuccess": "Succès : {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} avec avertissements)",
         "moreWarnings": "...et {{count}} avertissements supplémentaires",
-        "importErrors": "{{details}}",
         "moreErrors": "...et {{count}} erreurs supplémentaires",
         "created": "{{count}} créés",
         "updated": "{{count}} mis à jour",
@@ -882,10 +878,6 @@
     },
     "activity": {
       "title": "Activité du planificateur",
-      "idle": "Inactif",
-      "queueLength": "File d'attente",
-      "workers": "Travailleurs",
-      "cooldown": "Temps d'attente",
       "running": "En cours",
       "queued": "En attente",
       "rateLimited": "Limité en taux",

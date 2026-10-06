@@ -397,7 +397,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
-	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.instanceStore, s.backendPool)
+	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
@@ -493,6 +493,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+			r.Delete("/themes/settings", themesHandler.DeleteThemeSettings)
 
 			// Persisted frontend user settings (opaque key-value map)
 			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)

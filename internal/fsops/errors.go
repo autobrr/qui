@@ -14,16 +14,26 @@ var (
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
 
+	// ErrNotLocal is returned by Pool.LocalBackend for an instance that no
+	// longer has local filesystem access.
+	ErrNotLocal = errors.New("instance does not have local filesystem access")
+
+	// ErrNotCapable is returned by Pool.Require for an instance whose
+	// filesystem mode does not grant the capability asked for.
+	ErrNotCapable = errors.New("instance filesystem mode does not grant this capability")
+
 	// ErrRemoteBackendNotWired is returned by a Pool built without a remote
 	// factory for an instance in remote mode: a wiring mistake must fail
 	// loudly rather than read as "not configured".
 	ErrRemoteBackendNotWired = errors.New("remote filesystem backend is not wired into this pool")
 
-	// ErrConnectionLost marks a WalkDir Err entry that ends the walk because
-	// the backend could no longer be reached (the transport dropped, or the
-	// pool refused the redial), not because a directory was unreadable. A
-	// consumer that skips per-directory errors must not read a walk cut short
-	// as complete; this is the sentinel it checks.
+	// ErrConnectionLost marks a remote read that failed because the backend
+	// could not be reached (the transport dropped, or the pool would not
+	// dial), not because of the path. It ends a walk as its one Err entry, and
+	// a consumer that skips per-directory errors checks for it so that a walk
+	// cut short is not read as complete. The cause is kept as text only, apart
+	// from sshpool's own sentinels, so a lost connection never also matches
+	// fs.ErrPermission or fs.ErrNotExist.
 	ErrConnectionLost = errors.New("connection to the filesystem backend was lost")
 
 	// ErrUnsupported reports a per-host fact: this server lacks the extension

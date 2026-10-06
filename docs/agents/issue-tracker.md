@@ -2,7 +2,7 @@
 
 Bug reports and feature requests arrive as GitHub Discussions in the categories Issue Triage and Feature Requests, Ideas. Discussions are the triage surface. Issues hold only work that an agent or a human can start: a discussion that reaches `ready-for-agent` gets a linked issue. Specs and tickets from `/to-spec`, `/to-tickets`, and `/wayfinder` are issues.
 
-Use the `gh` CLI for all operations. GitHub shares one number space across discussions and issues. Resolve a bare `#42` with `gh discussion view 42` first, then `gh issue view 42`.
+Use the `gh` CLI for all operations. GitHub shares one number space across discussions and issues. Resolve a bare `#42` in one call: `gh api graphql -f query='{repository(owner:"autobrr",name:"qui"){issueOrPullRequest(number:42){__typename} discussion(number:42){title}}}'`. The command exits non-zero when one side is missing; read `data` anyway. `__typename` tells an issue from a PR.
 
 ## Discussions
 
@@ -25,7 +25,8 @@ In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writ
 ## Issues
 
 - **Create**: `gh issue create --title "..." --body "..."`. Use a heredoc for a multi-line body.
-- **Read**: `gh issue view <number> --comments`.
+  A `ready-for-agent` body is a document an agent executes, not a chat note. Use the agent brief template in `docs/agents/triage.md` ("Agent brief") and its rules.
+- **Read**: `gh issue view <number> --json title,state,labels,body,comments`. Do not use `--comments` here: in a non-TTY shell it prints only the comments, and nothing when there are none.
 - **List**: `gh issue list --state open --label ready-for-agent --json number,title,body,labels`.
 - **Comment**: `gh issue comment <number> --body "..."`.
 - **Labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`.
@@ -41,7 +42,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --comments`. If the number is a discussion, run `gh discussion view <number> --comments`.
+Run `gh issue view <number> --json title,state,labels,body,comments`. If the number is a discussion, run `gh discussion view <number> --comments`.
 
 ## Wayfinding operations
 

@@ -498,8 +498,10 @@ paths:
       description: |
         Execute an external program for one or more torrents.
 
-        The program is launched asynchronously, and this endpoint returns immediately after starting the process.
-        The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
+        The program runs asynchronously, and this endpoint returns immediately after qui queues it.
+        qui runs a limited number of programs at the same time, so the program can start up to 30 minutes later, or not start at all.
+        The activity log records the result.
+        The 'success' field in the response indicates whether qui queued the program, not whether it started or completed successfully.
 
         The program path and arguments are passed through variable substitution where placeholders
         like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
@@ -3550,24 +3552,31 @@ paths:
     get:
       tags:
         - Themes
-      summary: Get stored theme selection
-      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      summary: Get stored theme slots
+      description: Get every theme slot stored in the database. The default slot applies to every layout. The optional mobile slot applies to the mobile layout (viewport less than 768 px wide); when it exists, the layout split is on. Public endpoint, no authentication required, so the login page can apply the theme of its layout.
       security: []
       responses:
         '200':
-          description: Stored theme selection, or null when none is stored
+          description: Stored theme slots. A slot that is not stored is absent.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ThemeSettings'
-                nullable: true
+                $ref: '#/components/schemas/ThemeSlots'
         '500':
           description: Failed to load theme settings
     put:
       tags:
         - Themes
-      summary: Store theme selection
-      description: Store the theme selection in the database.
+      summary: Store the theme selection of one slot
+      description: Store the theme selection of one slot in the database. The other slot does not change. Writing the mobile slot turns the layout split on.
+      parameters:
+        - name: slot
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [default, mobile]
+            default: default
       requestBody:
         required: true
         content:
@@ -3582,9 +3591,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ThemeSettings'
         '400':
-          description: Invalid payload, missing themeId, or invalid mode
+          description: Invalid payload, missing themeId, invalid mode, unknown themeId, or unknown slot
         '500':
           description: Failed to save theme settings
+    delete:
+      tags:
+        - Themes
+      summary: Delete the mobile theme slot
+      description: Delete the mobile slot, which turns the layout split off. Every layout then uses the default slot. The default slot cannot be deleted.
+      parameters:
+        - name: slot
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [mobile]
+      responses:
+        '204':
+          description: Mobile slot deleted
+        '400':
+          description: The slot is not mobile
+        '500':
+          description: Failed to delete theme settings
 
   /api/client-settings:
     get:
@@ -5033,15 +5061,14 @@ paths:
                   example: [1, 2]
                 category:
                   type: string
-                  description: Category to apply when adding the torrent
+                  description: Category to apply when adding the torrent. When omitted, qui uses the indexer name in "Use indexer name as category" mode, else the category of the matched torrent. The Custom category mode wins over this value.
                 tags:
                   type: array
                   items:
                     type: string
                 startPaused:
                   type: boolean
-                skipIfExists:
-                  type: boolean
+                  description: Add the torrent paused. When omitted, qui adds it paused and resumes it after verification unless auto-resume is off for the webhook.
                 findIndividualEpisodes:
                   type: boolean
                 indexer:
@@ -5953,7 +5980,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Trigger orphan scan
-      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID.
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance cannot be confirmed, so the new scan cancels it instead of returning 409.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6109,7 +6136,7 @@ paths:
         '400':
           description: Run is not in preview_ready status
         '409':
-          description: A scan or deletion is already in progress for this instance
+          description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance, where deletion is not supported yet and the run stays preview_ready, and when the instance's filesystem access changed since the scan, which marks the run failed.
         '403':
           description: Instance does not have local filesystem access enabled
         '404':
@@ -6795,6 +6822,14 @@ components:
         variation:
           type: string
 
+    ThemeSlots:
+      type: object
+      properties:
+        default:
+          $ref: '#/components/schemas/ThemeSettings'
+        mobile:
+          $ref: '#/components/schemas/ThemeSettings'
+
     User:
       type: object
       properties:
@@ -7088,7 +7123,27 @@ components:
           type: string
           enum: [none, local, remote]
           description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
+        capabilities:
+          $ref: '#/components/schemas/FilesystemCapabilities'
 
+
+    FilesystemCapabilities:
+      type: object
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
+      required: [read, identity, write, content]
+      properties:
+        read:
+          type: boolean
+          description: qui can list, stat, and walk paths.
+        identity:
+          type: boolean
+          description: qui trusts file identity (device and inode) to find hardlinks.
+        write:
+          type: boolean
+          description: qui can create and remove hardlink and reflink trees.
+        content:
+          type: boolean
+          description: qui can read file content, for downloads, MediaInfo, and Disc scans.
 
     SSHHostKeyRequest:
       type: object
@@ -8070,11 +8125,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        startPaused:
-          type: boolean
-        category:
-          type: string
-          nullable: true
         tags:
           type: array
           items:
@@ -8218,11 +8268,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        startPaused:
-          type: boolean
-        category:
-          type: string
-          nullable: true
         tags:
           type: array
           items:
@@ -9392,6 +9437,10 @@ components:
         partial:
           type: boolean
           description: True when some selected scan paths could not be scanned. Automatic cleanup is skipped for this run.
+        filesystemMode:
+          type: string
+          enum: [none, local, remote]
+          description: How qui reached the instance's files when this run scanned them. Deletion is refused for `remote` runs and for runs whose mode no longer matches the instance.
         errorMessage:
           type: string
           nullable: true

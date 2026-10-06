@@ -12,7 +12,9 @@
     "generalSettings": "Paramètres généraux",
     "manageInstances": "Gérer les instances",
     "appearance": "Apparence",
-    "instanceBackups": "Sauvegardes d'instances"
+    "instanceBackups": "Sauvegardes d'instances",
+    "backToSite": "Retour à getqui.com",
+    "docs": "Docs"
   },
   "sidebar": {
     "instances": "Instances",
@@ -64,6 +66,9 @@
     "allScope": "TOUS",
     "unified": "Unifié"
   },
+  "titleBar": {
+    "speeds": "R : {{download}} E : {{upload}}"
+  },
   "unifiedScope": {
     "unified": "Unifié",
     "collapseScope": "Réduire la portée unifiée",
@@ -98,8 +103,7 @@
     "copyPath": "Copier le chemin",
     "scrollToTop": "Défiler vers le haut",
     "search": "Rechercher",
-    "select": "Sélectionner",
-    "toggle": "Basculer"
+    "select": "Sélectionner"
   },
   "placeholders": {
     "search": "Rechercher...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Aucun résultat trouvé."
+  },
+  "errors": {
+    "unknown": "Erreur inconnue",
+    "httpStatus": "Erreur HTTP ! Statut : {{status}}",
+    "httpStatusHtml": "Erreur HTTP ! Statut : {{status}} (le serveur a renvoyé une page d'erreur HTML)",
+    "ssoHtmlResponse": "L'API a renvoyé une réponse HTML au lieu de JSON. Si vous êtes derrière un proxy SSO (Cloudflare Access, Pangolin, etc.), essayez d'actualiser la page ou de rouvrir l'URL dans un nouvel onglet.",
+    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}"
   },
   "status": {
     "disabled": "Désactivé",
@@ -142,14 +153,19 @@
     "switchedToMode": "Passé en mode {{mode}}",
     "switchedToTheme": "Passé au thème {{theme}}",
     "switchedToThemeVariation": "Passé au thème {{theme}} ({{variation}})",
-    "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence.",
-    "custom": "Personnalisé"
+    "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence."
   },
   "updateBanner": {
     "updateAvailable": "Mise à jour disponible",
     "versionAvailable": "La version {{version}} est maintenant disponible",
     "viewRelease": "Voir la version",
     "dismiss": "Fermer"
+  },
+  "pwaUpdate": {
+    "reload": "Recharger",
+    "waitingDescription": "Rechargez pour appliquer la dernière version de qui.",
+    "activatedTitle": "qui a été mis à jour",
+    "activatedDescription": "Rechargez quand cela vous convient pour terminer l'installation de la dernière version."
   },
   "notFound": {
     "title": "Oups ! Perdu dans l'essaim ?",

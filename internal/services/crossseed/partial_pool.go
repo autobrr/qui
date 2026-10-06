@@ -113,9 +113,9 @@ func (s *Service) partialPoolPropagationPairRejected(
 	return rejected
 }
 
-// partialPoolPropagationPairIncompatible reports errors that prove only this
-// source and target cannot be linked across their filesystems.
-func partialPoolPropagationPairIncompatible(err error) bool {
+// isCrossDeviceLinkError reports errors that prove only this source and target
+// cannot be linked across their filesystems.
+func isCrossDeviceLinkError(err error) bool {
 	return errors.Is(err, syscall.EXDEV) || partialPoolPlatformCrossDeviceError(err)
 }
 
@@ -134,7 +134,7 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 
 func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
-		req.SkipRecheck || req.SkipAutoResume || !instance.HasLocalFilesystemAccess {
+		req.SkipRecheck || req.SkipAutoResume || !models.FilesystemCapabilitiesOf(instance).Write {
 		return false
 	}
 	settings, err := s.GetAutomationSettings(ctx)
@@ -2885,7 +2885,7 @@ func (s *Service) finishPartialPoolPropagation(
 		created, err = reflinktree.Create(plan)
 	}
 	if err != nil {
-		if partialPoolPropagationPairIncompatible(err) {
+		if isCrossDeviceLinkError(err) {
 			s.rejectPartialPoolPropagationPair(sourceMember, sourceFile, targetMember, targetFile)
 			resetRejectedPairClaim()
 			log.Debug().
@@ -2985,7 +2985,7 @@ func (s *Service) partialPoolMemberModeEnabled(ctx context.Context, member *mode
 	if instance == nil {
 		return false, fmt.Errorf("load partial pool member instance %d: empty result", member.InstanceID)
 	}
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Write {
 		return false, nil
 	}
 	if member.Mode == models.CrossSeedPartialPoolModeHardlink {

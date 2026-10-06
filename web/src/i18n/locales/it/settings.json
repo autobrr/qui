@@ -421,10 +421,6 @@
       "loadingDescription": "Caricamento dei temi disponibili...",
       "description": "Scegli tra i temi disponibili. I temi premium richiedono una licenza valida.",
       "verificationUnavailable": "Verifica della licenza non disponibile. Il cambio dei temi premium è temporaneamente disabilitato.",
-      "freeBadge": "Gratuito",
-      "freeThemes": "Temi gratuiti",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Temi Premium",
       "notLoaded": "Temi premium non caricati",
       "notLoadedDescription": "Configura",
       "notLoadedAnd": "ed esegui",
@@ -541,16 +537,13 @@
       "copiedVerify": "Comando di verifica copiato",
       "failedCopyVerify": "Copia del comando di verifica non riuscita",
       "toasts": {
-        "activationSuccess": "Licenza attivata con successo!",
         "activationSuccessPremium": "Accesso Premium attivato! Grazie!",
         "paymentCompleted": "Pagamento completato. Aggiungi la tua chiave di licenza premium per terminare la configurazione.",
         "paymentNotCompleted": "Il pagamento non è stato completato correttamente.",
         "returnedFromCheckout": "Tornato dal checkout. Aggiungi la tua chiave di licenza premium quando sei pronto.",
         "keyCopied": "Chiave di licenza copiata negli appunti",
         "copyFailed": "Copia della chiave di licenza non riuscita",
-        "removedFromMachine": "Licenza rimossa da questa macchina",
-        "refreshedAll": "Tutte le licenze aggiornate con successo",
-        "refreshFailed": "Aggiornamento delle licenze non riuscito"
+        "removedFromMachine": "Licenza rimossa da questa macchina"
       }
     },
     "custom": {
@@ -559,12 +552,22 @@
       "lockedTitle": "I temi personalizzati sono una funzione premium",
       "lockedDescription": "Sblocca il premium per caricare i tuoi file CSS dei temi da una cartella sul disco.",
       "unlockCta": "Sblocca premium",
-      "directoryLabel": "Cartella dei temi",
       "refresh": "Aggiorna",
       "detectedCount": "Temi trovati: {{total}}",
       "parseErrorsTitle": "Impossibile analizzare questi file:",
       "noneFound": "Nessun tema personalizzato trovato. Inserisci un file .css nella cartella dei temi e fai clic su Aggiorna.",
       "loadError": "Impossibile caricare i temi personalizzati. Controlla i log del server e i permessi della cartella dei temi."
+    },
+    "layout": {
+      "mobileSplit": "Tema separato per il layout mobile",
+      "mobileSplitHelp": "Il layout mobile (una finestra larga meno di 768 px) e il layout desktop mantengono ciascuno il proprio tema, modalità e variante. Questa impostazione vale per tutti i browser.",
+      "localOnly": "Mantieni locale il tema di questo browser",
+      "localOnlyHelp": "Questo browser non prende il tema dal server e non invia al server le sue modifiche al tema. Questa impostazione vale solo per questo browser.",
+      "changesMobile": "Modifica il tema mobile",
+      "changesDesktop": "Modifica il tema desktop",
+      "changesLocal": "Modifica solo il tema di questo browser. Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
+      "saveError": "Impossibile salvare l'impostazione del tema",
+      "mobileSplitOffWarning": "Disattivandola, il tema mobile viene eliminato."
     }
   },
   "arrInstances": {
@@ -662,10 +665,6 @@
   },
   "indexers": {
     "title": "Indexer Torznab",
-    "addIndexer": "Aggiungi indexer",
-    "autodiscoverProwlarr": "Rilevamento automatico da Prowlarr",
-    "noIndexers": "Nessun indexer configurato per il momento.",
-    "noIndexersDescription": "Aggiungi un indexer compatibile con Torznab per abilitare le ricerche cross-seed automatiche.",
     "deleteIndexer": "Elimina indexer",
     "deleteIndexerDescription": "Vuoi davvero eliminare \"{{name}}\"? Questa azione non può essere annullata.",
     "deleteAllIndexers": "Elimina tutti gli indexer",
@@ -674,8 +673,6 @@
       "loadFailed": "Caricamento degli indexer non riuscito",
       "deletedSuccess": "Indexer eliminato",
       "deleteFailed": "Eliminazione dell'indexer non riuscita",
-      "allDeletedSuccess": "Tutti gli indexer sono stati eliminati",
-      "allDeletedFailed": "Eliminazione di tutti gli indexer non riuscita",
       "deleteAllSuccess": "Eliminati tutti i {{count}} indexer",
       "deleteAllPartial": "{{success}} indexer eliminati, {{failed}} non riusciti: {{names}}",
       "testSuccess": "Test della connessione riuscito",
@@ -800,7 +797,6 @@
         "importSuccess": "Operazione riuscita: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} con avvisi)",
         "moreWarnings": "...e altri {{count}} avvisi",
-        "importErrors": "{{details}}",
         "moreErrors": "...e altri {{count}} errori",
         "created": "{{count}} creati",
         "updated": "{{count}} aggiornati",
@@ -861,10 +857,6 @@
     },
     "activity": {
       "title": "Attività dello scheduler",
-      "idle": "Inattivo",
-      "queueLength": "Coda",
-      "workers": "Worker",
-      "cooldown": "Attesa",
       "running": "In esecuzione",
       "queued": "In coda",
       "rateLimited": "Limite di frequenza raggiunto",

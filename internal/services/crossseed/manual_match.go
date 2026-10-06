@@ -359,25 +359,20 @@ func (s *Service) manualMatchEffectiveSavePath(
 }
 
 // previewLinkBaseDir picks the configured link base directory on the same
-// filesystem as samplePath, without the MkdirAll side effect of
-// FindMatchingBaseDir. Falls back to the first configured directory.
+// filesystem as samplePath, in LinkIntoMatchingBaseDir order but without its
+// MkdirAll side effect. Falls back to the best-ranked directory.
 func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) string {
-	first := ""
-	backend, backendErr := s.getBackendForInstance(ctx, instance.ID)
-	for dir := range strings.SplitSeq(instance.HardlinkBaseDir, ",") {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-		if first == "" {
-			first = dir
-		}
-		if backendErr != nil || backend == nil || samplePath == "" {
-			continue
-		}
-		if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
-			return dir
+	dirs := rankBaseDirs(splitBaseDirs(instance.HardlinkBaseDir), samplePath)
+	if len(dirs) == 0 {
+		return ""
+	}
+	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
+	if backendErr == nil && backend != nil && samplePath != "" {
+		for _, dir := range dirs {
+			if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
+				return dir
+			}
 		}
 	}
-	return first
+	return dirs[0]
 }

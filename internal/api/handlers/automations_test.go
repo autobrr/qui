@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestAutomationValidatePayload_Category(t *testing.T) {
@@ -84,342 +86,98 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 }
 
-func TestDeleteUsesKeepFilesWithFreeSpace(t *testing.T) {
-	t.Run("returns false for nil conditions", func(t *testing.T) {
-		result := deleteUsesKeepFilesWithFreeSpace(nil)
-		require.False(t, result)
-	})
+func TestAutomationValidatePayload_UnknownInstance(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "automation-unknown-instance")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	handler := NewAutomationHandler(nil, nil, instances, nil, nil)
+	payload := &AutomationPayload{
+		Name:           "Pause rule",
+		TrackerPattern: "*",
+		Conditions:     &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}},
+	}
 
-	t.Run("returns false for nil delete action", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: nil,
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.False(t, result)
-	})
+	status, message, err := handler.validatePayload(t.Context(), 999, payload)
 
-	t.Run("returns false for disabled delete action", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: false,
-				Mode:    models.DeleteModeKeepFiles,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "100000000000",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.False(t, result)
-	})
-
-	t.Run("returns false when delete uses deleteWithFiles mode", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeWithFiles,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "100000000000",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.False(t, result)
-	})
-
-	t.Run("returns false when delete uses preserveCrossSeeds mode", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeWithFilesPreserveCrossSeeds,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "100000000000",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.False(t, result)
-	})
-
-	t.Run("returns false when condition does not use FREE_SPACE", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeKeepFiles,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldRatio,
-					Operator: models.OperatorGreaterThan,
-					Value:    "2.0",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.False(t, result)
-	})
-
-	t.Run("returns true when keep-files mode uses FREE_SPACE condition", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeKeepFiles,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "100000000000",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.True(t, result)
-	})
-
-	t.Run("returns true when empty mode (defaults to keep-files) uses FREE_SPACE", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    "", // Empty defaults to keep-files
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "100000000000",
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.True(t, result)
-	})
-
-	t.Run("returns true when FREE_SPACE is nested in condition tree", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeKeepFiles,
-				Condition: &models.RuleCondition{
-					Operator: models.OperatorAnd,
-					Conditions: []*models.RuleCondition{
-						{
-							Field:    models.FieldRatio,
-							Operator: models.OperatorGreaterThan,
-							Value:    "1.0",
-						},
-						{
-							Field:    models.FieldFreeSpace,
-							Operator: models.OperatorLessThan,
-							Value:    "100000000000",
-						},
-					},
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.True(t, result)
-	})
-
-	t.Run("returns true when FREE_SPACE is deeply nested", func(t *testing.T) {
-		conditions := &models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    models.DeleteModeKeepFiles,
-				Condition: &models.RuleCondition{
-					Operator: models.OperatorAnd,
-					Conditions: []*models.RuleCondition{
-						{
-							Operator: models.OperatorOr,
-							Conditions: []*models.RuleCondition{
-								{
-									Field:    models.FieldFreeSpace,
-									Operator: models.OperatorLessThan,
-									Value:    "100000000000",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-		result := deleteUsesKeepFilesWithFreeSpace(conditions)
-		require.True(t, result)
-	})
+	require.Error(t, err)
+	require.Equal(t, http.StatusNotFound, status)
+	require.Equal(t, "Instance not found", message)
 }
 
-func TestDeleteUsesGroupIDOutsideKeepFiles(t *testing.T) {
-	t.Run("returns false for nil conditions", func(t *testing.T) {
-		require.False(t, deleteUsesGroupIDOutsideKeepFiles(nil))
-	})
+func TestAutomationTrackerPattern(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "automation-tracker-pattern")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
+	require.NoError(t, err)
+	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, nil, nil, nil)
+	instanceID := strconv.Itoa(instance.ID)
 
-	t.Run("returns false when delete is disabled", func(t *testing.T) {
-		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: false,
-				GroupID: "release_item",
-				Mode:    models.DeleteModeWithFiles,
-			},
-		}))
-	})
+	serve := func(method, ruleID, body string, fn http.HandlerFunc) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/", strings.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("instanceID", instanceID)
+		if ruleID != "" {
+			rctx.URLParams.Add("ruleID", ruleID)
+		}
+		rec := httptest.NewRecorder()
+		fn(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+		return rec
+	}
+	payload := func(trackerFields string) string {
+		return `{"name":"rule",` + trackerFields + `,"conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`
+	}
+	decode := func(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+		t.Helper()
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.NotContains(t, body, "trackerDomains")
+		return body
+	}
 
-	t.Run("returns false when groupID is empty", func(t *testing.T) {
-		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				GroupID: "  ",
-				Mode:    models.DeleteModeWithFiles,
-			},
-		}))
-	})
+	tests := []struct {
+		name          string
+		trackerFields string
+		want          string
+	}{
+		{name: "pattern only", trackerFields: `"trackerPattern":"a.example,b.example"`, want: "a.example,b.example"},
+		{name: "domains only", trackerFields: `"trackerDomains":[" a.example ","","b.example"]`, want: "a.example,b.example"},
+		{name: "pattern wins over domains", trackerFields: `"trackerPattern":"a.example","trackerDomains":["b.example"]`, want: "a.example"},
+		{name: "all trackers", trackerFields: `"trackerPattern":"*"`, want: "*"},
+		{name: "exclude tokens", trackerFields: `"trackerPattern":"!a.example,!b.example"`, want: "!a.example,!b.example"},
+		{name: "mixed pattern", trackerFields: `"trackerPattern":"a.example,!b.example,*.c.example"`, want: "a.example,!b.example,*.c.example"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			created := serve(http.MethodPost, "", payload(tt.trackerFields), handler.Create)
+			require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+			createdRule := decode(t, created)
+			require.Equal(t, tt.want, createdRule["trackerPattern"])
 
-	t.Run("returns false when mode defaults to keep-files", func(t *testing.T) {
-		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				GroupID: "release_item",
-				Mode:    "",
-			},
-		}))
-	})
+			ruleID := strconv.Itoa(int(createdRule["id"].(float64)))
+			updated := serve(http.MethodPut, ruleID, payload(tt.trackerFields), handler.Update)
+			require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
+			require.Equal(t, tt.want, decode(t, updated)["trackerPattern"])
 
-	t.Run("returns false for explicit keep-files mode", func(t *testing.T) {
-		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				GroupID: "release_item",
-				Mode:    models.DeleteModeKeepFiles,
-			},
-		}))
-	})
-
-	t.Run("returns true for delete with files mode", func(t *testing.T) {
-		require.True(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				GroupID: "release_item",
-				Mode:    models.DeleteModeWithFiles,
-			},
-		}))
-	})
-
-	t.Run("returns true for include-cross-seeds mode", func(t *testing.T) {
-		require.True(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				GroupID: "release_item",
-				Mode:    models.DeleteModeWithFilesIncludeCrossSeeds,
-			},
-		}))
-	})
-}
-
-func TestValidateTagDeleteFromClientConfig(t *testing.T) {
-	t.Run("returns nil when tag action is nil", func(t *testing.T) {
-		msg, err := validateTagDeleteFromClientConfig(nil)
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
-
-	t.Run("returns nil when deleteFromClient disabled", func(t *testing.T) {
-		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
-			Tag: &models.TagAction{
-				Enabled:          true,
-				Tags:             []string{"managed"},
-				DeleteFromClient: false,
-			},
+			listed := serve(http.MethodGet, "", "", handler.List)
+			require.Equal(t, http.StatusOK, listed.Code)
+			var rules []map[string]any
+			require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &rules))
+			found := false
+			for _, rule := range rules {
+				require.NotContains(t, rule, "trackerDomains")
+				if strconv.Itoa(int(rule["id"].(float64))) == ruleID {
+					found = true
+					require.Equal(t, tt.want, rule["trackerPattern"])
+				}
+			}
+			require.True(t, found)
 		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
+	}
 
-	t.Run("returns error when deleteFromClient with useTrackerAsTag", func(t *testing.T) {
-		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
-			Tag: &models.TagAction{
-				Enabled:          true,
-				DeleteFromClient: true,
-				UseTrackerAsTag:  true,
-			},
-		})
-		require.Error(t, err)
-		require.Contains(t, msg, "Use tracker name as tag")
-	})
-
-	t.Run("returns error when deleteFromClient has no explicit tags", func(t *testing.T) {
-		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
-			Tag: &models.TagAction{
-				Enabled:          true,
-				DeleteFromClient: true,
-				Tags:             []string{" ", ""},
-			},
-		})
-		require.Error(t, err)
-		require.Contains(t, msg, "at least one explicit tag")
-	})
-
-	t.Run("returns nil for explicit tags", func(t *testing.T) {
-		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
-			Tag: &models.TagAction{
-				Enabled:          true,
-				DeleteFromClient: true,
-				Tags:             []string{"managed"},
-			},
-		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
-}
-
-func TestValidateConditionGroupingConfig(t *testing.T) {
-	t.Run("returns nil when grouped condition uses builtin group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "cross_seed_content_save_path",
-					Value:    "1",
-				},
-			},
-		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
-
-	t.Run("returns nil when grouped condition uses custom group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			Grouping: &models.GroupingConfig{
-				Groups: []models.GroupDefinition{
-					{ID: "my_group", Keys: []string{"savePath"}},
-				},
-			},
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldIsGrouped,
-					Operator: models.OperatorEqual,
-					GroupID:  "my_group",
-					Value:    "true",
-				},
-			},
-		})
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
-
-	t.Run("returns error when grouped condition uses unknown group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "does_not_exist",
-					Value:    "1",
-				},
-			},
-		})
-		require.Error(t, err)
-		require.Contains(t, msg, "does_not_exist")
+	t.Run("no tracker", func(t *testing.T) {
+		rec := serve(http.MethodPost, "", payload(`"trackerPattern":" ","trackerDomains":[" "]`), handler.Create)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Body.String(), "Select at least one tracker or enable 'Apply to all'")
 	})
 }

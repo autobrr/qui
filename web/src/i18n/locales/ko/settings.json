@@ -419,10 +419,6 @@
       "loadingDescription": "사용 가능한 테마 불러오는 중...",
       "description": "사용 가능한 테마 중에서 선택하세요. 프리미엄 테마에는 유효한 라이선스가 필요합니다.",
       "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 프리미엄 테마 전환이 일시적으로 비활성화되었습니다.",
-      "freeBadge": "무료",
-      "freeThemes": "무료 테마",
-      "premiumBadge": "프리미엄",
-      "premiumThemes": "프리미엄 테마",
       "notLoaded": "프리미엄 테마가 로드되지 않음",
       "notLoadedDescription": "구성",
       "notLoadedAnd": "한 후 실행",
@@ -539,16 +535,13 @@
       "copiedVerify": "확인 명령이 복사되었습니다",
       "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
       "toasts": {
-        "activationSuccess": "라이선스가 활성화되었습니다!",
         "activationSuccessPremium": "프리미엄 접근이 활성화되었습니다! 감사합니다!",
         "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 프리미엄 라이선스 키를 추가하세요.",
         "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
         "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 프리미엄 라이선스 키를 추가하세요.",
         "keyCopied": "라이선스 키가 클립보드에 복사되었습니다",
         "copyFailed": "라이선스 키를 복사하지 못했습니다",
-        "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다",
-        "refreshedAll": "모든 라이선스가 새로 고쳐졌습니다",
-        "refreshFailed": "라이선스를 새로 고치지 못했습니다"
+        "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다"
       }
     },
     "custom": {
@@ -557,12 +550,22 @@
       "lockedTitle": "사용자 지정 테마는 프리미엄 기능입니다",
       "lockedDescription": "프리미엄을 잠금 해제하면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
       "unlockCta": "프리미엄 잠금 해제",
-      "directoryLabel": "테마 디렉터리",
       "refresh": "새로 고침",
       "detectedCount": "찾은 테마: {{total}}개",
       "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",
       "noneFound": "사용자 지정 테마를 찾을 수 없습니다. 테마 디렉터리에 .css 파일을 넣고 새로 고침을 클릭하세요.",
       "loadError": "사용자 지정 테마를 불러오지 못했습니다. 서버 로그와 테마 디렉터리 권한을 확인하세요."
+    },
+    "layout": {
+      "mobileSplit": "모바일 레이아웃용 별도 테마",
+      "mobileSplitHelp": "모바일 레이아웃(너비 768 px 미만 창)과 데스크톱 레이아웃이 각각 테마, 모드, 변형을 따로 유지합니다. 이 설정은 모든 브라우저에 적용됩니다.",
+      "localOnly": "이 브라우저의 테마를 로컬로 유지",
+      "localOnlyHelp": "이 브라우저는 서버에서 테마를 가져오지 않으며 테마 변경 사항을 서버로 보내지 않습니다. 이 설정은 이 브라우저에만 적용됩니다.",
+      "changesMobile": "모바일 테마를 변경합니다",
+      "changesDesktop": "데스크톱 테마를 변경합니다",
+      "changesLocal": "이 브라우저의 테마만 변경합니다. 모바일 레이아웃 설정을 변경하려면 로컬 설정을 끄세요.",
+      "saveError": "테마 설정을 저장하지 못했습니다",
+      "mobileSplitOffWarning": "이 설정을 끄면 모바일 테마가 삭제됩니다."
     }
   },
   "arrInstances": {
@@ -660,10 +663,6 @@
   },
   "indexers": {
     "title": "Torznab 인덱서",
-    "addIndexer": "인덱서 추가",
-    "autodiscoverProwlarr": "Prowlarr에서 자동 검색",
-    "noIndexers": "아직 구성된 인덱서가 없습니다.",
-    "noIndexersDescription": "자동화된 cross-seed 검색을 활성화하려면 Torznab 호환 인덱서를 추가하세요.",
     "deleteIndexer": "인덱서 삭제",
     "deleteIndexerDescription": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
     "deleteAllIndexers": "모든 인덱서 삭제",
@@ -672,8 +671,6 @@
       "loadFailed": "인덱서를 불러오지 못했습니다",
       "deletedSuccess": "인덱서가 삭제되었습니다",
       "deleteFailed": "인덱서를 삭제하지 못했습니다",
-      "allDeletedSuccess": "모든 인덱서가 삭제되었습니다",
-      "allDeletedFailed": "모든 인덱서를 삭제하지 못했습니다",
       "deleteAllSuccess": "인덱서 {{count}}개를 모두 삭제했습니다",
       "deleteAllPartial": "인덱서 {{success}}개 삭제, {{failed}}개 실패: {{names}}",
       "testSuccess": "연결 테스트에 성공했습니다",
@@ -819,7 +816,6 @@
         "importSuccess": "성공: {{details}}",
         "importWithWarnings": "{{details}} (경고 {{warningCount}}개)",
         "moreWarnings": "...그리고 경고 {{count}}개 더",
-        "importErrors": "{{details}}",
         "moreErrors": "...그리고 오류 {{count}}개 더",
         "created": "{{count}}개 생성됨",
         "updated": "{{count}}개 업데이트됨",
@@ -879,10 +875,6 @@
     },
     "activity": {
       "title": "스케줄러 활동",
-      "idle": "대기",
-      "queueLength": "대기열",
-      "workers": "워커",
-      "cooldown": "대기 시간",
       "running": "실행 중",
       "queued": "대기 중",
       "rateLimited": "속도 제한됨",

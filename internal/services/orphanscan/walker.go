@@ -98,12 +98,13 @@ type scanWalker struct {
 	collectDirs bool
 	seenDirs    map[string]*AbandonedDir
 
-	orphanUnits    map[string]*OrphanFile
-	discUnitsInUse map[string]struct{}
-	discUnitCache  map[string]discUnitDecision
-	discUnitPaths  map[string]struct{}
-	seenFileIDs    map[hardlink.FileID]struct{}
-	truncated      bool
+	orphanUnits map[string]*OrphanFile
+	// Each disc unit's first in-use and first orphan file in lexical walk order, see keepFirstInWalkOrder.
+	discUnitFirstInUse  map[string]string
+	discUnitFirstOrphan map[string]string
+	discUnitCache       map[string]discUnitDecision
+	seenFileIDs         map[hardlink.FileID]struct{}
+	truncated           bool
 }
 
 func newScanWalker(
@@ -113,21 +114,21 @@ func newScanWalker(
 	backend fsops.Backend, collectDirs bool,
 ) *scanWalker {
 	return &scanWalker{
-		ctx:            ctx,
-		root:           root,
-		tfm:            tfm,
-		ignorePaths:    ignorePaths,
-		gracePeriod:    gracePeriod,
-		maxFiles:       maxFiles,
-		unitFilter:     unitFilter,
-		backend:        backend,
-		orphanUnits:    make(map[string]*OrphanFile),
-		discUnitsInUse: make(map[string]struct{}),
-		discUnitCache:  make(map[string]discUnitDecision),
-		discUnitPaths:  make(map[string]struct{}),
-		seenFileIDs:    make(map[hardlink.FileID]struct{}),
-		collectDirs:    collectDirs,
-		seenDirs:       make(map[string]*AbandonedDir),
+		ctx:                 ctx,
+		root:                root,
+		tfm:                 tfm,
+		ignorePaths:         ignorePaths,
+		gracePeriod:         gracePeriod,
+		maxFiles:            maxFiles,
+		unitFilter:          unitFilter,
+		backend:             backend,
+		orphanUnits:         make(map[string]*OrphanFile),
+		discUnitFirstInUse:  make(map[string]string),
+		discUnitCache:       make(map[string]discUnitDecision),
+		discUnitFirstOrphan: make(map[string]string),
+		seenFileIDs:         make(map[hardlink.FileID]struct{}),
+		collectDirs:         collectDirs,
+		seenDirs:            make(map[string]*AbandonedDir),
 	}
 }
 
@@ -174,45 +175,78 @@ func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) boo
 	return false
 }
 
-func (w *scanWalker) markInUse(unitPath string, isDiscUnit bool) {
+func (w *scanWalker) markInUse(unitPath, path string, isDiscUnit bool) {
 	if !isDiscUnit {
 		return
 	}
-	w.discUnitsInUse[unitPath] = struct{}{}
+	keepFirstInWalkOrder(w.discUnitFirstInUse, unitPath, path)
 	delete(w.orphanUnits, unitPath)
 }
 
+// keepFirstInWalkOrder lets a walk that interleaves sibling directories, as a
+// concurrent remote walk does, decide disc units the way the lexical local walk does.
+func keepFirstInWalkOrder(firsts map[string]string, unitPath, path string) {
+	if first, ok := firsts[unitPath]; !ok || walksBefore(path, first) {
+		firsts[unitPath] = path
+	}
+}
+
+// walksBefore reports whether filepath.WalkDir reaches file a before file b.
+// It compares names segment by segment, so "AUX/x" comes before "AUX.d/y".
+func walksBefore(a, b string) bool {
+	for i := range min(len(a), len(b)) {
+		if a[i] == b[i] {
+			continue
+		}
+		if a[i] == filepath.Separator {
+			return true
+		}
+		if b[i] == filepath.Separator {
+			return false
+		}
+		return a[i] < b[i]
+	}
+	return len(a) < len(b)
+}
+
 func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
-	_, ok := w.discUnitsInUse[unitPath]
+	_, ok := w.discUnitFirstInUse[unitPath]
 	return ok
 }
 
-func containingDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
-	for normDisc, discUnitPath := range discRoots {
-		if normUnit == normDisc {
-			continue
-		}
-		if isPathUnderNormalized(normUnit, normDisc) {
-			return discUnitPath, true
+// outermostDiscUnit returns the outermost disc root that contains normUnit.
+// Inner disc roots also fold into the outer root, so a unit folded into an
+// inner root could lose its size, depending on map order (#3002).
+func outermostDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
+	outermost := ""
+	// Not filepath.Dir: it cleans each parent again, and normUnit is already clean.
+	const sep = string(filepath.Separator)
+	for dir, _, ok := strings.CutLast(normUnit, sep); ok && dir != ""; dir, _, ok = strings.CutLast(dir, sep) {
+		if discUnitPath, ok := discRoots[dir]; ok {
+			outermost = discUnitPath
 		}
 	}
-	return "", false
+	return outermost, outermost != ""
 }
 
 func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
-	if len(w.discUnitPaths) == 0 {
+	if len(w.discUnitFirstOrphan) == 0 {
 		return
 	}
 
 	// Do not fold: two real sibling directories that differ only by case would
 	// merge into one on a case-sensitive filesystem.
-	discRoots := make(map[string]string, len(w.discUnitPaths))
-	for du := range w.discUnitPaths {
+	discRoots := make(map[string]string)
+	for du, firstOrphan := range w.discUnitFirstOrphan {
+		// Keeps what the lexical local walk reports: siblings are hidden only when an orphan disc file comes first.
+		if firstInUse, ok := w.discUnitFirstInUse[du]; ok && walksBefore(firstInUse, firstOrphan) {
+			continue
+		}
 		discRoots[cleanPath(du)] = du
 	}
 
 	for unit, entry := range w.orphanUnits {
-		discUnitPath, ok := containingDiscUnit(cleanPath(unit), discRoots)
+		discUnitPath, ok := outermostDiscUnit(cleanPath(unit), discRoots)
 		if !ok {
 			continue
 		}
@@ -282,7 +316,10 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if entry.Err != nil {
-			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root {
+			// A backend that wraps both errors must not have its cut read as a
+			// denied subtree. Skipping it would take a cut-short tree as complete.
+			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
+				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
 				continue
 			}
 			return nil, nil, false, entry.Err
@@ -320,7 +357,7 @@ func walkScanRootWithUnitFilter(
 		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
 		normPath := normalizePath(path)
 		if w.tfm.Has(normPath) {
-			w.markInUse(unitPath, isDiscUnit)
+			w.markInUse(unitPath, path, isDiscUnit)
 			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
 			continue
 		}
@@ -340,10 +377,10 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 		if isDiscUnit {
+			keepFirstInWalkOrder(w.discUnitFirstOrphan, unitPath, path)
 			if w.isDiscUnitInUse(unitPath) {
 				continue
 			}
-			w.discUnitPaths[unitPath] = struct{}{}
 		}
 		if w.unitFilter != nil && !w.unitFilter(unitPath, isDiscUnit) {
 			continue

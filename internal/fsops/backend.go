@@ -14,9 +14,9 @@ import (
 // a local filesystem or an SSH-backed remote. It covers exactly the
 // operations qui's services need: syscall-level primitives (stat, walk,
 // mkdir, remove) plus the high-level tree operations (HardlinkTree,
-// ReflinkTree, RemoveTree) that create-and-rollback as a unit. Path
-// manipulation (filepath.Clean, filepath.Rel, etc.) is not part of this
-// interface — it stays as direct calls in service code.
+// ReflinkTree, RemoveTree) that create-and-rollback as a unit, and the path
+// dialect (Paths) that callers manipulate backend paths with, since a remote
+// backend's paths are not in the host's grammar.
 //
 // Every method accepts a context.Context and must respect cancellation.
 //
@@ -43,7 +43,10 @@ type Backend interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
-	// The channel is closed when the walk completes, is cancelled via ctx, or
+	// Entries within one directory arrive in lexical order and a directory's
+	// own entry precedes everything beneath it; nothing more is promised about
+	// order, as a backend may list sibling directories concurrently. The
+	// channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
@@ -90,6 +93,10 @@ type Backend interface {
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
 	// --- Capabilities ---
+
+	// Paths is the dialect of this backend's filesystem. Every Join, Dir,
+	// IsAbs or Rel on a path that goes to or comes from this backend uses it.
+	Paths() PathDialect
 
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.

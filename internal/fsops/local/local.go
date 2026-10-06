@@ -11,8 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -95,35 +93,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 				return walkErr
 			}
 
-			// Skip hidden files/dirs if requested.
-			name := d.Name()
-			if opts.SkipHidden && len(name) > 0 && name[0] == '.' && path != root {
+			if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil
-			}
-
-			// Skip ignored directory names. Case-insensitive: these are OS/NAS
-			// metadata dirs ($RECYCLE.BIN, @eaDir) whose on-disk case varies.
-			if d.IsDir() && path != root {
-				if slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
-					return strings.EqualFold(ignored, name)
-				}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
-					return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
-				}) {
-					return filepath.SkipDir
-				}
-			}
-
-			// Skip ignored paths.
-			for _, ignored := range opts.IgnorePaths {
-				if path == ignored {
-					if d.IsDir() {
-						return filepath.SkipDir
-					}
-					return nil
-				}
 			}
 
 			entry := fsops.WalkEntry{
@@ -300,3 +274,5 @@ func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	}
 	return info
 }
+
+func (b *Backend) Paths() fsops.PathDialect { return fsops.HostPaths }

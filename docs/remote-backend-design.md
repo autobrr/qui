@@ -1,6 +1,6 @@
 # Remote Filesystem Backend Design (SSH/SFTP-native)
 
-Status: draft for maintainer review. Supersedes the remote-helper design
+Status: largely built; kept as the design reference. Supersedes the remote-helper design
 (PR #1913, closed but kept as reference — it documents the deployable-agent
 tier and its NDJSON wire protocol, which remain the fallback if this design
 hits a performance wall).
@@ -89,7 +89,7 @@ Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, implemented in the remote-backend PR** (raised by com6056
+fixed-size form, planned for slice 3e (#2726) and not shipped yet** (raised by com6056
 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
@@ -144,13 +144,25 @@ host `filepath` are correct by construction. The remote backend speaks
 slash-delimited POSIX paths regardless of the qui host's OS, which means
 host `filepath` must never touch a remote path: on a Windows host,
 `filepath.IsAbs("/data")` is false and `Join` inserts backslashes
-(raised by Audionut on #1914). The remote-backend PR introduces a path
-dialect for backend-owned path manipulation (Join/Dir/Base/IsAbs/Rel);
-the local backend's dialect is the host `filepath`, so existing callsites
-keep their exact behavior, and a Windows-hosted qui operating a unix
-remote becomes correct by construction rather than by luck. Paths from
-qBittorrent's API arrive slash-delimited and stay inside their instance's
-backend domain end to end.
+(raised by Audionut on #1914). Slice 3c (#2724) gives every backend a
+path dialect, `Backend.Paths() fsops.PathDialect` (`Join`, `Dir`, `Base`,
+`Clean`, `IsAbs`, `Rel`, `FromSlash`, `ToSlash`, `Separator`): the local
+and noop backends answer `fsops.HostPaths`, which is the host `filepath`,
+so local callsites keep their exact behavior; the remote backend answers
+`fsops.SlashPaths`, which is `path` with `FromSlash`/`ToSlash` as the
+identity and a slash-only `Rel` (`path` has none, and `filepath.Rel`
+answers with backslashes on a Windows host), so a Windows-hosted qui
+operating a unix remote is correct by construction rather than by luck.
+Like `Backend`, `PathDialect` exceeds the five-method guideline on
+purpose: it mirrors `filepath`'s grammar, and a smaller split would leave
+callers reaching for the host package again. A path that goes to or comes from a
+backend is manipulated with that backend's dialect; host-only paths (the
+data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
+slash-delimited and stay inside their instance's backend domain end to
+end. 3c moved the free-space path source, missing-files, the hardlink
+index, the dirscan scanner and the fileid index onto the dialect; orphan
+scan follows #2918 (#2930) and cross-seed, managed-delete cleanup and the
+sync manager follow 3d, when writes make them reachable.
 
 ## Path and Command Safety
 
@@ -252,9 +264,10 @@ backend domain end to end.
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
   qui, so the user makes that call, never the code. On a background
-  reconnect nobody is there to prompt, so a mismatch parks the instance
-  in a needs-reconfirmation state and fails every fsop until a human
-  clears it.
+  reconnect nobody is there to prompt, so a mismatch fails every fsop on
+  the instance. The refusal lives only in memory (see Connection Pool):
+  confirming or replacing the pin clears it, and so does a restart, after
+  which the next dial is refused again while the key is still wrong.
 - The pin belongs to the host, not the credential: deleting SSH
   credentials keeps the pin, `ssh-test` against a pinned instance routes
   into the mismatch flow rather than first contact, and editing host or
@@ -285,8 +298,8 @@ paths pays for one attempt: the retry delay starts at 5s, doubles to
 60s, and carries ±20% jitter so instances that went down together do not
 come back in lockstep.
 
-A host-key mismatch and an unreadable or missing pin are not retried at
-all — waiting does not make a wrong key right. That refusal lives only in
+A host-key mismatch and an unreadable pin are not retried at all, because
+waiting does not make a wrong key right. That refusal lives only in
 memory, and the pool never infers a change from a caller's snapshot of
 the instance: the code that changes what a connection depends on tells it.
 Saving or clearing SSH credentials and confirming or replacing the pin
@@ -297,10 +310,15 @@ just written, and a host whose key is still wrong is refused again on that
 dial. Two callers holding different snapshots of one instance therefore
 share one connection. A failed read of the row is local and is not
 memoised. A refusal caused by a pin that would not decrypt outlives an
-out-of-band fix of the encryption key, since nothing invalidates it; a
-restart clears it.
-A connection nobody has used for ten minutes is closed, which is how the
-pool lets go of an instance that left remote mode.
+out-of-band fix of the encryption key, because that fix writes no row.
+Saving the SSH credentials or the pin again clears it, and so does a
+restart.
+Saving the instance invalidates its entry too when the save changes the
+filesystem mode, which the local access flag decides. Any other edit
+leaves the session alone. A dial for a row that is not in remote mode,
+including a row with credentials and no confirmed pin, is refused before
+it connects and is not memoised.
+A connection nobody has used for ten minutes is closed.
 
 Exec sessions will share the same connection. Concurrency comes from sftp
 request pipelining plus bounded parallel exec sessions — no helper-process
@@ -406,7 +424,7 @@ scratch directories and a temporarily added, uniquely tagged
 
 ## Rollout
 
-1. Foundation (open): #1914 backend interface, #1915 callsite migration.
+1. Foundation (merged): #1914 backend interface, #1915 callsite migration.
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
@@ -419,25 +437,45 @@ scratch directories and a temporarily added, uniquely tagged
    - 3d (#2725): SFTP write operations.
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
-4. Frontend.
-5. Feature rollout per service, degraded-mode UX. Most consumers still
-   admit an instance on `HasLocalFilesystemAccess` rather than on its
-   filesystem mode: orphan scan (handler and service filters), automations
+4. Frontend. Lands last. It is the only UI path that sets up SSH access,
+   so it gates the rollout for users. Until #2917 ships, no UI text names
+   SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
+   locales. Text that only a remote instance renders says "remote
+   instance" and stays. Text a local user also sees keeps its develop
+   wording, and the slice adds it to the reverse list in #2917's body.
+   (#2916 Decisions)
+5. Feature rollout per service, degraded-mode UX. Consumers admit an
+   instance on a filesystem capability (`Pool.Require`,
+   `models.FilesystemCapabilitiesOf`): automations
    (missing-files condition, hardlink index; rule save and dry-run
-   validation), dirscan, cross-seed (link mode, manual assemble, mediainfo,
-   season pack, partial pool, local-match detection), the sync manager's
-   hardlink base dir, the disc-scan route (which checks for local mode, not
-   the flag), and two routes that read file content, which no `Backend`
-   method covers yet: the torrents handler's local-access routes and the
-   proxy mediainfo route. The exception is the free-space path source: its preview and
-   scheduled-run paths resolve the backend and call `Statfs` with no mode
-   check, so a remote-mode instance already reports remote free space,
-   and that is the intended figure. Each remaining gate lifts in its own
-   slice, with the degraded-mode handling that service needs, and the
-   API-driven checks (missing files, orphan scan) become the field test of
-   that slice. A walk that loses its connection ends with one `Err` entry
-   wrapping `fsops.ErrConnectionLost`, so a consumer that skips
-   per-directory errors still learns the tree was cut short.
+   validation), dirscan, cross-seed (link mode, manual assemble,
+   mediainfo, season pack, partial pool, local-match detection), the sync
+   manager's hardlink base dir, the disc-scan route (which requires
+   `CapabilityContent`), and two routes that read file content, which
+   no `Backend` method covers yet: the torrents handler's local-access
+   routes and the proxy mediainfo route. The free-space
+   path source: its preview and scheduled-run paths call `Statfs` only
+   after `Pool.Require` grants the Read capability, and rule save
+   validation also checks Read. A remote-mode instance has Read, so it
+   already reports remote free space, and that is the intended figure. A gate
+   reads the instance before the work starts, so the reads after it
+   resolve backend and mode from one later read and refuse every mode but
+   local. Dirscan does that through
+   `Pool.LocalBackend`, and missing files through
+   `Pool.Resolve`. An instance whose local access was turned off after the
+   gate is then refused rather than read over SSH at a local path. Orphan
+   scan admits an instance on Read, walks the backend `Pool.Require`
+   returns for Read, and refuses to delete from a run scanned over SSH.
+   Each remaining gate lifts in its own slice, with the degraded-mode
+   handling that service needs, and the API-driven checks
+   (missing files, orphan scan) become the field test of that slice. Every
+   remote read that loses its connection, or that the pool will not dial,
+   fails with `fsops.ErrConnectionLost`. When the pool refused on purpose
+   (a host key mismatch, an unusable pin, a closed pool, an instance no
+   longer in remote mode), its sentinel stays in the chain, and the rest
+   of the cause is text only. A walk ends with one `Err` entry carrying
+   it, so a consumer that skips per-directory errors still learns the tree
+   was cut short.
 
 Helper/agent tier: explicitly deferred. If SFTP+exec hits a real
 performance wall, #1913 has the protocol design ready.
