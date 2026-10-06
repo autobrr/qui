@@ -160,9 +160,13 @@ backend is manipulated with that backend's dialect; host-only paths (the
 data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
 slash-delimited and stay inside their instance's backend domain end to
 end. 3c moved the free-space path source, missing-files, the hardlink
-index, the dirscan scanner and the fileid index onto the dialect; orphan
-scan follows #2918 (#2930) and cross-seed, managed-delete cleanup and the
-sync manager follow 3d, when writes make them reachable.
+index, the dirscan scanner and the fileid index onto the dialect. Orphan
+scan moved in #2930: its comparison keys keep the dialect's own separators
+(a canonical slash key would merge a Windows UNC path with a rooted one),
+peers' roots and file maps are built in the scanning backend's dialect, and
+ignore paths are validated at save time in the dialect of the instance's
+backend, which is the one the scan reads them in. Cross-seed, managed-delete
+cleanup and the sync manager follow 3d, when writes make them reachable.
 
 ## Path and Command Safety
 

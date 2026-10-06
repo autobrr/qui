@@ -221,7 +221,18 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 
 	// Validate and normalize ignore paths
 	if len(settings.IgnorePaths) > 0 {
-		normalized, err := orphanscan.NormalizeIgnorePaths(fsops.HostPaths, settings.IgnorePaths)
+		if h.service == nil {
+			RespondError(w, http.StatusServiceUnavailable, "Orphan scan service not available")
+			return
+		}
+		// Checked in the grammar of the instance's backend, which is how the scan reads them.
+		dialect, err := h.service.PathDialect(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to resolve the instance's filesystem")
+			RespondError(w, http.StatusInternalServerError, "Failed to resolve the instance's filesystem access")
+			return
+		}
+		normalized, err := orphanscan.NormalizeIgnorePaths(dialect, settings.IgnorePaths)
 		if err != nil {
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return

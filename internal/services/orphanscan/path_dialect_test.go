@@ -432,3 +432,11 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 	require.Contains(t, b.dirs, "/srv/data/cat")
 	require.NotContains(t, b.dirs, "/srv/data/empty")
 }
+
+func TestService_PathDialectWithoutABackendPool(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	_, err := svc.PathDialect(t.Context(), 1)
+	require.Error(t, err)
+}

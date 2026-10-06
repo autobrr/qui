@@ -612,6 +612,19 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	return nil
 }
 
+// PathDialect is the path grammar of the backend instanceID is scanned through.
+// Resolve builds a remote backend without dialing it.
+func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDialect, error) {
+	if s.backendPool == nil {
+		return nil, errors.New("backend pool not configured")
+	}
+	backend, _, err := s.backendPool.Resolve(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return backend.Paths(), nil
+}
+
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
 // as well as Write, because the walker spots a second path to a torrent's file
 // (a bind mount inside the scanned tree) only by its file identity.
