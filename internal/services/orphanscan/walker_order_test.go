@@ -137,7 +137,7 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 				{rel: "Segments/BDMV/AUX/a.bin", inUse: true},
 				{rel: "Segments/BDMV/AUX.d/b.bin"},
 				{rel: "Segments/extra.nfo"},
-				// The mirror case: the orphan in "AUX" still comes first, so the sibling stays hidden.
+				// The mirror case: the orphan in "AUX" comes first, and the sibling is still reported.
 				{rel: "Mirror/BDMV/AUX/a.bin"},
 				{rel: "Mirror/BDMV/AUX.d/b.bin", inUse: true},
 				{rel: "Mirror/extra.nfo"},
@@ -161,12 +161,15 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 				{rel: "Dvd/Extras/x.mkv"},
 			},
 			orphans: []string{
-				"Fallback/BDMV", "InUseFirst/extra/y.nfo", "Orphaned", "Prefix/extra.nfo",
-				"Sandwich/extra/y.nfo", "Seeded/extra/y.nfo", "Segments/extra.nfo",
+				"Dvd/Extras/x.mkv", "Fallback/BDMV", "InUseFirst/extra/y.nfo", "Interleaved/extra/y.nfo",
+				"Mirror/extra.nfo", "Nested/extra/Disc2", "Orphaned", "Partial/Season 1/e01.mkv",
+				"Partial/extra/deep/x/y.nfo", "Prefix/extra.nfo", "Sandwich/extra/y.nfo", "Seeded/extra/y.nfo",
+				"Segments/extra.nfo",
 			},
 			dirs: []string{
-				"Fallback/BDMV", "InUseFirst/extra", "Nested/extra", "Orphaned",
-				"Partial/extra", "Partial/extra/deep", "Sandwich/extra", "Seeded/extra",
+				"Dvd/Extras", "Fallback/BDMV", "InUseFirst/extra", "Interleaved/extra", "Nested/extra",
+				"Orphaned", "Partial/Season 1", "Partial/extra", "Partial/extra/deep", "Partial/extra/deep/x",
+				"Sandwich/extra", "Seeded/extra",
 			},
 		},
 		{
