@@ -49,6 +49,38 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Migrations are tracked by file name, so installs that already ran one
+      # never see a later edit. Comment-only edits pass, and so does a rename
+      # with a from/to entry in the *MigrationFilenameRenames tables in db.go.
+      - name: Check that existing migrations stay unchanged
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          sql() { sed -e 's/--.*//' -e '/^[[:space:]]*$/d'; }
+          status=0
+          while IFS=$'\t' read -r change old new; do
+            new=${new:-$old}
+            if [ "$change" = D ]; then
+              echo "::error file=$old::$old was deleted. Installs that ran it keep its schema."
+              status=1
+              continue
+            fi
+            if [ "$old" != "$new" ]; then
+              # Each backend applies only the shared table and its own table.
+              backend=postgres
+              [ "${old%/*}" = internal/database/migrations ] && backend=sqlite
+              if ! sed -En "/^var (shared|$backend)MigrationFilenameRenames /,/^}/p" internal/database/db.go | grep -A1 "from: *\"$(basename "$old")\"" | grep -q "to: *\"$(basename "$new")\""; then
+                echo "::error file=$new::$old was renamed to $new without a from/to entry in sharedMigrationFilenameRenames or ${backend}MigrationFilenameRenames in internal/database/db.go."
+                status=1
+              fi
+            fi
+            if ! diff -q <(git show "$BASE:$old" | sql) <(sql < "$new") > /dev/null; then
+              echo "::error file=$new::the SQL of existing migration $old changed. Put the change in a new migration."
+              status=1
+            fi
+          done < <(git diff --name-status -M --diff-filter=MRD "$BASE"...HEAD -- internal/database/migrations internal/database/postgres_migrations)
+          exit $status
+
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
         with:
