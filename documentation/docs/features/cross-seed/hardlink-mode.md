@@ -92,7 +92,7 @@ Reflink mode does not use this check. A reflink clone is copy-on-write, so a dow
 
 To seed the torrent after this message, remove the torrent and its link tree, and download the torrent normally. Do not resume it as it is. A resume downloads into the linked file and changes the local file.
 
-If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume. With **Skip recheck** on, a [rename-only match](./rules.md#skip-cross-seeds-with-extra-files) gets no recheck and resumes after the rename.
+If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume. With **Skip recheck** on, a [rename-only match](./rules.md#skip-cross-seeds-with-extra-files) gets no recheck. If **Auto-resume after injection** is on, qui resumes it after the rename.
 
 ### Pooled Partial Completion
 

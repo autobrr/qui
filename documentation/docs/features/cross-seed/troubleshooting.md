@@ -175,7 +175,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - If missing data is at or below **Max auto-start download** (default: 50 MiB), qui auto-resumes after the recheck
 - If only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
-- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume. With **Skip recheck** on, a rename-only filesystem fallback resumes without a recheck
+- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume. With **Skip recheck** and **Auto-resume after injection** on, a rename-only filesystem fallback resumes without a recheck
 - Configure this limit with **Max auto-start download** in Cross-Seed > After injection
 - In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 

@@ -19,7 +19,7 @@ These settings sit in **Matching rules**.
 - **Piece boundary safety check**: Off by default. Turn the switch on to block cross-seeds whose extra files share torrent pieces with content files. With the switch off, qBittorrent can corrupt your existing seeded data if the content differs. Reflink mode protects the original files. If hardlink or reflink mode falls back to regular mode, qui runs the check even when the switch is off. This fallback check covers matches that are not exact, need renames, or have extra files.
 
 :::note
-If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%. With **Skip recheck** on, a rename-only filesystem fallback is the exception. qui renames the paths and resumes it without a recheck.
+If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%. With **Skip recheck** on, a rename-only filesystem fallback is the exception. qui renames the paths and adds it without a recheck. If **Auto-resume after injection** is on, qui then resumes it.
 :::
 
 ### Skip cross-seeds with extra files
