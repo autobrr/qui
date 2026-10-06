@@ -35,7 +35,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - Hardlink mode is a **per-instance setting**, not a per-request setting. Each qBittorrent instance has its own hardlink configuration.
 - Torrents added in hardlink or reflink mode always use an explicit `savepath` (the link-tree root), which turns **AutoTMM off**. If you enable AutoTMM after the add, qBittorrent can move files out of the link tree.
 - If qui cannot create a hardlink (due to missing local access, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
-- If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. Filesystem fallback uses a full recheck, except for a [rename-only match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
+- If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. Filesystem fallback uses a full recheck, except for a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
 - If qBittorrent returns an unsafe file path, qui rejects the cross-seed without regular-mode fallback. This applies to hardlink and reflink modes.
 - When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is off (the default).
 - qui categorizes hardlinked torrents with your existing cross-seed category rules (category affix, indexer name, or custom category). The hardlink preset only affects the on-disk folder layout.
@@ -92,7 +92,7 @@ Reflink mode does not use this check. A reflink clone is copy-on-write, so a dow
 
 To seed the torrent after this message, remove the torrent and its link tree, and download the torrent normally. Do not resume it as it is. A resume downloads into the linked file and changes the local file.
 
-If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume. With **Skip recheck** on, a [rename-only match](./rules.md#skip-cross-seeds-with-extra-files) gets no recheck. If **Auto-resume after injection** is on, qui resumes it after the rename.
+If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume. With **Skip recheck** on, a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) gets no recheck. If **Auto-resume after injection** is on, qui renames the paths if necessary and then resumes it.
 
 ### Pooled Partial Completion
 
