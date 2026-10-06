@@ -32,8 +32,8 @@ When you write or review code, follow the rules for its area in `CODING_STANDARD
 - Frontend only: `make frontend`
 - Dev: `make dev`, `make dev-backend`, `make dev-frontend`
 - Required before final for code changes: `make precommit`, targeted tests for touched packages, `make build`
-- Go tests: always use `-race -count=1`
-- Full Go suite: `make test` (`go test -race -v ./...`)
+- Go tests: always use `-count=1`. Leave `-race` to CI.
+- Full Go suite: `make test` (`go test -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
 
 CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags; a change to only `**.md` or the `Makefile` skips it. `test.yml` runs the Postgres tests and the migration parity check. Run the full suite locally only when asked, or when one change crosses many packages.

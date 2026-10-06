@@ -19,7 +19,7 @@ reviews:
   poem: false
   path_instructions:
     - path: "internal/database/{migrations,postgres_migrations}/**"
-      instructions: "Flag a change to the SQL of a migration file that already exists on the base branch, or a rename of one. Migrations are tracked by file name only, so released installs never run the changed SQL, and a renamed file runs again unless the rename has an entry in the *MigrationFilenameRenames tables in internal/database/db.go. The change belongs in a new migration."
+      instructions: "Flag a change to the SQL of a migration file that already exists on the base branch: migrations are tracked by file name only, so released installs never run the changed SQL, and the change belongs in a new migration. Also flag a rename of such a file unless the rename has an entry in the *MigrationFilenameRenames tables in internal/database/db.go, because without the entry the renamed file runs again."
   pre_merge_checks:
     docstrings:
       mode: "off"
