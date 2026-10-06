@@ -79,6 +79,9 @@ func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
 }
 
 func knownDifference(verdict corpusVerdict, issue int, reason string) corpusDifference {
+	if issue == 0 {
+		panic("a known difference must name a ticket: " + reason)
+	}
 	return corpusDifference{verdict: verdict, reason: reason, issue: issue}
 }
 
@@ -464,6 +467,11 @@ var corpusPaths = []struct {
 
 func TestMatchCorpus(t *testing.T) {
 	unusedTickets := slices.Clone(corpusTickets)
+	// A path that skips every row has dropped out of the corpus.
+	unreadPaths := make(map[matchPath]bool, len(corpusPaths))
+	for _, p := range corpusPaths {
+		unreadPaths[p.path] = true
+	}
 	for _, row := range corpusRows {
 		t.Run(row.name, func(t *testing.T) {
 			for path, difference := range row.differences {
@@ -486,11 +494,13 @@ func TestMatchCorpus(t *testing.T) {
 					require.False(t, listed, "%s: the path skips this row, so it cannot list a difference", p.path)
 					continue
 				}
+				delete(unreadPaths, p.path)
 				assert.Equal(t, want, got, "%s", p.path)
 			}
 		})
 	}
 	assert.Empty(t, unusedTickets, "remove the tickets that no known difference names")
+	assert.Empty(t, unreadPaths, "these paths skip every row")
 }
 
 const (
