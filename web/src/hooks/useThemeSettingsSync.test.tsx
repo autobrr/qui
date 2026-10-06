@@ -252,6 +252,15 @@ describe("useThemeSettingsSync", () => {
       expect(mockApi.updateThemeSettings).toHaveBeenCalledExactlyOnceWith({ themeId: "phone-theme", mode: "light" }, "mobile")
     })
 
+    it("does not push from a narrow viewport before the slots load", () => {
+      viewportWidth = 375
+      mockApi.getThemeSettings.mockReturnValueOnce(new Promise(() => {}))
+      renderHook(() => useThemeSettingsSync(), { wrapper })
+
+      dispatchThemeChange({ theme: { id: "minimal" }, mode: "light", isSystemChange: false })
+      expect(mockApi.updateThemeSettings).not.toHaveBeenCalled()
+    })
+
     it("applies the default slot on a wide viewport", async () => {
       registerSlotThemes()
       mockApi.getThemeSettings.mockResolvedValue(both)

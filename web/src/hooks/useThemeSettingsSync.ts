@@ -90,7 +90,10 @@ export function useThemeSettingsSync(): void {
     retry: false,
   })
 
-  const slot: ThemeSlot | null = localOnly ? null : data?.mobile && isMobile ? "mobile" : "default"
+  // A narrow tab has no slot until the response says whether a mobile slot
+  // exists; otherwise an early change on a phone overwrites the desktop theme.
+  const slot: ThemeSlot | null =
+    localOnly || (isMobile && !data) ? null : isMobile && data?.mobile ? "mobile" : "default"
   const selection = slot ? data?.[slot] : undefined
   const slotRef = useRef(slot)
   slotRef.current = slot
