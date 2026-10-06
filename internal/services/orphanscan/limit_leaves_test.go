@@ -190,7 +190,7 @@ func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
 
 	entries := []OrphanFile{parent, child, file}
 	for _, previewSort := range []string{"size_desc", "directory_size_desc"} {
-		less := truncationLess(previewSort)
+		less := truncationLess(fsops.HostPaths, previewSort)
 		for _, perm := range [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}} {
 			in := []OrphanFile{entries[perm[0]], entries[perm[1]], entries[perm[2]]}
 			sort.Slice(in, func(i, j int) bool { return less(in[i], in[j]) })

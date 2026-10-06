@@ -4,24 +4,27 @@
 package orphanscan
 
 import (
-	"path/filepath"
 	"strings"
 	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 // TorrentFileMap is a thread-safe set of file paths belonging to torrents.
 type TorrentFileMap struct {
+	d     fsops.PathDialect
 	paths map[string]struct{}
 	dirs  map[string]struct{}
 	mu    sync.RWMutex
 }
 
-// NewTorrentFileMap creates a new empty TorrentFileMap.
-func NewTorrentFileMap() *TorrentFileMap {
+// NewTorrentFileMap creates an empty map of paths in d, its backend's dialect.
+func NewTorrentFileMap(d fsops.PathDialect) *TorrentFileMap {
 	return &TorrentFileMap{
+		d:     d,
 		paths: make(map[string]struct{}),
 		dirs:  make(map[string]struct{}),
 	}
@@ -29,16 +32,16 @@ func NewTorrentFileMap() *TorrentFileMap {
 
 // Add adds a normalized path to the map.
 func (m *TorrentFileMap) Add(path string) {
-	n := normalizePath(path)
+	n := normalizePath(m.d, path)
 	// Track the file itself.
 	m.mu.Lock()
 	m.paths[n] = struct{}{}
 	// Track all ancestor directories so we can quickly answer "is any torrent file under this dir?".
 	// This keeps lookup O(1) and avoids expensive prefix scans.
-	dir := filepath.Dir(n)
-	for dir != "." && dir != string(filepath.Separator) {
+	dir := m.d.Dir(n)
+	for dir != "." && dir != m.d.Separator() {
 		m.dirs[dir] = struct{}{}
-		parent := filepath.Dir(dir)
+		parent := m.d.Dir(dir)
 		if parent == dir {
 			break
 		}
@@ -71,7 +74,8 @@ func (m *TorrentFileMap) Len() int {
 	return len(m.paths)
 }
 
-// MergeFrom unions other into m.
+// MergeFrom unions other into m. Peers' maps are built with the scanning
+// backend, so both maps' keys share one dialect.
 // Returns the number of file paths newly added to m.
 func (m *TorrentFileMap) MergeFrom(other *TorrentFileMap) int {
 	if other == nil {
@@ -98,15 +102,15 @@ func (m *TorrentFileMap) MergeFrom(other *TorrentFileMap) int {
 }
 
 // cleanPath cleans a path without changing its casing.
-// Uses filepath.Clean (OS-specific separators) and NFC unicode normalization to
+// Uses the backend's path dialect and NFC unicode normalization to
 // avoid mismatches between canonically-equivalent strings (e.g. composed vs
 // decomposed forms on some platforms).
 // Tradeoff: canonically-equivalent names collapse to one key, so byte-distinct
 // NFC/NFD twins on normalization-sensitive filesystems are treated as one path.
 // Use this when the result is shown to the user or stored; use normalizePath
 // when the result is only compared against another path.
-func cleanPath(path string) string {
-	p := filepath.Clean(path)
+func cleanPath(d fsops.PathDialect, path string) string {
+	p := d.Clean(path)
 	// On Unix, paths can contain arbitrary bytes (not always valid UTF-8).
 	// Avoid normalizing invalid UTF-8 to prevent replacing bytes with U+FFFD.
 	if !utf8.ValidString(p) {
@@ -118,7 +122,8 @@ func cleanPath(path string) string {
 	return p
 }
 
-// normalizePath cleans a path and case-folds it for consistent comparison.
+// normalizePath cleans a path and case-folds it for consistent comparison. Keys
+// keep d's separators: a slash key would merge a UNC path with a rooted one.
 //
 // Case-folding is unconditional because runtime.GOOS cannot answer whether the
 // scanned filesystem is case-insensitive: macOS APFS and Windows volumes are
@@ -142,8 +147,8 @@ func cleanPath(path string) string {
 //
 // The result is for comparison only. It must never reach an os.* call or the
 // database, because on a case-sensitive filesystem it can name a different file.
-func normalizePath(path string) string {
-	return cleanPath(strings.ToLower(cleanPath(path)))
+func normalizePath(d fsops.PathDialect, path string) string {
+	return cleanPath(d, strings.ToLower(cleanPath(d, path)))
 }
 
 // canonicalizeHash matches SyncManager's internal hash normalization.

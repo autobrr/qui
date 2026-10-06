@@ -221,7 +221,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 
 	// Validate and normalize ignore paths
 	if len(settings.IgnorePaths) > 0 {
-		normalized, err := orphanscan.NormalizeIgnorePaths(settings.IgnorePaths)
+		normalized, err := orphanscan.NormalizeIgnorePaths(fsops.HostPaths, settings.IgnorePaths)
 		if err != nil {
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
