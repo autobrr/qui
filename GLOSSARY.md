@@ -20,6 +20,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. _Avoid_: Consistency, sync.
 
+## Themes
+
+- **Layout**: The form of the UI that qui shows for the current viewport width: the *mobile layout* when the viewport is less than 768 px wide, or the *desktop layout*. It is not the device type. _Avoid_: device, platform.
+- **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
+
 ## Orphan scan
 
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
