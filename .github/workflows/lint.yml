@@ -56,7 +56,7 @@ jobs:
         env:
           BASE: origin/${{ github.base_ref }}
         run: |
-          sql() { grep -Ev '^[[:space:]]*(--|$)'; }
+          sql() { sed -e 's/--.*//' -e '/^[[:space:]]*$/d'; }
           status=0
           while IFS=$'\t' read -r change old new; do
             new=${new:-$old}
@@ -65,9 +65,14 @@ jobs:
               status=1
               continue
             fi
-            if [ "$old" != "$new" ] && ! grep -A1 "from: *\"$(basename "$old")\"" internal/database/db.go | grep -q "to: *\"$(basename "$new")\""; then
-              echo "::error file=$new::$old was renamed to $new without a from/to entry in the *MigrationFilenameRenames tables in internal/database/db.go."
-              status=1
+            if [ "$old" != "$new" ]; then
+              # Each backend applies only the shared table and its own table.
+              backend=postgres
+              [ "${old%/*}" = internal/database/migrations ] && backend=sqlite
+              if ! sed -En "/^var (shared|$backend)MigrationFilenameRenames /,/^}/p" internal/database/db.go | grep -A1 "from: *\"$(basename "$old")\"" | grep -q "to: *\"$(basename "$new")\""; then
+                echo "::error file=$new::$old was renamed to $new without a from/to entry in sharedMigrationFilenameRenames or ${backend}MigrationFilenameRenames in internal/database/db.go."
+                status=1
+              fi
             fi
             if ! diff -q <(git show "$BASE:$old" | sql) <(sql < "$new") > /dev/null; then
               echo "::error file=$new::the SQL of existing migration $old changed. Put the change in a new migration."
