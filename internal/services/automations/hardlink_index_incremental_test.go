@@ -12,9 +12,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // scanOne reads one torrent's files the way the index does, from real files on disk.
@@ -43,7 +43,7 @@ func linkPair(t *testing.T, dir string) (string, string) {
 // as a full build or an incremental update does.
 func indexFrom(scans map[string]*torrentFileInfo) *HardlinkIndex {
 	index := &HardlinkIndex{}
-	index.applyLinkState(deriveLinkCounts(scans))
+	index.applyLinkState(deriveLinkCounts(nil, scans))
 	return index
 }
 
@@ -164,7 +164,7 @@ func TestPlanTorrentRescan(t *testing.T) {
 		"arrived": {Hash: "arrived", SavePath: filepath.Join(dir, "c")},
 	}
 
-	rescan, staleFileIDs := planTorrentRescan(previous, current)
+	rescan, staleFileIDs := planTorrentRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current)
 
 	require.Contains(t, rescan, "moved", "a save path change points the torrent at different files")
 	require.Contains(t, rescan, "arrived", "a torrent with no previous scan has to be read")
@@ -190,12 +190,12 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 		"sharer":  {Hash: "sharer", SavePath: filepath.Join(dir, "b")},
 	}
 
-	staleFileIDs := map[hardlink.FileID]struct{}{}
+	staleFileIDs := map[fsops.FileKey]struct{}{}
 	for _, fileID := range infoA.fileIDs {
-		staleFileIDs[fileID] = struct{}{}
+		staleFileIDs[fsops.FileKeyOf(fileID, nil)] = struct{}{}
 	}
 
-	sharing := planSharingRescan(previous, current, map[string]struct{}{"planned": {}}, staleFileIDs)
+	sharing := planSharingRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current, map[string]struct{}{"planned": {}}, staleFileIDs)
 
 	require.Equal(t, map[string]struct{}{"sharer": {}}, sharing)
 }
@@ -345,9 +345,9 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	stale.linkedFiles[0].nlink = 2
 	fresh.linkedFiles[0].nlink = 9
 
-	state := deriveLinkCounts(map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
+	state := deriveLinkCounts(nil, map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
 
-	tracker := state.globalFileIDMap[fresh.fileIDs[0]]
+	tracker := state.globalFileIDMap[state.key(fresh.fileIDs[0])]
 	require.NotNil(t, tracker)
 	require.Equal(t, uint64(9), tracker.nlink)
 	require.Equal(t, 2, tracker.uniquePathCount, "two distinct paths point at the file")

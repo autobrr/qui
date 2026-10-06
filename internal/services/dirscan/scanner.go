@@ -66,21 +66,17 @@ type ScanResult struct {
 type Scanner struct {
 	backend fsops.Backend
 
-	// FileID index for detecting already-seeding files.
-	// Maps FileID.Bytes() to torrent hash.
-	seenFileIDs map[string]string
+	// Identities of files already seeding, for skipping them.
+	seenFileIDs *seedingIndex
 }
 
 // NewScanner creates a new directory scanner.
 func NewScanner(backend fsops.Backend) *Scanner {
-	return &Scanner{
-		backend:     backend,
-		seenFileIDs: make(map[string]string),
-	}
+	return &Scanner{backend: backend, seenFileIDs: &seedingIndex{}}
 }
 
 // SetFileIDIndex sets the FileID index for detecting already-seeding files.
-func (s *Scanner) SetFileIDIndex(index map[string]string) {
+func (s *Scanner) SetFileIDIndex(index *seedingIndex) {
 	s.seenFileIDs = index
 }
 
@@ -259,17 +255,13 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 
 // CheckAlreadySeeding checks if a searchee's files are already being seeded.
 func (s *Scanner) CheckAlreadySeeding(searchee *Searchee) (allSeeding bool, torrentHash string) {
-	if len(s.seenFileIDs) == 0 || len(searchee.Files) == 0 {
+	if s.seenFileIDs.len() == 0 || len(searchee.Files) == 0 {
 		return false, ""
 	}
 
 	matchedCount := 0
 	for _, f := range searchee.Files {
-		if f.FileID.IsZero() {
-			continue
-		}
-
-		if hash, ok := s.seenFileIDs[string(f.FileID.Bytes())]; ok {
+		if hash, ok := s.seenFileIDs.hash(f.FileID); ok {
 			matchedCount++
 			if torrentHash == "" {
 				torrentHash = hash

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func TestDirScanStore_UpsertFile_ReplacesChangedFileIDForSamePath(t *testing.T) {
@@ -149,4 +150,58 @@ func bytesOfLength(length int, value byte) []byte {
 		result[i] = value
 	}
 	return result
+}
+
+// The first scan after the migration stores the tagged ID; the scan after
+// that sees the same ID at a new path and moves the row instead of adding one.
+func TestDirScanStore_UpsertFile_DetectsRenameByTaggedFileID(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	first := &models.DirScanFile{
+		DirectoryID: dir.ID,
+		FilePath:    "/data/media/old.mkv",
+		FileSize:    1,
+		FileModTime: time.Now(),
+		Status:      models.DirScanFileStatusPending,
+	}
+	require.NoError(t, store.UpsertFile(ctx, first))
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Empty(t, files[0].FileID, "the migration leaves file_id NULL")
+
+	id := hardlink.UnixFileID(7, 42).Bytes()
+	first.FileID = id
+	require.NoError(t, store.UpsertFile(ctx, first), "the next scan fills file_id")
+
+	renamed := &models.DirScanFile{
+		DirectoryID: dir.ID,
+		FilePath:    "/data/media/new.mkv",
+		FileSize:    1,
+		FileModTime: time.Now(),
+		FileID:      id,
+		Status:      models.DirScanFileStatusPending,
+	}
+	require.NoError(t, store.UpsertFile(ctx, renamed))
+
+	files, err = store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1, "a rename moves the row, it does not add one")
+	require.Equal(t, "/data/media/new.mkv", files[0].FilePath)
+	require.Equal(t, id, files[0].FileID)
 }

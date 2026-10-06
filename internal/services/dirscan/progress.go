@@ -9,15 +9,29 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 type trackedFilesIndex struct {
+	instance *models.Instance // the directory's target instance; scopes byFileID
 	byPath   map[string]*models.DirScanFile
-	byFileID map[string]*models.DirScanFile
+	byFileID map[fsops.FileKey]*models.DirScanFile
 }
 
-func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
+func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) fsops.FileKey {
+	return fsops.FileKeyOf(id, idx.instance)
+}
+
+// keyOfStored decodes a dir_scan_files.file_id value. A row from before the
+// tagged form decodes to no identity and is never indexed.
+func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
+	id := hardlink.FileIDFromBytes(stored)
+	return idx.keyOf(id), !id.IsZero()
+}
+
+func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, instance *models.Instance) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil {
 		return nil, nil
 	}
@@ -25,8 +39,9 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 	const pageSize = 5000
 
 	idx := &trackedFilesIndex{
+		instance: instance,
 		byPath:   make(map[string]*models.DirScanFile),
-		byFileID: make(map[string]*models.DirScanFile),
+		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
 	}
 
 	offset := 0
@@ -46,8 +61,8 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 			if f.FilePath != "" {
 				idx.byPath[f.FilePath] = f
 			}
-			if len(f.FileID) > 0 {
-				idx.byFileID[string(f.FileID)] = f
+			if key, ok := idx.keyOfStored(f.FileID); ok {
+				idx.byFileID[key] = f
 			}
 		}
 
@@ -61,14 +76,14 @@ func (s *Service) refreshTrackedFilesFromScan(
 	ctx context.Context,
 	directoryID int,
 	scanResult *ScanResult,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	l *zerolog.Logger,
 ) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil || scanResult == nil {
 		return nil, nil
 	}
 
-	idx, err := s.loadTrackedFilesIndex(ctx, directoryID)
+	idx, err := s.loadTrackedFilesIndex(ctx, directoryID, fileIDIndex.instance)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +111,8 @@ func (s *Service) refreshTrackedFilesFromScan(
 
 			// Keep the in-memory index in sync for eligibility filtering.
 			idx.byPath[fileModel.FilePath] = fileModel
-			if len(fileModel.FileID) > 0 {
-				idx.byFileID[string(fileModel.FileID)] = fileModel
+			if key, ok := idx.keyOfStored(fileModel.FileID); ok {
+				idx.byFileID[key] = fileModel
 			}
 		}
 	}
@@ -105,11 +120,11 @@ func (s *Service) refreshTrackedFilesFromScan(
 	return idx, nil
 }
 
-func isFileAlreadySeedingByFileID(scanned *ScannedFile, index map[string]string) bool {
-	if scanned == nil || scanned.FileID.IsZero() || len(index) == 0 {
+func isFileAlreadySeedingByFileID(scanned *ScannedFile, index *seedingIndex) bool {
+	if scanned == nil {
 		return false
 	}
-	_, ok := index[string(scanned.FileID.Bytes())]
+	_, ok := index.hash(scanned.FileID)
 	return ok
 }
 
@@ -195,7 +210,7 @@ func lookupTrackedFile(scanned *ScannedFile, idx *trackedFilesIndex) (*models.Di
 	}
 
 	if !scanned.FileID.IsZero() {
-		if existing := idx.byFileID[string(scanned.FileID.Bytes())]; existing != nil {
+		if existing := idx.byFileID[idx.keyOf(scanned.FileID)]; existing != nil {
 			return existing, "file_id"
 		}
 	}

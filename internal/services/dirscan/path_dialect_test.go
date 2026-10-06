@@ -55,7 +55,7 @@ func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 	t.Parallel()
 
 	b := newSlashBackend()
-	index := map[string]string{}
+	index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
 	files := qbt.TorrentFiles{{Name: "Show.S01/episode.mkv"}, {Name: "Show.S01/sample/s.mkv"}}
 	statErrors := addTorrentFilesToFileIDIndex(context.Background(), index, "hash", "/data/torrents", files, b)
 
@@ -65,5 +65,5 @@ func TestFileIDIndexUsesBackendDialect(t *testing.T) {
 		"/data/torrents/Show.S01/sample/s.mkv",
 	}, b.stated)
 	// The fake reports no identity, so nothing is indexed; the paths are the point.
-	require.Empty(t, index)
+	require.Empty(t, index.byKey)
 }

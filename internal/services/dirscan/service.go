@@ -880,7 +880,7 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the raw scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
 	if s.backendPool == nil {
 		l.Error().Msg("dirscan: backend pool not configured")
 		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
@@ -896,15 +896,22 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		return nil, nil, false
 	}
 
+	instance, err := s.instanceStore.Get(ctx, dir.TargetInstanceID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get target instance")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
 	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.
-	fileIDIndex := make(map[string]string)
+	fileIDIndex := &seedingIndex{instance: instance}
 	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
+		if index, err := s.buildFileIDIndex(ctx, instance, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else if len(index) > 0 {
+		} else if index.len() > 0 {
 			fileIDIndex = index
 			scanner.SetFileIDIndex(index)
 		}
@@ -940,7 +947,7 @@ func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	workSelection scanWorkSelection,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	trackedFiles *trackedFilesIndex,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
@@ -1022,7 +1029,7 @@ func (s *Service) processRootSearchee(
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
 	workItems []searcheeWorkItem,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	trackedFiles *trackedFilesIndex,
 	injectedTVGroups map[tvGroupKey]struct{},
 	settings *models.DirScanSettings,
@@ -1518,15 +1525,15 @@ func (s *Service) recoverStuckRuns() error {
 	return nil
 }
 
-func isAlreadySeedingByFileID(searchee *Searchee, index map[string]string) bool {
-	if searchee == nil || len(searchee.Files) == 0 || len(index) == 0 {
+func isAlreadySeedingByFileID(searchee *Searchee, index *seedingIndex) bool {
+	if searchee == nil || len(searchee.Files) == 0 || index.len() == 0 {
 		return false
 	}
 	for _, f := range searchee.Files {
-		if f == nil || f.FileID.IsZero() {
+		if f == nil {
 			return false
 		}
-		if _, ok := index[string(f.FileID.Bytes())]; !ok {
+		if _, ok := index.hash(f.FileID); !ok {
 			return false
 		}
 	}

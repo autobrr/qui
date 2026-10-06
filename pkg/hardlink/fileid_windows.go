@@ -7,7 +7,6 @@ package hardlink
 
 import (
 	"encoding/binary"
-	"hash"
 	"os"
 	"unsafe"
 
@@ -30,19 +29,6 @@ type fileStandardInfo struct {
 	DeletePending  byte
 	Directory      byte
 	_              [2]byte
-}
-
-// FileID uniquely identifies a physical file on disk.
-// On Windows, this is the (VolumeSerialNumber, 128-bit file identifier) tuple.
-// This type is comparable and can be used as a map key without allocations.
-type FileID struct {
-	VolumeSerialNumber uint64
-	Identifier         [16]byte
-}
-
-// IsZero returns true if the FileID is the zero value (uninitialized).
-func (f FileID) IsZero() bool {
-	return f.VolumeSerialNumber == 0 && f.Identifier == [16]byte{}
 }
 
 // GetFileID returns the FileID and link count for a file with low-allocation overhead.
@@ -86,10 +72,7 @@ func GetFileID(fi os.FileInfo, path string) (FileID, uint64, error) {
 		return FileID{}, 0, err
 	}
 
-	return FileID{
-		VolumeSerialNumber: idInfo.VolumeSerialNumber,
-		Identifier:         idInfo.Identifier,
-	}, uint64(standardInfo.NumberOfLinks), nil
+	return WindowsFileID(idInfo.VolumeSerialNumber, idInfo.Identifier), uint64(standardInfo.NumberOfLinks), nil
 }
 
 // legacyFileID synthesizes a FileID from the pre-Win8 GetFileInformationByHandle
@@ -106,50 +89,8 @@ func legacyFileID(h windows.Handle, idErr error) (FileID, uint64, error) {
 		return FileID{}, 0, idErr
 	}
 
-	id := FileID{VolumeSerialNumber: uint64(info.VolumeSerialNumber)}
-	binary.LittleEndian.PutUint32(id.Identifier[0:4], info.FileIndexHigh)
-	binary.LittleEndian.PutUint32(id.Identifier[4:8], info.FileIndexLow)
-	return id, uint64(info.NumberOfLinks), nil
-}
-
-// Bytes returns a byte slice representation of the FileID for hashing.
-// This is used for computing file signatures across platforms.
-func (f FileID) Bytes() []byte {
-	var buf [24]byte
-	f.fillBytes(&buf)
-	return buf[:]
-}
-
-// WriteToHash writes the FileID bytes directly to a hash.Hash.
-// Uses a stack-allocated buffer to avoid heap escapes (unlike Bytes which returns a slice).
-func (f FileID) WriteToHash(h hash.Hash) {
-	var buf [24]byte
-	f.fillBytes(&buf)
-	h.Write(buf[:])
-}
-
-func (f FileID) fillBytes(buf *[24]byte) {
-	buf[0] = byte(f.VolumeSerialNumber >> 56)
-	buf[1] = byte(f.VolumeSerialNumber >> 48)
-	buf[2] = byte(f.VolumeSerialNumber >> 40)
-	buf[3] = byte(f.VolumeSerialNumber >> 32)
-	buf[4] = byte(f.VolumeSerialNumber >> 24)
-	buf[5] = byte(f.VolumeSerialNumber >> 16)
-	buf[6] = byte(f.VolumeSerialNumber >> 8)
-	buf[7] = byte(f.VolumeSerialNumber)
-	copy(buf[8:], f.Identifier[:])
-}
-
-// Less returns true if this FileID is less than other.
-// Used for sorting FileIDs.
-func (f FileID) Less(other FileID) bool {
-	if f.VolumeSerialNumber != other.VolumeSerialNumber {
-		return f.VolumeSerialNumber < other.VolumeSerialNumber
-	}
-	for i := range f.Identifier {
-		if f.Identifier[i] != other.Identifier[i] {
-			return f.Identifier[i] < other.Identifier[i]
-		}
-	}
-	return false
+	var identifier [16]byte
+	binary.LittleEndian.PutUint32(identifier[0:4], info.FileIndexHigh)
+	binary.LittleEndian.PutUint32(identifier[4:8], info.FileIndexLow)
+	return WindowsFileID(uint64(info.VolumeSerialNumber), identifier), uint64(info.NumberOfLinks), nil
 }

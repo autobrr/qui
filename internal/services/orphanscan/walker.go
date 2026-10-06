@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -78,8 +79,8 @@ type discUnitDecision struct {
 // walkScanRoot walks a directory tree and returns orphan files not in the TorrentFileMap.
 // Only files are returned as orphans; directories go through walkScanRootCollectingDirs.
 func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend) ([]OrphanFile, bool, error) {
-	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, false)
+	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend, instance *models.Instance) ([]OrphanFile, bool, error) {
+	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, instance, false)
 	return orphans, truncated, err
 }
 
@@ -92,6 +93,7 @@ type scanWalker struct {
 	maxFiles    int
 	unitFilter  func(unitPath string, isDiscUnit bool) bool
 	backend     fsops.Backend
+	instance    *models.Instance // the row backend was built from; scopes seenFileIDs
 
 	// seenDirs records directory mtimes and direct file counts when requested.
 	// abandonedDirCandidates makes the final removal decision.
@@ -103,7 +105,7 @@ type scanWalker struct {
 	discUnitFirstInUse  map[string]string
 	discUnitFirstOrphan map[string]string
 	discUnitCache       map[string]discUnitDecision
-	seenFileIDs         map[hardlink.FileID]struct{}
+	seenFileIDs         map[fsops.FileKey]struct{}
 	truncated           bool
 }
 
@@ -111,7 +113,7 @@ func newScanWalker(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool,
 ) *scanWalker {
 	return &scanWalker{
 		ctx:                 ctx,
@@ -122,11 +124,12 @@ func newScanWalker(
 		maxFiles:            maxFiles,
 		unitFilter:          unitFilter,
 		backend:             backend,
+		instance:            instance,
 		orphanUnits:         make(map[string]*OrphanFile),
 		discUnitFirstInUse:  make(map[string]string),
 		discUnitCache:       make(map[string]discUnitDecision),
 		discUnitFirstOrphan: make(map[string]string),
-		seenFileIDs:         make(map[hardlink.FileID]struct{}),
+		seenFileIDs:         make(map[fsops.FileKey]struct{}),
 		collectDirs:         collectDirs,
 		seenDirs:            make(map[string]*AbandonedDir),
 	}
@@ -168,10 +171,11 @@ func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) boo
 	if fid.IsZero() || nlinks > 1 {
 		return false
 	}
-	if _, exists := w.seenFileIDs[fid]; exists {
+	key := fsops.FileKeyOf(fid, w.instance)
+	if _, exists := w.seenFileIDs[key]; exists {
 		return true
 	}
-	w.seenFileIDs[fid] = struct{}{}
+	w.seenFileIDs[key] = struct{}{}
 	return false
 }
 
@@ -278,9 +282,9 @@ func (w *scanWalker) orphans() []OrphanFile {
 // walkScanRootCollectingDirs also returns candidates for empty-directory cleanup.
 // It never caps the walk; the run's cap applies afterwards.
 func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, backend fsops.Backend,
+	ignorePaths []string, gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, 0, nil, backend, true)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, 0, nil, backend, instance, true)
 	return orphans, dirs, err
 }
 
@@ -288,9 +292,9 @@ func walkScanRootWithUnitFilter(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
-	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend, collectDirs)
+	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs)
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
