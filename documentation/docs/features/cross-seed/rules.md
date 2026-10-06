@@ -19,14 +19,14 @@ These settings sit in **Matching rules**.
 - **Piece boundary safety check**: Off by default. Turn the switch on to block cross-seeds whose extra files share torrent pieces with content files. With the switch off, qBittorrent can corrupt your existing seeded data if the content differs. Reflink mode protects the original files. If hardlink or reflink mode falls back to regular mode, qui runs the check even when the switch is off. This fallback check covers matches that are not exact, need renames, or have extra files.
 
 :::note
-If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%.
+If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%. With **Skip recheck** on, a rename-only filesystem fallback is the exception. qui renames the paths and resumes it without a recheck.
 :::
 
 ### Skip cross-seeds with extra files
 
 To stop qui from adding a cross-seed that has extra files, such as samples, `.nfo` files, or subtitles, enable **Skip recheck**. qBittorrent must download the extra files that you do not have, and the torrent needs a recheck. With **Skip recheck** on, qui does not add the torrent.
 
-**Skip recheck** also skips the other matches that require a recheck: renamed paths, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. A rename-only match is the exception. If each file has a file of the same size and only the paths differ, qui renames the paths and adds the torrent without a recheck. This rule applies to regular, hardlink, and reflink modes. You get fewer cross-seeds. In the row details of a search run, these matches have the `skipped_recheck` status. See [Cross-seed search run statuses](./troubleshooting.md#cross-seed-search-run-statuses).
+**Skip recheck** also skips the other matches that require a recheck: renamed paths, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. A rename-only match is the exception. In a rename-only match, each file has a file of the same size and only the paths differ. An episode in a season pack, a disc layout, and a title rescue are never rename-only matches. An exact-size match with different season, episode, or release-group details is also never a rename-only match. qui renames the paths of a rename-only match and adds the torrent without a recheck. This rule applies to regular, hardlink, and reflink modes. You get fewer cross-seeds. In the row details of a search run, these matches have the `skipped_recheck` status. See [Cross-seed search run statuses](./troubleshooting.md#cross-seed-search-run-statuses).
 
 ### Reported-size fallback
 
