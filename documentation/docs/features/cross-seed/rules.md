@@ -26,7 +26,7 @@ If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title r
 
 To stop qui from adding a cross-seed that has extra files, such as samples, `.nfo` files, or subtitles, enable **Skip recheck**. qBittorrent must download the extra files that you do not have, and the torrent needs a recheck. With **Skip recheck** on, qui does not add the torrent.
 
-**Skip recheck** also skips the other matches that require a recheck: renamed paths, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes. You get fewer cross-seeds. A search run shows these matches with the `skipped_recheck` status.
+**Skip recheck** also skips the other matches that require a recheck: renamed paths, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. A rename-only match is the exception. If each file has a file of the same size and only the paths differ, qui renames the paths and adds the torrent without a recheck. This rule applies to regular, hardlink, and reflink modes. You get fewer cross-seeds. In the row details of a search run, these matches have the `skipped_recheck` status. See [Cross-seed search run statuses](./troubleshooting.md#cross-seed-search-run-statuses).
 
 ### Reported-size fallback
 
