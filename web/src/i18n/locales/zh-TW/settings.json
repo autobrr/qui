@@ -555,6 +555,17 @@
       "parseErrorsTitle": "無法解析以下檔案：",
       "noneFound": "未找到自訂主題。請將 .css 檔案放入主題目錄，然後點選重新整理。",
       "loadError": "無法載入自訂主題。請檢查伺服器日誌和主題目錄權限。"
+    },
+    "layout": {
+      "mobileSplit": "為行動版面配置使用獨立主題",
+      "mobileSplitHelp": "行動版面配置（寬度小於 768 px 的視窗）與桌面版面配置各自保留自己的主題、模式與變體。此設定適用於所有瀏覽器。",
+      "localOnly": "在此瀏覽器中本機保留主題",
+      "localOnlyHelp": "此瀏覽器不會從伺服器取得主題，也不會將其主題變更傳送到伺服器。此設定僅適用於此瀏覽器。",
+      "changesMobile": "變更行動主題",
+      "changesDesktop": "變更桌面主題",
+      "changesLocal": "僅變更此瀏覽器的主題。若要變更行動版面配置設定，請關閉本機設定。",
+      "saveError": "儲存主題設定失敗",
+      "mobileSplitOffWarning": "關閉此設定會刪除行動主題。"
     }
   },
   "arrInstances": {

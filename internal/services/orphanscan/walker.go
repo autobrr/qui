@@ -214,16 +214,19 @@ func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
 	return ok
 }
 
-func containingDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
-	for normDisc, discUnitPath := range discRoots {
-		if normUnit == normDisc {
-			continue
-		}
-		if isPathUnderNormalized(normUnit, normDisc) {
-			return discUnitPath, true
+// outermostDiscUnit returns the outermost disc root that contains normUnit.
+// Inner disc roots also fold into the outer root, so a unit folded into an
+// inner root could lose its size, depending on map order (#3002).
+func outermostDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
+	outermost := ""
+	// Not filepath.Dir: it cleans each parent again, and normUnit is already clean.
+	const sep = string(filepath.Separator)
+	for dir, _, ok := strings.CutLast(normUnit, sep); ok && dir != ""; dir, _, ok = strings.CutLast(dir, sep) {
+		if discUnitPath, ok := discRoots[dir]; ok {
+			outermost = discUnitPath
 		}
 	}
-	return "", false
+	return outermost, outermost != ""
 }
 
 func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
@@ -233,7 +236,6 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 
 	// Do not fold: two real sibling directories that differ only by case would
 	// merge into one on a case-sensitive filesystem.
-	// Not presized: containingDiscUnit iterates it per orphan, and filtered units would leave it sparse.
 	discRoots := make(map[string]string)
 	for du, firstOrphan := range w.discUnitFirstOrphan {
 		// Keeps what the lexical local walk reports: siblings are hidden only when an orphan disc file comes first.
@@ -244,7 +246,7 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 	}
 
 	for unit, entry := range w.orphanUnits {
-		discUnitPath, ok := containingDiscUnit(cleanPath(unit), discRoots)
+		discUnitPath, ok := outermostDiscUnit(cleanPath(unit), discRoots)
 		if !ok {
 			continue
 		}

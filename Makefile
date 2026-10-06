@@ -109,7 +109,7 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -race -v ./...
+	go test -count=1 -v ./...
 
 # Run Postgres integration tests with a temporary server.
 test-postgres:

@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -143,6 +145,12 @@ func (s *Service) buildReleaseView(
 	if !policy.useDerivedTV || !isTVRelease(derived) {
 		return view
 	}
+	if season := seasonFromTitleNumeral(derived); season > 0 {
+		numeralSeason := *derived
+		numeralSeason.Series = season
+		derived = &numeralSeason
+		view.numeralSeason = true
+	}
 	if policy.preserveExplicitRawGroup && releaseHasExplicitGroupTag(parsed) {
 		preservedIdentity := *derived
 		preservedIdentity.Group = parsed.Group
@@ -152,6 +160,25 @@ func (s *Service) buildReleaseView(
 	}
 	view.release = derived
 	return view
+}
+
+// seasonFromTitleNumeral reads a last-word II to X as the season of a pack
+// that has no season anywhere else: "Kaiju Squad 100 II - 07" files carry only
+// the numeral, and trackers list the pack as S02. A larger numeral is more
+// often part of the real title than a season.
+func seasonFromTitleNumeral(release *rls.Release) int {
+	if release.Series > 0 || release.Episode > 0 {
+		return 0
+	}
+	_, last, ok := strings.CutLast(release.Title, " ")
+	if !ok {
+		return 0
+	}
+	season := slices.Index([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, strings.ToUpper(last))
+	if season < 2 {
+		return 0
+	}
+	return season
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
