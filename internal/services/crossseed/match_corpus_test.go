@@ -28,6 +28,8 @@ import (
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.
+//
+// Edits that relax the corpus: see .github/workflows/match-corpus.yml.
 
 type corpusVerdict string
 
@@ -59,6 +61,17 @@ type corpusDifference struct {
 	verdict corpusVerdict
 	reason  string
 	issue   int
+}
+
+// corpusTickets are the open issues that known differences name. Add a ticket
+// with its first known difference, and remove it with its last one.
+var corpusTickets = []int{
+	3036, // read a release name in one module
+	3037, // decide every match through one verdict
+	3045, // season pack hint
+	3046, // title rescue in the retry step
+	3047, // season numeral without a file list
+	3048, // slash titles in the season pack check and Local matches
 }
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
@@ -450,11 +463,16 @@ var corpusPaths = []struct {
 }
 
 func TestMatchCorpus(t *testing.T) {
+	unusedTickets := slices.Clone(corpusTickets)
 	for _, row := range corpusRows {
 		t.Run(row.name, func(t *testing.T) {
 			for path, difference := range row.differences {
 				require.NotEqual(t, row.want, difference.verdict, "%s: a difference must differ from the row verdict", path)
 				require.NotEmpty(t, difference.reason, "%s: a difference needs a reason", path)
+				if difference.issue != 0 {
+					require.Contains(t, corpusTickets, difference.issue, "%s: a known difference must name a ticket in corpusTickets", path)
+					unusedTickets = slices.DeleteFunc(unusedTickets, func(issue int) bool { return issue == difference.issue })
+				}
 			}
 
 			for _, p := range corpusPaths {
@@ -472,6 +490,7 @@ func TestMatchCorpus(t *testing.T) {
 			}
 		})
 	}
+	assert.Empty(t, unusedTickets, "remove the tickets that no known difference names")
 }
 
 const (
