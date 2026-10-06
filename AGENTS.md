@@ -23,7 +23,7 @@ Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
 
 Before changing cross-module data flow, service boundaries, API routing, or long-lived architecture, read `docs/architecture.md`.
 
-When you write or review code, follow the rules for its area in `CODING_STANDARDS.md`. Its review rules are for AI reviewers of a PR.
+When you write or review code, follow the rules for its area in `CODING_STANDARDS.md`.
 
 ## Required Commands
 
@@ -103,3 +103,13 @@ State required checks run, skipped/deferred checks with reason, and unresolved f
 - Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
 - Triage: labels equal the six role names in `docs/agents/triage-labels.md`. Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. `ready-for-agent` (`bug` only) creates the linked issue and closes the discussion. Do not post the brief on the discussion.
 - Domain docs: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
+## Code Review Rules
+
+Codex and other AI PR reviewers read this section. The other rules in this file (precommit, field test, commit gate, PR body format) are for coding agents. Do not apply them to PR authors.
+
+- Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
+- Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
+- When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
+- Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
