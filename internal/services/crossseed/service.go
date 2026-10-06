@@ -5938,8 +5938,8 @@ func (s *Service) processCrossSeedCandidate(
 		categoryCreationFailed = true
 	}
 
-	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular &&
-		(matchType != "exact" || requiresAlignment || hasExtraFiles)
+	exactInPlace := matchType == "exact" && !requiresAlignment && !hasExtraFiles
+	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular && !exactInPlace
 	if linkFallbackNeedsBoundaryProtection {
 		if torrentInfo != nil {
 			unsafe, safetyResult := HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
@@ -5976,11 +5976,11 @@ func (s *Service) processCrossSeedCandidate(
 		linkFallbackRequiresFullRecheck = true
 	}
 
-	// A byte-complete rename-only pair needs no post-fallback recheck: every file
-	// already exists at the matched size and the alignment renames are verified.
+	// A byte-complete pair needs no post-fallback recheck: every file already
+	// exists at the matched size, and a rename-only pair's renames are verified.
 	// Without this, any link-mode bail-out would turn into skipped_recheck for a
-	// pair that link mode itself would have accepted without a recheck (#2272).
-	if linkFallbackRequiresFullRecheck && req.SkipRecheck && renameOnlyAlignment {
+	// pair that link mode itself would have accepted without a recheck (#2272, #3028).
+	if linkFallbackRequiresFullRecheck && req.SkipRecheck && (renameOnlyAlignment || exactInPlace) {
 		linkFallbackRequiresFullRecheck = false
 	}
 
