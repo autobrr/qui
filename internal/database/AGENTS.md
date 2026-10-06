@@ -1,0 +1,8 @@
+# AGENTS.md
+
+Schema and migration rules for work under `internal/database/`.
+
+- A migration that already exists on `develop` stays as it is: no SQL change, no rename. Put the change in a new migration. Migrations are tracked by file name only, so installs that ran the old SQL never run the new SQL, and a renamed file runs again unless the rename has an entry in the `*MigrationFilenameRenames` tables in `db.go`.
+- DB schema changes need SQLite + Postgres migrations, matching model/store updates, same PR.
+- Open PRs: consolidate schema work to at most one new SQLite migration and one new Postgres migration; edit draft migrations before merge.
+- New `string_pool` FK columns need a leading index in BOTH the SQLite and Postgres migrations, plus an entry in `referencedStringsInsertQuery`. Neither engine auto-indexes FK child columns, and the daily string_pool GC full-scans unindexed ones (see `TestStringPoolFKColumnsAreIndexed` in `db_test.go`). That test enforces this on SQLite; the Postgres index is on you.
