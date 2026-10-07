@@ -69,7 +69,6 @@ type corpusDifference struct {
 var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
-	3045, // season pack hint
 	3048, // slash titles in the season pack check and Local matches
 }
 
@@ -155,7 +154,6 @@ const (
 	reasonNoRelabel         = "The web source relabel is a search rule. This path does not run it."
 	reasonDedupKey          = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
 	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
-	reasonHintTitle         = "The season pack hint compares only the lowercase titles, so it does not see that the pack and the episode are the same show."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 )
@@ -439,7 +437,7 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply: knownDifference(corpusNoMatch, 3045, reasonHintTitle),
+			pathApply: knownDifference(corpusNoMatch, 3037, "Search rejects a pack against one episode, so apply holds no decision and no Sonarr alternate titles for this pair."),
 		}),
 	},
 	{
@@ -450,9 +448,7 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusPackSize,
 		candidateFiles: corpusPackFiles("Kaiju Squad AKA Kaiju Kyoutai S02 1080p WEB H264-GRP", "Kaiju.Squad.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply: knownDifference(corpusNoMatch, 3045, reasonHintTitle),
-		}),
+		differences:    packFromEpisodes(nil),
 	},
 	{
 		name:           "announced season pack with a slash title",
@@ -463,7 +459,6 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju Squad Zero S02 1080p WEB H264-GRP", "Kaiju.Squad.Zero.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply:      knownDifference(corpusNoMatch, 3045, reasonHintTitle),
 			pathSeasonPack: knownDifference(corpusNoMatch, 3048, "The season pack check gets no raw names, so the slash rule does not run."),
 		}),
 	},
@@ -475,9 +470,7 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusPackSize,
 		candidateFiles: corpusPackFiles("Kaiju.Squad.II.S02.1080p.WEB.H264-GRP", "Kaiju.Squad.II.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply: knownDifference(corpusNoMatch, 3045, reasonHintTitle),
-		}),
+		differences:    packFromEpisodes(nil),
 	},
 }
 
