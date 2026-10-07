@@ -1568,7 +1568,7 @@ func (s *Service) determineLocalMatchType(
 
 	// Strategy 3: Release metadata match using rls library
 	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.matcher().releasesMatchWithReason(sourceRelease, candidateRelease, false)
+	matched, mismatchReason := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, source.Name, candidate.Name, false)
 	// A bare "Title III" can be a movie sequel without a year, so it pairs with a season pack only on a close
 	// size and an equal largest file: one episode is never the size of a whole movie.
 	if matched && (withTitleNumeralSeason(sourceRelease, candidateRelease) != sourceRelease ||

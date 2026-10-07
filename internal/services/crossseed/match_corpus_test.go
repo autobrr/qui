@@ -69,7 +69,6 @@ type corpusDifference struct {
 var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
-	3048, // slash titles in the season pack check and Local matches
 }
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
@@ -289,9 +288,8 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3048, "Local matches gets no raw names, so the slash rule does not run."),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:        knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
 		},
 	},
 	{
@@ -458,9 +456,7 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusPackSize,
 		candidateFiles: corpusPackFiles("Kaiju Squad Zero S02 1080p WEB H264-GRP", "Kaiju.Squad.Zero.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathSeasonPack: knownDifference(corpusNoMatch, 3048, "The season pack check gets no raw names, so the slash rule does not run."),
-		}),
+		differences:    packFromEpisodes(nil),
 	},
 	{
 		name:           "announced season pack with a season numeral",
@@ -668,7 +664,7 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
-	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, pack, nil, settings, row.titles)) > 0)
+	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, nil, settings, row.titles)) > 0)
 }
 
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {

@@ -171,7 +171,7 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals.
 	local.Series = packRelease.Series
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(&packRelease, &local, true, nil, nil)
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(&packRelease, &local, "", "", true, nil, nil)
 	require.True(t, ok, "expected punctuation-only titles to conflate, got reason %q", reason)
 
 	localFiles := map[episodeIdentity]seasonPackLocalFile{
