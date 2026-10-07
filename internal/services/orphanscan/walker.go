@@ -99,7 +99,7 @@ type scanWalker struct {
 	seenDirs    map[string]*AbandonedDir
 
 	orphanUnits map[string]*OrphanFile
-	// The walk only records these; orphans() decides, so walk order cannot change the result.
+	// The walk only records these; resolveDiscUnits decides, so walk order cannot change the result.
 	discUnitsInUse      map[string]struct{}
 	discUnitsWithOrphan map[string]struct{}
 	discUnitCache       map[string]discUnitDecision
@@ -176,12 +176,6 @@ func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) boo
 	return false
 }
 
-func (w *scanWalker) markInUse(unitPath string, isDiscUnit bool) {
-	if isDiscUnit {
-		w.discUnitsInUse[unitPath] = struct{}{}
-	}
-}
-
 // outermostDiscUnit returns the outermost disc root that contains normUnit.
 // Inner disc roots also fold into the outer root, so a unit folded into an
 // inner root could lose its size, depending on map order (#3002).
@@ -197,7 +191,7 @@ func outermostDiscUnit(d fsops.PathDialect, normUnit string, discRoots map[strin
 	return outermost, outermost != ""
 }
 
-func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
+func (w *scanWalker) resolveDiscUnits() {
 	// A disc unit with an in-use file stays whole and hides nothing beside it.
 	for du := range w.discUnitsInUse {
 		delete(w.orphanUnits, du)
@@ -236,7 +230,7 @@ func (w *scanWalker) mergeIntoDiscUnit(unit, discUnitPath string, entry *OrphanF
 }
 
 func (w *scanWalker) orphans() []OrphanFile {
-	w.mergeSuppressedUnitsIntoDiscUnits()
+	w.resolveDiscUnits()
 
 	orphans := make([]OrphanFile, 0, len(w.orphanUnits))
 	for _, o := range w.orphanUnits {
@@ -327,7 +321,9 @@ func walkScanRootWithUnitFilter(
 		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
 		normPath := normalizePath(w.d, path)
 		if w.tfm.Has(normPath) {
-			w.markInUse(unitPath, isDiscUnit)
+			if isDiscUnit {
+				w.discUnitsInUse[unitPath] = struct{}{}
+			}
 			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
 			continue
 		}

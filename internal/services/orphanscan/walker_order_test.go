@@ -103,7 +103,7 @@ type orderTestFile struct {
 
 type orderTestRoot struct {
 	files []orderTestFile
-	// orphans and dirs are what the lexical local walk reports, relative to the root.
+	// orphans and dirs are what every walk order reports, relative to the root.
 	orphans []string
 	dirs    []string
 }
@@ -112,7 +112,9 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 	roots := []orderTestRoot{
 		{
 			files: []orderTestFile{
-				// A partly seeded disc whose first disc file in walk order is an orphan.
+				// Each partly seeded disc below has a walk-order shape that changed the
+				// result before #3008. Its extras must be reported in every walk order.
+				// Here the first disc file in walk order is an orphan.
 				{rel: "Partial/BDMV/CLIPINF/00001.clpi"},
 				{rel: "Partial/BDMV/PLAYLIST/00001.mpls"},
 				{rel: "Partial/BDMV/STREAM/00001.m2ts", inUse: true},
@@ -133,11 +135,11 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 				{rel: "Nested/BDMV/STREAM/00001.m2ts", inUse: true},
 				{rel: "Nested/extra/Disc2/VIDEO_TS/VTS_01_1.VOB"},
 				{rel: "Nested/extra/Disc2/info.nfo"},
-				// "AUX" is walked before "AUX.d" although "AUX.d/" sorts first as a string.
+				// A lexical walk visits "AUX" before "AUX.d", but "AUX.d/" sorts first as a string.
 				{rel: "Segments/BDMV/AUX/a.bin", inUse: true},
 				{rel: "Segments/BDMV/AUX.d/b.bin"},
 				{rel: "Segments/extra.nfo"},
-				// The mirror case: the orphan in "AUX" comes first, and the sibling is still reported.
+				// The mirror case, with the orphan in "AUX".
 				{rel: "Mirror/BDMV/AUX/a.bin"},
 				{rel: "Mirror/BDMV/AUX.d/b.bin", inUse: true},
 				{rel: "Mirror/extra.nfo"},
