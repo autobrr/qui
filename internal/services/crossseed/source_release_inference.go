@@ -174,7 +174,9 @@ func seasonFromTitleNumeral(release *rls.Release) int {
 	if !ok {
 		return 0
 	}
-	season := slices.Index([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, strings.ToUpper(last))
+	season := slices.IndexFunc([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, func(numeral string) bool {
+		return strings.EqualFold(numeral, last)
+	})
 	if season < 2 {
 		return 0
 	}
@@ -184,10 +186,8 @@ func seasonFromTitleNumeral(release *rls.Release) int {
 // withTitleNumeralSeason gives a release with only a title numeral the season
 // of the other release, when the numeral names that season.
 func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
-	if release == nil || other == nil {
-		return release
-	}
-	if season := seasonFromTitleNumeral(release); season == 0 || season != other.Series {
+	// A numeral season is 2 or more, so a lower season skips the copy when both sides have no season.
+	if release == nil || other == nil || other.Series < 2 || seasonFromTitleNumeral(release) != other.Series {
 		return release
 	}
 	withSeason := *release
