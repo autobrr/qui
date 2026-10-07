@@ -6164,6 +6164,30 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				return
 			}
 
+			// qBittorrent does not hash-check a torrent that was added stopped.
+			// Ask it to recheck; it runs the torrent only for the check and stops it again.
+			if exec.action.Paused && !exec.action.SkipCheckingEnabled() {
+				if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), exec.action.TargetInstanceID, []string{exec.hash}, "recheck"); err != nil {
+					log.Error().Err(err).
+						Int("sourceInstanceID", sourceInstanceID).
+						Int("targetInstanceID", exec.action.TargetInstanceID).
+						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+						Msg("automations: recheck on target failed")
+					reason := "Recheck on target failed: " + err.Error()
+
+					if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
+						log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+							Msg("automations: failed to clean up torrent from target after recheck failure")
+					} else {
+						log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+							Msg("automations: cleaned up failed export torrent from target")
+					}
+
+					recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
+					return
+				}
+			}
+
 			// 4. Post-add verification: confirm torrent is healthy on target
 			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
 				log.Error().
@@ -6220,15 +6244,20 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	return ch
 }
 
+// exportVerifyMaxAttempts and exportVerifyPollInterval bound post-add verification.
+// Tests shorten them and restore the defaults; production keeps these values.
+var (
+	exportVerifyMaxAttempts  = 10
+	exportVerifyPollInterval = 3 * time.Second
+)
+
 // verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
 // When skipChecking is false, a torrent still in a checking state after retries is treated as
 // success (the add worked, hash check is in progress).
 // Returns empty string on success, or a failure reason string.
 func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	const (
-		maxAttempts  = 10
-		pollInterval = 3 * time.Second
-	)
+	maxAttempts := exportVerifyMaxAttempts
+	pollInterval := exportVerifyPollInterval
 
 	syncMgr, err := s.syncManager.GetQBittorrentSyncManager(ctx, targetInstanceID)
 	if err != nil {
