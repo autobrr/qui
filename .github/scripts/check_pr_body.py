@@ -23,7 +23,7 @@ def sections(body):
             ):
                 fence = None
             continue
-        match = re.match(r"^## (.+?)\s*$", line) if fence is None else None
+        match = re.match(r"^ {0,3}## (.+?)\s*$", line) if fence is None else None
         if match:
             heading = match[1]
             result.setdefault(heading, [])

@@ -11,6 +11,14 @@ class TestCheckPRBody(unittest.TestCase):
     def test_template_sections(self):
         cases = [
             ("complete", BODY, []),
+            ("one-space heading", BODY.replace("## Performance", " ## Performance"), []),
+            ("two-space heading", BODY.replace("## Performance", "  ## Performance"), []),
+            ("three-space heading", BODY.replace("## Performance", "   ## Performance"), []),
+            (
+                "four-space heading",
+                BODY.replace("## Performance", "    ## Performance"),
+                ["Missing section: Performance"],
+            ),
             (
                 "missing",
                 BODY.replace("## Performance\nCI only.\n", ""),

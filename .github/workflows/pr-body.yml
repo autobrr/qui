@@ -1,7 +1,7 @@
 name: PR body
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
 permissions:
@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - name: Test the PR body check
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_pr_body.py'
