@@ -8711,28 +8711,15 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 	return t.Size
 }
 
-// searchResultUsable reports whether the shared search classifier accepts a
-// primary-pass result. Keeping this a boolean projection prevents alternate-query
-// scheduling from drifting from the main result loop.
-func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
-	return s.matcher().classifySearchCandidate(searchCandidateInput{
-		Source:                 source,
-		Candidate:              candidate,
-		SourceTitles:           arrTitles,
-		EpisodeMap:             episodeMap,
-		SourceSize:             sourceSize,
-		CandidateSize:          candidateSize,
-		TolerancePercent:       tolerancePercent,
-		FindIndividualEpisodes: findIndividualEpisodes,
-	}).Accepted
-}
-
-// searchUsablePredicate closes the per-search matching arguments over
-// searchResultUsable so the gatherer decides retries without seeing them.
-func (s *Service) searchUsablePredicate(source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) func(jackett.SearchResult) bool {
+// searchUsablePredicate reports whether the shared search classifier accepts a
+// primary-pass result. The main result loop classifies with the same base
+// input, so alternate-query scheduling cannot drift from it.
+func (s *Service) searchUsablePredicate(base searchCandidateInput) func(jackett.SearchResult) bool {
 	return func(r jackett.SearchResult) bool {
-		candidate := s.matcher().parseReleaseName(r.Title)
-		return s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes)
+		input := base
+		input.Candidate = namedRelease{release: s.matcher().parseReleaseName(r.Title), rawName: r.Title}
+		input.CandidateSize = r.Size
+		return s.matcher().classifySearchCandidate(input).Accepted
 	}
 }
 
@@ -9359,7 +9346,16 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	searchReq.OnComplete = traceIndexerErrs.record
 
 	sourceSizeForSearch := searchSourceSize(sourceTorrent)
-	usable := s.searchUsablePredicate(searchSource, sourceSizeForSearch, arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
+	searchBase := searchCandidateInput{
+		Source:                 searchSource,
+		SourceTitles:           arrTitles,
+		EpisodeMap:             episodeMap,
+		SourceSize:             sourceSizeForSearch,
+		TolerancePercent:       tolerancePercent,
+		FindIndividualEpisodes: opts.FindIndividualEpisodes,
+		RescueTitleMismatches:  opts.RescueTitleMismatches,
+	}
+	usable := s.searchUsablePredicate(searchBase)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
@@ -9409,17 +9405,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		// candidate size. Positive exact equality may replace a relaxable release
 		// or structure check; the downloaded torrent is inspected later by the
 		// normal apply pipeline.
-		decision := s.matcher().classifySearchCandidate(searchCandidateInput{
-			Source:                 searchSource,
-			Candidate:              namedRelease{release: candidateRelease, rawName: res.Title},
-			SourceTitles:           arrTitles,
-			EpisodeMap:             episodeMap,
-			SourceSize:             sourceSizeForSearch,
-			CandidateSize:          res.Size,
-			TolerancePercent:       tolerancePercent,
-			FindIndividualEpisodes: opts.FindIndividualEpisodes,
-			RescueTitleMismatches:  opts.RescueTitleMismatches,
-		})
+		input := searchBase
+		input.Candidate = namedRelease{release: candidateRelease, rawName: res.Title}
+		input.CandidateSize = res.Size
+		decision := s.matcher().classifySearchCandidate(input)
 		if decision.SizeEvidence == searchSizeEvidenceExact {
 			exactSizeCandidates++
 		}

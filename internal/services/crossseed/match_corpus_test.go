@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 // The match corpus runs every release-name pair through every match path (see
@@ -69,7 +70,6 @@ var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
 	3045, // season pack hint
-	3046, // title rescue in the retry step
 	3047, // season numeral without a file list
 	3048, // slash titles in the season pack check and Local matches
 }
@@ -362,7 +362,6 @@ var corpusRows = []corpusRow{
 		rescue:        true,
 		want:          corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathRetry:      knownDifference(corpusNoMatch, 3046, "The retry step does not get the title rescue setting, so it queries the indexer again."),
 			pathPrefilter:  allowedDifference(corpusNoMatch, reasonNoTitleRescue),
 			pathCrossMatch: allowedDifference(corpusNoMatch, reasonNoTitleRescue),
 			pathDedup:      allowedDifference(corpusNoMatch, reasonNoTitleRescue),
@@ -592,9 +591,8 @@ func searchCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func retryCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(false)
-	input := row.searchInput(t, svc)
-	return corpusVerdictOf(svc.searchResultUsable(input.Source, input.Candidate, row.sourceSize, row.candidateSize,
-		row.titles, row.episodeMap, defaultSizeMismatchTolerancePercent, false /* findIndividualEpisodes */))
+	usable := svc.searchUsablePredicate(row.searchInput(t, svc))
+	return corpusVerdictOf(usable(jackett.SearchResult{Title: row.candidate, Size: row.candidateSize}))
 }
 
 // applyCorpusVerdict replays the search decision when search admitted the pair.
