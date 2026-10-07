@@ -968,7 +968,9 @@ func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
 				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
 				"Outer/extra/Disc2/info.nfo":       100,
 			},
-			inUse: []string{"Outer/BDMV/STREAM/a.m2ts"},
+			inUse:    []string{"Outer/BDMV/STREAM/a.m2ts"},
+			wantPath: "Outer/extra/Disc2",
+			wantSize: 110,
 		},
 	}
 
@@ -992,7 +994,7 @@ func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
 				if err := os.Chtimes(p, mod, mod); err != nil {
 					t.Fatalf("chtimes: %v", err)
 				}
-				if mod.After(wantModified) && !slices.Contains(tt.inUse, rel) {
+				if mod.After(wantModified) && !slices.Contains(tt.inUse, rel) && strings.HasPrefix(rel, tt.wantPath) {
 					wantModified = mod
 				}
 			}

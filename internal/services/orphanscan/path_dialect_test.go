@@ -268,17 +268,6 @@ func TestPathDialect_IgnorePathMatching(t *testing.T) {
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/a\\b", "/data/a"))
 }
 
-// A lexical slash walk visits "AUX/x" before "AUX.d/y", and a name holding
-// a backslash sorts by that byte.
-func TestPathDialect_WalksBefore(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, walksBefore(fsops.SlashPaths, "/d/AUX/x", "/d/AUX.d/y"))
-	require.False(t, walksBefore(fsops.SlashPaths, "/d/AUX.d/y", "/d/AUX/x"))
-	require.False(t, walksBefore(fsops.SlashPaths, "/d/A\\x", "/d/A/y"))
-	require.True(t, walksBefore(fsops.SlashPaths, "/d/A/y", "/d/A\\x"))
-}
-
 // A remote scan stores the paths the remote walk produced, byte for byte, on
 // any host.
 func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {

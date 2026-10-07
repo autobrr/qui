@@ -99,9 +99,9 @@ type scanWalker struct {
 	seenDirs    map[string]*AbandonedDir
 
 	orphanUnits map[string]*OrphanFile
-	// Each disc unit's first in-use and first orphan file in lexical walk order, see keepFirstInWalkOrder.
-	discUnitFirstInUse  map[string]string
-	discUnitFirstOrphan map[string]string
+	// The walk only records these; resolveDiscUnits decides, so walk order cannot change the result.
+	discUnitsInUse      map[string]struct{}
+	discUnitsWithOrphan map[string]struct{}
 	discUnitCache       map[string]discUnitDecision
 	seenFileIDs         map[hardlink.FileID]struct{}
 	truncated           bool
@@ -124,9 +124,9 @@ func newScanWalker(
 		backend:             backend,
 		d:                   backend.Paths(),
 		orphanUnits:         make(map[string]*OrphanFile),
-		discUnitFirstInUse:  make(map[string]string),
+		discUnitsInUse:      make(map[string]struct{}),
 		discUnitCache:       make(map[string]discUnitDecision),
-		discUnitFirstOrphan: make(map[string]string),
+		discUnitsWithOrphan: make(map[string]struct{}),
 		seenFileIDs:         make(map[hardlink.FileID]struct{}),
 		collectDirs:         collectDirs,
 		seenDirs:            make(map[string]*AbandonedDir),
@@ -176,46 +176,6 @@ func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) boo
 	return false
 }
 
-func (w *scanWalker) markInUse(unitPath, path string, isDiscUnit bool) {
-	if !isDiscUnit {
-		return
-	}
-	keepFirstInWalkOrder(w.d, w.discUnitFirstInUse, unitPath, path)
-	delete(w.orphanUnits, unitPath)
-}
-
-// keepFirstInWalkOrder lets a walk that interleaves sibling directories, as a
-// concurrent remote walk does, decide disc units the way the lexical local walk does.
-func keepFirstInWalkOrder(d fsops.PathDialect, firsts map[string]string, unitPath, path string) {
-	if first, ok := firsts[unitPath]; !ok || walksBefore(d, path, first) {
-		firsts[unitPath] = path
-	}
-}
-
-// walksBefore reports whether a lexical walk reaches file a before file b.
-// It compares names segment by segment, so "AUX/x" comes before "AUX.d/y".
-func walksBefore(d fsops.PathDialect, a, b string) bool {
-	sep := d.Separator()
-	for i := range min(len(a), len(b)) {
-		if a[i] == b[i] {
-			continue
-		}
-		if strings.HasPrefix(a[i:], sep) {
-			return true
-		}
-		if strings.HasPrefix(b[i:], sep) {
-			return false
-		}
-		return a[i] < b[i]
-	}
-	return len(a) < len(b)
-}
-
-func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
-	_, ok := w.discUnitFirstInUse[unitPath]
-	return ok
-}
-
 // outermostDiscUnit returns the outermost disc root that contains normUnit.
 // Inner disc roots also fold into the outer root, so a unit folded into an
 // inner root could lose its size, depending on map order (#3002).
@@ -231,20 +191,22 @@ func outermostDiscUnit(d fsops.PathDialect, normUnit string, discRoots map[strin
 	return outermost, outermost != ""
 }
 
-func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
-	if len(w.discUnitFirstOrphan) == 0 {
-		return
+func (w *scanWalker) resolveDiscUnits() {
+	// A disc unit with an in-use file stays whole and hides nothing beside it.
+	for du := range w.discUnitsInUse {
+		delete(w.orphanUnits, du)
 	}
 
 	// Do not fold: two real sibling directories that differ only by case would
 	// merge into one on a case-sensitive filesystem.
 	discRoots := make(map[string]string)
-	for du, firstOrphan := range w.discUnitFirstOrphan {
-		// Keeps what the lexical local walk reports: siblings are hidden only when an orphan disc file comes first.
-		if firstInUse, ok := w.discUnitFirstInUse[du]; ok && walksBefore(w.d, firstInUse, firstOrphan) {
-			continue
+	for du := range w.discUnitsWithOrphan {
+		if _, inUse := w.discUnitsInUse[du]; !inUse {
+			discRoots[cleanPath(w.d, du)] = du
 		}
-		discRoots[cleanPath(w.d, du)] = du
+	}
+	if len(discRoots) == 0 {
+		return
 	}
 
 	for unit, entry := range w.orphanUnits {
@@ -268,7 +230,7 @@ func (w *scanWalker) mergeIntoDiscUnit(unit, discUnitPath string, entry *OrphanF
 }
 
 func (w *scanWalker) orphans() []OrphanFile {
-	w.mergeSuppressedUnitsIntoDiscUnits()
+	w.resolveDiscUnits()
 
 	orphans := make([]OrphanFile, 0, len(w.orphanUnits))
 	for _, o := range w.orphanUnits {
@@ -359,7 +321,9 @@ func walkScanRootWithUnitFilter(
 		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
 		normPath := normalizePath(w.d, path)
 		if w.tfm.Has(normPath) {
-			w.markInUse(unitPath, path, isDiscUnit)
+			if isDiscUnit {
+				w.discUnitsInUse[unitPath] = struct{}{}
+			}
 			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
 			continue
 		}
@@ -379,10 +343,7 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 		if isDiscUnit {
-			keepFirstInWalkOrder(w.d, w.discUnitFirstOrphan, unitPath, path)
-			if w.isDiscUnitInUse(unitPath) {
-				continue
-			}
+			w.discUnitsWithOrphan[unitPath] = struct{}{}
 		}
 		if w.unitFilter != nil && !w.unitFilter(unitPath, isDiscUnit) {
 			continue
