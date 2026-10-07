@@ -247,6 +247,15 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		name:          "yearless movie sequel against season pack",
+		source:        "Kaiju.Squad.S03.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.III.1080p.BluRay.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: 3 * corpusEpisodeSize,
+		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
+		want:          corpusNoMatch,
+	},
+	{
 		name:           "AKA title",
 		source:         "Kaiju.Kyoutai.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju Squad AKA Kaiju Kyoutai S02E05 1080p WEB H264-GRP",
