@@ -283,6 +283,45 @@ func TestWalkDir_IgnoreDirNamesAndPrefixes(t *testing.T) {
 	assert.NotContains(t, relPaths, filepath.Join(".trash-1000", "deleted.mkv"))
 }
 
+// The walk root is exempt from the name filters, and IgnoreDirNames applies
+// to directories only, so a hidden or ignored-name root is walked and a file
+// named like an ignored directory is kept.
+func TestWalkDir_RootAndFileAreNotNameFiltered(t *testing.T) {
+	b := newBackend()
+	parent := t.TempDir()
+	opts := fsops.WalkOptions{SkipHidden: true, IgnoreDirNames: []string{"@eaDir", "node_modules"}}
+
+	for _, name := range []string{".hidden-root", "@eaDir"} {
+		root := filepath.Join(parent, name)
+		writeFile(t, filepath.Join(root, "node_modules"), "a file, not a directory")
+
+		ch, err := b.WalkDir(context.Background(), root, opts)
+		require.NoError(t, err)
+
+		var relPaths []string
+		for e := range ch {
+			relPaths = append(relPaths, e.RelPath)
+		}
+		assert.Contains(t, relPaths, "node_modules", name)
+	}
+}
+
+// A root that is itself an IgnorePaths entry walks nothing, as it does over sftp.
+func TestWalkDir_IgnoredRootWalksNothing(t *testing.T) {
+	b := newBackend()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "keep.txt"), "k")
+
+	ch, err := b.WalkDir(context.Background(), root, fsops.WalkOptions{IgnorePaths: []string{root}})
+	require.NoError(t, err)
+
+	var relPaths []string
+	for e := range ch {
+		relPaths = append(relPaths, e.RelPath)
+	}
+	assert.Empty(t, relPaths)
+}
+
 func TestWalkDir_ContextCancellation(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
