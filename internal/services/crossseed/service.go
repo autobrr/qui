@@ -1083,6 +1083,23 @@ func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBy
 	return m.sourceFileKeys, m.sourceTotalBytes, nil
 }
 
+// sharesLargestFileSize reports whether the largest files of the source and
+// the candidate have the same size. A failed file fetch counts as no.
+func (m *localMatchContext) sharesLargestFileSize(candidate *qbittorrent.CrossInstanceTorrentView) bool {
+	if _, _, err := m.getSourceFiles(); err != nil {
+		return false
+	}
+	candidateFiles, err := m.svc.getTorrentFilesCached(m.ctx, candidate.InstanceID, candidate.Hash)
+	if err != nil {
+		if m.candidateFilesErr == nil {
+			m.candidateFilesErr = err
+		}
+		return false
+	}
+	sourceLargest, candidateLargest := FindLargestFile(m.sourceFiles), FindLargestFile(candidateFiles)
+	return candidateLargest != nil && sourceLargest.Size == candidateLargest.Size
+}
+
 // getSourceFileIDs lazily stats the source torrent's files on the local filesystem
 // and caches the FileIDs of its hard-linked files (nlink > 1). Only files with
 // extra links can be shared with another torrent, so nlink == 1 files are skipped.
@@ -1552,10 +1569,12 @@ func (s *Service) determineLocalMatchType(
 	// Strategy 3: Release metadata match using rls library
 	candidateRelease := s.releaseCache.Parse(candidate.Name)
 	matched, mismatchReason := s.matcher().releasesMatchWithReason(sourceRelease, candidateRelease, false)
-	// A bare "Title III" can be a movie sequel without a year, so it pairs with a season pack only on a close size.
+	// A bare "Title III" can be a movie sequel without a year, so it pairs with a season pack only on a close
+	// size and an equal largest file: one episode is never the size of a whole movie.
 	if matched && (withTitleNumeralSeason(sourceRelease, candidateRelease) != sourceRelease ||
 		withTitleNumeralSeason(candidateRelease, sourceRelease) != candidateRelease) {
-		matched = s.matcher().isSizeWithinTolerance(searchSourceSize(source), searchSourceSize(candidate.Torrent), defaultSizeMismatchTolerancePercent)
+		matched = s.matcher().isSizeWithinTolerance(searchSourceSize(source), searchSourceSize(candidate.Torrent), defaultSizeMismatchTolerancePercent) &&
+			matchCtx.sharesLargestFileSize(candidate)
 	}
 	if matched {
 		return matchTypeRelease

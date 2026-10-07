@@ -156,6 +156,7 @@ const (
 	reasonDedupKey          = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
 	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
 	reasonHintTitle         = "The season pack hint compares only the lowercase titles, so it does not see that the pack and the episode are the same show."
+	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 )
 
@@ -254,6 +255,20 @@ var corpusRows = []corpusRow{
 		candidateSize: 3 * corpusEpisodeSize,
 		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
 		want:          corpusNoMatch,
+	},
+	{
+		name:          "yearless movie sequel of the season pack size",
+		source:        "Kaiju.Squad.S03.1080p.BluRay.x264-GRP",
+		candidate:     "Kaiju.Squad.III.1080p.BluRay.x264-GRP",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize + 500,
+		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
+		want:          corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathSearch:  allowedDifference(corpusMatch, reasonNumeralSameSize),
+			pathRetry:   allowedDifference(corpusMatch, reasonNumeralSameSize),
+			pathWebhook: allowedDifference(corpusMatch, reasonNumeralSameSize),
+		},
 	},
 	{
 		name:           "AKA title",
