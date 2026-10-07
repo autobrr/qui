@@ -115,3 +115,16 @@ describe("getFieldLabel", () => {
     expect(constants.getFieldLabel("SAVE_PATH", withKey.t)).toBe("probe-string")
   })
 })
+
+describe("getFieldType", () => {
+  it.each([
+    ["HARDLINK_SCOPE", "hardlinkScope"],
+    ["SAVE_PATH", "string"],
+    ["NOT_A_FIELD", "string"],
+    ["__proto__", "string"],
+    ["constructor", "string"],
+    ["toString", "string"],
+  ])("returns the type of %s, and string for an id with no entry", (field, type) => {
+    expect(constants.getFieldType(field)).toBe(type)
+  })
+})

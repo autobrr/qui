@@ -343,7 +343,8 @@ export const FIELD_GROUPS = [
 
 // Helper to get field type
 export function getFieldType(field: string): FieldType {
-  return CONDITION_FIELD_TYPES[field as ConditionField] ?? "string";
+  // Own keys only: saved rules can hold any id, and "constructor" would read Object.prototype.
+  return Object.hasOwn(CONDITION_FIELD_TYPES, field) ? CONDITION_FIELD_TYPES[field as ConditionField] : "string";
 }
 
 // Special operators only available for NAME field (cross-category lookups)
