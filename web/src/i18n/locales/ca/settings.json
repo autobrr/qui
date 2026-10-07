@@ -557,6 +557,17 @@
       "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
       "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
       "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+    },
+    "layout": {
+      "mobileSplit": "Tema separat per a la disposició mòbil",
+      "mobileSplitHelp": "La disposició mòbil (una finestra de menys de 768 px d'amplada) i la disposició d'escriptori mantenen cadascuna el seu tema, mode i variació. Aquesta opció s'aplica a tots els navegadors.",
+      "localOnly": "Mantén local el tema d'aquest navegador",
+      "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
+      "changesMobile": "Canvia el tema mòbil",
+      "changesDesktop": "Canvia el tema d'escriptori",
+      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
+      "saveError": "No s'ha pogut desar l'opció del tema",
+      "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }
   },
   "arrInstances": {

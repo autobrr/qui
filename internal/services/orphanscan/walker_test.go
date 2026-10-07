@@ -6,9 +6,11 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -909,6 +911,119 @@ func TestWalkScanRoot_PermissionError(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatalf("child permission error must remain skipped: %v", err)
+			}
+		})
+	}
+}
+
+func TestWalkScanRoot_LostConnectionIsNeverSkipped(t *testing.T) {
+	root := t.TempDir()
+	lost := fmt.Errorf("%w: %w", fsops.ErrConnectionLost, fs.ErrPermission)
+	backend := &fakeWalkBackend{
+		Backend: newTestBackend(),
+		entries: []fsops.WalkEntry{{Path: filepath.Join(root, "child"), Err: lost}},
+	}
+	_, _, err := walkScanRoot(t.Context(), root, NewTorrentFileMap(), nil, 0, 0, backend)
+	if !errors.Is(err, fsops.ErrConnectionLost) {
+		t.Fatalf("a lost connection must fail the scan, got %v", err)
+	}
+}
+
+func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		files    map[string]int // relative path to size
+		inUse    []string
+		wantPath string
+		wantSize int64
+	}{
+		{
+			name: "every file orphaned",
+			files: map[string]int{
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			wantPath: "Outer",
+			wantSize: 111,
+		},
+		{
+			name: "outer disc in use",
+			files: map[string]int{
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			inUse:    []string{"Outer/BDMV/STREAM/a.m2ts"},
+			wantPath: "Outer/extra/Disc2",
+			wantSize: 110,
+		},
+		{
+			name: "outer disc in use after an orphan",
+			files: map[string]int{
+				"Outer/BDMV/CLIPINF/a.clpi":        1000,
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			inUse: []string{"Outer/BDMV/STREAM/a.m2ts"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			base := time.Now().Add(-2 * time.Hour)
+			var wantModified time.Time
+			for rel, size := range tt.files {
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(p, make([]byte, size), 0o600); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				// The largest file is the newest, so losing it also changes ModifiedAt.
+				mod := base.Add(time.Duration(size) * time.Second)
+				if err := os.Chtimes(p, mod, mod); err != nil {
+					t.Fatalf("chtimes: %v", err)
+				}
+				if mod.After(wantModified) && !slices.Contains(tt.inUse, rel) {
+					wantModified = mod
+				}
+			}
+
+			tfm := NewTorrentFileMap()
+			for _, rel := range tt.inUse {
+				tfm.Add(normalizePath(filepath.Join(root, filepath.FromSlash(rel))))
+			}
+
+			// Map order decides the fold, so repeat to hit every order.
+			for run := range 100 {
+				orphans, _, err := walkScanRoot(t.Context(), root, tfm, nil, 0, 0, local.NewBackend())
+				if err != nil {
+					t.Fatalf("run %d: walkScanRoot: %v", run, err)
+				}
+				if tt.wantPath == "" {
+					if len(orphans) != 0 {
+						t.Fatalf("run %d: expected no orphans, got %+v", run, orphans)
+					}
+					continue
+				}
+				if len(orphans) != 1 {
+					t.Fatalf("run %d: expected 1 orphan unit, got %+v", run, orphans)
+				}
+				got := orphans[0]
+				if got.Path != filepath.Join(root, filepath.FromSlash(tt.wantPath)) || got.Size != tt.wantSize {
+					t.Fatalf("run %d: got %s size %d, want %s size %d", run, got.Path, got.Size, tt.wantPath, tt.wantSize)
+				}
+				if !got.ModifiedAt.Equal(wantModified) {
+					t.Fatalf("run %d: ModifiedAt = %v, want %v", run, got.ModifiedAt, wantModified)
+				}
 			}
 		})
 	}

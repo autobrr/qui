@@ -758,8 +758,7 @@
           "invalidJson": "Formato JSON inválido",
           "notObject": "Esperado um objeto JSON",
           "missingName": "Campo 'name' ausente ou inválido",
-          "missingConditions": "Campo 'conditions' ausente ou inválido",
-          "missingTracker": "Informe 'trackerDomains' (lista de strings) ou 'trackerPattern'"
+          "missingConditions": "Campo 'conditions' ausente ou inválido"
         }
       },
       "editJsonDialog": {
@@ -839,6 +838,7 @@
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
       "noLocalAccess": "Acesso Local Ausente",
       "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
+      "remoteLimits": "A exclusão e a auto-limpeza ainda não funcionam em instâncias remotas. O qui também não consegue saber quando dois caminhos são o mesmo arquivo, então um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize.",
       "on": "Ligado",
       "off": "Desligado",
       "summaryGrace": "Tolerância {{grace}}m",
@@ -850,6 +850,7 @@
       "cancel": "Cancelar",
       "autoCleanupEnabled": "Auto-limpeza ATIVA (≤{{max}} arquivos)",
       "autoCleanupDisabled": "Auto-limpeza INATIVA",
+      "autoCleanupRemote": "Sem auto-limpeza em instâncias remotas",
       "pathsIgnored_one": " · {{count}} caminho ignorado",
       "pathsIgnored_other": " · {{count}} caminhos ignorados",
       "scanNow": "Escanear Agora",
@@ -895,6 +896,7 @@
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
       "description": "Revise os arquivos e diretórios que esta execução irá remover.",
+      "remoteDescription": "Revise os arquivos e diretórios encontrados nesta varredura.",
       "itemsCount_one": "{{count}} item · {{size}}",
       "itemsCount_other": "{{count}} itens · {{size}}",
       "truncated": " (truncado)",
@@ -909,6 +911,7 @@
       "exportCSV": "Exportar CSV",
       "close": "Fechar",
       "deleteItems": "Excluir",
+      "remoteDeleteUnavailable": "Esta varredura foi feita em uma instância remota, onde a exclusão ainda não é suportada. Exporte a lista para remover você mesmo os arquivos no servidor.",
       "statusLabels": {
         "pending": "Pendente",
         "deleted": "Excluído",
@@ -1385,7 +1388,7 @@
         "pathHelp": "Defina onde rastrear",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
-          "localAccessRequired": "Ligue Acesso Local do qBittorrent para varrer discos.",
+          "localAccessRequired": "A origem de espaço livre por caminho requer o \"Acesso ao Sistema de Arquivos Local\".",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
         }
       },
@@ -1575,7 +1578,7 @@
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
-        "enableLocalAccessOrDefault": "Nas Configurações Globais ligue o Acesso a Arquivos (Filesystem Local).",
+        "enableLocalAccessOrDefault": "Ative o Acesso ao Sistema de Arquivos Local nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\"",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
         "fieldMultiplierInvalid": "O multiplicador de campo deve ser um número válido.",

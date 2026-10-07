@@ -842,6 +842,8 @@ Hardlink scope detection depends on the kernel reporting accurate `nlink` values
 
 On affected filesystems, every torrent appears to have scope `none` because nlink is always 1. qui has no workaround for this kernel and filesystem limitation. If you suspect this issue, run `stat` on a file with hardlinks and read the "Links" count.
 
+Hardlink scope does not detect reflinks (also called block clones). A reflink is a separate file with its own inode. Cloning does not raise its `nlink` count, even when the file shares its data with another file. A torrent whose files reach your library only through reflinks therefore gets scope `none`, and a "Remove Upgraded Torrents" rule can delete it. Tools such as `cp --reflink`, `fclones dedupe`, and ZFS block cloning make reflinks. Torrents that qui adds in [reflink mode](./cross-seed/hardlink-mode.md#reflink-mode-alternative) also get scope `none`. If your rules depend on `HARDLINK_SCOPE`, use hardlinks for the library link. For example, use `fclones link` instead of `fclones dedupe`.
+
 Hardlinks cannot span different filesystems. If your torrent data and media library live on separate filesystems, or on Docker volumes with different host paths, Sonarr and Radarr copy files instead. Scope detection then finds nothing.
 
 #### Example: Remove Upgraded Torrents
@@ -856,7 +858,6 @@ Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUA
 {
   "name": "Remove Upgraded Torrents",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "delete": {
@@ -964,7 +965,6 @@ If torrents have no media library hardlinks, this rule tags them with `noHL`, ev
 {
   "name": "Tag noHL (multi-instance)",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1020,7 +1020,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Season pack",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1034,7 +1033,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Packed episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1048,7 +1046,6 @@ One rule per status. The rule editor keeps one condition per rule and applies it
 {
   "name": "Unpacked episode",
   "trackerPattern": "*",
-  "trackerDomains": ["*"],
   "conditions": {
     "schemaVersion": "1",
     "tags": [
@@ -1155,7 +1152,7 @@ Path on server requires "Local Filesystem Access" enabled on the instance.
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-qui does not support Path on server on Windows, and Free Space always uses qBittorrent's reported free space there. The UI disables the option and switches legacy workflows back to the default when you open them.
+qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching

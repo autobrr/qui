@@ -27,7 +27,7 @@ const { runQuery, confirmMutation } = vi.hoisted(() => {
     { id: 3, runId: 1, filePath: "/data/leftover", fileSize: 0, isAbandonedDir: true, status: "pending" },
   ]
   return {
-    runQuery: { data: { files, id: 1, status: "preview_ready", filesFound: 2, partial: false, errorMessage: "" } },
+    runQuery: { data: { files, id: 1, status: "preview_ready", filesFound: 2, partial: false, errorMessage: "", filesystemMode: "local" } },
     confirmMutation: { isPending: false, mutate: vi.fn() },
   }
 })
@@ -43,6 +43,7 @@ import "@/i18n"
 beforeEach(() => {
   runQuery.data.partial = false
   runQuery.data.errorMessage = ""
+  runQuery.data.filesystemMode = "local"
   confirmMutation.mutate.mockClear()
   // Radix dialog/tooltip measure through ResizeObserver, which jsdom lacks.
   vi.stubGlobal("ResizeObserver", class {
@@ -95,4 +96,34 @@ it("shows a partial-scan warning before allowing manual deletion", () => {
   expect(warning.textContent).toContain(runQuery.data.errorMessage)
   fireEvent.click(getByRole("button", { name: "preferences.orphanScanPreview.deleteItems" }))
   expect(confirmMutation.mutate).toHaveBeenCalledWith(1, expect.any(Object))
+})
+
+it("keeps Delete disabled for a remote run, says why inline and does not promise removal", () => {
+  runQuery.data.filesystemMode = "remote"
+  const { getByRole } = render(
+    <TooltipProvider>
+      <OrphanScanPreviewDialog open onOpenChange={() => {}} instanceId={1} runId={1} />
+    </TooltipProvider>
+  )
+
+  const deleteButton = getByRole("button", { name: "preferences.orphanScanPreview.deleteItems" })
+  expect(deleteButton.hasAttribute("disabled")).toBe(true)
+  expect(document.body.textContent).toContain("preferences.orphanScanPreview.remoteDeleteUnavailable")
+  expect(document.body.textContent).toContain("preferences.orphanScanPreview.remoteDescription")
+  expect(document.body.textContent).not.toContain("preferences.orphanScanPreview.description")
+  fireEvent.click(deleteButton)
+  expect(confirmMutation.mutate).not.toHaveBeenCalled()
+})
+
+it("offers Delete for a local run without the remote note", () => {
+  const { getByRole } = render(
+    <TooltipProvider>
+      <OrphanScanPreviewDialog open onOpenChange={() => {}} instanceId={1} runId={1} />
+    </TooltipProvider>
+  )
+
+  expect(getByRole("button", { name: "preferences.orphanScanPreview.deleteItems" }).hasAttribute("disabled")).toBe(false)
+  expect(document.body.textContent).not.toContain("preferences.orphanScanPreview.remoteDeleteUnavailable")
+  expect(document.body.textContent).toContain("preferences.orphanScanPreview.description")
+  expect(document.body.textContent).not.toContain("preferences.orphanScanPreview.remoteDescription")
 })

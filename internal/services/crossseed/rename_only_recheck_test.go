@@ -10,6 +10,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -146,6 +148,58 @@ func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *tes
 	require.Contains(t, sync.bulkActions, "resume:"+normalizeHash(newHash))
 	for _, action := range sync.bulkActions {
 		require.NotContains(t, action, "recheck:")
+	}
+}
+
+func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		skipRecheck bool
+		extraFile   bool
+		wantStatus  string
+		wantAction  string
+	}{
+		{name: "skip recheck adds and resumes", skipRecheck: true, wantStatus: "added", wantAction: "resume:"},
+		{name: "recheck adds paused and rechecks", wantStatus: "added", wantAction: "recheck:"},
+		{name: "skip recheck with extra file skips", skipRecheck: true, extraFile: true, wantStatus: "skipped_recheck"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The matched files do not exist on disk, so no base dir passes the
+			// same-filesystem probe: the full-recheck fallback, not the soft one.
+			instance := &models.Instance{
+				ID:                       1,
+				UseReflinks:              true,
+				FallbackToRegularMode:    true,
+				HasLocalFilesystemAccess: true,
+				HardlinkBaseDir:          t.TempDir(),
+			}
+			sourceFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			if tt.extraFile {
+				sourceFiles = append(sourceFiles, qbt.TorrentFile{Name: "Example.Film.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-EXGRP.nfo", Size: 700})
+			}
+			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
+			newHash := "newhash"
+			service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+
+			req := &CrossSeedRequest{SkipRecheck: tt.skipRecheck}
+
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil)
+
+			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
+			if tt.wantAction == "" {
+				require.Nil(t, sync.addTorrentOpts, "AddTorrent must not be called")
+				return
+			}
+			require.Equal(t, "true", sync.addTorrentOpts["paused"])
+			require.Equal(t, []string{tt.wantAction + normalizeHash(newHash)}, sync.bulkActions)
+		})
 	}
 }
 

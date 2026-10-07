@@ -740,8 +740,7 @@
           "invalidJson": "JSON 格式無效",
           "notObject": "需要一個 JSON 物件",
           "missingName": "缺少或無效的 'name' 欄位",
-          "missingConditions": "缺少或無效的 'conditions' 欄位",
-          "missingTracker": "必須指定 'trackerDomains'（字串陣列）或 'trackerPattern'"
+          "missingConditions": "缺少或無效的 'conditions' 欄位"
         }
       },
       "editJsonDialog": {
@@ -821,6 +820,7 @@
       "description": "掃描下載目錄並識別孤立檔案以進行清理。",
       "noLocalAccess": "無本機存取權限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必須執行在同一臺機器上。在實例設定中啟用\"本機檔案系統存取\"以使用孤立項目掃描。",
+      "remoteLimits": "刪除和自動清理暫時無法在遠端實例上執行。qui 也無法判斷兩個路徑是否指向同一檔案，因此可透過第二個路徑存取的檔案（例如透過 bind mount）即使正被種子使用，也可能出現在清單中。",
       "on": "開",
       "off": "關",
       "summaryGrace": "寬限期 {{grace}} 分鐘",
@@ -831,6 +831,7 @@
       "cancel": "取消",
       "autoCleanupEnabled": "自動清理已啟用（≤{{max}} 個檔案）",
       "autoCleanupDisabled": "自動清理已停用",
+      "autoCleanupRemote": "遠端實例不自動清理",
       "pathsIgnored_other": " · {{count}} 個路徑已忽略",
       "scanNow": "立即掃描",
       "configure": "配置",
@@ -872,6 +873,7 @@
     "orphanScanPreview": {
       "title": "孤立項目預覽",
       "description": "檢視本次執行將刪除的檔案和目錄。",
+      "remoteDescription": "檢視本次掃描找到的檔案和目錄。",
       "itemsCount_other": "{{count}} 個項目 · {{size}}",
       "truncated": "（已截斷）",
       "path": "路徑",
@@ -885,6 +887,7 @@
       "exportCSV": "匯出 CSV",
       "close": "關閉",
       "deleteItems": "刪除",
+      "remoteDeleteUnavailable": "此掃描在遠端實例上進行，遠端實例暫不支援刪除。請匯出清單，然後自行在伺服器上刪除這些檔案。",
       "statusLabels": {
         "pending": "等待中",
         "deleted": "已刪除",

@@ -752,8 +752,7 @@
           "invalidJson": "Format JSON invalide",
           "notObject": "Un objet JSON est attendu",
           "missingName": "Champ 'name' manquant ou invalide",
-          "missingConditions": "Champ 'conditions' manquant ou invalide",
-          "missingTracker": "Vous devez indiquer 'trackerDomains' (tableau de chaînes) ou 'trackerPattern'"
+          "missingConditions": "Champ 'conditions' manquant ou invalide"
         }
       },
       "editJsonDialog": {
@@ -833,6 +832,7 @@
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
       "noLocalAccess": "Pas d'accès local",
       "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
+      "remoteLimits": "La suppression et le nettoyage automatique ne fonctionnent pas encore sur les instances distantes. L'application ne sait pas non plus reconnaître deux chemins menant au même fichier : un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolérance {{grace}}min",
@@ -844,6 +844,7 @@
       "cancel": "Annuler",
       "autoCleanupEnabled": "Nettoyage automatique activé (≤{{max}} fichiers)",
       "autoCleanupDisabled": "Nettoyage automatique désactivé",
+      "autoCleanupRemote": "Pas de nettoyage automatique sur les instances distantes",
       "pathsIgnored_one": " · {{count}} chemin ignoré",
       "pathsIgnored_other": " · {{count}} chemins ignorés",
       "scanNow": "Analyser maintenant",
@@ -889,6 +890,7 @@
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
       "description": "Examinez les fichiers et dossiers que cette exécution va supprimer.",
+      "remoteDescription": "Examinez les fichiers et dossiers trouvés par cette analyse.",
       "itemsCount_one": "{{count}} élément · {{size}}",
       "itemsCount_other": "{{count}} éléments · {{size}}",
       "truncated": " (tronqué)",
@@ -903,6 +905,7 @@
       "exportCSV": "Exporter CSV",
       "close": "Fermer",
       "deleteItems": "Supprimer",
+      "remoteDeleteUnavailable": "Cette analyse a été faite sur une instance distante, où la suppression n'est pas encore prise en charge. Exportez la liste pour supprimer vous-même les fichiers sur le serveur.",
       "statusLabels": {
         "pending": "En attente",
         "deleted": "Supprimé",

@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+// How qui reaches an instance's torrent data. Remote is SSH with a confirmed host key.
+export type FilesystemMode = "none" | "local" | "remote"
+
 export interface Instance {
   id: number
   name: string
@@ -13,6 +16,7 @@ export interface Instance {
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
   capabilities: FilesystemCapabilities
+  filesystemMode: FilesystemMode
   // Hardlink mode settings (per-instance)
   useHardlinks: boolean
   hardlinkBaseDir: string

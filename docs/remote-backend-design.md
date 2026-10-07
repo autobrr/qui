@@ -1,6 +1,6 @@
 # Remote Filesystem Backend Design (SSH/SFTP-native)
 
-Status: draft for maintainer review. Supersedes the remote-helper design
+Status: largely built; kept as the design reference. Supersedes the remote-helper design
 (PR #1913, closed but kept as reference — it documents the deployable-agent
 tier and its NDJSON wire protocol, which remain the fallback if this design
 hits a performance wall).
@@ -89,7 +89,7 @@ Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, implemented in the remote-backend PR** (raised by com6056
+fixed-size form, planned for slice 3e (#2726) and not shipped yet** (raised by com6056
 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
@@ -264,9 +264,10 @@ sync manager follow 3d, when writes make them reachable.
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
   qui, so the user makes that call, never the code. On a background
-  reconnect nobody is there to prompt, so a mismatch parks the instance
-  in a needs-reconfirmation state and fails every fsop until a human
-  clears it.
+  reconnect nobody is there to prompt, so a mismatch fails every fsop on
+  the instance. The refusal lives only in memory (see Connection Pool):
+  confirming or replacing the pin clears it, and so does a restart, after
+  which the next dial is refused again while the key is still wrong.
 - The pin belongs to the host, not the credential: deleting SSH
   credentials keeps the pin, `ssh-test` against a pinned instance routes
   into the mismatch flow rather than first contact, and editing host or
@@ -423,7 +424,7 @@ scratch directories and a temporarily added, uniquely tagged
 
 ## Rollout
 
-1. Foundation (open): #1914 backend interface, #1915 callsite migration.
+1. Foundation (merged): #1914 backend interface, #1915 callsite migration.
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
@@ -436,29 +437,37 @@ scratch directories and a temporarily added, uniquely tagged
    - 3d (#2725): SFTP write operations.
    - 3e (#2726): exec tier and batch methods; extends the pool to hand out
      the ssh client for exec sessions.
-4. Frontend.
-5. Feature rollout per service, degraded-mode UX. Most consumers still
-   admit an instance on `HasLocalFilesystemAccess` rather than on its
-   filesystem mode: orphan scan (handler and service filters), automations
+4. Frontend. Lands last. It is the only UI path that sets up SSH access,
+   so it gates the rollout for users. Until #2917 ships, no UI text names
+   SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
+   locales. Text that only a remote instance renders says "remote
+   instance" and stays. Text a local user also sees keeps its develop
+   wording, and the slice adds it to the reverse list in #2917's body.
+   (#2916 Decisions)
+5. Feature rollout per service, degraded-mode UX. Consumers admit an
+   instance on a filesystem capability (`Pool.Require`,
+   `models.FilesystemCapabilitiesOf`): automations
    (missing-files condition, hardlink index; rule save and dry-run
    validation), dirscan, cross-seed (link mode, manual assemble,
    mediainfo, season pack, partial pool, local-match detection), the sync
-   manager's hardlink base dir, the disc-scan route (which checks for
-   local mode, not the flag), and two routes that read file content, which
+   manager's hardlink base dir, the disc-scan route (which requires
+   `CapabilityContent`), and two routes that read file content, which
    no `Backend` method covers yet: the torrents handler's local-access
-   routes and the proxy mediainfo route. The exception is the free-space
-   path source: its preview and scheduled-run paths resolve the backend
-   and call `Statfs` with no mode check, so a remote-mode instance already
-   reports remote free space, and that is the intended figure. A gate
+   routes and the proxy mediainfo route. The free-space
+   path source: its preview and scheduled-run paths call `Statfs` only
+   after `Pool.Require` grants the Read capability, and rule save
+   validation also checks Read. A remote-mode instance has Read, so it
+   already reports remote free space, and that is the intended figure. A gate
    reads the instance before the work starts, so the reads after it
    resolve backend and mode from one later read and refuse every mode but
-   local. The hardlink index, dirscan and the sync manager's cleanup do
-   that through `Pool.LocalBackend`, and missing files through
+   local. Dirscan does that through
+   `Pool.LocalBackend`, and missing files through
    `Pool.Resolve`. An instance whose local access was turned off after the
    gate is then refused rather than read over SSH at a local path. Orphan
-   scan still resolves with `GetBackend` until remote orphan scan replaces
-   its gate. Each remaining gate lifts in its own slice, with the
-   degraded-mode handling that service needs, and the API-driven checks
+   scan admits an instance on Read, walks the backend `Pool.Require`
+   returns for Read, and refuses to delete from a run scanned over SSH.
+   Each remaining gate lifts in its own slice, with the degraded-mode
+   handling that service needs, and the API-driven checks
    (missing files, orphan scan) become the field test of that slice. Every
    remote read that loses its connection, or that the pool will not dial,
    fails with `fsops.ErrConnectionLost`. When the pool refused on purpose

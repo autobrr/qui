@@ -740,8 +740,7 @@
           "invalidJson": "잘못된 JSON 형식",
           "notObject": "JSON 객체가 필요합니다",
           "missingName": "'name' 필드가 없거나 잘못되었습니다",
-          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다",
-          "missingTracker": "'trackerDomains'(문자열 배열) 또는 'trackerPattern'을 지정해야 합니다"
+          "missingConditions": "'conditions' 필드가 없거나 잘못되었습니다"
         }
       },
       "editJsonDialog": {
@@ -821,6 +820,7 @@
       "description": "다운로드 디렉터리를 스캔하여 정리할 고아 파일을 식별합니다.",
       "noLocalAccess": "로컬 접근 없음",
       "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 항목 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
+      "remoteLimits": "원격 인스턴스에서는 삭제와 자동 정리가 아직 실행되지 않습니다. 또한 qui는 두 경로가 같은 파일인지 구분할 수 없으므로, 바인드 마운트처럼 두 번째 경로로 접근 가능한 파일은 토렌트가 사용 중이어도 목록에 표시될 수 있습니다.",
       "on": "켜짐",
       "off": "꺼짐",
       "summaryGrace": "유예 {{grace}}분",
@@ -831,6 +831,7 @@
       "cancel": "취소",
       "autoCleanupEnabled": "자동 정리 활성화됨 (≤{{max}}개 파일)",
       "autoCleanupDisabled": "자동 정리 비활성화됨",
+      "autoCleanupRemote": "원격 인스턴스는 자동 정리 없음",
       "pathsIgnored_other": " · 경로 {{count}}개 무시됨",
       "scanNow": "지금 스캔",
       "configure": "구성",
@@ -872,6 +873,7 @@
     "orphanScanPreview": {
       "title": "고아 항목 미리 보기",
       "description": "이번 실행에서 삭제될 파일과 디렉터리를 검토하세요.",
+      "remoteDescription": "이번 스캔에서 찾은 파일과 디렉터리를 검토하세요.",
       "itemsCount_other": "항목 {{count}}개 · {{size}}",
       "truncated": " (잘림)",
       "path": "경로",
@@ -885,6 +887,7 @@
       "exportCSV": "CSV 내보내기",
       "close": "닫기",
       "deleteItems": "삭제",
+      "remoteDeleteUnavailable": "이 스캔은 원격 인스턴스에서 실행되었으며, 원격 인스턴스에서는 삭제가 아직 지원되지 않습니다. 목록을 내보낸 후 서버에서 직접 파일을 삭제하세요.",
       "statusLabels": {
         "pending": "대기 중",
         "deleted": "삭제됨",

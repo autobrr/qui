@@ -66,7 +66,7 @@ type EvalContext struct {
 	HasMissingFilesByHash map[string]bool
 	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
 	HasSkippedFilesByHash map[string]bool
-	// InstanceHasLocalAccess gates the missing-files field. #2791 lifts it to Read.
+	// InstanceHasLocalAccess gates the missing-files field. #2933 lifts it to Read.
 	InstanceHasLocalAccess bool
 	// InstanceHasFileIdentity gates the hardlink fields, apart from
 	// InstanceHasLocalAccess so a remote instance never reads them as known.

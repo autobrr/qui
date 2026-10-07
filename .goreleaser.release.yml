@@ -132,12 +132,15 @@ changelog:
       - Merge branch
       - go mod tidy
   groups:
+    - title: "Breaking Changes"
+      regexp: "^\\w+(\\([^)]*\\))?!:.*$"
+      order: 0
     - title: "New Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
-      order: 0
+      order: 10
     - title: "Bug Fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
-      order: 10
+      order: 20
     - title: "Other Changes"
       regexp: "^.*(chore|docs|style|refactor|test|perf|security|build|ci)[(\\w)]*:+.*$"
-      order: 20
+      order: 30

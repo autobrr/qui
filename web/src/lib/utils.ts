@@ -164,12 +164,7 @@ export function formatErrorReason(reason: string): string {
   return reason
 }
 
-/**
- * Parse tracker domains from an Automation.
- * Returns trackerDomains array if present, otherwise parses trackerPattern.
- * @param rule - The automation to parse domains from
- * @returns Array of tracker domain strings
- */
+/** Tracker domains from an Automation's trackerPattern, with the "!" exclude prefix removed. */
 export function parseTrackerDomains(rule: Automation): string[] {
   return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }

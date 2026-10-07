@@ -144,7 +144,7 @@ In reuse mode (the default), qui adds most cross-seeds with hash verification sk
 
 ### 1. Name or folder alignment needed
 
-If the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must run a recheck to verify the files at the new paths.
+If the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must run a recheck to verify the files at the new paths. If **Skip recheck** is on, qui adds a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) without a recheck.
 
 ### 2. Extra files in source torrent
 
@@ -154,7 +154,7 @@ If the source torrent contains files that do not exist on disk (NFO, SRT, or sam
 
 If the source files and the link-tree base reside on different filesystems, or if the filesystem does not support the requested link type, link-tree creation fails. If you enable **Fallback to regular mode on error**, qui falls back to regular mode and adds the torrent against the matched source files instead of the link-tree directory.
 
-qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips them instead. If you enable **Skip recheck**, disable **Fallback to regular mode**, because all fallbacks require a recheck.
+qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui adds only [byte-complete matches](./rules.md#skip-cross-seeds-with-extra-files) after a fallback, and it adds them without a recheck. qui skips every other match that falls back. Keep **Fallback to regular mode** on to keep those byte-complete adds.
 
 If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if the **Piece boundary safety check** switch in Matching rules is off. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
@@ -175,7 +175,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - If missing data is at or below **Max auto-start download** (default: 50 MiB), qui auto-resumes after the recheck
 - If only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
-- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
+- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume. With **Skip recheck** and **Auto-resume after injection** on, a byte-complete filesystem fallback resumes without a recheck
 - Configure this limit with **Max auto-start download** in Cross-Seed > After injection
 - In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 

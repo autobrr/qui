@@ -504,6 +504,81 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 	}
 }
 
+// A season pack named "Title III" with S03 files is the release a tracker lists
+// as "Title S03", so the title without the season numeral must match.
+func TestReleasesMatch_SeasonNumeral(t *testing.T) {
+	tests := []struct {
+		name          string
+		sourceName    string
+		sourceSeason  int // season read from the files, which the name lacks
+		candidateName string
+		wantReason    string
+	}{
+		{
+			name:          "numeral source matches S03 candidate",
+			sourceName:    "[GRP] Kaiju Squad 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+			sourceSeason:  3,
+			candidateName: "Kaiju Squad 100 S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "S03 source matches numeral candidate",
+			sourceName:    "Kaiju.Squad.100.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "candidate with both forms still matches",
+			sourceName:    "Kaiju.Squad.100.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 AKA Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "different group is still rejected",
+			sourceName:    "Kaiju.Squad.100.III.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 S03 1080p BluRay Dual-Audio FLAC 2.0 x265-OTHER",
+			wantReason:    groupMismatchReason,
+		},
+		{
+			name:          "movie sequel numeral is kept",
+			sourceName:    "Rocky.III.1982.1080p.BluRay.x264-GRP",
+			candidateName: "Rocky 1982 1080p BluRay x264-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
+			name:          "numeral that differs from the season is kept",
+			sourceName:    "Title.II.S01.1080p.BluRay.x265-GRP",
+			candidateName: "Title S01 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
+			name:          "numeral that differs from the season still matches itself",
+			sourceName:    "Title.II.S01.1080p.BluRay.x265-GRP",
+			candidateName: "Title II S01 1080p BluRay x265-GRP",
+		},
+		{
+			name:          "arabic number is not a season numeral",
+			sourceName:    "Kaiju.Squad.3.S03.1080p.BluRay.x265-GRP",
+			candidateName: "Kaiju Squad S03 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
+			source := rls.ParseString(tt.sourceName)
+			if tt.sourceSeason > 0 {
+				source.Type = rls.Series
+				source.Series = tt.sourceSeason
+			}
+			candidate := rls.ParseString(tt.candidateName)
+
+			match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, tt.sourceName, tt.candidateName, false)
+
+			require.Equal(t, tt.wantReason, reason)
+			require.Equal(t, tt.wantReason == "", match)
+		})
+	}
+}
+
 func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := rls.Release{
