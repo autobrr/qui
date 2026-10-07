@@ -187,7 +187,9 @@ func seasonFromTitleNumeral(release *rls.Release) int {
 // of the other release, when the numeral names that season.
 func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
 	// A numeral season is 2 or more, so a lower season skips the copy when both sides have no season.
-	if release == nil || other == nil || other.Series < 2 || seasonFromTitleNumeral(release) != other.Series {
+	// A movie with a year, such as "Rocky III 1982", is a sequel and not a season.
+	if release == nil || other == nil || other.Series < 2 || isYearBearingMovieRelease(release) ||
+		seasonFromTitleNumeral(release) != other.Series {
 		return release
 	}
 	withSeason := *release
