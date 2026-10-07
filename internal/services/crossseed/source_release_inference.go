@@ -174,11 +174,27 @@ func seasonFromTitleNumeral(release *rls.Release) int {
 	if !ok {
 		return 0
 	}
-	season := slices.Index([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, strings.ToUpper(last))
+	season := slices.IndexFunc([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, func(numeral string) bool {
+		return strings.EqualFold(numeral, last)
+	})
 	if season < 2 {
 		return 0
 	}
 	return season
+}
+
+// withTitleNumeralSeason gives a release with only a title numeral the season
+// of the other release, when the numeral names that season.
+func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
+	// A numeral season is 2 or more, so a lower season skips the copy when both sides have no season.
+	// A movie with a year, such as "Rocky III 1982", is a sequel and not a season.
+	if release == nil || other == nil || other.Series < 2 || isYearBearingMovieRelease(release) ||
+		seasonFromTitleNumeral(release) != other.Series {
+		return release
+	}
+	withSeason := *release
+	withSeason.Series = other.Series
+	return &withSeason
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
