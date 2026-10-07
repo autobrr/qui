@@ -14,6 +14,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -122,7 +123,7 @@ func TestPruneNestedScanRoots_PreservesRootsThroughSymlinks(t *testing.T) {
 		}
 		var found []OrphanFile
 		for _, walkRoot := range walkRoots {
-			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(), nil, 0, 0, backend)
+			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(fsops.HostPaths), nil, 0, 0, backend)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +158,7 @@ func TestValidDefaultSavePath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := validDefaultSavePath(tt.savePath)
+			got, err := validDefaultSavePath(fsops.HostPaths, tt.savePath)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected an error, got root %q", got)
@@ -183,7 +184,7 @@ func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
 		return qbt.AppPreferences{}, errors.New("boom")
 	}
 
-	if _, _, err := svc.declaredScanRoots(context.Background(), 1, scanScope{DefaultSavePath: true}); err == nil {
+	if _, _, err := svc.declaredScanRoots(context.Background(), fsops.HostPaths, 1, scanScope{DefaultSavePath: true}); err == nil {
 		t.Fatal("expected an error when qBittorrent preferences cannot be read")
 	}
 }
@@ -309,7 +310,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	}
 
 	protected := filepath.Join(otherSavePath, "two.mkv")
-	if !result.fileMap.Has(normalizePath(protected)) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, protected)) {
 		t.Fatalf("file %q seeded by the other local instance is not protected inside the default save path", protected)
 	}
 }

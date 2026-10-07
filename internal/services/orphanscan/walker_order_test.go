@@ -183,7 +183,7 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 	}
 
 	parent := t.TempDir()
-	tfm := NewTorrentFileMap()
+	tfm := NewTorrentFileMap(fsops.HostPaths)
 	rootPaths := make([]string, len(roots))
 	for i, r := range roots {
 		root := filepath.Join(parent, string(rune('a'+i)))
@@ -192,7 +192,7 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 			p := filepath.Join(root, filepath.FromSlash(f.rel))
 			writeOldFile(t, p)
 			if f.inUse {
-				tfm.Add(normalizePath(p))
+				tfm.Add(normalizePath(fsops.HostPaths, p))
 			}
 		}
 	}

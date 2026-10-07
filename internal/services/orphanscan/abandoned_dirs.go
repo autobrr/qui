@@ -6,7 +6,6 @@ package orphanscan
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -21,7 +20,7 @@ import (
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
 // resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
+func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
 	categories, err := s.sync.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
@@ -29,7 +28,7 @@ func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSave
 
 	seen := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories))
+		addAbsoluteScanRoot(d, seen, resolveCategoryPath(d, name, categories, defaultSavePath, useSubcategories))
 	}
 
 	return sortedRoots(seen), nil
@@ -48,36 +47,36 @@ func toValidPath(name string) string {
 // resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
 // destination cannot be determined; a depth cap here would silently drop
 // protection for a deeply nested category.
-func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
+func resolveCategoryPath(d fsops.PathDialect, name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
 	savePath := categories[name].SavePath
 	if savePath != "" {
-		savePath = filepath.Clean(savePath)
-		if filepath.IsAbs(savePath) {
+		savePath = d.Clean(savePath)
+		if d.IsAbs(savePath) {
 			return savePath
 		}
 		if defaultSavePath == "" {
 			return ""
 		}
-		return filepath.Join(defaultSavePath, savePath)
+		return d.Join(defaultSavePath, savePath)
 	}
 
 	// Category names are slash-delimited whatever the host separator is.
 	if useSubcategories {
 		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories)
+			parent := resolveCategoryPath(d, name[:i], categories, defaultSavePath, useSubcategories)
 			if parent == "" {
 				return ""
 			}
 			// qBittorrent converts only the last segment and resolves the rest
 			// through the parent category.
-			return filepath.Join(parent, filepath.FromSlash(toValidPath(name[i+1:])))
+			return d.Join(parent, d.FromSlash(toValidPath(name[i+1:])))
 		}
 	}
 
 	if defaultSavePath == "" {
 		return ""
 	}
-	return filepath.Join(defaultSavePath, filepath.FromSlash(toValidPath(name)))
+	return d.Join(defaultSavePath, d.FromSlash(toValidPath(name)))
 }
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
@@ -110,10 +109,11 @@ func abandonedDirCandidates(
 		return nil
 	}
 
+	d := backend.Paths()
 	// The protected sets are the same for every candidate, so normalize them
 	// once rather than once per directory.
-	normRoots := normalizePaths(scanRoots)
-	normCategories := normalizePaths(categoryPaths)
+	normRoots := normalizePaths(d, scanRoots)
+	normCategories := normalizePaths(d, categoryPaths)
 	// Keyed like kept, by the spelling the walk produced: case-folding here
 	// would let a surviving case-twin pass for the deleted orphan.
 	deletedPaths := make(map[string]struct{}, len(deleted))
@@ -125,17 +125,17 @@ func abandonedDirCandidates(
 	out := make([]OrphanFile, 0, len(dirs))
 
 	for _, dir := range dirs {
-		if underDeletedPath(dir.Path, deletedPaths) {
+		if underDeletedPath(d, dir.Path, deletedPaths) {
 			continue
 		}
-		normDir := normalizePath(dir.Path)
+		normDir := normalizePath(d, dir.Path)
 		if slices.Contains(normRoots, normDir) {
 			continue
 		}
-		if isIgnoredPath(dir.Path, ignorePaths) {
+		if isIgnoredPath(d, dir.Path, ignorePaths) {
 			continue
 		}
-		if isCategoryDestinationNormalized(normDir, normCategories) {
+		if isCategoryDestinationNormalized(d, normDir, normCategories) {
 			continue
 		}
 		if !dir.ModTime.IsZero() && time.Since(dir.ModTime) < gracePeriod {
@@ -167,12 +167,13 @@ func childrenAllKept(ctx context.Context, dir string, kept, deletedPaths map[str
 		return false
 	}
 
+	d := backend.Paths()
 	for _, entry := range entries {
 		// The walk never reports a symlink, so one can never be in deletedPaths.
 		if entry.IsSymlink {
 			return false
 		}
-		child := filepath.Join(dir, entry.Name)
+		child := d.Join(dir, entry.Name)
 		if _, gone := deletedPaths[child]; gone {
 			continue
 		}
@@ -189,12 +190,12 @@ func childrenAllKept(ctx context.Context, dir string, kept, deletedPaths map[str
 // underDeletedPath reports whether dir is, or sits inside, a path the file pass
 // removes. Only a disc unit is a directory-shaped orphan, and the file pass
 // removes the whole unit, so nothing below it is left for the directory pass.
-func underDeletedPath(dir string, deletedPaths map[string]struct{}) bool {
+func underDeletedPath(d fsops.PathDialect, dir string, deletedPaths map[string]struct{}) bool {
 	for {
 		if _, gone := deletedPaths[dir]; gone {
 			return true
 		}
-		parent := filepath.Dir(dir)
+		parent := d.Dir(dir)
 		if parent == dir {
 			return false
 		}
@@ -203,10 +204,10 @@ func underDeletedPath(dir string, deletedPaths map[string]struct{}) bool {
 }
 
 // normalizePaths normalizes a whole list once, for repeated membership tests.
-func normalizePaths(paths []string) []string {
+func normalizePaths(d fsops.PathDialect, paths []string) []string {
 	normalized := make([]string, len(paths))
 	for i, p := range paths {
-		normalized[i] = normalizePath(p)
+		normalized[i] = normalizePath(d, p)
 	}
 	return normalized
 }
@@ -214,9 +215,9 @@ func normalizePaths(paths []string) []string {
 // isCategoryDestinationNormalized reports whether normPath is a category
 // destination or holds one below it. Both stay: qBittorrent will save into them
 // again. Callers normalize once and test many paths against the same set.
-func isCategoryDestinationNormalized(normPath string, normCategories []string) bool {
+func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normCategories []string) bool {
 	for _, nCategory := range normCategories {
-		if normPath == nCategory || isPathUnderNormalized(nCategory, normPath) {
+		if normPath == nCategory || isPathUnderNormalized(d, nCategory, normPath) {
 			return true
 		}
 	}
