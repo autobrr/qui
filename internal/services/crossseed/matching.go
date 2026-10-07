@@ -179,6 +179,8 @@ func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls
 	if source == candidate {
 		return true, ""
 	}
+	// rls reads a bare "Title III" as a movie, so only the other side can say that its numeral is a season.
+	source, candidate = withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source)
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {

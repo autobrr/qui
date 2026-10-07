@@ -70,7 +70,6 @@ var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
 	3045, // season pack hint
-	3047, // season numeral without a file list
 	3048, // slash titles in the season pack check and Local matches
 }
 
@@ -150,16 +149,14 @@ func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpus
 }
 
 const (
-	reasonNoAlternateTitles   = "This path does not look the show up, so it holds no Sonarr alternate titles."
-	reasonNoEpisodeMap        = "This path holds no episode map, because qui looks up no Sonarr data for local names."
-	reasonNoTitleRescue       = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonNoRelabel           = "The web source relabel is a search rule. This path does not run it."
-	reasonDedupKey            = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
-	reasonCrossMatchKey       = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
-	reasonHintTitle           = "The season pack hint compares only the lowercase titles, so it does not see that the pack and the episode are the same show."
-	reasonNumeralWithoutFiles = "This path reads the season numeral only from a file list, and it has no file list for the name."
-	reasonPrefilterNumeral    = "The content prefilter reads the name and the largest file, but not the season numeral."
-	reasonDirectionalCRC      = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
+	reasonNoAlternateTitles = "This path does not look the show up, so it holds no Sonarr alternate titles."
+	reasonNoEpisodeMap      = "This path holds no episode map, because qui looks up no Sonarr data for local names."
+	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
+	reasonNoRelabel         = "The web source relabel is a search rule. This path does not run it."
+	reasonDedupKey          = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
+	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
+	reasonHintTitle         = "The season pack hint compares only the lowercase titles, so it does not see that the pack and the episode are the same show."
+	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 )
 
 var corpusRows = []corpusRow{
@@ -212,11 +209,8 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathWebhook:      knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathLocalMatches: knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3036, reasonPrefilterNumeral),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:        knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
 		},
 	},
 	{
@@ -229,14 +223,19 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathSearch:       knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathRetry:        knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathWebhook:      knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathLocalMatches: knownDifference(corpusNoMatch, 3047, reasonNumeralWithoutFiles),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3036, reasonPrefilterNumeral),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:        knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
 		},
+	},
+	{
+		name:           "season numeral announce against another season",
+		source:         "Kaiju.Squad.S03.1080p.WEB.H264-GRP",
+		candidate:      "Kaiju.Squad.II.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.II.1080p.WEB.H264-GRP", "Kaiju.Squad.II.S02E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusNoMatch,
 	},
 	{
 		name:           "AKA title",

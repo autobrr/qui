@@ -181,6 +181,20 @@ func seasonFromTitleNumeral(release *rls.Release) int {
 	return season
 }
 
+// withTitleNumeralSeason gives a release with only a title numeral the season
+// of the other release, when the numeral names that season.
+func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
+	if release == nil || other == nil {
+		return release
+	}
+	if season := seasonFromTitleNumeral(release); season == 0 || season != other.Series {
+		return release
+	}
+	withSeason := *release
+	withSeason.Series = other.Series
+	return &withSeason
+}
+
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
 	normalizer := s.stringNormalizer
 	if normalizer == nil {
