@@ -4678,6 +4678,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 	targetRelease := targetSide.release
 	searchDecision := req.SearchDecision
 
+	// The season pack hint compares every local episode with these, so read them once.
+	// Only an admitted decision holds aliases, and it describes the pack's show.
+	packTitles := m.normalizedReleaseTitles(targetRelease, targetSide.rawName)
+	packAliasTitles := slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles)
+
 	// Build basic info for response
 	sourceTorrentInfo := &TorrentInfo{
 		Name: req.TorrentName,
@@ -4810,12 +4815,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent, candidateRelease)
 			}
 
-			// A same-title episode excluded from direct matching still marks the
-			// pack as assemblable from local episodes; the season-pack pipeline
-			// verifies coverage properly (including alt titles) before applying.
-			if isTVSeasonPack(targetRelease) && isTVEpisode(sourceSide.release) &&
-				sourceSide.release.Series == targetRelease.Series &&
-				s.stringNormalizer.Normalize(sourceSide.release.Title) == s.stringNormalizer.Normalize(targetRelease.Title) {
+			// An episode of the same show marks the pack as buildable from local episodes;
+			// the season pack check verifies coverage before apply. No ARR lookup here.
+			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(targetRelease) &&
+				isTVEpisode(sourceSide.release) && sourceSide.release.Series == targetRelease.Series &&
+				titleSetsMatch(m.normalizedReleaseTitles(sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
 				response.seasonPackEpisodeCandidates = true
 			}
 
