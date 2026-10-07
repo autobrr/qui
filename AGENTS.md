@@ -113,3 +113,4 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
 - Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
+- The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.
