@@ -13,6 +13,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -4947,6 +4948,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
+			if season := seasonFromTitleNumeral(candidateRelease); season > 0 && season == targetRelease.Series {
+				// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
+				withSeason := *candidateRelease
+				withSeason.Series = season
+				candidateRelease = &withSeason
+			}
 			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
@@ -5931,8 +5938,8 @@ func (s *Service) processCrossSeedCandidate(
 		categoryCreationFailed = true
 	}
 
-	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular &&
-		(matchType != "exact" || requiresAlignment || hasExtraFiles)
+	exactInPlace := matchType == "exact" && !requiresAlignment && !hasExtraFiles
+	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular && !exactInPlace
 	if linkFallbackNeedsBoundaryProtection {
 		if torrentInfo != nil {
 			unsafe, safetyResult := HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
@@ -5969,11 +5976,11 @@ func (s *Service) processCrossSeedCandidate(
 		linkFallbackRequiresFullRecheck = true
 	}
 
-	// A byte-complete rename-only pair needs no post-fallback recheck: every file
-	// already exists at the matched size and the alignment renames are verified.
+	// A byte-complete pair needs no post-fallback recheck: every file already
+	// exists at the matched size, and a rename-only pair's renames are verified.
 	// Without this, any link-mode bail-out would turn into skipped_recheck for a
-	// pair that link mode itself would have accepted without a recheck (#2272).
-	if linkFallbackRequiresFullRecheck && req.SkipRecheck && renameOnlyAlignment {
+	// pair that link mode itself would have accepted without a recheck (#2272, #3028).
+	if linkFallbackRequiresFullRecheck && req.SkipRecheck && (renameOnlyAlignment || exactInPlace) {
 		linkFallbackRequiresFullRecheck = false
 	}
 
@@ -8640,9 +8647,10 @@ func alternateConnectorQuery(query string) (string, bool) {
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
 // renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name, and last the parsed subtitle joined to the title. A
-// candidate counts only when its normalized form differs from the primary
-// query, so the retry never repeats the query that already returned nothing.
+// of the release name, then the parsed subtitle joined to the title, and last
+// the title without its season numeral. A candidate counts only when its
+// normalized form differs from the primary query, so the retry never repeats
+// the query that already returned nothing.
 // Returns ("", false) when no distinct alternate title exists.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
 	primary := stringutils.NormalizeForMatching(primaryQuery)
@@ -8653,7 +8661,7 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 		parsed := releases.DefaultParser.Parse(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release))
+	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8964,6 +8972,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
+	if searchSource.numeralSeason {
+		// The main query stays as on a plain title; matching and the retry use the season.
+		withoutSeason := *searchRelease
+		withoutSeason.Series = 0
+		queryRelease = &withoutSeason
+	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9267,12 +9281,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if !contentInfo.IsMusic && searchRelease.Series > 0 && searchReq.Season == nil {
-			season := searchRelease.Series
+		if !contentInfo.IsMusic && queryRelease.Series > 0 && searchReq.Season == nil {
+			season := queryRelease.Series
 			searchReq.Season = &season
 
-			if searchRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := searchRelease.Episode
+			if queryRelease.Episode > 0 && searchReq.Episode == nil {
+				episode := queryRelease.Episode
 				searchReq.Episode = &episode
 			}
 		}
@@ -9349,6 +9363,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
+		if searchSource.numeralSeason {
+			gatherIn.altTitleSeason = new(searchRelease.Series)
+		}
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
@@ -14523,25 +14540,28 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
 }
 
-// FindMatchingBaseDir returns the first configured base directory on the same
+// ErrNoMatchingBaseDir means no configured base directory is on the same
 // filesystem as the source path.
-func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend) (string, error) {
+var ErrNoMatchingBaseDir = errors.New("no base directory on same filesystem as source")
+
+// LinkIntoMatchingBaseDir walks the configured base directories in rankBaseDirs
+// order and calls link for each one on the same filesystem as sourcePath. It
+// stops at the first result that is not a cross-device error: SameFilesystem
+// compares device IDs, and some hosts (OrbStack VirtioFS) report one ID for
+// several disks, so link() can still reject a dir that passed. hardlinktree.Create
+// rolls back its partial tree before it returns the error.
+func LinkIntoMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend, link func(baseDir string) error) error {
 	if backend == nil {
-		return "", errors.New("filesystem backend is nil")
+		return errors.New("filesystem backend is nil")
 	}
-	if strings.TrimSpace(configuredDirs) == "" {
-		return "", errors.New("base directory not configured")
+	dirs := splitBaseDirs(configuredDirs)
+	if len(dirs) == 0 {
+		return fmt.Errorf("%w: base directory not configured", ErrNoMatchingBaseDir)
 	}
 
-	dirs := strings.Split(configuredDirs, ",")
-	var lastErr error
+	var lastErr, linkErr error
 
-	for _, dir := range dirs {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-
+	for _, dir := range rankBaseDirs(dirs, sourcePath) {
 		if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
@@ -14552,16 +14572,54 @@ func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath 
 			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
 			continue
 		}
+		if !sameFS {
+			continue
+		}
 
-		if sameFS {
-			return dir, nil
+		if linkErr = link(dir); !isCrossDeviceLinkError(linkErr) {
+			return linkErr
+		}
+		log.Warn().Err(linkErr).Str("baseDir", dir).Msg("cross-device link in base dir, trying the next one")
+	}
+
+	if linkErr != nil {
+		return linkErr
+	}
+	if lastErr != nil {
+		return fmt.Errorf("%w (last error: %w)", ErrNoMatchingBaseDir, lastErr)
+	}
+	return ErrNoMatchingBaseDir
+}
+
+func splitBaseDirs(configuredDirs string) []string {
+	var dirs []string
+	for dir := range strings.SplitSeq(configuredDirs, ",") {
+		if dir = strings.TrimSpace(dir); dir != "" {
+			dirs = append(dirs, dir)
 		}
 	}
+	return dirs
+}
 
-	if lastErr != nil {
-		return "", fmt.Errorf("no base directory on same filesystem as source (last error: %w)", lastErr)
+// rankBaseDirs orders dirs by the number of leading path components they share
+// with source, so the dir on the source's own disk comes first. Ties keep the
+// configured order.
+func rankBaseDirs(dirs []string, source string) []string {
+	ranked := slices.Clone(dirs)
+	slices.SortStableFunc(ranked, func(a, b string) int {
+		return cmp.Compare(sharedPathComponents(b, source), sharedPathComponents(a, source))
+	})
+	return ranked
+}
+
+func sharedPathComponents(a, b string) int {
+	aParts := strings.Split(filepath.Clean(a), string(filepath.Separator))
+	bParts := strings.Split(filepath.Clean(b), string(filepath.Separator))
+	n := 0
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
+		n++
 	}
-	return "", errors.New("no base directory on same filesystem as source")
+	return n
 }
 
 func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {

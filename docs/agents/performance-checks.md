@@ -1,0 +1,9 @@
+# Performance checks
+
+Before you open a PR or add commits to one, do these steps for the full PR diff.
+
+1. Review changed code and its callers for backend and frontend performance risks. Include shared helpers, dependencies, and configuration. Consider call frequency and data size when assessing allocations, nested scans, queries, concurrency, rendering, and requests. If no performance risk applies, explain why in the PR's Performance section.
+2. If a change can affect performance, you must measure before and after. If the risk is unclear, measure it. Use the merge-base with the PR's target branch as the baseline. Compare it against the latest PR code under the same workload and environment. Use representative synthetic data and local stubs for external services. Repeat runs to distinguish regressions from measurement noise.
+3. Use existing benchmarks, profilers, or repeatable browser measurements. Temporary measurement code is sufficient. Committing benchmark files is optional. For Go benchmarks, measure without `-race`. For rendering and interaction changes, measure the browser with a production build.
+4. Record the affected paths, revisions, workload size, environment, and measurement method in the PR's Performance section. Include before/after numbers, the measured differences, and your conclusion. Choose relevant metrics, such as time, memory, allocations, request counts, or bundle size. CI results qualify only when they provide this comparison. Otherwise, measure locally, even when CI covers the tests.
+5. Investigate regressions beyond measurement noise. Fix them or obtain explicit maintainer acceptance of the measured cost before declaring the PR ready. After further code changes, repeat the affected measurements. If measurements are blocked, report the blocker and keep this step incomplete.

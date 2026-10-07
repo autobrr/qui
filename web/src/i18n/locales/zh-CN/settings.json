@@ -555,6 +555,17 @@
       "parseErrorsTitle": "无法解析以下文件：",
       "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。",
       "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。"
+    },
+    "layout": {
+      "mobileSplit": "为移动布局使用单独的主题",
+      "mobileSplitHelp": "移动布局（宽度小于 768 px 的窗口）和桌面布局各自保留自己的主题、模式和变体。此设置适用于所有浏览器。",
+      "localOnly": "在此浏览器中本地保留主题",
+      "localOnlyHelp": "此浏览器不从服务器获取主题，也不会将其主题更改发送到服务器。此设置仅适用于此浏览器。",
+      "changesMobile": "更改移动主题",
+      "changesDesktop": "更改桌面主题",
+      "changesLocal": "仅更改此浏览器的主题。要更改移动布局设置，请关闭本地设置。",
+      "saveError": "保存主题设置失败",
+      "mobileSplitOffWarning": "关闭此设置会删除移动主题。"
     }
   },
   "arrInstances": {

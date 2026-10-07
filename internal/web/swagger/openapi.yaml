@@ -3552,24 +3552,31 @@ paths:
     get:
       tags:
         - Themes
-      summary: Get stored theme selection
-      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      summary: Get stored theme slots
+      description: Get every theme slot stored in the database. The default slot applies to every layout. The optional mobile slot applies to the mobile layout (viewport less than 768 px wide); when it exists, the layout split is on. Public endpoint, no authentication required, so the login page can apply the theme of its layout.
       security: []
       responses:
         '200':
-          description: Stored theme selection, or null when none is stored
+          description: Stored theme slots. A slot that is not stored is absent.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ThemeSettings'
-                nullable: true
+                $ref: '#/components/schemas/ThemeSlots'
         '500':
           description: Failed to load theme settings
     put:
       tags:
         - Themes
-      summary: Store theme selection
-      description: Store the theme selection in the database.
+      summary: Store the theme selection of one slot
+      description: Store the theme selection of one slot in the database. The other slot does not change. Writing the mobile slot turns the layout split on.
+      parameters:
+        - name: slot
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [default, mobile]
+            default: default
       requestBody:
         required: true
         content:
@@ -3584,9 +3591,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ThemeSettings'
         '400':
-          description: Invalid payload, missing themeId, or invalid mode
+          description: Invalid payload, missing themeId, invalid mode, unknown themeId, or unknown slot
         '500':
           description: Failed to save theme settings
+    delete:
+      tags:
+        - Themes
+      summary: Delete the mobile theme slot
+      description: Delete the mobile slot, which turns the layout split off. Every layout then uses the default slot. The default slot cannot be deleted.
+      parameters:
+        - name: slot
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [mobile]
+      responses:
+        '204':
+          description: Mobile slot deleted
+        '400':
+          description: The slot is not mobile
+        '500':
+          description: Failed to delete theme settings
 
   /api/client-settings:
     get:
@@ -6795,6 +6821,14 @@ components:
           default: auto
         variation:
           type: string
+
+    ThemeSlots:
+      type: object
+      properties:
+        default:
+          $ref: '#/components/schemas/ThemeSettings'
+        mobile:
+          $ref: '#/components/schemas/ThemeSettings'
 
     User:
       type: object

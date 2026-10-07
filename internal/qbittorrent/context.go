@@ -11,6 +11,7 @@ const (
 	skipTrackerHydrationKey    contextKey = "qui_skip_tracker_hydration"
 	cachedCountsWithSkippedKey contextKey = "qui_cached_counts_with_skipped_tracker_hydration"
 	skipFreshDataKey           contextKey = "qui_skip_fresh_data"
+	trackerHealthSortKey       contextKey = "qui_tracker_health_sort"
 )
 
 // WithSkipTrackerHydration marks the context so tracker enrichment/hydration is skipped.
@@ -81,4 +82,15 @@ func shouldSkipFreshData(ctx context.Context) bool {
 // over request-triggered fresh sync work.
 func SkipFreshDataRequested(ctx context.Context) bool {
 	return shouldSkipFreshData(ctx)
+}
+
+// withTrackerHealthSort asks GetTorrentsWithFilters for the tracker health a
+// state sort fetches, without the sort. The Unified view sorts the merged rows.
+func withTrackerHealthSort(ctx context.Context) context.Context {
+	return context.WithValue(ctx, trackerHealthSortKey, true)
+}
+
+func trackerHealthSortRequested(ctx context.Context) bool {
+	val, ok := ctx.Value(trackerHealthSortKey).(bool)
+	return ok && val
 }
