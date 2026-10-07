@@ -423,8 +423,13 @@ func rawAKATitleParts(rawName string) []string {
 	titles := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if len(part) >= minAKATitleLength {
-			titles = append(titles, part)
+		if len(part) < minAKATitleLength {
+			continue
+		}
+		titles = append(titles, part)
+		// An AKA after the season or episode starts an episode title, not another show title.
+		if parsed := releases.DefaultParser.Parse(part); parsed.Series > 0 || parsed.Episode > 0 {
+			break
 		}
 	}
 	if len(titles) < 2 {

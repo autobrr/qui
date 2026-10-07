@@ -280,6 +280,16 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		// An AKA after the episode number starts an episode title, not a show title.
+		name:           "AKA episode title of another show",
+		source:         "Beta.Show.S01E01.1080p.WEB.H264-GRP",
+		candidate:      "Alpha Show S01E01 AKA Beta Show 1080p WEB H264-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusEpisodeSize + corpusNFOSize,
+		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
+		want:           corpusNoMatch,
+	},
+	{
 		name:           "slash title",
 		source:         "Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju/Squad Zero S02E05 1080p WEB H264-GRP",
