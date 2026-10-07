@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
@@ -36,18 +35,18 @@ const (
 // means the file sits under a different spelling of a root that was walked, not
 // under a directory nobody scanned. Only the fence is spelled differently; the
 // path handed to the backend's Remove is target itself.
-func withinScanRoot(scanRoot, target string) error {
-	if !filepath.IsAbs(target) {
+func withinScanRoot(d fsops.PathDialect, scanRoot, target string) error {
+	if !d.IsAbs(target) {
 		return fmt.Errorf("refusing non-absolute path: %s", target)
 	}
 
-	normRoot := normalizePath(scanRoot)
-	normTarget := normalizePath(target)
+	normRoot := normalizePath(d, scanRoot)
+	normTarget := normalizePath(d, target)
 
 	if normTarget == normRoot {
 		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
 	}
-	if !isPathUnderNormalized(normTarget, normRoot) {
+	if !isPathUnderNormalized(d, normTarget, normRoot) {
 		return fmt.Errorf("path escapes scan root: %s", target)
 	}
 	return nil
@@ -57,12 +56,13 @@ func withinScanRoot(scanRoot, target string) error {
 // Re-checks TorrentFileMap before deletion to handle torrents added since scan.
 // Never removes directories.
 func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
-	if err := withinScanRoot(scanRoot, target); err != nil {
+	d := backend.Paths()
+	if err := withinScanRoot(d, scanRoot, target); err != nil {
 		return 0, err
 	}
 
 	// Re-check: torrent may have been added since scan (skip)
-	if tfm.Has(normalizePath(target)) {
+	if tfm.Has(normalizePath(d, target)) {
 		return deleteDispositionSkippedInUse, nil
 	}
 
@@ -103,6 +103,7 @@ func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentF
 		for range ch { //nolint:revive // drain channel to release the walk goroutine
 		}
 	}()
+	d := backend.Paths()
 	for entry := range ch {
 		if entry.Err != nil {
 			if errors.Is(entry.Err, fs.ErrNotExist) {
@@ -115,7 +116,7 @@ func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentF
 			// cannot be verified against the file map. Fail closed: an in-use
 			// match still counts, a vanished entry is fine, anything else
 			// aborts the deletion rather than risk removing torrent-owned data.
-			if err := checkFileInUse(entry.Path, tfm); err != nil {
+			if err := checkFileInUse(d, entry.Path, tfm); err != nil {
 				return err
 			}
 			if errors.Is(entry.StatErr, fs.ErrNotExist) {
@@ -126,15 +127,15 @@ func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentF
 		if entry.IsDir {
 			continue
 		}
-		if err := checkFileInUse(entry.Path, tfm); err != nil {
+		if err := checkFileInUse(d, entry.Path, tfm); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkFileInUse(path string, tfm *TorrentFileMap) error {
-	if tfm.Has(normalizePath(path)) {
+func checkFileInUse(d fsops.PathDialect, path string, tfm *TorrentFileMap) error {
+	if tfm.Has(normalizePath(d, path)) {
 		return fmt.Errorf("%w: %s", ErrInUse, path)
 	}
 	return nil
@@ -145,10 +146,11 @@ func checkFileInUse(path string, tfm *TorrentFileMap) error {
 // the directory is currently referenced by TorrentFileMap or protected by ignorePaths.
 // Symlinks are never followed.
 func safeDeleteTarget(ctx context.Context, scanRoot, target string, tfm *TorrentFileMap, ignorePaths []string, backend fsops.Backend) (deleteDisposition, error) {
-	if err := withinScanRoot(scanRoot, target); err != nil {
+	d := backend.Paths()
+	if err := withinScanRoot(d, scanRoot, target); err != nil {
 		return 0, err
 	}
-	if len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(target, ignorePaths) {
+	if len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(d, target, ignorePaths) {
 		return deleteDispositionSkippedIgnored, nil
 	}
 
@@ -170,7 +172,7 @@ func safeDeleteTarget(ctx context.Context, scanRoot, target string, tfm *Torrent
 }
 
 func safeDeleteSymlink(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
-	if tfm.Has(normalizePath(target)) {
+	if tfm.Has(normalizePath(backend.Paths(), target)) {
 		return deleteDispositionSkippedInUse, nil
 	}
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {
@@ -205,7 +207,7 @@ func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap
 // went wrong. Remove still refuses a non-empty directory, so the check before it
 // only decides how the outcome is reported.
 func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) (deleteDisposition, error) {
-	if err := withinScanRoot(scanRoot, target); err != nil {
+	if err := withinScanRoot(backend.Paths(), scanRoot, target); err != nil {
 		return 0, err
 	}
 

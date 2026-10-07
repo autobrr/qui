@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
@@ -46,13 +48,13 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 
 			p1 := filepath.Join("downloads", tt.composed, "file.mkv")
 			p2 := filepath.Join("downloads", tt.decomposed, "file.mkv")
-			n1 := normalizePath(p1)
-			n2 := normalizePath(p2)
+			n1 := normalizePath(fsops.HostPaths, p1)
+			n2 := normalizePath(fsops.HostPaths, p2)
 			if n1 != n2 {
 				t.Fatalf("expected normalized paths equal:\n  %q\n  %q\n  -> %q\n  -> %q", p1, p2, n1, n2)
 			}
 
-			m := NewTorrentFileMap()
+			m := NewTorrentFileMap(fsops.HostPaths)
 			m.Add(p1)
 			if !m.Has(n2) {
 				t.Fatalf("expected torrent file map to match canonical-equivalent path: %q", p2)
@@ -73,7 +75,7 @@ func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 
 	p := filepath.Join("downloads", bad, "file.mkv")
 	want := filepath.Clean(p)
-	got := cleanPath(p)
+	got := cleanPath(fsops.HostPaths, p)
 	if got != want {
 		t.Fatalf("expected invalid UTF-8 path preserved:\n  %q\n  %q", got, want)
 	}
@@ -106,11 +108,11 @@ func TestNormalizePath_InvalidUTF8MatchesAPIForm(t *testing.T) {
 
 	// Add normalizes internally; Has takes the already-normalized form, exactly as
 	// the walker does for each path it reads off disk.
-	m := NewTorrentFileMap()
+	m := NewTorrentFileMap(fsops.HostPaths)
 	m.Add(viaAPI)
-	if !m.Has(normalizePath(onDisk)) {
+	if !m.Has(normalizePath(fsops.HostPaths, onDisk)) {
 		t.Fatalf("owned file must match its API spelling:\n  disk %q -> %q\n  api  %q -> %q",
-			onDisk, normalizePath(onDisk), viaAPI, normalizePath(viaAPI))
+			onDisk, normalizePath(fsops.HostPaths, onDisk), viaAPI, normalizePath(fsops.HostPaths, viaAPI))
 	}
 }
 
@@ -121,13 +123,13 @@ func TestNormalizePath_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 
 	sep := string(filepath.Separator)
-	p1 := normalizePath(filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv"))
-	p2 := normalizePath(filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
+	p1 := normalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv"))
+	p2 := normalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
 	if p1 != p2 {
 		t.Fatalf("expected normalized paths equal:\n  %q\n  %q", p1, p2)
 	}
 
-	m := NewTorrentFileMap()
+	m := NewTorrentFileMap(fsops.HostPaths)
 	m.Add(p1)
 	if !m.Has(p2) {
 		t.Fatalf("expected torrent file map to match regardless of casing: %q", p2)
@@ -141,7 +143,7 @@ func TestFindScanRoot_CaseInsensitive(t *testing.T) {
 	root := filepath.Join(sep, "downloads", "cross-seed", "trackername")
 	path := filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv")
 
-	got := findScanRoot(path, []string{root})
+	got := findScanRoot(fsops.HostPaths, path, []string{root})
 	if got != root {
 		t.Fatalf("expected scan root %q, got %q", root, got)
 	}

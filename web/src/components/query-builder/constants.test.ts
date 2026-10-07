@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
-import type { TFunction } from "i18next"
+import { createInstance, type TFunction } from "i18next"
 import { CONTENT_TYPE_VALUES, FIELD_REQUIREMENTS, getCapabilityReason } from "./constants"
 import * as constants from "./constants"
 
@@ -68,7 +68,7 @@ describe("query-builder translation keys", () => {
       return options?.defaultValue ?? key
     }) as TFunction
 
-    const fields = Object.keys(constants.CONDITION_FIELDS)
+    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
     for (const field of fields) {
       constants.getFieldLabel(field, recordingT)
     }
@@ -98,5 +98,33 @@ describe("query-builder translation keys", () => {
     const missing = [...requested].filter((key) => !i18n.exists(key, { ns: "automations", lng: "en" }))
     expect(missing).toEqual([])
     expect(requested.size).toBeGreaterThan(fields.length)
+  })
+})
+
+describe("getFieldLabel", () => {
+  it("has no fallback of its own when the key is missing", async () => {
+    const fields = Object.keys(constants.CONDITION_FIELD_TYPES)
+    const empty = createInstance()
+    await empty.init({ lng: "en", resources: {} })
+    expect(fields.map((field) => constants.getFieldLabel(field, empty.t))).toEqual(fields.map((field) => `queryBuilder.fields.${field}`))
+  })
+
+  it("renders the locale string", async () => {
+    const withKey = createInstance()
+    await withKey.init({ lng: "en", resources: { en: { translation: { queryBuilder: { fields: { SAVE_PATH: "probe-string" } } } } } })
+    expect(constants.getFieldLabel("SAVE_PATH", withKey.t)).toBe("probe-string")
+  })
+})
+
+describe("getFieldType", () => {
+  it.each([
+    ["HARDLINK_SCOPE", "hardlinkScope"],
+    ["SAVE_PATH", "string"],
+    ["NOT_A_FIELD", "string"],
+    ["__proto__", "string"],
+    ["constructor", "string"],
+    ["toString", "string"],
+  ])("returns the type of %s, and string for an id with no entry", (field, type) => {
+    expect(constants.getFieldType(field)).toBe(type)
   })
 })

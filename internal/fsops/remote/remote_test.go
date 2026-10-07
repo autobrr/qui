@@ -327,6 +327,30 @@ func TestWalkDir_FiltersOnTheirOwn(t *testing.T) {
 	}
 }
 
+// The root is exempt from the name filters over sftp as it is locally, so a
+// hidden or ignored-name root is still walked.
+func TestWalkDir_FilteredRootNamesAreWalked(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	opts := fsops.WalkOptions{SkipHidden: true, IgnoreDirNames: []string{"@eaDir"}}
+
+	for _, name := range []string{".hidden-root", "@eaDir"} {
+		root := remotePath(dir, name)
+		writeFile(t, remotePath(root, "keep.txt"), "k")
+
+		ch, err := b.WalkDir(t.Context(), root, opts)
+		require.NoError(t, err)
+
+		var rels []string
+		for e := range ch {
+			rels = append(rels, e.RelPath)
+		}
+		assert.Contains(t, rels, "keep.txt", name)
+	}
+}
+
 // writeCutTree lays out a tree for the connection-lost walks: "a" holds more
 // files than the walk channel buffers, so its worker is parked inside it when
 // the test cuts the connection, and "a/sub" is listed only after that. The

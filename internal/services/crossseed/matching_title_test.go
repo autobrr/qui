@@ -638,6 +638,10 @@ func TestRawAKATitleParts(t *testing.T) {
 			expected: []string{"Blue Clockwork Vault Run", "Aoi Clockwork no Vault Run"},
 		},
 		{
+			name:    "stops at an episode title after the episode number",
+			rawName: "Alpha Show S01E01 AKA Beta Show 1080p WEB H264-GRP",
+		},
+		{
 			name:    "requires at least two valid fragments",
 			rawName: "AKA Aoi",
 		},
