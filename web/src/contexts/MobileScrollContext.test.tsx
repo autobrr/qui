@@ -22,6 +22,14 @@ function flushRaf() {
   pending.forEach(cb => cb(0))
 }
 
+// jsdom does no layout, so give the container a list that is taller than the screen
+function makeContainer(size = { scrollHeight: 1000, clientHeight: 400 }) {
+  const el = document.createElement("div")
+  Object.defineProperty(el, "scrollHeight", { get: () => size.scrollHeight })
+  Object.defineProperty(el, "clientHeight", { get: () => size.clientHeight })
+  return el
+}
+
 function scrollTo(container: HTMLElement, scrollTop: number) {
   container.scrollTop = scrollTop
   container.dispatchEvent(new Event("scroll"))
@@ -47,7 +55,7 @@ describe("useMobileScroll", () => {
   })
 
   it("hides on scroll down and shows again on scroll up", () => {
-    const container = document.createElement("div")
+    const container = makeContainer()
     const { result } = renderHook(() => useMobileScroll(), { wrapper })
 
     act(() => result.current.setScrollContainer(container))
@@ -57,6 +65,39 @@ describe("useMobileScroll", () => {
     expect(result.current.isFooterVisible).toBe(false)
 
     act(() => scrollTo(container, 50))
+    expect(result.current.isFooterVisible).toBe(true)
+  })
+
+  it("keeps the footer hidden when the list shrinks under a container scrolled to the bottom", () => {
+    const size = { scrollHeight: 1000, clientHeight: 400 }
+    const container = makeContainer(size)
+    const { result } = renderHook(() => useMobileScroll(), { wrapper })
+
+    act(() => result.current.setScrollContainer(container))
+    act(() => scrollTo(container, 600))
+    expect(result.current.isFooterVisible).toBe(false)
+
+    // The footer padding goes away, so the browser clamps scrollTop to the new bottom
+    size.scrollHeight = 808
+    act(() => scrollTo(container, 408))
+    expect(result.current.isFooterVisible).toBe(false)
+
+    // A real scroll up away from the bottom still shows the footer
+    act(() => scrollTo(container, 300))
+    expect(result.current.isFooterVisible).toBe(true)
+  })
+
+  it("shows the footer when the list shrinks until it no longer scrolls", () => {
+    const size = { scrollHeight: 1000, clientHeight: 400 }
+    const container = makeContainer(size)
+    const { result } = renderHook(() => useMobileScroll(), { wrapper })
+
+    act(() => result.current.setScrollContainer(container))
+    act(() => scrollTo(container, 600))
+    expect(result.current.isFooterVisible).toBe(false)
+
+    size.scrollHeight = 400
+    act(() => scrollTo(container, 0))
     expect(result.current.isFooterVisible).toBe(true)
   })
 
