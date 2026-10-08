@@ -436,15 +436,15 @@ interface CreateColumnsParams {
 
 export const createColumns = ({
   incognitoMode,
-  selectionEnhancers = undefined,
+  selectionEnhancers,
   speedUnit = "bytes",
-  trackerIcons = undefined,
+  trackerIcons,
   formatTimestamp = formatStoredTimestamp,
-  instancePreferences = undefined,
+  instancePreferences,
   supportsTrackerHealth = true,
   showInstanceColumn = false,
   viewMode = "normal",
-  trackerCustomizationLookup = undefined,
+  trackerCustomizationLookup,
   includeSelectionColumn = true,
 }: CreateColumnsParams, t: TFunction): TorrentTableColumnDef[] => {
   // Badge padding classes based on view mode

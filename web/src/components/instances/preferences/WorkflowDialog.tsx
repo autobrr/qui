@@ -161,6 +161,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
 }
 
 // Outside the map: an action of this name would otherwise claim its own fallback.
+// The fallback shows the raw action name so the user can tell which action this build does not know.
 const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
 
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
