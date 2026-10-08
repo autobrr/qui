@@ -1060,3 +1060,17 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 		})
 	}
 }
+
+func TestNewWithoutConfigDirReturnsStatError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("path semantics for a file used as a directory differ on Windows")
+	}
+
+	xdgFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(xdgFile, nil, 0o600))
+	t.Setenv("XDG_CONFIG_HOME", xdgFile)
+	t.Chdir(t.TempDir())
+
+	_, err := New("")
+	require.ErrorContains(t, err, "failed to read config")
+}

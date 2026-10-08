@@ -204,7 +204,13 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
 	for _, candidate := range []string{"config.toml", defaultConfigPath} {
 		info, err := os.Stat(candidate)
-		if err != nil || info.IsDir() {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("failed to read config: %w", err)
+		}
+		if info.IsDir() {
 			continue
 		}
 		c.viper.SetConfigFile(candidate)
