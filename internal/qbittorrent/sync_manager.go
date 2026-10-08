@@ -430,6 +430,8 @@ type SyncManager struct {
 	// Backend pool for filesystem operations (managed delete cleanup).
 	backendPool atomic.Value // stores backendPoolGetter interface value
 
+	folderCleanup atomic.Pointer[FolderCleanup]
+
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
 }
@@ -2351,6 +2353,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		canonicalHashes = unique
 	}
 
+	var folders FolderCleanupBatch
+	if action == "deleteWithFiles" {
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: canonicalHashes})
+	}
+
 	if action == "recheck" && postAddRetry {
 		if err := waitForPostAddRecheckReady(
 			retryCtx,
@@ -2400,6 +2407,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			if managedDeleteBackend != nil {
 				cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, managedDeleteBackend)
 			}
+			folders.Queue()
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -5845,9 +5853,11 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 		return err
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Target: category})
 	if err := client.SetCategoryCtx(ctx, hashes, category); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setCategory", map[string]any{"category": category})
@@ -5869,9 +5879,14 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 		return err
 	}
 
+	var folders FolderCleanupBatch
+	if enable {
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEnableATM, Hashes: hashes})
+	}
 	if err := client.SetAutoManagementCtx(ctx, hashes, enable); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "toggleAutoTMM", map[string]any{"enable": enable})
@@ -5963,9 +5978,11 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEditCategory, Target: name, NewPath: path})
 	if err := client.EditCategoryCtx(ctx, name, path); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "edit_category")
@@ -6275,10 +6292,12 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		return errors.New("location cannot be empty")
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Target: location})
 	// Set the location - this will disable Auto TMM and move the torrents
 	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
+	folders.Queue()
 
 	// Invalidate file cache for all affected torrents since paths may change
 	if fm := sm.getFilesManager(); fm != nil {

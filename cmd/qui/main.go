@@ -770,6 +770,10 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 
+	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
+	syncManager.SetFolderCleanup(folderCleanup)
+	folderCleanup.Start(context.Background())
+
 	discScanStore := models.NewDiscScanStore(db)
 	discScanService := discscan.NewService(discScanStore)
 	discScanService.SetActivityPublisher(activityHub)
@@ -1027,6 +1031,8 @@ func (app *Application) runServer() {
 		// chain, a read in flight gets ErrConnectionLost, and either ends with
 		// the process.
 		sshPool.Close()
+		// After Shutdown, so no request can hand it more work.
+		folderCleanup.Stop()
 		return nil
 	}
 
