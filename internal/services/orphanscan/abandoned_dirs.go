@@ -6,16 +6,14 @@ package orphanscan
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
@@ -28,55 +26,10 @@ func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instan
 
 	seen := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(d, seen, resolveCategoryPath(d, name, categories, defaultSavePath, useSubcategories))
+		addAbsoluteScanRoot(d, seen, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, useSubcategories))
 	}
 
 	return sortedRoots(seen), nil
-}
-
-// qbtInvalidPathChars is the regex from Utils::Fs::toValidPath; slashes are
-// absent there because they separate path segments.
-var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
-
-// toValidPath converts a category name into the relative path qBittorrent
-// creates for it, so a category called "movies:hd" is protected at "movies hd".
-func toValidPath(name string) string {
-	return qbtInvalidPathChars.ReplaceAllString(name, " ")
-}
-
-// resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
-// destination cannot be determined; a depth cap here would silently drop
-// protection for a deeply nested category.
-func resolveCategoryPath(d fsops.PathDialect, name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
-	savePath := categories[name].SavePath
-	if savePath != "" {
-		savePath = d.Clean(savePath)
-		if d.IsAbs(savePath) {
-			return savePath
-		}
-		if defaultSavePath == "" {
-			return ""
-		}
-		return d.Join(defaultSavePath, savePath)
-	}
-
-	// Category names are slash-delimited whatever the host separator is.
-	if useSubcategories {
-		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(d, name[:i], categories, defaultSavePath, useSubcategories)
-			if parent == "" {
-				return ""
-			}
-			// qBittorrent converts only the last segment and resolves the rest
-			// through the parent category.
-			return d.Join(parent, d.FromSlash(toValidPath(name[i+1:])))
-		}
-	}
-
-	if defaultSavePath == "" {
-		return ""
-	}
-	return d.Join(defaultSavePath, d.FromSlash(toValidPath(name)))
 }
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
