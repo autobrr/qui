@@ -79,6 +79,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Before you edit, spec, or revie
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
+  - When a published spec or format defines the logic, keep the well-proven library. It outranks the no-new-dependency rule of ponytail. See `docs/standards/simplicity.md`.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
 - Fill `.github/pull_request_template.md` into the PR body; `gh pr create --body` does not auto-fill it.
@@ -113,3 +114,4 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
 - Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
+- The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.

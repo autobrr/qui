@@ -58,7 +58,7 @@ func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {
 	inUsePath := filepath.Join(root, "in-use.mkv")
 	aliasPath := filepath.Join(root, "alias.mkv")
 
-	tfm := NewTorrentFileMap()
+	tfm := NewTorrentFileMap(fsops.HostPaths)
 	tfm.Add(inUsePath)
 
 	fid := hardlink.FileID{Dev: 1, Ino: 2}
@@ -99,7 +99,7 @@ func TestScanWalker_HardlinkOrphansReportedPerPath(t *testing.T) {
 		t.Fatalf("os.Link(%s, %s): %v", src, dup, err)
 	}
 
-	tfm := NewTorrentFileMap()
+	tfm := NewTorrentFileMap(fsops.HostPaths)
 	// Neither file is in the TFM. Hardlinks (nlink=2) are distinct directory
 	// entries, so both paths are reported as orphan units.
 

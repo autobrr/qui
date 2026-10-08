@@ -340,7 +340,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   if (matches.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {t("crossSeedTable.noMatches", { defaultValue: "No matching torrents found on other instances" })}
+        {t("crossSeedTable.noMatches")}
       </div>
     )
   }

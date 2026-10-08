@@ -18,125 +18,124 @@ export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<Cond
   "SYSTEM_MONTH",
 ]);
 
-// Field definitions with metadata for the query builder UI
-export const CONDITION_FIELDS = {
+// Value type of every condition field; it picks the operators and the value input.
+export const CONDITION_FIELD_TYPES = {
   // String fields
-  NAME: { label: "Name", type: "string" as const },
-  HASH: { label: "Hash", type: "string" as const },
-  INFOHASH_V1: { label: "Infohash v1", type: "string" as const },
-  INFOHASH_V2: { label: "Infohash v2", type: "string" as const },
-  MAGNET_URI: { label: "Magnet URI", type: "string" as const },
-  CATEGORY: { label: "Category", type: "string" as const },
-  TAGS: { label: "Tags", type: "string" as const },
-  SAVE_PATH: { label: "Save Path", type: "string" as const },
-  CONTENT_PATH: { label: "Content Path", type: "string" as const },
-  DOWNLOAD_PATH: { label: "Download Path", type: "string" as const },
-  CREATED_BY: { label: "Created By", type: "string" as const },
+  NAME: "string",
+  HASH: "string",
+  INFOHASH_V1: "string",
+  INFOHASH_V2: "string",
+  MAGNET_URI: "string",
+  CATEGORY: "string",
+  TAGS: "string",
+  SAVE_PATH: "string",
+  CONTENT_PATH: "string",
+  DOWNLOAD_PATH: "string",
+  CREATED_BY: "string",
   // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
-  // FIELD_GROUPS so it is no longer offered, and kept here so saved rules that
-  // already use it still render a label and a type.
-  TRACKERS: { label: "Trackers (All)", type: "string" as const },
-  CONTENT_TYPE: { label: "Content Type", type: "string" as const },
-  EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const },
-  RLS_SOURCE: { label: "Source (RLS)", type: "string" as const },
-  RLS_RESOLUTION: { label: "Resolution (RLS)", type: "string" as const },
-  RLS_CODEC: { label: "Codec (RLS)", type: "string" as const },
-  RLS_HDR: { label: "HDR (RLS)", type: "string" as const },
-  RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const },
-  RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const },
-  RLS_GROUP: { label: "Group (RLS)", type: "string" as const },
-  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const },
-  STATE: { label: "State", type: "state" as const },
-  TRACKER: { label: "Tracker", type: "string" as const },
-  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const },
-  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const },
-  COMMENT: { label: "Comment", type: "string" as const },
+  // FIELD_GROUPS so it is no longer offered; saved rules can still use it.
+  TRACKERS: "string",
+  CONTENT_TYPE: "string",
+  EFFECTIVE_NAME: "string",
+  RLS_SOURCE: "string",
+  RLS_RESOLUTION: "string",
+  RLS_CODEC: "string",
+  RLS_HDR: "string",
+  RLS_AUDIO: "string",
+  RLS_CHANNELS: "string",
+  RLS_GROUP: "string",
+  RLS_YEAR: "integer",
+  STATE: "state",
+  TRACKER: "string",
+  TRACKER_STATUS: "trackerStatus",
+  TRACKER_MESSAGE: "string",
+  COMMENT: "string",
 
   // Size fields (bytes)
-  SIZE: { label: "Size", type: "bytes" as const },
-  TOTAL_SIZE: { label: "Total Size", type: "bytes" as const },
-  COMPLETED: { label: "Completed", type: "bytes" as const },
-  DOWNLOADED: { label: "Downloaded", type: "bytes" as const },
-  DOWNLOADED_SESSION: { label: "Downloaded (Session)", type: "bytes" as const },
-  UPLOADED: { label: "Uploaded", type: "bytes" as const },
-  UPLOADED_SESSION: { label: "Uploaded (Session)", type: "bytes" as const },
-  AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const },
-  FREE_SPACE: { label: "Free Space", type: "bytes" as const },
+  SIZE: "bytes",
+  TOTAL_SIZE: "bytes",
+  COMPLETED: "bytes",
+  DOWNLOADED: "bytes",
+  DOWNLOADED_SESSION: "bytes",
+  UPLOADED: "bytes",
+  UPLOADED_SESSION: "bytes",
+  AMOUNT_LEFT: "bytes",
+  FREE_SPACE: "bytes",
 
   // Timestamp-backed fields represented as ages (seconds since event)
-  ADDED_ON: { label: "Added Age", type: "duration" as const },
-  COMPLETION_ON: { label: "Completed Age", type: "duration" as const },
-  LAST_ACTIVITY: { label: "Inactive Time", type: "duration" as const },
-  SEEN_COMPLETE: { label: "Seen Complete Age", type: "duration" as const },
+  ADDED_ON: "duration",
+  COMPLETION_ON: "duration",
+  LAST_ACTIVITY: "duration",
+  SEEN_COMPLETE: "duration",
 
   // Duration fields (seconds)
-  ETA: { label: "ETA", type: "duration" as const },
-  REANNOUNCE: { label: "Reannounce In", type: "duration" as const },
-  SEEDING_TIME: { label: "Seeding Time", type: "duration" as const },
-  TIME_ACTIVE: { label: "Time Active", type: "duration" as const },
-  MAX_SEEDING_TIME: { label: "Max Seeding Time", type: "duration" as const },
-  MAX_INACTIVE_SEEDING_TIME: { label: "Max Inactive Seeding Time", type: "duration" as const },
-  SEEDING_TIME_LIMIT: { label: "Seeding Time Limit", type: "duration" as const },
-  INACTIVE_SEEDING_TIME_LIMIT: { label: "Inactive Seeding Time Limit", type: "duration" as const },
-  ADDED_ON_AGE: { label: "Added Age (legacy)", type: "duration" as const },
-  COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const },
-  LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const },
+  ETA: "duration",
+  REANNOUNCE: "duration",
+  SEEDING_TIME: "duration",
+  TIME_ACTIVE: "duration",
+  MAX_SEEDING_TIME: "duration",
+  MAX_INACTIVE_SEEDING_TIME: "duration",
+  SEEDING_TIME_LIMIT: "duration",
+  INACTIVE_SEEDING_TIME_LIMIT: "duration",
+  ADDED_ON_AGE: "duration",
+  COMPLETION_ON_AGE: "duration",
+  LAST_ACTIVITY_AGE: "duration",
 
   // System Time fields
-  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const },
-  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const },
-  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const },
-  SYSTEM_DAY: { label: "System Day", type: "integer" as const },
-  SYSTEM_MONTH: { label: "System Month", type: "integer" as const },
-  SYSTEM_YEAR: { label: "System Year", type: "integer" as const },
+  SYSTEM_HOUR: "integer",
+  SYSTEM_MINUTE: "integer",
+  SYSTEM_DAY_OF_WEEK: "integer",
+  SYSTEM_DAY: "integer",
+  SYSTEM_MONTH: "integer",
+  SYSTEM_YEAR: "integer",
 
   // Float fields
-  RATIO: { label: "Ratio", type: "float" as const },
-  RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const },
-  MAX_RATIO: { label: "Max Ratio", type: "float" as const },
-  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const },
-  PROGRESS: { label: "Progress", type: "percentage" as const },
-  AVAILABILITY: { label: "Availability", type: "float" as const },
-  POPULARITY: { label: "Popularity", type: "float" as const },
+  RATIO: "float",
+  RATIO_LIMIT: "float",
+  MAX_RATIO: "float",
+  UPLOADED_OVER_SIZE: "float",
+  PROGRESS: "percentage",
+  AVAILABILITY: "float",
+  POPULARITY: "float",
 
   // Speed fields (bytes/s)
-  DL_SPEED: { label: "Download Speed", type: "speed" as const },
-  UP_SPEED: { label: "Upload Speed", type: "speed" as const },
-  DL_LIMIT: { label: "Download Limit", type: "speed" as const },
-  UP_LIMIT: { label: "Upload Limit", type: "speed" as const },
+  DL_SPEED: "speed",
+  UP_SPEED: "speed",
+  DL_LIMIT: "speed",
+  UP_LIMIT: "speed",
 
   // Count fields
-  NUM_SEEDS: { label: "Active Seeders", type: "integer" as const },
-  NUM_LEECHS: { label: "Active Leechers", type: "integer" as const },
-  NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const },
-  NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const },
-  TRACKERS_COUNT: { label: "Trackers", type: "integer" as const },
-  PRIORITY: { label: "Queue Priority", type: "integer" as const },
-  GROUP_SIZE: { label: "Group Size", type: "integer" as const },
+  NUM_SEEDS: "integer",
+  NUM_LEECHS: "integer",
+  NUM_COMPLETE: "integer",
+  NUM_INCOMPLETE: "integer",
+  TRACKERS_COUNT: "integer",
+  PRIORITY: "integer",
+  GROUP_SIZE: "integer",
 
   // Boolean fields
-  PRIVATE: { label: "Private", type: "boolean" as const },
-  AUTO_MANAGED: { label: "Auto-managed", type: "boolean" as const },
-  FIRST_LAST_PIECE_PRIO: { label: "First/Last Piece Priority", type: "boolean" as const },
-  FORCE_START: { label: "Force Start", type: "boolean" as const },
-  SEQUENTIAL_DOWNLOAD: { label: "Sequential Download", type: "boolean" as const },
-  SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const },
-  IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const },
-  HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const },
-  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const },
-  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const },
-  EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const },
-  SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const },
-  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const },
-  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const },
-  CROSS_SEED_TAGS: { label: "Cross-seed Tags", type: "string" as const },
-  SEASON_PACK_STATUS: { label: "Season pack status", type: "seasonPackStatus" as const },
-  SEASON_PACK_STATUS_ANY_INSTANCE: { label: "Season pack status (any instance)", type: "seasonPackStatus" as const },
+  PRIVATE: "boolean",
+  AUTO_MANAGED: "boolean",
+  FIRST_LAST_PIECE_PRIO: "boolean",
+  FORCE_START: "boolean",
+  SEQUENTIAL_DOWNLOAD: "boolean",
+  SUPER_SEEDING: "boolean",
+  IS_UNREGISTERED: "boolean",
+  HAS_MISSING_FILES: "boolean",
+  HAS_SKIPPED_FILES: "boolean",
+  IS_GROUPED: "boolean",
+  EXISTS_ON_OTHER_INSTANCE: "boolean",
+  SEEDING_ON_OTHER_INSTANCE: "boolean",
+  EXISTS_ON_SAME_INSTANCE: "boolean",
+  SEEDING_ON_SAME_INSTANCE: "boolean",
+  CROSS_SEED_TAGS: "string",
+  SEASON_PACK_STATUS: "seasonPackStatus",
+  SEASON_PACK_STATUS_ANY_INSTANCE: "seasonPackStatus",
 
   // Enum-like fields
-  HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const },
-  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const },
-} as const;
+  HARDLINK_SCOPE: "hardlinkScope",
+  HARDLINK_SCOPE_CROSS: "hardlinkScope",
+} as const satisfies Record<ConditionField, FieldType>;
 
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
 
@@ -344,8 +343,8 @@ export const FIELD_GROUPS = [
 
 // Helper to get field type
 export function getFieldType(field: string): FieldType {
-  const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];
-  return fieldDef?.type ?? "string";
+  // Own keys only: saved rules can hold any id, and "constructor" would read Object.prototype.
+  return Object.hasOwn(CONDITION_FIELD_TYPES, field) ? CONDITION_FIELD_TYPES[field as ConditionField] : "string";
 }
 
 // Special operators only available for NAME field (cross-category lookups)
@@ -420,7 +419,7 @@ export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
 
 /** Get translated label for a condition field */
 export function getFieldLabel(field: string, t: TFunction): string {
-  return t(`queryBuilder.fields.${field}`, { defaultValue: CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS]?.label ?? field });
+  return t(`queryBuilder.fields.${field}`);
 }
 
 /** Get translated reason a field or state value is unavailable on this instance */

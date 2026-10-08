@@ -7,7 +7,7 @@ import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
 import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
-  CONDITION_FIELDS,
+  CONDITION_FIELD_TYPES,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -165,6 +165,10 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
 
+// Outside the map: an action of this name would otherwise claim its own fallback.
+// The fallback shows the raw action name so the user can tell which action this build does not know.
+const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
+
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
     const asNumber = typeof value === "number" ? value : Number(value)
@@ -313,10 +317,10 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
   "TRACKERS_COUNT",
 ])
 
-const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
 
-const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
@@ -4087,7 +4091,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs font-medium truncate">{t(Object.hasOwn(DRY_RUN_ACTION_LABEL_KEYS, event.action) ? DRY_RUN_ACTION_LABEL_KEYS[event.action] : DRY_RUN_ACTION_FALLBACK_KEY, { action: event.action })}</p>
                             <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">

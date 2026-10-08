@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import i18n from "@/i18n"
 import { describe, expect, it } from "vitest"
 
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
 
 function iconColumnSizes(viewMode: TableViewMode) {
-  return createColumns(false, undefined, "bytes", undefined, undefined, undefined, true, false, viewMode)
+  return createColumns({ incognitoMode: false, viewMode }, i18n.getFixedT(null, "torrents"))
     .filter(col => col.id === "status_icon" || col.id === "tracker_icon")
     .map(({ size, minSize, maxSize }) => ({ size, minSize, maxSize }))
 }
