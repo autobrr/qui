@@ -8,7 +8,6 @@
 /internal/services/automations/hardlink_index*.go @s0up4200 @nitrobass24
 /internal/fsops/ @s0up4200 @nitrobass24 @com6056
 /internal/sshpool/ @s0up4200 @nitrobass24 @com6056
-/docs/remote-backend-design.md @s0up4200 @nitrobass24
 /internal/api/ @s0up4200 @nitrobass24
 /internal/qbittorrent/ @s0up4200 @Audionut
 /internal/models/ @s0up4200 @nitrobass24
@@ -22,5 +21,3 @@
 /web/src/test/ @s0up4200 @nitrobass24
 /web/src/components/query-builder/ @s0up4200 @ColinHebert @nitrobass24
 /web/src/i18n/ @s0up4200 @ColinHebert
-
-/documentation/docs/ @s0up4200 @Audionut
