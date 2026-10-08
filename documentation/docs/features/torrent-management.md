@@ -2,12 +2,31 @@
 sidebar_position: 14
 title: Manage torrents in qui
 sidebar_label: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
+description: Tags, categories, leftover folders after deletes and moves, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management
 
 qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+
+## Deleting and moving torrents
+
+qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
+
+qui removes a folder only when it is empty, or holds nothing but `Thumbs.db`, `desktop.ini`, `.directory`, `.DS_Store`, or files whose names end in `~`. It starts at the torrent's own folder and works up, one empty folder at a time. It stops at:
+
+- the default save path, the download path, a category folder, a category's folder in the download path, and the hardlink base directory. qui never removes these. A download path set on the category itself is not recognized yet, so an empty one can be removed;
+- a folder qBittorrent monitors for `.torrent` files, and the save path set for it. qui never removes these either;
+- a folder that holds any other file, such as subtitles or an `.nfo` you added. A symlink, a Windows junction, or another special file counts as a file even when its name is on the list above;
+- a folder under your [orphan scan ignore paths](./orphan-scan.md), even with orphan scan off;
+- the save path or content path of a torrent still in the instance, or a folder above one;
+- a symlink or a Windows junction.
+
+When the save path is not inside a folder from the first item in this list, qui never goes above the torrent's save path, and never removes the save path itself. For an incomplete torrent in its own download path, the same holds for that download path. A monitored folder and the save path set for it are never removed, but they do not limit how far up qui goes. When qBittorrent adds a torrent from a subfolder of a monitored folder, it saves the torrent to a subfolder of the same name wherever that monitored folder saves, and qui can remove that subfolder once it is empty if it sits inside one of the folders from the first item, which is always the case with **Default save location**.
+
+qui waits up to two minutes for qBittorrent to finish deleting or moving the files, and for the torrent to leave the instance after a delete or show its new content path after a move. Then it gives up and leaves the folder to [orphan scan](./orphan-scan.md#abandoned-directories). A move to another disk that takes longer is also left to orphan scan, and a torrent that turns out not to be deleted or moved keeps its folder. If the content was already missing before the delete or move, for example because a disk was not mounted, qui leaves the folder alone.
+
+qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those. Instances reached over SSH are skipped for now.
 
 ## Tags and categories
 

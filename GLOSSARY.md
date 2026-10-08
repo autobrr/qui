@@ -30,6 +30,12 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
 
+## Folder cleanup
+
+- **Leftover folder**: A folder that held a torrent's content and is empty after qui deleted or moved that torrent. A folder that holds only junk files counts as empty. _Avoid_: orphan folder. An abandoned directory is a different thing: orphan scan finds it with a scan.
+- **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, or the hardlink base dir. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
+- **Folder cleanup**: The step that removes leftover folders after qui deletes or moves a torrent. _Avoid_: prune, managed delete cleanup.
+
 ## Release classification
 
 - **Content type**: The kind of media a release name describes: movie, TV, music, audiobook, book, comic, game, app, adult, or unknown. Automations decide it from the name alone; cross-seed also corrects it with the torrent's file sizes. Magazines are books. Courses are unknown: rls gives video courses and book publishers the same type, so no category filter fits them all. When the caller passes no categories, an indexer search picks them from the query and IDs, which is not a content type. _Avoid_: category (a qBittorrent category is a different thing), media type (the disc format read from a RIAJ code).
