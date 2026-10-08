@@ -10724,7 +10724,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	parsed := make([]torrentWithRelease, 0, len(torrents))
 	for _, torrent := range torrents {
 		release := s.releaseCache.Parse(torrent.Name)
-		normalizedTitle := stringutils.NormalizeForMatching(release.Title)
+		normalizedTitle := s.stringNormalizer.Normalize(release.Title)
 		parsed = append(parsed, torrentWithRelease{
 			torrent:         torrent,
 			release:         release,

@@ -25,7 +25,7 @@ import (
 // test, unless the row lists that difference with a reason.
 //
 // Known gap: Dir Scan is not in the corpus. Its comparison lives in the dirscan
-// package, and #3036 decides when it moves to the shared release reading.
+// package, and #3059 decides when it moves to the shared release reading.
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.
@@ -67,7 +67,7 @@ type corpusDifference struct {
 // corpusTickets are the open issues that known differences name. Add a ticket
 // with its first known difference, and remove it with its last one.
 var corpusTickets = []int{
-	3036, // read a release name in one module
+	3059, // one release reader for every match path
 	3037, // decide every match through one verdict
 }
 
@@ -207,8 +207,8 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3059, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3059, reasonDedupKey),
 		},
 	},
 	{
@@ -221,8 +221,8 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3059, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3059, reasonDedupKey),
 		},
 	},
 	{
@@ -276,7 +276,7 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathDedup: knownDifference(corpusNoMatch, 3059, reasonDedupKey),
 		},
 	},
 	{
@@ -287,6 +287,9 @@ var corpusRows = []corpusRow{
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: knownDifference(corpusNoMatch, 3059, reasonDedupKey),
+		},
 	},
 	{
 		// An AKA after the episode number starts an episode title, not a show title.
@@ -307,8 +310,8 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3059, reasonCrossMatchKey),
+			pathDedup:      knownDifference(corpusNoMatch, 3059, reasonDedupKey),
 		},
 	},
 	{
