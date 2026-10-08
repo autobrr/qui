@@ -199,24 +199,29 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 }
 
 func (c *AppConfig) loadFromStandardLocations() error {
-	c.viper.SetConfigName("config")
-	c.viper.AddConfigPath(".")
-	c.viper.AddConfigPath(GetDefaultConfigDir())
-
-	if err := c.viper.ReadInConfig(); err != nil {
-		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
+	// Only look for config.toml. A name-only search also matches config.ini, config.json and so on,
+	// which would then be decoded as TOML.
+	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
+	for _, candidate := range []string{"config.toml", defaultConfigPath} {
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		c.viper.SetConfigFile(candidate)
+		if err := c.viper.ReadInConfig(); err != nil {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
-		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
-		if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
-			return writeErr
-		}
-		c.viper.SetConfigFile(defaultConfigPath)
-		if readErr := c.viper.ReadInConfig(); readErr != nil {
-			return fmt.Errorf("failed to read newly created config: %w", readErr)
-		}
-		c.dataDir = filepath.Dir(defaultConfigPath)
+		return nil
 	}
+
+	if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
+		return writeErr
+	}
+	c.viper.SetConfigFile(defaultConfigPath)
+	if readErr := c.viper.ReadInConfig(); readErr != nil {
+		return fmt.Errorf("failed to read newly created config: %w", readErr)
+	}
+	c.dataDir = filepath.Dir(defaultConfigPath)
 	return nil
 }
 
