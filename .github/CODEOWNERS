@@ -21,3 +21,9 @@
 /web/src/test/ @s0up4200 @nitrobass24
 /web/src/components/query-builder/ @s0up4200 @ColinHebert @nitrobass24
 /web/src/i18n/ @s0up4200 @ColinHebert
+
+*_windows*.go @s0up4200 @Audionut
+/internal/api/*_windows*.go @s0up4200 @nitrobass24 @Audionut
+/internal/fsops/**/*_windows*.go @s0up4200 @nitrobass24 @com6056 @Audionut
+/internal/services/crossseed/*_windows*.go @s0up4200 @nitrobass24 @Audionut
+/internal/services/orphanscan/*_windows*.go @s0up4200 @com6056 @Audionut
