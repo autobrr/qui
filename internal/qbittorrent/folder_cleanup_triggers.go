@@ -29,6 +29,10 @@ const (
 	// FolderCleanupDelete is a delete with files.
 	FolderCleanupDelete FolderCleanupKind = iota
 	FolderCleanupSetLocation
+	// FolderCleanupSetSavePath is the WebAPI's setSavePath, which applies to
+	// torrents with ATM off only.
+	FolderCleanupSetSavePath
+	FolderCleanupSetDownloadPath
 	FolderCleanupSetCategory
 	FolderCleanupEnableATM
 	// FolderCleanupEditCategory moves every torrent in the category, and in
@@ -158,6 +162,12 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 		return true
 	case FolderCleanupSetLocation:
 		return d.Clean(t.SavePath) != d.Clean(op.Target)
+	case FolderCleanupSetSavePath:
+		return !t.AutoManaged && d.Clean(t.SavePath) != d.Clean(op.Target)
+	case FolderCleanupSetDownloadPath:
+		// Only content still in the download path moves.
+		return !t.AutoManaged && t.DownloadPath != "" && d.Clean(t.DownloadPath) != d.Clean(op.Target) &&
+			pathAtOrUnder(d, foldKey(d, t.ContentPath), foldKey(d, t.DownloadPath))
 	case FolderCleanupSetCategory:
 		return t.AutoManaged && t.Category != op.Target
 	case FolderCleanupEnableATM:
