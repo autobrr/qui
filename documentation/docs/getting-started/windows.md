@@ -134,9 +134,13 @@ A task that you created with the steps above needs no change.
 
 ## Updating
 
+:::note
+An update replaces `qui-tray.exe` only when the file is already in the folder with `qui.exe`. An update from 1.30.0 or older does not add the file, because those versions have no Tray. After that update, copy `qui-tray.exe` from the Windows zip on [GitHub Releases](https://github.com/autobrr/qui/releases/latest) into the folder with `qui.exe`. Later updates replace both files.
+:::
+
 ### Update from the web UI
 
-Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
+Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` (see the note above) and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
 
 ### Update an MSI install
 
@@ -146,7 +150,7 @@ You can also install a newer MSI. Quit the Tray, or end the scheduled task, befo
 
 ### Update from the shell
 
-qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe`. Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
+qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe` (see the note above). Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
 2. Run the updater:
