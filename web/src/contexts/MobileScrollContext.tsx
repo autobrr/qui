@@ -40,9 +40,10 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       // Determine scroll direction
       if (scrollY > lastScrollY.current) {
         setIsFooterVisible(false) // Hide on scroll down
-      } else if (scrollY + scrollContainer.clientHeight < scrollContainer.scrollHeight - threshold) {
+      } else if (scrollY < threshold || scrollY + scrollContainer.clientHeight < scrollContainer.scrollHeight - threshold) {
         // Show on scroll up, except at the bottom. When the footer hides, the list gets
         // shorter and the browser moves scrollTop up. The user did not scroll up.
+        // Near the top, always show, because a list that no longer scrolls cannot scroll up.
         setIsFooterVisible(true)
       }
 

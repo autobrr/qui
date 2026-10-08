@@ -87,6 +87,20 @@ describe("useMobileScroll", () => {
     expect(result.current.isFooterVisible).toBe(true)
   })
 
+  it("shows the footer when the list shrinks until it no longer scrolls", () => {
+    const size = { scrollHeight: 1000, clientHeight: 400 }
+    const container = makeContainer(size)
+    const { result } = renderHook(() => useMobileScroll(), { wrapper })
+
+    act(() => result.current.setScrollContainer(container))
+    act(() => scrollTo(container, 600))
+    expect(result.current.isFooterVisible).toBe(false)
+
+    size.scrollHeight = 400
+    act(() => scrollTo(container, 0))
+    expect(result.current.isFooterVisible).toBe(true)
+  })
+
   it("ignores movement below the threshold", () => {
     const container = document.createElement("div")
     const { result } = renderHook(() => useMobileScroll(), { wrapper })
