@@ -5,9 +5,11 @@ package qbittorrent
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -363,24 +365,6 @@ func TestFolderCleanupTriggerRejectedRequest(t *testing.T) {
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// The ClientPool's instance store still reads the row as local, the backend
-// pool's store reads it as remote. The snapshot must decide from the backend
-// pool's row alone and skip, rather than stat local paths on the SSH host.
-func TestFolderCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
-	t.Parallel()
-	r := newTriggerRig(t)
-	r.add(r.perRelease(hashA, "tv"))
-	spy := &statSpy{}
-	pool := fsops.NewPoolWithRemote(remoteRowStore{}, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
-	fc := NewFolderCleanup(pool, r.sm, &fakeIgnores{})
-	r.sm.SetFolderCleanup(fc)
-
-	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA}})
-
-	require.Empty(t, batch.snaps)
-	require.Zero(t, spy.stats.Load(), "the cleanup must not read the SSH host")
-}
-
 // qBittorrent acts only on a hash of exactly 40 hex characters naming the
 // torrent's own hash (TorrentID::fromString, then Session::getTorrent), and
 // answers 200 for any other. The snapshot takes no other torrent, so a
@@ -411,4 +395,40 @@ func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 		batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: tc.hashes})
 		require.Len(t, batch.snaps, tc.want, "%q", tc.hashes)
 	}
+}
+
+// remoteRowStore answers every instance read with a row in remote mode.
+type remoteRowStore struct{}
+
+func (remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	return &models.Instance{ID: id, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
+}
+
+// statSpy stands in for the SSH host and counts the stats that reached it.
+type statSpy struct {
+	fsops.Backend
+	stats atomic.Int32
+}
+
+func (s *statSpy) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	s.stats.Add(1)
+	return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+}
+
+// The ClientPool's instance store still reads the row as local, the backend
+// pool's store reads it as remote. The snapshot must decide from the backend
+// pool's row alone and skip, rather than stat local paths on the SSH host.
+func TestFolderCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.add(r.perRelease(hashA, "tv"))
+	spy := &statSpy{}
+	pool := fsops.NewPoolWithRemote(remoteRowStore{}, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
+	fc := NewFolderCleanup(pool, r.sm, &fakeIgnores{})
+	r.sm.SetFolderCleanup(fc)
+
+	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA}})
+
+	require.Empty(t, batch.snaps)
+	require.Zero(t, spy.stats.Load(), "the cleanup must not read the SSH host")
 }

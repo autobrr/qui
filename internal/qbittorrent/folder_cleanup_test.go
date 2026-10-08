@@ -78,7 +78,7 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 			absent:  []string{"torrents/tv/Show/Season 1", "torrents/tv/Show"},
 		},
 		{
-			name:   "nested folders above the torrent, one still in use",
+			name:   "nested folders above the torrent with one still in use",
 			layout: []string{"torrents/tv/Show/Season 1/Show.S01-GRP/e1.mkv", "torrents/tv/Show/Season 2/Show.S02-GRP/e1.mkv"},
 			snap:   func(e *cleanupEnv) folderSnapshot { return e.rootFolder("torrents/tv/Show/Season 1", "Show.S01-GRP") },
 			qbt: func(e *cleanupEnv, _ folderSnapshot) {
@@ -158,6 +158,37 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 			})
 		})
 	}
+}
+
+// The cases the managed-delete cleanup covered under the hardlink base dir.
+func TestFolderCleanupHardlinkTree(t *testing.T) {
+	t.Run("single file in a release folder up to the base dir", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			e.tree("torrents/qui-links/TrackerA/MovieA/MovieA.mkv")
+			snap := e.singleFile("torrents/qui-links/TrackerA/MovieA", "MovieA.mkv")
+			e.rm("torrents/qui-links/TrackerA/MovieA/MovieA.mkv")
+			e.run(snap)
+			e.requireTree([]string{"torrents/qui-links"}, []string{"torrents/qui-links/TrackerA/MovieA", "torrents/qui-links/TrackerA"})
+		})
+	})
+	t.Run("isolation tracker and instance folders up to the base dir", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			e.tree("torrents/qui-links/Instance/TrackerA/Show.S01-GRP--a1b2/e1.mkv")
+			snap := e.noRoot("torrents/qui-links/Instance/TrackerA/Show.S01-GRP--a1b2", "e1.mkv")
+			e.rm("torrents/qui-links/Instance/TrackerA/Show.S01-GRP--a1b2/e1.mkv")
+			e.run(snap)
+			e.requireTree([]string{"torrents/qui-links"}, []string{"torrents/qui-links/Instance"})
+		})
+	})
+	t.Run("stops at a folder another release still uses", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			e.tree("torrents/qui-links/TrackerA/MovieA/MovieA.mkv", "torrents/qui-links/TrackerA/MovieB/MovieB.mkv")
+			snap := e.singleFile("torrents/qui-links/TrackerA/MovieA", "MovieA.mkv")
+			e.rm("torrents/qui-links/TrackerA/MovieA/MovieA.mkv")
+			e.run(snap)
+			e.requireTree([]string{"torrents/qui-links/TrackerA/MovieB"}, []string{"torrents/qui-links/TrackerA/MovieA"})
+		})
+	})
 }
 
 func TestFolderCleanupKeepsStopFolders(t *testing.T) {

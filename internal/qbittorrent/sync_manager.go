@@ -30,16 +30,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
-
-// backendPoolGetter provides filesystem backends per instance.
-type backendPoolGetter interface {
-	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
-}
 
 // FilesManager interface for caching torrent files.
 // IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
@@ -427,9 +421,6 @@ type SyncManager struct {
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
-	// Backend pool for filesystem operations (managed delete cleanup).
-	backendPool atomic.Value // stores backendPoolGetter interface value
-
 	folderCleanup atomic.Pointer[FolderCleanup]
 
 	syncEventSinkMu sync.RWMutex
@@ -510,21 +501,6 @@ func (sm *SyncManager) getSyncEventSink() SyncEventSink {
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
-}
-
-// SetBackendPool sets the filesystem backend pool for managed delete cleanup.
-func (sm *SyncManager) SetBackendPool(pool backendPoolGetter) {
-	sm.backendPool.Store(pool)
-}
-
-// getBackendPool returns the current backend pool in a thread-safe manner.
-// Returns nil if no pool is set.
-func (sm *SyncManager) getBackendPool() backendPoolGetter {
-	v := sm.backendPool.Load()
-	if v == nil {
-		return nil
-	}
-	return v.(backendPoolGetter)
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -2310,12 +2286,6 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
 
-	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
-	var managedDeleteBackend fsops.Backend
-	if action == "deleteWithFiles" {
-		managedDeleteCleanupTargets, managedDeleteBackend = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
-	}
-
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
 	if variantResolutions > 0 {
 		log.Debug().
@@ -2404,9 +2374,6 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			if managedDeleteBackend != nil {
-				cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, managedDeleteBackend)
-			}
 			folders.Queue()
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
@@ -2549,40 +2516,6 @@ func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) boo
 	}
 
 	return true
-}
-
-// buildManagedDeleteCleanupTargets also returns the backend it resolved so the
-// post-delete cleanup uses the same one instead of a second lookup that could
-// disagree with this one.
-func (sm *SyncManager) buildManagedDeleteCleanupTargets(
-	ctx context.Context,
-	instanceID int,
-	syncManager *qbt.SyncManager,
-	hashes []string,
-) ([]managedDeleteCleanupTarget, fsops.Backend) {
-	pool := sm.getBackendPool()
-	if pool == nil || syncManager == nil {
-		return nil, nil
-	}
-	// The base dir and the backend come from one read: a base dir read before
-	// local access was turned off is a local path the SSH host need not have.
-	backend, instance, err := pool.Require(ctx, instanceID, models.CapabilityWrite)
-	if err != nil {
-		if !errors.Is(err, fsops.ErrNotCapable) {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
-		}
-		return nil, nil
-	}
-	if strings.TrimSpace(instance.HardlinkBaseDir) == "" {
-		return nil, nil
-	}
-
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-	if len(torrents) == 0 {
-		return nil, nil
-	}
-
-	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend), backend
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution.
