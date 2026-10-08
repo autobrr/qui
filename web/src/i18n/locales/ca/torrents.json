@@ -386,6 +386,7 @@
   "stateLabels": {
     "downloading": "Baixant",
     "metaDL": "Obtenint les metadades",
+    "forcedMetaDL": "(F) Obtenint les metadades",
     "allocating": "Assignant espai",
     "stalledDL": "Encallat",
     "queuedDL": "A la cua",
@@ -403,8 +404,10 @@
     "error": "Error",
     "missingFiles": "Falten fitxers",
     "checkingResumeData": "Verificant les dades de represa",
-    "moving": "Movent"
+    "moving": "Movent",
+    "unknown": "Desconegut"
   },
+  "stateLabelFallback": "No reconegut",
   "details": {
     "failedToUpdatePriorities": "No s'han pogut actualitzar les prioritats dels fitxers",
     "failedToRenameFile": "No s'ha pogut reanomenar el fitxer",
