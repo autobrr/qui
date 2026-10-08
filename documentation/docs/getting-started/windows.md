@@ -175,6 +175,8 @@ The update keeps the previous version as `qui-v<old version>.bak.exe` next to `q
 
 If you use the Tray, click **Quit** in the Tray menu before step 2, and start `qui-tray.exe` again after it.
 
+If the backup is from 1.30.0 or older, skip the second `move` command and do not start `qui-tray.exe`, because it is still the new version. Start `qui.exe` as you did before the update.
+
 :::warning
 If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.
 :::
