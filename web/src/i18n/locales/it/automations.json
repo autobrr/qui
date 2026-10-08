@@ -123,7 +123,7 @@
       "NUM_LEECHS": "Leecher attivi",
       "NUM_COMPLETE": "Seeder totali",
       "NUM_INCOMPLETE": "Leecher totali",
-      "TRACKERS_COUNT": "Tracker",
+      "TRACKERS_COUNT": "Numero di tracker",
       "PRIORITY": "Priorità in coda",
       "GROUP_SIZE": "Dimensione del gruppo",
       "PRIVATE": "Privato",

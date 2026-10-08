@@ -1648,7 +1648,7 @@
     "category": "Kategorie",
     "tags": "Tagy",
     "addedOn": "Přidáno",
-    "completedOn": "Dokončeno",
+    "completedOn": "Dokončeno dne",
     "trackerUrl": "URL trackeru",
     "downLimit": "Limit stahování",
     "upLimit": "Limit odesílání",
