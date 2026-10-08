@@ -9,6 +9,10 @@ These rules apply to Go and TypeScript code.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
 
+## Libraries
+
+- Before you write logic that a published spec or format defines (Markdown, HTML, URLs, CSV, semver, cron, time zones), use a well-proven library for it. Name the library in the PR body. If hand-written logic of this kind needs a second fix for an edge case, replace it with the library.
+
 ## Go types
 
 - Group package interfaces by domain under `internal/<area>`.
