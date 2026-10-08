@@ -280,6 +280,15 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		// An announce keeps the periods of a title; a dotted name cannot.
+		name:          "period in title",
+		source:        "The.Squad.of.Madame.K.AKA.Madame.K.1953.1080p.BluRay.FLAC.1.0.x264-GRP",
+		candidate:     "The Squad of Madame K... AKA Madame K... 1953 1080p BluRay FLAC 1.0 x264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
 		// An AKA after the episode number starts an episode title, not a show title.
 		name:           "AKA episode title of another show",
 		source:         "Beta.Show.S01E01.1080p.WEB.H264-GRP",
