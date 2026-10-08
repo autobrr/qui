@@ -1,6 +1,6 @@
 # Triage playbook
 
-How to triage one discussion in the Issue Triage or Feature Requests categories. The triage workflow (`.github/workflows/triage.yml`) and the local `/triage` skill both obey this file.
+How to triage one discussion in the Issue Triage or Feature Requests categories. The triage workflow (`.github/workflows/triage.yml`) and the local `/triage` skill both obey this file. The workflow triages only the Issue Triage category. A maintainer triages feature requests with `/triage`.
 
 ## Labels
 
