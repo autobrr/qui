@@ -1295,6 +1295,9 @@ func (s *BackupStore) ListTorrentBlobPaths(ctx context.Context) ([]string, error
 	return paths, rows.Err()
 }
 
+// CountBlobReferencesBatch counts stored rows. The count is correct because
+// CleanupRuns deletes each row that no remaining run covers, in the same
+// transaction as its runs.
 func (s *BackupStore) CountBlobReferencesBatch(ctx context.Context, relPaths []string) (map[string]int, error) {
 	if len(relPaths) == 0 {
 		return nil, nil
