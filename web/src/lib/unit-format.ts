@@ -42,8 +42,7 @@ export const BYTE_SPEED_LADDER = BYTE_LADDER.slice(0, -1)
 
 /**
  * Picks the largest unit that keeps the value at or above 1 and scales it to that unit.
- * qBittorrent reports an unknown size as -1, and log of a negative is NaN, so a non-finite
- * exponent falls back to the bottom of the ladder and the NaN still shows.
+ * A value below 1 stays in the bottom unit, so qBittorrent's unknown size of -1 reads "-1 B".
  */
 export function scaleToUnit<T extends string>(
   value: number,

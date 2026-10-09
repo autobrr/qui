@@ -557,7 +557,8 @@
       "toast": {
         "success": "Impostazioni di rete avanzate aggiornate correttamente",
         "error": "Impossibile aggiornare le impostazioni di rete avanzate"
-      }
+      },
+      "unitSeconds": "secondi"
     },
     "reannounce": {
       "title": "Configura il riannuncio",

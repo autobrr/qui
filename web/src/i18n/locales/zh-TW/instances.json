@@ -557,7 +557,8 @@
       "toast": {
         "success": "進階網路設定更新成功",
         "error": "進階網路設定更新失敗"
-      }
+      },
+      "unitSeconds": "秒"
     },
     "reannounce": {
       "title": "配置重新通報",

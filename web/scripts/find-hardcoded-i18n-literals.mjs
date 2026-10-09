@@ -11,6 +11,7 @@ const interestingAttributeNames = new Set([
   "label",
   "description",
   "alt",
+  "unit",
   "aria-label",
   "aria-description",
 ])
