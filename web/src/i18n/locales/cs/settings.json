@@ -1007,6 +1007,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Ověřování podpory",
+        "checkingDescription": "Ověřuje se, zda qui může nainstalovat tuto aktualizaci.",
+        "failedTitle": "Podporu aktualizace se nepodařilo ověřit",
+        "failedDescription": "Nepodařilo se ověřit, zda je samoaktualizace dostupná.",
+        "retryDescription": "Před instalací aktualizace zkuste podporu ověřit znovu.",
+        "retry": "Zkusit znovu"
+      },
+      "unavailable": {
+        "description": "Automatická instalace není pro toto nastavení dostupná.",
+        "nextStep": "Jak aktualizovat",
+        "guide": "Průvodce aktualizací",
+        "container": {
+          "reason": "qui běží v kontejneru. Aktualizace pocházejí z obrazu kontejneru.",
+          "step": "Stáhněte nový obraz qui a znovu vytvořte kontejner se stávající konfigurací a datovými svazky."
+        },
+        "disabled": {
+          "reason": "Samoaktualizace je v konfiguraci qui zakázaná.",
+          "step": "Aktualizujte qui pomocí správce balíčků nebo způsobu, který jste použili při instalaci."
+        },
+        "development": {
+          "reason": "Toto sestavení qui není vydaná verze. Automatická instalace vyžaduje vydanou verzi.",
+          "step": "Zastavte qui, nahraďte binární soubor oficiální verzí nebo novým sestavením a znovu spusťte qui."
+        },
+        "directory": {
+          "reason": "qui nemůže přistupovat k adresáři svého binárního souboru nebo do něj zapisovat.",
+          "step": "Zastavte qui, nahraďte binární soubor novou verzí pomocí účtu s právem zápisu a znovu spusťte qui."
+        }
+      },
       "button": "Nainstalovat aktualizaci",
       "confirmTitle": "Nainstalovat aktualizaci?",
       "confirmDescription": "qui stáhne novou verzi, ověří její podpis a ponechá aktuální binární soubor jako zálohu. Pak se qui restartuje. Stránka se znovu načte, až bude qui zpět.",

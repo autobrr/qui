@@ -50,7 +50,6 @@ import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
-import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import {
@@ -356,7 +355,6 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
-  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
   const updateItemLabel = updateInfo && (
     <>
@@ -796,11 +794,7 @@ export function Header({
                 <>
                   <DropdownMenuItem asChild>
                     {/* Settings holds the Install update button. */}
-                    {selfUpdateAvailable ? (
-                      <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
-                    ) : (
-                      <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
-                    )}
+                    <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

@@ -1001,6 +1001,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "正在检查支持情况",
+        "checkingDescription": "正在检查 qui 是否可以安装此更新。",
+        "failedTitle": "无法检查更新支持情况",
+        "failedDescription": "无法检查是否支持自我更新。",
+        "retryDescription": "安装更新前，请重试支持检查。",
+        "retry": "重试"
+      },
+      "unavailable": {
+        "description": "此环境不支持自动安装。",
+        "nextStep": "如何更新",
+        "guide": "更新指南",
+        "container": {
+          "reason": "qui 在容器中运行。更新通过容器镜像提供。",
+          "step": "拉取新的 qui 镜像，然后使用现有配置和数据卷重新创建容器。"
+        },
+        "disabled": {
+          "reason": "qui 配置中已禁用自我更新。",
+          "step": "使用安装 qui 时所用的包管理器或安装方式进行更新。"
+        },
+        "development": {
+          "reason": "此 qui 构建不是发布版本。自动安装需要发布版本。",
+          "step": "停止 qui，将二进制文件替换为官方发布版本或新构建，然后重新启动 qui。"
+        },
+        "directory": {
+          "reason": "qui 无法访问或写入其二进制文件所在的目录。",
+          "step": "停止 qui，使用有写入权限的账户将二进制文件替换为新版本，然后重新启动 qui。"
+        }
+      },
       "button": "安装更新",
       "confirmTitle": "安装更新？",
       "confirmDescription": "qui 会下载新版本，验证其签名，并将当前二进制文件保留为备份。然后 qui 会重启。qui 恢复后页面会自动重新加载。",

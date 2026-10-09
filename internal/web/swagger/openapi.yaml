@@ -7780,6 +7780,7 @@ components:
         - version
         - updateAvailable
         - selfUpdate
+        - selfUpdateUnavailableReason
         - restart
       properties:
         version:
@@ -7798,6 +7799,11 @@ components:
           type: boolean
           description: Whether qui can replace its own binary with a release. False in an app container, for a build that is not a release, when the directory of the binary is not writable, or when `disableSelfUpdate` is set.
           example: true
+        selfUpdateUnavailableReason:
+          type: string
+          enum: ["", container, disabled, development, directory]
+          description: The first blocker for Self-update, in container, configuration, release build, and binary directory order. Empty when Self-update is available.
+          example: container
         restart:
           type: boolean
           description: Whether qui can restart itself. False in an app container.

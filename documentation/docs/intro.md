@@ -53,6 +53,8 @@ To register qui as your browser handler for magnet links, open **Settings → Se
 
 qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan. The interface detects your browser language on first load and remembers your choice after that.
 
+Sizes and speeds follow the language: French shows `1,5 Gio` where English shows `1.5 GiB`. If a unit reads wrong in yours, say so in a Discussion.
+
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 
 Community members contribute translations. To add or improve a language, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
