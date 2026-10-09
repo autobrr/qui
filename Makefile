@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -187,8 +187,17 @@ gofix-check-changed:
 		rm -f "$$tmp"; \
 		echo "go fix check clean."
 
-# Local pre-commit gate: fmt and gofix on changed files, then lint
-precommit: fmt gofix-changed lint
+# Fail on mojibake: UTF-8 text that an editor read as cp1252 and saved again.
+# Example: an em dash becomes "â€”" (PR #3082). The Makefile holds the pattern,
+# so it is excluded, together with the lockfiles.
+check-mojibake:
+	@if git grep -nIE 'â€|Ã©|Ã¶|Ã¥|Ã¸|Ã¤' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
+		echo "Mojibake found. Restore the original UTF-8 characters."; \
+		exit 1; \
+	fi
+
+# Local pre-commit gate: mojibake check, fmt and gofix on changed files, then lint
+precommit: check-mojibake fmt gofix-changed lint
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
