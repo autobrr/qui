@@ -5,6 +5,7 @@ package externalprograms
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -22,16 +23,28 @@ func (s *Service) buildDirectCommand(ctx context.Context, program *models.Extern
 		programPath = resolved
 	}
 	var cmd *exec.Cmd
+	var commandLine string
 	ext := strings.ToLower(filepath.Ext(programPath))
 	launcher := ext == ".bat" || ext == ".cmd"
-	// Batch files require cmd.exe; preserve the existing launcher behavior for them.
+	// Batch files require cmd.exe and release their slot after shell startup.
 	if launcher {
-		cmdArgs := append([]string{"/d", "/c", "start", "", "/b", programPath}, args...)
+		cmdArgs := append([]string{"/d", "/v:off", "/s", "/c", programPath}, args...)
 		cmd = exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
+		// Expanding a quoted environment value keeps operators and percent
+		// tokens in the path literal. Arguments retain their existing shell semantics.
+		cmd.Env = append(os.Environ(), "QUI_EXTERNAL_PROGRAM_PATH="+programPath)
+		var line strings.Builder
+		line.WriteString(`cmd.exe /d /v:off /s /c ""%QUI_EXTERNAL_PROGRAM_PATH%"`)
+		for _, arg := range args {
+			line.WriteByte(' ')
+			line.WriteString(syscall.EscapeArg(arg))
+		}
+		line.WriteByte('"')
+		commandLine = line.String()
 	} else {
 		cmd = exec.CommandContext(ctx, programPath, args...) //nolint:gosec // intentional external program execution
 	}
 	// Suppress console windows without hiding the window of a GUI program.
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW, CmdLine: commandLine}
 	return cmd, launcher
 }

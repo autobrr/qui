@@ -23,6 +23,7 @@ import (
 
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
@@ -199,6 +200,63 @@ func TestBuildCommand_WindowsBatchScripts(t *testing.T) {
 					assert.Equal(t, "literal\r\n", string(out))
 				})
 			}
+		})
+	}
+}
+
+func TestBuildCommand_WindowsBatchPathOperators(t *testing.T) {
+	t.Setenv("QUI_TEST_WINDOWS_BATCH_PATH", "expanded")
+	for _, name := range []string{"Jobs&Audit", "Jobs(Archive)", "Jobs^Audit", "Jobs%QUI_TEST_WINDOWS_BATCH_PATH%", "Jobs!QUI_TEST_WINDOWS_BATCH_PATH!"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), name)
+			require.NoError(t, os.Mkdir(dir, 0o750))
+			program := filepath.Join(dir, "runner.bat")
+			require.NoError(t, os.WriteFile(program, []byte("@echo off\r\necho %~1\r\necho %~2\r\nexit\r\n"), 0o600))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+			for _, configured := range []string{program, "runner"} {
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				cmd, launcher := (&Service{}).buildCommand(ctx, &models.ExternalProgram{Path: configured}, []string{"literal", "%QUI_TEST_WINDOWS_BATCH_PATH%"})
+				cmd.WaitDelay = 5 * time.Second
+				require.True(t, launcher)
+				output, err := cmd.CombinedOutput()
+				require.NoError(t, err, "%s", output)
+				require.Equal(t, "literal\r\nexpanded\r\n", string(output), "path stays literal; arguments retain batch expansion")
+			}
+		})
+	}
+}
+
+func TestExecuteAsync_WindowsBatchActivity(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instances, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instances.Create(t.Context(), "synthetic", "http://localhost:8080", "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	activity := models.NewAutomationActivityStore(db)
+	for _, code := range []string{"0", "7"} {
+		t.Run(code, func(t *testing.T) {
+			program := &models.ExternalProgram{Name: "batch " + code, Path: filepath.Join(t.TempDir(), "activity.cmd")}
+			require.NoError(t, os.WriteFile(program.Path, []byte("@exit /b "+code+"\r\n"), 0o600))
+			service := NewService(nil, activity, &domain.Config{ExternalProgramMaxRunning: 1})
+			cmd, launcher := service.buildCommand(t.Context(), program, nil)
+			service.admitted.Add(1)
+			service.executeAsync(cmd, launcher, waitKey{}, program, ExecuteRequest{InstanceID: instance.ID,
+				Torrent: &qbt.Torrent{Hash: "synthetic-" + code, Name: "synthetic"}}, time.Now().Add(time.Second))
+			entries, err := activity.ListByInstance(t.Context(), instance.ID, 10)
+			require.NoError(t, err)
+			for _, entry := range entries {
+				if entry.Hash == "synthetic-"+code {
+					want := models.ActivityOutcomeSuccess
+					if code != "0" {
+						want = models.ActivityOutcomeFailed
+					}
+					require.Equal(t, want, entry.Outcome)
+					return
+				}
+			}
+			t.Fatal("missing batch activity")
 		})
 	}
 }

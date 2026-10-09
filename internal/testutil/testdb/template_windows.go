@@ -3,14 +3,18 @@
 
 package testdb
 
-import "golang.org/x/sys/windows"
+import (
+	"golang.org/x/sys/windows"
+
+	"github.com/autobrr/qui/pkg/pathutil"
+)
 
 func publishTemplate(src, dst string) error {
-	from, err := windows.UTF16PtrFromString(src)
+	from, err := pathutil.Win32PathPointer(src)
 	if err != nil {
 		return err
 	}
-	to, err := windows.UTF16PtrFromString(dst)
+	to, err := pathutil.Win32PathPointer(dst)
 	if err != nil {
 		return err
 	}

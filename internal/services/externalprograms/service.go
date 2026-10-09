@@ -248,9 +248,9 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 }
 
 // executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
-// A launcher (a terminal emulator, or cmd.exe start on Windows) releases the slot after the start,
-// because qui cannot wait on the program behind it; any other run holds the slot until it exits.
-// Activity logging happens here after the command actually starts successfully.
+// Terminal and Windows batch wrappers release their slot after startup;
+// direct programs retain it until exit. Every process is reaped with Wait.
+// Windows wrappers report activity after exit so shell failures remain visible.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
 	launcher bool,
@@ -282,54 +282,45 @@ func (s *Service) executeAsync(
 	})
 	defer release()
 
+	// Start the owned process or launcher.
+	execErr := cmd.Start()
+	if execErr != nil {
+		log.Error().
+			Err(execErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("external program failed to start")
+		// Log failure activity
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
+		return
+	}
+
+	if launcher {
+		release()
+	}
+
+	// Windows wrappers must also successfully dispatch their command.
+	if runtime.GOOS != "windows" || !launcher {
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
+	}
+
+	// Wait for the process to prevent zombie processes
+	waitErr := cmd.Wait()
 	if runtime.GOOS == "windows" && launcher {
-		// Windows: Use Run() which waits for cmd.exe to complete
-		// The 'start' command will spawn the process and cmd.exe will exit quickly
-		execErr := cmd.Run()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed to start: %v", execErr))
-			return
-		}
-		// Log success - on Windows, Run() completing without error means the program started
-		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
-	} else {
-		// Start the owned process or a Unix terminal launcher.
-		execErr := cmd.Start()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			// Log failure activity
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
-			return
-		}
-
-		if launcher {
-			release()
-		}
-
-		// Log success - the program has actually started
-		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
-
-		// Wait for the process to prevent zombie processes
-		waitErr := cmd.Wait()
 		if waitErr != nil {
-			log.Warn().
-				Err(waitErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("process exited with error (may be normal for terminal emulators)")
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed: %v", waitErr))
+		} else {
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 		}
+	}
+	if waitErr != nil {
+		log.Warn().
+			Err(waitErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("process exited with error (may be normal for terminal emulators)")
 	}
 
 	log.Info().
@@ -340,7 +331,7 @@ func (s *Service) executeAsync(
 }
 
 // buildCommand creates the appropriate exec.Cmd based on platform and settings.
-// launcher reports that the command exits before the program it starts.
+// launcher reports a terminal or batch wrapper that releases its slot after startup.
 func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (cmd *exec.Cmd, launcher bool) {
 	if program.UseTerminal {
 		return s.buildTerminalCommand(ctx, program, args)

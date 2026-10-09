@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -608,16 +607,10 @@ func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path strin
 			continue
 		}
 		otherPath := filepath.Clean(dir.Path)
-		if otherPath == cleanPath {
+		// Webhook routing uses case-insensitive filepath.Rel on Windows, even
+		// when a case-sensitive volume stores distinct physical directories.
+		if otherPath == cleanPath || (runtime.GOOS == "windows" && strings.EqualFold(otherPath, cleanPath)) {
 			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
-		}
-		if runtime.GOOS == "windows" && strings.EqualFold(otherPath, cleanPath) {
-			info, statErr := os.Stat(cleanPath)
-			other, err := os.Stat(dir.Path)
-			// Case-only paths are ambiguous until both resolve to distinct directories.
-			if statErr != nil || err != nil || os.SameFile(info, other) {
-				return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
-			}
 		}
 	}
 

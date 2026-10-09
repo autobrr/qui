@@ -38,7 +38,7 @@ Each immediate child (folder or file) becomes one searchee. Files within `Movie.
 
 ### Correct path choices
 
-On Windows, Dir Scan rejects case-only variants unless both paths already exist and refer to different physical directories. This also prevents duplicate entries for a directory you plan to create later. Distinct directories on a case-sensitive filesystem remain configurable. If an older configuration contains duplicate entries for the same directory, remove the extra entry so webhooks can select one scan configuration.
+On Windows, Dir Scan rejects paths that differ only in case, including on case-sensitive volumes and before a directory exists. Windows webhook routing cannot distinguish those spellings. On Unix-like hosts, distinct directories on a case-sensitive filesystem remain configurable. If an older configuration contains duplicate entries, remove the extra entry so webhooks can select one scan configuration.
 
 | Content type | Recommended path | Why |
 |-------------|------------------|-----|

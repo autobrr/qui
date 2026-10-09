@@ -5,8 +5,12 @@ package testdb
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCachedTemplatePreservesConcurrentWinner(t *testing.T) {
@@ -31,5 +35,17 @@ func TestCachedTemplatePreservesConcurrentWinner(t *testing.T) {
 	if string(data) != "first builder" {
 		t.Fatalf("published template was replaced: %q", data)
 	}
+	onlyTemplate(t, dir)
+}
+
+func TestCachedTemplateLongWindowsPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), strings.Repeat("segment", 20), strings.Repeat("segment", 20))
+	path, err := cachedTemplate(dir, fstest.MapFS{"001.sql": {Data: []byte("synthetic schema")}}, func(dst string) error {
+		return os.WriteFile(dst, []byte("template"), 0o600)
+	})
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "template", string(data))
 	onlyTemplate(t, dir)
 }
