@@ -8,7 +8,8 @@ import { cleanup, fireEvent, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { OrphanScanFile } from "@/types"
 
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
@@ -37,6 +38,7 @@ vi.mock("@/hooks/useOrphanScan", () => ({
 }))
 
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
+import "@/i18n"
 
 beforeEach(() => {
   runQuery.data.partial = false

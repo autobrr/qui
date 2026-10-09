@@ -8,12 +8,14 @@ import type { DiscScanRun } from "@/types"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DiscReportButton, TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
+import "@/i18n"
 
 const { toast, copyTextToClipboard } = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
   copyTextToClipboard: vi.fn(),
 }))
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string, options?: Record<string, unknown>) => options ? `${key}:${Object.values(options).join(",")}` : key }),
 }))
 vi.mock("sonner", () => ({ toast }))

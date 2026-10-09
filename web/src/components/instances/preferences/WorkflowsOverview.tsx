@@ -52,6 +52,7 @@ import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
+import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
@@ -1449,13 +1450,9 @@ export function WorkflowsOverview({
                                                 const [type, limitKiB] = key.split(":")
                                                 const numKiB = Number(limitKiB)
                                                 // 0 = Unlimited in qBittorrent per-torrent speed limits
-                                                let label: string
-                                                if (numKiB === 0) {
-                                                  label = t("preferences.workflowsOverview.unlimited")
-                                                } else {
-                                                  const limitMiB = numKiB / 1024
-                                                  label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
-                                                }
+                                                const label = numKiB === 0
+                                                  ? t("preferences.workflowsOverview.unlimited")
+                                                  : formatSpeedWithUnit(numKiB * 1024, "bytes")
                                                 return (
                                                   <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
                                                     {type === "upload" ? "↑" : "↓"} {label} ({count})

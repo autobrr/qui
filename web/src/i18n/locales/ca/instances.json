@@ -579,7 +579,8 @@
       "toast": {
         "success": "S'ha actualitzat la configuració de xarxa avançada correctament",
         "error": "No s'ha pogut actualitzar la configuració de xarxa avançada"
-      }
+      },
+      "unitSeconds": "segons"
     },
     "workflows": {
       "allTrackers": "Tots els trackers",

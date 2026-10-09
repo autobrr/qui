@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { formatBytes } from "@/lib/utils"
+
 export const TorrentPieceSize = {
   Auto: "0",
   KiB16: "16384",
@@ -23,22 +25,10 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
-// Fixed sizes only: the dialog renders Auto itself so its label can be translated.
-export const pieceSizeOptions = [
-  { value: TorrentPieceSize.KiB16, label: "16 KiB" },
-  { value: TorrentPieceSize.KiB32, label: "32 KiB" },
-  { value: TorrentPieceSize.KiB64, label: "64 KiB" },
-  { value: TorrentPieceSize.KiB128, label: "128 KiB" },
-  { value: TorrentPieceSize.KiB256, label: "256 KiB" },
-  { value: TorrentPieceSize.KiB512, label: "512 KiB" },
-  { value: TorrentPieceSize.MiB1, label: "1 MiB" },
-  { value: TorrentPieceSize.MiB2, label: "2 MiB" },
-  { value: TorrentPieceSize.MiB4, label: "4 MiB" },
-  { value: TorrentPieceSize.MiB8, label: "8 MiB" },
-  { value: TorrentPieceSize.MiB16, label: "16 MiB" },
-  { value: TorrentPieceSize.MiB32, label: "32 MiB" },
-  { value: TorrentPieceSize.MiB64, label: "64 MiB" },
-  { value: TorrentPieceSize.MiB128, label: "128 MiB" },
-] as const
+// Fixed sizes only, since the dialog translates Auto; built on call because the unit label is localized.
+export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] =>
+  Object.values(TorrentPieceSize)
+    .filter((value) => value !== TorrentPieceSize.Auto)
+    .map((value) => ({ value, label: formatBytes(Number(value)) }))
 
-export type PieceSizeOption = (typeof pieceSizeOptions)[number]
+export type PieceSizeOption = ReturnType<typeof getPieceSizeOptions>[number]

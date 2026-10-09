@@ -10,6 +10,7 @@ import { makeTorrent } from "@/test/mockTorrent"
 import type { Torrent } from "@/types"
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
+import "@/i18n"
 
 const TORRENTS = [
   makeTorrent({ hash: "h0", name: "t0", size: 100 }),
