@@ -69,7 +69,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/redact"
-	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -8680,8 +8679,10 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	candidates := make([]string, 0, len(arrTitles)+4)
 	candidates = append(candidates, arrTitles...)
 	candidates = append(candidates, releaseAlt(release))
-	for _, part := range rawAKATitleParts(releaseName) {
-		parsed := releases.DefaultParser.Parse(part)
+	// A bare matcher, so Dir Scan can call this without a Service.
+	var m matcher
+	for _, part := range m.rawAKATitleParts(releaseName) {
+		parsed := m.parseReleaseName(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
 	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))

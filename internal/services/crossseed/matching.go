@@ -141,12 +141,10 @@ func makeReleaseKey(r *rls.Release) releaseKey {
 	return releaseKey{}
 }
 
-// parseReleaseName safely parses release metadata when the release cache is available.
+// parseReleaseName is the matcher's only parser. A matcher with no release cache
+// falls back to the process-wide default parser, as normalizer does (ADR 0008).
 func (m matcher) parseReleaseName(name string) *rls.Release {
-	if m.releaseCache == nil {
-		return &rls.Release{}
-	}
-	return m.releaseCache.Parse(name)
+	return cmp.Or(m.releaseCache, releases.DefaultParser).Parse(name)
 }
 
 // parseFileRelease removes RAR volume suffixes so .s01 does not become season 1.
@@ -330,8 +328,8 @@ func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) m
 	addNormalizedTitle(titles, titleWithoutSeasonNumeral(release))
 
 	// Cached parse: this runs once per library torrent per search.
-	for _, rawTitle := range rawAKATitleParts(rawName) {
-		parsed := releases.DefaultParser.Parse(rawTitle)
+	for _, rawTitle := range m.rawAKATitleParts(rawName) {
+		parsed := m.parseReleaseName(rawTitle)
 		addNormalizedTitle(titles, parsed.Title)
 		addNormalizedTitle(titles, parsed.Alt)
 	}
@@ -413,7 +411,7 @@ func releaseAlt(release *rls.Release) string {
 	return release.Alt
 }
 
-func rawAKATitleParts(rawName string) []string {
+func (m matcher) rawAKATitleParts(rawName string) []string {
 	if rawName == "" || !strings.Contains(rawName, " AKA ") {
 		return nil
 	}
@@ -428,7 +426,7 @@ func rawAKATitleParts(rawName string) []string {
 		}
 		titles = append(titles, part)
 		// An AKA after the season or episode starts an episode title, not another show title.
-		if parsed := releases.DefaultParser.Parse(part); parsed.Series > 0 || parsed.Episode > 0 {
+		if parsed := m.parseReleaseName(part); parsed.Series > 0 || parsed.Episode > 0 {
 			break
 		}
 	}

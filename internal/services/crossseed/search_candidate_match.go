@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/releases"
 )
 
 // searchCandidateClass identifies the search-only rule that admitted a result.
@@ -574,7 +573,7 @@ func (m matcher) searchCandidateMetadataConsistent(
 		return true, ""
 	}
 
-	advertised := releases.DefaultParser.Parse(advertisedName)
+	advertised := m.parseReleaseName(advertisedName)
 	if advertised == nil {
 		return false, "missing advertised release metadata"
 	}
@@ -852,7 +851,7 @@ func (m matcher) groupIdentityViews(side namedRelease) []namedRelease {
 		return views
 	}
 	rawView := side
-	rawView.release = releases.DefaultParser.Parse(side.rawName)
+	rawView.release = m.parseReleaseName(side.rawName)
 	normalizer := m.normalizer()
 	currentGroup := ""
 	if side.release != nil {
@@ -973,7 +972,7 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 	add(side.release)
 	add(side.tagOrigin)
 	if side.rawName != "" {
-		add(releases.DefaultParser.Parse(side.rawName))
+		add(m.parseReleaseName(side.rawName))
 	}
 	return provenance
 }
