@@ -53,6 +53,8 @@ The web interface is available at http://localhost:7476. To change the port or o
 
 ## Updating
 
+On Windows, follow [Updating](./windows.md#updating) in the Windows guide.
+
 ### Update from the web UI
 
 When a new release is available, click **Install update** in the update banner or in the **Update Status** row of **Settings → Application**. The dialog shows the current version, the new version, and a link to the release notes. After you confirm, qui downloads the release, checks its signature, replaces its binary, and restarts. The page reloads when qui is back.
