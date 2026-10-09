@@ -191,8 +191,10 @@ gofix-check-changed:
 # Example: an em dash becomes "â€”" (PR #3082). The pattern is a lead character
 # of a UTF-8 sequence, followed by a cp1252 character for a continuation byte.
 # It is an alternation, so it matches the same bytes in every locale.
+# The last two entries are invisible: a non-breaking space (U+00A0) and a
+# soft hyphen (U+00AD).
 # The Makefile holds the pattern, so it is excluded, together with the lockfiles.
-MOJIBAKE_RE = (Â|Ã|â|ð)(€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿)
+MOJIBAKE_RE = (Â|Ã|â|ð)(€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­)
 
 check-mojibake:
 	@if git grep -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
