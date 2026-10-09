@@ -1036,6 +1036,10 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
 
   const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatTimestamp(latestVersionQuery.dataUpdatedAt / 1000) : t("application.build.statuses.notCheckedYet")
 
+  const updateControl = latestVersionQuery.data && (
+    <InstallUpdateButton selfUpdate={selfUpdate} release={latestVersionQuery.data} className="shrink-0" />
+  )
+
   const buildFields: ApplicationField[] = info ? [
     { label: t("application.build.version"), value: info.version || "—", monospace: true },
     { label: t("application.build.commit"), value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
@@ -1048,9 +1052,7 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
       label: t("application.build.updateStatus"),
       value: updateStatus.label,
       secondary: [updateStatus.detail, t("application.build.statuses.lastChecked", { date: updateCheckedAt })].filter(Boolean).join(" • "),
-      action: latestVersionQuery.data && (
-        <InstallUpdateButton selfUpdate={selfUpdate} release={latestVersionQuery.data} className="shrink-0" />
-      ),
+      action: updateControl,
     },
   ] : []
 
@@ -1112,6 +1114,8 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
           </CardContent>
         </Card>
       )}
+
+      {appInfoQuery.isError && !info && updateControl}
 
       {info && (
         <>
