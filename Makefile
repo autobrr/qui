@@ -188,13 +188,19 @@ gofix-check-changed:
 		echo "go fix check clean."
 
 # Fail on mojibake: UTF-8 text that an editor read as cp1252 and saved again.
-# Example: an em dash becomes "â€”" (PR #3082). The pattern is a lead character
-# of a UTF-8 sequence, followed by a cp1252 character for a continuation byte.
+# Example: an em dash becomes "â€”" (PR #3082). Each UTF-8 lead byte becomes a
+# lead character, and each continuation byte becomes a character from
+# MOJIBAKE_CONT. The pattern requires the full count of continuation characters
+# for each lead (1, 2 or 3), so real text such as Czech "íž" does not match.
 # It is an alternation, so it matches the same bytes in every locale.
-# The last two entries are invisible: a non-breaking space (U+00A0) and a
-# soft hyphen (U+00AD).
+# The last two entries of MOJIBAKE_CONT are invisible: a non-breaking space
+# (U+00A0) and a soft hyphen (U+00AD).
 # The Makefile holds the pattern, so it is excluded, together with the lockfiles.
-MOJIBAKE_RE = (Â|Ã|â|ð)(€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­)
+MOJIBAKE_CONT = (€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­)
+MOJIBAKE_LEAD2 = (Â|Ã|Ä|Å|Æ|Ç|È|É|Ê|Ë|Ì|Í|Î|Ï|Ð|Ñ|Ò|Ó|Ô|Õ|Ö|×|Ø|Ù|Ú|Û|Ü|Ý|Þ|ß)
+MOJIBAKE_LEAD3 = (à|á|â|ã|ä|å|æ|ç|è|é|ê|ë|ì|í|î|ï)
+MOJIBAKE_LEAD4 = (ð|ñ|ò|ó|ô)
+MOJIBAKE_RE = $(MOJIBAKE_LEAD2)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD3)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD4)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)
 
 check-mojibake:
 	@if git grep -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
