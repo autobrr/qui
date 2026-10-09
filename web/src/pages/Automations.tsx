@@ -88,6 +88,7 @@ export function Automations() {
         onOpenChange={(open) => !open && setConfigureOrphanScanId(null)}
         instanceId={configureOrphanScanId!}
         instanceName={configureOrphanScanInstance?.name}
+        isRemote={configureOrphanScanInstance?.filesystemMode === "remote"}
       />
     </div>
   )

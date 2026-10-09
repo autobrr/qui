@@ -7,7 +7,7 @@ import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
 import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
-  CONDITION_FIELDS,
+  CONDITION_FIELD_TYPES,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -160,6 +160,10 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
 
+// Outside the map: an action of this name would otherwise claim its own fallback.
+// The fallback shows the raw action name so the user can tell which action this build does not know.
+const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
+
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
     const asNumber = typeof value === "number" ? value : Number(value)
@@ -308,13 +312,11 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
   "TRACKERS_COUNT",
 ])
 
-const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for simple sorting" }))
 
-const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
-  .map(field => ({ field, reason: "Not supported for score multipliers" }))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
   return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
@@ -665,6 +667,14 @@ const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
+  const simpleSortDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
+    return SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
+  const scoreMultiplierDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForScoreMultiplier")
+    return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
+  }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
@@ -755,6 +765,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
   const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  // A Windows host refuses the path source only for an instance it reads locally.
+  const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
+  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
@@ -1321,17 +1334,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds, t])
 
-  // Auto-switch free space source from "path" to "qbittorrent" on Windows (not supported)
+  // Auto-switch free space source from "path" to "qbittorrent" on a Windows host with local access.
   // This must run during hydration to handle legacy workflows opened on Windows.
   // Only toast after hydration to avoid noise when opening dialogs.
   useEffect(() => {
-    if (!supportsFreeSpacePathSource && formState.exprFreeSpaceSourceType === "path") {
+    if (pathSourceWindowsBlocked && formState.exprFreeSpaceSourceType === "path") {
       setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
       if (!isHydrating.current) {
         toast.warning(t("preferences.workflowDialog.toast.pathSourceUnsupportedWindows"))
       }
     }
-  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType, t])
+  }, [pathSourceWindowsBlocked, formState.exprFreeSpaceSourceType, t])
 
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
@@ -1341,12 +1354,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // Reject if path source is selected but not supported (safety net for edge cases)
-    if (!supportsFreeSpacePathSource) {
+    if (pathSourceWindowsBlocked) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.unsupportedWindows"))
       toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
       return false
     }
-    if (!hasLocalFilesystemAccess) {
+    if (!pathSourceAvailable) {
       setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
       toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
       return false
@@ -1361,7 +1374,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
+  }, [pathSourceAvailable, pathSourceWindowsBlocked, t])
 
   const validateCategory = useCallback((state: FormState): boolean => {
     if (state.categoryEnabled && state.exprCategory === undefined) {
@@ -1376,11 +1389,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       return true
     }
-    if (!supportsFreeSpacePathSource || !hasLocalFilesystemAccess) {
+    if (!pathSourceAvailable) {
       return false
     }
     return state.exprFreeSpaceSourcePath.trim() !== ""
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+  }, [pathSourceAvailable])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
@@ -1626,7 +1639,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return {
       name: input.name,
-      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
       trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
@@ -2357,7 +2369,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <FieldCombobox
                       value={formState.simpleSortField}
                       onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
-                      disabledFields={SIMPLE_SORT_DISABLED_FIELDS}
+                      disabledFields={simpleSortDisabledFields}
                     />
                     <div className="flex items-center border rounded-md">
                       <Button
@@ -2448,7 +2460,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
                               }}
-                              disabledFields={SCORE_MULTIPLIER_DISABLED_FIELDS}
+                              disabledFields={scoreMultiplierDisabledFields}
                             />
 
                             <span className="text-sm text-muted-foreground">x</span>
@@ -3918,12 +3930,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
-                        <SelectItem value="path" disabled={!hasLocalFilesystemAccess || !supportsFreeSpacePathSource}>
-                          {!supportsFreeSpacePathSource? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !hasLocalFilesystemAccess? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
+                        <SelectItem value="path" disabled={!pathSourceAvailable}>
+                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    {formState.exprFreeSpaceSourceType === "path" && supportsFreeSpacePathSource && (
+                    {formState.exprFreeSpaceSourceType === "path" && !pathSourceWindowsBlocked && (
                       <div className="flex flex-col gap-1">
                         <div className="relative">
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
@@ -4074,7 +4086,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs font-medium truncate">{t(Object.hasOwn(DRY_RUN_ACTION_LABEL_KEYS, event.action) ? DRY_RUN_ACTION_LABEL_KEYS[event.action] : DRY_RUN_ACTION_FALLBACK_KEY, { action: event.action })}</p>
                             <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">

@@ -421,10 +421,6 @@
       "loadingDescription": "S'estan carregant els temes disponibles...",
       "description": "Tria entre els temes disponibles. Els temes premium necessiten una llicència vàlida.",
       "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes premium està desactivat temporalment.",
-      "freeBadge": "Gratuït",
-      "freeThemes": "Temes gratuïts",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Temes premium",
       "notLoaded": "Els temes premium no s'han carregat",
       "notLoadedDescription": "Configura",
       "notLoadedAnd": "i executa",
@@ -541,16 +537,13 @@
       "copiedVerify": "S'ha copiat l'ordre de verificació",
       "failedCopyVerify": "No s'ha pogut copiar l'ordre de verificació",
       "toasts": {
-        "activationSuccess": "S'ha activat la llicència correctament!",
         "activationSuccessPremium": "S'ha activat l'accés premium. Gràcies!",
         "paymentCompleted": "S'ha completat el pagament. Afegeix la clau de llicència premium per acabar la configuració.",
         "paymentNotCompleted": "El pagament no s'ha completat correctament.",
         "returnedFromCheckout": "Has tornat de la pàgina de pagament. Afegeix la clau de llicència premium quan vulguis.",
         "keyCopied": "S'ha copiat la clau de llicència al porta-retalls",
         "copyFailed": "No s'ha pogut copiar la clau de llicència",
-        "removedFromMachine": "S'ha suprimit la llicència d'aquesta màquina",
-        "refreshedAll": "S'han actualitzat totes les llicències correctament",
-        "refreshFailed": "No s'han pogut actualitzar les llicències"
+        "removedFromMachine": "S'ha suprimit la llicència d'aquesta màquina"
       }
     },
     "custom": {
@@ -559,12 +552,22 @@
       "lockedTitle": "Els temes personalitzats són una funció premium",
       "lockedDescription": "Desbloqueja premium per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
       "unlockCta": "Desbloqueja premium",
-      "directoryLabel": "Directori dels temes",
       "refresh": "Actualitza",
       "detectedCount": "Temes trobats: {{total}}",
       "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
       "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
       "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+    },
+    "layout": {
+      "mobileSplit": "Tema separat per a la disposició mòbil",
+      "mobileSplitHelp": "La disposició mòbil (una finestra de menys de 768 px d'amplada) i la disposició d'escriptori mantenen cadascuna el seu tema, mode i variació. Aquesta opció s'aplica a tots els navegadors.",
+      "localOnly": "Mantén local el tema d'aquest navegador",
+      "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
+      "changesMobile": "Canvia el tema mòbil",
+      "changesDesktop": "Canvia el tema d'escriptori",
+      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
+      "saveError": "No s'ha pogut desar l'opció del tema",
+      "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }
   },
   "arrInstances": {
@@ -662,10 +665,6 @@
   },
   "indexers": {
     "title": "Indexadors de Torznab",
-    "addIndexer": "Afegeix un indexador",
-    "autodiscoverProwlarr": "Descobreix automàticament des de Prowlarr",
-    "noIndexers": "Encara no hi ha cap indexador configurat.",
-    "noIndexersDescription": "Afegeix un indexador compatible amb Torznab per activar les cerques automàtiques de cross-seed.",
     "deleteIndexer": "Elimina l'indexador",
     "deleteIndexerDescription": "Segur que vols eliminar \"{{name}}\"? Aquesta acció no es pot desfer.",
     "deleteAllIndexers": "Elimina tots els indexadors",
@@ -674,8 +673,6 @@
       "loadFailed": "No s'han pogut carregar els indexadors",
       "deletedSuccess": "S'ha eliminat l'indexador",
       "deleteFailed": "No s'ha pogut eliminar l'indexador",
-      "allDeletedSuccess": "S'han eliminat tots els indexadors",
-      "allDeletedFailed": "No s'han pogut eliminar tots els indexadors",
       "deleteAllSuccess": "S'han eliminat els {{count}} indexadors",
       "deleteAllPartial": "S'han eliminat {{success}} indexadors; {{failed}} han fallat: {{names}}",
       "testSuccess": "La prova de connexió ha anat bé",
@@ -821,7 +818,6 @@
         "importSuccess": "Correcte: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} amb avisos)",
         "moreWarnings": "...i {{count}} avisos més",
-        "importErrors": "{{details}}",
         "moreErrors": "...i {{count}} errors més",
         "created": "{{count}} creats",
         "updated": "{{count}} actualitzats",
@@ -882,10 +878,6 @@
     },
     "activity": {
       "title": "Activitat del planificador",
-      "idle": "Inactiu",
-      "queueLength": "Cua",
-      "workers": "Processos",
-      "cooldown": "Temps d'espera",
       "running": "En execució",
       "queued": "En cua",
       "rateLimited": "Limitat per freqüència",

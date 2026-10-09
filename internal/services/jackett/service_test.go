@@ -333,27 +333,6 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 	}
 }
 
-func TestComputeSearchTimeoutExcludesQueueWait(t *testing.T) {
-	t.Parallel()
-
-	prowlarr := []*models.TorznabIndexer{{Backend: models.TorznabBackendProwlarr}}
-	native := []*models.TorznabIndexer{{Backend: models.TorznabBackendNative}}
-	mixed := []*models.TorznabIndexer{
-		{Backend: models.TorznabBackendProwlarr},
-		{Backend: models.TorznabBackendNative},
-	}
-
-	if got := computeSearchTimeout(prowlarr); got != timeouts.DefaultSearchTimeout {
-		t.Fatalf("Prowlarr timeout = %s, want %s", got, timeouts.DefaultSearchTimeout)
-	}
-	if got, want := computeSearchTimeout(native), timeouts.DefaultSearchTimeout; got != want {
-		t.Fatalf("native timeout = %s, want %s", got, want)
-	}
-	if got, want := computeSearchTimeout(mixed), timeouts.DefaultSearchTimeout+timeouts.PerIndexerSearchTimeout; got != want {
-		t.Fatalf("mixed timeout = %s, want %s", got, want)
-	}
-}
-
 func TestGetActivityStatusMergesCooldownScopes(t *testing.T) {
 	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{{ID: 1, Name: "IndexerOne"}}}
 	service := NewService(store)

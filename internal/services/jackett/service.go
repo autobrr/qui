@@ -1806,7 +1806,16 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
-	return timeouts.AdaptiveSearchTimeout(len(indexers))
+	timeout := timeouts.AdaptiveSearchTimeout(len(indexers))
+	// The execution deadline must allow each client's configured HTTP timeout.
+	for _, indexer := range indexers {
+		seconds := indexer.TimeoutSeconds
+		if seconds <= 0 {
+			seconds = defaultIndexerTimeoutSeconds
+		}
+		timeout = max(timeout, time.Duration(seconds)*time.Second)
+	}
+	return timeout
 }
 
 func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
@@ -4357,11 +4366,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 
 		// Create Prowlarr client for this instance
-		timeout := indexers[0].TimeoutSeconds
-		if timeout <= 0 {
-			timeout = 30
-		}
-		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, indexers[0].TimeoutSeconds)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

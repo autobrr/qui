@@ -43,7 +43,10 @@ type Backend interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
-	// The channel is closed when the walk completes, is cancelled via ctx, or
+	// Entries within one directory arrive in lexical order and a directory's
+	// own entry precedes everything beneath it; nothing more is promised about
+	// order, as a backend may list sibling directories concurrently. The
+	// channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only

@@ -16,6 +16,7 @@ func TestAlternateTitleQuery(t *testing.T) {
 		primaryQuery string
 		releaseName  string
 		arrTitles    []string
+		season       int // season read from the files, which the name lacks
 		wantTitle    string
 		wantOK       bool
 	}{
@@ -90,6 +91,48 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       false,
 		},
 		{
+			name:         "season numeral is dropped when it equals the season",
+			primaryQuery: "Kaiju Squad 100 III",
+			releaseName:  "[GRP] Kaiju Squad 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+			season:       3,
+			wantTitle:    "Kaiju Squad 100",
+			wantOK:       true,
+		},
+		{
+			name:         "arr title is preferred over the title without the season numeral",
+			primaryQuery: "Kaiju Squad 100 III",
+			releaseName:  "[GRP] Kaiju Squad 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+			season:       3,
+			arrTitles:    []string{"Kaiju Squad Hundred"},
+			wantTitle:    "Kaiju Squad Hundred",
+			wantOK:       true,
+		},
+		{
+			name:         "season numeral that starts with L is dropped",
+			primaryQuery: "Long Running Show L",
+			releaseName:  "Long.Running.Show.L.S50.1080p.WEB.h264-GRP",
+			wantTitle:    "Long Running Show",
+			wantOK:       true,
+		},
+		{
+			name:         "movie sequel numeral is kept",
+			primaryQuery: "Rocky III",
+			releaseName:  "Rocky.III.1982.1080p.BluRay.x264-GRP",
+			wantOK:       false,
+		},
+		{
+			name:         "numeral that differs from the season is kept",
+			primaryQuery: "Title II",
+			releaseName:  "Title.II.S01.1080p.BluRay.x265-GRP",
+			wantOK:       false,
+		},
+		{
+			name:         "arabic number is not a season numeral",
+			primaryQuery: "Kaiju Squad 3",
+			releaseName:  "Kaiju.Squad.3.S03.1080p.BluRay.x265-GRP",
+			wantOK:       false,
+		},
+		{
 			name:         "empty inputs yield no retry",
 			primaryQuery: "Some Movie",
 			wantOK:       false,
@@ -106,6 +149,10 @@ func TestAlternateTitleQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := rls.ParseString(tt.releaseName)
+			if tt.season > 0 {
+				release.Type = rls.Series
+				release.Series = tt.season
+			}
 			got, ok := AlternateTitleQuery(tt.primaryQuery, &release, tt.arrTitles, tt.releaseName)
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {

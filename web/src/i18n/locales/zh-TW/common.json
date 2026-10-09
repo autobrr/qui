@@ -12,7 +12,9 @@
     "generalSettings": "一般設定",
     "manageInstances": "管理實例",
     "appearance": "外觀",
-    "instanceBackups": "實例備份"
+    "instanceBackups": "實例備份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文件"
   },
   "sidebar": {
     "instances": "實例",
@@ -101,8 +103,7 @@
     "copyPath": "複製路徑",
     "scrollToTop": "回到頂部",
     "search": "搜尋",
-    "select": "選擇",
-    "toggle": "切換"
+    "select": "選擇"
   },
   "placeholders": {
     "search": "搜尋...",
@@ -152,14 +153,19 @@
     "switchedToMode": "已切換到{{mode}}模式",
     "switchedToTheme": "已切換到{{theme}}主題",
     "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
-    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。",
-    "custom": "自訂"
+    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 現已可用",
     "viewRelease": "檢視釋出",
     "dismiss": "關閉"
+  },
+  "pwaUpdate": {
+    "reload": "重新載入",
+    "waitingDescription": "重新載入以套用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
   },
   "notFound": {
     "title": "迷路了？",

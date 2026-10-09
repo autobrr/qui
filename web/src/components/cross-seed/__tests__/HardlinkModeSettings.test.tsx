@@ -42,6 +42,7 @@ function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: Filesyste
     username: "admin",
     tlsSkipVerify: false,
     hasLocalFilesystemAccess,
+    filesystemMode: hasLocalFilesystemAccess ? "local" : "none",
     capabilities,
     useHardlinks: true,
     hardlinkBaseDir: "/data/links",

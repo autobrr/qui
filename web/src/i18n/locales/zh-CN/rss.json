@@ -23,8 +23,6 @@
   "feeds": {
     "title": "订阅源",
     "refreshAll": "全部刷新",
-    "addFolder": "添加文件夹",
-    "addFeed": "添加订阅源",
     "articles": "文章",
     "unread": "{{count}} 条未读",
     "markAllAsRead": "全部标记为已读",

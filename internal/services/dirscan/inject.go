@@ -809,46 +809,55 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		return nil, "", nil, err
 	}
 
-	selectedBaseDir, err := crossseed.FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend)
-	if err != nil {
-		return nil, "", nil, fmt.Errorf("select hardlink base dir: %w", err)
-	}
-	if err := backend.MkdirAll(ctx, selectedBaseDir, fsutil.LinkTreeBaseDirMode); err != nil {
-		return nil, "", nil, fmt.Errorf("create hardlink base dir: %w", err)
-	}
-
 	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
 	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-	destDir := buildLinkDestDir(selectedBaseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
-	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
-	if err != nil {
-		// Debug: dump file data so we can diagnose BuildPlan mismatches.
-		for idx, lf := range linkableFiles {
-			log.Debug().
-				Int("idx", idx).
-				Str("path", lf.Path).
-				Int64("size", lf.Size).
-				Msg("dirscan: linkable file (candidate)")
+	var (
+		plan    *hardlinktree.TreePlan
+		mode    string
+		created *fsops.TreeCreateResult
+	)
+	err = crossseed.LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend, func(baseDir string) error {
+		if err := backend.MkdirAll(ctx, baseDir, fsutil.LinkTreeBaseDirMode); err != nil {
+			return fmt.Errorf("create hardlink base dir: %w", err)
 		}
-		for idx, ef := range existingFiles {
-			log.Debug().
-				Int("idx", idx).
-				Str("absPath", ef.AbsPath).
-				Str("relPath", ef.RelPath).
-				Int64("size", ef.Size).
-				Msg("dirscan: existing file")
+
+		destDir := buildLinkDestDir(baseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
+
+		var err error
+		plan, err = hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+		if err != nil {
+			// Debug: dump file data so we can diagnose BuildPlan mismatches.
+			for idx, lf := range linkableFiles {
+				log.Debug().
+					Int("idx", idx).
+					Str("path", lf.Path).
+					Int64("size", lf.Size).
+					Msg("dirscan: linkable file (candidate)")
+			}
+			for idx, ef := range existingFiles {
+				log.Debug().
+					Int("idx", idx).
+					Str("absPath", ef.AbsPath).
+					Str("relPath", ef.RelPath).
+					Int64("size", ef.Size).
+					Msg("dirscan: existing file")
+			}
+			log.Warn().
+				Err(err).
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("torrentName", req.ParsedTorrent.Name).
+				Msg("dirscan: failed to build link plan")
+			return humanizeLinkPlanError(err)
 		}
-		log.Warn().
-			Err(err).
-			Int("instanceID", instance.ID).
-			Str("instanceName", instance.Name).
-			Str("torrentName", req.ParsedTorrent.Name).
-			Msg("dirscan: failed to build link plan")
-		return nil, "", nil, humanizeLinkPlanError(err)
+
+		mode, created, err = i.createLinkTree(ctx, instance, baseDir, existingFiles, plan, backend)
+		return err
+	})
+	if errors.Is(err, crossseed.ErrNoMatchingBaseDir) {
+		return nil, "", nil, fmt.Errorf("select hardlink base dir: %w", err)
 	}
-
-	mode, created, err := i.createLinkTree(ctx, instance, selectedBaseDir, existingFiles, plan, backend)
 	if err != nil {
 		return nil, "", nil, err
 	}

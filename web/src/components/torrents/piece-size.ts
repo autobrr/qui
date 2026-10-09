@@ -23,8 +23,8 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
+// Fixed sizes only: the dialog renders Auto itself so its label can be translated.
 export const pieceSizeOptions = [
-  { value: TorrentPieceSize.Auto, label: "Auto (recommended)" },
   { value: TorrentPieceSize.KiB16, label: "16 KiB" },
   { value: TorrentPieceSize.KiB32, label: "32 KiB" },
   { value: TorrentPieceSize.KiB64, label: "64 KiB" },

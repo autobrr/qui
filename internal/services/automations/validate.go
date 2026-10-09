@@ -24,7 +24,17 @@ func (e *RuleError) Error() string { return e.Message }
 
 func ruleError(msg string) error { return &RuleError{Message: msg} }
 
-const errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+const (
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+	errMsgPathSourceAccessRequired      = "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+)
+
+// windowsLocalPathSource reports whether a path source would read a Windows
+// host's own disks. The local backend could stat them, but the path check
+// accepts only a leading "/" and the local refusal from #1915 still holds.
+func windowsLocalPathSource(instance *models.Instance) bool {
+	return runtime.GOOS == "windows" && instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
+}
 
 // ValidateRule checks a rule against itself and its instance. It normalizes
 // rule.Conditions. A nil instance has no filesystem access. Checks that look up
@@ -34,8 +44,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		return ruleError("Name is required")
 	}
 
-	// Require either "*" (all trackers) or at least one tracker domain/pattern
-	if len(rule.TrackerDomains) == 0 && strings.TrimSpace(rule.TrackerPattern) == "" {
+	if strings.TrimSpace(rule.TrackerPattern) == "" {
 		return ruleError("Select at least one tracker or enable 'Apply to all'")
 	}
 
@@ -128,8 +137,8 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	if source := rule.FreeSpaceSource; source != nil {
-		// Path-based free space is not supported on Windows (enforce regardless of whether FREE_SPACE is used)
-		if runtime.GOOS == "windows" && source.Type == models.FreeSpaceSourcePath {
+		// Enforce regardless of whether FREE_SPACE is used.
+		if source.Type == models.FreeSpaceSourcePath && windowsLocalPathSource(instance) {
 			return ruleError(errMsgWindowsPathSourceNotSupported)
 		}
 		if msg, err := validateFreeSpaceSource(source, instance, conditionsUseFreeSpace(conditions)); err != nil {
@@ -356,16 +365,14 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 
 // validateFreeSpacePathSource validates path-based free space source configuration.
 func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (msg string, err error) {
-	// Path-based free space is not supported on Windows.
-	// This is also enforced in ValidateRule, but keep it here since
+	// Also enforced in ValidateRule, but kept here since
 	// validateFreeSpaceSource is unit-tested directly.
-	if runtime.GOOS == "windows" {
-		return errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows")
+	if windowsLocalPathSource(instance) {
+		return errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows with local access")
 	}
 
-	// Path type requires local filesystem access
-	if instance == nil || !instance.HasLocalFilesystemAccess {
-		return "Free space path source requires Local Filesystem Access. Enable it in instance settings first.", errors.New("local access required for path source")
+	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Read {
+		return errMsgPathSourceAccessRequired, errors.New("filesystem access required for path source")
 	}
 
 	// Path must be non-empty

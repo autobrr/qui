@@ -262,13 +262,11 @@ func BenchmarkHotSort(b *testing.B) {
 		name string
 		run  func(t []qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrentsByNameCaseInsensitive(t, false) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrentsByStatusWithTrackerHealth(t, false, true, nil) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrentsByTracker(t, false) }},
-		{"added_on", func(t []qbt.Torrent) {
-			sm.sortTorrentsByTimestamp(t, false, func(x qbt.Torrent) int64 { return x.AddedOn })
-		}},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrentsByETA(t, false) }},
+		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
+		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, nil) }},
+		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
+		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
+		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
@@ -309,7 +307,7 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 				b.StopTimer()
 				copy(work, src)
 				b.StartTimer()
-				sm.sortCrossInstanceTorrents(work, sortKey, false)
+				sm.sortCrossInstanceTorrents(work, sortKey, false, false)
 			}
 		})
 	}

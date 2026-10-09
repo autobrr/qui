@@ -126,6 +126,8 @@ import type {
   BuiltinTheme,
   SelfUpdateResult,
   ThemeSettings,
+  ThemeSlot,
+  ThemeSlots,
   User,
   VersionInfo,
   WarningResponse,
@@ -2212,15 +2214,19 @@ class ApiClient {
   }
 
   // Theme settings (theme selection stored in the database; writes premium-gated server-side)
-  async getThemeSettings(): Promise<ThemeSettings | null> {
-    return this.request<ThemeSettings | null>("/themes/settings")
+  async getThemeSettings(): Promise<ThemeSlots> {
+    return this.request<ThemeSlots>("/themes/settings")
   }
 
-  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
-    return this.request<ThemeSettings>("/themes/settings", {
+  async updateThemeSettings(data: ThemeSettings, slot: ThemeSlot = "default"): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>(`/themes/settings?slot=${slot}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  async deleteMobileThemeSettings(): Promise<void> {
+    return this.request("/themes/settings?slot=mobile", { method: "DELETE" })
   }
 
   // Client settings (frontend user settings stored in the database as opaque key-value pairs;

@@ -4,14 +4,12 @@
  */
 
 import { getRowBackgroundClass, getStatusBadgeProps, getStatusBadgeVariant } from "@/lib/torrent-table/row-display"
+import i18n from "@/i18n"
+import enTorrents from "@/i18n/locales/en/torrents.json"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { TFunction } from "i18next"
 import { describe, expect, it } from "vitest"
 
-// Passthrough translator: honors an explicit defaultValue (as getStateLabel
-// uses), otherwise echoes the key so assertions can match on the key string.
-const t = ((key: string, opts?: { defaultValue?: string }) =>
-  opts?.defaultValue ?? key) as unknown as TFunction
+const t = i18n.getFixedT("en", "torrents")
 
 describe("getRowBackgroundClass", () => {
   it("uses the accent background when the row is selected, regardless of zebra parity", () => {
@@ -73,7 +71,7 @@ describe("getStatusBadgeProps", () => {
   it("overrides label/variant/className for tracker_down when tracker health is supported", () => {
     const torrent = makeTorrent({ state: "downloading", tracker_health: "tracker_down" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.trackerDown")
+    expect(props.label).toBe(enTorrents.tableColumns.trackerDown)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-yellow-500")
   })
@@ -81,7 +79,7 @@ describe("getStatusBadgeProps", () => {
   it("overrides for tracker_error", () => {
     const torrent = makeTorrent({ state: "stalledUP", tracker_health: "tracker_error" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.trackerError")
+    expect(props.label).toBe(enTorrents.tableColumns.trackerError)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-orange-500")
   })
@@ -89,7 +87,7 @@ describe("getStatusBadgeProps", () => {
   it("overrides for unregistered", () => {
     const torrent = makeTorrent({ state: "uploading", tracker_health: "unregistered" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.unregistered")
+    expect(props.label).toBe(enTorrents.tableColumns.unregistered)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-destructive")
   })

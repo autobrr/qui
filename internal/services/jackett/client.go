@@ -113,13 +113,15 @@ type Client struct {
 	timeout    time.Duration
 }
 
+const defaultIndexerTimeoutSeconds = 30
+
 // NewClient creates a new Torznab client for the desired backend
 func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, timeoutSeconds int) *Client {
 	if backend == "" {
 		backend = models.TorznabBackendJackett
 	}
 	if timeoutSeconds <= 0 {
-		timeoutSeconds = 30
+		timeoutSeconds = defaultIndexerTimeoutSeconds
 	}
 
 	c := &Client{

@@ -49,6 +49,7 @@ function makeInstance(overrides: Partial<InstanceResponse> = {}): InstanceRespon
     tlsSkipVerify: false,
     hasLocalFilesystemAccess: true,
     capabilities: { read: true, identity: true, write: true, content: true },
+    filesystemMode: "local",
     useHardlinks: false,
     hardlinkBaseDir: "",
     hardlinkDirPreset: "flat",

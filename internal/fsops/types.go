@@ -12,6 +12,8 @@ package fsops
 
 import (
 	"io/fs"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -72,6 +74,27 @@ type WalkOptions struct {
 	// set instead of silently skipping them. Consumers that delete based on
 	// walk results use this to fail closed on paths they cannot verify.
 	EmitStatErrors bool
+}
+
+// Skip reports whether a walk leaves out an entry, and its subtree when the
+// entry is a directory. fullPath is in the backend's own path dialect, since
+// IgnorePaths is an exact string compare. The walk root is exempt from every
+// filter except IgnorePaths, so an ignored root gives an empty walk.
+func (o *WalkOptions) Skip(name, fullPath string, isDir, isRoot bool) bool {
+	if slices.Contains(o.IgnorePaths, fullPath) {
+		return true
+	}
+	if isRoot {
+		return false
+	}
+	if o.SkipHidden && strings.HasPrefix(name, ".") {
+		return true
+	}
+	return isDir && (slices.ContainsFunc(o.IgnoreDirNames, func(ignored string) bool {
+		return strings.EqualFold(ignored, name)
+	}) || slices.ContainsFunc(o.IgnoreDirNamePrefixes, func(prefix string) bool {
+		return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
+	}))
 }
 
 // StatfsResult holds filesystem space information.

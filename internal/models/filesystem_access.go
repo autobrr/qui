@@ -69,7 +69,8 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 
 // FilesystemCapabilitiesOf is the one place that maps an instance's
 // filesystem mode to what qui may do with its files. A remote instance gets
-// Write with SFTP writes (#2725) and Identity with the exec tier (#2726).
+// Write with #2942, once the SFTP writes from #2725 are in, and Identity with
+// the exec tier (#2726).
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:

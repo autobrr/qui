@@ -1,0 +1,23 @@
+name: PR title
+
+# goreleaser puts a commit under "Breaking Changes" only when its subject has
+# `!:`. PRs are squash-merged, so the PR title becomes that subject.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  breaking:
+    if: contains(github.event.pull_request.labels.*.name, 'BREAKING CHANGE')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require ! in the title of a breaking PR
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$TITLE"; then
+            echo "::error::PR has the BREAKING CHANGE label. Mark the title with !, for example feat(api)!: ..."
+            exit 1
+          fi

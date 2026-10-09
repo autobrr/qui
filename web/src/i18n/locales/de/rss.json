@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Alle aktualisieren",
-    "addFolder": "Ordner hinzufügen",
-    "addFeed": "Feed hinzufügen",
     "articles": "Artikel",
     "unread": "{{count}} ungelesen",
     "markAllAsRead": "Alle als gelesen markieren",

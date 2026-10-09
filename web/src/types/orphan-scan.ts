@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { FilesystemMode } from "./instances"
+
 // Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"
@@ -66,6 +68,8 @@ export interface OrphanScanRun {
   errorMessage?: string | null
   startedAt: string
   completedAt?: string | null
+  // The mode the run scanned under, which can differ from the instance's current one.
+  filesystemMode: FilesystemMode
 }
 
 export interface OrphanScanFile {

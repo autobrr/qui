@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -406,6 +407,22 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(
 	}
 }
 
+// crossDeviceBackend fails HardlinkTree with EXDEV under the listed base dirs,
+// the way link() fails on a host whose disks share one device ID.
+type crossDeviceBackend struct {
+	*local.Backend
+	crossDevice []string
+}
+
+func (b crossDeviceBackend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	for _, dir := range b.crossDevice {
+		if strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
+			return nil, &os.LinkError{Op: "link", Old: "src", New: plan.RootDir, Err: syscall.EXDEV}
+		}
+	}
+	return b.Backend.HardlinkTree(ctx, plan)
+}
+
 func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedList(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -421,65 +438,79 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 	firstBase := filepath.Join(tmp, "links-a")
 	secondBase := filepath.Join(tmp, "links-b")
 
-	instance := &models.Instance{
-		ID:                       1,
-		Name:                     "test",
-		HasLocalFilesystemAccess: true,
-		UseHardlinks:             true,
-		HardlinkBaseDir:          firstBase + ", " + secondBase,
-		FallbackToRegularMode:    false,
+	tests := []struct {
+		name        string
+		crossDevice []string
+		wantBase    string
+	}{
+		{name: "first matching base dir", wantBase: firstBase},
+		{name: "cross-device first base dir tries the next", crossDevice: []string{firstBase}, wantBase: secondBase},
 	}
 
-	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := &models.Instance{
+				ID:                       1,
+				Name:                     "test",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          firstBase + ", " + secondBase,
+				FallbackToRegularMode:    false,
+			}
 
-	req := &InjectRequest{
-		InstanceID:   1,
-		TorrentBytes: []byte("x"),
-		ParsedTorrent: &ParsedTorrent{
-			Name:     "Example.Release",
-			InfoHash: "deadbeef",
-			Files: []TorrentFile{
-				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
-			},
-			PieceLength: 16384,
-		},
-		Searchee: &Searchee{
-			Name: "Example.Release",
-			Path: sourceDir,
-			Files: []*ScannedFile{{
-				Path:    sourceFile,
-				RelPath: "file.mkv",
-				Size:    4,
-			}},
-		},
-		MatchResult: &MatchResult{
-			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
-				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
-			}},
-			IsMatch: true,
-		},
-	}
+			manager := &recordingTorrentManager{}
+			pool := fsops.NewPool(&fakeInstanceStore{instance: instance}, crossDeviceBackend{local.NewBackend(), tt.crossDevice})
+			injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, pool)
 
-	res, err := injector.Inject(context.Background(), req)
-	if err != nil {
-		t.Fatalf("inject: %v", err)
-	}
-	if !res.Success {
-		t.Fatalf("expected success, got %+v", res)
-	}
-	if res.Mode != injectModeHardlink {
-		t.Fatalf("expected hardlink mode, got %q", res.Mode)
-	}
-	if strings.Contains(res.SavePath, ",") {
-		t.Fatalf("save path should use one base dir, got %q", res.SavePath)
-	}
-	if !strings.HasPrefix(res.SavePath, firstBase+string(os.PathSeparator)) {
-		t.Fatalf("expected save path under first matching base dir %q, got %q", firstBase, res.SavePath)
-	}
-	if got := manager.addOptions["savepath"]; got != res.SavePath {
-		t.Fatalf("expected add savepath %q, got %q", res.SavePath, got)
+			req := &InjectRequest{
+				InstanceID:   1,
+				TorrentBytes: []byte("x"),
+				ParsedTorrent: &ParsedTorrent{
+					Name:     "Example.Release",
+					InfoHash: "deadbeef",
+					Files: []TorrentFile{
+						{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+					},
+					PieceLength: 16384,
+				},
+				Searchee: &Searchee{
+					Name: "Example.Release",
+					Path: sourceDir,
+					Files: []*ScannedFile{{
+						Path:    sourceFile,
+						RelPath: "file.mkv",
+						Size:    4,
+					}},
+				},
+				MatchResult: &MatchResult{
+					MatchedFiles: []MatchedFilePair{{
+						SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+						TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+					}},
+					IsMatch: true,
+				},
+			}
+
+			res, err := injector.Inject(t.Context(), req)
+			if err != nil {
+				t.Fatalf("inject: %v", err)
+			}
+			if !res.Success {
+				t.Fatalf("expected success, got %+v", res)
+			}
+			if res.Mode != injectModeHardlink {
+				t.Fatalf("expected hardlink mode, got %q", res.Mode)
+			}
+			if strings.Contains(res.SavePath, ",") {
+				t.Fatalf("save path should use one base dir, got %q", res.SavePath)
+			}
+			if !strings.HasPrefix(res.SavePath, tt.wantBase+string(os.PathSeparator)) {
+				t.Fatalf("expected save path under base dir %q, got %q", tt.wantBase, res.SavePath)
+			}
+			if got := manager.addOptions["savepath"]; got != res.SavePath {
+				t.Fatalf("expected add savepath %q, got %q", res.SavePath, got)
+			}
+		})
 	}
 }
 

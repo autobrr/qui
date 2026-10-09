@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Стрічки",
     "refreshAll": "Оновити всі",
-    "addFolder": "Додати папку",
-    "addFeed": "Додати стрічку",
     "articles": "Статті",
     "unread": "{{count}} непрочитаних",
     "markAllAsRead": "Позначити всі як прочитані",

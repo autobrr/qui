@@ -32,6 +32,7 @@ type wantRequest struct {
 	year        int
 	indexerIDs  []int
 	skipHistory bool
+	season      *int
 }
 
 // TestGatherSearchResults drives the retry ladder with a recording fake: which
@@ -49,6 +50,7 @@ func TestGatherSearchResults(t *testing.T) {
 		req           jackett.TorznabSearchRequest
 		tagSourcedIDs bool
 		altTitle      string
+		altSeason     *int
 		idCap         []int
 		replies       map[string]fakeReply
 		cancelParent  bool
@@ -104,6 +106,23 @@ func TestGatherSearchResults(t *testing.T) {
 			wantCovered:  []int{1, 2},
 			wantAnswered: true,
 			wantTitles:   []string{match, junk, match},
+		},
+		{
+			name:      "alternate title pass of a numeral pack searches its season",
+			req:       jackett.TorznabSearchRequest{Query: "Kaiju Squad 100 II", IndexerIDs: []int{1, 2}},
+			altTitle:  "Kaiju Squad 100",
+			altSeason: new(2),
+			replies: map[string]fakeReply{
+				replyKey("Kaiju Squad 100 II", 0, []int{1, 2}): {results: []jackett.SearchResult{hit(1, match)}, covered: []int{1, 2}},
+				replyKey("Kaiju Squad 100", 0, []int{2}):       {results: []jackett.SearchResult{hit(2, match)}, covered: []int{2}},
+			},
+			wantRequests: []wantRequest{
+				{query: "Kaiju Squad 100 II", indexerIDs: []int{1, 2}},
+				{query: "Kaiju Squad 100", indexerIDs: []int{2}, skipHistory: true, season: new(2)},
+			},
+			wantCovered:  []int{1, 2},
+			wantAnswered: true,
+			wantTitles:   []string{match, match},
 		},
 		{
 			name:     "failed alternate title pass drops its targets from covered and keeps results",
@@ -251,7 +270,7 @@ func TestGatherSearchResults(t *testing.T) {
 				cancel()
 			}
 			req := tt.req
-			resp, covered, answered, err := g.gather(ctx, t.Context(), gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle})
+			resp, covered, answered, err := g.gather(ctx, t.Context(), gatherInput{req: &req, tagSourcedIDs: tt.tagSourcedIDs, altTitle: tt.altTitle, altTitleSeason: tt.altSeason})
 
 			require.Len(t, got, len(tt.wantRequests))
 			for i, want := range tt.wantRequests {
@@ -259,6 +278,7 @@ func TestGatherSearchResults(t *testing.T) {
 				require.Equal(t, want.year, got[i].Year, "pass %d year", i)
 				require.Equal(t, want.indexerIDs, got[i].IndexerIDs, "pass %d indexers", i)
 				require.Equal(t, want.skipHistory, got[i].SkipHistory, "pass %d skipHistory", i)
+				require.Equal(t, want.season, got[i].Season, "pass %d season", i)
 				if want.skipHistory {
 					require.Empty(t, got[i].IMDbID, "pass %d keeps IDs", i)
 					require.False(t, got[i].OmitQueryForIDs, "pass %d omits the query", i)

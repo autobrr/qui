@@ -9,7 +9,7 @@ description: Automatically cross-seed torrents across trackers.
 
 qui finds torrents on other trackers that match content you already seed. It adds them to your qBittorrent instances, so you seed the same content on more than one tracker.
 
-qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance.
+qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance. See [Move from standalone cross-seed](./standalone-cross-seed.md).
 
 ## How It Works
 

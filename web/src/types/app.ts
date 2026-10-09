@@ -313,6 +313,10 @@ export interface ThemeSettings {
   variation?: string
 }
 
+export type ThemeSlot = "default" | "mobile"
+
+export type ThemeSlots = Partial<Record<ThemeSlot, ThemeSettings>>
+
 export interface BuiltinTheme {
   id: string
   name: string

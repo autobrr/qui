@@ -25,10 +25,10 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/keygen-sh/machineid v1.1.3
-	github.com/klauspost/compress v1.20.0
+	github.com/klauspost/compress v1.20.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mat/besticon/v3 v3.23.0
-	github.com/nicholas-fedor/shoutrrr v0.18.0
+	github.com/nicholas-fedor/shoutrrr v0.21.1
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.11
 	github.com/prometheus/client_golang v1.24.1
@@ -50,7 +50,7 @@ require (
 	golang.org/x/time v0.16.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.57.0
+	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -97,8 +97,14 @@ require (
 	gitlab.com/gitlab-org/api/client-go v1.46.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/tools v0.50.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	modernc.org/libc v1.74.4 // indirect
+	mellium.im/reader v0.1.0 // indirect
+	mellium.im/sasl v0.3.2 // indirect
+	mellium.im/xmlstream v0.15.4 // indirect
+	mellium.im/xmpp v0.23.0 // indirect
+	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )

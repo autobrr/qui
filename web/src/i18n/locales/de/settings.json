@@ -421,10 +421,6 @@
       "loadingDescription": "Verfügbare Designs werden geladen...",
       "description": "Wähle aus den verfügbaren Designs. Premium-Designs erfordern eine gültige Lizenz.",
       "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
-      "freeBadge": "Kostenlos",
-      "freeThemes": "Kostenlose Designs",
-      "premiumBadge": "Premium",
-      "premiumThemes": "Premium-Designs",
       "notLoaded": "Premium-Designs nicht geladen",
       "notLoadedDescription": "Konfiguriere",
       "notLoadedAnd": "und führe aus",
@@ -541,16 +537,13 @@
       "copiedVerify": "Verifizierungsbefehl kopiert",
       "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
       "toasts": {
-        "activationSuccess": "Lizenz erfolgreich aktiviert!",
         "activationSuccessPremium": "Premium-Zugang aktiviert! Vielen Dank!",
         "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Premium-Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
         "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
         "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Premium-Lizenzschlüssel hinzu, sobald du bereit bist.",
         "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
         "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
-        "removedFromMachine": "Lizenz von diesem Gerät entfernt",
-        "refreshedAll": "Alle Lizenzen erfolgreich aktualisiert",
-        "refreshFailed": "Lizenzen konnten nicht aktualisiert werden"
+        "removedFromMachine": "Lizenz von diesem Gerät entfernt"
       }
     },
     "custom": {
@@ -559,12 +552,22 @@
       "lockedTitle": "Eigene Themes sind eine Premium-Funktion",
       "lockedDescription": "Schalte Premium frei, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
       "unlockCta": "Premium freischalten",
-      "directoryLabel": "Themes-Verzeichnis",
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
       "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
       "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
+    },
+    "layout": {
+      "mobileSplit": "Eigenes Theme für das mobile Layout",
+      "mobileSplitHelp": "Das mobile Layout (ein Fenster unter 768 px Breite) und das Desktop-Layout behalten jeweils ihr eigenes Theme, ihren Modus und ihre Variante. Diese Einstellung gilt für jeden Browser.",
+      "localOnly": "Theme dieses Browsers lokal halten",
+      "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
+      "changesMobile": "Ändert das mobile Theme",
+      "changesDesktop": "Ändert das Desktop-Theme",
+      "changesLocal": "Ändert nur das Theme dieses Browsers. Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
+      "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
+      "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }
   },
   "arrInstances": {
@@ -662,10 +665,6 @@
   },
   "indexers": {
     "title": "Torznab Indexer",
-    "addIndexer": "Indexer hinzufügen",
-    "autodiscoverProwlarr": "Automatisch aus Prowlarr erkennen",
-    "noIndexers": "Noch keine Indexer konfiguriert.",
-    "noIndexersDescription": "Füge einen Torznab-kompatiblen Indexer hinzu, um automatische Cross-Seed-Suchen zu aktivieren.",
     "deleteIndexer": "Indexer löschen",
     "deleteIndexerDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleteAllIndexers": "Alle Indexer löschen",
@@ -674,8 +673,6 @@
       "loadFailed": "Indexer konnten nicht geladen werden",
       "deletedSuccess": "Indexer gelöscht",
       "deleteFailed": "Indexer konnte nicht gelöscht werden",
-      "allDeletedSuccess": "Alle Indexer gelöscht",
-      "allDeletedFailed": "Es konnten nicht alle Indexer gelöscht werden",
       "deleteAllSuccess": "Alle {{count}} Indexer gelöscht",
       "deleteAllPartial": "{{success}} Indexer gelöscht, {{failed}} fehlgeschlagen: {{names}}",
       "testSuccess": "Verbindungstest erfolgreich",
@@ -821,7 +818,6 @@
         "importSuccess": "Erfolg: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} mit Warnungen)",
         "moreWarnings": "...und {{count}} weitere Warnungen",
-        "importErrors": "{{details}}",
         "moreErrors": "...und {{count}} weitere Fehler",
         "created": "{{count}} erstellt",
         "updated": "{{count}} aktualisiert",
@@ -882,10 +878,6 @@
     },
     "activity": {
       "title": "Scheduler-Aktivität",
-      "idle": "Inaktiv",
-      "queueLength": "Warteschlange",
-      "workers": "Worker",
-      "cooldown": "Cooldown",
       "running": "Läuft",
       "queued": "In Warteschlange",
       "rateLimited": "Rate-limitiert",

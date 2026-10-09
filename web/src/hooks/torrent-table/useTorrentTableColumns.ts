@@ -76,20 +76,32 @@ export function useTorrentTableColumns({
 }: UseTorrentTableColumnsParams): TorrentTableColumns {
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
-    () => createColumns(incognitoMode, {
-      shiftPressedRef,
-      lastSelectedIndexRef,
-      // Pass custom selection handlers
-      customSelectAll: {
-        onSelectAll: handleSelectAll,
-        isAllSelected: isSelectAllChecked,
-        isIndeterminate: isSelectAllIndeterminate,
+    () => createColumns({
+      incognitoMode,
+      selectionEnhancers: {
+        shiftPressedRef,
+        lastSelectedIndexRef,
+        // Pass custom selection handlers
+        customSelectAll: {
+          onSelectAll: handleSelectAll,
+          isAllSelected: isSelectAllChecked,
+          isIndeterminate: isSelectAllIndeterminate,
+        },
+        onRowSelection: handleRowSelection,
+        getSelectionIdentity,
+        isAllSelected,
+        excludedFromSelectAll,
       },
-      onRowSelection: handleRowSelection,
-      getSelectionIdentity,
-      isAllSelected,
-      excludedFromSelectAll,
-    }, speedUnit, trackerIcons, (timestamp: number) => formatTimestamp(timestamp, true), preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
+      speedUnit,
+      trackerIcons,
+      formatTimestamp: (timestamp: number) => formatTimestamp(timestamp, true),
+      instancePreferences: preferences,
+      supportsTrackerHealth,
+      showInstanceColumn: isUnifiedView && isCrossInstanceEndpoint,
+      viewMode: desktopViewMode as TableViewMode,
+      trackerCustomizationLookup,
+      includeSelectionColumn: !isReadOnly,
+    }, t),
     // shiftPressedRef/lastSelectedIndexRef are stable refs (passed in); listed to satisfy exhaustive-deps.
     [shiftPressedRef, lastSelectedIndexRef, incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
   )

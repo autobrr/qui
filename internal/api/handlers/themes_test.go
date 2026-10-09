@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/themes"
 )
 
@@ -156,30 +157,47 @@ func TestThemesHandler_EnsureDirErrorReturnsEmpty(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"themes":[]`)
 }
 
-// stubThemeSettings is an in-memory themeSettingsStore.
-type stubThemeSettings struct {
-	saved *models.ThemeSettings
-	err   error
+// failingThemeSettings is a themeSettingsStore whose every call fails.
+type failingThemeSettings struct{}
+
+func (failingThemeSettings) GetAll(context.Context) (models.ThemeSlots, error) {
+	return models.ThemeSlots{}, errors.New("boom")
 }
 
-func (s *stubThemeSettings) Get(context.Context) (*models.ThemeSettings, error) {
-	return s.saved, s.err
+func (failingThemeSettings) Set(context.Context, string, *models.ThemeSettings) error {
+	return errors.New("boom")
 }
 
-func (s *stubThemeSettings) Set(_ context.Context, ts *models.ThemeSettings) error {
-	if s.err != nil {
-		return s.err
-	}
-	s.saved = ts
-	return nil
+func (failingThemeSettings) Delete(context.Context, string) error {
+	return errors.New("boom")
 }
 
-func doUpdateThemeSettings(t *testing.T, h *ThemesHandler, body string) *httptest.ResponseRecorder {
+func newThemeSettingsHandler(t *testing.T, pub activity.Publisher) *ThemesHandler {
 	t.Helper()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/api/themes/settings", strings.NewReader(body))
+	store := models.NewThemeSettingsStore(testdb.NewMigratedSQLite(t, "theme-settings-handler"))
+	return NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, pub)
+}
+
+func doThemeSettings(t *testing.T, h *ThemesHandler, method, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), method, target, strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.UpdateThemeSettings(rec, req)
+	switch method {
+	case http.MethodGet:
+		h.GetThemeSettings(rec, req)
+	case http.MethodPut:
+		h.UpdateThemeSettings(rec, req)
+	case http.MethodDelete:
+		h.DeleteThemeSettings(rec, req)
+	}
 	return rec
+}
+
+func getThemeSlots(t *testing.T, h *ThemesHandler) string {
+	t.Helper()
+	rec := doThemeSettings(t, h, http.MethodGet, "/api/themes/settings", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	return strings.TrimSpace(rec.Body.String())
 }
 
 // recordingPublisher records published activity events.
@@ -191,98 +209,124 @@ func (p *recordingPublisher) Publish(ev activity.Event) {
 	p.events = append(p.events, ev)
 }
 
-func TestThemeSettings_UpdatePublishesActivity(t *testing.T) {
+func TestThemeSettings_GetSlots(t *testing.T) {
+	h := newThemeSettingsHandler(t, nil)
+	require.JSONEq(t, `{}`, getThemeSlots(t, h))
+
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings", `{"themeId":"minimal","variation":"blue"}`).Code)
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto","variation":"blue"}}`, getThemeSlots(t, h))
+
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=mobile", `{"themeId":"minimal","mode":"dark"}`).Code)
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto","variation":"blue"},"mobile":{"themeId":"minimal","mode":"dark"}}`, getThemeSlots(t, h))
+}
+
+func TestThemeSettings_PutWritesOnlyItsSlot(t *testing.T) {
+	h := newThemeSettingsHandler(t, nil)
+
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=default", `{"themeId":"minimal","mode":"light"}`).Code)
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=mobile", `{"themeId":"minimal","mode":"dark"}`).Code)
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=default", `{"themeId":"minimal","mode":"auto"}`).Code)
+
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto"},"mobile":{"themeId":"minimal","mode":"dark"}}`, getThemeSlots(t, h))
+
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=mobile", `{"themeId":"minimal","mode":"light"}`).Code)
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto"},"mobile":{"themeId":"minimal","mode":"light"}}`, getThemeSlots(t, h))
+}
+
+func TestThemeSettings_DeleteMobileSlot(t *testing.T) {
 	pub := &recordingPublisher{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{}, nil, pub)
+	h := newThemeSettingsHandler(t, pub)
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings", `{"themeId":"minimal"}`).Code)
+	require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=mobile", `{"themeId":"minimal","mode":"dark"}`).Code)
+	pub.events = nil
 
-	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
+	rec := doThemeSettings(t, h, http.MethodDelete, "/api/themes/settings?slot=mobile", "")
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto"}}`, getThemeSlots(t, h))
 	require.Len(t, pub.events, 1)
 	require.Equal(t, activity.KindThemeSettings, pub.events[0].Kind)
 }
 
+func TestThemeSettings_DeleteRefusesDefaultSlot(t *testing.T) {
+	for _, target := range []string{"/api/themes/settings", "/api/themes/settings?slot=default"} {
+		pub := &recordingPublisher{}
+		h := newThemeSettingsHandler(t, pub)
+		require.Equal(t, http.StatusOK, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings", `{"themeId":"minimal"}`).Code)
+		pub.events = nil
+
+		rec := doThemeSettings(t, h, http.MethodDelete, target, "")
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, target)
+		require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto"}}`, getThemeSlots(t, h))
+		require.Empty(t, pub.events)
+	}
+}
+
+func TestThemeSettings_UpdatePublishesActivity(t *testing.T) {
+	for _, target := range []string{"/api/themes/settings", "/api/themes/settings?slot=mobile"} {
+		pub := &recordingPublisher{}
+		h := newThemeSettingsHandler(t, pub)
+
+		rec := doThemeSettings(t, h, http.MethodPut, target, `{"themeId":"minimal"}`)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Len(t, pub.events, 1)
+		require.Equal(t, activity.KindThemeSettings, pub.events[0].Kind)
+	}
+}
+
 func TestThemeSettings_NoActivityOnStoreFailure(t *testing.T) {
 	pub := &recordingPublisher{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{err: errors.New("boom")}, nil, pub)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, failingThemeSettings{}, nil, pub)
 
-	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
-
-	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Equal(t, http.StatusInternalServerError, doThemeSettings(t, h, http.MethodPut, "/api/themes/settings", `{"themeId":"minimal"}`).Code)
+	require.Equal(t, http.StatusInternalServerError, doThemeSettings(t, h, http.MethodDelete, "/api/themes/settings?slot=mobile", "").Code)
 	require.Empty(t, pub.events)
 }
 
 func TestThemeSettings_UpdateWithoutPremium(t *testing.T) {
-	store := &stubThemeSettings{}
+	store := models.NewThemeSettingsStore(testdb.NewMigratedSQLite(t, "theme-settings-handler"))
 	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: false}, store, nil, nil)
 
-	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
+	rec := doThemeSettings(t, h, http.MethodPut, "/api/themes/settings", `{"themeId":"minimal"}`)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.NotNil(t, store.saved)
+	require.JSONEq(t, `{"default":{"themeId":"minimal","mode":"auto"}}`, getThemeSlots(t, h))
 }
 
 func TestThemeSettings_UpdateValidation(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
+		name   string
+		target string
+		body   string
 	}{
-		{"missing themeId", `{"mode":"dark"}`},
-		{"bad mode", `{"themeId":"minimal","mode":"neon"}`},
-		{"bad json", `{`},
+		{"missing themeId", "/api/themes/settings", `{"mode":"dark"}`},
+		{"bad mode", "/api/themes/settings", `{"themeId":"minimal","mode":"neon"}`},
+		{"bad json", "/api/themes/settings", `{`},
+		{"unknown theme", "/api/themes/settings", `{"themeId":"not-a-theme"}`},
+		{"unknown slot", "/api/themes/settings?slot=tablet", `{"themeId":"minimal"}`},
+		{"mobile unknown theme", "/api/themes/settings?slot=mobile", `{"themeId":"not-a-theme"}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := &stubThemeSettings{}
-			h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
-			rec := doUpdateThemeSettings(t, h, tt.body)
+			pub := &recordingPublisher{}
+			h := newThemeSettingsHandler(t, pub)
+			rec := doThemeSettings(t, h, http.MethodPut, tt.target, tt.body)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
-			require.Nil(t, store.saved)
+			require.JSONEq(t, `{}`, getThemeSlots(t, h))
+			require.Empty(t, pub.events)
 		})
 	}
 }
 
-func TestThemeSettings_UpdateAndGet(t *testing.T) {
-	store := &stubThemeSettings{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
+func TestThemeSettings_CustomThemeSkipsRegistry(t *testing.T) {
+	h := newThemeSettingsHandler(t, nil)
 
-	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal","variation":"blue"}`)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, &models.ThemeSettings{ThemeID: "minimal", Mode: "auto", Variation: "blue"}, store.saved)
-
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes/settings", nil)
-	getRec := httptest.NewRecorder()
-	h.GetThemeSettings(getRec, req)
-	require.Equal(t, http.StatusOK, getRec.Code)
-
-	var got models.ThemeSettings
-	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &got))
-	require.Equal(t, *store.saved, got)
-}
-
-func TestThemeSettings_GetEmpty(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{}, nil, nil)
-
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes/settings", nil)
-	rec := httptest.NewRecorder()
-	h.GetThemeSettings(rec, req)
+	rec := doThemeSettings(t, h, http.MethodPut, "/api/themes/settings?slot=mobile", `{"themeId":"custom:mytheme"}`)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "null", strings.TrimSpace(rec.Body.String()))
-}
-
-func TestThemeSettings_UpdateUnknownTheme(t *testing.T) {
-	store := &stubThemeSettings{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
-
-	rec := doUpdateThemeSettings(t, h, `{"themeId":"not-a-theme"}`)
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Nil(t, store.saved)
-
-	// Custom theme ids pass without registry validation.
-	rec = doUpdateThemeSettings(t, h, `{"themeId":"custom:mytheme"}`)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "custom:mytheme", store.saved.ThemeID)
+	require.JSONEq(t, `{"mobile":{"themeId":"custom:mytheme","mode":"auto"}}`, getThemeSlots(t, h))
 }
 
 func doListThemes(t *testing.T, h *ThemesHandler) []BuiltinTheme {
@@ -301,7 +345,7 @@ func doListThemes(t *testing.T, h *ThemesHandler) []BuiltinTheme {
 
 func TestListThemes_FreeAlwaysHaveCSS(t *testing.T) {
 	for _, premium := range []bool{false, true} {
-		h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: premium}, &stubThemeSettings{}, nil, nil)
+		h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: premium}, failingThemeSettings{}, nil, nil)
 		for _, theme := range doListThemes(t, h) {
 			if theme.Premium {
 				continue
@@ -337,12 +381,15 @@ func TestBuildBuiltinThemeList(t *testing.T) {
 	anonSelected := buildBuiltinThemeList(list, true, false, "paid")
 	require.Equal(t, "paid-css", anonSelected[1].CSS, "the selected premium theme must paint the login page")
 
+	anonMobile := buildBuiltinThemeList(list, true, false, "free", "paid")
+	require.Equal(t, "paid-css", anonMobile[1].CSS, "the mobile slot's premium theme must paint the login page on a phone")
+
 	anonOther := buildBuiltinThemeList(list, true, false, "free")
 	require.Empty(t, anonOther[1].CSS, "an unselected premium theme must not leak CSS to anonymous callers")
 	require.Equal(t, "gold", anonOther[1].Preview.Light["--primary"])
 }
 
 func TestListThemes_PremiumCheckErrorServesFree(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{err: errors.New("boom")}, &stubThemeSettings{}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{err: errors.New("boom")}, failingThemeSettings{}, nil, nil)
 	require.NotEmpty(t, doListThemes(t, h))
 }

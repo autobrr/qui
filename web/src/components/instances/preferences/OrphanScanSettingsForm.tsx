@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
 import { Button } from "@/components/ui/button"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,6 +23,8 @@ import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
   instanceId: number
+  /** The instance is remote, where deletion and auto-cleanup do not run yet. */
+  isRemote?: boolean
   onSuccess?: () => void
   /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
@@ -43,6 +46,7 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
 
 export function OrphanScanSettingsForm({
   instanceId,
+  isRemote = false,
   onSuccess,
   formId,
 }: OrphanScanSettingsFormProps) {
@@ -359,6 +363,8 @@ export function OrphanScanSettingsForm({
         </div>
 
         <div className="space-y-4">
+          {isRemote && <OrphanScanRemoteLimits />}
+
           <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
             <div className="flex items-center gap-2">
               <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">

@@ -66,13 +66,13 @@ export function collectMissingKeysForSource({
 }) {
   const namespaces = parseNamespaces(source)
   const defaultNamespace = namespaces[0]
-
-  if (!defaultNamespace) {
-    return []
-  }
+  const directiveNamespace = source.match(/^\s*\/\/\s*i18n-namespace:\s*(\S+)/m)?.[1]
+  // A route file holds one staticData title, so its titleNs covers every titleKey in the file.
+  const titleNamespace = source.match(/\btitleNs:\s*"([^"]+)"/)?.[1]
 
   const localeCache = new Map()
   const missingKeys = new Set()
+  const keyPropertyPattern = /\b(labelKey|titleKey|placeholderKey|descriptionKey):\s*"([^"]+)"/g
   const translationCallPattern = /\b(?:i18n\.)?t\(\s*"([^"]+)"(?:\s*,\s*(\{[\s\S]*?\}))?\s*\)/g
 
   function getLocale(namespace) {
@@ -81,6 +81,44 @@ export function collectMissingKeysForSource({
     }
 
     return localeCache.get(namespace)
+  }
+
+  function checkKey(namespace, key) {
+    const locale = getLocale(namespace)
+    if (!locale) {
+      missingKeys.add(`${relativePath}: missing locale file for namespace "${namespace}"`)
+      return
+    }
+
+    if (!hasLocaleKey(locale, key)) {
+      missingKeys.add(`${relativePath}: ${namespace}.${key}`)
+    }
+  }
+
+  if (directiveNamespace && defaultNamespace) {
+    missingKeys.add(`${relativePath}: remove "// i18n-namespace: ${directiveNamespace}"; useTranslation sets the namespace`)
+  }
+
+  // Data tables hand these values to t() later, so the t("...") scan below never sees them.
+  for (const match of source.matchAll(keyPropertyPattern)) {
+    const lineStart = source.lastIndexOf("\n", match.index) + 1
+    if (source.slice(lineStart, match.index).trimStart().startsWith("//")) {
+      continue
+    }
+
+    const [, property, rawKey] = match
+    const fileNamespace = (property === "titleKey" && titleNamespace) || defaultNamespace || directiveNamespace
+    const { namespace, key } = resolveNamespaceAndKey(rawKey, undefined, fileNamespace)
+    if (!namespace) {
+      missingKeys.add(`${relativePath}: key properties have no namespace; add "// i18n-namespace: <ns>" to the file`)
+      continue
+    }
+
+    checkKey(namespace, key)
+  }
+
+  if (!defaultNamespace) {
+    return [...missingKeys]
   }
 
   for (const match of source.matchAll(translationCallPattern)) {
@@ -92,15 +130,7 @@ export function collectMissingKeysForSource({
       continue
     }
 
-    const locale = getLocale(namespace)
-    if (!locale) {
-      missingKeys.add(`${relativePath}: missing locale file for namespace "${namespace}"`)
-      continue
-    }
-
-    if (!hasLocaleKey(locale, key)) {
-      missingKeys.add(`${relativePath}: ${namespace}.${key}`)
-    }
+    checkKey(namespace, key)
   }
 
   return [...missingKeys]

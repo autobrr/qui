@@ -113,9 +113,9 @@ func (s *Service) partialPoolPropagationPairRejected(
 	return rejected
 }
 
-// partialPoolPropagationPairIncompatible reports errors that prove only this
-// source and target cannot be linked across their filesystems.
-func partialPoolPropagationPairIncompatible(err error) bool {
+// isCrossDeviceLinkError reports errors that prove only this source and target
+// cannot be linked across their filesystems.
+func isCrossDeviceLinkError(err error) bool {
 	return errors.Is(err, syscall.EXDEV) || partialPoolPlatformCrossDeviceError(err)
 }
 
@@ -2885,7 +2885,7 @@ func (s *Service) finishPartialPoolPropagation(
 		created, err = reflinktree.Create(plan)
 	}
 	if err != nil {
-		if partialPoolPropagationPairIncompatible(err) {
+		if isCrossDeviceLinkError(err) {
 			s.rejectPartialPoolPropagationPair(sourceMember, sourceFile, targetMember, targetFile)
 			resetRejectedPairClaim()
 			log.Debug().

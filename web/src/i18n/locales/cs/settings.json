@@ -423,10 +423,6 @@
       "loadingDescription": "Načítám dostupné motivy...",
       "description": "Vyberte z dostupných motivů. Premium motivy vyžadují platný licenční klíč.",
       "verificationUnavailable": "Ověření licence není dostupné. Přepínání premium motivů je dočasně nedostupné.",
-      "freeBadge": "Zdarma",
-      "freeThemes": "Zdarma dostupné motivy",
-      "premiumBadge": "Premiový",
-      "premiumThemes": "Premium motivy",
       "notLoaded": "Premium motivy nejsou načteny",
       "notLoadedDescription": "Nastavte",
       "notLoadedAnd": "a spusťte",
@@ -543,16 +539,13 @@
       "copiedVerify": "Příkaz ověření zkopírován",
       "failedCopyVerify": "Nepodařilo se zkopírovat příkaz ověření",
       "toasts": {
-        "activationSuccess": "Licence aktivována úspěšně!",
         "activationSuccessPremium": "Premium přístup aktivován! Děkujeme!",
         "paymentCompleted": "Platba dokončena. Přidejte svůj licenční klíč premium pro dokončení nastavení.",
         "paymentNotCompleted": "Platba nebyla dokončena úspěšně.",
         "returnedFromCheckout": "Vráceno z pokladny. Přidejte svůj licenční klíč premium, když budete připraveni.",
         "keyCopied": "Licenční klíč zkopírován do schránky",
         "copyFailed": "Nepodařilo se zkopírovat licenční klíč",
-        "removedFromMachine": "Licence odstraněna z tohoto stroje",
-        "refreshedAll": "Všechny licence obnoveny úspěšně",
-        "refreshFailed": "Nepodařilo se obnovit licence"
+        "removedFromMachine": "Licence odstraněna z tohoto stroje"
       }
     },
     "custom": {
@@ -561,12 +554,22 @@
       "lockedTitle": "Vlastní motivy jsou premiová funkce",
       "lockedDescription": "Odemkněte premium a načítejte vlastní CSS soubory motivů z adresáře na disku.",
       "unlockCta": "Odemknout premium",
-      "directoryLabel": "Adresář motivů",
       "refresh": "Obnovit",
       "detectedCount": "Nalezené motivy: {{total}}",
       "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
       "noneFound": "Nenalezeny žádné vlastní motivy. Vložte soubor .css do adresáře motivů a klikněte na Obnovit.",
       "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů."
+    },
+    "layout": {
+      "mobileSplit": "Samostatný motiv pro mobilní rozložení",
+      "mobileSplitHelp": "Mobilní rozložení (okno užší než 768 px) a desktopové rozložení si každé ponechá vlastní motiv, režim a variantu. Toto nastavení platí pro všechny prohlížeče.",
+      "localOnly": "Ponechat motiv tohoto prohlížeče lokálně",
+      "localOnlyHelp": "Tento prohlížeč nepřebírá motiv ze serveru a neodesílá na server své změny motivu. Toto nastavení platí jen pro tento prohlížeč.",
+      "changesMobile": "Mění mobilní motiv",
+      "changesDesktop": "Mění desktopový motiv",
+      "changesLocal": "Mění jen motiv tohoto prohlížeče. Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
+      "saveError": "Nastavení motivu se nepodařilo uložit",
+      "mobileSplitOffWarning": "Vypnutím se mobilní motiv smaže."
     }
   },
   "arrInstances": {
@@ -664,10 +667,6 @@
   },
   "indexers": {
     "title": "Torznab indexery",
-    "addIndexer": "Přidat indexer",
-    "autodiscoverProwlarr": "Automaticky najít z Prowlarru",
-    "noIndexers": "Žádné indexery nakonfigurovány. Přidejte Torznab-kompatibilní indexer pro povolení automatického křížového sdílení.",
-    "noIndexersDescription": "Přidejte Torznab-kompatibilní indexer pro povolení automatického křížového sdílení.",
     "deleteIndexer": "Odstranit indexer",
     "deleteIndexerDescription": "Jste si jisti, že chcete odstranit \"{{name}}\"? Tato akce nemůže být vrácena.",
     "deleteAllIndexers": "Odstranit všechny indexery",
@@ -676,8 +675,6 @@
       "loadFailed": "Nepodařilo se načíst indexery",
       "deletedSuccess": "Indexer odstraněn",
       "deleteFailed": "Nepodařilo se odstranit indexer",
-      "allDeletedSuccess": "Všechny indexery odstraněny",
-      "allDeletedFailed": "Nepodařilo se odstranit všechny indexery",
       "deleteAllSuccess": "Odstraněno všechny {{count}} indexery",
       "deleteAllPartial": "Odstraněno {{success}} indexerů, {{failed}} selhalo: {{names}}",
       "testSuccess": "Test připojení úspěšný",
@@ -802,7 +799,6 @@
         "importSuccess": "Úspěch: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} s upozorněními)",
         "moreWarnings": "...a {{count}} dalších upozornění",
-        "importErrors": "{{details}}",
         "moreErrors": "...a {{count}} dalších chyb",
         "created": "{{count}} vytvořeno",
         "updated": "{{count}} aktualizováno",
@@ -864,10 +860,6 @@
     },
     "activity": {
       "title": "Aktivita plánovače",
-      "idle": "Neaktivní",
-      "queueLength": "Fronty",
-      "workers": "Pracovníci",
-      "cooldown": "Čekání",
       "running": "Běží",
       "queued": "V frontě",
       "rateLimited": "Omezeno",

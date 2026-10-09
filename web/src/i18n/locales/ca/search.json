@@ -122,13 +122,11 @@
     "cacheSource": "Origen: {{source}} · Àmbit: {{scope}}",
     "refreshReadyIn": "A punt d'aquí a {{seconds}} s",
     "refreshFromIndexers": "Actualitza des dels indexadors",
-    "noValue": "-",
     "categoryFallback": "Categoria {{id}}",
     "noResultsFor": "No s'ha trobat cap resultat per a \"{{query}}\"",
     "enterQuery": "Introdueix una consulta de cerca per començar",
     "free": "Gratuït",
-    "freeNeutral": "Neutre",
-    "noInfoUrlAvailable": "No hi ha cap URL d'informació disponible"
+    "freeNeutral": "Neutre"
   },
   "historyMeta": "{{type}} · {{count}} resultats · {{timestamp}}",
   "table": {

@@ -22,6 +22,7 @@ interface OrphanScanSettingsDialogProps {
   onOpenChange: (open: boolean) => void
   instanceId: number
   instanceName?: string
+  isRemote?: boolean
 }
 
 export function OrphanScanSettingsDialog({
@@ -29,6 +30,7 @@ export function OrphanScanSettingsDialog({
   onOpenChange,
   instanceId,
   instanceName,
+  isRemote,
 }: OrphanScanSettingsDialogProps) {
   const { t } = useTranslation("instances")
 
@@ -43,6 +45,7 @@ export function OrphanScanSettingsDialog({
         <div className="flex-1 overflow-y-auto pr-1">
           <OrphanScanSettingsForm
             instanceId={instanceId}
+            isRemote={isRemote}
             formId={FORM_ID}
             onSuccess={() => onOpenChange(false)}
           />

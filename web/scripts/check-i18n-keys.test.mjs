@@ -82,3 +82,141 @@ test("supports i18n.t calls that use an explicit namespace prefix", () => {
 
   assert.deepEqual(missingKeys, [])
 })
+
+const keyPropertyLocales = {
+  common: {
+    nav: { dashboard: "Dashboard" },
+  },
+  torrents: {
+    columns: { name: "Name" },
+    page: { routeTitle: "Torrents" },
+  },
+}
+
+function collectKeyPropertyErrors(source) {
+  return collectMissingKeysForSource({
+    source,
+    relativePath: "src/example.tsx",
+    loadLocale(namespace) {
+      return keyPropertyLocales[namespace] ?? null
+    },
+  })
+}
+
+for (const property of ["labelKey", "titleKey", "placeholderKey", "descriptionKey"]) {
+  test(`reports a misspelled ${property} in the useTranslation namespace`, () => {
+    const source = `
+      const items = [
+        { id: "a", ${property}: "columns.name" },
+        { id: "b", ${property}: "columns.nmae" },
+      ]
+
+      export function Example() {
+        const { t } = useTranslation("torrents")
+        return items.map((item) => t(item.${property}))
+      }
+    `
+
+    assert.deepEqual(collectKeyPropertyErrors(source), [
+      "src/example.tsx: torrents.columns.nmae",
+    ])
+  })
+}
+
+test("checks key properties in a data-only file against its directive namespace", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export const options = [
+      { value: "name", labelKey: "columns.name" },
+      { value: "size", labelKey: "columns.szie" },
+    ]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.columns.szie",
+  ])
+})
+
+test("reports a key that exists only in another namespace", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export const items = [{ labelKey: "nav.dashboard" }]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.nav.dashboard",
+  ])
+})
+
+test("checks a route titleKey against its sibling titleNs", () => {
+  const source = `
+    export const Route = createFileRoute("/example")({
+      staticData: {
+        titleKey: "page.routeTitle",
+        titleNs: "torrents",
+      },
+    })
+
+    function Example() {
+      const { t } = useTranslation(["common", "torrents"])
+      return t("nav.dashboard")
+    }
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [])
+  assert.deepEqual(collectKeyPropertyErrors(source.replace("page.routeTitle", "page.routeTitel")), [
+    "src/example.tsx: torrents.page.routeTitel",
+  ])
+})
+
+test("reports key properties in a file with no namespace", () => {
+  const source = `
+    export const options = [{ value: "name", labelKey: "columns.name" }]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: key properties have no namespace; add \"// i18n-namespace: <ns>\" to the file",
+  ])
+})
+
+test("reports a directive in a file that calls useTranslation", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export function Example() {
+      const { t } = useTranslation("torrents")
+      return t("columns.name")
+    }
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: remove \"// i18n-namespace: torrents\"; useTranslation sets the namespace",
+  ])
+})
+
+test("ignores commented-out key properties", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export const options = [
+      { value: "name", labelKey: "columns.nmae" },
+      // { value: "size", labelKey: "columns.szie" },
+    ]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.columns.nmae",
+  ])
+})
+
+test("resolves a namespace prefix in a key property", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export const items = [
+      { labelKey: "common:nav.dashboard" },
+      { labelKey: "common:nav.dashbaord" },
+    ]
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: common.nav.dashbaord",
+  ])
+})

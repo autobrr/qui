@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Vlákna",
     "refreshAll": "Obnovit vše",
-    "addFolder": "Přidat složku",
-    "addFeed": "Přidat vlákno",
     "articles": "Články",
     "unread": "{{count}} nepřečteno",
     "markAllAsRead": "Označit vše jako přečteno",

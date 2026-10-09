@@ -62,13 +62,11 @@ type AutomationDryRunResult struct {
 }
 
 // toModel converts the payload to an Automation model.
-// If TrackerDomains is non-empty after normalization, it takes precedence over
-// TrackerPattern and the raw TrackerPattern input is ignored.
+// TrackerDomains is input only: older clients and hand-written JSON send it, and it is read only when TrackerPattern is empty.
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
-	normalizedDomains := normalizeTrackerDomains(p.TrackerDomains)
 	trackerPattern := p.TrackerPattern
-	if len(normalizedDomains) > 0 {
-		trackerPattern = strings.Join(normalizedDomains, ",")
+	if strings.TrimSpace(trackerPattern) == "" {
+		trackerPattern = strings.Join(models.SanitizeCommaSeparatedStringSlice(p.TrackerDomains), ",")
 	}
 
 	automation := &models.Automation{
@@ -76,7 +74,6 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		InstanceID:      instanceID,
 		Name:            p.Name,
 		TrackerPattern:  trackerPattern,
-		TrackerDomains:  normalizedDomains,
 		Conditions:      p.Conditions,
 		FreeSpaceSource: p.FreeSpaceSource,
 		SortingConfig:   p.SortingConfig,
@@ -310,10 +307,6 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
 	}
 	return instanceID, nil
-}
-
-func normalizeTrackerDomains(domains []string) []string {
-	return models.SanitizeCommaSeparatedStringSlice(domains)
 }
 
 // validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.

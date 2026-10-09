@@ -486,7 +486,6 @@ export function WorkflowsOverview({
       const payload = {
         name: rule.name,
         trackerPattern: rule.trackerPattern,
-        trackerDomains: rule.trackerDomains ?? parseTrackerDomains(rule),
         conditions: rule.conditions,
         freeSpaceSource: rule.freeSpaceSource,
         enabled: true,

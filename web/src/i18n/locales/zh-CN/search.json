@@ -122,13 +122,11 @@
     "cacheSource": "来源：{{source}} · 范围：{{scope}}",
     "refreshReadyIn": "{{seconds}} 秒后可刷新",
     "refreshFromIndexers": "从索引器刷新",
-    "noValue": "-",
     "categoryFallback": "分类 {{id}}",
     "noResultsFor": "未找到「{{query}}」的结果",
     "enterQuery": "输入搜索内容以开始",
     "free": "免费",
-    "freeNeutral": "中性",
-    "noInfoUrlAvailable": "无可用的详情链接"
+    "freeNeutral": "中性"
   },
   "historyMeta": "{{type}} · {{count}} 条结果 · {{timestamp}}",
   "table": {

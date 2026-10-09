@@ -566,7 +566,7 @@ export function ColumnFilterPopover({
                 <SelectContent>
                   {operations.map((op) => (
                     <SelectItem key={op.value} value={op.value}>
-                      {op.label}
+                      {t(op.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
