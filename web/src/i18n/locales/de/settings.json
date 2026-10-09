@@ -440,7 +440,7 @@
       "managementTitle": "Lizenzverwaltung",
       "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
       "providers": {
-        "dodoPortal": "Dodo-Portal"
+        "licensePortal": "Lizenzportal"
       },
       "status": {
         "unlockTitle": "Premium-Designs freischalten",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
       },
       "invalid": {
-        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktuell aktiv ist."
+        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du das Aktivierungslimit erreichst, gehe zu <portal>licenses.getqui.com</portal>, registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast, und deaktiviere unter Machine Instances ein Gerät, das du nicht mehr nutzt."
+      },
+      "errors": {
+        "expired": "Dein Lizenzschlüssel ist abgelaufen.",
+        "notActive": "Dieser Lizenzschlüssel ist nicht mehr aktiv.",
+        "invalid": "Dieser Lizenzschlüssel ist ungültig.",
+        "notFound": "Der eingegebene Lizenzschlüssel ist ungültig.",
+        "databaseCopied": "Diese Lizenz wurde auf einem anderen Gerät aktiviert. Die Datenbank wurde anscheinend kopiert.",
+        "conditionsMismatch": "Der Lizenzschlüssel erfüllt die erforderlichen Bedingungen nicht.",
+        "activationLimit": "Das Aktivierungslimit der Lizenz ist erreicht. Gehe zu <portal>licenses.getqui.com</portal> und registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast. Öffne Machine Instances, deaktiviere ein Gerät, das du nicht mehr nutzt, und versuche es dann erneut.",
+        "limitReached": "Das Aktivierungslimit der Lizenz ist erreicht.",
+        "usageLimit": "Das Nutzungslimit der Lizenz ist überschritten.",
+        "unreachable": "Der Lizenzdienst ist nicht erreichbar. Bitte versuche es gleich noch einmal.",
+        "tooManyAttempts": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.",
+        "rateLimited": "Bitte warte, bevor du es erneut versuchst.",
+        "generic": "Der Lizenzschlüssel konnte nicht überprüft werden. Bitte versuche es erneut.",
+        "deleteFailed": "Die Lizenz konnte nicht entfernt werden. Bitte versuche es erneut."
       },
       "actions": {
         "addLicense": "Lizenz hinzufügen",
@@ -486,7 +502,7 @@
         "activate": "Lizenz aktivieren",
         "validating": "Wird überprüft...",
         "openDodoCheckout": "DodoPayments-Checkout öffnen",
-        "openDodoPortal": "Dodo-Portal öffnen"
+        "openLicensePortal": "Lizenzportal öffnen"
       },
       "deleteDialog": {
         "title": "Lizenz entfernen?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Finde deinen Lizenzschlüssel",
-            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Dodo-Kundenportal wiederherstellen."
+            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Lizenzportal wiederherstellen."
           },
           "activateLicense": {
             "title": "Aktiviere deine Lizenz",

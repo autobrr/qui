@@ -440,7 +440,7 @@
       "managementTitle": "License Management",
       "managementDescription": "Manage your theme license and premium access",
       "providers": {
-        "dodoPortal": "Dodo portal"
+        "licensePortal": "license portal"
       },
       "status": {
         "unlockTitle": "Unlock Premium Themes",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}"
       },
       "invalid": {
-        "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active."
+        "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit the activation limit, go to <portal>licenses.getqui.com</portal>, sign up or sign in with the email you used to buy the license, and deactivate a machine you no longer use under Machine Instances."
+      },
+      "errors": {
+        "expired": "Your license key has expired.",
+        "notActive": "This license key is no longer active.",
+        "invalid": "This license key is invalid.",
+        "notFound": "The license key you entered is not valid.",
+        "databaseCopied": "This license was activated on a different machine. The database appears to have been copied.",
+        "conditionsMismatch": "License key does not match required conditions.",
+        "activationLimit": "License activation limit has been reached. Go to <portal>licenses.getqui.com</portal> and sign up or sign in with the email you used to buy the license. Open Machine Instances, deactivate a machine you no longer use, then try again.",
+        "limitReached": "License activation limit has been reached.",
+        "usageLimit": "License usage limit exceeded.",
+        "unreachable": "Unable to reach the license service. Please try again shortly.",
+        "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+        "rateLimited": "Please wait before trying again.",
+        "generic": "Failed to validate license key. Please try again.",
+        "deleteFailed": "Failed to remove the license. Please try again."
       },
       "actions": {
         "addLicense": "Add License",
@@ -486,7 +502,7 @@
         "activate": "Activate License",
         "validating": "Validating...",
         "openDodoCheckout": "Open DodoPayments checkout",
-        "openDodoPortal": "Open Dodo portal"
+        "openLicensePortal": "Open license portal"
       },
       "deleteDialog": {
         "title": "Remove license?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Find your license key",
-            "description": "Your license key is shown after checkout. You can also recover it later from the Dodo customer portal."
+            "description": "Your license key is shown after checkout. You can also recover it later from the license portal."
           },
           "activateLicense": {
             "title": "Activate your license",

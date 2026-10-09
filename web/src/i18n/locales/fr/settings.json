@@ -440,7 +440,7 @@
       "managementTitle": "Gestion de Licence",
       "managementDescription": "Gérez votre licence et l'accès premium",
       "providers": {
-        "dodoPortal": "Portail Dodo"
+        "licensePortal": "portail des licences"
       },
       "status": {
         "unlockTitle": "Débloquer les Thèmes Premium",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
       },
       "invalid": {
-        "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, désactivez-la d'abord sur la machine actuellement active."
+        "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, allez sur <portal>licenses.getqui.com</portal>, inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence, puis désactivez une machine que vous n'utilisez plus dans Machine Instances."
+      },
+      "errors": {
+        "expired": "Votre clé de licence a expiré.",
+        "notActive": "Cette clé de licence n'est plus active.",
+        "invalid": "Cette clé de licence n'est pas valide.",
+        "notFound": "La clé de licence saisie n'est pas valide.",
+        "databaseCopied": "Cette licence a été activée sur une autre machine. La base de données semble avoir été copiée.",
+        "conditionsMismatch": "La clé de licence ne remplit pas les conditions requises.",
+        "activationLimit": "La limite d'activations de la licence est atteinte. Allez sur <portal>licenses.getqui.com</portal> et inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence. Ouvrez Machine Instances, désactivez une machine que vous n'utilisez plus, puis réessayez.",
+        "limitReached": "La limite d'activations de la licence est atteinte.",
+        "usageLimit": "Limite d'utilisation de la licence dépassée.",
+        "unreachable": "Impossible de joindre le service de licences. Réessayez dans quelques instants.",
+        "tooManyAttempts": "Trop de tentatives. Patientez un moment puis réessayez.",
+        "rateLimited": "Patientez avant de réessayer.",
+        "generic": "Impossible de valider la clé de licence. Réessayez.",
+        "deleteFailed": "Impossible de supprimer la licence. Réessayez."
       },
       "actions": {
         "addLicense": "Ajouter la licence",
@@ -486,7 +502,7 @@
         "activate": "Activer la licence",
         "validating": "Validation...",
         "openDodoCheckout": "Ouvrir la page de paiement DodoPayments",
-        "openDodoPortal": "Ouvrir le portail Dodo"
+        "openLicensePortal": "Ouvrir le portail des licences"
       },
       "deleteDialog": {
         "title": "Retirer la licence ?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Trouvez votre clé de licence",
-            "description": "La clé s'affiche après paiement. Vous pouvez aussi la retrouver sur le portail Dodo."
+            "description": "La clé s'affiche après paiement. Vous pouvez aussi la retrouver sur le portail des licences."
           },
           "activateLicense": {
             "title": "Activer votre licence",

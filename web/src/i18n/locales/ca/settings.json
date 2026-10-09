@@ -440,7 +440,7 @@
       "managementTitle": "Gestió de llicències",
       "managementDescription": "Gestiona la llicència dels temes i l'accés premium",
       "providers": {
-        "dodoPortal": "Portal de Dodo"
+        "licensePortal": "portal de llicències"
       },
       "status": {
         "unlockTitle": "Desbloqueja els temes premium",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}"
       },
       "invalid": {
-        "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa ara mateix."
+        "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, ves a <portal>licenses.getqui.com</portal>, registra't o inicia la sessió amb el correu que vas fer servir per comprar la llicència i desactiva una màquina que ja no facis servir a Machine Instances."
+      },
+      "errors": {
+        "expired": "La teva clau de llicència ha caducat.",
+        "notActive": "Aquesta clau de llicència ja no està activa.",
+        "invalid": "Aquesta clau de llicència no és vàlida.",
+        "notFound": "La clau de llicència que has introduït no és vàlida.",
+        "databaseCopied": "Aquesta llicència es va activar en una altra màquina. Sembla que s'ha copiat la base de dades.",
+        "conditionsMismatch": "La clau de llicència no compleix les condicions requerides.",
+        "activationLimit": "S'ha arribat al límit d'activacions de la llicència. Ves a <portal>licenses.getqui.com</portal> i registra't o inicia la sessió amb el correu que vas fer servir per comprar la llicència. Obre Machine Instances, desactiva una màquina que ja no facis servir i torna-ho a provar.",
+        "limitReached": "S'ha arribat al límit d'activacions de la llicència.",
+        "usageLimit": "S'ha superat el límit d'ús de la llicència.",
+        "unreachable": "No es pot connectar amb el servei de llicències. Torna-ho a provar d'aquí a una estona.",
+        "tooManyAttempts": "Massa intents. Espera un moment i torna-ho a provar.",
+        "rateLimited": "Espera abans de tornar-ho a provar.",
+        "generic": "No s'ha pogut validar la clau de llicència. Torna-ho a provar.",
+        "deleteFailed": "No s'ha pogut eliminar la llicència. Torna-ho a provar."
       },
       "actions": {
         "addLicense": "Afegeix una llicència",
@@ -486,7 +502,7 @@
         "activate": "Activa la llicència",
         "validating": "S'està validant...",
         "openDodoCheckout": "Obre la pàgina de pagament de DodoPayments",
-        "openDodoPortal": "Obre el portal de Dodo"
+        "openLicensePortal": "Obre el portal de llicències"
       },
       "deleteDialog": {
         "title": "Vols suprimir la llicència?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Troba la teva clau de llicència",
-            "description": "La clau de llicència es mostra després del pagament. També la pots recuperar més endavant des del portal de clients de Dodo."
+            "description": "La clau de llicència es mostra després del pagament. També la pots recuperar més endavant des del portal de llicències."
           },
           "activateLicense": {
             "title": "Activa la teva llicència",

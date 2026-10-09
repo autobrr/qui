@@ -69,6 +69,12 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Cross-seed added**: One successful apply into the client. One Search candidate can produce several. _Avoid_: Match, torrent added.
 - **Due candidate**: A Search candidate that still needs a search. _Avoid_: Total torrents, pending, remaining.
 
+## Licenses
+
+- **Machine**: One qui config directory on one host. A license activation belongs to a Machine. A new database keeps the Machine but loses its activation record. _Avoid_: Instance (that is a qBittorrent instance), device.
+- **Activation**: One license key in use on one Machine. Each key allows a fixed number of Activations. _Avoid_: Seat.
+- **License portal**: The website at licenses.getqui.com where a buyer sees their license keys and deactivates a Machine. _Avoid_: Customer portal (that is the Dodo Payments portal).
+
 ## Instance configuration
 
 - **Preferences**: qBittorrent's own application preferences, which qui reads and writes through the qBittorrent WebAPI. _Avoid_: Settings (when qBittorrent stores the value).
