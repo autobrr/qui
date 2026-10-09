@@ -134,7 +134,7 @@ func TestSupportsReflink_ReportsWindowsProbeSuccess(t *testing.T) {
 }
 
 func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := resolvedTempDir(t)
 	srcPath := filepath.Join(tmpDir, "src.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
 	dstDir := filepath.Dir(dstPath)
@@ -185,7 +185,7 @@ func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
 }
 
 func TestCloneFile_AllowsDifferentRootAliasesForSameVolume(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := resolvedTempDir(t)
 	srcPath := filepath.Join(tmpDir, "src.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
 	dstDir := filepath.Dir(dstPath)
@@ -332,7 +332,7 @@ func TestResolveSourcePath_FailsBeforeEvalWhenLstatFails(t *testing.T) {
 }
 
 func TestCloneFile_MarksDestinationSparseBeforeResize(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := resolvedTempDir(t)
 	srcPath := filepath.Join(tmpDir, "src.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
 	if err := os.WriteFile(srcPath, []byte("01234567"), 0o600); err != nil {
@@ -389,7 +389,7 @@ func TestCloneFile_MarksDestinationSparseBeforeResize(t *testing.T) {
 }
 
 func TestCloneFile_UsesResolvedSparseSourceMetadata(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := resolvedTempDir(t)
 	realSrcPath := filepath.Join(tmpDir, "real-src.bin")
 	symlinkSrcPath := filepath.Join(tmpDir, "src-link.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
@@ -554,7 +554,7 @@ func TestCloneFile_FailsWhenMarkSparseFails(t *testing.T) {
 }
 
 func TestCloneFile_ResolvesSourceSymlinkBeforeClone(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := resolvedTempDir(t)
 	realSrcPath := filepath.Join(tmpDir, "real-src.bin")
 	symlinkSrcPath := filepath.Join(tmpDir, "src-link.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
@@ -768,6 +768,15 @@ func restoreWindowsHelpers(t *testing.T) {
 		duplicateExtentFn = originalDuplicateExtent
 		copyFileTailFn = originalCopyFileTail
 	})
+}
+
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temporary directory: %v", err)
+	}
+	return dir
 }
 
 type fakeFileInfo struct{}

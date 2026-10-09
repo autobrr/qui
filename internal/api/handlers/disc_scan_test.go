@@ -87,7 +87,8 @@ func newDiscScanFixture(t *testing.T, hasLocalAccess bool) *discScanFixture {
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &hasLocalAccess)
 	require.NoError(t, err)
 
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 1", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Disc 2", "BDMV", "STREAM"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "Box Set", "Extras"), 0o750))

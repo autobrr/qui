@@ -110,6 +110,7 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 			Name:      fi.Name(),
 			IsDir:     fi.IsDir(),
 			IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
+			Mode:      fi.Mode(),
 		})
 	}
 	return result, nil

@@ -5,11 +5,13 @@ package local
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -143,7 +145,11 @@ func TestLstat_Symlink(t *testing.T) {
 	target := filepath.Join(dir, "target.txt")
 	writeFile(t, target, "data")
 	link := filepath.Join(dir, "link.txt")
-	require.NoError(t, os.Symlink(target, link))
+	err := os.Symlink(target, link)
+	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+		t.Skipf("symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+	}
+	require.NoError(t, err)
 
 	info, err := b.Lstat(context.Background(), link)
 	require.NoError(t, err)
@@ -184,6 +190,9 @@ func TestReadDir(t *testing.T) {
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		names[i] = e.Name
+		info, err := os.Lstat(filepath.Join(dir, e.Name))
+		require.NoError(t, err)
+		assert.Equal(t, info.Mode().Type(), e.Mode.Type())
 	}
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")

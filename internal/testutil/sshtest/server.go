@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -79,6 +80,8 @@ const (
 	// the way two different errnos reach a client. pkg/sftp's Client.Remove
 	// then names the error from a link-following Stat.
 	SFTPRefuseRemove
+	// SFTPStatVFS serves deterministic filesystem statistics without host statvfs support.
+	SFTPStatVFS
 )
 
 const hardlinkExtension = "hardlink@openssh.com"
@@ -308,7 +311,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			switch mode {
 			case SFTPStall:
 				<-stalled
-			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove:
+			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove, SFTPStatVFS:
 				s.serveInMemSFTP(channel, mode)
 			default:
 				s.serveSFTP(conn, channel)
@@ -353,9 +356,26 @@ func (s *Server) serveInMemSFTP(channel ssh.Channel, mode SFTPMode) {
 	if mode == SFTPRefuseRemove {
 		handlers.FileCmd = removeRefuser{handlers.FileCmd}
 	}
+	if mode == SFTPStatVFS {
+		handlers.FileCmd = statVFSCmd{handlers.FileCmd}
+	}
 	server := sftp.NewRequestServer(channel, handlers)
 	defer func() { _ = server.Close() }()
 	_ = server.Serve()
+}
+
+type statVFSCmd struct{ sftp.FileCmder }
+
+func (c statVFSCmd) StatVFS(r *sftp.Request) (*sftp.StatVFS, error) {
+	hostPath := r.Filepath
+	// RequestServer prefixes drive paths with / because its namespace is POSIX.
+	if native := strings.TrimPrefix(hostPath, "/"); filepath.VolumeName(native) != "" {
+		hostPath = native
+	}
+	if _, err := os.Stat(hostPath); err != nil {
+		return nil, err
+	}
+	return &sftp.StatVFS{Bsize: 4096, Frsize: 4096, Blocks: 1000, Bfree: 100, Bavail: 50, Fsid: 7}, nil
 }
 
 // inMemLister answers from the in-memory tree, except for the requests its

@@ -334,10 +334,10 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 	baseSM := newMultiFakeSyncManager(
 		map[int][]qbt.Torrent{
 			inst.ID: {
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/e01.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/e02.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/e03.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/e04.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e01.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e02.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e03.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e04.mkv"), Progress: 1.0},
 			},
 		},
 		map[int]*models.Instance{inst.ID: inst},
@@ -468,10 +468,10 @@ func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t
 	baseSM := newMultiFakeSyncManager(
 		map[int][]qbt.Torrent{
 			inst.ID: {
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/e01.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/e02.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/e03.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/e04.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e01.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e02.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e03.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e04.mkv"), Progress: 1.0},
 			},
 		},
 		map[int]*models.Instance{inst.ID: inst},
@@ -516,10 +516,10 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	baseSM := newMultiFakeSyncManager(
 		map[int][]qbt.Torrent{
 			inst.ID: {
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/e01.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/e02.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/e03.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/e04.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e01.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e02.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e03.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: seasonPackSourcePath(t, "e04.mkv"), Progress: 1.0},
 			},
 		},
 		map[int]*models.Instance{inst.ID: inst},

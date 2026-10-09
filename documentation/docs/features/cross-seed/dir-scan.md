@@ -38,6 +38,8 @@ Each immediate child (folder or file) becomes one searchee. Files within `Movie.
 
 ### Correct path choices
 
+On Windows, Dir Scan rejects paths that differ only in case, including on case-sensitive volumes and before a directory exists. Windows webhook routing cannot distinguish those spellings. On Unix-like hosts, distinct directories on a case-sensitive filesystem remain configurable. If an older configuration contains duplicate entries, remove the extra entry so webhooks can select one scan configuration.
+
 | Content type | Recommended path | Why |
 |-------------|------------------|-----|
 | Movies | `/data/media/movies` | Each movie folder is one searchee |
@@ -166,6 +168,7 @@ qui treats folders that contain `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures 
 
 - **Hidden files and folders** (names starting with `.`)
 - **Symlinks inside a searchee folder** (skipped to avoid loops and permission issues). qui follows a symlinked media file placed directly in the scan root and scans its target. qui does not enter a symlinked folder in the scan root.
+- **Windows junctions and other special entries**, including sockets, FIFOs and devices. A junction is not scanned as a media file even when its name ends in a media extension such as `.mkv`.
 - **Files with permission errors** (qui continues the scan and skips the file)
 - **Non-media files** outside disc layouts
 

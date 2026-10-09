@@ -29,6 +29,8 @@ func TestScanDirectory_ScansRootLevelSymlinksViaTarget(t *testing.T) {
 	require.NoError(t, os.WriteFile(realFile, []byte("data"), 0o600))
 	linked := filepath.Join(root, "Linked.2024.1080p.WEB.x264-GRP.mkv")
 	require.NoError(t, os.Symlink(realFile, linked))
+	// A directory link must not become a file just because its name looks like media.
+	require.NoError(t, os.Symlink(root, filepath.Join(root, "Directory Alias.mkv")))
 
 	scanner := NewScanner(localbackend.NewBackend())
 	result, err := scanner.ScanDirectory(context.Background(), root)

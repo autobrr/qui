@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -348,7 +349,7 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	}
 	require.Contains(t, byHash, validated.Hash)
 	require.Contains(t, byHash, zeroOverlap.Hash)
-	require.True(t, strings.HasPrefix(byHash[validated.Hash].EffectiveSavePath, "/links"),
+	require.True(t, strings.HasPrefix(filepath.ToSlash(byHash[validated.Hash].EffectiveSavePath), "/links"),
 		"validated pick previews the link destination, got %q", byHash[validated.Hash].EffectiveSavePath)
 	require.Equal(t, "/downloads", byHash[zeroOverlap.Hash].EffectiveSavePath,
 		"zero-overlap pick previews the target save path (regular add)")
