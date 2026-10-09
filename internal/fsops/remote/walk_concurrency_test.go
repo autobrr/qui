@@ -26,9 +26,9 @@ func writeWideTree(t *testing.T, root string, dirs int) {
 	}
 }
 
-// Each directory costs opendir, readdir, the readdir that answers EOF and
-// close, every one a round trip, so a serial walk of n directories cannot
-// beat about 3n round trips. Walking siblings concurrently has to.
+// Compare with a serial walk of the same tree and connection. Measuring the
+// control avoids assuming that the runner delivers the configured latency
+// exactly, especially with Windows timer granularity and shared runner load.
 func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +39,18 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	writeWideTree(t, dir, dirs)
 
 	start := time.Now()
+	siblings, err := b.ReadDir(t.Context(), remotePath(dir))
+	require.NoError(t, err)
+	serialEntries := 1 + len(siblings)
+	for _, sibling := range siblings {
+		children, err := b.ReadDir(t.Context(), remotePath(dir, sibling.Name))
+		require.NoError(t, err)
+		serialEntries += len(children)
+	}
+	serialElapsed := time.Since(start)
+	require.Equal(t, 1+2*dirs, serialEntries)
+
+	start = time.Now()
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
 	n := 0
@@ -47,11 +59,10 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 		n++
 	}
 	elapsed := time.Since(start)
-	serialFloor := time.Duration(dirs) * 3 * latency
-	t.Logf("%d directories at %v latency: walked %d entries in %v (serial floor %v)", dirs, latency, n, elapsed.Round(time.Millisecond), serialFloor)
+	t.Logf("%d directories at %v latency: walked %d entries in %v (serial control %v)", dirs, latency, n, elapsed.Round(time.Millisecond), serialElapsed.Round(time.Millisecond))
 
 	assert.Equal(t, 1+2*dirs, n)
-	assert.Less(t, elapsed, serialFloor/2, "siblings must be walked concurrently")
+	assert.Less(t, elapsed, serialElapsed/2, "siblings must be walked concurrently")
 }
 
 // The contract that survives concurrency: entries within one directory are
