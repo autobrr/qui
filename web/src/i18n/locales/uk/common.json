@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",
     "versionAvailable": "Версія {{version}} тепер доступна",
-    "viewRelease": "Переглянути реліз",
     "dismiss": "Закрити"
   },
   "pwaUpdate": {

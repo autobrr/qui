@@ -953,7 +953,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
   )
 }
 
-function ApplicationInfoPanel() {
+function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: boolean; onUpdateOpened: () => void }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp, formatTimestamp } = useDateTimeFormatters()
   const appInfoQuery = useQuery({
@@ -975,6 +975,14 @@ function ApplicationInfoPanel() {
   })
 
   const selfUpdate = useSelfUpdate()
+  const { setConfirmOpen } = selfUpdate
+
+  useEffect(() => {
+    if (openUpdate && latestVersionQuery.data) {
+      setConfirmOpen(true)
+      onUpdateOpened()
+    }
+  }, [openUpdate, latestVersionQuery.data, setConfirmOpen, onUpdateOpened])
 
   const info = appInfoQuery.data
   const user = currentUserQuery.data
@@ -1028,6 +1036,10 @@ function ApplicationInfoPanel() {
 
   const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatTimestamp(latestVersionQuery.dataUpdatedAt / 1000) : t("application.build.statuses.notCheckedYet")
 
+  const updateControl = latestVersionQuery.data && (
+    <InstallUpdateButton selfUpdate={selfUpdate} release={latestVersionQuery.data} className="shrink-0" />
+  )
+
   const buildFields: ApplicationField[] = info ? [
     { label: t("application.build.version"), value: info.version || "—", monospace: true },
     { label: t("application.build.commit"), value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
@@ -1040,9 +1052,7 @@ function ApplicationInfoPanel() {
       label: t("application.build.updateStatus"),
       value: updateStatus.label,
       secondary: [updateStatus.detail, t("application.build.statuses.lastChecked", { date: updateCheckedAt })].filter(Boolean).join(" • "),
-      action: latestVersionQuery.data && (
-        <InstallUpdateButton selfUpdate={selfUpdate} release={latestVersionQuery.data} className="shrink-0" />
-      ),
+      action: updateControl,
     },
   ] : []
 
@@ -1104,6 +1114,8 @@ function ApplicationInfoPanel() {
           </CardContent>
         </Card>
       )}
+
+      {appInfoQuery.isError && !info && updateControl}
 
       {info && (
         <>
@@ -1465,7 +1477,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
           {activeTab === "application" && (
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <ApplicationInfoPanel />
+              <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
             </SettingsScrollPanel>
           )}
 

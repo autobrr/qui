@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
-    "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
   },
   "pwaUpdate": {

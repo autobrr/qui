@@ -1001,6 +1001,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "正在檢查支援情況",
+        "checkingDescription": "正在檢查 qui 是否可以安裝此更新。",
+        "failedTitle": "無法檢查更新支援情況",
+        "failedDescription": "無法檢查是否支援自我更新。",
+        "retryDescription": "安裝更新前，請重試支援檢查。",
+        "retry": "重試"
+      },
+      "unavailable": {
+        "description": "此環境不支援自動安裝。",
+        "nextStep": "如何更新",
+        "guide": "更新指南",
+        "container": {
+          "reason": "qui 在容器中執行。更新透過容器映像提供。",
+          "step": "拉取新的 qui 映像，然後使用現有設定和資料卷重新建立容器。"
+        },
+        "disabled": {
+          "reason": "qui 設定中已停用自我更新。",
+          "step": "使用安裝 qui 時所用的套件管理員或安裝方式進行更新。"
+        },
+        "development": {
+          "reason": "此 qui 組建不是發佈版本。自動安裝需要發佈版本。",
+          "step": "停止 qui，將二進位檔替換為官方發佈版本或新組建，然後重新啟動 qui。"
+        },
+        "directory": {
+          "reason": "qui 無法存取或寫入其二進位檔所在的目錄。",
+          "step": "停止 qui，使用有寫入權限的帳號將二進位檔替換為新版本，然後重新啟動 qui。"
+        }
+      },
       "button": "安裝更新",
       "confirmTitle": "安裝更新？",
       "confirmDescription": "qui 會下載新版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。qui 恢復後頁面會自動重新載入。",

@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Verifica del supporto",
+        "checkingDescription": "Verifica della possibilità per qui di installare questo aggiornamento.",
+        "failedTitle": "Impossibile verificare il supporto degli aggiornamenti",
+        "failedDescription": "Impossibile verificare se l’aggiornamento automatico è disponibile.",
+        "retryDescription": "Riprova la verifica prima di installare l’aggiornamento.",
+        "retry": "Riprova"
+      },
+      "unavailable": {
+        "description": "L’installazione automatica non è disponibile per questa configurazione.",
+        "nextStep": "Come aggiornare",
+        "guide": "Guida all’aggiornamento",
+        "container": {
+          "reason": "qui viene eseguito in un container. Gli aggiornamenti provengono dall’immagine del container.",
+          "step": "Scarica la nuova immagine di qui, poi ricrea il container con la configurazione e i volumi di dati esistenti."
+        },
+        "disabled": {
+          "reason": "L’aggiornamento automatico è disabilitato nella configurazione di qui.",
+          "step": "Aggiorna qui con il gestore di pacchetti o il metodo usato per installarlo."
+        },
+        "development": {
+          "reason": "Questa build di qui non è una versione ufficiale. L’installazione automatica richiede una versione ufficiale.",
+          "step": "Arresta qui, sostituisci il binario con una versione ufficiale o una nuova build, poi riavvia qui."
+        },
+        "directory": {
+          "reason": "qui non può accedere alla directory del proprio binario o scrivervi.",
+          "step": "Arresta qui, sostituisci il binario con la nuova versione usando un account con accesso in scrittura, poi riavvia qui."
+        }
+      },
       "button": "Installa aggiornamento",
       "confirmTitle": "Installare l'aggiornamento?",
       "confirmDescription": "qui scarica la nuova versione, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. La pagina si ricarica quando qui è di nuovo attivo.",

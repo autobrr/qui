@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 現已可用",
-    "viewRelease": "檢視釋出",
     "dismiss": "關閉"
   },
   "pwaUpdate": {

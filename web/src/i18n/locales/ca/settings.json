@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Comprovant la compatibilitat",
+        "checkingDescription": "Comprovant si qui pot instal·lar aquesta actualització.",
+        "failedTitle": "No s’ha pogut comprovar la compatibilitat de l’actualització",
+        "failedDescription": "No s’ha pogut comprovar si l’actualització automàtica està disponible.",
+        "retryDescription": "Torneu a comprovar la compatibilitat abans d’instal·lar l’actualització.",
+        "retry": "Torna-ho a provar"
+      },
+      "unavailable": {
+        "description": "La instal·lació automàtica no està disponible per a aquesta configuració.",
+        "nextStep": "Com actualitzar",
+        "guide": "Guia d’actualització",
+        "container": {
+          "reason": "qui s’executa en un contenidor. Les actualitzacions provenen de la imatge del contenidor.",
+          "step": "Baixeu la nova imatge de qui i torneu a crear el contenidor amb la configuració i els volums de dades existents."
+        },
+        "disabled": {
+          "reason": "L’actualització automàtica està desactivada a la configuració de qui.",
+          "step": "Actualitzeu qui amb el gestor de paquets o el mètode que vau utilitzar per instal·lar-lo."
+        },
+        "development": {
+          "reason": "Aquesta compilació de qui no és una versió publicada. La instal·lació automàtica requereix una versió publicada.",
+          "step": "Atureu qui, substituïu el binari per una versió oficial o una compilació nova i torneu a iniciar qui."
+        },
+        "directory": {
+          "reason": "qui no pot accedir al directori del seu binari o escriure-hi.",
+          "step": "Atureu qui, substituïu el binari per la versió nova amb un compte amb accés d’escriptura i torneu a iniciar qui."
+        }
+      },
       "button": "Instal·la l'actualització",
       "confirmTitle": "Voleu instal·lar l'actualització?",
       "confirmDescription": "qui baixa la nova versió, en comprova la signatura i conserva el binari actual com a còpia de seguretat. Després qui es reinicia. La pàgina es recarrega quan qui torna.",

@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Checking support",
+        "checkingDescription": "Checking whether qui can install this update.",
+        "failedTitle": "Could not check update support",
+        "failedDescription": "Could not check whether self-update is available.",
+        "retryDescription": "Retry the support check before you install the update.",
+        "retry": "Retry"
+      },
+      "unavailable": {
+        "description": "Automatic installation is unavailable for this setup.",
+        "nextStep": "How to update",
+        "guide": "Update guide",
+        "container": {
+          "reason": "qui runs in a container. Updates come from the container image.",
+          "step": "Pull the new qui image, then recreate the container with your existing configuration and data volumes."
+        },
+        "disabled": {
+          "reason": "Self-update is disabled in the qui configuration.",
+          "step": "Update qui with the package manager or installation method that you used to install it."
+        },
+        "development": {
+          "reason": "This qui build is not a release build. Automatic installation requires a release build.",
+          "step": "Stop qui, replace the binary with an official release or a new build, then start qui again."
+        },
+        "directory": {
+          "reason": "qui cannot access or write to its binary directory.",
+          "step": "Stop qui, replace the binary with the new release using an account with write access, then start qui again."
+        }
+      },
       "button": "Install update",
       "confirmTitle": "Install update?",
       "confirmDescription": "qui downloads the new version, checks its signature, and keeps the current binary as a backup. Then qui restarts. The page reloads when qui is back.",

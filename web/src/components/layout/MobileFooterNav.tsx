@@ -28,7 +28,6 @@ import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
-import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
@@ -137,7 +136,6 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
-  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
   const updateItemLabel = updateInfo && (
     <>
@@ -430,11 +428,7 @@ export function MobileFooterNav() {
               <>
                 <DropdownMenuItem asChild>
                   {/* Settings holds the Install update button. */}
-                  {selfUpdateAvailable ? (
-                    <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
-                  ) : (
-                    <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
-                  )}
+                  <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

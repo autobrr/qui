@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Unterstützung wird geprüft",
+        "checkingDescription": "Es wird geprüft, ob qui dieses Update installieren kann.",
+        "failedTitle": "Update-Unterstützung konnte nicht geprüft werden",
+        "failedDescription": "Es konnte nicht geprüft werden, ob die Selbstaktualisierung verfügbar ist.",
+        "retryDescription": "Wiederholen Sie die Prüfung, bevor Sie das Update installieren.",
+        "retry": "Erneut versuchen"
+      },
+      "unavailable": {
+        "description": "Die automatische Installation ist für diese Einrichtung nicht verfügbar.",
+        "nextStep": "So aktualisieren Sie qui",
+        "guide": "Update-Anleitung",
+        "container": {
+          "reason": "qui läuft in einem Container. Updates erfolgen über das Container-Image.",
+          "step": "Laden Sie das neue qui-Image herunter und erstellen Sie den Container mit Ihrer vorhandenen Konfiguration und Ihren Datenvolumes neu."
+        },
+        "disabled": {
+          "reason": "Die Selbstaktualisierung ist in der qui-Konfiguration deaktiviert.",
+          "step": "Aktualisieren Sie qui mit dem Paketmanager oder der Installationsmethode, die Sie für die Installation verwendet haben."
+        },
+        "development": {
+          "reason": "Dieser qui-Build ist kein Release-Build. Die automatische Installation erfordert einen Release-Build.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch ein offizielles Release oder einen neuen Build und starten Sie qui erneut."
+        },
+        "directory": {
+          "reason": "qui kann nicht auf das Verzeichnis seiner Binärdatei zugreifen oder darin schreiben.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch das neue Release mit einem Konto mit Schreibzugriff und starten Sie qui erneut."
+        }
+      },
       "button": "Update installieren",
       "confirmTitle": "Update installieren?",
       "confirmDescription": "qui lädt die neue Version herunter, prüft ihre Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Die Seite lädt neu, sobald qui wieder da ist.",
