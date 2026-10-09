@@ -45,7 +45,6 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
@@ -164,85 +163,97 @@ type ServiceMetrics struct {
 	GetMatchTypeSizeMatch     prometheus.Counter
 }
 
-// NewServiceMetrics creates and registers Prometheus metrics for the cross-seed service
+// NewServiceMetrics creates Prometheus metrics for the cross-seed service without registering them.
 func NewServiceMetrics() *ServiceMetrics {
 	return &ServiceMetrics{
-		FindCandidatesDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		FindCandidatesDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "qui_crossseed_find_candidates_duration_seconds",
 			Help:    "Time spent finding cross-seed candidates",
 			Buckets: prometheus.DefBuckets,
 		}),
-		FindCandidatesTotal: promauto.NewCounter(prometheus.CounterOpts{
+		FindCandidatesTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_find_candidates_total",
 			Help: "Total number of find candidates requests",
 		}),
-		CrossSeedDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		CrossSeedDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "qui_crossseed_cross_seed_duration_seconds",
 			Help:    "Time spent performing cross-seed operations",
 			Buckets: prometheus.DefBuckets,
 		}),
-		CrossSeedTotal: promauto.NewCounter(prometheus.CounterOpts{
+		CrossSeedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_cross_seed_total",
 			Help: "Total number of cross-seed operations",
 		}),
-		CrossSeedSuccessRate: promauto.NewCounterVec(prometheus.CounterOpts{
+		CrossSeedSuccessRate: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "qui_crossseed_success_total",
 			Help: "Total number of successful cross-seed operations by status",
 		}, []string{"status"}),
-		CacheHitRate: promauto.NewGauge(prometheus.GaugeOpts{
+		CacheHitRate: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_cache_hit_rate",
 			Help: "Cache hit rate for various caches (0.0 to 1.0)",
 		}),
-		ActiveAsyncOperations: promauto.NewGauge(prometheus.GaugeOpts{
+		ActiveAsyncOperations: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_active_async_operations",
 			Help: "Number of active async filtering operations",
 		}),
-		TorrentFilesCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+		TorrentFilesCacheSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_torrent_files_cache_size",
 			Help: "Number of entries in torrent files cache",
 		}),
-		SearchResultCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+		SearchResultCacheSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_search_result_cache_size",
 			Help: "Number of entries in search result cache",
 		}),
-		AsyncFilteringCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+		AsyncFilteringCacheSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_async_filtering_cache_size",
 			Help: "Number of entries in async filtering cache",
 		}),
-		IndexerDomainCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+		IndexerDomainCacheSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "qui_crossseed_indexer_domain_cache_size",
 			Help: "Number of entries in indexer domain cache",
 		}),
-		ReleaseCacheParseDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		ReleaseCacheParseDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "qui_crossseed_release_parse_duration_seconds",
 			Help:    "Time spent parsing release names",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
 		}),
-		GetMatchTypeDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		GetMatchTypeDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "qui_crossseed_get_match_type_duration_seconds",
 			Help:    "Time spent determining file match types",
 			Buckets: prometheus.DefBuckets,
 		}),
-		GetMatchTypeCalls: promauto.NewCounter(prometheus.CounterOpts{
+		GetMatchTypeCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_get_match_type_calls_total",
 			Help: "Total number of getMatchType calls",
 		}),
-		GetMatchTypeNoMatch: promauto.NewCounter(prometheus.CounterOpts{
+		GetMatchTypeNoMatch: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_get_match_type_no_match_total",
 			Help: "Total number of getMatchType calls that resulted in no match",
 		}),
-		GetMatchTypeExactMatch: promauto.NewCounter(prometheus.CounterOpts{
+		GetMatchTypeExactMatch: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_get_match_type_exact_match_total",
 			Help: "Total number of getMatchType calls that resulted in exact match",
 		}),
-		GetMatchTypePartialMatch: promauto.NewCounter(prometheus.CounterOpts{
+		GetMatchTypePartialMatch: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_get_match_type_partial_match_total",
 			Help: "Total number of getMatchType calls that resulted in partial match",
 		}),
-		GetMatchTypeSizeMatch: promauto.NewCounter(prometheus.CounterOpts{
+		GetMatchTypeSizeMatch: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "qui_crossseed_get_match_type_size_match_total",
 			Help: "Total number of getMatchType calls that resulted in size match",
 		}),
+	}
+}
+
+// Collectors returns the cross-seed collectors that qui updates, for the metrics registry.
+func (m *ServiceMetrics) Collectors() []prometheus.Collector {
+	return []prometheus.Collector{
+		m.GetMatchTypeDuration,
+		m.GetMatchTypeCalls,
+		m.GetMatchTypeNoMatch,
+		m.GetMatchTypeExactMatch,
+		m.GetMatchTypePartialMatch,
+		m.GetMatchTypeSizeMatch,
 	}
 }
 
@@ -658,6 +669,9 @@ func NewService(
 
 	return svc
 }
+
+// MetricsCollectors returns the cross-seed collectors to register on the metrics endpoint.
+func (s *Service) MetricsCollectors() []prometheus.Collector { return s.metrics.Collectors() }
 
 // NewServiceWithAutomationStore creates a minimal service for settings-only callers.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
