@@ -96,7 +96,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
-          ./internal/fsops ./internal/externalprograms
+          ./internal/fsops ./internal/fsops/local ./internal/externalprograms
           ./pkg/pathcmp ./pkg/pathutil ./pkg/hardlink ./pkg/hardlinktree
           ./pkg/fsutil ./pkg/reflinktree ./pkg/sharedextents
 
@@ -106,8 +106,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
-          -run '^(Test.*Windows.*|Test.*PathDialect.*|Test.*BackendDialect|TestPathsIsHostDialect|TestLstat_(RegularFile|DirectoryHasIdentity|Hardlink)|TestWalkDir_(Basic|WithFileID)|TestResolveRootlessContentDir|TestNormalizePath|TestIsWindowsDriveAbs|TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively|TestDirScanStore_(Create|Update)Directory_RejectsDuplicateCleanedPath|TestPathMatchesDirectory|TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths)$'
-          ./internal/fsops/local ./internal/services/externalprograms
+          -run '^(Test.*Windows.*|Test.*PathDialect.*|Test.*BackendDialect|TestResolveRootlessContentDir|TestNormalizePath|TestIsWindowsDriveAbs|TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively|TestDirScanStore_(Create|Update)Directory_RejectsDuplicateCleanedPath|TestPathMatchesDirectory|TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths)$'
+          ./internal/services/externalprograms
           ./internal/services/orphanscan ./internal/services/dirscan
           ./internal/services/crossseed ./internal/models ./internal/api/handlers
 
