@@ -60,3 +60,39 @@ func TestDirScanStore_WindowsDirectoryIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestDirScanStore_WindowsMissingDirectoryIdentity(t *testing.T) {
+	for _, operation := range []string{"create", "update"} {
+		t.Run(operation, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "Future Library")
+			alias := filepath.Join(root, "FUTURE LIBRARY")
+			other := filepath.Join(root, "Other Library")
+			db := setupDirScanTestDB(t)
+			instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+			require.NoError(t, err)
+			instance, err := instances.Create(t.Context(), "synthetic", "http://localhost:8080", "", "", nil, nil, false, nil)
+			require.NoError(t, err)
+			store := models.NewDirScanStore(db)
+			_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+				Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
+			})
+			require.NoError(t, err, "a missing directory remains configurable")
+			second, err := store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+				Path: other, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
+			})
+			require.NoError(t, err, "a different missing directory remains configurable")
+			if operation == "create" {
+				_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+					Path: alias, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
+				})
+			} else {
+				_, err = store.UpdateDirectory(t.Context(), second.ID, &models.DirScanDirectoryUpdateParams{Path: &alias})
+			}
+			require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath)
+			stored, err := store.GetDirectory(t.Context(), second.ID)
+			require.NoError(t, err)
+			assert.Equal(t, other, stored.Path)
+		})
+	}
+}

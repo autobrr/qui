@@ -37,6 +37,9 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	server.SetLatency(latency)
 	dir := t.TempDir()
 	writeWideTree(t, dir, dirs)
+	// Both timers must use an established SSH/SFTP connection.
+	_, err := b.Stat(t.Context(), remotePath(dir))
+	require.NoError(t, err)
 
 	start := time.Now()
 	siblings, err := b.ReadDir(t.Context(), remotePath(dir))

@@ -190,6 +190,9 @@ func TestReadDir(t *testing.T) {
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		names[i] = e.Name
+		info, err := os.Lstat(filepath.Join(dir, e.Name))
+		require.NoError(t, err)
+		assert.Equal(t, info.Mode().Type(), e.Mode.Type())
 	}
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")

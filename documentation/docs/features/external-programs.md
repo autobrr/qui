@@ -167,6 +167,10 @@ qui runs at most 8 external programs at the same time. This limit applies to all
 - A program that waits for more than 30 minutes does not start. qui writes "not started: execution limit reached" to the activity log and a warning to the qui log.
 - When qui shuts down, it drops the programs that wait.
 
+On Windows, qui resolves the program through `PATH` and `PATHEXT` before choosing how to launch it. A path without an extension that resolves to `.bat` or `.cmd` follows the batch-file behavior above. Batch files and terminal launchers still use command-shell parsing, including `%VARIABLE%` expansion and shell operators such as `&`. Use a native executable when torrent metadata must arrive literally.
+
+A native GUI program can still show its window. Launching it does not block the API request, but it holds an execution slot until that process exits. If the program starts another process and exits, qui tracks the process it launched, not the replacement.
+
 ## Automation integration
 
 When torrents match configured conditions, [automation rules](./automations.md) trigger external programs. Cross-seed [rules](./cross-seed/rules.md) can also run a program after qui adds a cross-seed torrent.

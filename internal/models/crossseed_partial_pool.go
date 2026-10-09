@@ -320,7 +320,18 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 	if locked != 1 {
 		return nil, nil, errPartialPoolRegistrationChanged
 	}
-	admittedAt := time.Now().UTC()
+	admittedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if reAdmission {
+		var previous time.Time
+		if err := tx.QueryRowContext(ctx, `SELECT created_at FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&previous); err != nil {
+			return nil, nil, fmt.Errorf("load previous partial pool admission: %w", err)
+		}
+		// Admission timestamps are generation tokens; coarse clocks and clock
+		// adjustments must not reuse one. PostgreSQL preserves microseconds.
+		if !admittedAt.After(previous) {
+			admittedAt = previous.Add(time.Microsecond).Truncate(time.Microsecond)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
 		return nil, nil, fmt.Errorf("activate partial pool registration: %w", err)
 	}

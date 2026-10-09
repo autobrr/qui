@@ -614,7 +614,8 @@ func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path strin
 		if runtime.GOOS == "windows" && strings.EqualFold(otherPath, cleanPath) {
 			info, statErr := os.Stat(cleanPath)
 			other, err := os.Stat(dir.Path)
-			if statErr == nil && err == nil && os.SameFile(info, other) {
+			// Case-only paths are ambiguous until both resolve to distinct directories.
+			if statErr != nil || err != nil || os.SameFile(info, other) {
 				return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
 			}
 		}

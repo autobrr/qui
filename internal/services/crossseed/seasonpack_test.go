@@ -360,7 +360,7 @@ func TestCheckSeasonPackWebhook_MatchesSeasonlessAbsoluteAnimeEpisodes(t *testin
 	// seasonless (Series 0). Both sides carry the same absolute number, so stamping the
 	// pack season onto the local identity unifies them without any metadata lookup.
 	// Without the stamp, the local ids are {0,25..28} and the pack ids {3,25..28}, so
-	// nothing matches (the current 0% behaviour) â€” which makes this assertion load-bearing.
+	// nothing matches (the current 0% behaviour) — which makes this assertion load-bearing.
 	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
 	packFiles := []string{
 		"Cool.Show.-.25.1080p.WEB.x264-GRP.mkv",

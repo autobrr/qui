@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,52 +123,82 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		})
 	}
 
-	t.Run("direct process holds its execution slot until exit", func(t *testing.T) {
-		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
-		require.NoError(t, err)
-		defer listener.Close()
-		t.Setenv("QUI_TEST_WINDOWS_ARGV_ADDRESS", listener.Addr().String())
-		service := NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: 1})
-		service.maxWaiting = 0
-		program := &models.ExternalProgram{ID: 1, Name: "recorder", Enabled: true, Path: programPath,
-			ArgsTemplate: "-test.run=^TestBuildCommand_WindowsArgumentRoundTrip$ --"}
-		result := service.Execute(t.Context(), ExecuteRequest{Program: program, InstanceID: 1,
-			Torrent: &qbt.Torrent{Hash: "synthetic-first", Name: "synthetic"}})
-		require.True(t, result.Success, "%v", result.Error)
-		t.Cleanup(func() {
-			require.Eventually(t, func() bool { return service.admitted.Load() == 0 }, 6*time.Second, 10*time.Millisecond)
+	for _, kind := range []string{"native process", "extensionless batch launcher"} {
+		t.Run(kind+" execution slot lifetime", func(t *testing.T) {
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			require.NoError(t, err)
+			defer listener.Close()
+			t.Setenv("QUI_TEST_WINDOWS_ARGV_ADDRESS", listener.Addr().String())
+			service := NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: 1})
+			service.maxWaiting = 0
+			program := &models.ExternalProgram{ID: 1, Name: "recorder", Enabled: true, Path: programPath,
+				ArgsTemplate: "-test.run=^TestBuildCommand_WindowsArgumentRoundTrip$ --"}
+			if kind == "extensionless batch launcher" {
+				batch := filepath.Join(t.TempDir(), "recorder launcher.bat")
+				body := "@echo off\r\n\"" + programPath + "\" %*\r\nexit\r\n"
+				require.NoError(t, os.WriteFile(batch, []byte(body), 0o600))
+				program.Path = strings.TrimSuffix(batch, ".bat")
+			}
+			result := service.Execute(t.Context(), ExecuteRequest{Program: program, InstanceID: 1,
+				Torrent: &qbt.Torrent{Hash: "synthetic-first", Name: "synthetic"}})
+			require.True(t, result.Success, "%v", result.Error)
+			t.Cleanup(func() {
+				require.Eventually(t, func() bool { return service.admitted.Load() == 0 }, 6*time.Second, 10*time.Millisecond)
+			})
+			require.NoError(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
+			conn, err := listener.AcceptTCP()
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+			_, err = bufio.NewReader(conn).ReadBytes('\n')
+			require.NoError(t, err)
+			if kind == "native process" {
+				assert.Len(t, service.slots, 1, "the recorder is alive and waiting for acknowledgment")
+				blocked := service.Execute(t.Context(), ExecuteRequest{Program: program, InstanceID: 1,
+					Torrent: &qbt.Torrent{Hash: "synthetic-second", Name: "synthetic"}})
+				require.False(t, blocked.Success)
+				require.ErrorContains(t, blocked.Error, "execution queue full")
+			} else {
+				require.Eventually(t, func() bool { return service.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond,
+					"the batch launcher releases its slot while its child still waits for acknowledgment")
+			}
+			_, err = conn.Write([]byte{1})
+			require.NoError(t, err)
+			require.Eventually(t, func() bool { return service.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
 		})
-		require.NoError(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
-		conn, err := listener.AcceptTCP()
-		require.NoError(t, err)
-		defer conn.Close()
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
-		_, err = bufio.NewReader(conn).ReadBytes('\n')
-		require.NoError(t, err)
-		assert.Len(t, service.slots, 1, "the recorder is alive and waiting for acknowledgment")
-		blocked := service.Execute(t.Context(), ExecuteRequest{Program: program, InstanceID: 1,
-			Torrent: &qbt.Torrent{Hash: "synthetic-second", Name: "synthetic"}})
-		require.False(t, blocked.Success)
-		require.ErrorContains(t, blocked.Error, "execution queue full")
-		_, err = conn.Write([]byte{1})
-		require.NoError(t, err)
-		require.Eventually(t, func() bool { return service.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
-	})
+	}
 }
 
 func TestBuildCommand_WindowsBatchScripts(t *testing.T) {
 	for _, ext := range []string{".bat", ".CMD"} {
 		t.Run(ext, func(t *testing.T) {
-			program := filepath.Join(t.TempDir(), "batch control"+ext)
+			dir := t.TempDir()
+			program := filepath.Join(dir, "batch control"+ext)
 			require.NoError(t, os.WriteFile(program, []byte("@echo off\r\necho %~1\r\nexit\r\n"), 0o600))
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			cmd, launcher := (&Service{}).buildCommand(ctx, &models.ExternalProgram{Path: program}, []string{"literal"})
-			cmd.WaitDelay = 5 * time.Second
-			require.True(t, launcher)
-			out, err := cmd.CombinedOutput()
-			require.NoError(t, err, "%s", out)
-			assert.Equal(t, "literal\r\n", string(out))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+			for _, form := range []string{"explicit", "absolute extensionless", "relative extensionless", "PATH extensionless"} {
+				t.Run(form, func(t *testing.T) {
+					configured := program
+					switch form {
+					case "absolute extensionless":
+						configured = strings.TrimSuffix(program, ext)
+					case "relative extensionless":
+						t.Chdir(dir)
+						configured = ".\\batch control"
+					case "PATH extensionless":
+						configured = "batch control"
+					}
+					ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+					defer cancel()
+					cmd, launcher := (&Service{}).buildCommand(ctx, &models.ExternalProgram{Path: configured}, []string{"literal"})
+					cmd.WaitDelay = 5 * time.Second
+					assert.True(t, launcher)
+					out, err := cmd.CombinedOutput()
+					require.NoError(t, err, "%s", out)
+					assert.Equal(t, "literal\r\n", string(out))
+				})
+			}
 		})
 	}
 }
