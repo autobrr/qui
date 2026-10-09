@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Atualização Disponível",
     "versionAvailable": "A versão {{version}} já está disponível",
-    "viewRelease": "Ver Lançamento",
     "dismiss": "Dispensar"
   },
   "pwaUpdate": {

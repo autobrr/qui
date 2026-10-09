@@ -953,7 +953,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
   )
 }
 
-function ApplicationInfoPanel() {
+function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: boolean; onUpdateOpened: () => void }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp, formatTimestamp } = useDateTimeFormatters()
   const appInfoQuery = useQuery({
@@ -975,6 +975,14 @@ function ApplicationInfoPanel() {
   })
 
   const selfUpdate = useSelfUpdate()
+  const { setConfirmOpen } = selfUpdate
+
+  useEffect(() => {
+    if (openUpdate && latestVersionQuery.data) {
+      setConfirmOpen(true)
+      onUpdateOpened()
+    }
+  }, [openUpdate, latestVersionQuery.data, setConfirmOpen, onUpdateOpened])
 
   const info = appInfoQuery.data
   const user = currentUserQuery.data
@@ -1465,7 +1473,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
           {activeTab === "application" && (
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <ApplicationInfoPanel />
+              <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
             </SettingsScrollPanel>
           )}
 

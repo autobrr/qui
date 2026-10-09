@@ -1001,6 +1001,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "지원 확인 중",
+        "checkingDescription": "qui가 이 업데이트를 설치할 수 있는지 확인하고 있습니다.",
+        "failedTitle": "업데이트 지원을 확인할 수 없음",
+        "failedDescription": "자체 업데이트를 사용할 수 있는지 확인할 수 없습니다.",
+        "retryDescription": "업데이트를 설치하기 전에 지원 확인을 다시 시도하세요.",
+        "retry": "다시 시도"
+      },
+      "unavailable": {
+        "description": "이 환경에서는 자동 설치를 사용할 수 없습니다.",
+        "nextStep": "업데이트 방법",
+        "guide": "업데이트 가이드",
+        "container": {
+          "reason": "qui가 컨테이너에서 실행 중입니다. 업데이트는 컨테이너 이미지로 제공됩니다.",
+          "step": "새 qui 이미지를 내려받은 다음 기존 설정과 데이터 볼륨으로 컨테이너를 다시 생성하세요."
+        },
+        "disabled": {
+          "reason": "qui 설정에서 자체 업데이트가 비활성화되어 있습니다.",
+          "step": "qui를 설치할 때 사용한 패키지 관리자나 설치 방법으로 업데이트하세요."
+        },
+        "development": {
+          "reason": "이 qui 빌드는 릴리스 빌드가 아닙니다. 자동 설치에는 릴리스 빌드가 필요합니다.",
+          "step": "qui를 중지하고 바이너리를 공식 릴리스나 새 빌드로 교체한 다음 qui를 다시 시작하세요."
+        },
+        "directory": {
+          "reason": "qui가 바이너리 디렉터리에 접근하거나 쓸 수 없습니다.",
+          "step": "qui를 중지하고 쓰기 권한이 있는 계정으로 바이너리를 새 릴리스로 교체한 다음 qui를 다시 시작하세요."
+        }
+      },
       "button": "업데이트 설치",
       "confirmTitle": "업데이트를 설치할까요?",
       "confirmDescription": "qui는 새 버전을 다운로드하고 서명을 확인한 뒤 현재 바이너리를 백업으로 보관합니다. 그런 다음 qui가 재시작합니다. qui가 돌아오면 페이지가 다시 로드됩니다.",

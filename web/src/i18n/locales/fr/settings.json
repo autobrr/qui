@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Vérification de la compatibilité",
+        "checkingDescription": "Vérification de la possibilité pour qui d’installer cette mise à jour.",
+        "failedTitle": "Impossible de vérifier la compatibilité de la mise à jour",
+        "failedDescription": "Impossible de vérifier si la mise à jour automatique est disponible.",
+        "retryDescription": "Réessayez la vérification avant d’installer la mise à jour.",
+        "retry": "Réessayer"
+      },
+      "unavailable": {
+        "description": "L’installation automatique n’est pas disponible pour cette configuration.",
+        "nextStep": "Comment mettre à jour",
+        "guide": "Guide de mise à jour",
+        "container": {
+          "reason": "qui fonctionne dans un conteneur. Les mises à jour proviennent de l’image du conteneur.",
+          "step": "Récupérez la nouvelle image qui, puis recréez le conteneur avec votre configuration et vos volumes de données existants."
+        },
+        "disabled": {
+          "reason": "La mise à jour automatique est désactivée dans la configuration de qui.",
+          "step": "Mettez qui à jour avec le gestionnaire de paquets ou la méthode utilisée pour l’installer."
+        },
+        "development": {
+          "reason": "Cette compilation de qui n’est pas une version publiée. L’installation automatique nécessite une version publiée.",
+          "step": "Arrêtez qui, remplacez le binaire par une version officielle ou une nouvelle compilation, puis redémarrez qui."
+        },
+        "directory": {
+          "reason": "qui ne peut pas accéder au répertoire de son binaire ou y écrire.",
+          "step": "Arrêtez qui, remplacez le binaire par la nouvelle version avec un compte disposant des droits d’écriture, puis redémarrez qui."
+        }
+      },
       "button": "Installer la mise à jour",
       "confirmTitle": "Installer la mise à jour ?",
       "confirmDescription": "qui télécharge la nouvelle version, vérifie sa signature et garde le binaire actuel en sauvegarde. Puis qui redémarre. La page se recharge quand qui est de retour.",

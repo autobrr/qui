@@ -1004,6 +1004,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Verificando suporte",
+        "checkingDescription": "Verificando se o qui pode instalar esta atualização.",
+        "failedTitle": "Não foi possível verificar o suporte à atualização",
+        "failedDescription": "Não foi possível verificar se a atualização automática está disponível.",
+        "retryDescription": "Tente verificar o suporte novamente antes de instalar a atualização.",
+        "retry": "Tentar novamente"
+      },
+      "unavailable": {
+        "description": "A instalação automática não está disponível nesta configuração.",
+        "nextStep": "Como atualizar",
+        "guide": "Guia de atualização",
+        "container": {
+          "reason": "O qui está em um contêiner. As atualizações vêm da imagem do contêiner.",
+          "step": "Baixe a nova imagem do qui e recrie o contêiner com a configuração e os volumes de dados existentes."
+        },
+        "disabled": {
+          "reason": "A atualização automática está desativada na configuração do qui.",
+          "step": "Atualize o qui com o gerenciador de pacotes ou o método usado para instalá-lo."
+        },
+        "development": {
+          "reason": "Esta compilação do qui não é uma versão oficial. A instalação automática exige uma versão oficial.",
+          "step": "Pare o qui, substitua o binário por uma versão oficial ou uma nova compilação e inicie o qui novamente."
+        },
+        "directory": {
+          "reason": "O qui não pode acessar ou gravar no diretório do seu binário.",
+          "step": "Pare o qui, substitua o binário pela nova versão usando uma conta com acesso de gravação e inicie o qui novamente."
+        }
+      },
       "button": "Instalar atualização",
       "confirmTitle": "Instalar atualização?",
       "confirmDescription": "O qui baixa a nova versão, verifica a assinatura e mantém o binário atual como backup. Depois o qui reinicia. A página recarrega quando o qui voltar.",
