@@ -193,11 +193,16 @@ gofix-check-changed:
 # MOJIBAKE_CONT. The pattern requires the full count of continuation characters
 # for each lead (1, 2 or 3), so real text such as Czech "íž" does not match.
 # It is an alternation, so it matches the same bytes in every locale.
-# The last two entries of MOJIBAKE_CONT are invisible: a non-breaking space
-# (U+00A0) and a soft hyphen (U+00AD).
+# The last seven entries of MOJIBAKE_CONT are invisible: a non-breaking space
+# (U+00A0), a soft hyphen (U+00AD), and the C1 controls U+0081, U+008D, U+008F,
+# U+0090 and U+009D. Windows decodes the five bytes that cp1252 leaves undefined
+# to these controls.
+# MOJIBAKE_LEAD2 holds only the leads for Latin-1, Latin Extended-A, Greek and
+# Cyrillic. The other 2-byte leads are real letters such as "ß" and "É", and
+# real text such as "Spaß…" would match.
 # The Makefile holds the pattern, so it is excluded, together with the lockfiles.
-MOJIBAKE_CONT = (€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­)
-MOJIBAKE_LEAD2 = (Â|Ã|Ä|Å|Æ|Ç|È|É|Ê|Ë|Ì|Í|Î|Ï|Ð|Ñ|Ò|Ó|Ô|Õ|Ö|×|Ø|Ù|Ú|Û|Ü|Ý|Þ|ß)
+MOJIBAKE_CONT = (€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿| |­|||||)
+MOJIBAKE_LEAD2 = (Â|Ã|Ä|Å|Î|Ï|Ð|Ñ)
 MOJIBAKE_LEAD3 = (à|á|â|ã|ä|å|æ|ç|è|é|ê|ë|ì|í|î|ï)
 MOJIBAKE_LEAD4 = (ð|ñ|ò|ó|ô)
 MOJIBAKE_RE = $(MOJIBAKE_LEAD2)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD3)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD4)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)
