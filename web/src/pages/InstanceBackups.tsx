@@ -1789,7 +1789,7 @@ export function InstanceBackups() {
                       <TableHead className="w-40">{t("backups.history.table.completed")}</TableHead>
                       <TableHead className="text-right">{t("backups.history.table.torrents")}</TableHead>
                       <TableHead className="text-right">{t("backups.history.table.size")}</TableHead>
-                      <TableHead className="text-right">{t("backups.history.table.actions")}</TableHead>
+                      <TableHead pinEnd className="text-right">{t("backups.history.table.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1816,133 +1816,135 @@ export function InstanceBackups() {
                         <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
                         <TableCell className="text-right">{run.torrentCount}</TableCell>
                         <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
-                        <TableCell className="flex justify-end gap-2">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openManifest(run.id)}
-                                aria-label={t("backups.history.actions.viewManifest")}
-                              >
-                                <FileText className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{t("backups.history.actions.viewManifest")}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openRestore(run)}
-                                aria-label={t("backups.history.actions.restoreFromBackup")}
-                              >
-                                <Undo2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{t("backups.history.actions.restoreFromBackup")}</TooltipContent>
-                          </Tooltip>
-                          {run.status === "success" && run.torrentCount > 0 ? (
+                        <TableCell pinEnd>
+                          <div className="flex justify-end gap-2">
                             <Tooltip>
-                              <DropdownMenu>
-                                <TooltipTrigger asChild>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.downloadBackup")}>
-                                      <Download className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                </TooltipTrigger>
-                                <TooltipContent>{t("backups.history.actions.downloadBackup")}</TooltipContent>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.zip")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.tarGz")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.tarZst")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.tarBr")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.tarXz")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      {t("backups.history.downloadFormats.tar")}
-                                    </a>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </Tooltip>
-                          ) : (
-                            <Button variant="ghost" size="icon" disabled aria-label={t("backups.history.actions.downloadUnavailable")}>
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Tooltip>
-                            <AlertDialog>
                               <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.deleteBackup")}>
-                                    <Trash className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openManifest(run.id)}
+                                  aria-label={t("backups.history.actions.viewManifest")}
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{t("backups.history.actions.deleteBackup")}</TooltipContent>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>{t("backups.history.deleteOneTitle")}</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    {t("backups.history.deleteOneDescription")}
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDelete(run)}>
-                                    {t("backups.history.delete")}
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </Tooltip>
+                              <TooltipContent>{t("backups.history.actions.viewManifest")}</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openRestore(run)}
+                                  aria-label={t("backups.history.actions.restoreFromBackup")}
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("backups.history.actions.restoreFromBackup")}</TooltipContent>
+                            </Tooltip>
+                            {run.status === "success" && run.torrentCount > 0 ? (
+                              <Tooltip>
+                                <DropdownMenu>
+                                  <TooltipTrigger asChild>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.downloadBackup")}>
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("backups.history.actions.downloadBackup")}</TooltipContent>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.zip")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.tarGz")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.tarZst")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.tarBr")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.tarXz")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        {t("backups.history.downloadFormats.tar")}
+                                      </a>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </Tooltip>
+                            ) : (
+                              <Button variant="ghost" size="icon" disabled aria-label={t("backups.history.actions.downloadUnavailable")}>
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Tooltip>
+                              <AlertDialog>
+                                <TooltipTrigger asChild>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" aria-label={t("backups.history.actions.deleteBackup")}>
+                                      <Trash className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("backups.history.actions.deleteBackup")}</TooltipContent>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>{t("backups.history.deleteOneTitle")}</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {t("backups.history.deleteOneDescription")}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>{t("backups.history.cancel")}</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(run)}>
+                                      {t("backups.history.delete")}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </Tooltip>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
