@@ -107,9 +107,10 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			const dirs = 200
+			// Close the pool and server before TempDir cleanup removes open directories.
+			dir := t.TempDir()
 			b, server := newBackend(t)
 			server.SetLatency(5 * time.Millisecond)
-			dir := t.TempDir()
 			writeWideTree(t, dir, dirs)
 
 			ctx, cancel := context.WithCancel(t.Context())

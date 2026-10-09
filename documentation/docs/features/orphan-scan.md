@@ -77,7 +77,7 @@ These are never reported, even when empty:
 - A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's directory the same way qBittorrent does, including one that inherits from a parent category.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
-- A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
+- A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction. Orphan file scans skip symbolic links and junctions.
 
 Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 

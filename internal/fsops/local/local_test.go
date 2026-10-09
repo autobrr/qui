@@ -5,11 +5,13 @@ package local
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -143,7 +145,11 @@ func TestLstat_Symlink(t *testing.T) {
 	target := filepath.Join(dir, "target.txt")
 	writeFile(t, target, "data")
 	link := filepath.Join(dir, "link.txt")
-	require.NoError(t, os.Symlink(target, link))
+	err := os.Symlink(target, link)
+	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+		t.Skipf("symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+	}
+	require.NoError(t, err)
 
 	info, err := b.Lstat(context.Background(), link)
 	require.NoError(t, err)

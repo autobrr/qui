@@ -282,7 +282,7 @@ func (s *Service) executeAsync(
 	})
 	defer release()
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" && launcher {
 		// Windows: Use Run() which waits for cmd.exe to complete
 		// The 'start' command will spawn the process and cmd.exe will exit quickly
 		execErr := cmd.Run()
@@ -299,7 +299,7 @@ func (s *Service) executeAsync(
 		// Log success - on Windows, Run() completing without error means the program started
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	} else {
-		// Unix/Linux: Start the terminal emulator or direct process
+		// Start the owned process or a Unix terminal launcher.
 		execErr := cmd.Start()
 		if execErr != nil {
 			log.Error().
@@ -370,23 +370,6 @@ func shellJoin(args []string) string {
 		quoted[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 	}
 	return strings.Join(quoted, " ")
-}
-
-// buildDirectCommand creates a command that runs directly without a terminal.
-func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
-	if runtime.GOOS == "windows" {
-		// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
-		cmdArgs := make([]string, 0, 5+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "/b", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
-	}
-
-	// Unix/Linux: Direct execution
-	if len(args) > 0 {
-		return exec.CommandContext(ctx, program.Path, args...), false //nolint:gosec // intentional external program execution
-	}
-	return exec.CommandContext(ctx, program.Path), false //nolint:gosec // intentional external program execution
 }
 
 // terminalCandidate represents a terminal emulator to check for availability.

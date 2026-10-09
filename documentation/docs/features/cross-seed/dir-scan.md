@@ -38,6 +38,8 @@ Each immediate child (folder or file) becomes one searchee. Files within `Movie.
 
 ### Correct path choices
 
+Dir Scan rejects case variants that name the same physical Windows directory. If an older configuration contains duplicate entries for the same directory, remove the extra entry so webhooks can select one scan configuration.
+
 | Content type | Recommended path | Why |
 |-------------|------------------|-----|
 | Movies | `/data/media/movies` | Each movie folder is one searchee |

@@ -1364,19 +1364,15 @@ func TestBuildCommand_Windows(t *testing.T) {
 		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
 	})
 
-	t.Run("direct mode uses cmd.exe with start /b", func(t *testing.T) {
+	t.Run("direct mode launches the executable without a shell", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
-
-		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		cmd, launcher := service.buildCommand(ctx, program, []string{"arg1"})
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path, "arg1"}, cmd.Args)
+		assert.False(t, launcher, "the service owns the directly launched process")
 	})
 
 	t.Run("arguments are passed correctly", func(t *testing.T) {
@@ -1414,11 +1410,8 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path}, cmd.Args)
 	})
 
 	t.Run("path with spaces in terminal mode", func(t *testing.T) {
@@ -1439,8 +1432,8 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path, "--arg", "value"}, cmd.Args)
 	})
 
 	t.Run("arguments with special characters", func(t *testing.T) {
@@ -1616,7 +1609,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 
 func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("direct runs hold their slot only on Unix")
+		t.Skip("this fixture needs a POSIX shell; Windows uses the native recorder test")
 	}
 
 	ctx := t.Context()

@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -605,8 +607,16 @@ func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path strin
 		if dir.ID == excludeID {
 			continue
 		}
-		if filepath.Clean(dir.Path) == cleanPath {
+		otherPath := filepath.Clean(dir.Path)
+		if otherPath == cleanPath {
 			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
+		}
+		if runtime.GOOS == "windows" && strings.EqualFold(otherPath, cleanPath) {
+			info, statErr := os.Stat(cleanPath)
+			other, err := os.Stat(dir.Path)
+			if statErr == nil && err == nil && os.SameFile(info, other) {
+				return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
+			}
 		}
 	}
 

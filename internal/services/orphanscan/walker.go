@@ -289,8 +289,8 @@ func walkScanRootWithUnitFilter(
 			return nil, nil, false, entry.Err
 		}
 
-		// Skip symlinks
-		if entry.IsSymlink {
+		// Junctions are ModeIrregular on Windows, not symlinks or directories.
+		if entry.IsSymlink || (!entry.IsDir && !entry.Mode.IsRegular()) {
 			continue
 		}
 
