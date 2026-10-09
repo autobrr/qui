@@ -188,10 +188,14 @@ gofix-check-changed:
 		echo "go fix check clean."
 
 # Fail on mojibake: UTF-8 text that an editor read as cp1252 and saved again.
-# Example: an em dash becomes "â€”" (PR #3082). The Makefile holds the pattern,
-# so it is excluded, together with the lockfiles.
+# Example: an em dash becomes "â€”" (PR #3082). The pattern is a lead character
+# of a UTF-8 sequence, followed by a cp1252 character for a continuation byte.
+# It is an alternation, so it matches the same bytes in every locale.
+# The Makefile holds the pattern, so it is excluded, together with the lockfiles.
+MOJIBAKE_RE = (Â|Ã|â|ð)(€|‚|ƒ|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿)
+
 check-mojibake:
-	@if git grep -nIE 'â€|Ã©|Ã¶|Ã¥|Ã¸|Ã¤' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
+	@if git grep -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
 		echo "Mojibake found. Restore the original UTF-8 characters."; \
 		exit 1; \
 	fi
