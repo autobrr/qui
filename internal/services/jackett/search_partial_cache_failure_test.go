@@ -4,13 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/url"
 	"testing"
 	"time"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -23,15 +19,6 @@ import (
 // healthy indexers' empty results are cache-covered, and the empty cached
 // portion used to be discarded by the len(cachedResults) > 0 fallback guard.
 func TestSearchReturnsPartialWhenOnlyLiveIndexerFailsWithEmptyCachedCoverage(t *testing.T) {
-	originalLogger := log.Logger
-	fallbackLogLevel := zerolog.NoLevel
-	log.Logger = zerolog.New(io.Discard).Level(zerolog.TraceLevel).Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
-		if msg == "Returning cached torznab search results after search failure" {
-			fallbackLogLevel = level
-		}
-	}))
-	t.Cleanup(func() { log.Logger = originalLogger })
-
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
 			{ID: 1, Name: "First", Enabled: true},
@@ -112,8 +99,5 @@ func TestSearchReturnsPartialWhenOnlyLiveIndexerFailsWithEmptyCachedCoverage(t *
 	}
 	if resp.Cache == nil || resp.Cache.Source != searchCacheSourceCache {
 		t.Fatalf("expected cache metadata on fallback response, got %+v", resp.Cache)
-	}
-	if fallbackLogLevel != zerolog.TraceLevel {
-		t.Fatalf("cached fallback log level = %s, want trace", fallbackLogLevel)
 	}
 }

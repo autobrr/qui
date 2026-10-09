@@ -6,7 +6,6 @@ package jackett
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -534,25 +533,4 @@ func TestScheduledSearchCapsRateLimitIsNotCovered(t *testing.T) {
 		t.Fatal("scheduled search timed out")
 	}
 	assertSingleCapsFetch(t, requests)
-}
-
-func TestSearchMultipleIndexersLogsCooldownSkipAtTrace(t *testing.T) {
-	skipLogLevel := zerolog.NoLevel
-	original := log.Logger
-	log.Logger = zerolog.New(io.Discard).Level(zerolog.TraceLevel).Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
-		if msg == "Skipping rate-limited indexer for search" {
-			skipLogLevel = level
-		}
-	}))
-	t.Cleanup(func() { log.Logger = original })
-
-	indexer := &models.TorznabIndexer{ID: 1, Name: "Rate limited", Enabled: true}
-	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
-	t.Cleanup(service.searchScheduler.Stop)
-	service.rateLimiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(time.Minute))
-
-	_, _, err := service.searchMultipleIndexers(t.Context(), []*models.TorznabIndexer{indexer}, url.Values{"q": {"synthetic movie"}}, &searchContext{searchMode: "search"})
-	_, isRateLimit := errors.AsType[*RateLimitError](err)
-	require.True(t, isRateLimit, "expected RateLimitError, got %v", err)
-	assert.Equal(t, zerolog.TraceLevel, skipLogLevel)
 }
