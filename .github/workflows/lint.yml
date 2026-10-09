@@ -91,7 +91,9 @@ jobs:
       - name: Compile and vet Windows packages and tests
         run: go vet ./...
 
+      # Run both test groups after failures to report all selected errors.
       - name: Test native filesystem and path utilities
+        if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
           ./internal/fsops ./internal/externalprograms
@@ -101,6 +103,7 @@ jobs:
       # Keep service execution focused; the full suite still runs on Linux.
       # Real ReFS integration remains opt-in through QUI_REFS_TEST_DIR.
       - name: Test Windows service and backend path contracts
+        if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
           -run '^(Test.*Windows.*|Test.*PathDialect.*|Test.*BackendDialect|TestPathsIsHostDialect|TestLstat_(RegularFile|DirectoryHasIdentity|Hardlink)|TestWalkDir_(Basic|WithFileID)|TestResolveRootlessContentDir|TestNormalizePath|TestIsWindowsDriveAbs|TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively|TestDirScanStore_(Create|Update)Directory_RejectsDuplicateCleanedPath|TestPathMatchesDirectory|TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths)$'
