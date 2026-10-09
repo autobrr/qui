@@ -33,6 +33,8 @@ jobs:
             'go.mod' 'go.sum' \
             ':(glob)**/*_windows*.go' \
             ':(glob)internal/fsops/**/*.go' \
+            ':(glob)internal/sshpool/**/*.go' \
+            ':(glob)internal/testutil/sshtest/**/*.go' \
             ':(glob)internal/externalprograms/**/*.go' \
             ':(glob)internal/services/externalprograms/**/*.go' \
             ':(glob)internal/services/orphanscan/**/*.go' \
@@ -87,6 +89,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force web/dist | Out-Null
           New-Item -ItemType File -Force web/dist/.gitkeep | Out-Null
+          Write-Output "Workspace=$env:GITHUB_WORKSPACE TEMP=$env:TEMP"
 
       - name: Compile and vet Windows packages and tests
         run: go vet ./...
@@ -96,7 +99,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
-          ./internal/fsops ./internal/fsops/local ./internal/externalprograms
+          ./internal/fsops ./internal/fsops/local ./internal/fsops/remote
+          ./internal/externalprograms
           ./pkg/pathcmp ./pkg/pathutil ./pkg/hardlink ./pkg/hardlinktree
           ./pkg/fsutil ./pkg/reflinktree ./pkg/sharedextents
 
@@ -106,7 +110,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           go test -count=1 -v -timeout=2m
-          -run '^(Test.*Windows.*|Test.*PathDialect.*|Test.*BackendDialect|TestResolveRootlessContentDir|TestNormalizePath|TestIsWindowsDriveAbs|TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively|TestDirScanStore_(Create|Update)Directory_RejectsDuplicateCleanedPath|TestPathMatchesDirectory|TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths)$'
+          -run '^(Test.*Windows.*|Test.*PathDialect.*|Test.*BackendDialect|TestResolveRootlessContentDir|TestNormalizePath|TestIsWindowsDriveAbs|TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively|TestApplySeasonPackWebhook.*|TestCrossSeed_SeasonPackDiversionHonorsBlocklist|TestFixC_CRCollection_CheckAndApplyBoth(Accept|Reject)|TestManualMatchProposalsEffectiveSavePathTracksValidation|TestDirScanStore_(Create|Update)Directory_RejectsDuplicateCleanedPath|TestPathMatchesDirectory|TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths)$'
           ./internal/services/externalprograms
           ./internal/services/orphanscan ./internal/services/dirscan
           ./internal/services/crossseed ./internal/models ./internal/api/handlers
