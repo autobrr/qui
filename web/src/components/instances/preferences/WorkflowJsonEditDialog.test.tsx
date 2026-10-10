@@ -83,7 +83,7 @@ describe("WorkflowJsonEditDialog", () => {
     expect(editor.value).toBe("{not json")
   })
 
-  it("sends the parsed fields over the rule's enabled state and sort order", async () => {
+  it("sends the JSON as written, with the rule's enabled state and sort order", async () => {
     mocks.updateAutomation.mockResolvedValue({ ...rule, name: "New name" })
     const { editor, onOpenChange } = renderDialog()
     fireEvent.change(editor, {
@@ -98,10 +98,7 @@ describe("WorkflowJsonEditDialog", () => {
       sortOrder: 4,
       trackerPattern: "b.com,!c.com",
       conditions: { schemaVersion: "1" },
-      freeSpaceSource: undefined,
-      sortingConfig: undefined,
       dryRun: true,
-      notify: true,
     })
     expect(mocks.updateAutomation.mock.calls[0][2]).not.toHaveProperty("trackerDomains")
     expect(mocks.toastSuccess).toHaveBeenCalled()
