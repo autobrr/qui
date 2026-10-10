@@ -36,7 +36,7 @@ When you write or review code, follow the rules for its area in `CODING_STANDARD
 - Full Go suite: `make test` (`go test -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
 
-CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags; a change to only `**.md` or the `Makefile` skips it. `test.yml` runs the Postgres tests and the migration parity check. Run the full suite locally only when asked, or when one change crosses many packages.
+CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags; a change to only `**.md` or the `Makefile` skips it. `test.yml` runs the Postgres tests, the migration parity check, and the automations docs JSON examples test, also on a PR that changes only `documentation/`. Run the full suite locally only when asked, or when one change crosses many packages.
 
 Before you open a PR or add commits to one, do the performance checks in `docs/agents/performance-checks.md` for the full PR diff.
 
