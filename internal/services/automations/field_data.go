@@ -180,7 +180,7 @@ func (n *RuleNeeds) addSorting(config *models.SortingConfig) {
 }
 
 // ruleTemplatesUseTrackerName reports whether an enabled action needs the tracker display-name map
-// outside its condition. The "Tracker" match pairs with the key resolveMovePath passes to path
+// outside its condition. The "Tracker" match pairs with the key pathTemplateData passes to path
 // templates, so it also catches {{ index . "Tracker" }}.
 func ruleTemplatesUseTrackerName(ac *models.ActionConditions) bool {
 	if move := ac.Move; move != nil && move.Enabled && strings.Contains(move.Path, "Tracker") {

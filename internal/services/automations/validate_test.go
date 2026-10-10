@@ -1005,3 +1005,70 @@ func TestValidateRule(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRule_MovePath(t *testing.T) {
+	const (
+		notAbsolute = "Move path must be absolute"
+		invalid     = "Invalid move path template"
+	)
+	tests := []struct {
+		path    string
+		enabled bool
+		wantMsg string // a substring; empty means valid
+	}{
+		{path: "/data/archive", enabled: true},
+		{path: `D:\Archive`, enabled: true},
+		{path: "D:/Archive", enabled: true},
+		{path: `\\nas\media\archive`, enabled: true},
+		{path: "  /data/{{ .Category }}  ", enabled: true},
+		{path: "/data/{{ sanitize .Name }}/{{ .Tracker }}/{{ .IsolationFolderName }}", enabled: true},
+		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
+		{path: `{{ if eq .Category "tv" }}/data/tv{{ end }}`, enabled: true},
+		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
+		{path: "archive", enabled: false},
+		{path: "{{ .Category }}/done", enabled: false},
+		{path: "", enabled: false},
+		{path: "", enabled: true, wantMsg: "Move path is required"},
+		{path: "   ", enabled: true, wantMsg: "Move path is required"},
+		{path: "archive", enabled: true, wantMsg: notAbsolute},
+		{path: "rel/{{ .Category }}", enabled: true, wantMsg: `renders "rel/sample"`},
+		{path: "../archive", enabled: true, wantMsg: notAbsolute},
+		{path: "C:archive", enabled: true, wantMsg: notAbsolute},
+		{path: "{{ .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{.Category}}", enabled: true, wantMsg: `renders "sample"`},
+		{path: "{{- .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ sanitize .Category }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Category | sanitize }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "{{ .Name }}/done", enabled: true, wantMsg: `renders "sample/done"`},
+		{path: "/data/{{ .Unknown }}", enabled: true, wantMsg: invalid},
+		{path: "/data/{{ .Name", enabled: true, wantMsg: invalid},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rule := &models.Automation{InstanceID: 1, Name: "Move rule", TrackerPattern: "*", Enabled: true, Conditions: &models.ActionConditions{
+				Move:  &models.MoveAction{Enabled: tt.enabled, Path: tt.path},
+				Pause: &models.PauseAction{Enabled: true},
+			}}
+
+			err := ValidateRule(rule, nil)
+
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			ruleErr, ok := errors.AsType[*RuleError](err)
+			require.True(t, ok, "want a RuleError, got %v", err)
+			require.Contains(t, ruleErr.Message, tt.wantMsg)
+		})
+	}
+}
+
+func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
+	// A rule saved before the move path check existed must stay editable, so it can be toggled off.
+	rule := &models.Automation{InstanceID: 1, Name: "Legacy rule", TrackerPattern: "*", Enabled: false, Conditions: &models.ActionConditions{
+		Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
+	}}
+
+	require.NoError(t, ValidateRule(rule, nil))
+}

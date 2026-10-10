@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
 // RuleError is a validation failure. Message is safe to show the user.
@@ -90,8 +91,11 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	// A disabled rule skips these, so one saved before a check existed stays editable.
 	if rule.Enabled {
+		if err := validateMovePath(conditions.Move); err != nil {
+			return err
+		}
 		if regexErrs := ConditionRegexErrors(conditions); len(regexErrs) > 0 {
 			firstErr := regexErrs[0]
 			return ruleError(fmt.Sprintf("Invalid regex pattern in %s: %s (Go/RE2 does not support Perl features like lookahead/lookbehind)", firstErr.Field, firstErr.Message))
@@ -154,6 +158,30 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 }
 
 // conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
+// validateMovePath rejects a move path that renders relative for a placeholder torrent.
+func validateMovePath(move *models.MoveAction) error {
+	if move == nil || !move.Enabled {
+		return nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" {
+		return ruleError("Move path is required")
+	}
+	rendered, err := renderMovePathSample(path)
+	if err != nil {
+		return ruleError(fmt.Sprintf("Invalid move path template: %v", err))
+	}
+	// A conditional template can render empty for the placeholder yet be absolute for a real torrent.
+	if rendered == "" || pathcmp.IsAbsolute(rendered) {
+		return nil
+	}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
+	}
+	return ruleError(msg)
+}
+
 func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
 	return actionConditionsUseField(conditions, FieldFreeSpace)
 }

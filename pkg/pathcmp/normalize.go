@@ -22,6 +22,12 @@ func IsWindowsDriveAbs(p string) bool {
 	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && p[1] == ':' && p[2] == '/'
 }
 
+// IsAbsolute reports whether p is absolute on any client OS; filepath.IsAbs would judge qui's host.
+func IsAbsolute(p string) bool {
+	p = strings.ReplaceAll(p, `\`, "/")
+	return strings.HasPrefix(p, "/") || IsWindowsDriveAbs(p)
+}
+
 // NormalizePath normalizes a file path for comparison by:
 // - Converting backslashes to forward slashes
 // - Removing trailing slashes (preserving Windows drive roots like C:/)
