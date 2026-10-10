@@ -34,41 +34,18 @@ const AI_PROVIDERS: AIProvider[] = [
     href: "https://www.perplexity.ai/?q=",
     icon: <PerplexityIcon />,
   },
+  {
+    // gemini.google.com ignores a prompt in the URL, so link to Google AI Mode, which takes one.
+    id: "google-ai-mode",
+    label: "Open in Google AI Mode",
+    href: "https://www.google.com/search?udm=50&q=",
+    icon: <SparkleIcon />,
+  },
 ];
 
 function normalizeBaseUrl(url: string, baseUrl: string): URL {
   const origin = url.endsWith("/") ? url : `${url}/`;
   return new URL(baseUrl, origin);
-}
-
-function toRawMarkdownUrl(editUrl?: string, source?: string): string | null {
-  if (editUrl) {
-    const match = editUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/);
-    if (match) {
-      const [, owner, repo, branch, path] = match;
-      return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-    }
-  }
-
-  if (source?.startsWith("@site/")) {
-    const relativePath = source.replace(/^@site\//, "");
-    return `https://raw.githubusercontent.com/autobrr/qui/main/documentation/${relativePath}`;
-  }
-
-  return null;
-}
-
-function stripFrontMatter(markdown: string): string {
-  if (!markdown.startsWith("---")) {
-    return markdown;
-  }
-
-  const frontMatterMatch = markdown.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  if (!frontMatterMatch) {
-    return markdown;
-  }
-
-  return markdown.slice(frontMatterMatch[0].length).trimStart();
 }
 
 async function copyText(value: string): Promise<void> {
@@ -88,19 +65,14 @@ async function copyText(value: string): Promise<void> {
   document.body.removeChild(textArea);
 }
 
-function getPrompt(title: string, pageUrl: string, markdownUrl: string | null): string {
-  const lines = [
+function getPrompt(title: string, pageUrl: string, markdownUrl: string): string {
+  return [
     "Answer questions about this qui docs page.",
     `Title: ${title}`,
     `Page URL: ${pageUrl}`,
-  ];
-
-  if (markdownUrl) {
-    lines.push(`Markdown source: ${markdownUrl}`);
-  }
-
-  lines.push("Use this page as the source of truth.");
-  return lines.join("\n");
+    `Markdown source: ${markdownUrl}`,
+    "Use this page as the source of truth.",
+  ].join("\n");
 }
 
 export default function OpenInAI(): ReactNode {
@@ -120,9 +92,10 @@ export default function OpenInAI(): ReactNode {
     return new URL(location.pathname.replace(/^\//, ""), base).toString();
   }, [location.pathname, siteConfig.baseUrl, siteConfig.url]);
 
+  // docusaurus-plugin-llms writes a Markdown copy of each page to <page path>.md at build time.
   const markdownUrl = useMemo(
-    () => toRawMarkdownUrl(metadata.editUrl, metadata.source),
-    [metadata.editUrl, metadata.source],
+    () => new URL(`${location.pathname.replace(/\/$/, "")}.md`, pageUrl).toString(),
+    [location.pathname, pageUrl],
   );
 
   const prompt = useMemo(
@@ -131,19 +104,13 @@ export default function OpenInAI(): ReactNode {
   );
 
   const copyPage = async () => {
-    if (!markdownUrl) {
-      setCopyState("error");
-      return;
-    }
-
     setCopyState("copying");
     try {
       const response = await fetch(markdownUrl);
       if (!response.ok) {
         throw new Error(`Unable to fetch markdown (${response.status})`);
       }
-      const markdown = stripFrontMatter(await response.text());
-      await copyText(markdown);
+      await copyText(await response.text());
       setCopyState("copied");
       setIsOpen(false);
     } catch (error) {
@@ -197,15 +164,7 @@ export default function OpenInAI(): ReactNode {
           : "Copy page";
 
   const openMarkdown = () => {
-    if (!markdownUrl) {
-      return;
-    }
     window.open(markdownUrl, "_blank", "noopener,noreferrer");
-    setIsOpen(false);
-  };
-
-  const openProvider = (href: string) => {
-    window.open(`${href}${encodeURIComponent(prompt)}`, "_blank", "noopener,noreferrer");
     setIsOpen(false);
   };
 
@@ -250,7 +209,6 @@ export default function OpenInAI(): ReactNode {
             role="menuitem"
             className={styles.menuItem}
             onClick={openMarkdown}
-            disabled={!markdownUrl}
           >
             <span className={styles.menuIcon}>
               <MarkdownIcon />
@@ -263,12 +221,15 @@ export default function OpenInAI(): ReactNode {
           </button>
 
           {AI_PROVIDERS.map((provider) => (
-            <button
+            // A real link, not window.open: phones hand a tapped link to the installed app.
+            <a
               key={provider.id}
-              type="button"
+              href={`${provider.href}${encodeURIComponent(prompt)}`}
+              target="_blank"
+              rel="noopener noreferrer"
               role="menuitem"
               className={styles.menuItem}
-              onClick={() => openProvider(provider.href)}
+              onClick={() => setIsOpen(false)}
             >
               <span className={styles.menuIcon}>{provider.icon}</span>
               <span className={styles.menuText}>
@@ -276,7 +237,7 @@ export default function OpenInAI(): ReactNode {
                 <small>Ask questions about this page</small>
               </span>
               <ExternalArrowIcon />
-            </button>
+            </a>
           ))}
         </div>
       )}
@@ -333,6 +294,14 @@ function PerplexityIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <path d="M12 2.8v18.4M2.8 12h18.4M5.2 5.2l13.6 13.6M18.8 5.2 5.2 18.8" />
       <circle cx="12" cy="12" r="9.2" />
+    </svg>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5Z" />
     </svg>
   );
 }

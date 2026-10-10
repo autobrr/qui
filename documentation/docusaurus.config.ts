@@ -53,10 +53,17 @@ const config: Config = {
   projectName: "qui",
 
   onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
+
+  future: {
+    faster: true,
+    // Required by faster.ssgWorkerThreads.
+    v4: { removeLegacyPostBuildHeadAttribute: true },
+  },
 
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: "warn",
+      onBrokenMarkdownLinks: "throw",
     },
   },
 
@@ -88,6 +95,7 @@ const config: Config = {
         generateLLMsFullTxt: true,
         excludeImports: true,
         removeDuplicateHeadings: true,
+        generateMarkdownFiles: true,
       },
     ],
   ],
