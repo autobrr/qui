@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode/utf8"
 
@@ -2598,6 +2599,37 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		return maindataCalls.Load() >= 2
 	}, time.Second, 5*time.Millisecond,
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+}
+
+// Hints closer together than the debounce delay must not hold off the sync for
+// as long as they keep coming.
+func TestDebouncedSyncHasAMaximumWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// With no client pool, each sync logs this warning and returns.
+		var synced atomic.Int32
+		originalLogger := log.Logger
+		log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+			if msg == "Client pool is nil, skipping sync" {
+				synced.Add(1)
+			}
+		}))
+		t.Cleanup(func() { log.Logger = originalLogger })
+		syncs := func() int { return int(synced.Load()) }
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		// A hint every 150 ms for 3 s.
+		for start := time.Now(); time.Since(start) < 3*time.Second; {
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(150 * time.Millisecond)
+		}
+		synctest.Wait()
+		during := syncs()
+		require.GreaterOrEqual(t, during, 2, "hints kept postponing the sync")
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+		require.Equal(t, during+1, syncs(), "the last hints still get one sync")
+	})
 }
 
 // App preferences are a cosmetic ~150-field blob. A failure to render them must
