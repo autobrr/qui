@@ -74,7 +74,7 @@ func TestManagedDeleteCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 		&models.InstanceUpdateParams{HardlinkBaseDir: &baseDir})
 	require.NoError(t, err)
 
-	client, err := NewClientWithTimeout(instance.ID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), instance.ID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))

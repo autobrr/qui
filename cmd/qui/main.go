@@ -1012,6 +1012,9 @@ func (app *Application) runServer() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		partialPoolCancel()
+		if err := clientPool.Close(); err != nil {
+			return err
+		}
 		select {
 		case <-partialPoolDone:
 		case <-ctx.Done():
