@@ -1659,7 +1659,7 @@ export function WorkflowsOverview({
               }}
             />
             {importError && (
-              <p className="text-sm text-destructive">{importError}</p>
+              <p className="text-sm text-destructive whitespace-pre-line">{importError}</p>
             )}
           </div>
           <DialogFooter>
