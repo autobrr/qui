@@ -1837,6 +1837,23 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	return nil
 }
 
+// actionRunOrder is the order applyRulesForInstance applies actions in; only tests read it, and ACTION_RUN_ORDER mirrors it.
+var actionRunOrder = []string{
+	"speedLimits",
+	"shareLimits",
+	"pause",
+	"resume",
+	"recheck",
+	"reannounce",
+	"autoManagement",
+	"tag",
+	"category",
+	"move",
+	"externalProgram",
+	"exportToInstance",
+	"delete",
+}
+
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
 	if len(rules) == 0 {
 		return nil, nil

@@ -510,13 +510,9 @@ If the connected qBittorrent instance supports these fields, they appear in the 
 
 Pause matching torrents. qui pauses only torrents that are not already stopped.
 
-If a resume action is also present, the last action wins.
-
 ### Resume
 
 Resume matching torrents. qui resumes only torrents that are not already running.
-
-If a pause action is also present, the last action wins.
 
 ### Force recheck
 
@@ -1089,9 +1085,58 @@ qui sends an API call only when the torrent's current setting differs from the t
 
 ### Processing order
 
-- **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
-- **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
+When several rules give the same torrent the same kind of action:
+
+- **First match wins** for delete and move actions. A delete ends processing for that torrent, and qui evaluates no further rules.
+- **Last rule wins** for speed limits, share limits, auto management, category, external program, and export to instance actions.
+- Pause applies only to a running torrent and resume only to a stopped one, so a run never does both to the same torrent.
+- **Any match** triggers recheck and reannounce. No rule turns them off.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
+
+### Run order
+
+When one run gives a torrent several actions, qui applies them in this order:
+
+1. Speed limits
+2. Share limits
+3. Pause
+4. Resume
+5. Force recheck
+6. Force reannounce
+7. Auto management
+8. Tag
+9. Category
+10. Move
+11. External program
+12. Export to instance
+13. Delete
+
+The rule editor shows actions in the same order.
+
+- qui waits for qBittorrent to accept each request before it sends the next one. It does not wait for qBittorrent to finish a move.
+- External programs and exports start in the background after the moves. qui sends the deletes without waiting for them.
+- When a rule chooses delete for a torrent, qui also drops the actions that earlier rules chose for that torrent.
+
+### Each action sees the torrent as the run started
+
+A run reads the torrent list once, when it starts. Every rule and every action in that run uses this copy:
+
+- conditions, even when an earlier rule in the same run changed the field;
+- path template variables such as `.Category` in Move and Export to Instance paths;
+- the checks that skip a torrent that already has the target value;
+- cross-seed checks;
+- the torrent details passed to an external program, such as its save path and category.
+
+There are two exceptions. The Free Space projection adds up across the torrents in a run (see [Free Space condition behavior](#free-space-condition-behavior)). Before a delete, qui reads the hardlink state from disk again.
+
+A later live run sees the new values. That run comes at least 2 minutes later (see Debouncing under [How automations work](#how-automations-work)), and only once the rule's interval has passed. A dry run skips the 2-minute wait, and **Dry-run now** also skips the interval, so a dry run can show the new values sooner.
+
+Examples:
+
+- A rule changes the category and moves the torrent to `/data/{{.Category}}`. The move uses the old category.
+- A later rule with a condition on the new category does not match in the same run.
+- An external program that runs in the same run as a move gets the old save path.
+- A rule turns on auto management and moves the torrent. qBittorrent turns Automatic Torrent Management off when it moves a torrent to a set path. Move runs after auto management, so the torrent ends with Automatic Torrent Management off.
 
 ### Free Space condition behavior
 
