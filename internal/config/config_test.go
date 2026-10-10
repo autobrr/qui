@@ -995,9 +995,12 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 	tests := []struct {
 		name      string
 		workFiles map[string]string
+		// workDirs are created as directories in the working directory.
+		workDirs []string
 		// defaultFile is written to the default config dir before New runs.
 		defaultFile string
 		wantErr     string
+		wantParse   bool
 		wantPort    int
 		wantInWork  bool
 	}{
@@ -1019,9 +1022,16 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 			wantInWork:  true,
 		},
 		{
+			name:        "directory_named_config_toml_in_working_dir_is_skipped",
+			workDirs:    []string{"config.toml"},
+			defaultFile: testConfigContent,
+			wantPort:    8080,
+		},
+		{
 			name:      "malformed_toml_in_working_dir",
 			workFiles: map[string]string{"config.toml": "port = = 1\n"},
 			wantErr:   "failed to read config",
+			wantParse: true,
 		},
 	}
 
@@ -1037,6 +1047,9 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 			for name, content := range tt.workFiles {
 				require.NoError(t, os.WriteFile(filepath.Join(workDir, name), []byte(content), 0o600))
 			}
+			for _, name := range tt.workDirs {
+				require.NoError(t, os.Mkdir(filepath.Join(workDir, name), 0o700))
+			}
 			if tt.defaultFile != "" {
 				require.NoError(t, os.MkdirAll(defaultDir, 0o700))
 				require.NoError(t, os.WriteFile(filepath.Join(defaultDir, "config.toml"), []byte(tt.defaultFile), 0o600))
@@ -1045,6 +1058,10 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 			cfg, err := New("")
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
+				if tt.wantParse {
+					var parseErr viper.ConfigParseError
+					require.ErrorAs(t, err, &parseErr)
+				}
 				return
 			}
 			require.NoError(t, err)
@@ -1052,25 +1069,11 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 
 			wantFile := filepath.Join(defaultDir, "config.toml")
 			if tt.wantInWork {
-				wantFile = "config.toml"
+				wantFile = filepath.Join(workDir, "config.toml")
 			}
 			assert.Equal(t, wantFile, cfg.viper.ConfigFileUsed())
 			_, statErr := os.Stat(filepath.Join(defaultDir, "config.toml"))
 			require.NoError(t, statErr)
 		})
 	}
-}
-
-func TestNewWithoutConfigDirReturnsStatError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("path semantics for a file used as a directory differ on Windows")
-	}
-
-	xdgFile := filepath.Join(t.TempDir(), "not-a-dir")
-	require.NoError(t, os.WriteFile(xdgFile, nil, 0o600))
-	t.Setenv("XDG_CONFIG_HOME", xdgFile)
-	t.Chdir(t.TempDir())
-
-	_, err := New("")
-	require.ErrorContains(t, err, "failed to read config")
 }

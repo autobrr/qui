@@ -199,36 +199,28 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 }
 
 func (c *AppConfig) loadFromStandardLocations() error {
+	return c.loadFromPath(standardConfigPath())
+}
+
+// standardConfigPath returns the first config.toml that is a regular file, checking the working
+// directory and then the default config directory. It falls back to the default path, where
+// loadFromPath writes a default config.
+func standardConfigPath() string {
 	// Only look for config.toml. A name-only search also matches config.ini, config.json and so on,
 	// which would then be decoded as TOML.
 	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
-	for _, candidate := range []string{"config.toml", defaultConfigPath} {
-		info, err := os.Stat(candidate)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return fmt.Errorf("failed to read config: %w", err)
-		}
-		if info.IsDir() {
-			continue
-		}
-		c.viper.SetConfigFile(candidate)
-		if err := c.viper.ReadInConfig(); err != nil {
-			return fmt.Errorf("failed to read config: %w", err)
-		}
-		return nil
+	workDirConfigPath, err := filepath.Abs("config.toml")
+	if err != nil {
+		return defaultConfigPath
 	}
-
-	if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
-		return writeErr
+	for _, candidate := range []string{workDirConfigPath, defaultConfigPath} {
+		// Like viper's search, skip a candidate on any stat error so an unreadable working directory
+		// falls through to the default config directory.
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
 	}
-	c.viper.SetConfigFile(defaultConfigPath)
-	if readErr := c.viper.ReadInConfig(); readErr != nil {
-		return fmt.Errorf("failed to read newly created config: %w", readErr)
-	}
-	c.dataDir = filepath.Dir(defaultConfigPath)
-	return nil
+	return defaultConfigPath
 }
 
 //nolint:errcheck // BindEnv only errors on empty key, which can't happen with static strings
