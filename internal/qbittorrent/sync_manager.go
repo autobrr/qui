@@ -4183,7 +4183,10 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		// below completes (the creator holds the lock until it returns).
 		sm.syncDebounceMu.Lock()
 		self := timer
-		delete(sm.debounceSince, instanceID)
+		// A timer that fired after a newer hint replaced it leaves that hint's window alone.
+		if sm.debouncedSyncTimers[instanceID] == self {
+			delete(sm.debounceSince, instanceID)
+		}
 		sm.syncDebounceMu.Unlock()
 		sm.runDebouncedSync(instanceID, client, operation, self)
 	})
