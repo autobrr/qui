@@ -16,7 +16,7 @@ type Props = {
 // 3,000 bytes. See https://docs.discord.com/developers/link-previews/component-embeds
 export default function DiscordEmbed({ source, title, body, permalink, buttonLabel }: Props): ReactNode {
   const { siteConfig } = useDocusaurusContext();
-  const image = useBaseUrl("/img/qui-hero.webp", { absolute: true });
+  const image = useBaseUrl("/img/discord-banner.webp", { absolute: true });
   const url = siteConfig.url + permalink;
 
   const payload = {
