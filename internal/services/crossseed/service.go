@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
-	"math"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -13763,6 +13762,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		hasPendingMatch  bool
 	)
 
+	// A rejected torrent of the announced group is a near miss: log why, so a
+	// missed cross-seed can be traced without comparing names by hand.
+	normalizer := normalizerForService(s)
+	announcedGroup := normalizer.Normalize(incomingRelease.Group)
+
 	// Search each instance for matching torrents
 	for _, instance := range instances {
 		// Get all torrents from this instance using cached sync data
@@ -13824,7 +13828,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					continue
 				}
 			}
-			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announcedCandidate, int64(req.Size), announcementMatchPolicy{
+			match, decision := s.webhookCandidate(ctx, instance, torrent, announcedCandidate, req.Size, announcementMatchPolicy{
 				findIndividualEpisodes:   findIndividualEpisodes,
 				rescueTitleMismatches:    settings.RescueTitleMismatches && !settings.SkipRecheck,
 				allowUnknownSize:         req.Size == 0,
@@ -13833,61 +13837,20 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				episodeMap:               episodeMap,
 				tolerateOneSidedChecksum: true,
 			})
-			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
+			if !decision.Accepted {
+				if announcedGroup != "" && normalizer.Normalize(s.releaseCache.Parse(torrent.Name).Group) == announcedGroup {
+					log.Debug().
+						Str("source", "cross-seed.webhook").
+						Int("instanceId", instance.ID).
+						Str("incomingName", req.TorrentName).
+						Str("existingName", torrent.Name).
+						Str("rejectReason", decision.RejectReason).
+						Str("class", string(decision.Class)).
+						Msg("Webhook check: rejected near miss")
+				}
 				continue
 			}
-			if settings.SkipRecheck && searchDecisionRequiresVerification(decision.decision.provenance()) {
-				continue
-			}
-
-			matchType := "metadata"
-			var sizeDiff float64
-			if req.Size > 0 {
-				sourceSize := searchSourceSize(torrent)
-				if sourceSize <= 0 {
-					continue
-				}
-				diff := math.Abs(float64(req.Size) - float64(sourceSize))
-				sizeDiff = (diff / float64(sourceSize)) * 100.0
-				if int64(req.Size) == sourceSize {
-					matchType = "exact"
-				} else {
-					matchType = "size"
-				}
-			}
-
-			existingRelease := s.releaseCache.Parse(torrent.Name)
-			matchScore, matchReasons := evaluateReleaseMatch(incomingRelease, existingRelease)
-
-			log.Debug().
-				Str("source", "cross-seed.webhook").
-				Int("instanceId", instance.ID).
-				Str("instanceName", instance.Name).
-				Str("incomingName", req.TorrentName).
-				Str("incomingTitle", incomingRelease.Title).
-				Str("existingName", torrent.Name).
-				Str("existingTitle", existingRelease.Title).
-				Str("matchType", matchType).
-				Float64("sizeDiff", sizeDiff).
-				Float64("matchScore", matchScore).
-				Str("matchReasons", matchReasons).
-				Msg("Webhook cross-seed: matched existing torrent")
-
-			// TODO: Consider adding a configuration flag to control whether webhook-based
-			// cross-seed checks require fully completed torrents or can also treat
-			// in-progress downloads as matches. This would likely be exposed via the
-			// "Global Cross-Seed Settings" block in CrossSeedPage.tsx so users can tune
-			// webhook behavior for their setup.
-
-			matches = append(matches, WebhookCheckMatch{
-				InstanceID:   instance.ID,
-				InstanceName: instance.Name,
-				TorrentHash:  torrent.Hash,
-				TorrentName:  torrent.Name,
-				MatchType:    matchType,
-				SizeDiff:     sizeDiff,
-				Progress:     torrent.Progress,
-			})
+			matches = append(matches, match)
 
 			if torrent.Progress >= 1.0 {
 				hasCompleteMatch = true

@@ -5,9 +5,11 @@ package crossseed
 
 import (
 	"context"
+	"math"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -99,6 +101,76 @@ func (s *Service) classifyWebhookAnnouncementSource(
 		decision.RejectReason = "nonexact size requires strict match"
 	}
 	return announcementCandidateDecision{decision: decision, replayable: true}
+}
+
+// webhookSkipRecheckReason rejects a match that Skip recheck cannot verify.
+const webhookSkipRecheckReason = "skip recheck needs a verified match"
+
+// webhookCandidate decides whether one local torrent can cross-seed the
+// announced release. The decision says why a torrent was rejected.
+func (s *Service) webhookCandidate(
+	ctx context.Context,
+	instance *models.Instance,
+	torrent *qbt.Torrent,
+	announced namedRelease,
+	announceSize uint64,
+	policy announcementMatchPolicy,
+) (WebhookCheckMatch, searchCandidateDecision) {
+	decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announced, int64(announceSize), policy).decision
+	if !decision.Accepted {
+		return WebhookCheckMatch{}, decision
+	}
+	if policy.skipRecheck && searchDecisionRequiresVerification(decision.provenance()) {
+		decision.Accepted = false
+		decision.RejectReason = webhookSkipRecheckReason
+		return WebhookCheckMatch{}, decision
+	}
+
+	matchType := "metadata"
+	var sizeDiff float64
+	if announceSize > 0 {
+		sourceSize := searchSourceSize(torrent)
+		diff := math.Abs(float64(announceSize) - float64(sourceSize))
+		sizeDiff = (diff / float64(sourceSize)) * 100.0
+		if int64(announceSize) == sourceSize {
+			matchType = "exact"
+		} else {
+			matchType = "size"
+		}
+	}
+
+	existingRelease := s.releaseCache.Parse(torrent.Name)
+	matchScore, matchReasons := evaluateReleaseMatch(announced.release, existingRelease)
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Int("instanceId", instance.ID).
+		Str("instanceName", instance.Name).
+		Str("incomingName", announced.rawName).
+		Str("incomingTitle", announced.release.Title).
+		Str("existingName", torrent.Name).
+		Str("existingTitle", existingRelease.Title).
+		Str("matchType", matchType).
+		Float64("sizeDiff", sizeDiff).
+		Float64("matchScore", matchScore).
+		Str("matchReasons", matchReasons).
+		Msg("Webhook cross-seed: matched existing torrent")
+
+	// TODO: Consider adding a configuration flag to control whether webhook-based
+	// cross-seed checks require fully completed torrents or can also treat
+	// in-progress downloads as matches. This would likely be exposed via the
+	// "Global Cross-Seed Settings" block in CrossSeedPage.tsx so users can tune
+	// webhook behavior for their setup.
+
+	return WebhookCheckMatch{
+		InstanceID:   instance.ID,
+		InstanceName: instance.Name,
+		TorrentHash:  torrent.Hash,
+		TorrentName:  torrent.Name,
+		MatchType:    matchType,
+		SizeDiff:     sizeDiff,
+		Progress:     torrent.Progress,
+	}, decision
 }
 
 // announceAliasTitles resolves ARR alternate titles and the episode map for an
