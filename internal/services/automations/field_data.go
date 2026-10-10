@@ -22,6 +22,7 @@ type RuleNeeds struct {
 	SeasonPackAnyInstance bool
 	FreeSpace             bool
 	TrackerNames          bool
+	SavePaths             bool // .CategorySavePath or .DefaultSavePath in a move or export path
 	TrackerEntries        bool // the per-torrent tracker list
 }
 
@@ -106,8 +107,8 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 
 // NeedsFor reports the data that the enabled rules read: through the conditions
 // of their enabled actions and their sorting, and through includeHardlinks,
-// hardlink signature grouping, and tracker display names in tags and path
-// templates.
+// hardlink signature grouping, tracker display names in tags and path
+// templates, and save paths in path templates.
 func NeedsFor(rules []*models.Automation) RuleNeeds {
 	var needs RuleNeeds
 	for _, rule := range rules {
@@ -130,6 +131,9 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 			}
 			if ruleTemplatesUseTrackerName(ac) {
 				needs.TrackerNames = true
+			}
+			if ruleTemplatesUseSavePaths(ac) {
+				needs.SavePaths = true
 			}
 		}
 	}
