@@ -39,20 +39,20 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name            string                   `json:"name"`
-	TrackerPattern  string                   `json:"trackerPattern"`
-	TrackerDomains  []string                 `json:"trackerDomains"`
-	Enabled         *bool                    `json:"enabled"`
-	DryRun          *bool                    `json:"dryRun"`
-	Notify          *bool                    `json:"notify"`
-	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
-	Conditions      *models.ActionConditions `json:"conditions"`
-	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
-	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default (oldest first)
-	PreviewLimit    *int                     `json:"previewLimit"`
-	PreviewOffset   *int                     `json:"previewOffset"`
-	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
+	Name            string                   `json:"name" doc:"Rule name. Required."`
+	TrackerPattern  string                   `json:"trackerPattern" doc:"Tracker domains that the rule applies to, separated by commas. '*' matches all trackers. 'tracker.example.com' matches one domain, '*.example.com' its subdomains, and '.example.com' the domain and its subdomains. A leading '!' excludes a domain."`
+	TrackerDomains  []string                 `json:"trackerDomains" doc:"-"`
+	Enabled         *bool                    `json:"enabled" doc:"Whether the rule runs. Import always sets it to 'false'. Edit as JSON keeps the current value."`
+	DryRun          *bool                    `json:"dryRun" doc:"When 'true', the rule logs what it would do and changes nothing. Default 'false'."`
+	Notify          *bool                    `json:"notify" doc:"When 'true', qui sends a notification when the rule acts. Default 'true'."`
+	SortOrder       *int                     `json:"sortOrder" doc:"Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value."`
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty" doc:"How often the rule runs, in seconds. At least '60'. Default '900' (15 minutes)."`
+	Conditions      *models.ActionConditions `json:"conditions" doc:"The actions of the rule, each with its condition. Required."`
+	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty" doc:"Where the 'FREE_SPACE' condition field reads free space. Default: the free space that qBittorrent reports."`
+	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty" doc:"The order in which the rule processes torrents. Default: oldest first."`
+	PreviewLimit    *int                     `json:"previewLimit" doc:"-"`
+	PreviewOffset   *int                     `json:"previewOffset" doc:"-"`
+	PreviewView     string                   `json:"previewView,omitempty" doc:"-"` // "needed" (default) or "eligible"
 }
 
 type AutomationDryRunResult struct {

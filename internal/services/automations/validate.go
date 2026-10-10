@@ -213,12 +213,9 @@ func validateConditionGroupingConfig(conditions *models.ActionConditions) (strin
 		return "", nil
 	}
 
-	knownGroupIDs := map[string]struct{}{
-		strings.ToLower(GroupCrossSeedContentPath):     {},
-		strings.ToLower(GroupCrossSeedContentSavePath): {},
-		strings.ToLower(GroupReleaseItem):              {},
-		strings.ToLower(GroupTrackerReleaseItem):       {},
-		strings.ToLower(GroupHardlinkSignature):        {},
+	knownGroupIDs := make(map[string]struct{}, len(BuiltinGroupIDs))
+	for _, id := range BuiltinGroupIDs {
+		knownGroupIDs[strings.ToLower(id)] = struct{}{}
 	}
 
 	if conditions.Grouping != nil {

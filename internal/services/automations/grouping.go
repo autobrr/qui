@@ -35,6 +35,16 @@ const (
 	groupAmbiguousSkip          = "skip"
 )
 
+// GroupKeys are the values of a group definition's keys. buildGroupKey reads each one.
+var GroupKeys = []string{
+	groupKeyContentPath, groupKeySavePath, groupKeyEffectiveName, groupKeyContentType, groupKeyTrackerDomain,
+	groupKeyRlsSource, groupKeyRlsResolution, groupKeyRlsCodec, groupKeyRlsHDR, groupKeyRlsAudio,
+	groupKeyRlsChannels, groupKeyRlsGroup, groupKeyHardlinkSignature,
+}
+
+// GroupAmbiguousPolicies are the values of a group definition's ambiguousPolicy.
+var GroupAmbiguousPolicies = []string{groupAmbiguousVerifyOverlap, groupAmbiguousSkip}
+
 // Built-in group IDs.
 const (
 	GroupCrossSeedContentPath     = "cross_seed_content_path"
@@ -43,6 +53,11 @@ const (
 	GroupTrackerReleaseItem       = "tracker_release_item"
 	GroupHardlinkSignature        = "hardlink_signature"
 )
+
+// BuiltinGroupIDs are the group IDs that a rule can use without a group definition.
+var BuiltinGroupIDs = []string{
+	GroupCrossSeedContentPath, GroupCrossSeedContentSavePath, GroupReleaseItem, GroupTrackerReleaseItem, GroupHardlinkSignature,
+}
 
 type groupIndex struct {
 	groupID string

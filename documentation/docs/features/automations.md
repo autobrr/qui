@@ -5,6 +5,8 @@ sidebar_label: Automations
 description: Rule-based automation for torrent management.
 ---
 
+import AutomationsJsonReference from "../_partials/_automations-json-reference.mdx";
+
 # Automations
 
 Automations are rules that apply actions to torrents that match conditions. Use them to manage speed limits, delete old torrents, and organize torrents with tags and categories.
@@ -1200,6 +1202,8 @@ conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it all
 ```
 
 If you edit a rule and do not change its conditions, qui does not run these condition checks. You can switch an older rule on or off and rename it, also when one of its conditions fails the check. qui treats the sorting the same way. It checks the score conditions of the sorting only when you change the sorting.
+
+<AutomationsJsonReference />
 
 ## Activity log
 
