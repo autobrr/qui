@@ -987,7 +987,7 @@ type CategoryAction struct {
 type MoveAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
 	Path             string         `json:"path" doc:"The new save path."`
-	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty" doc:"Skip a torrent that has cross-seeds."`
+	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty" doc:"Skip a torrent when one of its cross-seeds does not match 'condition'. Not used when 'groupId' is set."`
 	GroupID          string         `json:"groupId,omitempty" doc:"Move each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' moves the group only when every torrent in it matches."`
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
@@ -996,7 +996,7 @@ type MoveAction struct {
 // GroupingConfig defines how torrents can be grouped for group-aware actions and conditions.
 // Group definitions are per-rule (stored inside the rule's conditions JSON).
 type GroupingConfig struct {
-	DefaultGroupID string            `json:"defaultGroupId,omitempty" doc:"The group that 'GROUP_SIZE' and 'IS_GROUPED' use when the condition has no 'groupId'."`
+	DefaultGroupID string            `json:"defaultGroupId,omitempty" doc:"The group that 'GROUP_SIZE' and 'IS_GROUPED' use when the condition has no 'groupId'. A built-in group ID or the id of a group in 'groups'."`
 	Groups         []GroupDefinition `json:"groups,omitempty" doc:"Custom group definitions."`
 }
 

@@ -41,7 +41,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
-| `defaultGroupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | The group that `GROUP_SIZE` and `IS_GROUPED` use when the condition has no `groupId`. |
+| `defaultGroupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | The group that `GROUP_SIZE` and `IS_GROUPED` use when the condition has no `groupId`. A built-in group ID or the id of a group in `groups`. |
 | `groups` | array of object |  | Custom group definitions. See `conditions.grouping.groups[]`. |
 
 ### `conditions.grouping.groups[]`
@@ -141,7 +141,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
 | `path` | string |  | The new save path. |
-| `blockIfCrossSeed` | boolean |  | Skip a torrent that has cross-seeds. |
+| `blockIfCrossSeed` | boolean |  | Skip a torrent when one of its cross-seeds does not match `condition`. Not used when `groupId` is set. |
 | `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Move each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
 | `atomic` | string | `all` | With `groupId`: `all` moves the group only when every torrent in it matches. |
 | `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
