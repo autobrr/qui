@@ -179,8 +179,8 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 // ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
 var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
 
-// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
-// This prevents race conditions between HasActiveRun and CreateRun.
+// CreateRunIfNoActive creates a pending run unless one is already active for the instance.
+// Concurrent calls for one instance can both insert on Postgres, so the orphan scan service serializes them.
 // A preview walked over SSH can never be confirmed, so the new run cancels it instead of being blocked by it.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
