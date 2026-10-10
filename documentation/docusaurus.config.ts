@@ -102,7 +102,15 @@ const config: Config = {
           routeBasePath: "docs",
           showLastUpdateTime: true,
         },
-        blog: false,
+        blog: {
+          routeBasePath: "release-notes",
+          blogTitle: "Release notes",
+          blogDescription: "What changed in each qui release.",
+          blogSidebarTitle: "Release notes",
+          blogSidebarCount: "ALL",
+          showReadingTime: false,
+          onUntruncatedBlogPosts: "ignore",
+        },
         sitemap: {
           ignorePatterns: ["/search/"],
           lastmod: "date",
@@ -133,6 +141,7 @@ const config: Config = {
           position: "left",
           label: "Docs",
         },
+        { to: "/release-notes", label: "Release notes", position: "left" },
         {
           href: "https://discord.autobrr.com/qui",
           position: "right",
