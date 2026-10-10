@@ -103,6 +103,12 @@ describe("fromImportFormat", () => {
     expect(fromImportFormat(baseExport({ enabled: true }), []).enabled).toBe(false)
   })
 
+  // A rule pasted from an API response carries its old position; the import must still go to the end.
+  it("drops sortOrder so the backend appends the rule", () => {
+    const result = fromImportFormat(baseExport({ sortOrder: 3 }), [])
+    expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("sortOrder")
+  })
+
   it("uniquifies the name against existing names", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["My workflow"]).name).toBe("My workflow (copy)")
   })

@@ -86,6 +86,7 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
 /**
  * Create payload for import: the JSON as written, except that
  * - enabled is forced to false
+ * - sortOrder is omitted, so the backend appends the rule
  * - name gets "(copy)" suffix via generateUniqueName
  */
 export function fromImportFormat(
@@ -96,6 +97,7 @@ export function fromImportFormat(
     ...data,
     name: generateUniqueName(data.name, existingNames),
     enabled: false, // Always start disabled
+    sortOrder: undefined,
   }
 }
 
