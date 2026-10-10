@@ -845,26 +845,35 @@ func findInstance(instances []*models.Instance, id int) *models.Instance {
 // enriched from the torrent-level release. seasonlessOrigin reports whether the file
 // name itself carried no season (Series 0 before enrichment), i.e. it was
 // absolute-numbered. Torrent file names are slash-delimited, so path.Base is used.
-func parseSeasonPackEpisodePayload(
+func (m matcher) parseSeasonPackEpisodePayload(
 	fileName string,
 	torrentRelease *rls.Release,
-	normalizer *stringutils.Normalizer[string, string],
 ) (release *rls.Release, seasonlessOrigin, ok bool) {
 	ext := strings.ToLower(path.Ext(fileName))
 	if _, known := videoExtensions[ext]; !known {
 		return nil, false, false
 	}
-	if shouldIgnoreFile(fileName, normalizer) {
+	if shouldIgnoreFile(fileName, m.normalizer()) {
 		return nil, false, false
 	}
 
-	parsed := rls.ParseString(path.Base(fileName))
-	if !isTVEpisode(&parsed) {
+	parsed := m.parseFileRelease(path.Base(fileName))
+	if releases.IsEpisodeRange(parsed) {
+		// The parser reads "S01E01E02" as a pack. Read it as its first episode, the
+		// identity matchEpisodeCandidatesDetailed gives a seeded range torrent, so
+		// the seeded file links instead of downloading again. Copy first: the
+		// parsed release is shared from the cache.
+		first := *parsed
+		eps := parsed.SeriesEpisodes()
+		first.Type, first.Series, first.Episode = rls.Episode, eps[0][0], eps[0][1]
+		parsed = &first
+	}
+	if !isTVEpisode(parsed) {
 		return nil, false, false
 	}
 	seasonlessOrigin = parsed.Series == 0
 
-	enriched := enrichReleaseFromTorrent(&parsed, torrentRelease)
+	enriched := enrichReleaseFromTorrent(parsed, torrentRelease)
 	if torrentRelease != nil && torrentRelease.Series > 0 && enriched.Series != torrentRelease.Series {
 		return nil, false, false
 	}
@@ -906,11 +915,11 @@ type packEpisodeOrigin struct {
 // satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
 func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
-	normalizer := normalizerForService(nil)
+	var m matcher
 
 	minSeasonlessEpisode := -1
 	for _, f := range files {
-		parsed, seasonlessOrigin, ok := parseSeasonPackEpisodePayload(f.Name, packRelease, normalizer)
+		parsed, seasonlessOrigin, ok := m.parseSeasonPackEpisodePayload(f.Name, packRelease)
 		if !ok {
 			continue
 		}
@@ -1353,8 +1362,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 	}
 
 	m := s.matcher()
-	normalizer := m.normalizer()
-	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
+	expected := m.seasonPackExpectedFiles(packFiles, packRelease)
 	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
 	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
 	ids := sortedEpisodeCandidateIDs(candidates)
@@ -1379,7 +1387,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				continue
 			}
 
-			localFile, err := resolveSeasonPackLocalFileCandidate(id, candidate, files, normalizer)
+			localFile, err := m.resolveSeasonPackLocalFileCandidate(id, candidate, files)
 			if err != nil {
 				reject(candidate, "episode_file_invalid")
 				lastErr = err
@@ -1422,14 +1430,13 @@ type seasonPackExpectedFile struct {
 	release *rls.Release
 }
 
-func seasonPackExpectedFiles(
+func (m matcher) seasonPackExpectedFiles(
 	packFiles qbt.TorrentFiles,
 	packRelease *rls.Release,
-	normalizer *stringutils.Normalizer[string, string],
 ) map[episodeIdentity]seasonPackExpectedFile {
 	expected := make(map[episodeIdentity]seasonPackExpectedFile)
 	for _, file := range packFiles {
-		release, _, ok := parseSeasonPackEpisodePayload(file.Name, packRelease, normalizer)
+		release, _, ok := m.parseSeasonPackEpisodePayload(file.Name, packRelease)
 		if !ok {
 			continue
 		}
@@ -1455,11 +1462,10 @@ func sortedEpisodeCandidateIDs(candidates map[episodeIdentity][]episodeMatch) []
 	return ids
 }
 
-func resolveSeasonPackLocalFileCandidate(
+func (m matcher) resolveSeasonPackLocalFileCandidate(
 	id episodeIdentity,
 	episode episodeMatch,
 	files qbt.TorrentFiles,
-	normalizer *stringutils.Normalizer[string, string],
 ) (seasonPackLocalFile, error) {
 	var matchedFileSize int64
 	var matchedRelease *rls.Release
@@ -1469,10 +1475,10 @@ func resolveSeasonPackLocalFileCandidate(
 
 	for i := range files {
 		file := &files[i]
-		if _, playable := videoExtensions[strings.ToLower(path.Ext(file.Name))]; playable && !shouldIgnoreFile(file.Name, normalizer) {
+		if _, playable := videoExtensions[strings.ToLower(path.Ext(file.Name))]; playable && !shouldIgnoreFile(file.Name, m.normalizer()) {
 			playableCount++
 		}
-		parsed, _, ok := parseSeasonPackEpisodePayload(file.Name, episode.release, normalizer)
+		parsed, _, ok := m.parseSeasonPackEpisodePayload(file.Name, episode.release)
 		if !ok {
 			continue
 		}
@@ -1586,7 +1592,7 @@ func buildSeasonPackPlan(
 	for _, pf := range packFiles {
 		build.totalBytes += pf.Size
 
-		packFileRelease, _, ok := parseSeasonPackEpisodePayload(pf.Name, packRelease, normalizer)
+		packFileRelease, _, ok := m.parseSeasonPackEpisodePayload(pf.Name, packRelease)
 		if !ok {
 			continue
 		}

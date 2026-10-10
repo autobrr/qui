@@ -681,3 +681,37 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
 	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
 }
+
+// A seeded two-episode torrent holds the same file as the pack. Both sides read
+// the range file as its first episode, so qui links it instead of downloading it.
+func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
+	const (
+		packName  = "Show.S01.1080p.WEB.x264-GRP"
+		rangeName = "Show.S01E01E02.1080p.WEB.x264-GRP"
+	)
+	packRelease := rls.ParseString(packName)
+	packFiles := qbt.TorrentFiles{
+		{Name: packName + "/" + rangeName + ".mkv", Size: 20},
+		{Name: packName + "/Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
+	}
+	id := episodeIdentity{series: 1, episode: 1}
+
+	require.Contains(t, extractPackEpisodes(packFiles, &packRelease), id)
+
+	m := matcher{releaseCache: NewReleaseCache()}
+	localFile, err := m.resolveSeasonPackLocalFileCandidate(id, episodeMatch{
+		torrentHash: "range",
+		contentPath: "/media/" + rangeName + ".mkv",
+		release:     m.parseReleaseName(rangeName),
+	}, qbt.TorrentFiles{{Name: rangeName + ".mkv", Size: 20}})
+	require.NoError(t, err)
+
+	build, err := buildSeasonPackPlan(
+		packFiles, &packRelease, packName, t.TempDir(),
+		map[episodeIdentity]seasonPackLocalFile{id: localFile},
+		normalizerForService(nil), nil, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, build.plan.Files, 1)
+	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01E02")
+}
