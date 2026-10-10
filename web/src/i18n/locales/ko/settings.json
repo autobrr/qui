@@ -438,7 +438,7 @@
       "managementTitle": "라이선스 관리",
       "managementDescription": "테마 라이선스 및 프리미엄 접근을 관리합니다",
       "providers": {
-        "dodoPortal": "Dodo 포털"
+        "licensePortal": "라이선스 포털"
       },
       "status": {
         "unlockTitle": "프리미엄 테마 잠금 해제",
@@ -471,7 +471,23 @@
         "productStatusAndAdded": "{{productName}} • 상태: {{status}} • 추가됨 {{date}}"
       },
       "invalid": {
-        "dodo": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 현재 활성화된 다른 컴퓨터에서 비활성화하세요."
+        "dodo": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, <portal>licenses.getqui.com</portal>으로 이동하여 라이선스를 구매할 때 사용한 이메일로 가입하거나 로그인한 다음, Machine Instances에서 더 이상 사용하지 않는 컴퓨터를 비활성화하세요."
+      },
+      "errors": {
+        "expired": "라이선스 키가 만료되었습니다.",
+        "notActive": "이 라이선스 키는 더 이상 활성 상태가 아닙니다.",
+        "invalid": "이 라이선스 키는 유효하지 않습니다.",
+        "notFound": "입력한 라이선스 키가 유효하지 않습니다.",
+        "databaseCopied": "이 라이선스는 다른 컴퓨터에서 활성화되었습니다. 데이터베이스가 복사된 것으로 보입니다.",
+        "conditionsMismatch": "라이선스 키가 필요한 조건과 일치하지 않습니다.",
+        "activationLimit": "라이선스 활성화 한도에 도달했습니다. <portal>licenses.getqui.com</portal>으로 이동하여 라이선스를 구매할 때 사용한 이메일로 가입하거나 로그인하세요. Machine Instances를 열고 더 이상 사용하지 않는 컴퓨터를 비활성화한 다음 다시 시도하세요.",
+        "limitReached": "라이선스 활성화 한도에 도달했습니다.",
+        "usageLimit": "라이선스 사용 한도를 초과했습니다.",
+        "unreachable": "라이선스 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
+        "tooManyAttempts": "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도하세요.",
+        "rateLimited": "잠시 기다린 후 다시 시도하세요.",
+        "generic": "라이선스 키를 확인하지 못했습니다. 다시 시도하세요.",
+        "deleteFailed": "라이선스를 제거하지 못했습니다. 다시 시도하세요."
       },
       "actions": {
         "addLicense": "라이선스 추가",
@@ -484,7 +500,7 @@
         "activate": "라이선스 활성화",
         "validating": "검증 중...",
         "openDodoCheckout": "DodoPayments 결제 열기",
-        "openDodoPortal": "Dodo 포털 열기"
+        "openLicensePortal": "라이선스 포털 열기"
       },
       "deleteDialog": {
         "title": "라이선스를 제거하시겠습니까?",
@@ -524,7 +540,7 @@
           },
           "findLicenseKey": {
             "title": "라이선스 키 찾기",
-            "description": "라이선스 키는 결제 후 표시됩니다. 나중에 Dodo 고객 포털에서도 복구할 수 있습니다."
+            "description": "라이선스 키는 결제 후 표시됩니다. 나중에 라이선스 포털에서도 복구할 수 있습니다."
           },
           "activateLicense": {
             "title": "라이선스 활성화",

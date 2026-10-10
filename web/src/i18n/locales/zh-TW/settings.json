@@ -438,7 +438,7 @@
       "managementTitle": "授權管理",
       "managementDescription": "管理您的主題授權和進階存取權限",
       "providers": {
-        "dodoPortal": "Dodo 門戶"
+        "licensePortal": "授權門戶"
       },
       "status": {
         "unlockTitle": "解鎖進階主題",
@@ -471,7 +471,23 @@
         "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
       },
       "invalid": {
-        "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺目前已啟用的裝置上停用。"
+        "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"
+      },
+      "errors": {
+        "expired": "您的授權金鑰已過期。",
+        "notActive": "此授權金鑰已不再有效。",
+        "invalid": "此授權金鑰無效。",
+        "notFound": "您輸入的授權金鑰無效。",
+        "databaseCopied": "此授權已在另一臺裝置上啟用。資料庫似乎是複製過來的。",
+        "conditionsMismatch": "授權金鑰不符合要求的條件。",
+        "activationLimit": "已達到授權啟用上限。請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入。開啟 Machine Instances，停用一臺不再使用的裝置，然後重試。",
+        "limitReached": "已達到授權啟用上限。",
+        "usageLimit": "已超出授權使用上限。",
+        "unreachable": "無法連線至授權服務。請稍後重試。",
+        "tooManyAttempts": "嘗試次數過多。請稍候再試。",
+        "rateLimited": "請稍候再試。",
+        "generic": "驗證授權金鑰失敗。請重試。",
+        "deleteFailed": "移除授權失敗。請重試。"
       },
       "actions": {
         "addLicense": "新增授權",
@@ -484,7 +500,7 @@
         "activate": "啟用授權",
         "validating": "驗證中...",
         "openDodoCheckout": "開啟 DodoPayments 結帳",
-        "openDodoPortal": "開啟 Dodo 門戶"
+        "openLicensePortal": "開啟授權門戶"
       },
       "deleteDialog": {
         "title": "移除授權？",
@@ -524,7 +540,7 @@
           },
           "findLicenseKey": {
             "title": "找到您的授權金鑰",
-            "description": "授權金鑰會在結帳後顯示。您也可以稍後從 Dodo 客戶門戶找回。"
+            "description": "授權金鑰會在結帳後顯示。您也可以稍後從授權門戶找回。"
           },
           "activateLicense": {
             "title": "啟用您的授權",

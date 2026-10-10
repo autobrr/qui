@@ -8,7 +8,7 @@
 // `VITE_DODO_TEST_CHECKOUT_URL="https://test.checkout.dodopayments.com/buy/<product_id>?quantity=1"`
 export const DODO_CHECKOUT_URL =
   import.meta.env.DEV && import.meta.env.VITE_DODO_TEST_CHECKOUT_URL? import.meta.env.VITE_DODO_TEST_CHECKOUT_URL: "https://checkout.dodopayments.com/buy/pdt_0NWpVDU3kVcVuB10ycNiQ?quantity=1"
-export const DODO_PORTAL_URL = "https://customer.dodopayments.com"
+export const LICENSE_PORTAL_URL = "https://licenses.getqui.com"
 
 // Supporter subscription. Deliberately keyless: it issues no license key and grants
 // only the qui-patron Discord role. A keyed product here would grant premium themes,

@@ -438,7 +438,7 @@
       "managementTitle": "许可证管理",
       "managementDescription": "管理您的主题许可证和高级访问权限",
       "providers": {
-        "dodoPortal": "Dodo 门户"
+        "licensePortal": "许可证门户"
       },
       "status": {
         "unlockTitle": "解锁高级主题",
@@ -471,7 +471,23 @@
         "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
       },
       "invalid": {
-        "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台当前已激活的设备上停用。"
+        "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录，然后在 Machine Instances 中停用一台不再使用的设备。"
+      },
+      "errors": {
+        "expired": "您的许可证密钥已过期。",
+        "notActive": "此许可证密钥已不再有效。",
+        "invalid": "此许可证密钥无效。",
+        "notFound": "您输入的许可证密钥无效。",
+        "databaseCopied": "此许可证已在另一台设备上激活。数据库似乎是复制过来的。",
+        "conditionsMismatch": "许可证密钥不符合要求的条件。",
+        "activationLimit": "已达到许可证激活上限。请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录。打开 Machine Instances，停用一台不再使用的设备，然后重试。",
+        "limitReached": "已达到许可证激活上限。",
+        "usageLimit": "已超出许可证使用上限。",
+        "unreachable": "无法连接许可证服务。请稍后重试。",
+        "tooManyAttempts": "尝试次数过多。请稍候再试。",
+        "rateLimited": "请稍候再试。",
+        "generic": "验证许可证密钥失败。请重试。",
+        "deleteFailed": "移除许可证失败。请重试。"
       },
       "actions": {
         "addLicense": "添加许可证",
@@ -484,7 +500,7 @@
         "activate": "激活许可证",
         "validating": "验证中...",
         "openDodoCheckout": "打开 DodoPayments 结账",
-        "openDodoPortal": "打开 Dodo 门户"
+        "openLicensePortal": "打开许可证门户"
       },
       "deleteDialog": {
         "title": "移除许可证？",
@@ -524,7 +540,7 @@
           },
           "findLicenseKey": {
             "title": "找到您的许可证密钥",
-            "description": "许可证密钥会在结账后显示。您也可以稍后从 Dodo 客户门户找回。"
+            "description": "许可证密钥会在结账后显示。您也可以稍后从许可证门户找回。"
           },
           "activateLicense": {
             "title": "激活您的许可证",

@@ -440,7 +440,7 @@
       "managementTitle": "Gerenciamento de Licenças",
       "managementDescription": "Gerencie sua licença de tema e acesso premium",
       "providers": {
-        "dodoPortal": "Portal Dodo"
+        "licensePortal": "portal de licenças"
       },
       "status": {
         "unlockTitle": "Desbloquear Temas Premium",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Status: {{status}} • Adicionado {{date}}"
       },
       "invalid": {
-        "dodo": "Esta licença não está ativa nesta máquina. Clique em reativar para usá-la aqui. Se você atingir o limite de ativação, desative-a na outra máquina onde está ativa atualmente."
+        "dodo": "Esta licença não está ativa nesta máquina. Clique em reativar para usá-la aqui. Se você atingir o limite de ativação, acesse <portal>licenses.getqui.com</portal>, cadastre-se ou entre com o e-mail que você usou para comprar a licença e desative uma máquina que você não usa mais em Machine Instances."
+      },
+      "errors": {
+        "expired": "Sua chave de licença expirou.",
+        "notActive": "Esta chave de licença não está mais ativa.",
+        "invalid": "Esta chave de licença é inválida.",
+        "notFound": "A chave de licença informada não é válida.",
+        "databaseCopied": "Esta licença foi ativada em outra máquina. Parece que o banco de dados foi copiado.",
+        "conditionsMismatch": "A chave de licença não atende às condições exigidas.",
+        "activationLimit": "O limite de ativações da licença foi atingido. Acesse <portal>licenses.getqui.com</portal> e cadastre-se ou entre com o e-mail que você usou para comprar a licença. Abra Machine Instances, desative uma máquina que você não usa mais e tente novamente.",
+        "limitReached": "O limite de ativações da licença foi atingido.",
+        "usageLimit": "Limite de uso da licença excedido.",
+        "unreachable": "Não foi possível acessar o serviço de licenças. Tente novamente em instantes.",
+        "tooManyAttempts": "Muitas tentativas. Aguarde um momento e tente novamente.",
+        "rateLimited": "Aguarde antes de tentar novamente.",
+        "generic": "Falha ao validar a chave de licença. Tente novamente.",
+        "deleteFailed": "Falha ao remover a licença. Tente novamente."
       },
       "actions": {
         "addLicense": "Adicionar Licença",
@@ -486,7 +502,7 @@
         "activate": "Ativar Licença",
         "validating": "Validando...",
         "openDodoCheckout": "Abrir checkout DodoPayments",
-        "openDodoPortal": "Abrir portal Dodo"
+        "openLicensePortal": "Abrir portal de licenças"
       },
       "deleteDialog": {
         "title": "Remover licença?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Encontrar a sua chave de licença",
-            "description": "Sua chave de licença é mostrada após o checkout. Você também pode recuperá-la mais tarde do portal do cliente Dodo."
+            "description": "Sua chave de licença é mostrada após o checkout. Você também pode recuperá-la mais tarde no portal de licenças."
           },
           "activateLicense": {
             "title": "Ativar sua licença",
