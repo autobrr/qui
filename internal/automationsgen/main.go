@@ -339,7 +339,7 @@ func (g *generator) conditionSections(labels map[string]string) error {
 			operators[i] = string(op)
 		}
 		g.line(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |",
-			code(field), g.plain(label), typeName, codeList(operators), codeList(spec.Values), spec.Requires))
+			code(field), g.plain(label), typeName, codeList(operators), codeList(spec.Values), g.plain(string(spec.Requires))))
 	}
 	return nil
 }
