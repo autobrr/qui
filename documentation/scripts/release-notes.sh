@@ -31,7 +31,7 @@ out="$blog_dir/$date-$tag.md"
 		# below it by hand. Move the heading to the first change list instead.
 		awk '
 			/^## Changelog$/ { next }
-			!moved && /^### (New Features|Bug Fixes|Other Changes)$/ { print "## Changelog\n"; moved = 1 }
+			!moved && /^### (Breaking Changes|New Features|Bug Fixes|Other Changes)$/ { print "## Changelog\n"; moved = 1 }
 			{ print }
 		' |
 		sed -E \
