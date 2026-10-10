@@ -25,7 +25,7 @@ func TestAutomationDecodePayload_Category(t *testing.T) {
 		t.Run("target="+category, func(t *testing.T) {
 			body := `{"name":"Category rule","trackerPattern":"*","conditions":{"category":{"enabled":true,"category":"` + category + `"}}}`
 
-			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil)
+			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, category, payload.Conditions.Category.Category)
 		})
