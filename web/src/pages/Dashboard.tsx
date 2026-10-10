@@ -843,7 +843,7 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} overflow-hidden`}>
+        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} grid-cols-[minmax(0,1fr)] overflow-hidden`}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
               to={linkTo}
