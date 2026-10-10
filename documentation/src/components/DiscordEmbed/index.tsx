@@ -31,7 +31,7 @@ export default function DiscordEmbed({ source, title, body, permalink, buttonLab
           type: 1,
           components: [
             { type: 2, style: 5, label: buttonLabel, url },
-            { type: 2, style: 5, label: "qui Discord", url: "https://discord.autobrr.com/qui" },
+            { type: 2, style: 5, label: "Discord", url: "https://discord.autobrr.com/qui" },
           ],
         },
       ],
