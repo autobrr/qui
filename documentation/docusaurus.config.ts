@@ -45,7 +45,8 @@ const config: Config = {
     "A fast web UI for qBittorrent. Manage one or many instances with cross-seed, automations, and backups in a single binary.",
   favicon: "img/favicon.png",
 
-  url: "https://getqui.com",
+  // A Netlify deploy preview uses its own address, so links and images in its pages load from the preview.
+  url: process.env.CONTEXT === "deploy-preview" ? process.env.DEPLOY_PRIME_URL : "https://getqui.com",
   baseUrl: "/",
   // Netlify serves /docs/x as /docs/x/ (301). Match it so canonical, og:url, and sitemap URLs resolve without a redirect.
   trailingSlash: true,
