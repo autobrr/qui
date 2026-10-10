@@ -70,12 +70,15 @@ export function LicenseManager({
   const { data: licenses } = useLicenseDetails()
   const activateLicense = useActivateLicense()
   const deleteLicense = useDeleteLicense()
-  const resetActivation = activateLicense.reset
-  // The card and the dialog share one activate mutation. Clear its error each time the dialog opens or closes.
+  const { reset: resetActivation, isError: activationFailed } = activateLicense
+  // The card and the dialog share one activate mutation. Clear a failed activation when the dialog opens or closes.
+  // Never reset a pending one: that enables the activate buttons again, and a second click sends a second activation.
   const setAddLicenseOpen = useCallback((open: boolean) => {
-    resetActivation()
+    if (activationFailed) {
+      resetActivation()
+    }
     setShowAddLicense(open)
-  }, [resetActivation])
+  }, [activationFailed, resetActivation])
   const primaryLicense = licenses?.[0]
   const hasStoredLicense = Boolean(primaryLicense)
 
