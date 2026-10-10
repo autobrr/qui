@@ -719,6 +719,22 @@ func TestResolveMovePath_Template(t *testing.T) {
 	require.Equal(t, "/data/movies", resolved)
 }
 
+func TestCurrentSavePath_ExportOnly(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Movie.2024",
+		SavePath: "/downloads/movies",
+	}
+	path := "{{ .CurrentSavePath }}/archive"
+
+	resolved, ok := resolveExportSavePath(path, torrent, nil, nil)
+	require.True(t, ok)
+	require.Equal(t, "/downloads/movies/archive", resolved)
+
+	_, ok = resolveMovePath(path, torrent, nil, nil)
+	require.False(t, ok, "a move to the current save path plus a folder moves the torrent again on every run")
+}
+
 func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash:     "abc",
