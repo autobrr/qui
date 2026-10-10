@@ -7,16 +7,76 @@ env:
   NODE_VERSION: "24.15.0"
 
 jobs:
+  windows-changes:
+    name: Detect Windows changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      required: ${{ steps.paths.outputs.required }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check Windows-sensitive paths
+        id: paths
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Disable rename detection so moves out of these paths still trigger tests.
+          changed=$(git diff --name-only --no-renames "origin/$BASE_REF"...HEAD -- \
+            '.github/workflows/lint.yml' \
+            'internal/tray/qui.ico' \
+            'go.mod' 'go.sum' \
+            ':(glob)**/*_windows*.go' \
+            ':(glob)internal/fsops/**/*.go' \
+            ':(glob)internal/sshpool/**/*.go' \
+            ':(glob)internal/testutil/sshtest/**/*.go' \
+            ':(glob)internal/externalprograms/**/*.go' \
+            ':(glob)internal/services/externalprograms/**/*.go' \
+            ':(glob)internal/services/orphanscan/**/*.go' \
+            ':(glob)internal/services/crossseed/**/*.go' \
+            ':(glob)internal/services/dirscan/**/*.go' \
+            ':(glob)internal/models/dirscan*.go' \
+            ':(glob)internal/api/handlers/dirscan*.go' \
+            ':(glob)internal/api/handlers/orphan_scan*.go' \
+            ':(glob)pkg/pathcmp/**/*.go' \
+            ':(glob)pkg/pathutil/**/*.go' \
+            ':(glob)pkg/hardlink/**/*.go' \
+            ':(glob)pkg/hardlinktree/**/*.go' \
+            ':(glob)pkg/fsutil/**/*.go' \
+            ':(glob)pkg/reflinktree/**/*.go' \
+            ':(glob)pkg/sharedextents/**/*.go')
+          if [ -n "$changed" ]; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+            printf 'Windows-sensitive changes:\n%s\n' "$changed"
+          else
+            echo 'required=false' >> "$GITHUB_OUTPUT"
+            echo 'No Windows-sensitive changes.'
+          fi
+
   windows:
     name: Windows compile gate
-    runs-on: ubuntu-latest
+    needs: windows-changes
+    # Preserve the existing required-check name and run if detection failed.
+    if: ${{ !cancelled() && needs.windows-changes.outputs.required != 'false' }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-windows-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     env:
-      GOOS: windows
-      GOARCH: amd64
       CGO_ENABLED: "0"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -24,8 +84,33 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      - name: Create placeholder web dist for embed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force web/dist | Out-Null
+          New-Item -ItemType File -Force web/dist/.gitkeep | Out-Null
+
       - name: Compile and vet Windows packages and tests
         run: go vet ./...
+
+      # Run both test groups after failures to report all selected errors.
+      - name: Test native filesystem and path utilities
+        if: ${{ !cancelled() }}
+        run: >-
+          go test -count=1 -v -timeout=2m
+          ./internal/fsops ./internal/fsops/local ./internal/fsops/remote
+          ./internal/externalprograms
+          ./pkg/pathcmp ./pkg/pathutil ./pkg/hardlink ./pkg/hardlinktree
+          ./pkg/fsutil ./pkg/reflinktree ./pkg/sharedextents
+
+      # Real ReFS integration remains opt-in through QUI_REFS_TEST_DIR.
+      - name: Test Windows service and backend path contracts
+        if: ${{ !cancelled() }}
+        run: >-
+          go test -count=1 -v -timeout=2m
+          ./internal/services/externalprograms
+          ./internal/services/orphanscan ./internal/services/dirscan
+          ./internal/services/crossseed ./internal/models ./internal/api/handlers
 
   web:
     runs-on: ubuntu-latest
