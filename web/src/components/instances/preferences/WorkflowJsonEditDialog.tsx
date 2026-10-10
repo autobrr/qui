@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { JsonEditor } from "@/components/ui/json-editor"
 import { api } from "@/lib/api"
@@ -73,7 +73,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
               setError(null)
             }}
           />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="text-sm text-destructive whitespace-pre-line">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -1,0 +1,193 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+func TestAutomationStrictDecode(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "automation-strict-decode")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewAutomationStore(db)
+	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{})
+	instanceID := strconv.Itoa(instance.ID)
+
+	existing, err := store.Create(t.Context(), &models.Automation{
+		InstanceID:     instance.ID,
+		Name:           "existing",
+		TrackerPattern: "*",
+		Conditions:     &models.ActionConditions{SchemaVersion: "1", Pause: &models.PauseAction{Enabled: true}},
+	})
+	require.NoError(t, err)
+
+	serve := func(fn http.HandlerFunc, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("instanceID", instanceID)
+		rctx.URLParams.Add("ruleID", strconv.Itoa(existing.ID))
+		rec := httptest.NewRecorder()
+		fn(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+		return rec
+	}
+	endpoints := []struct {
+		name   string
+		fn     http.HandlerFunc
+		status int
+	}{
+		{name: "create", fn: handler.Create, status: http.StatusCreated},
+		{name: "update", fn: handler.Update, status: http.StatusOK},
+		{name: "dry run", fn: handler.DryRunNow, status: http.StatusAccepted},
+	}
+	errorLines := func(t *testing.T, rec *httptest.ResponseRecorder) []string {
+		t.Helper()
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		var body ErrorResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		return strings.Split(body.Error, "\n")
+	}
+
+	valid := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "server-set keys",
+			body: `{"id":99,"instanceId":42,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z",
+				"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`,
+		},
+		{
+			name: "legacy trackerDomains and conditions.tag",
+			body: `{"name":"rule","trackerDomains":["a.example"],
+				"conditions":{"schemaVersion":"1","tag":{"enabled":true,"tags":["x"],"mode":"add"}}}`,
+		},
+		{
+			name: "query builder clientId",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"clientId":"c_1","operator":"AND","conditions":[{"clientId":"c_2","field":"NAME","operator":"CONTAINS","value":"x"}]}}}}`,
+		},
+	}
+	invalid := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			name: "unknown top-level key",
+			body: `{"name":"rule","trackerPattern":"*","enabeld":true,"conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`,
+			want: []string{"enabeld: unknown key"},
+		},
+		{
+			name: "unknown key under conditions",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pasue":{"enabled":true},"pause":{"enabled":true}}}`,
+			want: []string{"conditions.pasue: unknown key"},
+		},
+		{
+			name: "unknown key in an action",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","tags":[{"enabled":true,"tags":["x"],"mode":"add","tag":"y"}]}}`,
+			want: []string{"conditions.tags[0].tag: unknown key"},
+		},
+		{
+			name: "unknown key in sortingConfig",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
+				"sortingConfig":{"schemaVersion":"1","type":"simple","direction":"ASC","field":"SIZE","order":"x"}}`,
+			want: []string{"sortingConfig.order: unknown key"},
+		},
+		{
+			name: "unknown key in freeSpaceSource",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
+				"freeSpaceSource":{"type":"path","dir":"/data"}}`,
+			want: []string{"freeSpaceSource.dir: unknown key"},
+		},
+		{
+			name: "wrong type",
+			body: `{"name":"rule","trackerPattern":"*","intervalSeconds":"900","conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`,
+			want: []string{"intervalSeconds: expected a whole number, got a string"},
+		},
+		{
+			name: "several problems",
+			body: `{"name":5,"trackerPattern":"*","extra":1,"conditions":{"schemaVersion":"1","pause":{"enabled":"yes","condition":{"operator":"AND","conditions":[{"field":"NAME","operator":"EQUAL","valeu":"x"}]}}}}`,
+			want: []string{
+				"conditions.pause.condition.conditions[0].valeu: unknown key",
+				"conditions.pause.enabled: expected true or false, got a string",
+				"extra: unknown key",
+				"name: expected a string, got a number",
+			},
+		},
+	}
+
+	for _, endpoint := range endpoints {
+		t.Run(endpoint.name, func(t *testing.T) {
+			for _, tt := range valid {
+				t.Run(tt.name, func(t *testing.T) {
+					rec := serve(endpoint.fn, tt.body)
+					require.Equal(t, endpoint.status, rec.Code, rec.Body.String())
+				})
+			}
+			for _, tt := range invalid {
+				t.Run(tt.name, func(t *testing.T) {
+					require.Equal(t, tt.want, errorLines(t, serve(endpoint.fn, tt.body)))
+				})
+			}
+		})
+	}
+
+	t.Run("legacy keys still apply", func(t *testing.T) {
+		rec := serve(handler.Create, valid[1].body)
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		var rule models.Automation
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &rule))
+		require.Equal(t, "a.example", rule.TrackerPattern)
+		require.Len(t, rule.Conditions.TagActions(), 1)
+		require.Equal(t, []string{"x"}, rule.Conditions.TagActions()[0].Tags)
+	})
+
+	t.Run("on/off switch sends the stored rule", func(t *testing.T) {
+		stored, err := json.Marshal(existing)
+		require.NoError(t, err)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(stored, &body))
+		body["enabled"] = false
+		toggled, err := json.Marshal(body)
+		require.NoError(t, err)
+
+		rec := serve(handler.Update, string(toggled))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var rule models.Automation
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &rule))
+		require.False(t, rule.Enabled)
+		require.Equal(t, existing.ID, rule.ID)
+		require.Equal(t, instance.ID, rule.InstanceID)
+	})
+
+	t.Run("rule check runs after decode", func(t *testing.T) {
+		require.Equal(t, []string{"Name is required"}, errorLines(t, serve(handler.Create,
+			`{"trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`)))
+	})
+
+	t.Run("unknown instance", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(valid[0].body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("instanceID", "999")
+		rec := httptest.NewRecorder()
+		handler.Create(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	})
+}

@@ -1171,6 +1171,15 @@ The JSON carries the name, the tracker fields, the conditions, the sorting confi
 
 The editor highlights the JSON and underlines syntax errors as you type. Save runs the same checks as Import. When qui rejects the JSON, the editor stays open with your text.
 
+qui rejects a key that it does not know, at any level of the JSON. It also rejects a value of the wrong type, for example `"intervalSeconds": "900"`. qui lists all problems at once, one line for each. Each line starts with the JSON path:
+
+```text
+conditions.pasue: unknown key
+intervalSeconds: expected a whole number, got a string
+```
+
+qui accepts and ignores the keys `id`, `instanceId`, `createdAt`, and `updatedAt`. You can paste a rule from an API response.
+
 ## Activity log
 
 qui logs every automation action with:

@@ -58,6 +58,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Automations
 
+- **Automation rule**: One saved set of conditions and actions that qui runs against the torrents of one instance on an interval. The UI calls it a workflow. _Avoid_: Workflow (outside UI copy), automation (for one rule).
+- **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
+- **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
 
 ## Disc reports
