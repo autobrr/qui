@@ -5,6 +5,7 @@
 
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,7 @@ import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRun } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
-import { Fragment, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -180,16 +181,6 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
       </CollapsibleContent>
     </Collapsible>
   )
-}
-
-// Joins the pairs in code so no translation can change the separator, and keeps each pair with its "·" on one line.
-function SettingsSummary({ parts }: { parts: string[] }) {
-  return parts.map((part, i) => (
-    <Fragment key={i}>
-      <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part}\u00a0·` : part}</span>
-      {i < parts.length - 1 && " "}
-    </Fragment>
-  ))
 }
 
 function InstanceOrphanScanItem({
