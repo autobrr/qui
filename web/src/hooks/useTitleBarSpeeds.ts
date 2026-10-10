@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useRouteTitle } from "@/hooks/useRouteTitle"
@@ -25,14 +26,10 @@ interface UseTitleBarSpeedsOptions {
   backgroundSpeeds?: { dl: number; up: number }
 }
 
-/**
- * Fetches transfer speeds for an instance with a short polling interval.
- * Returns undefined when disabled or until server data arrives.
- */
-export function useServerStateSpeeds(instanceId?: number, enabled = true) {
+function useServerStateSpeeds(instanceId?: number, enabled = true) {
   const isEnabled = typeof instanceId === "number" && enabled
 
-  const { data } = useQuery({
+  const { data, dataUpdatedAt } = useQuery({
     queryKey: ["transfer-info", instanceId],
     queryFn: () => api.getTransferInfo(instanceId as number),
     enabled: isEnabled,
@@ -41,13 +38,9 @@ export function useServerStateSpeeds(instanceId?: number, enabled = true) {
     staleTime: 0,
   })
 
-  if (!data) {
-    return undefined
-  }
-
   return {
-    dl: data.dl_info_speed ?? 0,
-    up: data.up_info_speed ?? 0,
+    speeds: data ? { dl: data.dl_info_speed ?? 0, up: data.up_info_speed ?? 0 } : undefined,
+    updatedAt: dataUpdatedAt,
   }
 }
 
@@ -72,6 +65,7 @@ export function useTitleBarSpeeds({
   const [streamSpeeds, setStreamSpeeds] = useState<{ dl: number; up: number } | undefined>(undefined)
   const lastHiddenAtRef = useRef(0)
   const lastForegroundUpdateAtRef = useRef(0)
+  const fallbackBaselineRef = useRef<{ instanceId?: number; updatedAt: number } | null>(null)
   const wasHiddenRef = useRef(false)
   const { isHidden, isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
 
@@ -110,21 +104,53 @@ export function useTitleBarSpeeds({
     setStreamSpeeds(undefined)
   }, [instanceId])
 
-  const isForegroundStale = !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
-  const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds || isForegroundStale)
+  const isForegroundStale = Boolean(foregroundSpeeds) && !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
+  const stalled = streamState.dataStalled
+  const streamUnusable = Boolean(streamParams) && !isStreamUsable(streamState)
+  const needsFreshBackground = stalled || (isVisible && streamUnusable)
+  const shouldPollBackground = enabled && (
+    isHiddenDelayed ||
+    !foregroundSpeeds ||
+    isForegroundStale ||
+    streamUnusable
+  )
+  const streamDataUsable =
+    isStreamUsable(streamState) &&
+    Boolean(streamSpeeds)
   const shouldUseFallbackPolling = shouldPollBackground &&
     !backgroundSpeedsOverride &&
-    (!streamState.connected || !!streamState.error || !streamSpeeds)
-  const backgroundSpeedsQuery = useServerStateSpeeds(
+    !streamDataUsable
+  const backgroundQuery = useServerStateSpeeds(
     instanceId,
     shouldUseFallbackPolling
   )
+  if (!needsFreshBackground) {
+    fallbackBaselineRef.current = null
+  } else if (!fallbackBaselineRef.current || fallbackBaselineRef.current.instanceId !== instanceId) {
+    fallbackBaselineRef.current = { instanceId, updatedAt: backgroundQuery.updatedAt }
+  }
+  const backgroundSpeedsQuery = backgroundQuery.speeds
   const backgroundSpeeds = backgroundSpeedsOverride ??
     (
-      shouldUseFallbackPolling? (backgroundSpeedsQuery ?? streamSpeeds): (streamSpeeds ?? backgroundSpeedsQuery)
+      needsFreshBackground
+        ? backgroundSpeedsQuery
+        : shouldUseFallbackPolling
+          ? (backgroundSpeedsQuery ?? streamSpeeds)
+          : (streamSpeeds ?? backgroundSpeedsQuery)
     )
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
-  const effectiveSpeeds = isHiddenDelayed? (backgroundSpeeds ?? cachedBackgroundSpeeds): (isForegroundStale? (cachedBackgroundSpeeds ?? backgroundSpeeds): (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
+  const refreshedBackgroundSpeeds = backgroundSpeedsOverride ?? (
+    backgroundQuery.updatedAt > (fallbackBaselineRef.current?.updatedAt ?? 0)
+      ? backgroundSpeedsQuery
+      : undefined
+  )
+  const effectiveSpeeds = needsFreshBackground
+    ? (refreshedBackgroundSpeeds ?? foregroundSpeeds)
+    : isHiddenDelayed
+      ? (backgroundSpeeds ?? cachedBackgroundSpeeds)
+      : isForegroundStale
+        ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
+        : (foregroundSpeeds ?? backgroundSpeeds ?? cachedBackgroundSpeeds)
   const shouldSetTitle = enabled && (isHiddenDelayed || isVisible)
 
   useEffect(() => {
@@ -175,7 +201,12 @@ export function useTitleBarSpeeds({
     }
 
     if (!effectiveSpeeds) {
-      document.title = lastSpeedTitleRef.current ?? baseTitle
+      if (needsFreshBackground) {
+        document.title = baseTitle
+        lastSpeedTitleRef.current = null
+      } else {
+        document.title = lastSpeedTitleRef.current ?? baseTitle
+      }
       return
     }
 
@@ -190,5 +221,5 @@ export function useTitleBarSpeeds({
     const nextTitle = `${speedTitle} | ${mode === "dashboard" ? baseTitle : instanceName || baseTitle}`
     document.title = nextTitle
     lastSpeedTitleRef.current = nextTitle
-  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit, t])
+  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, needsFreshBackground, shouldSetTitle, speedUnit, t])
 }
