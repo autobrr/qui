@@ -1,6 +1,7 @@
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
 import type { PrismTheme } from "prism-react-renderer";
+import { releaseBody } from "./src/components/DiscordEmbed/releaseBody";
 
 // Custom minimal light theme
 const minimalLightTheme: PrismTheme = {
@@ -118,6 +119,12 @@ const config: Config = {
           blogSidebarCount: "ALL",
           showReadingTime: false,
           onUntruncatedBlogPosts: "ignore",
+          // The Discord link preview card lists the highlights and change counts of each post.
+          processBlogPosts: async ({ blogPosts }) => {
+            for (const post of blogPosts) {
+              post.metadata.frontMatter.discord_embed_body = releaseBody(post.content);
+            }
+          },
         },
         sitemap: {
           ignorePatterns: ["/search/"],
