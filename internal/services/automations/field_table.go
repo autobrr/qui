@@ -74,7 +74,7 @@ var (
 		"checking", "checkingResumeData", "moving", "missingFiles",
 	}
 	trackerStatuses    = []string{"not_contacted", "working", "updating", "error", "tracker_error", "unreachable"}
-	hardlinkScopes     = []string{HardlinkScopeNone, HardlinkScopeTorrentsOnly, HardlinkScopeInsideQBitTorrent, HardlinkScopeOutsideQBitTorrent}
+	hardlinkScopes     = []string{HardlinkScopeNone, HardlinkScopeTorrentsOnly, HardlinkScopeInsideQBitTorrent, HardlinkScopeOutsideQBitTorrent, HardlinkScopeBoth}
 	seasonPackStatuses = []string{models.SeasonPackStatusPack, models.SeasonPackStatusPacked, models.SeasonPackStatusUnpacked}
 	contentTypes       = func() []string {
 		values := make([]string, len(releases.ContentTypes))

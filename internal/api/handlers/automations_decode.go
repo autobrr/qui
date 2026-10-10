@@ -34,10 +34,10 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // decodeAutomationPayload decodes rule JSON strictly and runs the rule check.
 // It reports an unknown key at any depth, a value of the wrong JSON type, and a condition field, operator or enum value
 // that automations.ConditionFields does not allow, each with its JSON path.
-// stored is the conditions of the rule that an update replaces, or nil. When the incoming conditions equal it,
+// stored is the rule that an update replaces, or nil. When the incoming conditions and sorting equal those of stored,
 // the field, operator and enum checks do not run, so a stored rule with a bad operator can still be switched on or off and renamed.
 // It does not check that a referenced instance or external program exists.
-func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.ActionConditions) (*AutomationPayload, error) {
+func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 
 	var payload AutomationPayload
 	unmarshalErr := json.Unmarshal(data, &payload)
-	checkValues := stored == nil || unmarshalErr != nil || !sameConditions(payload.Conditions, stored)
+	checkValues := stored == nil || unmarshalErr != nil || !sameRule(&payload, stored)
 	if problems := checkJSONShape(nil, "", raw, reflect.TypeFor[AutomationPayload](), checkValues); len(problems) > 0 {
 		return nil, ruleErrors(problems)
 	}
@@ -65,10 +65,14 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	return &payload, nil
 }
 
-// sameConditions reports whether two sets of conditions are equal after Normalize. It normalizes both.
-func sameConditions(a, b *models.ActionConditions) bool {
-	a.Normalize()
-	b.Normalize()
+// sameRule reports whether the payload has the conditions and the sorting of stored. It normalizes both sets of conditions.
+func sameRule(payload *AutomationPayload, stored *models.Automation) bool {
+	payload.Conditions.Normalize()
+	stored.Conditions.Normalize()
+	return sameJSON(payload.Conditions, stored.Conditions) && sameJSON(payload.SortingConfig, stored.SortingConfig)
+}
+
+func sameJSON(a, b any) bool {
 	aJSON, errA := json.Marshal(a)
 	bJSON, errB := json.Marshal(b)
 	return errA == nil && errB == nil && bytes.Equal(aJSON, bJSON)
@@ -159,11 +163,12 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, check
 }
 
 // checkCondition checks the field, operator and value of one condition against automations.ConditionFields.
-// A group (AND or OR) has no field, and checkJSONShape checks its children.
+// A group (AND or OR with child conditions) has no field, and checkJSONShape checks its children.
+// The evaluator runs AND or OR without children as a condition, so it is checked as one.
 func checkCondition(problems []string, path string, obj map[string]any) []string {
 	operator, _ := obj["operator"].(string)
 	op := models.ConditionOperator(operator)
-	if op == models.OperatorAnd || op == models.OperatorOr {
+	if children, _ := obj["conditions"].([]any); len(children) > 0 && (op == models.OperatorAnd || op == models.OperatorOr) {
 		return problems
 	}
 	field, isString := obj["field"].(string)
@@ -184,10 +189,12 @@ func checkCondition(problems []string, path string, obj map[string]any) []string
 		}
 	}
 
-	// The evaluator ignores case. A regex or another operator compares free text.
+	// The evaluator ignores case. Another operator, or a regex on a string field, compares free text.
+	// The other fields ignore regex.
 	value, _ := obj["value"].(string)
 	regex, _ := obj["regex"].(bool)
-	if len(spec.Values) > 0 && value != "" && !regex && (op == models.OperatorEqual || op == models.OperatorNotEqual) &&
+	pattern := regex && spec.Type == automations.ValueString
+	if len(spec.Values) > 0 && value != "" && !pattern && (op == models.OperatorEqual || op == models.OperatorNotEqual) &&
 		!slices.ContainsFunc(spec.Values, func(allowed string) bool { return strings.EqualFold(allowed, value) }) {
 		problems = append(problems, fmt.Sprintf("%s.value: %s does not allow %q; it allows %s", path, field, value, strings.Join(spec.Values, ", ")))
 	}

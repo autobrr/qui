@@ -85,6 +85,9 @@ func TestAutomationCheckAcceptsEveryRuleBuilderCondition(t *testing.T) {
 		}
 	}
 
+	// The rule builder does not offer "both", but it is a distinct scope that the evaluator matches exactly.
+	leaves = append(leaves, map[string]any{"field": "HARDLINK_SCOPE", "operator": "EQUAL", "value": "both"})
+
 	layouts := values(regexp.MustCompile(`(?s)CONTENT_LAYOUT_OPTIONS = \[(.*?)\]`).FindString(
 		readFile(t, "../../../web/src/components/instances/preferences/WorkflowDialog.tsx")))
 	require.NotEmpty(t, layouts)

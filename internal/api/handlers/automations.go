@@ -159,7 +159,7 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing.Conditions)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -304,7 +304,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 
 // decodeAndCheckPayload decodes and checks the rule in the request body, and checks that the instances and the external program it names exist.
 // On failure it returns a nil payload with the HTTP status code and message.
-func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.ActionConditions) (*AutomationPayload, int, string) {
+func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation) (*AutomationPayload, int, string) {
 	ctx := r.Context()
 	var instance *models.Instance
 	if h.instanceStore != nil {

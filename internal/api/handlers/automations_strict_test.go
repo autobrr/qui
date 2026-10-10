@@ -177,6 +177,18 @@ func TestAutomationStrictDecode(t *testing.T) {
 			},
 		},
 		{
+			name: "regex on a field that matches without regex",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"EQUAL","value":"yes","regex":true}}}}`,
+			want: []string{`conditions.pause.condition.value: PRIVATE does not allow "yes"; it allows true, false`},
+		},
+		{
+			name: "logical operator without child conditions",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"NAEM","operator":"AND"}}}}`,
+			want: []string{`conditions.pause.condition.field: unknown field "NAEM"`},
+		},
+		{
 			name: "unknown contentLayout",
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true},
 				"exportToInstance":{"enabled":false,"targetInstanceId":0,"savePath":"","contentLayout":"Create subfolder"}}}`,
@@ -279,6 +291,18 @@ func TestAutomationStrictDecode(t *testing.T) {
 			condition["value"] = "false"
 		}))
 		require.Equal(t, []string{"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL"}, errorLines(t, rec))
+
+		// The conditions stay the same, but the sorting changes, so the checks run.
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "score", "direction": "DESC", "scoreRules": []any{
+				map[string]any{"type": "conditional", "conditional": map[string]any{"score": 1,
+					"condition": map[string]any{"field": "RATIO", "operator": "CONTAINS", "value": "1"}}},
+			}}
+		}))
+		require.Equal(t, []string{
+			"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL",
+			"sortingConfig.scoreRules[0].conditional.condition.operator: RATIO does not allow CONTAINS; it allows EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, BETWEEN",
+		}, errorLines(t, rec))
 	})
 
 	t.Run("rule check runs after decode", func(t *testing.T) {
