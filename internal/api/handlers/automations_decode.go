@@ -34,8 +34,8 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // decodeAutomationPayload decodes rule JSON strictly and runs the rule check.
 // It reports an unknown key at any depth, a value of the wrong JSON type, and a condition field, operator or enum value
 // that automations.ConditionFields does not allow, each with its JSON path.
-// stored is the rule that an update replaces, or nil. When the incoming conditions and sorting equal those of stored,
-// the field, operator and enum checks do not run, so a stored rule with a bad operator can still be switched on or off and renamed.
+// stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
+// when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
 // It does not check that a referenced instance or external program exists.
 func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
@@ -52,8 +52,18 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 
 	var payload AutomationPayload
 	unmarshalErr := json.Unmarshal(data, &payload)
-	checkValues := stored == nil || unmarshalErr != nil || !sameRule(&payload, stored)
-	if problems := checkJSONShape(nil, "", raw, reflect.TypeFor[AutomationPayload](), checkValues); len(problems) > 0 {
+	var unchanged []string
+	if stored != nil && unmarshalErr == nil {
+		payload.Conditions.Normalize()
+		stored.Conditions.Normalize()
+		if sameJSON(payload.Conditions, stored.Conditions) {
+			unchanged = append(unchanged, "conditions")
+		}
+		if sameJSON(payload.SortingConfig, stored.SortingConfig) {
+			unchanged = append(unchanged, "sortingConfig")
+		}
+	}
+	if problems := checkJSONShape(nil, "", raw, reflect.TypeFor[AutomationPayload](), unchanged); len(problems) > 0 {
 		return nil, ruleErrors(problems)
 	}
 	if unmarshalErr != nil {
@@ -65,13 +75,6 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	return &payload, nil
 }
 
-// sameRule reports whether the payload has the conditions and the sorting of stored. It normalizes both sets of conditions.
-func sameRule(payload *AutomationPayload, stored *models.Automation) bool {
-	payload.Conditions.Normalize()
-	stored.Conditions.Normalize()
-	return sameJSON(payload.Conditions, stored.Conditions) && sameJSON(payload.SortingConfig, stored.SortingConfig)
-}
-
 func sameJSON(a, b any) bool {
 	aJSON, errA := json.Marshal(a)
 	bJSON, errB := json.Marshal(b)
@@ -79,9 +82,9 @@ func sameJSON(a, b any) bool {
 }
 
 // checkJSONShape compares a value decoded with UseNumber against the Go type that it decodes into.
-// Like encoding/json, it accepts null for every type. With checkValues, it also runs checkCondition on each condition
-// and checks exportToInstance.contentLayout.
-func checkJSONShape(problems []string, path string, v any, t reflect.Type, checkValues bool) []string {
+// Like encoding/json, it accepts null for every type. It also runs checkCondition on each condition
+// and checks exportToInstance.contentLayout, except under the top-level keys in unchanged.
+func checkJSONShape(problems []string, path string, v any, t reflect.Type, unchanged []string) []string {
 	if v == nil {
 		return problems
 	}
@@ -111,12 +114,12 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, check
 			field, ok := fields[key]
 			switch {
 			case ok:
-				problems = checkJSONShape(problems, keyPath, obj[key], field.Type, checkValues)
+				problems = checkJSONShape(problems, keyPath, obj[key], field.Type, unchanged)
 			case !slices.Contains(ignoredRuleKeys[t], key):
 				problems = append(problems, keyPath+": unknown key")
 			}
 		}
-		if !checkValues {
+		if top, _, _ := strings.Cut(path, "."); slices.Contains(unchanged, top) {
 			break
 		}
 		switch t {
@@ -134,7 +137,7 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, check
 			return wrongType("an array")
 		}
 		for i, item := range arr {
-			problems = checkJSONShape(problems, fmt.Sprintf("%s[%d]", path, i), item, t.Elem(), checkValues)
+			problems = checkJSONShape(problems, fmt.Sprintf("%s[%d]", path, i), item, t.Elem(), unchanged)
 		}
 	case reflect.String:
 		if _, ok := v.(string); !ok {
@@ -190,11 +193,11 @@ func checkCondition(problems []string, path string, obj map[string]any) []string
 	}
 
 	// The evaluator ignores case. Another operator, or a regex on a string field, compares free text.
-	// The other fields ignore regex.
+	// The other fields ignore regex. An empty value passes, except on a yes/no field, which reads it as false.
 	value, _ := obj["value"].(string)
 	regex, _ := obj["regex"].(bool)
 	pattern := regex && spec.Type == automations.ValueString
-	if len(spec.Values) > 0 && value != "" && !pattern && (op == models.OperatorEqual || op == models.OperatorNotEqual) &&
+	if len(spec.Values) > 0 && (value != "" || spec.Type == automations.ValueBoolean) && !pattern && (op == models.OperatorEqual || op == models.OperatorNotEqual) &&
 		!slices.ContainsFunc(spec.Values, func(allowed string) bool { return strings.EqualFold(allowed, value) }) {
 		problems = append(problems, fmt.Sprintf("%s.value: %s does not allow %q; it allows %s", path, field, value, strings.Join(spec.Values, ", ")))
 	}

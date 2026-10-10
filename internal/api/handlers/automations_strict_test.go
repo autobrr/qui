@@ -183,6 +183,12 @@ func TestAutomationStrictDecode(t *testing.T) {
 			want: []string{`conditions.pause.condition.value: PRIVATE does not allow "yes"; it allows true, false`},
 		},
 		{
+			name: "yes/no field without a value",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"EQUAL"}}}}`,
+			want: []string{`conditions.pause.condition.value: PRIVATE does not allow ""; it allows true, false`},
+		},
+		{
 			name: "logical operator without child conditions",
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
 				"condition":{"field":"NAEM","operator":"AND"}}}}`,
@@ -292,7 +298,12 @@ func TestAutomationStrictDecode(t *testing.T) {
 		}))
 		require.Equal(t, []string{"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL"}, errorLines(t, rec))
 
-		// The conditions stay the same, but the sorting changes, so the checks run.
+		// The sorting changes and the conditions stay the same, so only the sorting is checked.
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "simple", "direction": "ASC", "field": "SIZE"}
+		}))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
 		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
 			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "score", "direction": "DESC", "scoreRules": []any{
 				map[string]any{"type": "conditional", "conditional": map[string]any{"score": 1,
@@ -300,7 +311,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 			}}
 		}))
 		require.Equal(t, []string{
-			"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL",
 			"sortingConfig.scoreRules[0].conditional.condition.operator: RATIO does not allow CONTAINS; it allows EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, BETWEEN",
 		}, errorLines(t, rec))
 	})
