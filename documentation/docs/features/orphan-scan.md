@@ -65,7 +65,7 @@ These paths come from qBittorrent, so they are paths as qBittorrent sees them. I
 
 ## Abandoned directories
 
-Moves and deletions leave empty directories behind. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
+Moves and deletions leave empty directories behind. qui removes the leftover folders of the deletes and moves it makes or proxies itself (see [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents)). Deletes made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that bypasses the proxy still leave them. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
 
 Turn on **Delete Abandoned Directories** to include them. qui reports a directory when this run empties it: either it holds no files at any depth, or every file below it is an orphan the run is about to delete. Each one is listed in the preview alongside the orphan files, marked with a directory icon and no size.
 

@@ -428,6 +428,13 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
 
+		// Intercepted only to clean up the folders a move leaves behind
+		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
+		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
+		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
+		pr.Post("/api/v2/torrents/setSavePath", h.handleSetSavePath)
+		pr.Post("/api/v2/torrents/setDownloadPath", h.handleSetDownloadPath)
+
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
 		pr.HandleFunc("/*", h.ServeHTTP)
@@ -1743,6 +1750,15 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
 
+	var folders qbittorrent.FolderCleanupBatch
+	if form, ok := parseQBTForm(r, bodyBytes); ok {
+		folders = h.syncManager.PrepareFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
+			Kind:   qbittorrent.FolderCleanupSetLocation,
+			Hashes: splitHashes(form.get("hashes")),
+			Target: strings.TrimSpace(form.get("location")),
+		})
+	}
+
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	// Use background context with timeout to avoid cancellation issues
 	defer func() {
@@ -1783,11 +1799,7 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardThenQueue(w, r, bodyBytes, folders)
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -1997,6 +2009,13 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting delete request for cache invalidation")
 
+	var folders qbittorrent.FolderCleanupBatch
+	if form, ok := parseQBTForm(r, bodyBytes); ok && strings.EqualFold(form.get("deleteFiles"), "true") {
+		folders = h.syncManager.PrepareFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
+			Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes")),
+		})
+	}
+
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
 		// Capture panic value if any
@@ -2036,9 +2055,5 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardThenQueue(w, r, bodyBytes, folders)
 }

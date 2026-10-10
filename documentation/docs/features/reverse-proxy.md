@@ -119,9 +119,16 @@ These endpoints proxy to qBittorrent and update qui's local state:
 |----------|----------|
 | `/api/v2/auth/login` | If the instance is healthy, returns success as a no-op |
 | `/api/v2/torrents/reannounce` | If tracker monitoring is enabled, routes to qui's reannounce service |
-| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders |
 | `/api/v2/torrents/renameFile` | Forwards to qBittorrent, invalidates the file cache |
 | `/api/v2/torrents/renameFolder` | Forwards to qBittorrent, invalidates the file cache |
-| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache |
+| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates the file cache, removes leftover folders when files are deleted |
+| `/api/v2/torrents/setCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setAutoManagement` | Forwards to qBittorrent unchanged, removes leftover folders when it turns ATM on |
+| `/api/v2/torrents/editCategory` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setSavePath` | Forwards to qBittorrent unchanged, removes leftover folders |
+| `/api/v2/torrents/setDownloadPath` | Forwards to qBittorrent unchanged, removes leftover folders |
+
+qui removes leftover folders only after qBittorrent answers with success, only on an instance with **Local Filesystem Access**, and only for a request sent as a URL-encoded form. See [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents).
 
 qui forwards all other endpoints unchanged to qBittorrent.

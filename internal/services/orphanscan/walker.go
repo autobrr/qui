@@ -659,6 +659,26 @@ func isPathProtectedByIgnorePaths(d fsops.PathDialect, path string, ignorePaths 
 	return false
 }
 
+// IgnoredPathMatcher reports, in d, whether a path is protected by the
+// instance's ignore paths: the path is ignored or holds an ignored path. Folder
+// cleanup uses it whether orphan scan is on or off, so one list protects a
+// folder everywhere.
+func (s *Service) IgnoredPathMatcher(ctx context.Context, instanceID int, d fsops.PathDialect) (func(path string) bool, error) {
+	settings, err := s.store.GetSettings(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read orphan scan settings: %w", err)
+	}
+	var paths []string
+	if settings != nil {
+		paths = settings.IgnorePaths
+	}
+	ignorePaths, err := NormalizeIgnorePaths(d, paths)
+	if err != nil {
+		return nil, err
+	}
+	return func(path string) bool { return isPathProtectedByIgnorePaths(d, path, ignorePaths) }, nil
+}
+
 // NormalizeIgnorePaths validates and normalizes ignore paths in d, the dialect of
 // the instance's backend.
 // All paths must be absolute. The result is stored in settings and shown in the
