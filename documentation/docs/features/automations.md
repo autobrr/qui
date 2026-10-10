@@ -661,10 +661,21 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 
 Enable or disable qBittorrent's Automatic Torrent Management (AutoTMM) on matching torrents.
 
-| Mode | Description |
-| --- | --- |
-| `enable` | Enable automatic torrent management on matches |
-| `disable` | Disable automatic torrent management on matches |
+In JSON, `enabled` is the AutoTMM value that the action sets. `true` enables AutoTMM on matching torrents, and `false` disables it. The action runs when the `autoManagement` key is present, even when `enabled` is `false`.
+
+```json
+{
+  "name": "Disable AutoTMM on cross-seeds",
+  "trackerPattern": "*",
+  "conditions": {
+    "schemaVersion": "1",
+    "autoManagement": {
+      "enabled": false,
+      "condition": { "field": "CATEGORY", "operator": "ENDS_WITH", "value": ".cross" }
+    }
+  }
+}
+```
 
 When AutoTMM is on, qBittorrent moves torrents to the save path configured for their category. When AutoTMM is off, you control save paths manually.
 
@@ -719,7 +730,7 @@ The action assumes the data already exists on the target (moved with rclone, Qui
 | **Tags** | Tags to apply on target instance |
 | **Skip checking** | Skip hash check on target (default: enabled) |
 | **Paused** | Add torrent paused on target |
-| **Content layout** | `Default` (target instance setting), `Original`, `Create subfolder`, or `Don't create subfolder` |
+| **Content layout** | `Default`, `Original`, `Create subfolder`, or `Don't create subfolder`. In JSON, `contentLayout` is `Original`, `Subfolder`, or `NoSubfolder`. With `Default`, the JSON has no `contentLayout`, and the target instance uses its own default layout. |
 | **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
@@ -1179,6 +1190,8 @@ intervalSeconds: expected a whole number, got a string
 ```
 
 qui accepts and ignores the keys `id`, `instanceId`, `createdAt`, and `updatedAt`. You can paste a rule from an API response.
+
+An export keeps `externalProgram.programId` and `exportToInstance.targetInstanceId`. These IDs belong to the qui that made the export. When an enabled action has an ID that does not exist on your qui, the import fails. When the ID exists but means a different program or instance, the import succeeds. Before you enable an imported rule, select the program or the target instance again. The instance ID is in the URL of the instance page, `/instances/<id>`.
 
 qui also checks each condition. It rejects an unknown field, an unknown operator, and an operator that the field does not allow, for example `GREATER_THAN` on a yes/no field. It rejects a value that the field does not list, for example a misspelled torrent state, and an unknown `exportToInstance.contentLayout`. The line names the operators or values that the field allows:
 
