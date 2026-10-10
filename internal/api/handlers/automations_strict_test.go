@@ -38,14 +38,17 @@ func TestAutomationStrictDecode(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	serve := func(fn http.HandlerFunc, body string) *httptest.ResponseRecorder {
+	serveRule := func(fn http.HandlerFunc, ruleID int, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("instanceID", instanceID)
-		rctx.URLParams.Add("ruleID", strconv.Itoa(existing.ID))
+		rctx.URLParams.Add("ruleID", strconv.Itoa(ruleID))
 		rec := httptest.NewRecorder()
 		fn(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 		return rec
+	}
+	serve := func(fn http.HandlerFunc, body string) *httptest.ResponseRecorder {
+		return serveRule(fn, existing.ID, body)
 	}
 	endpoints := []struct {
 		name   string
@@ -77,6 +80,25 @@ func TestAutomationStrictDecode(t *testing.T) {
 			name: "legacy trackerDomains and conditions.tag",
 			body: `{"name":"rule","trackerDomains":["a.example"],
 				"conditions":{"schemaVersion":"1","tag":{"enabled":true,"tags":["x"],"mode":"add"}}}`,
+		},
+		{
+			name: "legacy TRACKERS field",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"TRACKERS","operator":"CONTAINS","value":"example"}}}}`,
+		},
+		{
+			name: "content type with any case, a non-equal operator, regex, or no value",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"operator":"OR","conditions":[
+					{"field":"CONTENT_TYPE","operator":"EQUAL","value":"TV"},
+					{"field":"CONTENT_TYPE","operator":"CONTAINS","value":"mov"},
+					{"field":"CONTENT_TYPE","operator":"EQUAL","value":"mov.*","regex":true},
+					{"field":"STATE","operator":"EQUAL","value":""}]}}}}`,
+		},
+		{
+			name: "contentLayout values",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true},
+				"exportToInstance":{"enabled":false,"targetInstanceId":0,"savePath":"","contentLayout":"NoSubfolder"}}}`,
 		},
 		{
 			name: "query builder clientId",
@@ -120,6 +142,70 @@ func TestAutomationStrictDecode(t *testing.T) {
 			name: "wrong type",
 			body: `{"name":"rule","trackerPattern":"*","intervalSeconds":"900","conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`,
 			want: []string{"intervalSeconds: expected a whole number, got a string"},
+		},
+		{
+			name: "unknown field",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"NAEM","operator":"CONTAINS","value":"x"}}}}`,
+			want: []string{`conditions.pause.condition.field: unknown field "NAEM"`},
+		},
+		{
+			name: "unknown operator",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"IS","value":"true"}}}}`,
+			want: []string{`conditions.pause.condition.operator: unknown operator "IS"; PRIVATE allows EQUAL, NOT_EQUAL`},
+		},
+		{
+			name: "operator that does not fit the field",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"GREATER_THAN","value":"true"}}}}`,
+			want: []string{"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL"},
+		},
+		{
+			name: "unknown enum values",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"operator":"AND","conditions":[
+					{"field":"STATE","operator":"EQUAL","value":"seeding"},
+					{"field":"TRACKER_STATUS","operator":"NOT_EQUAL","value":"ok"},
+					{"field":"CONTENT_TYPE","operator":"EQUAL","value":"movies"},
+					{"field":"PRIVATE","operator":"EQUAL","value":"yes"}]}}}}`,
+			want: []string{
+				`conditions.pause.condition.conditions[0].value: STATE does not allow "seeding"; it allows downloading, uploading, completed, stopped, active, inactive, running, stalled, stalled_uploading, stalled_downloading, errored, tracker_down, tracker_error, checking, checkingResumeData, moving, missingFiles`,
+				`conditions.pause.condition.conditions[1].value: TRACKER_STATUS does not allow "ok"; it allows not_contacted, working, updating, error, tracker_error, unreachable`,
+				`conditions.pause.condition.conditions[2].value: CONTENT_TYPE does not allow "movies"; it allows movie, tv, music, audiobook, book, comic, game, app, adult, unknown`,
+				`conditions.pause.condition.conditions[3].value: PRIVATE does not allow "yes"; it allows true, false`,
+			},
+		},
+		{
+			name: "regex on a field that matches without regex",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"EQUAL","value":"yes","regex":true}}}}`,
+			want: []string{`conditions.pause.condition.value: PRIVATE does not allow "yes"; it allows true, false`},
+		},
+		{
+			name: "yes/no field without a value",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"PRIVATE","operator":"EQUAL"}}}}`,
+			want: []string{`conditions.pause.condition.value: PRIVATE does not allow ""; it allows true, false`},
+		},
+		{
+			name: "logical operator without child conditions",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
+				"condition":{"field":"NAEM","operator":"AND"}}}}`,
+			want: []string{`conditions.pause.condition.field: unknown field "NAEM"`},
+		},
+		{
+			name: "unknown contentLayout",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true},
+				"exportToInstance":{"enabled":false,"targetInstanceId":0,"savePath":"","contentLayout":"Create subfolder"}}}`,
+			want: []string{`conditions.exportToInstance.contentLayout: contentLayout does not allow "Create subfolder"; it allows Original, Subfolder, NoSubfolder`},
+		},
+		{
+			name: "condition in a score rule",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
+				"sortingConfig":{"schemaVersion":"1","type":"score","direction":"DESC","scoreRules":[
+					{"type":"conditional","conditional":{"score":1,"condition":{"field":"RATIO","operator":"CONTAINS","value":"1"}}}]}}`,
+			want: []string{"sortingConfig.scoreRules[0].conditional.condition.operator: RATIO does not allow CONTAINS; it allows EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, BETWEEN"},
 		},
 		{
 			name: "several problems",
@@ -175,6 +261,58 @@ func TestAutomationStrictDecode(t *testing.T) {
 		require.False(t, rule.Enabled)
 		require.Equal(t, existing.ID, rule.ID)
 		require.Equal(t, instance.ID, rule.InstanceID)
+	})
+
+	t.Run("update skips the field check when the conditions did not change", func(t *testing.T) {
+		// A rule saved before the field check, with an operator that never matches.
+		bad, err := store.Create(t.Context(), &models.Automation{
+			InstanceID:     instance.ID,
+			Name:           "bad operator",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{SchemaVersion: "1", Pause: &models.PauseAction{
+				Enabled:   true,
+				Condition: &models.RuleCondition{Field: models.FieldPrivate, Operator: models.OperatorGreaterThan, Value: "true"},
+			}},
+		})
+		require.NoError(t, err)
+		stored, err := json.Marshal(bad)
+		require.NoError(t, err)
+		edit := func(change func(body map[string]any)) string {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(stored, &body))
+			change(body)
+			out, err := json.Marshal(body)
+			require.NoError(t, err)
+			return string(out)
+		}
+
+		rec := serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["enabled"] = false
+			body["name"] = "renamed"
+		}))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			condition := body["conditions"].(map[string]any)["pause"].(map[string]any)["condition"].(map[string]any)
+			condition["value"] = "false"
+		}))
+		require.Equal(t, []string{"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL"}, errorLines(t, rec))
+
+		// The sorting changes and the conditions stay the same, so only the sorting is checked.
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "simple", "direction": "ASC", "field": "SIZE"}
+		}))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
+			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "score", "direction": "DESC", "scoreRules": []any{
+				map[string]any{"type": "conditional", "conditional": map[string]any{"score": 1,
+					"condition": map[string]any{"field": "RATIO", "operator": "CONTAINS", "value": "1"}}},
+			}}
+		}))
+		require.Equal(t, []string{
+			"sortingConfig.scoreRules[0].conditional.condition.operator: RATIO does not allow CONTAINS; it allows EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, BETWEEN",
+		}, errorLines(t, rec))
 	})
 
 	t.Run("rule check runs after decode", func(t *testing.T) {

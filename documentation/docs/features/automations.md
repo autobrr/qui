@@ -1180,6 +1180,14 @@ intervalSeconds: expected a whole number, got a string
 
 qui accepts and ignores the keys `id`, `instanceId`, `createdAt`, and `updatedAt`. You can paste a rule from an API response.
 
+qui also checks each condition. It rejects an unknown field, an unknown operator, and an operator that the field does not allow, for example `GREATER_THAN` on a yes/no field. It rejects a value that the field does not list, for example a misspelled torrent state, and an unknown `exportToInstance.contentLayout`. The line names the operators or values that the field allows:
+
+```text
+conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL
+```
+
+If you edit a rule and do not change its conditions, qui does not run these condition checks. You can switch an older rule on or off and rename it, also when one of its conditions fails the check. qui treats the sorting the same way. It checks the score conditions of the sorting only when you change the sorting.
+
 ## Activity log
 
 qui logs every automation action with:

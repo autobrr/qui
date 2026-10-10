@@ -119,7 +119,7 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -148,7 +148,18 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID)
+	existing, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for update")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation")
+		return
+	}
+
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -249,7 +260,7 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -293,7 +304,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 
 // decodeAndCheckPayload decodes and checks the rule in the request body, and checks that the instances and the external program it names exist.
 // On failure it returns a nil payload with the HTTP status code and message.
-func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int) (*AutomationPayload, int, string) {
+func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation) (*AutomationPayload, int, string) {
 	ctx := r.Context()
 	var instance *models.Instance
 	if h.instanceStore != nil {
@@ -308,7 +319,7 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
-	payload, err := decodeAutomationPayload(r.Body, instanceID, instance)
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
 		return nil, http.StatusBadRequest, err.Error()
