@@ -164,13 +164,11 @@ func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, 
 		return cached
 	}
 
-	var def *models.GroupDefinition
-	if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-		def = findGroupDefinition(rule.Conditions.Grouping, groupID)
+	var grouping *models.GroupingConfig
+	if rule.Conditions != nil {
+		grouping = rule.Conditions.Grouping
 	}
-	if def == nil {
-		def = builtinGroupDefinition(groupID)
-	}
+	def := groupDefinition(grouping, groupID)
 	if def == nil {
 		return nil
 	}
@@ -387,6 +385,14 @@ func appendUniqueGroupID(groupIDs []string, groupID string) []string {
 		}
 	}
 	return append(groupIDs, groupID)
+}
+
+// groupDefinition returns the custom group with this id, else the built-in group. It returns nil for an unknown id.
+func groupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {
+	if def := findGroupDefinition(cfg, id); def != nil {
+		return def
+	}
+	return builtinGroupDefinition(id)
 }
 
 func findGroupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {

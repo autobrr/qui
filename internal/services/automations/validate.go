@@ -213,18 +213,26 @@ func validateConditionGroupingConfig(conditions *models.ActionConditions) (strin
 		return "", nil
 	}
 
-	knownGroupIDs := make(map[string]struct{}, len(BuiltinGroupIDs))
-	for _, id := range BuiltinGroupIDs {
-		knownGroupIDs[strings.ToLower(id)] = struct{}{}
-	}
+	// The check uses the same lookup as a rule run, so an id that passes also resolves to a group when the rule runs.
+	known := func(id string) bool { return groupDefinition(conditions.Grouping, id) != nil }
 
+	type groupRef struct{ key, id string }
+	var refs []groupRef
 	if conditions.Grouping != nil {
-		for _, group := range conditions.Grouping.Groups {
-			groupID := strings.ToLower(strings.TrimSpace(group.ID))
-			if groupID == "" {
-				continue
-			}
-			knownGroupIDs[groupID] = struct{}{}
+		refs = append(refs, groupRef{"grouping.defaultGroupId", conditions.Grouping.DefaultGroupID})
+	}
+	if del := conditions.Delete; del != nil && del.Enabled {
+		refs = append(refs, groupRef{"delete.groupId", del.GroupID})
+	}
+	if category := conditions.Category; category != nil && category.Enabled {
+		refs = append(refs, groupRef{"category.groupId", category.GroupID})
+	}
+	if move := conditions.Move; move != nil && move.Enabled {
+		refs = append(refs, groupRef{"move.groupId", move.GroupID})
+	}
+	for _, ref := range refs {
+		if id := strings.TrimSpace(ref.id); id != "" && !known(id) {
+			return fmt.Sprintf("Unknown grouping ID '%s' in %s", id, ref.key), errors.New("unknown action groupId")
 		}
 	}
 
@@ -232,7 +240,7 @@ func validateConditionGroupingConfig(conditions *models.ActionConditions) (strin
 		if cond == nil {
 			continue
 		}
-		if msg, err := validateConditionTreeGroupIDs(cond, knownGroupIDs); err != nil {
+		if msg, err := validateConditionTreeGroupIDs(cond, known); err != nil {
 			return msg, err
 		}
 	}
@@ -250,7 +258,7 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	return trees
 }
 
-func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map[string]struct{}) (string, error) {
+func validateConditionTreeGroupIDs(cond *models.RuleCondition, known func(string) bool) (string, error) {
 	if cond == nil {
 		return "", nil
 	}
@@ -258,14 +266,14 @@ func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map
 	if cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped {
 		groupID := strings.TrimSpace(cond.GroupID)
 		if groupID != "" {
-			if _, ok := knownGroupIDs[strings.ToLower(groupID)]; !ok {
+			if !known(groupID) {
 				return fmt.Sprintf("Unknown grouping ID '%s' in grouped condition", groupID), errors.New("unknown grouped condition groupId")
 			}
 		}
 	}
 
 	for _, child := range cond.Conditions {
-		if msg, err := validateConditionTreeGroupIDs(child, knownGroupIDs); err != nil {
+		if msg, err := validateConditionTreeGroupIDs(child, known); err != nil {
 			return msg, err
 		}
 	}
