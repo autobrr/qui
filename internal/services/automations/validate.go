@@ -125,10 +125,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	if msg, err := validateConditionGroupingConfig(conditions, rule.SortingConfig); err != nil {
-		return ruleError(msg)
-	}
-
 	if del := conditions.Delete; del != nil && del.IncludeHardlinks {
 		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
@@ -211,13 +207,20 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-func validateConditionGroupingConfig(conditions *models.ActionConditions, sorting *models.SortingConfig) (string, error) {
-	if conditions == nil {
-		return "", nil
-	}
+// groupIDKnown reports whether an id names a custom group in grouping or a built-in group.
+// It uses the lookup of a rule run, so an id that passes also resolves to a group when the rule runs.
+func groupIDKnown(grouping *models.GroupingConfig) func(string) bool {
+	return func(id string) bool { return groupDefinition(grouping, id) != nil }
+}
 
-	// The check uses the same lookup as a rule run, so an id that passes also resolves to a group when the rule runs.
-	known := func(id string) bool { return groupDefinition(conditions.Grouping, id) != nil }
+// ConditionGroupIDsError returns a RuleError for the first group ID in grouping.defaultGroupId, an enabled
+// delete, category or move action, or an action condition that names no group. ValidateRule does not call it,
+// because an update skips the check when the conditions did not change.
+func ConditionGroupIDsError(conditions *models.ActionConditions) error {
+	if conditions == nil {
+		return nil
+	}
+	known := groupIDKnown(conditions.Grouping)
 
 	type groupRef struct{ key, id string }
 	var refs []groupRef
@@ -235,20 +238,26 @@ func validateConditionGroupingConfig(conditions *models.ActionConditions, sortin
 	}
 	for _, ref := range refs {
 		if id := strings.TrimSpace(ref.id); id != "" && !known(id) {
-			return fmt.Sprintf("Unknown grouping ID '%s' in %s", id, ref.key), errors.New("unknown action groupId")
+			return ruleError(fmt.Sprintf("Unknown grouping ID '%s' in %s", id, ref.key))
 		}
 	}
 
-	for _, cond := range append(conditionTreesForValidation(conditions), sortingConfigConditionTrees(sorting)...) {
-		if cond == nil {
-			continue
-		}
+	return conditionTreesGroupIDsError(conditionTreesForValidation(conditions), known)
+}
+
+// ScoreRuleGroupIDsError returns a RuleError for the first group ID in a score condition of sorting that names
+// no group. grouping holds the custom groups of the rule. An update skips the check when the sorting did not change.
+func ScoreRuleGroupIDsError(grouping *models.GroupingConfig, sorting *models.SortingConfig) error {
+	return conditionTreesGroupIDsError(sortingConfigConditionTrees(sorting), groupIDKnown(grouping))
+}
+
+func conditionTreesGroupIDsError(trees []*models.RuleCondition, known func(string) bool) error {
+	for _, cond := range trees {
 		if msg, err := validateConditionTreeGroupIDs(cond, known); err != nil {
-			return msg, err
+			return ruleError(msg)
 		}
 	}
-
-	return "", nil
+	return nil
 }
 
 func conditionTreesForValidation(conditions *models.ActionConditions) []*models.RuleCondition {

@@ -36,6 +36,7 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // that automations.ConditionFields does not allow, each with its JSON path.
 // stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
 // when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
+// The group ID checks skip them the same way.
 // It does not check that a referenced instance or external program exists.
 func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
@@ -71,6 +72,16 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	}
 	if err := automations.ValidateRule(payload.toModel(instanceID, 0), instance); err != nil {
 		return nil, ruleErrors{err.Error()}
+	}
+	if !slices.Contains(unchanged, "conditions") {
+		if err := automations.ConditionGroupIDsError(payload.Conditions); err != nil {
+			return nil, ruleErrors{err.Error()}
+		}
+	}
+	if !slices.Contains(unchanged, "sortingConfig") && payload.Conditions != nil {
+		if err := automations.ScoreRuleGroupIDsError(payload.Conditions.Grouping, payload.SortingConfig); err != nil {
+			return nil, ruleErrors{err.Error()}
+		}
 	}
 	return &payload, nil
 }

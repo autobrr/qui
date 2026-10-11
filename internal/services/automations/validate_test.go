@@ -847,59 +847,63 @@ func TestValidateTagDeleteFromClientConfig(t *testing.T) {
 	})
 }
 
-func TestValidateConditionGroupingConfig(t *testing.T) {
-	t.Run("returns nil when grouped condition uses builtin group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "cross_seed_content_save_path",
-					Value:    "1",
-				},
-			},
-		}, nil)
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
+func TestGroupIDsError(t *testing.T) {
+	grouped := func(id string) *models.RuleCondition {
+		return &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: id, Value: "1"}
+	}
+	customGroup := &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "my_group", Keys: []string{"savePath"}}}}
+	scoreRule := func(cond *models.RuleCondition) *models.SortingConfig {
+		return &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+			Type:        models.ScoreRuleTypeConditional,
+			Conditional: &models.ConditionalScoreRule{Score: 10, Condition: cond},
+		}}}
+	}
 
-	t.Run("returns nil when grouped condition uses custom group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			Grouping: &models.GroupingConfig{
-				Groups: []models.GroupDefinition{
-					{ID: "my_group", Keys: []string{"savePath"}},
-				},
-			},
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldIsGrouped,
-					Operator: models.OperatorEqual,
-					GroupID:  "my_group",
-					Value:    "true",
-				},
-			},
-		}, nil)
-		require.NoError(t, err)
-		require.Empty(t, msg)
-	})
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		sorting    *models.SortingConfig
+		wantMsg    string // empty means valid
+	}{
+		{name: "built-in group id in a condition", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped(GroupCrossSeedContentSavePath)}}},
+		{name: "custom group id in a condition", conditions: &models.ActionConditions{Grouping: customGroup, Pause: &models.PauseAction{Enabled: true, Condition: grouped("my_group")}}},
+		{name: "unknown group id in a condition", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped("unknown_group")}},
+			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
+		{name: "built-in group id in another case", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped("Release_Item")}},
+			wantMsg: "Unknown grouping ID 'Release_Item' in grouped condition"},
+		{name: "unknown move group id", conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in move.groupId"},
+		{name: "unknown category group id", conditions: &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: "tv", GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in category.groupId"},
+		{name: "unknown delete group id", conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, GroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in delete.groupId"},
+		{name: "unknown default group id", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Grouping: &models.GroupingConfig{DefaultGroupID: "relase_item"}},
+			wantMsg: "Unknown grouping ID 'relase_item' in grouping.defaultGroupId"},
+		{name: "unknown group id in a disabled move", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Move: &models.MoveAction{Path: "/data", GroupID: "relase_item"}}},
+		{name: "move with custom group id in another case", conditions: &models.ActionConditions{Grouping: customGroup, Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "My_Group"}}},
+		{name: "move with built-in group id", conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: GroupReleaseItem}}},
+		{name: "unknown group id in a score rule", sorting: scoreRule(grouped("relase_item")),
+			wantMsg: "Unknown grouping ID 'relase_item' in grouped condition"},
+		{name: "custom group id in a score rule", conditions: &models.ActionConditions{Grouping: customGroup}, sorting: scoreRule(grouped("my_group"))},
+	}
 
-	t.Run("returns error when grouped condition uses unknown group id", func(t *testing.T) {
-		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
-			SpeedLimits: &models.SpeedLimitAction{
-				Enabled: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldGroupSize,
-					Operator: models.OperatorGreaterThan,
-					GroupID:  "does_not_exist",
-					Value:    "1",
-				},
-			},
-		}, nil)
-		require.Error(t, err)
-		require.Contains(t, msg, "does_not_exist")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ConditionGroupIDsError(tt.conditions)
+			if err == nil {
+				var grouping *models.GroupingConfig
+				if tt.conditions != nil {
+					grouping = tt.conditions.Grouping
+				}
+				err = ScoreRuleGroupIDsError(grouping, tt.sorting)
+			}
+			if tt.wantMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tt.wantMsg)
+		})
+	}
 }
 
 func TestValidateRule(t *testing.T) {
@@ -978,30 +982,6 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "delete.groupId is only supported when delete mode is 'Keep files'"},
 		{name: "tag delete from client with tracker tags", edit: withConditions(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, DeleteFromClient: true, UseTrackerAsTag: true}}}),
 			wantMsg: "tags[0].deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient"},
-		{name: "unknown grouping id", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "unknown_group", Value: "1"}}}),
-			wantMsg: "Unknown grouping ID 'unknown_group' in grouped condition"},
-		{name: "built-in grouping id in another case", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "Release_Item", Value: "1"}}}),
-			wantMsg: "Unknown grouping ID 'Release_Item' in grouped condition"},
-		{name: "unknown move group id", edit: withConditions(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: "relase_item"}}),
-			wantMsg: "Unknown grouping ID 'relase_item' in move.groupId"},
-		{name: "unknown category group id", edit: withConditions(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: "tv", GroupID: "relase_item"}}),
-			wantMsg: "Unknown grouping ID 'relase_item' in category.groupId"},
-		{name: "unknown delete group id", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, GroupID: "relase_item", Condition: cond(FieldSize)}}),
-			wantMsg: "Unknown grouping ID 'relase_item' in delete.groupId"},
-		{name: "unknown default group id", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Grouping: &models.GroupingConfig{DefaultGroupID: "relase_item"}}),
-			wantMsg: "Unknown grouping ID 'relase_item' in grouping.defaultGroupId"},
-		{name: "unknown group id in a disabled move", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true}, Move: &models.MoveAction{Path: "/data", GroupID: "relase_item"}})},
-		{name: "move with custom group id in another case", edit: withConditions(&models.ActionConditions{
-			Move:     &models.MoveAction{Enabled: true, Path: "/data", GroupID: "My_Group"},
-			Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "my_group", Keys: []string{"savePath"}}}},
-		})},
-		{name: "unknown group id in a score rule", edit: func(r *models.Automation) {
-			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
-				Type:        models.ScoreRuleTypeConditional,
-				Conditional: &models.ConditionalScoreRule{Score: 10, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "relase_item", Value: "1"}},
-			}}}
-		}, wantMsg: "Unknown grouping ID 'relase_item' in grouped condition"},
-		{name: "move with built-in group id", edit: withConditions(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: GroupReleaseItem}})},
 		{name: "release year out of range", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldRlsYear, Operator: models.OperatorEqual, Value: "1800"}}}),
 			wantMsg: "Release Year must be between " + strconv.Itoa(minRlsYear) + " and " + strconv.Itoa(time.Now().Year()+1)},
 		{name: "free space path source without filesystem access", edit: freeSpacePath, instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired},
