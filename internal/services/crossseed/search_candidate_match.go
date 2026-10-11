@@ -271,7 +271,7 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 			decision.GroupFallbackIdentity, _ = m.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
 		}
 	// isSizeWithinTolerance accepts two zero sizes, so require positive sizes.
-	case input.SourceSize > 0 && input.CandidateSize > 0 && m.hybridIsOnlyStrictDifference(input):
+	case input.SourceSize > 0 && input.CandidateSize > 0 && m.hybridIsOnlyStrictDifference(input, mismatchReason):
 		if !m.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
 			gap := math.Abs(float64(input.CandidateSize-input.SourceSize)) / float64(input.SourceSize) * 100
 			decision.RejectReason = fmt.Sprintf("%s (size differs by %.2f%%)", mismatchReason, gap)
@@ -382,9 +382,11 @@ func applyEpisodeMap(input searchCandidateInput) (searchCandidateInput, string) 
 
 // hybridIsOnlyStrictDifference reports whether the strict matcher accepts the
 // pair once the HYBRID tag is removed from both names. Any other strict
-// difference, IMAX included, still rejects the pair.
-func (m matcher) hybridIsOnlyStrictDifference(input searchCandidateInput) bool {
-	if input.Source.release == nil || input.Candidate.release == nil {
+// difference, IMAX included, still rejects the pair. A pair that differs only
+// by HYBRID always fails strict matching with the reason HYBRID, so any other
+// reason skips the second match.
+func (m matcher) hybridIsOnlyStrictDifference(input searchCandidateInput, mismatchReason string) bool {
+	if mismatchReason != "HYBRID" || input.Source.release == nil || input.Candidate.release == nil {
 		return false
 	}
 	source := withoutHybrid(*input.Source.release)

@@ -4933,7 +4933,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 						structureRelaxedHash = hashKey
 					}
 				case searchDecision.Class == searchCandidateClassHybridTolerance:
-					if !m.hybridIsOnlyStrictDifference(fallbackInput) {
+					if !m.hybridIsOnlyStrictDifference(fallbackInput, mismatchReason) {
 						continue
 					}
 				default:
