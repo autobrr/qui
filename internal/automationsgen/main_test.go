@@ -11,13 +11,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestReferenceIsCurrent also fails when a rule struct field has no doc tag, because generate returns an error.
-func TestReferenceIsCurrent(t *testing.T) {
+// TestGeneratedFilesAreCurrent also fails when a rule struct field has no doc tag, because generate returns an error.
+func TestGeneratedFilesAreCurrent(t *testing.T) {
 	root := filepath.Join("..", "..")
-	want, err := generate(root)
+	reference, err := generate(root)
 	require.NoError(t, err)
 
-	got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(referencePath)))
-	require.NoError(t, err)
-	require.Equal(t, string(want), string(got), "%s is stale, run `make generate`", referencePath)
+	for path, want := range map[string][]byte{
+		referencePath: reference,
+		fieldsPath:    generateFields(),
+	} {
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+		require.NoError(t, err)
+		require.Equal(t, string(want), string(got), "%s is stale, run `make generate`", path)
+	}
 }
