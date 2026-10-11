@@ -132,9 +132,11 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 	}
 }
 
+// partialPoolAdmissionEnabled requires local mode, not Write, because pool
+// members are linked and renamed with host calls.
 func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
-		req.SkipRecheck || req.SkipAutoResume || !models.FilesystemCapabilitiesOf(instance).Write {
+		req.SkipRecheck || req.SkipAutoResume || models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return false
 	}
 	settings, err := s.GetAutomationSettings(ctx)
@@ -2985,7 +2987,8 @@ func (s *Service) partialPoolMemberModeEnabled(ctx context.Context, member *mode
 	if instance == nil {
 		return false, fmt.Errorf("load partial pool member instance %d: empty result", member.InstanceID)
 	}
-	if !models.FilesystemCapabilitiesOf(instance).Write {
+	// Local mode, not Write: propagation runs host os.Lstat, hardlinktree.Create and os.Rename.
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return false, nil
 	}
 	if member.Mode == models.CrossSeedPartialPoolModeHardlink {

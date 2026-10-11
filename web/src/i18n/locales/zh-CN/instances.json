@@ -557,7 +557,8 @@
       "toast": {
         "success": "高级网络设置更新成功",
         "error": "高级网络设置更新失败"
-      }
+      },
+      "unitSeconds": "秒"
     },
     "reannounce": {
       "title": "配置重新汇报",

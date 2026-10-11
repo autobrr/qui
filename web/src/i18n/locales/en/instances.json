@@ -557,7 +557,8 @@
       "toast": {
         "success": "Advanced network settings updated successfully",
         "error": "Failed to update advanced network settings"
-      }
+      },
+      "unitSeconds": "seconds"
     },
     "reannounce": {
       "title": "Configure Reannounce",

@@ -557,7 +557,8 @@
       "toast": {
         "success": "고급 네트워크 설정이 업데이트되었습니다",
         "error": "고급 네트워크 설정을 업데이트하지 못했습니다"
-      }
+      },
+      "unitSeconds": "초"
     },
     "reannounce": {
       "title": "재요청 구성",

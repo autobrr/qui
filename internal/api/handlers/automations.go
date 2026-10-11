@@ -119,14 +119,8 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload AutomationPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode create payload")
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
-		return
-	}
-
-	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
+	if payload == nil {
 		RespondError(w, status, msg)
 		return
 	}
@@ -154,14 +148,19 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload AutomationPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automations: failed to decode update payload")
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	existing, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for update")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation")
 		return
 	}
 
-	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing)
+	if payload == nil {
 		RespondError(w, status, msg)
 		return
 	}
@@ -261,14 +260,8 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload AutomationPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode dry-run payload")
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
-		return
-	}
-
-	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
+	if payload == nil {
 		RespondError(w, status, msg)
 		return
 	}
@@ -309,35 +302,38 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 	return instanceID, nil
 }
 
-// validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
-// Returns (0, "", nil) if valid.
-func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int, payload *AutomationPayload) (int, string, error) {
+// decodeAndCheckPayload decodes and checks the rule in the request body, and checks that the instances and the external program it names exist.
+// On failure it returns a nil payload with the HTTP status code and message.
+func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation) (*AutomationPayload, int, string) {
+	ctx := r.Context()
 	var instance *models.Instance
 	if h.instanceStore != nil {
 		var err error
 		instance, err = h.instanceStore.Get(ctx, instanceID)
 		if errors.Is(err, models.ErrInstanceNotFound) {
-			return http.StatusNotFound, "Instance not found", err
+			return nil, http.StatusNotFound, "Instance not found"
 		}
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
-			return http.StatusInternalServerError, "Failed to validate automation", err
+			return nil, http.StatusInternalServerError, "Failed to validate automation"
 		}
 	}
 
-	if err := automations.ValidateRule(payload.toModel(instanceID, 0), instance); err != nil {
-		return http.StatusBadRequest, err.Error(), err
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
+		return nil, http.StatusBadRequest, err.Error()
 	}
 
 	if export := payload.Conditions.ExportToInstance; export != nil && export.Enabled {
 		if h.instanceStore == nil {
-			return http.StatusInternalServerError, "Instance store not configured", errors.New("instance store unavailable")
+			return nil, http.StatusInternalServerError, "Instance store not configured"
 		}
 		if _, err := h.instanceStore.Get(ctx, export.TargetInstanceID); err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
-				return http.StatusBadRequest, "Target instance not found", errors.New("target instance not found")
+				return nil, http.StatusBadRequest, "Target instance not found"
 			}
-			return http.StatusInternalServerError, "Failed to validate target instance", err
+			return nil, http.StatusInternalServerError, "Failed to validate target instance"
 		}
 	}
 
@@ -345,17 +341,17 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	if program := payload.Conditions.ExternalProgram; program != nil && program.Enabled && program.ProgramID > 0 {
 		if h.externalProgramStore == nil {
 			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
-			return http.StatusServiceUnavailable, "External program service not available", errors.New("external program store is nil")
+			return nil, http.StatusServiceUnavailable, "External program service not available"
 		}
 		if _, err := h.externalProgramStore.GetByID(ctx, program.ProgramID); err != nil {
 			if errors.Is(err, models.ErrExternalProgramNotFound) {
-				return http.StatusBadRequest, "Referenced external program does not exist", err
+				return nil, http.StatusBadRequest, "Referenced external program does not exist"
 			}
-			return http.StatusInternalServerError, "Failed to verify external program", err
+			return nil, http.StatusInternalServerError, "Failed to verify external program"
 		}
 	}
 
-	return 0, "", nil
+	return payload, 0, ""
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
