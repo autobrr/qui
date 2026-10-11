@@ -2532,3 +2532,22 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		require.Equal(t, QueryDegradedARRLookupFailed, errResponse.QueryDegraded)
 	})
 }
+
+func TestClassifySearchCandidateHybridOutsideToleranceNamesSizeGap(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.S01.1080p.BluRay.x264-GRP"
+		candidateName = "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    9_200,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.False(t, decision.Accepted)
+	require.Equal(t, "HYBRID (size differs by 8.00%)", decision.RejectReason)
+}

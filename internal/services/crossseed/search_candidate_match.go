@@ -6,6 +6,7 @@ package crossseed
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +31,10 @@ const (
 	// or a season or episode number that keeps the same pack-or-episode shape.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 	searchCandidateClassTitleRescue       searchCandidateClass = "title-rescue"
+	// searchCandidateClassHybridTolerance means a HYBRID tag on one side was the
+	// only strict difference and the reported sizes are within the size
+	// tolerance. The file comparison after the download decides.
+	searchCandidateClassHybridTolerance searchCandidateClass = "hybrid-tolerance"
 )
 
 // searchSizeEvidence describes size evidence available before a candidate
@@ -265,6 +270,15 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		if slices.Contains(relaxedDifferences, "group") {
 			decision.GroupFallbackIdentity, _ = m.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
 		}
+	// isSizeWithinTolerance accepts two zero sizes, so require positive sizes.
+	case input.SourceSize > 0 && input.CandidateSize > 0 && m.hybridIsOnlyStrictDifference(input):
+		if !m.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
+			gap := math.Abs(float64(input.CandidateSize-input.SourceSize)) / float64(input.SourceSize) * 100
+			decision.RejectReason = fmt.Sprintf("%s (size differs by %.2f%%)", mismatchReason, gap)
+			return decision
+		}
+		class = searchCandidateClassHybridTolerance
+		decision.RelaxedDifferences = []string{"variant"}
 	default:
 		decision.RejectReason = mismatchReason
 		return decision
@@ -322,6 +336,8 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 			decision.Score += sizeEvidenceStrictScoreBonus
 			decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict metadata; " + decision.MatchReason
 		}
+	case searchCandidateClassHybridTolerance:
+		decision.MatchReason = "one-sided HYBRID within size tolerance; " + decision.MatchReason
 	case searchCandidateClassRejected:
 	}
 	if mappedEpisode != "" {
@@ -362,6 +378,34 @@ func applyEpisodeMap(input searchCandidateInput) (searchCandidateInput, string) 
 	mapped.Episode = episodeMap.Episode
 	side.release = &mapped
 	return input, fmt.Sprintf("mapped episode %d = S%02dE%02d", episodeMap.Absolute, episodeMap.Season, episodeMap.Episode)
+}
+
+// hybridIsOnlyStrictDifference reports whether the strict matcher accepts the
+// pair once the HYBRID tag is removed from both names. Any other strict
+// difference, IMAX included, still rejects the pair.
+func (m matcher) hybridIsOnlyStrictDifference(input searchCandidateInput) bool {
+	if input.Source.release == nil || input.Candidate.release == nil {
+		return false
+	}
+	source := withoutHybrid(*input.Source.release)
+	candidate := withoutHybrid(*input.Candidate.release)
+	matches, _ := m.releasesMatchWithReasonAndNamesAndTitles(
+		&source,
+		&candidate,
+		input.Source.rawName,
+		input.Candidate.rawName,
+		input.SourceTitles,
+		input.CandidateTitles,
+		input.FindIndividualEpisodes,
+	)
+	return matches
+}
+
+func withoutHybrid(release rls.Release) rls.Release {
+	release.Other = slices.DeleteFunc(slices.Clone(release.Other), func(value string) bool {
+		return variantValueMatches(normalizeVariant(value), "HYBRID")
+	})
+	return release
 }
 
 func (m matcher) hasOneSidedChecksum(source, candidate *rls.Release) bool {
