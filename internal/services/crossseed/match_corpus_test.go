@@ -547,6 +547,15 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		name:          "one-sided HYBRID with an exact size and no group",
+		source:        "Kaiju.Squad.S01.1080p.BluRay.x264",
+		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264",
+		sourceSize:    corpusPackSize,
+		candidateSize: corpusPackSize,
+		want:          corpusMatch,
+		differences:   hybridSearchOnlyDifferences(),
+	},
+	{
 		name:          "HYBRID against IMAX within the size tolerance",
 		source:        "Kaiju.Squad.S01.1080p.BluRay.IMAX.x264-GRP",
 		candidate:     "Kaiju.Squad.S01.1080p.BluRay.HYBRID.x264-GRP",
