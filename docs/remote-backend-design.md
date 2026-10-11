@@ -165,8 +165,18 @@ scan moved in #2930: its comparison keys keep the dialect's own separators
 (a canonical slash key would merge a Windows UNC path with a rooted one),
 peers' roots and file maps are built in the scanning backend's dialect, and
 ignore paths are validated at save time in the dialect of the instance's
-backend, which is the one the scan reads them in. Cross-seed, managed-delete
-cleanup and the sync manager follow 3d, when writes make them reachable.
+backend, which is the one the scan reads them in. Cross-seed moved in #2943:
+link mode, season packs, the Manual match preview and local-match evidence
+take the dialect from the backend each function holds, and a season pack
+plans and creates its tree on one backend read. `hardlinktree`'s plan
+builders take the dialect as a leading parameter, through a four-method
+`hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
+imports `hardlinktree`, so the dependency cannot point the other way), and
+they check torrent paths in slash grammar on every host. The partial pool,
+`hardlinktree.Create`, reflink creation and the shared-allocation check are
+host code and run only for local instances. Managed-delete cleanup (#2947),
+the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
+`filepath`.
 
 ## Path and Command Safety
 
