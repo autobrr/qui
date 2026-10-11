@@ -73,9 +73,9 @@ func TestFilterLinkEligible_RequiresConfiguredBaseDirs(t *testing.T) {
 func TestResolveSeasonPackSourcePath_RejectsEscapingRelativePaths(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 1}}
 
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "../escape.mkv"))
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "/escape.mkv"))
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "../escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "/escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
 }
 
 func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
@@ -142,6 +142,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := buildSeasonPackPlan(
+				fsops.HostPaths,
 				qbt.TorrentFiles{{Name: name, Size: 10}},
 				&packRelease,
 				"Show.S01.1080p.WEB.x264-GRP",
@@ -186,6 +187,7 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	}
 
 	_, err := buildSeasonPackPlan(
+		fsops.HostPaths,
 		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
 		&packRelease,
 		"K-On! S01 1080p BluRay",
@@ -229,6 +231,7 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 	}
 
 	build, err := buildSeasonPackPlan(
+		fsops.HostPaths,
 		qbt.TorrentFiles{
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},

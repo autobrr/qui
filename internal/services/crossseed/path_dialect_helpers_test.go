@@ -64,6 +64,9 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 					wantCategory = conv(tt.wantCategory)
 				}
 				require.Equal(t, wantCategory, s.buildCategorySavePath(t.Context(), d, instance, conv(tt.baseDir), "", candidate, req))
+
+				// A season pack's own root folder isolates it, so its dest dir is the category path unnormalized.
+				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, conv(tt.baseDir), nil, "Tracker"))
 			})
 		})
 	}
@@ -113,6 +116,39 @@ func TestPathDialect_ResolveLocalTorrentFile(t *testing.T) {
 			eachDialect(t, true, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
 				got, ok := resolveLocalTorrentFile(d, conv("/data/tv"), tt.name)
 				require.Equal(t, tt.want != "", ok)
+				if ok {
+					require.Equal(t, conv(tt.want), got)
+				}
+			})
+		})
+	}
+}
+
+// Host Rel on Windows accepts two rooted paths, so a remote join used to come
+// back backslashed with ok=true.
+func TestPathDialect_SafeSeasonPackJoin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		root, name string
+		want       string // "" means refused
+		hostToo    bool
+	}{
+		{root: "/data/tv", name: "ep.mkv", want: "/data/tv/ep.mkv", hostToo: true},
+		{root: "/data/tv", name: `Show\ep.mkv`, want: "/data/tv/Show/ep.mkv", hostToo: true},
+		{root: "//data/tv", name: "ep.mkv", want: "/data/tv/ep.mkv"},
+		{root: "/data/tv", name: "../x", hostToo: true},
+		{root: "/data/tv", name: "a/../../x", hostToo: true},
+		{root: "/data/tv", name: "/x", hostToo: true},
+		{root: "/data/tv", name: ".", hostToo: true},
+		{root: "/data/tv", name: "C:/x", hostToo: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.root+" "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
+				got, ok := safeSeasonPackJoin(d, conv(tt.root), tt.name)
+				require.Equal(t, tt.want != "", ok, got)
 				if ok {
 					require.Equal(t, conv(tt.want), got)
 				}

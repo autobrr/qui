@@ -29,6 +29,7 @@ type slashBackend struct {
 	files   map[string]hardlink.FileID
 	dirs    map[string]struct{}
 	devices []string // SameFilesystem is true for two paths under one of these
+	stats   []string
 	plans   []hardlinktree.TreePlan
 }
 
@@ -57,6 +58,7 @@ func testFileID(n uint64) hardlink.FileID {
 func (b *slashBackend) Paths() fsops.PathDialect { return fsops.SlashPaths }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	b.stats = append(b.stats, p)
 	if _, ok := b.dirs[p]; ok {
 		return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir, Nlinks: 1}, nil
 	}
@@ -247,4 +249,86 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "hash123", "Movie", "tracker.example",
 		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
 	require.Equal(t, "/links/tracker.example", got)
+}
+
+// Host Dir on Windows walks `\data\hl`, `\data`, `\` and never finds the
+// remote's "/data/hl".
+func TestPathDialect_SelectSeasonPackBaseDirWalksSlashParents(t *testing.T) {
+	t.Parallel()
+
+	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep.mkv")
+	backend.dirs["/data/hl"] = struct{}{}
+
+	got, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new",
+		map[episodeIdentity]seasonPackLocalFile{{series: 1, episode: 1}: {sourcePath: "/data/tv/ep.mkv"}})
+
+	require.NoError(t, err)
+	require.Equal(t, "/data/hl/new", got)
+	require.Contains(t, backend.stats, "/data/hl")
+}
+
+// On a Windows host the season pack resolved remote sources as `\data\tv\...`,
+// which the remote does not hold, so the apply failed as layout_mismatch.
+func TestPathDialect_SeasonPackPlan(t *testing.T) {
+	tests := []struct {
+		name     string
+		preset   string
+		baseDir  string
+		wantRoot string // also the add's savepath; "" skips both
+		wantDir  string // where the pack folder lands
+	}{
+		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", wantRoot: "/data/hl/tracker.example.com", wantDir: "/data/hl/tracker.example.com"},
+		// A flat RootDir passes the configured base dir through as given, so
+		// the row pins only the targets.
+		{name: "flat double slash", preset: "flat", baseDir: "//data/hl", wantDir: "/data/hl"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fix := newSeasonPackFixture(t)
+			inst := &models.Instance{
+				ID: 1, Name: "SlashInst", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true,
+				HardlinkBaseDir: tt.baseDir, HardlinkDirPreset: tt.preset,
+			}
+			hashes := []string{"e01", "e02", "e03", "e04"}
+			sources := make([]string, 0, len(fix.packFiles))
+			torrents := make([]qbt.Torrent, 0, len(fix.packFiles))
+			for i, fileName := range fix.packFiles {
+				source := "/data/tv/" + fileName
+				sources = append(sources, source)
+				torrents = append(torrents, qbt.Torrent{Hash: hashes[i], Name: strings.TrimSuffix(fileName, path.Ext(fileName)), ContentPath: source, Progress: 1.0})
+			}
+			backend := newSlashBackend([]string{"/data"}, sources...)
+			backend.dirs["/data/hl"] = struct{}{}
+
+			baseSM := newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: torrents}, map[int]*models.Instance{inst.ID: inst})
+			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
+			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+			s := &Service{
+				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:              sm,
+				releaseCache:             NewReleaseCache(),
+				automationSettingsLoader: defaultSettings(true, 0.75),
+			}
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
+
+			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+				TorrentName: fix.packName,
+				TorrentData: fix.torrentData,
+				InstanceIDs: []int{inst.ID},
+			})
+
+			require.NoError(t, err)
+			require.True(t, resp.Applied, "%+v", resp)
+			require.Len(t, backend.plans, 1)
+			want := make([]hardlinktree.FilePlan, 0, len(fix.packFiles))
+			for i, fileName := range fix.packFiles {
+				want = append(want, hardlinktree.FilePlan{SourcePath: sources[i], TargetPath: tt.wantDir + "/" + fix.packName + "/" + fileName})
+			}
+			require.ElementsMatch(t, want, backend.plans[0].Files)
+			if tt.wantRoot != "" {
+				require.Equal(t, tt.wantRoot, backend.plans[0].RootDir)
+				require.Equal(t, tt.wantRoot, sm.addCalls[0].options["savepath"])
+			}
+		})
+	}
 }
