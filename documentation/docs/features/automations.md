@@ -823,6 +823,16 @@ Before deletion, qui reads the files again for rules that use hardlink data. If 
 
 To diagnose this issue, enable debug logging and check for the "hardlink index built" log message, which reports an `inaccessible` count.
 
+#### How current the scope is
+
+qui keeps the hardlink data of each instance for up to 10 minutes. Rules, previews, and dry runs on that instance share it.
+
+- When a torrent is added, removed, or moved, qui reads that torrent and the torrents that share its files again at the next rule run.
+- A change only on disk, such as a library file that Sonarr or Radarr deletes after an upgrade, shows when qui reads all torrents again. That happens at the first rule run after the data is 10 minutes old. With the default interval of 15 minutes, every run reads all torrents again. Rules with shorter intervals, previews, and dry runs on the same instance can add up to 10 minutes.
+- A file list from qBittorrent can be up to 1 hour old. After a rename or a file priority change made outside qui, the scope of that torrent can stay unknown for up to 1 hour. The same changes made in qui refresh the file list at once, and the scope changes when qui reads all torrents again.
+
+The check before deletion (see above) reads the files of the torrent again and holds any torrent whose scope changed. For `HARDLINK_SCOPE_CROSS`, it does not read the files of other instances again. A change on another instance shows when qui reads all torrents again.
+
 #### Docker volume requirements
 
 For hardlink scope detection to work in Docker:

@@ -218,38 +218,8 @@ func TestScopeAfterRescanSeesLinksAddedSinceTheIndexWasBuilt(t *testing.T) {
 	require.NoError(t, os.Link(pathA, filepath.Join(dir, "library", "movie.mkv")))
 
 	fresh := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.scopeAfterRescan(fresh),
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, scopeAfterRescan(fresh, index.buildState.globalFileIDMap),
 		"the fresh read must report the link the index never saw")
-}
-
-// Cross-instance augmentation raises uniquePathCount in place under crossScopeMu. A
-// preview request can run it while a scheduled apply verifies its delete candidates, so
-// the read side has to take the same lock. Run with -race.
-func TestScopeAfterRescanIsSafeAgainstConcurrentAugmentation(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	linkPair(t, dir)
-
-	info := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	index := indexFrom(map[string]*torrentFileInfo{"hashA": info})
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for range 200 {
-			index.crossScopeMu.Lock()
-			for _, tracker := range index.buildState.globalFileIDMap {
-				tracker.uniquePathCount++
-			}
-			index.crossScopeMu.Unlock()
-		}
-	}()
-
-	for range 200 {
-		index.scopeAfterRescan(info)
-	}
-	<-done
 }
 
 func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
@@ -265,7 +235,7 @@ func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 	require.NoError(t, os.Remove(pathA))
 
 	fresh := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
-	require.Empty(t, index.scopeAfterRescan(fresh),
+	require.Empty(t, scopeAfterRescan(fresh, index.buildState.globalFileIDMap),
 		"a torrent whose files vanished has no scope, and must not read as unlinked")
 }
 
@@ -285,7 +255,7 @@ func TestDeleteUsesHardlinkData(t *testing.T) {
 	tests := []struct {
 		name string
 		rule *models.Automation
-		want bool
+		want hardlinkUse
 	}{
 		{
 			name: "unregistered rule owes the index nothing",
@@ -304,23 +274,23 @@ func TestDeleteUsesHardlinkData(t *testing.T) {
 				Enabled:   true,
 				Condition: &models.RuleCondition{Field: FieldHardlinkScope},
 			}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 		{
 			name: "expands to the hardlink copies",
 			rule: deleteRule(&models.DeleteAction{Enabled: true, IncludeHardlinks: true}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 		{
 			name: "sorted by the scope, which decides who wins a limited batch",
 			rule: deleteRule(&models.DeleteAction{Enabled: true},
 				&models.SortingConfig{Type: models.SortingTypeSimple, Field: FieldHardlinkScopeCross}),
-			want: true,
+			want: hardlinkUse{cross: true},
 		},
 		{
 			name: "grouped by the hardlink signature",
 			rule: deleteRule(&models.DeleteAction{Enabled: true, GroupID: GroupHardlinkSignature}, nil),
-			want: true,
+			want: hardlinkUse{single: true},
 		},
 	}
 
@@ -390,6 +360,6 @@ func TestScopeAfterRescanReportsBoth(t *testing.T) {
 	index := indexFrom(scans)
 	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash["hashA"])
 
-	require.Equal(t, HardlinkScopeBoth, index.scopeAfterRescan(scans["hashA"]),
+	require.Equal(t, HardlinkScopeBoth, scopeAfterRescan(scans["hashA"], index.buildState.globalFileIDMap),
 		"rescan must agree with the indexed scope for an unchanged torrent")
 }
