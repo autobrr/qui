@@ -193,6 +193,12 @@ elif ! sections=$(write_sections); then
 	: # write_sections printed the warning.
 elif [[ -z ${sections//[[:space:]]/} ]]; then
 	warn "Claude returned no text"
+# A contributor can edit a PR body after the merge. Accept only the two
+# headings and bullets, with no links or HTML, so that text in a PR body
+# cannot put a link into the release.
+elif grep -qvE '^(## (Breaking changes|Highlights)|- \*\*.+|[[:space:]]*)$' <<<"$sections" ||
+	grep -qiE 'https?://|www\.|\]\(|</?[a-z]+[[:space:]>/]' <<<"$sections"; then
+	warn "Claude returned text that is not only the two sections"
 else
 	b=$nl$body
 	new_body="${b%%"$marker"*}$marker${sections//$nl/$eol}$eol${b#*"$marker"}"
