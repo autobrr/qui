@@ -83,6 +83,15 @@ var (
 	ErrCouldNotMatch   = &LinkPlanError{Kind: LinkPlanErrorCouldNotMatch}
 )
 
+// PathDialect is the path grammar of the filesystem a plan targets.
+// fsops.PathDialect satisfies it; fsops imports this package, so it is declared here.
+type PathDialect interface {
+	Join(base, name string) string
+	Rel(base, target string) (string, error)
+	FromSlash(p string) string
+	Separator() string
+}
+
 // ContentLayout describes how qBittorrent organizes torrent content.
 type ContentLayout string
 
@@ -95,6 +104,7 @@ const (
 // BuildPlan creates a hardlink tree plan that maps existing files to the incoming torrent's layout.
 //
 // Parameters:
+//   - d: Path grammar of the filesystem destDir and the existing files live on
 //   - candidateFiles: Files as they appear in the INCOMING torrent (target layout)
 //   - existingFiles: Files from the MATCHED torrent that already exist on disk
 //   - layout: How qBittorrent will organize the torrent (from instance preferences)
@@ -103,6 +113,7 @@ const (
 //
 // The resulting tree will match what qBittorrent expects when adding the torrent.
 func BuildPlan(
+	d PathDialect,
 	candidateFiles []TorrentFile,
 	existingFiles []ExistingFile,
 	layout ContentLayout,
@@ -212,10 +223,10 @@ func BuildPlan(
 		match.used = true
 
 		// Compute target path based on layout
-		targetPath := computeTargetPath(cf.Path, layout, torrentName, destDir)
+		targetPath := computeTargetPath(d, cf.Path, layout, torrentName, destDir)
 
 		// Validate that target path is inside destDir (defense in depth)
-		if err := validateTargetInsideBase(targetPath, destDir); err != nil {
+		if err := validateTargetInsideBase(d, targetPath, destDir); err != nil {
 			return nil, err
 		}
 
@@ -236,7 +247,7 @@ func BuildPlan(
 // BuildSingleFilePlan creates an exact-path plan for one already-paired torrent
 // file. It rejects unsafe or non-canonical slash paths, performs no I/O, and
 // never performs fuzzy matching or conflict renaming.
-func BuildSingleFilePlan(rootDir, relativePath, sourcePath string) (*TreePlan, error) {
+func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string) (*TreePlan, error) {
 	if rootDir == "" {
 		return nil, errors.New("destination directory is required")
 	}
@@ -250,8 +261,8 @@ func BuildSingleFilePlan(rootDir, relativePath, sourcePath string) (*TreePlan, e
 		return nil, errors.New("non-canonical torrent path: " + relativePath)
 	}
 
-	targetPath := filepath.Join(rootDir, filepath.FromSlash(relativePath))
-	if err := validateTargetInsideBase(targetPath, rootDir); err != nil {
+	targetPath := d.Join(rootDir, d.FromSlash(relativePath))
+	if err := validateTargetInsideBase(d, targetPath, rootDir); err != nil {
 		return nil, err
 	}
 	return &TreePlan{
@@ -271,16 +282,14 @@ type existingEntry struct {
 }
 
 // computeTargetPath determines the full target path based on content layout.
-func computeTargetPath(candidatePath string, layout ContentLayout, torrentName, destDir string) string {
-	// Normalize path separators
-	candidatePath = filepath.FromSlash(candidatePath)
-
+// candidatePath is a validated slash path; it is converted only where it is joined.
+func computeTargetPath(d PathDialect, candidatePath string, layout ContentLayout, torrentName, destDir string) string {
 	switch layout {
 	case LayoutSubfolder:
 		// Wrap in a folder named after the torrent
 		// For single-file torrents, qBittorrent strips the extension from folder name
 		folderName := torrentName
-		if !strings.Contains(candidatePath, string(filepath.Separator)) {
+		if !strings.Contains(candidatePath, "/") {
 			// Single file - strip extension for folder name
 			if ext := filepath.Ext(torrentName); ext != "" {
 				folderName = strings.TrimSuffix(torrentName, ext)
@@ -289,90 +298,62 @@ func computeTargetPath(candidatePath string, layout ContentLayout, torrentName, 
 		// Sanitize folder name for Windows compatibility (removes illegal characters)
 		// but keep candidatePath unchanged to match incoming torrent layout
 		folderName = pathutil.SanitizePathSegment(folderName)
-		return filepath.Join(destDir, folderName, candidatePath)
+		return d.Join(d.Join(destDir, folderName), d.FromSlash(candidatePath))
 
 	case LayoutNoSubfolder:
 		// Strip the first directory component if present
-		parts := strings.SplitN(candidatePath, string(filepath.Separator), 2)
+		parts := strings.SplitN(candidatePath, "/", 2)
 		if len(parts) == 2 {
-			return filepath.Join(destDir, parts[1])
+			return d.Join(destDir, d.FromSlash(parts[1]))
 		}
-		return filepath.Join(destDir, candidatePath)
+		return d.Join(destDir, d.FromSlash(candidatePath))
 
 	default: // LayoutOriginal
-		return filepath.Join(destDir, candidatePath)
+		return d.Join(destDir, d.FromSlash(candidatePath))
 	}
 }
 
 // validateCandidatePath checks if a torrent file path is safe (no path traversal).
-func validateCandidatePath(path string) error {
-	if path == "" {
+// It reads the name in slash grammar on every host, so the answer does not
+// depend on the OS qui runs on.
+func validateCandidatePath(name string) error {
+	if name == "" {
 		return errors.New("empty file path in torrent")
 	}
 
 	// Torrent paths are slash-delimited. Reject both platform-native and
 	// foreign absolute/traversal forms on every host OS.
-	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) {
-		return errors.New("absolute path not allowed in torrent: " + path)
+	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) {
+		return errors.New("absolute path not allowed in torrent: " + name)
 	}
-	if strings.Contains(path, `\`) {
-		return errors.New("backslash not allowed in torrent path: " + path)
+	if strings.Contains(name, `\`) {
+		return errors.New("backslash not allowed in torrent path: " + name)
 	}
-	if len(path) >= 2 && ((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) && path[1] == ':' {
-		return errors.New("volume prefix not allowed in torrent path: " + path)
-	}
-
-	// Normalize path
-	p := filepath.Clean(filepath.FromSlash(path))
-
-	// Reject absolute paths
-	if filepath.IsAbs(p) {
-		return errors.New("absolute path not allowed in torrent: " + path)
+	if len(name) >= 2 && ((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')) && name[1] == ':' {
+		return errors.New("volume prefix not allowed in torrent path: " + name)
 	}
 
-	// Reject paths with Windows volume prefix
-	if filepath.VolumeName(p) != "" {
-		return errors.New("volume prefix not allowed in torrent path: " + path)
-	}
-
-	// Reject current directory or parent directory references
+	// path.Clean leaves ".." only as leading segments.
+	p := path.Clean(name)
 	if p == "." {
-		return errors.New("current directory path not allowed: " + path)
+		return errors.New("current directory path not allowed: " + name)
 	}
-	if p == ".." || strings.HasPrefix(p, ".."+string(filepath.Separator)) {
-		return errors.New("parent directory traversal not allowed: " + path)
-	}
-
-	// Check each component for ".."
-	for _, part := range strings.Split(p, string(filepath.Separator)) {
-		if part == ".." {
-			return errors.New("parent directory traversal not allowed: " + path)
-		}
+	if p == ".." || strings.HasPrefix(p, "../") {
+		return errors.New("parent directory traversal not allowed: " + name)
 	}
 
 	return nil
 }
 
 // validateTargetInsideBase ensures the target path is inside the base directory.
-func validateTargetInsideBase(targetPath, baseDir string) error {
-	// Get absolute paths for comparison
-	absTarget, err := filepath.Abs(targetPath)
-	if err != nil {
-		return errors.New("failed to resolve target path: " + err.Error())
-	}
-	absBase, err := filepath.Abs(baseDir)
-	if err != nil {
-		return errors.New("failed to resolve base path: " + err.Error())
-	}
-
-	// Check if target is inside base
-	rel, err := filepath.Rel(absBase, absTarget)
+func validateTargetInsideBase(d PathDialect, targetPath, baseDir string) error {
+	rel, err := d.Rel(baseDir, targetPath)
 	if err != nil {
 		return errors.New("failed to compute relative path: " + err.Error())
 	}
 
 	// If the relative path starts with "..", target is outside base
-	if strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+	if strings.HasPrefix(rel, ".."+d.Separator()) || rel == ".." {
 		return errors.New("target path escapes base directory: " + targetPath)
 	}
 

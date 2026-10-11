@@ -71,7 +71,7 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetRoot, relativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetRoot, relativePath, sourcePath)
 	require.NoError(t, err)
 	created, err := hardlinktree.Create(plan)
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestPartialPoolHardlinkRollbackRejectsStaleAdmission(t *testing.T) {
 	_, _, err = store.RegisterPartialPoolMember(t.Context(), registration)
 	require.NoError(t, err)
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetRoot, relativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetRoot, relativePath, sourcePath)
 	require.NoError(t, err)
 	created, err := hardlinktree.Create(plan)
 	require.NoError(t, err)

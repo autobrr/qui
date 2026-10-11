@@ -403,7 +403,7 @@ func (s *Service) processLinkMode(
 		// Build destination directory based on preset and torrent structure
 		destDir = s.buildHardlinkDestDir(ctx, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 		// Build link tree plan with only the linkable files
-		plan, planErr = hardlinktree.BuildPlan(candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+		plan, planErr = hardlinktree.BuildPlan(fsops.HostPaths, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
 		if planErr != nil {
 			return planErr
 		}

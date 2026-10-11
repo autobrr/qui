@@ -5,6 +5,7 @@ package hardlinktree
 
 import (
 	"errors"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,35 +13,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildSingleFilePlanRejectsForeignPathForms(t *testing.T) {
-	t.Parallel()
+// hostDialect is fsops.HostPaths, which this package cannot import: fsops imports it.
+type hostDialect struct{}
 
-	for _, relativePath := range []string{
-		"../escape.mkv",
-		"folder/../../escape.mkv",
-		"/absolute.mkv",
-		`\absolute.mkv`,
-		`\\server\share\file.mkv`,
-		`C:\file.mkv`,
-		`folder\file.mkv`,
-		"folder//file.mkv",
-		"folder/./file.mkv",
-		"folder/",
-	} {
-		t.Run(relativePath, func(t *testing.T) {
-			t.Parallel()
-			_, err := BuildSingleFilePlan(t.TempDir(), relativePath, filepath.Join(t.TempDir(), "source.mkv"))
-			require.Error(t, err)
-		})
-	}
-}
+func (hostDialect) Join(base, name string) string           { return filepath.Join(base, name) }
+func (hostDialect) Rel(base, target string) (string, error) { return filepath.Rel(base, target) }
+func (hostDialect) FromSlash(p string) string               { return filepath.FromSlash(p) }
+func (hostDialect) Separator() string                       { return string(filepath.Separator) }
 
 func TestBuildSingleFilePlanPreservesTorrentPath(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	source := filepath.Join(t.TempDir(), "source.mkv")
-	plan, err := BuildSingleFilePlan(root, "Synthetic.Release/video.mkv", source)
+	plan, err := BuildSingleFilePlan(hostDialect{}, root, "Synthetic.Release/video.mkv", source)
 	require.NoError(t, err)
 	require.Equal(t, root, plan.RootDir)
 	require.Equal(t, []FilePlan{{
@@ -57,7 +43,7 @@ func TestBuildPlan_SingleFile(t *testing.T) {
 		{AbsPath: "/downloads/movie.mkv", RelPath: "movie.mkv", Size: 1000000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -89,7 +75,7 @@ func TestBuildPlan_MultipleFiles(t *testing.T) {
 		{AbsPath: "/downloads/Show/S01E03.mkv", RelPath: "Show/S01E03.mkv", Size: 550000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -107,7 +93,7 @@ func TestBuildPlan_SubfolderLayout_SingleFile(t *testing.T) {
 		{AbsPath: "/downloads/movie.mkv", RelPath: "movie.mkv", Size: 1000000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutSubfolder, "Movie.2024.mkv", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutSubfolder, "Movie.2024.mkv", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -129,7 +115,7 @@ func TestBuildPlan_SubfolderLayout_MultipleFiles(t *testing.T) {
 		{AbsPath: "/downloads/Show/S01E02.mkv", RelPath: "Show/S01E02.mkv", Size: 600000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutSubfolder, "Show.S01", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutSubfolder, "Show.S01", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -152,7 +138,7 @@ func TestBuildPlan_SubfolderLayout_SanitizesIllegalChars(t *testing.T) {
 
 	// Torrent name with Windows-illegal characters: < > : " / \ | ? *
 	torrentName := "Movie: The Sequel? Part 2 <2024>.mkv"
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutSubfolder, torrentName, "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutSubfolder, torrentName, "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -189,7 +175,7 @@ func TestBuildPlan_NoSubfolderLayout(t *testing.T) {
 		{AbsPath: "/downloads/Show/S01E01.mkv", RelPath: "Show/S01E01.mkv", Size: 500000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutNoSubfolder, "Show.S01", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutNoSubfolder, "Show.S01", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -212,7 +198,7 @@ func TestBuildPlan_SizeMatching(t *testing.T) {
 		{AbsPath: "/downloads/file1.mkv", RelPath: "file1.mkv", Size: 1000},
 	}
 
-	plan, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Test", "/dest")
+	plan, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Test", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -237,7 +223,7 @@ func TestBuildPlan_NoCandidateFiles(t *testing.T) {
 		{AbsPath: "/downloads/movie.mkv", RelPath: "movie.mkv", Size: 1000000},
 	}
 
-	_, err := BuildPlan(nil, existingFiles, LayoutOriginal, "Movie", "/dest")
+	_, err := BuildPlan(hostDialect{}, nil, existingFiles, LayoutOriginal, "Movie", "/dest")
 	if err == nil {
 		t.Error("Expected error for empty candidate files")
 	}
@@ -248,7 +234,7 @@ func TestBuildPlan_NoExistingFiles(t *testing.T) {
 		{Path: "movie.mkv", Size: 1000000},
 	}
 
-	_, err := BuildPlan(candidateFiles, nil, LayoutOriginal, "Movie", "/dest")
+	_, err := BuildPlan(hostDialect{}, candidateFiles, nil, LayoutOriginal, "Movie", "/dest")
 	if err == nil {
 		t.Error("Expected error for empty existing files")
 	}
@@ -262,7 +248,7 @@ func TestBuildPlan_NoMatchingFile(t *testing.T) {
 		{AbsPath: "/downloads/other.mkv", RelPath: "other.mkv", Size: 2000000}, // Different size
 	}
 
-	_, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
+	_, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
 	if err == nil {
 		t.Error("Expected error when no matching file for size")
 	}
@@ -287,7 +273,7 @@ func TestBuildPlan_EmptyDestDir(t *testing.T) {
 		{AbsPath: "/downloads/movie.mkv", RelPath: "movie.mkv", Size: 1000000},
 	}
 
-	_, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Movie", "")
+	_, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Movie", "")
 	if err == nil {
 		t.Error("Expected error for empty destination directory")
 	}
@@ -351,7 +337,7 @@ func TestBuildPlan_RejectsPathTraversal(t *testing.T) {
 				{Path: tt.candidatePath, Size: 1000000},
 			}
 
-			_, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Test", "/dest")
+			_, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Test", "/dest")
 			if tt.wantError && err == nil {
 				t.Errorf("BuildPlan should reject path %q but didn't", tt.candidatePath)
 			}
@@ -374,12 +360,12 @@ func TestBuildPlan_Deterministic(t *testing.T) {
 		{AbsPath: "/downloads/Show/S01E01.mkv", RelPath: "Show/S01E01.mkv", Size: 500000},
 	}
 
-	plan1, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
+	plan1, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
-	plan2, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
+	plan2, err := BuildPlan(hostDialect{}, candidateFiles, existingFiles, LayoutOriginal, "Show.S01", "/dest")
 	if err != nil {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
@@ -524,4 +510,78 @@ func TestHasCommonRootFolder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Windows path grammar reads "X:" as a volume for any byte X, and its Clean
+// reduces "./C:/.." to the destination itself. Torrent names are slash paths,
+// so both get the same answer on every host.
+func TestValidateCandidatePathSlashGrammar(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		wantErr bool
+	}{
+		{name: "Show/ep.mkv"},
+		{name: ".:a"},
+		{name: "1:1 Scale/x.mkv"},
+		{name: "a/1:1/x.mkv"},
+		{name: "./C:/..", wantErr: true},
+		{name: "", wantErr: true},
+		{name: ".", wantErr: true},
+		{name: "a/..", wantErr: true},
+		{name: "..", wantErr: true},
+		{name: "../x", wantErr: true},
+		{name: "a/../../x", wantErr: true},
+		{name: "/x", wantErr: true},
+		{name: `\x`, wantErr: true},
+		{name: `\\server\share\x`, wantErr: true},
+		{name: `a\b`, wantErr: true},
+		{name: "C:x", wantErr: true},
+		{name: "C:/x", wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateCandidatePath(tt.name)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// Every name the validator accepts must land strictly inside the base, in
+// slash grammar and in the host's. The alphabet holds every byte either
+// grammar treats specially.
+func TestValidateCandidatePathAcceptedStaysInsideBase(t *testing.T) {
+	t.Parallel()
+
+	const alphabet = `a./\:C `
+	slashBase := "/base/dir"
+	hostBase := filepath.Join("base", "dir")
+	accepted := 0
+	name := make([]byte, 0, 6)
+	var walk func()
+	walk = func() {
+		if validateCandidatePath(string(name)) == nil {
+			accepted++
+			p := string(name)
+			require.True(t, strings.HasPrefix(path.Join(slashBase, p), slashBase+"/"), "slash grammar: %q escapes or equals the base", p)
+			rel, err := filepath.Rel(hostBase, filepath.Join(hostBase, filepath.FromSlash(p)))
+			require.NoError(t, err, "host grammar: %q", p)
+			require.False(t, rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)), "host grammar: %q escapes or equals the base", p)
+		}
+		if len(name) == cap(name) {
+			return
+		}
+		for i := range len(alphabet) {
+			name = append(name, alphabet[i])
+			walk()
+			name = name[:len(name)-1]
+		}
+	}
+	walk()
+	require.Positive(t, accepted)
 }

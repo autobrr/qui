@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -2844,7 +2845,7 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetMember.RootPath, targetFile.RelativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetMember.RootPath, targetFile.RelativePath, sourcePath)
 	if err != nil {
 		markManual("plan_build_failed", err.Error())
 		return false

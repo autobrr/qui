@@ -1608,7 +1608,7 @@ func buildSeasonPackPlan(
 
 		// hardlinktree validates the torrent path, the same check link mode's
 		// plans go through, and the backends trust the plan.
-		filePlan, err := hardlinktree.BuildSingleFilePlan(plan.RootDir, pf.Name, localFile.sourcePath)
+		filePlan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, plan.RootDir, pf.Name, localFile.sourcePath)
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid pack target path %q: %w", errLayoutMismatch, pf.Name, err)
 		}
