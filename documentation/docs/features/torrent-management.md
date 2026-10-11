@@ -48,11 +48,11 @@ Use this when a tracker resets your passkey or changes its announce address.
 
 1. In the **Trackers** section of the filter sidebar, open the context menu on the tracker.
 2. Click **Edit tracker URL**. If the entry groups more than one domain, select the domain.
-3. Check **Current Full Tracker URL**. qui fills it in from your torrents. If your torrents use more than one URL for this tracker, select the one to replace.
+3. Check **Current Full Tracker URL**. On qBittorrent 5.1 or newer, qui fills it in from your torrents. If your torrents use more than one URL for this tracker, select the one to replace. On older versions, enter the complete current URL yourself.
 4. Enter the complete new URL, with the new passkey, in **New Full Tracker URL**.
 5. Click **Update Tracker**.
 
-qui replaces the URL on every torrent of the instance that has exactly the current URL. To change the URL of one torrent only, open the **Trackers** tab in its details panel and open the context menu on the tracker. If the tracker has `http://` URLs, the dialog also shows **Convert all HTTP to HTTPS**, which changes them to `https://`.
+qui replaces the URL on every torrent of the instance that has exactly the current URL. To change the URL of one torrent only, open the **Trackers** tab in its details panel and open the context menu on the tracker. On qBittorrent 5.1 or newer, if the tracker has `http://` URLs, the dialog also shows **Convert all HTTP to HTTPS**, which changes them to `https://`.
 
 The menu entry is gray when the instance is read-only or qBittorrent is older than 4.1.5.
 
