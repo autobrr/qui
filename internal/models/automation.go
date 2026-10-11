@@ -1004,7 +1004,7 @@ type GroupingConfig struct {
 type GroupDefinition struct {
 	ID                    string   `json:"id" doc:"The group ID. Conditions and actions refer to the group by this ID."`
 	Keys                  []string `json:"keys" doc:"Torrents with equal values for all these keys are in the same group."`
-	AmbiguousPolicy       string   `json:"ambiguousPolicy,omitempty" doc:"What to do when 'contentPath' is one of the keys and a torrent content path equals its save path. 'verify_overlap' compares the files. 'skip' leaves the torrent out of the group."`
+	AmbiguousPolicy       string   `json:"ambiguousPolicy,omitempty" doc:"What the delete, category, and move actions do when they expand to the group, 'contentPath' is one of the keys, and a torrent content path equals its save path. 'verify_overlap' compares the files. 'skip' does not expand the action to the group. 'GROUP_SIZE' and 'IS_GROUPED' ignore this setting."`
 	MinFileOverlapPercent int      `json:"minFileOverlapPercent,omitempty" doc:"With 'verify_overlap': the percentage of files that must overlap. Default '90'."`
 }
 

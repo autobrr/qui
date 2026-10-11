@@ -50,7 +50,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | --- | --- | --- | --- |
 | `id` | string |  | The group ID. Conditions and actions refer to the group by this ID. |
 | `keys` | array of string | `contentPath`, `savePath`, `effectiveName`, `contentType`, `tracker`, `rlsSource`, `rlsResolution`, `rlsCodec`, `rlsHDR`, `rlsAudio`, `rlsChannels`, `rlsGroup`, `hardlinkSignature` | Torrents with equal values for all these keys are in the same group. |
-| `ambiguousPolicy` | string | `verify_overlap`, `skip` | What to do when `contentPath` is one of the keys and a torrent content path equals its save path. `verify_overlap` compares the files. `skip` leaves the torrent out of the group. |
+| `ambiguousPolicy` | string | `verify_overlap`, `skip` | What the delete, category, and move actions do when they expand to the group, `contentPath` is one of the keys, and a torrent content path equals its save path. `verify_overlap` compares the files. `skip` does not expand the action to the group. `GROUP_SIZE` and `IS_GROUPED` ignore this setting. |
 | `minFileOverlapPercent` | integer |  | With `verify_overlap`: the percentage of files that must overlap. Default `90`. |
 
 ### `conditions.speedLimits`
