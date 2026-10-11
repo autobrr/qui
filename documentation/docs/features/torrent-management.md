@@ -56,6 +56,10 @@ qui replaces the URL on every torrent of the instance that has exactly the curre
 
 The menu entry is gray when the instance is read-only or qBittorrent is older than 4.1.5.
 
+:::warning
+If an automation removes unregistered torrents, disable it before you change the URL. Until the tracker accepts the new passkey, qBittorrent can report every torrent of that tracker as unregistered, and the automation then removes all of them. Enable the automation again when the torrents show a working tracker status.
+:::
+
 ## Saved filter views
 
 The **Views** section in the filter sidebar saves the current filter selection as a named view.

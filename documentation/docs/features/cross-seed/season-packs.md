@@ -309,6 +309,10 @@ To remove these episode torrents automatically, make an [automation](../automati
 
 The action deletes only the files of the episode torrent. The pack keeps its data, because its files are hardlinks or reflinks to the same data. For this reason, the rule frees little or no disk space.
 
+:::warning
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
+:::
+
 ## Instance selection
 
 If `instanceIds` is omitted or contains multiple instances:
