@@ -305,9 +305,11 @@ To remove these episode torrents automatically, make an [automation](../automati
 
 - Condition: `Unregistered` is `true`. This condition needs qBittorrent 5.1 or newer.
 - Condition: `Season pack status` is `packed`. This matches only when a pack of the same release is in the client. See [Season pack status](../automations.md#season-pack-status).
-- Action: Remove with files (preserve cross-seeds).
+- Action: Remove (keep files).
 
-The action deletes only the files of the episode torrent. The pack keeps its data, because its files are hardlinks or reflinks to the same data. For this reason, the rule frees little or no disk space.
+Do not use an action that deletes files. `packed` compares only torrent names. It does not check that the pack is complete, or that the pack has its own copy of the data. A pack that you added in another way can use the same files as the episodes.
+
+The action removes the episode torrents from qBittorrent and leaves their files on disk. If qui assembled the pack, these files are hardlinks or reflinks of the pack data, so they use little or no extra disk space. When the pack is complete, [Orphan Scan](../orphan-scan.md) can remove them.
 
 :::warning
 Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
