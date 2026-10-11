@@ -297,6 +297,22 @@ When qui applies a season pack, it:
   - The global cross-seed category rules (custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise the category of the matched episode).
 - Creates the resolved category on the target instance if the category does not exist.
 
+## Episode torrents after the pack
+
+qui does not remove or change the episode torrents when it adds a season pack. The pack has its own linked tree, so it does not use the paths of the episode torrents. If the tracker removes the episodes after the pack arrives, qBittorrent reports them as unregistered.
+
+To remove these episode torrents automatically, make an [automation](../automations.md) with these conditions and this action:
+
+- Condition: `Unregistered` is `true`. This condition needs qBittorrent 5.1 or newer.
+- Condition: `Season pack status` is `packed`. This matches only when a pack of the same release is in the client. See [Season pack status](../automations.md#season-pack-status).
+- Action: Remove with files (preserve cross-seeds).
+
+The action deletes only the files of the episode torrent. The pack keeps its data. qui makes the hardlinks or reflinks of the pack before it adds the pack, and a pack that you downloaded has its own copy. With hardlinks or reflinks, the rule frees little or no disk space.
+
+:::warning
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
+:::
+
 ## Instance selection
 
 If `instanceIds` is omitted or contains multiple instances:
