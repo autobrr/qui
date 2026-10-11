@@ -89,6 +89,8 @@ msi:
 
 release:
   prerelease: auto
+  # The Release job adds the Highlights and then publishes the draft.
+  draft: true
   extra_files:
     - glob: web-dist.tar.gz
   footer: |

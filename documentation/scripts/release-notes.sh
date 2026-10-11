@@ -27,8 +27,8 @@ out="$blog_dir/$date-$tag.md"
 		tr -d '\r' |
 		# Drop the GoReleaser footer (Docker images, Discord link).
 		sed '/^## Docker images/,$d' |
-		# GoReleaser writes "## Changelog" at the top, and Highlights get added
-		# below it by hand. Move the heading to the first change list instead.
+		# GoReleaser writes "## Changelog" at the top, and the Release job adds
+		# Highlights below it. Move the heading to the first change list instead.
 		awk '
 			/^## Changelog$/ { next }
 			!moved && /^### (Breaking Changes|New Features|Bug Fixes|Other Changes)$/ { print "## Changelog\n"; moved = 1 }
