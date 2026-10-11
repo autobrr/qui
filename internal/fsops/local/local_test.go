@@ -192,7 +192,7 @@ func TestReadDir(t *testing.T) {
 		names[i] = e.Name
 		info, err := os.Lstat(filepath.Join(dir, e.Name))
 		require.NoError(t, err)
-		assert.Equal(t, info.Mode().Type(), e.Mode.Type())
+		assert.Equal(t, info.Mode().Type(), e.Mode)
 	}
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")

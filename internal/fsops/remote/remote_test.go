@@ -219,6 +219,23 @@ func TestReadDir(t *testing.T) {
 	assert.NotZero(t, byName["link.txt"].Mode&fs.ModeSymlink)
 }
 
+func TestReadDirModeTypeOnly(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	writeFile(t, remotePath(dir, "file.txt"), "synthetic payload")
+	require.NoError(t, os.Mkdir(remotePath(dir, "sub"), 0o755))
+	entries, err := b.ReadDir(t.Context(), remotePath(dir))
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	for _, entry := range entries {
+		info, err := os.Lstat(filepath.Join(dir, entry.Name))
+		require.NoError(t, err)
+		assert.Equal(t, info.Mode().Type(), entry.Mode)
+	}
+}
+
 func TestWalkDir_Basic(t *testing.T) {
 	t.Parallel()
 

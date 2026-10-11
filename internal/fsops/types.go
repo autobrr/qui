@@ -34,7 +34,7 @@ type DirEntry struct {
 	Name      string
 	IsDir     bool
 	IsSymlink bool
-	// Mode describes the entry itself, without following links.
+	// Mode contains only the entry's type bits, without following links.
 	Mode fs.FileMode
 }
 
