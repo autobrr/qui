@@ -956,9 +956,9 @@ type DeleteAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
 	Mode             string         `json:"mode" doc:"What to delete."`
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty" doc:"Also delete torrents that share files through hardlinks. Only with mode 'deleteWithFilesIncludeCrossSeeds', and needs local filesystem access."`
-	GroupID          string         `json:"groupId,omitempty" doc:"Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
+	GroupID          string         `json:"groupId,omitempty" doc:"Only with mode 'delete'. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' deletes the group only when every torrent in it matches."`
-	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Required when 'enabled' is 'true'. The action deletes only torrents that match this condition."`
 }
 
 // TagAction configures tagging with smart add/remove logic.

@@ -108,9 +108,9 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `enabled` | boolean |  | Whether the action runs. |
 | `mode` | string | `delete`, `deleteWithFiles`, `deleteWithFilesPreserveCrossSeeds`, `deleteWithFilesIncludeCrossSeeds` | What to delete. |
 | `includeHardlinks` | boolean |  | Also delete torrents that share files through hardlinks. Only with mode `deleteWithFilesIncludeCrossSeeds`, and needs local filesystem access. |
-| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
+| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Only with mode `delete`. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
 | `atomic` | string | `all` | With `groupId`: `all` deletes the group only when every torrent in it matches. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Required when `enabled` is `true`. The action deletes only torrents that match this condition. See Condition object. |
 
 ### `conditions.tags[]`
 
