@@ -41,14 +41,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.changed_files }}
         run: |
           # Keep this list the same as paths-ignore above.
           ignored='^(\.github/ISSUE_TEMPLATE/|\.github/images/|documentation/)|^(config\.toml|distrib/docker/docker-compose\.yml|Makefile)$|\.md$'
           # A push already skips these files with paths-ignore above. If the
           # file list cannot be read, run everything, because a skipped
-          # "Run tests" counts as a pass.
+          # "Run tests" counts as a pass. The API returns at most 3000
+          # files, so a larger PR also runs everything.
           code=true
-          if [[ $GITHUB_EVENT_NAME == pull_request ]] &&
+          if [[ $GITHUB_EVENT_NAME == pull_request ]] && ((CHANGED < 3000)) &&
             files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename') &&
             ! grep -qvE "$ignored" <<<"$files"; then
             code=false
