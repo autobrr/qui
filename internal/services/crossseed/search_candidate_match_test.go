@@ -2551,3 +2551,23 @@ func TestClassifySearchCandidateHybridOutsideToleranceNamesSizeGap(t *testing.T)
 	require.False(t, decision.Accepted)
 	require.Equal(t, "HYBRID (size differs by 8.00%)", decision.RejectReason)
 }
+
+func TestClassifySearchCandidateHybridExactSizeWithoutGroupUsesTolerance(t *testing.T) {
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Kaiju.Squad.2019.1080p.BluRay.x264"
+		candidateName = "Kaiju.Squad.2019.1080p.BluRay.HYBRID.x264"
+	)
+
+	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:        namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:       10_000,
+		CandidateSize:    10_000,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassHybridTolerance, decision.Class)
+	require.Equal(t, []string{"variant"}, decision.RelaxedDifferences)
+}

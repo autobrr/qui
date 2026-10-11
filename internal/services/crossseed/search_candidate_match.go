@@ -246,6 +246,14 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 			relaxedDifferences = []string{"checksum"}
 		} else {
 			if ok, reason := m.validateExactSizeSearchIdentity(input); !ok {
+				// An exact size is within the size tolerance, so a pair that
+				// differs only by HYBRID does not need the group identity that
+				// this fallback requires.
+				if m.hybridIsOnlyStrictDifference(input, mismatchReason) {
+					class = searchCandidateClassHybridTolerance
+					decision.RelaxedDifferences = []string{"variant"}
+					break
+				}
 				decision.RejectReason = reason
 				return decision
 			}
