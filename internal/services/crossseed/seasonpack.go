@@ -86,7 +86,7 @@ type seasonPackLocalFile struct {
 type seasonPackPlanBuild struct {
 	plan              *hardlinktree.TreePlan
 	created           *fsops.TreeCreateResult // what the link creator actually made; rollback removes only this
-	backend           fsops.Backend           // the backend that created the tree; rollback must not re-resolve on a possibly-cancelled ctx
+	backend           fsops.Backend           // the backend the plan was built for; it creates the tree, and rollback must not re-resolve on a possibly-cancelled ctx
 	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
@@ -577,7 +577,7 @@ func (s *Service) assembleSeasonPack(
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planBuild, linkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planBuild, linkMode); err != nil {
 		return nil, nil, err
 	}
 	return planBuild, episodes, nil
@@ -587,6 +587,12 @@ func (s *Service) planSeasonPack(
 	ctx context.Context, prep *seasonPackPrep, inst *models.Instance,
 	candidates map[episodeIdentity][]episodeMatch, linkMode, indexer string,
 ) (*seasonPackPlanBuild, map[episodeIdentity]episodeMatch, error) {
+	// One read serves planning and creation, so both see the same backend.
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
+	if err != nil {
+		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
+	}
+
 	episodes, localFiles, err := s.resolveSeasonPackLocalFilesForCandidates(ctx, inst.ID, candidates, prep.meta.Files, prep.packRelease, prep.settings, prep.aliasTitles, prep.rejected)
 	if err != nil {
 		return nil, nil, err
@@ -595,11 +601,6 @@ func (s *Service) planSeasonPack(
 	// with what actually resolved. Below the floor, drift as usual.
 	if !prep.manual && float64(len(episodes)) < float64(prep.totalEpisodes)*prep.threshold {
 		return nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
-	}
-
-	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
-	if err != nil {
-		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
 	}
 
 	if prep.manual {
@@ -627,6 +628,7 @@ func (s *Service) planSeasonPack(
 	if err != nil {
 		return nil, episodes, err
 	}
+	planBuild.backend = backend
 	if !prep.manual && planBuild.hasPendingFiles() && prep.settings.SkipRecheck {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
@@ -640,11 +642,8 @@ func (s *Service) planSeasonPack(
 	return planBuild, episodes, nil
 }
 
-func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instance, planBuild *seasonPackPlanBuild, linkMode string) error {
-	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
-	if err != nil {
-		return err
-	}
+func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
+	backend := planBuild.backend
 	createFn := s.seasonPackLinkCreator
 	if createFn == nil {
 		createFn = backend.HardlinkTree
@@ -660,7 +659,6 @@ func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instanc
 		return fmt.Errorf("link_failed: %w", err)
 	}
 	planBuild.created = created
-	planBuild.backend = backend
 
 	return nil
 }
