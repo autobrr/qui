@@ -624,7 +624,7 @@ func writeLocalMatchFiles(t *testing.T, base string, files qbt.TorrentFiles) {
 	t.Helper()
 
 	for _, file := range files {
-		if _, ok := resolveLocalTorrentFile(base, file.Name); !ok {
+		if _, ok := resolveLocalTorrentFile(fsops.HostPaths, base, file.Name); !ok {
 			continue
 		}
 		fullPath := filepath.Join(base, filepath.FromSlash(strings.ReplaceAll(file.Name, `\`, "/")))
