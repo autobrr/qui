@@ -954,7 +954,7 @@ type AutoManagementAction struct {
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
-	Mode             string         `json:"mode" doc:"What to delete."`
+	Mode             string         `json:"mode" doc:"What to delete. Default: 'delete'. When 'condition' uses 'FREE_SPACE', the mode must not be 'delete', because a delete that keeps the files frees no disk space."`
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty" doc:"Also delete torrents that share files through hardlinks. Only with mode 'deleteWithFilesIncludeCrossSeeds', and needs local filesystem access."`
 	GroupID          string         `json:"groupId,omitempty" doc:"Only with mode 'delete'. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' deletes the group only when every torrent in it matches."`
