@@ -859,7 +859,7 @@ func TestValidateConditionGroupingConfig(t *testing.T) {
 					Value:    "1",
 				},
 			},
-		})
+		}, nil)
 		require.NoError(t, err)
 		require.Empty(t, msg)
 	})
@@ -880,7 +880,7 @@ func TestValidateConditionGroupingConfig(t *testing.T) {
 					Value:    "true",
 				},
 			},
-		})
+		}, nil)
 		require.NoError(t, err)
 		require.Empty(t, msg)
 	})
@@ -896,7 +896,7 @@ func TestValidateConditionGroupingConfig(t *testing.T) {
 					Value:    "1",
 				},
 			},
-		})
+		}, nil)
 		require.Error(t, err)
 		require.Contains(t, msg, "does_not_exist")
 	})
@@ -995,6 +995,12 @@ func TestValidateRule(t *testing.T) {
 			Move:     &models.MoveAction{Enabled: true, Path: "/data", GroupID: "My_Group"},
 			Grouping: &models.GroupingConfig{Groups: []models.GroupDefinition{{ID: "my_group", Keys: []string{"savePath"}}}},
 		})},
+		{name: "unknown group id in a score rule", edit: func(r *models.Automation) {
+			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+				Type:        models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{Score: 10, Condition: &models.RuleCondition{Field: FieldGroupSize, Operator: models.OperatorGreaterThan, GroupID: "relase_item", Value: "1"}},
+			}}}
+		}, wantMsg: "Unknown grouping ID 'relase_item' in grouped condition"},
 		{name: "move with built-in group id", edit: withConditions(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data", GroupID: GroupReleaseItem}})},
 		{name: "release year out of range", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldRlsYear, Operator: models.OperatorEqual, Value: "1800"}}}),
 			wantMsg: "Release Year must be between " + strconv.Itoa(minRlsYear) + " and " + strconv.Itoa(time.Now().Year()+1)},

@@ -118,12 +118,15 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 
 	for _, validate := range []func(*models.ActionConditions) (string, error){
 		validateTagDeleteFromClientConfig,
-		validateConditionGroupingConfig,
 		validateRlsYearConditions,
 	} {
 		if msg, err := validate(conditions); err != nil {
 			return ruleError(msg)
 		}
+	}
+
+	if msg, err := validateConditionGroupingConfig(conditions, rule.SortingConfig); err != nil {
+		return ruleError(msg)
 	}
 
 	if del := conditions.Delete; del != nil && del.IncludeHardlinks {
@@ -208,7 +211,7 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
+func validateConditionGroupingConfig(conditions *models.ActionConditions, sorting *models.SortingConfig) (string, error) {
 	if conditions == nil {
 		return "", nil
 	}
@@ -236,7 +239,7 @@ func validateConditionGroupingConfig(conditions *models.ActionConditions) (strin
 		}
 	}
 
-	for _, cond := range conditionTreesForValidation(conditions) {
+	for _, cond := range append(conditionTreesForValidation(conditions), sortingConfigConditionTrees(sorting)...) {
 		if cond == nil {
 			continue
 		}
