@@ -889,6 +889,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 		sourceHash:            sourceTorrent.Hash,
 		sourceSavePath:        sourceTorrent.SavePath,
 		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
+		sourceLocal:           instanceIsLocal(instances, sourceInstanceID),
 	}
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
@@ -1031,6 +1032,7 @@ type localMatchContext struct {
 	sourceHash            string
 	sourceSavePath        string
 	sourceHasFileIdentity bool
+	sourceLocal           bool
 
 	// Lazy-loaded source file data
 	fetched          bool
@@ -1174,9 +1176,13 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 	sourceIDs := matchCtx.getSourceFileIDs()
-	filesShareAllocation := s.filesShareAllocation
-	if filesShareAllocation == nil && sharedextents.Supported {
-		filesShareAllocation = sharedextents.FilesShareAllocation
+	// The allocation check is a syscall on qui's own disk, so both paths must be local.
+	var filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
+	if matchCtx.sourceLocal && models.FilesystemAccessMode(candidateInstance) == models.FilesystemModeLocal {
+		filesShareAllocation = s.filesShareAllocation
+		if filesShareAllocation == nil && sharedextents.Supported {
+			filesShareAllocation = sharedextents.FilesShareAllocation
+		}
 	}
 	if len(sourceIDs) == 0 && filesShareAllocation == nil {
 		return ""
@@ -1489,6 +1495,17 @@ func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool 
 	for _, instance := range instances {
 		if instance.ID == instanceID {
 			return models.FilesystemCapabilitiesOf(instance).Identity
+		}
+	}
+	return false
+}
+
+// instanceIsLocal reports whether the instance with the given ID reads its
+// files on qui's own disk.
+func instanceIsLocal(instances []*models.Instance, instanceID int) bool {
+	for _, instance := range instances {
+		if instance.ID == instanceID {
+			return models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
 		}
 	}
 	return false

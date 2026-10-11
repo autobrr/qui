@@ -442,6 +442,47 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 	})
 }
 
+// The allocation check is a host syscall, so a source qui reaches through a
+// remote backend must never feed it paths. Identity is local-only today, so
+// FindLocalMatches cannot build a non-local source yet; the context is built by hand.
+func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
+	files := qbt.TorrentFiles{{Name: "shared.mkv", Size: 4}}
+	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
+
+	for _, tt := range []struct {
+		name        string
+		sourceLocal bool
+		wantType    string
+		wantQueries bool
+	}{
+		{name: "local source", sourceLocal: true, wantType: matchTypeReflink, wantQueries: true},
+		{name: "non-local source", sourceLocal: false, wantType: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			service := hardlinkTestService(map[string]qbt.TorrentFiles{
+				normalizeHash(hlSourceHash):    files,
+				normalizeHash(hlCandidateHash): files,
+			})
+			var queries int
+			service.filesShareAllocation = func(string, string) (bool, error) {
+				queries++
+				return true, nil
+			}
+			matchCtx := hardlinkTestMatchCtx(service, sourceDir)
+			matchCtx.sourceLocal = tt.sourceLocal
+
+			matchType := service.localLinkedMatchType(
+				matchCtx,
+				&models.Instance{ID: 1, HasLocalFilesystemAccess: true},
+				hardlinkTestCandidate(candidateDir),
+			)
+			require.Equal(t, tt.wantType, matchType)
+			require.Equal(t, tt.wantQueries, queries > 0)
+			require.NoError(t, matchCtx.verificationErr)
+		})
+	}
+}
+
 type reflinkFindLocalMatchesSyncManager struct {
 	localMatchSyncManager
 	source    qbt.Torrent
