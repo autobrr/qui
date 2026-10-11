@@ -36,7 +36,7 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // that automations.ConditionFields does not allow, each with its JSON path.
 // stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
 // when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
-// The group ID checks skip them the same way.
+// The group ID checks skip them the same way, but check the score conditions also when conditions.grouping changed.
 // It does not check that a referenced instance or external program exists.
 func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
@@ -54,6 +54,8 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	var payload AutomationPayload
 	unmarshalErr := json.Unmarshal(data, &payload)
 	var unchanged []string
+	// The score conditions name groups from conditions.grouping, so their group IDs need a check when either changes.
+	scoreGroupsUnchanged := false
 	if stored != nil && unmarshalErr == nil {
 		payload.Conditions.Normalize()
 		stored.Conditions.Normalize()
@@ -62,6 +64,8 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 		}
 		if sameJSON(payload.SortingConfig, stored.SortingConfig) {
 			unchanged = append(unchanged, "sortingConfig")
+			scoreGroupsUnchanged = payload.Conditions != nil && stored.Conditions != nil &&
+				sameJSON(payload.Conditions.Grouping, stored.Conditions.Grouping)
 		}
 	}
 	if problems := checkJSONShape(nil, "", raw, reflect.TypeFor[AutomationPayload](), unchanged); len(problems) > 0 {
@@ -78,7 +82,7 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 			return nil, ruleErrors{err.Error()}
 		}
 	}
-	if !slices.Contains(unchanged, "sortingConfig") && payload.Conditions != nil {
+	if !scoreGroupsUnchanged && payload.Conditions != nil {
 		if err := automations.ScoreRuleGroupIDsError(payload.Conditions.Grouping, payload.SortingConfig); err != nil {
 			return nil, ruleErrors{err.Error()}
 		}
