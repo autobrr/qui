@@ -21,6 +21,32 @@ func (hostDialect) Rel(base, target string) (string, error) { return filepath.Re
 func (hostDialect) FromSlash(p string) string               { return filepath.FromSlash(p) }
 func (hostDialect) Separator() string                       { return string(filepath.Separator) }
 
+// slashDialect is fsops.SlashPaths, a POSIX destination on every host.
+type slashDialect struct{}
+
+func (slashDialect) Join(base, name string) string { return path.Join(base, name) }
+func (slashDialect) Rel(base, target string) (string, error) {
+	if rel, ok := strings.CutPrefix(path.Clean(target), path.Clean(base)+"/"); ok {
+		return rel, nil
+	}
+	return "..", nil
+}
+func (slashDialect) FromSlash(p string) string { return p }
+func (slashDialect) Separator() string         { return "/" }
+
+// windowsDialect is a Windows destination on every host, so Linux CI exercises its name rules.
+type windowsDialect struct{}
+
+func (windowsDialect) Join(base, name string) string {
+	return windowsDialect{}.FromSlash(path.Join(strings.ReplaceAll(base, `\`, "/"), strings.ReplaceAll(name, `\`, "/")))
+}
+func (windowsDialect) Rel(base, target string) (string, error) {
+	rel, err := slashDialect{}.Rel(strings.ReplaceAll(base, `\`, "/"), strings.ReplaceAll(target, `\`, "/"))
+	return windowsDialect{}.FromSlash(rel), err
+}
+func (windowsDialect) FromSlash(p string) string { return strings.ReplaceAll(p, "/", `\`) }
+func (windowsDialect) Separator() string         { return `\` }
+
 func TestBuildSingleFilePlanPreservesTorrentPath(t *testing.T) {
 	t.Parallel()
 
@@ -542,7 +568,7 @@ func TestValidateCandidatePathSlashGrammar(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateCandidatePath(tt.name)
+			err := validateCandidatePath(slashDialect{}, tt.name)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -565,7 +591,7 @@ func TestValidateCandidatePathAcceptedStaysInsideBase(t *testing.T) {
 	name := make([]byte, 0, 6)
 	var walk func()
 	walk = func() {
-		if validateCandidatePath(string(name)) == nil {
+		if validateCandidatePath(slashDialect{}, string(name)) == nil {
 			accepted++
 			p := string(name)
 			require.True(t, strings.HasPrefix(path.Join(slashBase, p), slashBase+"/"), "slash grammar: %q escapes or equals the base", p)
@@ -584,4 +610,54 @@ func TestValidateCandidatePathAcceptedStaysInsideBase(t *testing.T) {
 	}
 	walk()
 	require.Positive(t, accepted)
+}
+
+// NTFS reads "1:payload" as a stream of the file "1", which os.SameFile then
+// matches to the source, so a plan for it reports success without linking.
+// Native evidence on Windows: autobrr/qui#3140.
+func TestValidateCandidatePathWindowsNames(t *testing.T) {
+	t.Parallel()
+
+	invalid := []string{
+		"1:payload", "video.mkv:payload", "a/b:c/x.mkv",
+		"con", "Show/CON.mkv", "nul.txt", "COM1", "LPT9.log", "aux", "CON .txt", "com\u00b9", "conin$",
+		"name.", "name ", "Show./ep.mkv", "a<b", "a>b", "a|b", "a?b", "a*b", `a"b`, "a\x01b", "a\x1fb",
+	}
+	valid := []string{
+		"Show.S01E01.mkv", "Season 1/ep.mkv", "CONSOLE.mkv", "nullable.txt", "com10.mkv", "COM0", "lpt", ".hidden", "a\x7fb",
+	}
+	for _, name := range invalid {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, validateCandidatePath(windowsDialect{}, name))
+			require.NoError(t, validateCandidatePath(slashDialect{}, name))
+		})
+	}
+	for _, name := range valid {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, validateCandidatePath(windowsDialect{}, name))
+			require.NoError(t, validateCandidatePath(slashDialect{}, name))
+		})
+	}
+}
+
+func TestBuildPlansRejectWindowsNamesForWindowsDestination(t *testing.T) {
+	t.Parallel()
+
+	const root, source = `C:\hl`, `C:\data\1`
+	_, err := BuildSingleFilePlan(windowsDialect{}, root, "1:payload", source)
+	require.ErrorContains(t, err, "not allowed in Windows file name")
+	_, err = BuildPlan(windowsDialect{},
+		[]TorrentFile{{Path: "Show/1:payload", Size: 6}},
+		[]ExistingFile{{AbsPath: source, RelPath: "Show/1", Size: 6}},
+		LayoutOriginal, "Show", root)
+	require.ErrorContains(t, err, "not allowed in Windows file name")
+
+	plan, err := BuildSingleFilePlan(windowsDialect{}, root, "Show/ep.mkv", source)
+	require.NoError(t, err)
+	require.Equal(t, `C:\hl\Show\ep.mkv`, plan.Files[0].TargetPath)
+	plan, err = BuildSingleFilePlan(slashDialect{}, "/hl", "1:payload", "/data/1")
+	require.NoError(t, err)
+	require.Equal(t, "/hl/1:payload", plan.Files[0].TargetPath)
 }

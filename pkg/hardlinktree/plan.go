@@ -7,6 +7,7 @@ package hardlinktree
 
 import (
 	"errors"
+	"fmt"
 	"path"
 	"path/filepath"
 	"sort"
@@ -132,7 +133,7 @@ func BuildPlan(
 
 	// Validate candidate file paths for path traversal attacks
 	for _, cf := range candidateFiles {
-		if err := validateCandidatePath(cf.Path); err != nil {
+		if err := validateCandidatePath(d, cf.Path); err != nil {
 			return nil, err
 		}
 	}
@@ -245,8 +246,9 @@ func BuildPlan(
 }
 
 // BuildSingleFilePlan creates an exact-path plan for one already-paired torrent
-// file. It rejects unsafe or non-canonical slash paths, performs no I/O, and
-// never performs fuzzy matching or conflict renaming.
+// file. It rejects unsafe or non-canonical slash paths and names the destination
+// cannot store, performs no I/O, and never performs fuzzy matching or conflict
+// renaming.
 func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string) (*TreePlan, error) {
 	if rootDir == "" {
 		return nil, errors.New("destination directory is required")
@@ -254,7 +256,7 @@ func BuildSingleFilePlan(d PathDialect, rootDir, relativePath, sourcePath string
 	if sourcePath == "" {
 		return nil, errors.New("source path is required")
 	}
-	if err := validateCandidatePath(relativePath); err != nil {
+	if err := validateCandidatePath(d, relativePath); err != nil {
 		return nil, err
 	}
 	if path.Clean(relativePath) != relativePath {
@@ -313,10 +315,11 @@ func computeTargetPath(d PathDialect, candidatePath string, layout ContentLayout
 	}
 }
 
-// validateCandidatePath checks if a torrent file path is safe (no path traversal).
-// It reads the name in slash grammar on every host, so the answer does not
-// depend on the OS qui runs on.
-func validateCandidatePath(name string) error {
+// validateCandidatePath checks if a torrent file path is safe (no path traversal)
+// and that every component is a name the destination dialect d can store. It
+// reads the name in slash grammar on every host, so the answer depends on the
+// destination, not on the OS qui runs on.
+func validateCandidatePath(d PathDialect, name string) error {
 	if name == "" {
 		return errors.New("empty file path in torrent")
 	}
@@ -342,7 +345,52 @@ func validateCandidatePath(name string) error {
 		return errors.New("parent directory traversal not allowed: " + name)
 	}
 
+	// A backslash separator means a Windows destination, which cannot store every POSIX name.
+	if d.Separator() == `\` {
+		for component := range strings.SplitSeq(p, "/") {
+			if err := windowsNameError(component); err != nil {
+				return fmt.Errorf("torrent path %q: %w", name, err)
+			}
+		}
+	}
+
 	return nil
+}
+
+// windowsNameError reports why Windows cannot store component as a file name.
+// NTFS reads "name:stream" as an alternate data stream of "name", so a colon
+// would silently address another file.
+func windowsNameError(component string) error {
+	if i := strings.IndexFunc(component, func(r rune) bool { return r < 0x20 || strings.ContainsRune(`<>:"|?*`, r) }); i >= 0 {
+		return fmt.Errorf("character %q not allowed in Windows file name %q", component[i], component)
+	}
+	if strings.HasSuffix(component, ".") || strings.HasSuffix(component, " ") {
+		return fmt.Errorf("file name %q ends in a dot or space, which Windows cannot store", component)
+	}
+	// Windows ignores an extension and trailing spaces when matching a device name.
+	base, _, _ := strings.Cut(component, ".")
+	if isWindowsDeviceName(strings.TrimRight(base, " ")) {
+		return fmt.Errorf("file name %q is a reserved Windows device name", component)
+	}
+	return nil
+}
+
+// isWindowsDeviceName follows Go's internal/filepathlite rule, where COM and LPT are reserved only with 1-9 or a superscript digit.
+func isWindowsDeviceName(base string) bool {
+	for _, name := range []string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} {
+		if strings.EqualFold(base, name) {
+			return true
+		}
+	}
+	if len(base) < 4 || (!strings.EqualFold(base[:3], "COM") && !strings.EqualFold(base[:3], "LPT")) {
+		return false
+	}
+	switch n := base[3:]; n {
+	case "\u00b9", "\u00b2", "\u00b3":
+		return true
+	default:
+		return len(n) == 1 && n[0] >= '1' && n[0] <= '9'
+	}
 }
 
 // validateTargetInsideBase ensures the target path is inside the base directory.
