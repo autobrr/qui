@@ -36,7 +36,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 
 ## Steps
 
-1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
+1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. The exception is a local session on a `ready-for-human` discussion whose last triage comment is a log hand-off: continue, and fetch the logs. If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If the missing information is in logs behind a log link, use the log hand-off in `ready-for-human` instead. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
 2. Read `GLOSSARY.md` and `docs/architecture.md` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
@@ -106,6 +106,15 @@ Do not post the brief on the discussion. It lives in the issue, and the issue bo
 ### ready-for-human
 
 Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
+
+#### Log hand-off
+
+Decide from the code first. A log link alone does not change the outcome. If the outcome depends on what the logs show, and the workflow cannot read them, hand the discussion to a maintainer:
+
+1. Post one comment in the Triage Notes layout. List what triage established. In place of the questions for the reporter, name the question that the logs must answer. End with `@s0up4200 will read the logs that you shared. You do not need to do anything else.`
+2. Add `ready-for-human`. Remove `needs-info` or `needs-triage`.
+
+Do not post the agent brief. The maintainer fetches the logs, answers the question, and triages the discussion again.
 
 ## Agent brief
 
