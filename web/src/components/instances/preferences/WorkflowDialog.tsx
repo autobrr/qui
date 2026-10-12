@@ -7,7 +7,7 @@ import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
 import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
-  CONDITION_FIELD_TYPES,
+  CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -67,6 +67,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
   ActionConditions,
   Automation,
@@ -103,11 +104,15 @@ interface WorkflowDialogProps {
   onSuccess?: () => void
 }
 
-// Speed units for display - storage is always KiB/s
-const SPEED_LIMIT_UNITS = [
-  { value: 1, label: "KiB/s" },
-  { value: 1024, label: "MiB/s" },
-]
+// qBittorrent stores these limits in KiB/s, so each value is that unit's size relative to KiB.
+// The value is never localized; the label is, and is built on call to follow a language switch.
+const SPEED_LIMIT_LADDER = ["KiB", "MiB"] as const
+
+const getSpeedLimitUnits = () =>
+  SPEED_LIMIT_LADDER.map((unit) => ({
+    value: BYTES_PER_UNIT[unit] / BYTES_PER_UNIT.KiB,
+    label: unitLabel(unit, true),
+  }))
 
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "Original", labelKey: "preferences.workflowDialog.contentLayout.original" },
@@ -159,6 +164,10 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
+
+// Outside the map: an action of this name would otherwise claim its own fallback.
+// The fallback shows the raw action name so the user can tell which action this build does not know.
+const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
 
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
@@ -308,10 +317,10 @@ const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
   "TRACKERS_COUNT",
 ])
 
-const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
 
-const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELD_TYPES)
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
   .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
 
 function isSupportedSimpleSortField(field: string): field is ConditionField {
@@ -2902,7 +2911,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -2976,7 +2985,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -4082,7 +4091,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs font-medium truncate">{t(Object.hasOwn(DRY_RUN_ACTION_LABEL_KEYS, event.action) ? DRY_RUN_ACTION_LABEL_KEYS[event.action] : DRY_RUN_ACTION_FALLBACK_KEY, { action: event.action })}</p>
                             <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">

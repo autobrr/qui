@@ -4,8 +4,11 @@
 package crossseed
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,9 +73,9 @@ func TestFilterLinkEligible_RequiresConfiguredBaseDirs(t *testing.T) {
 func TestResolveSeasonPackSourcePath_RejectsEscapingRelativePaths(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 1}}
 
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "../escape.mkv"))
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "/escape.mkv"))
-	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "../escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "/escape.mkv"))
+	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
 }
 
 func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
@@ -139,6 +142,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := buildSeasonPackPlan(
+				fsops.HostPaths,
 				qbt.TorrentFiles{{Name: name, Size: 10}},
 				&packRelease,
 				"Show.S01.1080p.WEB.x264-GRP",
@@ -183,6 +187,7 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	}
 
 	_, err := buildSeasonPackPlan(
+		fsops.HostPaths,
 		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
 		&packRelease,
 		"K-On! S01 1080p BluRay",
@@ -226,6 +231,7 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 	}
 
 	build, err := buildSeasonPackPlan(
+		fsops.HostPaths,
 		qbt.TorrentFiles{
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
@@ -680,4 +686,115 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 
 	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
 	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
+}
+
+// oneReadInstanceStore serves the first instance read and fails every later
+// one, so an apply that resolves its backend twice fails on the second read.
+type oneReadInstanceStore struct {
+	instances map[int]*models.Instance
+	reads     int
+}
+
+func (s *oneReadInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	s.reads++
+	if s.reads > 1 {
+		return nil, errors.New("instance store offline")
+	}
+	instance, ok := s.instances[id]
+	if !ok {
+		return nil, models.ErrInstanceNotFound
+	}
+	return instance, nil
+}
+
+// Planning and creation share one backend read. A second read could see a
+// different backend, or none, between the plan and the tree it describes.
+func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) {
+	t.Run("webhook", func(t *testing.T) {
+		fix := newSeasonPackFixture(t)
+		sourceDir := t.TempDir()
+		baseDir := t.TempDir()
+		inst := &models.Instance{
+			ID: 1, Name: "Test", IsActive: true,
+			HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: baseDir,
+		}
+
+		hashes := []string{"e01", "e02", "e03", "e04"}
+		require.Len(t, fix.packFiles, len(hashes))
+		episodeTorrents := make([]qbt.Torrent, 0, len(fix.packFiles))
+		for i, fileName := range fix.packFiles {
+			sourcePath := filepath.Join(sourceDir, fileName)
+			require.NoError(t, os.WriteFile(sourcePath, []byte("source"), 0o600))
+			episodeTorrents = append(episodeTorrents, qbt.Torrent{
+				Hash:        hashes[i],
+				Name:        strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+				ContentPath: sourcePath,
+				Progress:    1.0,
+			})
+		}
+		baseSM := newMultiFakeSyncManager(
+			map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+			map[int]*models.Instance{inst.ID: inst},
+		)
+		baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
+		poolStore := &oneReadInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
+		svc := &Service{
+			instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+			syncManager:              &seasonPackSyncManager{fakeSyncManager: baseSM},
+			releaseCache:             NewReleaseCache(),
+			automationSettingsLoader: defaultSettings(true, 1.0),
+			seasonPackRunStore:       &stubSeasonPackRunStore{},
+		}
+		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
+
+		resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+			TorrentName: fix.packName,
+			TorrentData: fix.torrentData,
+			InstanceIDs: []int{inst.ID},
+		})
+
+		require.NoError(t, err)
+		require.True(t, resp.Applied, "%+v", resp)
+		require.Equal(t, 1, poolStore.reads)
+	})
+
+	t.Run("manual assemble", func(t *testing.T) {
+		const packName = "Cedar.Harbor.S02.1080p.WEB.x264-PINE"
+		root := t.TempDir()
+		inst := &models.Instance{
+			ID: 1, Name: "local", HasLocalFilesystemAccess: true, UseHardlinks: true,
+			HardlinkBaseDir: filepath.Join(root, "links"),
+		}
+		contents := map[string][]byte{}
+		files := map[string]qbt.TorrentFiles{}
+		var torrents []qbt.Torrent
+		var hashes []string
+		for i := 1; i <= 2; i++ {
+			packFile := fmt.Sprintf("Cedar.Harbor.S02E%02d.1080p.WEB.x264-PINE.mkv", i)
+			data := bytes.Repeat([]byte{byte(i)}, 64)
+			contents[packFile] = data
+			hash := fmt.Sprintf("e%02d", i)
+			hashes = append(hashes, hash)
+			files[hash] = qbt.TorrentFiles{{Name: packFile, Size: int64(len(data))}}
+			source := filepath.Join(root, packFile)
+			require.NoError(t, os.WriteFile(source, data, 0o600))
+			torrents = append(torrents, qbt.Torrent{Hash: hash, Name: strings.TrimSuffix(packFile, ".mkv"), ContentPath: source, Progress: 1})
+		}
+		torrentData := base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents))
+		poolStore := &oneReadInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
+		svc := &Service{
+			instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+			syncManager:   &seasonPackSyncManager{fakeSyncManager: newFakeSyncManager(inst, torrents, files)},
+			releaseCache:  NewReleaseCache(), stringNormalizer: stringutils.DefaultNormalizer,
+			seasonPackRunStore:       &stubSeasonPackRunStore{},
+			automationSettingsLoader: defaultSettings(true, 1.0),
+		}
+		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
+
+		resp, err := svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: inst.ID, TorrentData: torrentData, TargetHashes: hashes})
+
+		require.NoError(t, err)
+		require.True(t, resp.Applied, "%+v", resp)
+		require.Equal(t, 1, poolStore.reads)
+	})
 }

@@ -1,0 +1,349 @@
+## JSON reference
+
+This section lists every key of a rule as JSON, the condition fields and their operators. Legacy keys that qui still accepts in older rules are left out.
+
+### Rule
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `name` | string |  | Rule name. Required. |
+| `trackerPattern` | string |  | Tracker domains that the rule applies to, separated by commas. `*` matches all trackers. `tracker.example.com` matches one domain, `*.example.com` its subdomains, and `.example.com` the domain and its subdomains. A leading `!` excludes a domain. |
+| `enabled` | boolean |  | Whether the rule runs. Import always sets it to `false`. Edit as JSON keeps the current value. |
+| `dryRun` | boolean |  | When `true`, the rule logs what it would do and changes nothing. Default `false`. |
+| `notify` | boolean |  | When `true`, qui sends a notification when the rule acts. Default `true`. |
+| `sortOrder` | integer |  | Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value. |
+| `intervalSeconds` | integer |  | How often the rule runs, in seconds. At least `60`. Default `900` (15 minutes). |
+| `conditions` | object |  | The actions of the rule, each with its condition. Required. See `conditions`. |
+| `freeSpaceSource` | object |  | Where the `FREE_SPACE` condition field reads free space. Default: the free space that qBittorrent reports. See `freeSpaceSource`. |
+| `sortingConfig` | object |  | The order in which the rule processes torrents. Default: oldest first. See `sortingConfig`. |
+
+### `conditions`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `schemaVersion` | string |  | Must be `1`. |
+| `grouping` | object |  | Group definitions for group-aware actions and conditions. See `conditions.grouping`. |
+| `speedLimits` | object |  | Set upload and download speed limits. See `conditions.speedLimits`. |
+| `shareLimits` | object |  | Set ratio and seeding time limits. See `conditions.shareLimits`. |
+| `pause` | object |  | Pause matching torrents. See `conditions.pause`. |
+| `resume` | object |  | Resume matching torrents. See `conditions.resume`. |
+| `recheck` | object |  | Force a recheck of matching torrents. See `conditions.recheck`. |
+| `reannounce` | object |  | Force a reannounce of matching torrents. See `conditions.reannounce`. |
+| `delete` | object |  | Delete matching torrents. A rule with `delete` has no other action. See `conditions.delete`. |
+| `tags` | array of object |  | Tag actions. Each entry manages its own set of tags. See `conditions.tags[]`. |
+| `category` | object |  | Set the category of matching torrents. See `conditions.category`. |
+| `move` | object |  | Move matching torrents to a different save path. See `conditions.move`. |
+| `externalProgram` | object |  | Run an external program for each matching torrent. See `conditions.externalProgram`. |
+| `autoManagement` | object |  | Turn automatic torrent management on or off. See `conditions.autoManagement`. |
+| `exportToInstance` | object |  | Add matching torrents to a different qBittorrent instance. See `conditions.exportToInstance`. |
+
+### `conditions.grouping`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `defaultGroupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | The group that `GROUP_SIZE` and `IS_GROUPED` use when the condition has no `groupId`. A built-in group ID or the id of a group in `groups`. |
+| `groups` | array of object |  | Custom group definitions. See `conditions.grouping.groups[]`. |
+
+### `conditions.grouping.groups[]`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `id` | string |  | The group ID. Conditions and actions refer to the group by this ID. |
+| `keys` | array of string | `contentPath`, `savePath`, `effectiveName`, `contentType`, `tracker`, `rlsSource`, `rlsResolution`, `rlsCodec`, `rlsHDR`, `rlsAudio`, `rlsChannels`, `rlsGroup`, `hardlinkSignature` | Torrents with equal values for all these keys are in the same group. |
+| `ambiguousPolicy` | string | `verify_overlap`, `skip` | What the delete, category, and move actions do when they expand to the group, `contentPath` is one of the keys, and a torrent content path equals its save path. `verify_overlap` compares the files. `skip` does not expand the action to the group. `GROUP_SIZE` and `IS_GROUPED` ignore this setting. |
+| `minFileOverlapPercent` | integer |  | With `verify_overlap`: the percentage of files that must overlap. Default `90`. |
+
+### `conditions.speedLimits`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `uploadKiB` | integer |  | Upload limit in KiB/s. `0` removes the limit. Leave it out to keep the current limit. |
+| `downloadKiB` | integer |  | Download limit in KiB/s. `0` removes the limit. Leave it out to keep the current limit. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.shareLimits`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `ratioLimit` | number |  | Ratio limit. `-2` uses the global setting, `-1` means no limit. Leave it out to keep the current limit. |
+| `seedingTimeMinutes` | integer |  | Seeding time limit in minutes. `-2` uses the global setting, `-1` means no limit. Leave it out to keep the current limit. |
+| `shareLimitAction` | string | `Stop`, `Remove`, `RemoveWithContent`, `EnableSuperSeeding` | What qBittorrent does when a limit is reached. Needs qBittorrent Web API 2.15.1+. Leave it out to use the global setting. |
+| `shareLimitsMode` | string | `MatchAny`, `MatchAll` | Whether any limit or all limits must be reached. Needs qBittorrent Web API 2.16.0+. Leave it out to use the global setting. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.pause`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.resume`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.recheck`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.reannounce`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.delete`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `mode` | string | `delete`, `deleteWithFiles`, `deleteWithFilesPreserveCrossSeeds`, `deleteWithFilesIncludeCrossSeeds` | What to delete. Default: `delete`. When `condition` uses `FREE_SPACE`, the mode must not be `delete`, because a delete that keeps the files frees no disk space. |
+| `includeHardlinks` | boolean |  | Also delete torrents that share files through hardlinks. Only with mode `deleteWithFilesIncludeCrossSeeds`, and needs local filesystem access. |
+| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Only with mode `delete`. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
+| `atomic` | string | `all` | With `groupId`: `all` deletes the group only when every torrent in it matches. |
+| `condition` | condition |  | Required when `enabled` is `true`. The action deletes only torrents that match this condition. See Condition object. |
+
+### `conditions.tags[]`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `tags` | array of string |  | The tags that this action manages. With `useTrackerAsTag`, qui uses them when a torrent has no tracker domain. |
+| `mode` | string | `full`, `add`, `remove` | `full` adds the tags to matching torrents and removes them from the others. `add` only adds. `remove` only removes them from matching torrents. |
+| `deleteFromClient` | boolean |  | Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags. |
+| `useTrackerAsTag` | boolean |  | Use the tracker domain of each torrent as its tag. |
+| `useDisplayName` | boolean |  | With `useTrackerAsTag`: use the tracker display name in place of the domain. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.category`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `category` | string |  | The category to set. An empty string removes the category. |
+| `includeCrossSeeds` | boolean |  | Also move the cross-seeds of each matching torrent to the category. |
+| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Change the category of each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
+| `blockIfCrossSeedInCategories` | array of string |  | Skip a torrent when one of its cross-seeds is in one of these categories. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.move`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `path` | string |  | The new save path. |
+| `blockIfCrossSeed` | boolean |  | Skip a torrent when one of its cross-seeds does not match `condition`. Not used when `groupId` is set. |
+| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Move each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
+| `atomic` | string | `all` | With `groupId`: `all` moves the group only when every torrent in it matches. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.externalProgram`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `programId` | integer |  | The ID of the external program in this qui. An export keeps the ID of the qui that made it. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.autoManagement`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | `true` turns automatic torrent management on, `false` turns it off. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `conditions.exportToInstance`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `enabled` | boolean |  | Whether the action runs. |
+| `targetInstanceId` | integer |  | The ID of the target instance in this qui. The ID is in the URL of the instance page, `/instances/ID`. |
+| `savePath` | string |  | The save path on the target instance. Supports Go templates. |
+| `category` | string |  | The category on the target instance. |
+| `tags` | array of string |  | The tags on the target instance. |
+| `paused` | boolean |  | Add the torrent paused. |
+| `skipChecking` | boolean |  | Skip the hash check on the target instance. Default `true`. |
+| `contentLayout` | string | `Original`, `Subfolder`, `NoSubfolder` | The content layout on the target instance. Leave it out to use the default layout of the target instance. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+
+### `freeSpaceSource`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `type` | string | `qbittorrent`, `path` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. |
+| `path` | string |  | With type `path`: the path to read. Needs filesystem access on the instance. |
+
+### `sortingConfig`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `schemaVersion` | string |  | Must be `1`. |
+| `type` | string | `simple`, `score` | `simple` sorts by one field. `score` sorts by the sum of `scoreRules`. |
+| `direction` | string | `ASC`, `DESC` | `ASC` or `DESC`. |
+| `field` | condition field | `ADDED_ON`, `AMOUNT_LEFT`, `AVAILABILITY`, `CATEGORY`, `COMMENT`, `COMPLETION_ON`, `CONTENT_PATH`, `DL_SPEED`, `DOWNLOADED`, `FREE_SPACE`, `LAST_ACTIVITY`, `NAME`, `NUM_COMPLETE`, `NUM_INCOMPLETE`, `NUM_LEECHS`, `NUM_SEEDS`, `PROGRESS`, `RATIO`, `SAVE_PATH`, `SEEDING_TIME`, `SIZE`, `STATE`, `SYSTEM_DAY`, `SYSTEM_DAY_OF_WEEK`, `SYSTEM_HOUR`, `SYSTEM_MINUTE`, `SYSTEM_MONTH`, `SYSTEM_YEAR`, `TAGS`, `TIME_ACTIVE`, `TOTAL_SIZE`, `TRACKER`, `TRACKERS_COUNT`, `UPLOADED`, `UP_SPEED` | With type `simple`: the condition field to sort by. See Condition field names. |
+| `scoreRules` | array of object |  | With type `score`: the rules that add up to the score of each torrent. See `sortingConfig.scoreRules[]`. |
+
+### `sortingConfig.scoreRules[]`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `type` | string | `field_multiplier`, `conditional` | The kind of rule. |
+| `fieldMultiplier` | object |  | With type `field_multiplier`: the field and multiplier. See `sortingConfig.scoreRules[].fieldMultiplier`. |
+| `conditional` | object |  | With type `conditional`: the condition and score. See `sortingConfig.scoreRules[].conditional`. |
+
+### `sortingConfig.scoreRules[].fieldMultiplier`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `field` | condition field | `ADDED_ON`, `AMOUNT_LEFT`, `AVAILABILITY`, `COMPLETION_ON`, `DL_SPEED`, `DOWNLOADED`, `FREE_SPACE`, `LAST_ACTIVITY`, `NUM_COMPLETE`, `NUM_INCOMPLETE`, `NUM_LEECHS`, `NUM_SEEDS`, `PROGRESS`, `RATIO`, `SEEDING_TIME`, `SIZE`, `SYSTEM_DAY`, `SYSTEM_DAY_OF_WEEK`, `SYSTEM_HOUR`, `SYSTEM_MINUTE`, `SYSTEM_MONTH`, `SYSTEM_YEAR`, `TIME_ACTIVE`, `TOTAL_SIZE`, `TRACKERS_COUNT`, `UPLOADED`, `UP_SPEED` | The condition field whose value is multiplied. See Condition field names. |
+| `multiplier` | number |  | The number to multiply the field value by. The result is added to the score. |
+
+### `sortingConfig.scoreRules[].conditional`
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `condition` | condition |  | When the torrent matches this condition, score is added. See Condition object. |
+| `score` | number |  | The score to add. |
+
+### Condition object
+
+A condition is a test or an `AND` or `OR` group of conditions. The `value` of a test is always a JSON string. A number is written as a string, for example "1073741824", and a yes/no value as "true" or "false". `BETWEEN` uses `minValue` and `maxValue` in place of `value`.
+
+| Key | Type | Values | Description |
+| --- | --- | --- | --- |
+| `field` | condition field |  | The condition field to test. Leave it out on an `AND` or `OR` group. See Condition field names. |
+| `operator` | operator |  | An operator that the field allows, or `AND` or `OR` for a group. See Operator names. |
+| `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | For `GROUP_SIZE` and `IS_GROUPED`: the group to use. A built-in group ID or the id of a group in `conditions.grouping`. Default: `conditions.grouping.defaultGroupId`. |
+| `value` | string |  | The value to compare, always as a JSON string, also for numbers and yes/no values. Not used with `BETWEEN`. |
+| `minValue` | number |  | For `BETWEEN`: the lower end of the range, as a JSON number. |
+| `maxValue` | number |  | For `BETWEEN`: the upper end of the range, as a JSON number. On `SYSTEM_HOUR`, `SYSTEM_MINUTE`, `SYSTEM_DAY_OF_WEEK` and `SYSTEM_MONTH`, a `minValue` above `maxValue` wraps past the end of the field. |
+| `regex` | boolean |  | When `true`, `value` is a regular expression. Applies to string fields. `MATCHES` always uses a regular expression. |
+| `negate` | boolean |  | When `true`, the condition matches when the test is false. |
+| `conditions` | array of condition |  | For an `AND` or `OR` group: the child conditions. See Condition object. |
+
+### Operator names
+
+| Operator | Meaning |
+| --- | --- |
+| `AND` | Group. Matches when every child condition matches. |
+| `OR` | Group. Matches when at least one child condition matches. |
+| `EQUAL` | Equal to `value`. |
+| `NOT_EQUAL` | Not equal to `value`. |
+| `CONTAINS` | Contains `value`. |
+| `NOT_CONTAINS` | Does not contain `value`. |
+| `STARTS_WITH` | Starts with `value`. |
+| `ENDS_WITH` | Ends with `value`. |
+| `MATCHES` | Matches `value` as a regular expression, anywhere in the field. |
+| `GREATER_THAN` | Greater than `value`. |
+| `GREATER_THAN_OR_EQUAL` | Greater than or equal to `value`. |
+| `LESS_THAN` | Less than `value`. |
+| `LESS_THAN_OR_EQUAL` | Less than or equal to `value`. |
+| `BETWEEN` | From `minValue` to `maxValue`, both included. A range that wraps on a clock field does not include `maxValue`. |
+| `EXISTS_IN` | A torrent with exactly this name is in the category `value`. |
+| `CONTAINS_IN` | A torrent with a similar name is in the category `value`. Case, accents, and the characters `.`, `_` and `-` do not matter. |
+
+### Condition field names
+
+Label is the name of the field in the rule builder. With `EQUAL` and `NOT_EQUAL` and no regular expression, a field with values accepts only those values.
+
+| Field | Label | Type | Operators | Values | Requires |
+| --- | --- | --- | --- | --- | --- |
+| `ADDED_ON` | Added Age | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `AMOUNT_LEFT` | Amount Left | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `AUTO_MANAGED` | Auto-managed | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `AVAILABILITY` | Availability | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `CATEGORY` | Category | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `COMMENT` | Comment | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `COMPLETED` | Completed | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `COMPLETION_ON` | Completed Age | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `CONTENT_PATH` | Content Path | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `CONTENT_TYPE` | Content Type | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` | `movie`, `tv`, `music`, `audiobook`, `book`, `comic`, `game`, `app`, `adult`, `unknown` |  |
+| `CREATED_BY` | Created By | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `CROSS_SEED_TAGS` | Cross-seed Tags | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `DL_LIMIT` | Download Limit | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `DL_SPEED` | Download Speed | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `DOWNLOADED` | Downloaded | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `DOWNLOADED_SESSION` | Downloaded (Session) | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `DOWNLOAD_PATH` | Download Path | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `EFFECTIVE_NAME` | Effective Name | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `ETA` | ETA | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `EXISTS_ON_OTHER_INSTANCE` | Exists on Other Instance | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `EXISTS_ON_SAME_INSTANCE` | Cross-seed Exists on Same Instance | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `FIRST_LAST_PIECE_PRIO` | First/Last Piece Priority | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `FORCE_START` | Force Start | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `FREE_SPACE` | Free Space | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `GROUP_SIZE` | Group Size | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `HARDLINK_SCOPE` | Hardlink scope | enum | `EQUAL`, `NOT_EQUAL` | `none`, `torrents_only`, `inside_qbittorrent`, `outside_qbittorrent`, `both` | local filesystem access |
+| `HARDLINK_SCOPE_CROSS` | Hardlink scope (cross-instance) | enum | `EQUAL`, `NOT_EQUAL` | `none`, `torrents_only`, `inside_qbittorrent`, `outside_qbittorrent`, `both` | local filesystem access |
+| `HASH` | Hash | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `HAS_MISSING_FILES` | Has Missing Files | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` | local filesystem access |
+| `HAS_SKIPPED_FILES` | Has Skipped Files | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `INACTIVE_SEEDING_TIME_LIMIT` | Inactive Seeding Time Limit | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `INFOHASH_V1` | Infohash v1 | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `INFOHASH_V2` | Infohash v2 | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `IS_GROUPED` | Is Grouped | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `IS_UNREGISTERED` | Unregistered | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` | qBittorrent 5.1+ |
+| `LAST_ACTIVITY` | Inactive Time | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `MAGNET_URI` | Magnet URI | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `MAX_INACTIVE_SEEDING_TIME` | Max Inactive Seeding Time | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `MAX_RATIO` | Max Ratio | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `MAX_SEEDING_TIME` | Max Seeding Time | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `NAME` | Name | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES`, `EXISTS_IN`, `CONTAINS_IN` |  |  |
+| `NUM_COMPLETE` | Total Seeders | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `NUM_INCOMPLETE` | Total Leechers | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `NUM_LEECHS` | Active Leechers | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `NUM_SEEDS` | Active Seeders | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `POPULARITY` | Popularity | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `PRIORITY` | Queue Priority | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `PRIVATE` | Private | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `PROGRESS` | Progress | number (0 to 1) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `RATIO` | Ratio | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `RATIO_LIMIT` | Ratio Limit | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `REANNOUNCE` | Reannounce In | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `RLS_AUDIO` | Audio (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_CHANNELS` | Channels (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_CODEC` | Codec (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_GROUP` | Group (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_HDR` | HDR (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_RESOLUTION` | Resolution (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_SOURCE` | Source (RLS) | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `RLS_YEAR` | Year (RLS) | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SAVE_PATH` | Save Path | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `SEASON_PACK_STATUS` | Season pack status | enum | `EQUAL`, `NOT_EQUAL` | `pack`, `packed`, `unpacked` |  |
+| `SEASON_PACK_STATUS_ANY_INSTANCE` | Season pack status (any instance) | enum | `EQUAL`, `NOT_EQUAL` | `pack`, `packed`, `unpacked` |  |
+| `SEEDING_ON_OTHER_INSTANCE` | Seeding on Other Instance | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `SEEDING_ON_SAME_INSTANCE` | Cross-seed Seeding on Same Instance | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `SEEDING_TIME` | Seeding Time | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SEEDING_TIME_LIMIT` | Seeding Time Limit | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SEEN_COMPLETE` | Seen Complete Age | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SEQUENTIAL_DOWNLOAD` | Sequential Download | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `SIZE` | Size | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `STATE` | State | enum | `EQUAL`, `NOT_EQUAL` | `downloading`, `uploading`, `completed`, `stopped`, `active`, `inactive`, `running`, `stalled`, `stalled_uploading`, `stalled_downloading`, `errored`, `tracker_down`, `tracker_error`, `checking`, `checkingResumeData`, `moving`, `missingFiles` |  |
+| `SUPER_SEEDING` | Super Seeding | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
+| `SYSTEM_DAY` | System Day | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SYSTEM_DAY_OF_WEEK` | System Day of Week | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SYSTEM_HOUR` | System Hour | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SYSTEM_MINUTE` | System Minute | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SYSTEM_MONTH` | System Month | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `SYSTEM_YEAR` | System Year | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `TAGS` | Tags | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `TIME_ACTIVE` | Time Active | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `TOTAL_SIZE` | Total Size | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `TRACKER` | Tracker | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
+| `TRACKERS_COUNT` | Trackers | integer | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `TRACKER_MESSAGE` | Tracker message | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  | qBittorrent 5.1+ |
+| `TRACKER_STATUS` | Tracker status | enum | `EQUAL`, `NOT_EQUAL` | `not_contacted`, `working`, `updating`, `error`, `tracker_error`, `unreachable` | qBittorrent 5.1+ |
+| `UPLOADED` | Uploaded | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `UPLOADED_OVER_SIZE` | Uploaded / Size | number | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `UPLOADED_SESSION` | Uploaded (Session) | integer (bytes) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `UP_LIMIT` | Upload Limit | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
+| `UP_SPEED` | Upload Speed | integer (bytes per second) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |

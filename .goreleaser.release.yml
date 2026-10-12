@@ -89,6 +89,10 @@ msi:
 
 release:
   prerelease: auto
+  # The Release job adds the Highlights and then publishes the draft.
+  draft: true
+  # A re-run of a failed tag build replaces the draft that it left.
+  replace_existing_draft: true
   extra_files:
     - glob: web-dist.tar.gz
   footer: |
