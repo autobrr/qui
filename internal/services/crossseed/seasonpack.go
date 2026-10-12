@@ -471,17 +471,8 @@ func (s *Service) addSeasonPack(
 		// the live ctx fails when the run was cancelled, silently skipping
 		// rollback. dirscan's injector resolves one backend up front for the
 		// same reason.
-		backend := planBuild.backend
-		if backend == nil {
-			var backendErr error
-			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID, models.CapabilityWrite); backendErr != nil {
-				log.Warn().Err(backendErr).Str("torrentName", torrentName).Msg("season pack: no backend to rollback after add failure")
-			}
-		}
-		if backend != nil {
-			if rollbackErr := rollbackSeasonPackTree(ctx, backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
-				log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
-			}
+		if rollbackErr := rollbackSeasonPackTree(ctx, planBuild.backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
+			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, torrentName, "add_failed", err.Error(), inst.ID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil

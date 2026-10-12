@@ -450,13 +450,15 @@ func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
 	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
 
 	for _, tt := range []struct {
-		name        string
-		sourceLocal bool
-		wantType    string
-		wantQueries bool
+		name           string
+		sourceLocal    bool
+		candidateLocal bool
+		wantType       string
+		wantQueries    bool
 	}{
-		{name: "local source", sourceLocal: true, wantType: matchTypeReflink, wantQueries: true},
-		{name: "non-local source", sourceLocal: false, wantType: ""},
+		{name: "local source", sourceLocal: true, candidateLocal: true, wantType: matchTypeReflink, wantQueries: true},
+		{name: "non-local source", sourceLocal: false, candidateLocal: true, wantType: ""},
+		{name: "non-local candidate", sourceLocal: true, candidateLocal: false, wantType: ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			service := hardlinkTestService(map[string]qbt.TorrentFiles{
@@ -473,7 +475,7 @@ func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
 
 			matchType := service.localLinkedMatchType(
 				matchCtx,
-				&models.Instance{ID: 1, HasLocalFilesystemAccess: true},
+				&models.Instance{ID: 1, HasLocalFilesystemAccess: tt.candidateLocal},
 				hardlinkTestCandidate(candidateDir),
 			)
 			require.Equal(t, tt.wantType, matchType)
