@@ -648,6 +648,10 @@ func TestBuildPlansRejectWindowsNamesForWindowsDestination(t *testing.T) {
 	const root, source = `C:\hl`, `C:\data\1`
 	_, err := BuildSingleFilePlan(windowsDialect{}, root, "1:payload", source)
 	require.ErrorContains(t, err, "not allowed in Windows file name")
+	require.ErrorIs(t, err, ErrUnstorableName)
+	_, err = BuildSingleFilePlan(windowsDialect{}, root, "../x", source)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUnstorableName)
 	_, err = BuildPlan(windowsDialect{},
 		[]TorrentFile{{Path: "Show/1:payload", Size: 6}},
 		[]ExistingFile{{AbsPath: source, RelPath: "Show/1", Size: 6}},

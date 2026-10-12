@@ -82,6 +82,9 @@ var (
 	ErrNoMatchingFile  = &LinkPlanError{Kind: LinkPlanErrorNoMatchingFile}
 	ErrNoAvailableFile = &LinkPlanError{Kind: LinkPlanErrorNoAvailableFile}
 	ErrCouldNotMatch   = &LinkPlanError{Kind: LinkPlanErrorCouldNotMatch}
+
+	// ErrUnstorableName marks a path the destination dialect cannot store as a file name.
+	ErrUnstorableName = errors.New("destination cannot store torrent path")
 )
 
 // PathDialect is the path grammar of the filesystem a plan targets.
@@ -349,7 +352,7 @@ func validateCandidatePath(d PathDialect, name string) error {
 	if d.Separator() == `\` {
 		for component := range strings.SplitSeq(p, "/") {
 			if err := windowsNameError(component); err != nil {
-				return fmt.Errorf("torrent path %q: %w", name, err)
+				return fmt.Errorf("%w %q: %w", ErrUnstorableName, name, err)
 			}
 		}
 	}

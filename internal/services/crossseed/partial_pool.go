@@ -2635,6 +2635,9 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 	}
 	for _, file := range member.Files {
 		targetPath, err := partialPoolLocalPath(member, file)
+		if errors.Is(err, hardlinktree.ErrUnstorableName) {
+			continue // Propagation rejects this name before staging, so nothing was staged for it.
+		}
 		if err != nil {
 			return fmt.Errorf("resolve staging target: %w", err)
 		}
@@ -2642,10 +2645,14 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 		if file.SourceFileID != nil {
 			if sourceMember, sourceFile := partialPoolFileByID(pool, *file.SourceFileID); sourceMember != nil && sourceFile != nil {
 				sourcePath, sourceErr := partialPoolLocalPath(sourceMember, sourceFile)
-				if sourceErr != nil {
+				switch {
+				case errors.Is(sourceErr, hardlinktree.ErrUnstorableName):
+					// Propagation never stages from such a source, so there is nothing to protect.
+				case sourceErr != nil:
 					return fmt.Errorf("resolve staging source: %w", sourceErr)
+				default:
+					protectedPaths = append(protectedPaths, sourcePath)
 				}
-				protectedPaths = append(protectedPaths, sourcePath)
 			}
 		}
 		root, _ := partialPoolReflinkStagingPaths(targetPath)

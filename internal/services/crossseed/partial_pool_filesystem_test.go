@@ -1554,6 +1554,48 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 	require.Equal(t, stagingPath, readdedStagingPath)
 }
 
+// windowsNamePaths keeps host joins but applies the Windows name rules, so Linux CI reaches them.
+type windowsNamePaths struct{ fsops.PathDialect }
+
+func (windowsNamePaths) Separator() string { return `\` }
+
+func TestPartialPoolReflinkCleanupSkipsNamesTheHostCannotStore(t *testing.T) {
+	if filepath.Separator != '\\' {
+		hostPaths := fsops.HostPaths
+		fsops.HostPaths = windowsNamePaths{hostPaths}
+		t.Cleanup(func() { fsops.HostPaths = hostPaths })
+	}
+	baseDir := t.TempDir()
+	sourceFile := &models.CrossSeedPartialPoolMemberFile{ID: 1, RelativePath: "CON"}
+	source := &models.CrossSeedPartialPoolMember{
+		Mode:     models.CrossSeedPartialPoolModeReflink,
+		RootPath: filepath.Join(baseDir, "source"),
+		Files:    []*models.CrossSeedPartialPoolMemberFile{sourceFile},
+	}
+	target := &models.CrossSeedPartialPoolMember{
+		Mode:     models.CrossSeedPartialPoolModeReflink,
+		RootPath: filepath.Join(baseDir, "target"),
+		Files: []*models.CrossSeedPartialPoolMemberFile{
+			{ID: 2, RelativePath: "1:payload"},
+			{ID: 3, RelativePath: "ep.mkv", SourceFileID: &sourceFile.ID},
+		},
+	}
+	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{source, target}}
+	_, err := partialPoolLocalPath(target, target.Files[0])
+	require.ErrorIs(t, err, hardlinktree.ErrUnstorableName)
+
+	targetPath, err := partialPoolLocalPath(target, target.Files[1])
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(targetPath), 0o755))
+	stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
+	require.NoError(t, ensurePartialPoolReflinkStagingRoot(stagingRoot))
+	require.NoError(t, os.WriteFile(stagingPath, []byte("orphaned crash clone"), 0o600))
+
+	require.NoError(t, cleanupPartialPoolMemberReflinkStaging(pool, target))
+	require.NoDirExists(t, stagingRoot)
+	require.NoFileExists(t, partialPoolReflinkStagingOwnerPath(stagingRoot))
+}
+
 func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	pool, member, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
