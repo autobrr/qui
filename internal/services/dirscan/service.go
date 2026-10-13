@@ -896,20 +896,13 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		return nil, nil, false
 	}
 
-	instance, err := s.instanceStore.Get(ctx, dir.TargetInstanceID)
-	if err != nil {
-		l.Error().Err(err).Msg("dirscan: failed to get target instance")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
-		return nil, nil, false
-	}
-
 	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.
-	fileIDIndex := &seedingIndex{instance: instance}
+	fileIDIndex := &seedingIndex{}
 	if s.syncManager != nil {
-		if index, err := s.buildFileIDIndex(ctx, instance, backend, l); err != nil {
+		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
 		} else if index.len() > 0 {
 			fileIDIndex = index

@@ -154,54 +154,50 @@ func bytesOfLength(length int, value byte) []byte {
 
 // The first scan after the migration stores the tagged ID; the scan after
 // that sees the same ID at a new path and moves the row instead of adding one.
-func TestDirScanStore_UpsertFile_DetectsRenameByTaggedFileID(t *testing.T) {
+// A directory moved to another instance keeps its rows but drops their file
+// IDs: an ID only means the same file on the filesystem it was read from.
+func TestDirScanStore_UpdateDirectory_ClearsFileIDsWhenTargetInstanceChanges(t *testing.T) {
 	ctx := context.Background()
 	db := setupDirScanTestDB(t)
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	first, err := instanceStore.Create(ctx, "First", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	second, err := instanceStore.Create(ctx, "Second", "http://localhost:8081", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
 	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
 		Path:                "/data/media",
 		Enabled:             true,
-		TargetInstanceID:    instance.ID,
+		TargetInstanceID:    first.ID,
 		ScanIntervalMinutes: 60,
 	})
 	require.NoError(t, err)
 
-	first := &models.DirScanFile{
-		DirectoryID: dir.ID,
-		FilePath:    "/data/media/old.mkv",
-		FileSize:    1,
-		FileModTime: time.Now(),
-		Status:      models.DirScanFileStatusPending,
-	}
-	require.NoError(t, store.UpsertFile(ctx, first))
-	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Empty(t, files[0].FileID, "the migration leaves file_id NULL")
-
 	id := hardlink.UnixFileID(7, 42).Bytes()
-	first.FileID = id
-	require.NoError(t, store.UpsertFile(ctx, first), "the next scan fills file_id")
-
-	renamed := &models.DirScanFile{
+	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
 		DirectoryID: dir.ID,
-		FilePath:    "/data/media/new.mkv",
+		FilePath:    "/data/media/a.mkv",
 		FileSize:    1,
 		FileModTime: time.Now(),
 		FileID:      id,
 		Status:      models.DirScanFileStatusPending,
-	}
-	require.NoError(t, store.UpsertFile(ctx, renamed))
+	}))
 
+	enabled := false
+	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{Enabled: &enabled})
+	require.NoError(t, err)
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, id, files[0].FileID, "an update that keeps the instance keeps the IDs")
+
+	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{TargetInstanceID: &second.ID})
+	require.NoError(t, err)
 	files, err = store.ListFiles(ctx, dir.ID, nil, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, files, 1, "a rename moves the row, it does not add one")
-	require.Equal(t, "/data/media/new.mkv", files[0].FilePath)
-	require.Equal(t, id, files[0].FileID)
+	require.Len(t, files, 1)
+	require.Empty(t, files[0].FileID)
 }

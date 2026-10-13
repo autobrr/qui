@@ -83,10 +83,10 @@ the exec tier (3e, #2726), which is the first thing that can fill them.
 
 ## File Identity Over the Wire — DECIDED
 
-Remote identity is (device, inode) parsed from GNU `find`/`stat` output. But
-`hardlink.FileID` is platform-compiled: unix builds carry `Dev`/`Ino`,
-Windows builds carry a volume serial plus a 16-byte identifier. A qui host
-on Windows cannot represent a Linux seedbox's identity in today's struct.
+Remote identity is (device, inode) parsed from GNU `find`/`stat` output. Before
+#2970, `hardlink.FileID` was platform-compiled: unix builds carried `Dev`/`Ino`,
+Windows builds a volume serial plus a 16-byte identifier, so a qui host on
+Windows could not represent a Linux seedbox's identity.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
 fixed-size form, landed in #2970 before the remote backend uses it**
@@ -116,7 +116,8 @@ within one backend/host, and `==` still compiles cross-host, so
 comparisons go through `fsops.SameFile`, which takes the two instances
 the IDs came from, and indexes key on `fsops.FileKey`, the ID bound to
 its instance. IDs of different kinds never match; two kind 3 IDs match
-only when both instances have the same SSH host and port. The bytes a
+only when both instances have the same SSH host and port, and a kind 3 ID
+with no instance or no SSH host matches nothing. The bytes a
 unix ID stores are still the device and inode, under the tag.
 Remote-sourced identity is always kind 3, even
 when the remote is unix and the bytes are a `dev`/`ino`: it is parsed

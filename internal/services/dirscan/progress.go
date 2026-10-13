@@ -15,13 +15,12 @@ import (
 )
 
 type trackedFilesIndex struct {
-	instance *models.Instance // the directory's target instance; scopes byFileID
 	byPath   map[string]*models.DirScanFile
 	byFileID map[fsops.FileKey]*models.DirScanFile
 }
 
 func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) fsops.FileKey {
-	return fsops.FileKeyOf(id, idx.instance)
+	return fsops.FileKeyOf(id, nil)
 }
 
 // keyOfStored decodes a dir_scan_files.file_id value. A row from before the
@@ -31,7 +30,7 @@ func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
 	return idx.keyOf(id), !id.IsZero()
 }
 
-func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, instance *models.Instance) (*trackedFilesIndex, error) {
+func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil {
 		return nil, nil
 	}
@@ -39,7 +38,6 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, in
 	const pageSize = 5000
 
 	idx := &trackedFilesIndex{
-		instance: instance,
 		byPath:   make(map[string]*models.DirScanFile),
 		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
 	}
@@ -83,7 +81,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 		return nil, nil
 	}
 
-	idx, err := s.loadTrackedFilesIndex(ctx, directoryID, fileIDIndex.instance)
+	idx, err := s.loadTrackedFilesIndex(ctx, directoryID)
 	if err != nil {
 		return nil, err
 	}

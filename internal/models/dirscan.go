@@ -544,6 +544,7 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		return nil, err
 	}
 
+	previousTargetInstanceID := existing.TargetInstanceID
 	applyDirectoryUpdateParams(existing, params)
 	if err := s.ensureUniqueDirectoryPath(ctx, existing.Path, id); err != nil {
 		return nil, err
@@ -588,6 +589,14 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, boolToInt(existing.SkipIndividualEpisodes), id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
+	}
+
+	// Stored file IDs only mean the same file on the filesystem the old target
+	// instance read them from, so rename detection must not reuse them.
+	if params.TargetInstanceID != nil && *params.TargetInstanceID != previousTargetInstanceID {
+		if _, err := s.db.ExecContext(ctx, `UPDATE dir_scan_files SET file_id = NULL WHERE directory_id = ?`, id); err != nil {
+			return nil, fmt.Errorf("clear file ids: %w", err)
+		}
 	}
 
 	return s.GetDirectory(ctx, id)

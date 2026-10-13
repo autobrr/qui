@@ -43,6 +43,9 @@ func TestSameFile(t *testing.T) {
 		{"remote, different port", remote, remote, boxA, boxAOtherPort, false, false},
 		{"remote, different host", remote, remote, boxA, boxB, false, false},
 		{"zero never matches", hardlink.FileID{}, hardlink.FileID{}, local, local, false, true},
+		{"remote with no instance never matches", remote, remote, nil, nil, false, true},
+		{"remote with an empty host never matches", remote, remote, local, &models.Instance{ID: 6}, false, true},
+		{"remote with a host vs one without", remote, remote, boxA, nil, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

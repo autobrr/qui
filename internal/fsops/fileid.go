@@ -24,28 +24,37 @@ type FileKey struct {
 	scope [4]byte
 }
 
+// IsZero reports a key that names no file: a zero ID, or a remote ID with no
+// SSH host to scope it.
+func (k FileKey) IsZero() bool { return k == FileKey{} }
+
 // FileKeyOf binds id to the instance that reported it. Local kinds all live
 // on the qui host, so they share one scope; a remote kind is scoped to the
 // SSH host and port, the same-filesystem rule orphan scan merges by. A nil
-// instance is the qui host itself.
+// instance is the qui host itself, so a remote ID with a nil instance or an
+// empty SSH host has no scope and gets the zero key.
 func FileKeyOf(id hardlink.FileID, instance *models.Instance) FileKey {
 	// Kept to one branch so the local path inlines; orphan scan calls this per file.
-	if id.Kind() != hardlink.KindRemote || instance == nil {
+	if id.Kind() != hardlink.KindRemote {
 		return FileKey{id: id}
 	}
 	return remoteFileKey(id, instance)
 }
 
 func remoteFileKey(id hardlink.FileID, instance *models.Instance) FileKey {
+	if instance == nil || instance.SSHHost == "" {
+		return FileKey{}
+	}
 	key := FileKey{id: id}
 	binary.LittleEndian.PutUint32(key.scope[:], remoteScope(net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort))))
 	return key
 }
 
 // SameFile reports whether two IDs name one file. IDs of different kinds
-// never match, and a zero ID matches nothing.
+// never match, and a zero key matches nothing.
 func SameFile(a hardlink.FileID, aInstance *models.Instance, b hardlink.FileID, bInstance *models.Instance) bool {
-	return !a.IsZero() && FileKeyOf(a, aInstance) == FileKeyOf(b, bInstance)
+	key := FileKeyOf(a, aInstance)
+	return !key.IsZero() && key == FileKeyOf(b, bInstance)
 }
 
 var remoteScopes = struct {

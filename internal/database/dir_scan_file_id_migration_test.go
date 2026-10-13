@@ -19,7 +19,7 @@ func TestDirScanFileIDMigrationClearsLegacyIDsSQLite(t *testing.T) {
 	conn, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkDirScanFileIDMigration(t.Context(), t, conn, migrationsFS, "migrations/104_reset_dir_scan_file_ids.sql", "BLOB")
+	checkDirScanFileIDMigration(t.Context(), t, conn, migrationsFS, "migrations/105_reset_dir_scan_file_ids.sql", "BLOB")
 }
 
 func TestDirScanFileIDMigrationClearsLegacyIDsPostgresIntegration(t *testing.T) {
@@ -29,7 +29,7 @@ func TestDirScanFileIDMigrationClearsLegacyIDsPostgresIntegration(t *testing.T) 
 	conn, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkDirScanFileIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/105_reset_dir_scan_file_ids.sql", "BYTEA")
+	checkDirScanFileIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/106_reset_dir_scan_file_ids.sql", "BYTEA")
 }
 
 // Rows written in the old platform widths cannot be decoded as the tagged

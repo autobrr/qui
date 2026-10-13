@@ -1384,7 +1384,7 @@ func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, instan
 			file:           file,
 			fullPath:       fullPath,
 			fileID:         fsops.FileKeyOf(info.FileID, instance),
-			hasFileID:      !info.FileID.IsZero(),
+			hasFileID:      !fsops.FileKeyOf(info.FileID, instance).IsZero(),
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})

@@ -12,16 +12,14 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/autobrr/qui/internal/fsops"
-	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // seedingIndex maps the identity of every file the instance already seeds to
-// its torrent hash. Identities are scoped to the instance they were read from.
+// its torrent hash. Dirscan walks the qui host only, so the keys are unscoped.
 type seedingIndex struct {
-	instance *models.Instance
-	byKey    map[fsops.FileKey]string
+	byKey map[fsops.FileKey]string
 }
 
 func (idx *seedingIndex) len() int {
@@ -33,16 +31,15 @@ func (idx *seedingIndex) hash(id hardlink.FileID) (string, bool) {
 	if id.IsZero() {
 		return "", false
 	}
-	hash, ok := idx.byKey[fsops.FileKeyOf(id, idx.instance)]
+	hash, ok := idx.byKey[fsops.FileKeyOf(id, nil)]
 	return hash, ok
 }
 
-func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instance, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
+func (s *Service) buildFileIDIndex(ctx context.Context, instanceID int, backend fsops.Backend, l *zerolog.Logger) (*seedingIndex, error) {
 	if s == nil || s.syncManager == nil {
 		return nil, nil
 	}
 
-	instanceID := instance.ID
 	start := time.Now()
 	torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
@@ -51,7 +48,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instanc
 
 	hashes, savePaths := collectCompletedTorrentSavePaths(torrents)
 
-	index := &seedingIndex{instance: instance, byKey: map[fsops.FileKey]string{}}
+	index := &seedingIndex{byKey: map[fsops.FileKey]string{}}
 	if len(hashes) == 0 {
 		return index, nil
 	}
@@ -113,7 +110,7 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 		if info.FileID.IsZero() {
 			continue
 		}
-		index.byKey[fsops.FileKeyOf(info.FileID, index.instance)] = hash
+		index.byKey[fsops.FileKeyOf(info.FileID, nil)] = hash
 	}
 
 	return statErrors
