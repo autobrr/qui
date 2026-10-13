@@ -98,14 +98,14 @@ The bug is confirmed against the code path and an agent can fix it without a des
 
 1. Run `create-issue` with a short title and the agent brief as the body. The command prints the issue URL.
 2. Post one comment: the disclaimer line, then `Tracked in <issue URL>.`
-3. Add `ready-for-agent`, remove `needs-triage`.
+3. Add `ready-for-agent`. Remove `needs-triage` and `needs-confirmation`.
 4. Run `close RESOLVED`.
 
 Do not post the brief on the discussion. It lives in the issue, and the issue body links back with `From discussion #N`.
 
 ### ready-for-human
 
-Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
+Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`. Remove `needs-triage`, and for a `bug` also `needs-confirmation`. Do not create an issue.
 
 #### Log hand-off
 
@@ -115,6 +115,8 @@ Decide from the code first. A log link alone does not change the outcome. If the
 2. Add `ready-for-human`. Remove `needs-info` or `needs-triage`.
 
 Do not post the agent brief. The maintainer fetches the logs, answers the question, and triages the discussion again.
+
+In the local session that reads the logs, prove the cause with a live run before a comment names it. If the `field-test` skill is installed, use it. For a search bug, run the same search again with the cache skipped. If a live run is not possible, call the cause a theory in the comment, and name the check that can prove it.
 
 ## Agent brief
 
