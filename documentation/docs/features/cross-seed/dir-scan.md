@@ -168,7 +168,7 @@ qui treats folders that contain `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures 
 
 - **Hidden files and folders** (names starting with `.`)
 - **Symlinks inside a searchee folder** (skipped to avoid loops and permission issues). qui follows a symlinked media file placed directly in the scan root and scans its target. qui does not enter a symlinked folder in the scan root.
-- **Windows junctions and other special entries**, including sockets, FIFOs and devices. A junction is not scanned as a media file even when its name ends in a media extension such as `.mkv`.
+- **Windows junctions and other special entries**, including sockets, FIFOs and devices. A junction is not scanned as a media file even when its name ends in a media extension such as `.mkv`. Recognized cloud-placeholder and WOF data files remain eligible when their metadata is accessible; unknown reparse tags remain excluded.
 - **Files with permission errors** (qui continues the scan and skips the file)
 - **Non-media files** outside disc layouts
 

@@ -115,6 +115,8 @@ If you enable "Launch in terminal window", qui detects and uses an available ter
 
 On Windows, terminal-window programs use `cmd.exe`. With the terminal option disabled, qui launches native executables directly and passes arguments literally, including shell characters such as `&` and `%`. Batch files (`.bat` and `.cmd`) still use `cmd.exe`; their arguments follow Windows command-shell rules.
 
+For Python, PowerShell and other scripts, set **Program Path** to the interpreter executable and pass the script path as the first argument. File associations and shortcuts are not used for background launches. A quote in substituted torrent metadata can change command-shell parsing in batch or terminal mode, including executing shell operators; use a direct executable when those values must remain literal.
+
 :::tip
 Terminal windows stay open after the command finishes so you can inspect output. Close the window when you finish.
 :::
@@ -201,6 +203,8 @@ qui logs automation executions in the activity feed with:
 
 :::note
 qui logs success after the program starts, not when qui queues the task. If the program fails to start (for example, executable not found or permission denied), qui captures and logs the error.
+
+On Windows, batch and terminal launchers report their activity after the command wrapper exits so qui can detect dispatch errors. A long-running batch script therefore delays its activity entry until completion; restarting qui before it exits can leave no entry for that run.
 :::
 
 ### Example use cases

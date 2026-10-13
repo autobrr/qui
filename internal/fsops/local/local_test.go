@@ -215,7 +215,7 @@ func TestLstatConversion_FileIDFailureDegrades(t *testing.T) {
 	// metadata intact — not fail the conversion (one identity-opaque
 	// file must not abort callers that only need size/mtime).
 	path := filepath.Join(t.TempDir(), "missing", "x.mkv")
-	info := osFileInfoToLstat(syslessFileInfo{}, path)
+	info := osFileInfoToLstat(syslessFileInfo{}, path, false)
 
 	require.Error(t, info.FileIDErr)
 	assert.True(t, info.FileID.IsZero())
