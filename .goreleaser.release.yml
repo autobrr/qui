@@ -129,6 +129,7 @@ signs:
 changelog:
   sort: asc
   use: github
+  format: "{{ .Message }} ({{ with .Author.Username }}@{{ . }}{{ else }}{{ .Author.Name }}{{ end }})"
   filters:
     exclude:
       - Merge pull request
