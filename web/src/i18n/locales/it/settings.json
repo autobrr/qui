@@ -440,7 +440,7 @@
       "managementTitle": "Gestione licenza",
       "managementDescription": "Gestisci la tua licenza dei temi e l'accesso premium",
       "providers": {
-        "dodoPortal": "Portale Dodo"
+        "licensePortal": "portale delle licenze"
       },
       "status": {
         "unlockTitle": "Sblocca i temi Premium",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Stato: {{status}} • Aggiunto il {{date}}"
       },
       "invalid": {
-        "dodo": "Questa licenza non è attiva su questa macchina. Clicca su riattiva per usarla qui. Se raggiungi il limite di attivazioni, disattivala sull'altra macchina dove è attualmente attiva."
+        "dodo": "Questa licenza non è attiva su questa macchina. Clicca su riattiva per usarla qui. Se raggiungi il limite di attivazioni, vai su <portal>licenses.getqui.com</portal>, registrati o accedi con l'email usata per acquistare la licenza e disattiva una macchina che non usi più in Machine Instances."
+      },
+      "errors": {
+        "expired": "La tua chiave di licenza è scaduta.",
+        "notActive": "Questa chiave di licenza non è più attiva.",
+        "invalid": "Questa chiave di licenza non è valida.",
+        "notFound": "La chiave di licenza inserita non è valida.",
+        "databaseCopied": "Questa licenza è stata attivata su un'altra macchina. Sembra che il database sia stato copiato.",
+        "conditionsMismatch": "La chiave di licenza non soddisfa le condizioni richieste.",
+        "activationLimit": "È stato raggiunto il limite di attivazioni della licenza. Vai su <portal>licenses.getqui.com</portal> e registrati o accedi con l'email usata per acquistare la licenza. Apri Machine Instances, disattiva una macchina che non usi più, poi riprova.",
+        "limitReached": "È stato raggiunto il limite di attivazioni della licenza.",
+        "usageLimit": "Limite di utilizzo della licenza superato.",
+        "unreachable": "Impossibile raggiungere il servizio licenze. Riprova tra poco.",
+        "tooManyAttempts": "Troppi tentativi. Attendi un momento e riprova.",
+        "rateLimited": "Attendi prima di riprovare.",
+        "generic": "Impossibile convalidare la chiave di licenza. Riprova.",
+        "deleteFailed": "Impossibile rimuovere la licenza. Riprova."
       },
       "actions": {
         "addLicense": "Aggiungi licenza",
@@ -486,7 +502,7 @@
         "activate": "Attiva la licenza",
         "validating": "Convalida...",
         "openDodoCheckout": "Apri il checkout di DodoPayments",
-        "openDodoPortal": "Apri il portale Dodo"
+        "openLicensePortal": "Apri il portale delle licenze"
       },
       "deleteDialog": {
         "title": "Rimuovere la licenza?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Trova la tua chiave di licenza",
-            "description": "La tua chiave di licenza viene mostrata dopo il checkout. Puoi anche recuperarla in seguito dal portale clienti Dodo."
+            "description": "La tua chiave di licenza viene mostrata dopo il checkout. Puoi anche recuperarla in seguito dal portale delle licenze."
           },
           "activateLicense": {
             "title": "Attiva la tua licenza",

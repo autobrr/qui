@@ -85,6 +85,7 @@ func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 		sourceHash:            hlSourceHash,
 		sourceSavePath:        sourceDir,
 		sourceHasFileIdentity: true,
+		sourceLocal:           true,
 	}
 }
 

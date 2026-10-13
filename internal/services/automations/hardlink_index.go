@@ -79,28 +79,36 @@ type HardlinkIndex struct {
 	// Access requires holding crossScopeMu.
 	CrossScopeByHash map[string]string
 
-	// builtAt is when this index was built.
+	// builtAt is when the last full build of this index finished. An incremental
+	// update keeps it, so the full rebuild runs once per hardlinkIndexTTL however
+	// often the torrent set changes.
 	builtAt time.Time
 
 	// digest identifies the torrent set used to build this index.
 	digest string
 
-	// buildState holds intermediate data from Phase 1 that Phase 2 (cross-instance
-	// augmentation) needs. Retained until cross-scope is computed or the index is replaced.
-	// Access requires holding crossScopeMu.
+	// buildState holds the scan results and the link counts of this instance only.
+	// Phase 2 (cross-instance augmentation) and incremental updates read it, and
+	// neither changes it. Access requires holding crossScopeMu.
 	buildState *hardlinkBuildState
 
-	// crossScopeMu protects CrossScopeByHash and buildState from concurrent access.
-	// augmentCrossInstanceScope and finalizeCrossScope must be called with this held.
-	// On success, CrossScopeByHash is set and buildState freed.
-	// On failure (e.g. context cancellation), CrossScopeByHash stays nil and
-	// buildState is retained so the next caller can retry.
+	// crossFileIDMap holds the link counts after Phase 2 added the paths of other
+	// instances. CrossScopeByHash comes from these counts. Nil until Phase 2 runs.
+	// Access requires holding crossScopeMu.
+	crossFileIDMap map[hardlink.FileID]*fileIDTracker
+
+	// crossScopeMu protects CrossScopeByHash, crossFileIDMap, and buildState from
+	// concurrent access. augmentCrossInstanceScope and finalizeCrossScope must be
+	// called with this held. On success, CrossScopeByHash and crossFileIDMap are set,
+	// and buildState stays for the next incremental update. On failure (e.g. context
+	// cancellation), CrossScopeByHash and crossFileIDMap stay nil, so the next caller
+	// can retry.
 	crossScopeMu sync.Mutex
 }
 
 // hardlinkBuildState holds the per-torrent scan results plus the link counts derived
-// from them. Cross-instance augmentation updates uniquePathCount in place without
-// re-scanning, and an incremental update rebuilds the derived counts from
+// from them. Cross-instance augmentation raises copies of the counts and leaves these
+// as they are, and an incremental update rebuilds the derived counts from
 // torrentInfoByHash so it only has to re-read the torrents whose links changed.
 type hardlinkBuildState struct {
 	globalFileIDMap   map[hardlink.FileID]*fileIDTracker
@@ -141,7 +149,7 @@ var globalHardlinkIndexCache = &hardlinkIndexCache{
 // GetHardlinkIndex returns a cached, incrementally updated, or freshly built hardlink
 // index for the given instance. A change to the torrent set is folded in by re-reading
 // only the torrents whose links it can have changed; the full rebuild runs when the
-// index ages past hardlinkIndexTTL, when too much of the set changed at once, or when
+// last full build ages past hardlinkIndexTTL, when too much of the set changed at once, or when
 // no previous scan is available to build on.
 func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent) *HardlinkIndex {
 	if s == nil || s.filesReader == nil {
@@ -398,12 +406,10 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 	maps.Copy(torrentInfoByHash, scanned)
 	maps.Copy(torrentInfoByHash, sharingScanned)
 
-	// Deriving the counts from every retained scan discards whatever cross-instance
-	// augmentation added to the previous state, which is why CrossScopeByHash starts
-	// nil again and callers that need it re-augment.
-	index := &HardlinkIndex{digest: digest}
+	// The new index has no cross-instance scope yet, so CrossScopeByHash starts nil
+	// and callers that need it augment again.
+	index := &HardlinkIndex{digest: digest, builtAt: cached.builtAt}
 	stats := index.applyLinkState(deriveLinkCounts(torrentInfoByHash))
-	index.builtAt = time.Now()
 
 	globalHardlinkIndexCache.mu.Lock()
 	globalHardlinkIndexCache.indices[instanceID] = index
@@ -426,25 +432,19 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 }
 
 // scopeAfterRescan recomputes one torrent's hardlink scope from a fresh disk read,
-// reusing the index's count of how many paths in the torrent set point at each file.
-// It returns an empty scope when the torrent could not be fully inspected.
+// reusing the given count of how many paths in the torrent set point at each file:
+// the counts of this instance for the single-instance scope, or the augmented counts
+// for the cross-instance scope. It returns an empty scope when the torrent could not
+// be fully inspected.
 //
-// A file the index has never seen counts as held by this torrent alone, so any extra
+// A file the counts have never seen counts as held by this torrent alone, so any extra
 // link on it reads as a link outside the client. That is the answer that keeps the
 // torrent out of the delete-safe groups.
-func (idx *HardlinkIndex) scopeAfterRescan(info *torrentFileInfo) string {
-	if idx == nil || info == nil {
+func scopeAfterRescan(info *torrentFileInfo, fileIDMap map[hardlink.FileID]*fileIDTracker) string {
+	if info == nil || fileIDMap == nil {
 		return ""
 	}
 	if !info.allAccessible || len(info.fileIDs) == 0 {
-		return ""
-	}
-
-	// Cross-instance augmentation raises uniquePathCount in place, and a preview
-	// request can run it while a scheduled apply verifies its delete candidates.
-	idx.crossScopeMu.Lock()
-	defer idx.crossScopeMu.Unlock()
-	if idx.buildState == nil {
 		return ""
 	}
 
@@ -453,7 +453,7 @@ func (idx *HardlinkIndex) scopeAfterRescan(info *torrentFileInfo) string {
 	hasInside, hasOutside := false, false
 	for _, lf := range info.linkedFiles {
 		uniquePaths := 1
-		if tracker := idx.buildState.globalFileIDMap[lf.fileID]; tracker != nil && tracker.uniquePathCount > 1 {
+		if tracker := fileIDMap[lf.fileID]; tracker != nil && tracker.uniquePathCount > 1 {
 			uniquePaths = tracker.uniquePathCount
 		}
 
@@ -488,15 +488,19 @@ func hardlinkScope(hasInside, hasOutside bool) string {
 // verifyDeleteCandidates re-reads the given torrents' files and returns the hashes whose
 // hardlink scope no longer matches the index the rule decided on. Callers must not delete
 // those: between the index build and now, links were added or removed on disk, or the
-// files stopped being readable, and the rule's answer no longer describes them.
+// files stopped being readable, and the rule's answer no longer describes them. Each
+// candidate is checked against the kind of scope its rule used, and a rule that used
+// both kinds must pass both checks.
 //
 // This is the one place that must not trust the index. The index is allowed to lag by
 // hardlinkIndexTTL for changes nothing reports, which is harmless for tagging and not
-// harmless for deleting.
-func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, index *HardlinkIndex, torrentByHash map[string]qbt.Torrent, hashes []string) map[string]string {
-	if len(hashes) == 0 {
+// harmless for deleting. The check does not read the files of other instances again,
+// so the cross-instance counts can lag by the same limit.
+func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, index *HardlinkIndex, torrentByHash map[string]qbt.Torrent, candidates map[string]hardlinkUse) map[string]string {
+	if len(candidates) == 0 {
 		return nil
 	}
+	hashes := slices.Collect(maps.Keys(candidates))
 	if index == nil {
 		blocked := make(map[string]string, len(hashes))
 		for _, hash := range hashes {
@@ -528,35 +532,52 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
+	// A preview request can run the cross-instance step while a scheduled apply
+	// verifies its delete candidates.
+	index.crossScopeMu.Lock()
+	var singleCounts map[hardlink.FileID]*fileIDTracker
+	if index.buildState != nil {
+		singleCounts = index.buildState.globalFileIDMap
+	}
+	crossScopes, crossCounts := index.CrossScopeByHash, index.crossFileIDMap
+	index.crossScopeMu.Unlock()
+
 	var blocked map[string]string
-	for _, hash := range hashes {
-		expected, known := index.ScopeByHash[hash]
-		if !known {
-			if blocked == nil {
-				blocked = make(map[string]string)
+	for hash, use := range candidates {
+		var info *torrentFileInfo
+		if files, present := filesByHash[hash]; present {
+			info = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+		}
+		check := func(scopes map[string]string, counts map[hardlink.FileID]*fileIDTracker) string {
+			expected, known := scopes[hash]
+			if !known {
+				return "hardlink scope unknown"
 			}
-			blocked[hash] = "hardlink scope unknown"
+			actual := scopeAfterRescan(info, counts)
+			switch actual {
+			case expected:
+				return ""
+			case "":
+				return "files no longer readable"
+			default:
+				return "hardlink scope changed from " + expected + " to " + actual
+			}
+		}
+
+		var reason string
+		if use.single {
+			reason = check(index.ScopeByHash, singleCounts)
+		}
+		if reason == "" && use.cross {
+			reason = check(crossScopes, crossCounts)
+		}
+		if reason == "" {
 			continue
 		}
-
-		files, present := filesByHash[hash]
-		actual := ""
-		if present {
-			actual = index.scopeAfterRescan(scanTorrentFiles(ctx, backend, torrentByHash[hash], files))
-		}
-
-		if actual == expected {
-			continue
-		}
-
 		if blocked == nil {
 			blocked = make(map[string]string)
 		}
-		if actual == "" {
-			blocked[hash] = "files no longer readable"
-			continue
-		}
-		blocked[hash] = "hardlink scope changed from " + expected + " to " + actual
+		blocked[hash] = reason
 	}
 
 	return blocked
@@ -939,7 +960,10 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 	state := index.buildState
 	phase2Start := time.Now()
 
-	deficitSet := collectDeficitFileIDs(state)
+	// The scan raises copies of the deficit counts, so the counts of this instance
+	// stay as they are for the single-instance scope and its check before deletion.
+	augmented := collectDeficitFileIDs(state)
+	deficitSet := maps.Clone(augmented)
 
 	if len(deficitSet) == 0 {
 		index.finalizeCrossScope(instanceID, "no deficits")
@@ -989,10 +1013,14 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		return
 	}
 
-	// Recompute scope for all torrents using augmented counts. The state stays so the
-	// next torrent set change can update incrementally; the counts this scan raised are
-	// discarded there, because deriveLinkCounts rebuilds them from the per-torrent scans.
-	index.CrossScopeByHash = computeScopeMap(state)
+	// Recompute scope for all torrents using the augmented counts.
+	crossCounts := maps.Clone(state.globalFileIDMap)
+	maps.Copy(crossCounts, augmented)
+	index.crossFileIDMap = crossCounts
+	index.CrossScopeByHash = computeScopeMap(&hardlinkBuildState{
+		globalFileIDMap:   crossCounts,
+		torrentInfoByHash: state.torrentInfoByHash,
+	})
 
 	var countNone, countTorrentsOnly, countOutside, countBoth int
 	for _, scope := range index.CrossScopeByHash {
@@ -1024,22 +1052,24 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		Msg("automations: cross-instance hardlink scope computed")
 }
 
-// collectDeficitFileIDs returns FileIDs where nlink > uniquePathCount.
+// collectDeficitFileIDs returns copies of the trackers where nlink > uniquePathCount.
 func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*fileIDTracker {
 	deficitSet := make(map[hardlink.FileID]*fileIDTracker)
 	for fileID, tracker := range state.globalFileIDMap {
 		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
-			deficitSet[fileID] = tracker
+			deficitSet[fileID] = &fileIDTracker{nlink: tracker.nlink, uniquePathCount: tracker.uniquePathCount}
 		}
 	}
 	return deficitSet
 }
 
-// finalizeCrossScope copies ScopeByHash to CrossScopeByHash.
+// finalizeCrossScope copies ScopeByHash to CrossScopeByHash, and uses the counts of
+// this instance as the cross-instance counts.
 // Used when Phase 2 cannot or does not need to scan other instances.
 func (idx *HardlinkIndex) finalizeCrossScope(instanceID int, reason string) {
 	idx.CrossScopeByHash = make(map[string]string, len(idx.ScopeByHash))
 	maps.Copy(idx.CrossScopeByHash, idx.ScopeByHash)
+	idx.crossFileIDMap = idx.buildState.globalFileIDMap
 	if reason != "" {
 		log.Debug().Int("instanceID", instanceID).
 			Msgf("automations: cross-instance scope matches single-instance (%s)", reason)
@@ -1074,7 +1104,7 @@ type crossScanStats struct {
 const maxCrossInstanceLstatCalls = 500_000
 
 // scanOtherInstancesForDeficits Lstats files from other instances to resolve deficit FileIDs.
-// Modifies deficitSet and state.seenPaths/globalFileIDMap in place.
+// It raises the trackers in deficitSet and removes the resolved ones. It does not change state.
 //
 //nolint:gocognit // early-exit checks at multiple loop levels are inherent to the scanning pattern
 func (s *Service) scanOtherInstancesForDeficits(
@@ -1085,6 +1115,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 	state *hardlinkBuildState,
 ) crossScanStats {
 	stats := crossScanStats{deficitBefore: len(deficitSet)}
+	crossSeen := make(map[string]struct{})
 
 	for _, otherID := range otherInstances {
 		if ctx.Err() != nil || len(deficitSet) == 0 || stats.lstatCalls >= maxCrossInstanceLstatCalls {
@@ -1147,6 +1178,9 @@ func (s *Service) scanOtherInstancesForDeficits(
 				if _, seen := state.seenPaths[fullPath]; seen {
 					continue
 				}
+				if _, seen := crossSeen[fullPath]; seen {
+					continue
+				}
 
 				stats.lstatCalls++
 
@@ -1170,7 +1204,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 					continue
 				}
 
-				state.seenPaths[fullPath] = struct{}{}
+				crossSeen[fullPath] = struct{}{}
 				tracker.uniquePathCount++
 
 				if tracker.nlink <= uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive

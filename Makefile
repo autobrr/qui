@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -213,8 +213,12 @@ check-mojibake:
 		exit 1; \
 	fi
 
-# Local pre-commit gate: mojibake check, fmt and gofix on changed files, then lint
-precommit: check-mojibake fmt gofix-changed lint
+# Write the generated files: the automation rule JSON reference in the docs and the query builder field table
+generate:
+	go run ./internal/automationsgen
+
+# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
+precommit: check-mojibake generate fmt gofix-changed lint
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -297,7 +301,8 @@ help:
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
-	@echo "  make precommit      - Run local pre-commit gate (fmt + gofix + lint)"
+	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

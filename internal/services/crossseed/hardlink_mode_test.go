@@ -238,6 +238,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 
 			result := s.buildHardlinkDestDir(
 				context.Background(),
+				fsops.HostPaths,
 				instance,
 				tt.baseDir,
 				tt.torrentHash,
@@ -288,6 +289,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 
 	result := s.buildHardlinkDestDir(
 		context.Background(),
+		fsops.HostPaths,
 		instance,
 		instance.HardlinkBaseDir,
 		"abcdef1234567890",
@@ -501,7 +503,7 @@ func TestRankBaseDirs(t *testing.T) {
 			for i, dir := range tt.dirs {
 				dirs[i] = filepath.FromSlash(dir)
 			}
-			got := rankBaseDirs(dirs, filepath.FromSlash(tt.source))
+			got := rankBaseDirs(fsops.HostPaths, dirs, filepath.FromSlash(tt.source))
 			for i := range got {
 				got[i] = filepath.ToSlash(got[i])
 			}
@@ -658,7 +660,8 @@ func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}}}
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
-	assert.Equal(t, dirB, s.previewLinkBaseDir(t.Context(), instance, savePath))
+	got, _ := s.previewLinkBaseDir(t.Context(), instance, savePath)
+	assert.Equal(t, dirB, got)
 }
 
 func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {

@@ -142,7 +142,7 @@ func TestVerifyDeleteCandidatesHoldsAnInstanceThatLeftLocalMode(t *testing.T) {
 	index := &HardlinkIndex{ScopeByHash: map[string]string{"hash": HardlinkScopeNone}}
 
 	blocked := service.verifyDeleteCandidates(t.Context(), instanceID, index,
-		map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}, []string{"hash"})
+		map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}, map[string]hardlinkUse{"hash": {single: true}})
 
 	require.Equal(t, map[string]string{"hash": "filesystem backend unavailable"}, blocked)
 	require.Zero(t, spy.lstats.Load(), "the re-read must not reach the SSH host")

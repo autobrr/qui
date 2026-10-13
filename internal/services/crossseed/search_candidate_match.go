@@ -493,7 +493,9 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	if (sourceArtist != "" || candidateArtist != "") && sourceArtist != candidateArtist {
 		return false, "artist mismatch"
 	}
-	if source.Year != candidate.Year {
+	// Trackers add a year to names that the local torrent does not carry, so a
+	// year on one side only is not a conflict. Two different years are.
+	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
 		return false, "year mismatch"
 	}
 	if source.Month != candidate.Month || source.Day != candidate.Day {

@@ -486,3 +486,41 @@ func TestGetMatchType_FileNameFallback(t *testing.T) {
 	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles, 0).MatchType
 	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
 }
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchAgainstSeasonPack(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]"
+	episodeFiles := qbt.TorrentFiles{
+		{Name: localName + "/[KAIJU] Kaiju Squad - 01 (BDRip 1080p x264).mkv", Size: 1 << 30},
+		{Name: localName + "/[KAIJU] Kaiju Squad - 02 (BDRip 1080p x264).mkv", Size: 1 << 30},
+	}
+	movieFiles := qbt.TorrentFiles{
+		{Name: localName + "/[KAIJU] Kaiju Squad (BDRip 1080p x264).mkv", Size: 4 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		files  qbt.TorrentFiles
+		want   string
+	}{
+		{name: "season 1 pack", target: "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: episodeFiles, want: "release-match"},
+		{name: "season 2 pack", target: "Kaiju Squad S02 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: episodeFiles, want: ""},
+		{name: "files without episodes", target: "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: movieFiles, want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			match := svc.matcher().getMatchTypeFromTitle(test.target, localName, target, local, test.files)
+			require.Equal(t, test.want, match)
+		})
+	}
+}

@@ -195,8 +195,7 @@ export function LeafCondition({
 
   const handleFieldChange = (field: string) => {
     const newFieldType = getFieldType(field);
-    const newOperators = getOperatorsForField(field);
-    const defaultOperator = newOperators[0]?.value ?? "EQUAL";
+    const defaultOperator = getOperatorsForField(field)[0] ?? "EQUAL";
 
     // Determine default value based on field type
     let defaultValue = "";
@@ -211,7 +210,7 @@ export function LeafCondition({
     onChange({
       ...condition,
       field: field as ConditionField,
-      operator: defaultOperator as ConditionOperator,
+      operator: defaultOperator,
       groupId: isGroupingConditionField(field as ConditionField) ? (condition.groupId || DEFAULT_GROUP_ID) : undefined,
       value: defaultValue,
       minValue: undefined,
