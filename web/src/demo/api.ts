@@ -94,7 +94,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("POST", "/auth/logout", () => noContent())
 
   on("GET", "/themes", () => json({ themes: builtinThemes }))
-  on("GET", "/themes/settings", () => json(null))
+  on("GET", "/themes/settings", () => json({}))
   on("PUT", "/themes/settings", async ({ request }) => json(await bodyJSON(request)))
   on("GET", "/themes/custom", () => json({ directory: "", themes: [] }))
   on("GET", "/client-settings", () => json({}))
@@ -102,7 +102,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/filter-views", () => json([]))
   on("GET", "/tracker-icons", () => json({}))
   on("GET", "/license/licensed", () => json({ licensed: false }))
-  on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, restart: false }))
+  on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, selfUpdateUnavailableReason: "development", restart: false }))
   on("GET", "/version/latest", () => json(null))
 
   on("GET", "/instances", () => json(store.instanceResponses()))

@@ -1,4 +1,5 @@
 allowBuilds:
+  '@swc/core': false
   core-js: false
 # Docs-only build tooling pinned past Dependabot advisories. The documentation
 # site is a separate static Docusaurus build; these never ship in the qui binary.

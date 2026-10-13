@@ -70,6 +70,19 @@ for (const locale of allLocales) {
     assert.match(result.stdout, /Untranslated \(kept intentionally[^\]]*\)] 1 warning/)
   })
 
+  test(`${locale}: a rate suffix kept as in English is explained, prose is not`, (t) => {
+    const f = fixture(t, locale)
+    f.write(
+      { rateSuffix: "{{unit}}/s", rateWords: "{{unit}} per second" },
+      { rateSuffix: "{{unit}}/s", rateWords: "{{unit}} per second" },
+    )
+
+    const result = f.run(locale)
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stdout, /rateSuffix: "\{\{unit\}\}\/s" \(rate suffix\)/)
+    assert.match(result.stdout, /\[Untranslated \(needs review\)] 1 warning\n {2}- common\.rateWords:/)
+  })
+
   test(`${locale}: an extra placeholder is an error`, (t) => {
     const f = fixture(t, locale)
     f.write({ m: "Hello" }, { m: "Bonjour {{name}}" })

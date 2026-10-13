@@ -493,6 +493,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+			r.Delete("/themes/settings", themesHandler.DeleteThemeSettings)
 
 			// Persisted frontend user settings (opaque key-value map)
 			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)

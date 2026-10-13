@@ -1118,3 +1118,124 @@ func expireHardlinkIndex(t *testing.T, instanceID int) {
 	require.NotNil(t, index)
 	index.builtAt = time.Now().Add(-hardlinkIndexTTL)
 }
+
+// ageHardlinkIndex moves the clock of the cached index forward by d.
+func ageHardlinkIndex(t *testing.T, instanceID int, d time.Duration) {
+	t.Helper()
+	globalHardlinkIndexCache.mu.Lock()
+	defer globalHardlinkIndexCache.mu.Unlock()
+	index := globalHardlinkIndexCache.indices[instanceID]
+	require.NotNil(t, index)
+	index.builtAt = index.builtAt.Add(-d)
+}
+
+// A busy instance changes its torrent set more often than hardlinkIndexTTL. The
+// incremental updates must not push the full rebuild back, or a link that changed
+// on disk for an unchanged torrent stays invisible until qui restarts.
+func TestGetHardlinkIndex_IncrementalUpdatesDoNotDelayTheFullRebuild(t *testing.T) {
+	const instanceID = 904
+	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
+	dir := t.TempDir()
+
+	var torrents []qbt.Torrent
+	addTorrent := func(name string) {
+		savePath := filepath.Join(dir, name)
+		createFile(t, filepath.Join(savePath, "data.bin"))
+		torrents = append(torrents, qbt.Torrent{Hash: name, SavePath: savePath})
+	}
+	for _, name := range []string{"t1", "t2", "t3", "t4", "t5", "t6"} {
+		addTorrent(name)
+	}
+
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash["t1"])
+
+	// Sonarr links the file of t1 into its library. Nothing in qBittorrent changes.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "library"), 0o700))
+	require.NoError(t, os.Link(filepath.Join(dir, "t1", "data.bin"), filepath.Join(dir, "library", "data.bin")))
+
+	// Two torrents arrive, each before the index is hardlinkIndexTTL old.
+	for _, name := range []string{"t7", "t8"} {
+		ageHardlinkIndex(t, instanceID, hardlinkIndexTTL*2/5)
+		addTorrent(name)
+		index = service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+		require.Equal(t, HardlinkScopeNone, index.ScopeByHash["t1"], "an incremental update does not read t1 again")
+	}
+
+	// The last full build is now older than hardlinkIndexTTL.
+	ageHardlinkIndex(t, instanceID, hardlinkIndexTTL*2/5)
+	index = service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash["t1"], "the full rebuild reads t1 again")
+}
+
+// The check before deletion must compare scopes of the same kind. A rule on
+// HARDLINK_SCOPE decided on the link counts of its own instance, and a rule on
+// HARDLINK_SCOPE_CROSS decided on the counts after the cross-instance step.
+func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
+	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	scope := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeOutsideQBitTorrent}
+	cross := &RuleCondition{Field: FieldHardlinkScopeCross, Operator: OperatorEqual, Value: HardlinkScopeTorrentsOnly}
+
+	tests := []struct {
+		name        string
+		condition   *RuleCondition
+		augment     bool
+		linkLibrary bool // a library link appears between the index build and the check
+		want        map[string]string
+	}{
+		{name: "cross scope, linked on the other instance only", condition: cross, augment: true},
+		{name: "single scope after the cross-instance step", condition: scope, augment: true},
+		{name: "both scopes", condition: &RuleCondition{Operator: OperatorAnd, Conditions: []*RuleCondition{scope, cross}}, augment: true},
+		{
+			name: "cross scope, links changed on disk", condition: cross, augment: true, linkLibrary: true,
+			want: map[string]string{hash: "hardlink scope changed from " + HardlinkScopeTorrentsOnly + " to " + HardlinkScopeBoth},
+		},
+		{
+			name: "cross scope never computed", condition: cross,
+			want: map[string]string{hash: "hardlink scope unknown"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			fileA := filepath.Join(dir, "a", "movie.mkv")
+			createFile(t, fileA)
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, "b"), 0o700))
+			require.NoError(t, os.Link(fileA, filepath.Join(dir, "b", "movie.mkv")))
+
+			db := testdb.NewMigratedSQLite(t, "hardlink-cross-scope")
+			instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+			require.NoError(t, err)
+			instanceA, err := instanceStore.Create(t.Context(), "a", "http://127.0.0.1:9", "", "", nil, nil, false, new(true))
+			require.NoError(t, err)
+			_, err = instanceStore.Create(t.Context(), "b", "http://127.0.0.1:9", "", "", nil, nil, false, new(true))
+			require.NoError(t, err)
+			service := newHardlinkIndexService(t, instanceA.ID, localbackend.NewBackend(), nil)
+			service.instanceStore = instanceStore
+			service.backendPool = fsops.NewPool(instanceStore, localbackend.NewBackend())
+			// Instance B holds one torrent with the other link of the file.
+			service.filesReader = crossFilesReader{savePath: filepath.Join(dir, "b"), files: qbt.TorrentFiles{{Name: "movie.mkv"}}}
+
+			torrent := qbt.Torrent{Hash: hash, SavePath: filepath.Join(dir, "a")}
+			index := service.GetHardlinkIndex(t.Context(), instanceA.ID, []qbt.Torrent{torrent})
+			require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[hash])
+			if tt.augment {
+				index.crossScopeMu.Lock()
+				service.augmentCrossInstanceScope(t.Context(), instanceA.ID, index)
+				index.crossScopeMu.Unlock()
+				require.Equal(t, HardlinkScopeTorrentsOnly, index.CrossScopeByHash[hash])
+			}
+			if tt.linkLibrary {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "library"), 0o700))
+				require.NoError(t, os.Link(fileA, filepath.Join(dir, "library", "movie.mkv")))
+			}
+
+			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: tt.condition}}}
+			blocked := service.blockedDeleteCandidates(t.Context(), instanceA.ID, index,
+				map[string]qbt.Torrent{hash: torrent}, map[string][]string{DeleteModeWithFiles: {hash}},
+				map[string]pendingDeletion{hash: {ruleID: 1}}, map[int]*models.Automation{1: rule})
+			require.Equal(t, tt.want, blocked)
+		})
+	}
+}

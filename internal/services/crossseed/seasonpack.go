@@ -86,7 +86,7 @@ type seasonPackLocalFile struct {
 type seasonPackPlanBuild struct {
 	plan              *hardlinktree.TreePlan
 	created           *fsops.TreeCreateResult // what the link creator actually made; rollback removes only this
-	backend           fsops.Backend           // the backend that created the tree; rollback must not re-resolve on a possibly-cancelled ctx
+	backend           fsops.Backend           // the backend the plan was built for; it creates the tree, and rollback must not re-resolve on a possibly-cancelled ctx
 	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
@@ -129,6 +129,7 @@ type seasonPackPrep struct {
 	manual       bool
 	rejected     map[string]string
 	settings     *models.CrossSeedAutomationSettings
+	packName     string
 	packRelease  *rls.Release
 	meta         TorrentMetadata
 	torrentBytes []byte // raw .torrent file content for AddTorrent
@@ -204,6 +205,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 
 	return &seasonPackPrep{
 		settings:      settings,
+		packName:      torrentName,
 		packRelease:   packRelease,
 		meta:          meta,
 		torrentBytes:  torrentBytes,
@@ -264,6 +266,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 
 	return &seasonPackPrep{
 		settings:      settings,
+		packName:      torrentName,
 		packRelease:   packRelease,
 		packEpisodes:  nil, // no torrent file = accept any matching episode
 		totalEpisodes: totalEpisodes,
@@ -292,7 +295,7 @@ func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackChe
 		return s.checkSeasonPackNoThreshold(ctx, req.TorrentName, prep)
 	}
 
-	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
+	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packName, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +323,7 @@ func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName st
 			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
-		matched := s.matchEpisodeCandidatesDetailed(cached, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
+		matched := s.matchEpisodeCandidatesDetailed(cached, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
 		if len(matched) == 0 {
 			continue
 		}
@@ -410,7 +413,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 	}
 	prep.eligible = unblocked
 
-	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
+	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packName, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
 	if err != nil {
 		message := err.Error()
 		s.recordApplyRun(ctx, req.TorrentName, "coverage_check_failed", message, 0, 0, prep.totalEpisodes, 0, "")
@@ -468,17 +471,8 @@ func (s *Service) addSeasonPack(
 		// the live ctx fails when the run was cancelled, silently skipping
 		// rollback. dirscan's injector resolves one backend up front for the
 		// same reason.
-		backend := planBuild.backend
-		if backend == nil {
-			var backendErr error
-			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID, models.CapabilityWrite); backendErr != nil {
-				log.Warn().Err(backendErr).Str("torrentName", torrentName).Msg("season pack: no backend to rollback after add failure")
-			}
-		}
-		if backend != nil {
-			if rollbackErr := rollbackSeasonPackTree(ctx, backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
-				log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
-			}
+		if rollbackErr := rollbackSeasonPackTree(ctx, planBuild.backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
+			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, torrentName, "add_failed", err.Error(), inst.ID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil
@@ -565,7 +559,7 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
-	candidates := s.matchEpisodeCandidatesDetailed(cached, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
+	candidates := s.matchEpisodeCandidatesDetailed(cached, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
 	if len(candidates) < winner.MatchedEpisodes {
 		return nil, nil, fmt.Errorf("%w: episode count drifted during apply", errLayoutMismatch)
 	}
@@ -574,7 +568,7 @@ func (s *Service) assembleSeasonPack(
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planBuild, linkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planBuild, linkMode); err != nil {
 		return nil, nil, err
 	}
 	return planBuild, episodes, nil
@@ -584,7 +578,14 @@ func (s *Service) planSeasonPack(
 	ctx context.Context, prep *seasonPackPrep, inst *models.Instance,
 	candidates map[episodeIdentity][]episodeMatch, linkMode, indexer string,
 ) (*seasonPackPlanBuild, map[episodeIdentity]episodeMatch, error) {
-	episodes, localFiles, err := s.resolveSeasonPackLocalFilesForCandidates(ctx, inst.ID, candidates, prep.meta.Files, prep.packRelease, prep.settings, prep.aliasTitles, prep.rejected)
+	// One read serves planning and creation, so both see the same backend.
+	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
+	if err != nil {
+		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
+	}
+	d := backend.Paths()
+
+	episodes, localFiles, err := s.resolveSeasonPackLocalFilesForCandidates(ctx, d, inst.ID, candidates, prep.meta.Files, prep.packRelease, prep.settings, prep.aliasTitles, prep.rejected)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -592,11 +593,6 @@ func (s *Service) planSeasonPack(
 	// with what actually resolved. Below the floor, drift as usual.
 	if !prep.manual && float64(len(episodes)) < float64(prep.totalEpisodes)*prep.threshold {
 		return nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
-	}
-
-	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
-	if err != nil {
-		return nil, nil, fmt.Errorf("no filesystem backend: %w", err)
 	}
 
 	if prep.manual {
@@ -615,15 +611,16 @@ func (s *Service) planSeasonPack(
 		return nil, nil, err
 	}
 
-	destDir := s.seasonPackDestDir(ctx, inst, selectedBaseDir, prep.torrentBytes, indexer)
+	destDir := s.seasonPackDestDir(ctx, d, inst, selectedBaseDir, prep.torrentBytes, indexer)
 
 	planBuild, err := buildSeasonPackPlan(
-		prep.meta.Files, prep.packRelease, prep.meta.Name,
+		d, prep.meta.Files, prep.packRelease, prep.meta.Name,
 		destDir, localFiles, normalizerForService(s), prep.settings, prep.aliasTitles,
 	)
 	if err != nil {
 		return nil, episodes, err
 	}
+	planBuild.backend = backend
 	if !prep.manual && planBuild.hasPendingFiles() && prep.settings.SkipRecheck {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
@@ -637,11 +634,8 @@ func (s *Service) planSeasonPack(
 	return planBuild, episodes, nil
 }
 
-func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instance, planBuild *seasonPackPlanBuild, linkMode string) error {
-	backend, err := s.getBackendForInstance(ctx, inst.ID, models.CapabilityWrite)
-	if err != nil {
-		return err
-	}
+func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
+	backend := planBuild.backend
 	createFn := s.seasonPackLinkCreator
 	if createFn == nil {
 		createFn = backend.HardlinkTree
@@ -657,7 +651,6 @@ func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instanc
 		return fmt.Errorf("link_failed: %w", err)
 	}
 	planBuild.created = created
-	planBuild.backend = backend
 
 	return nil
 }
@@ -666,14 +659,14 @@ func (s *Service) createSeasonPackTree(ctx context.Context, inst *models.Instanc
 // (flat / by-tracker / by-instance) to the selected base dir, mirroring buildCategorySavePath
 // on the regular cross-seed apply path. The pack's own root folder provides per-torrent
 // isolation, so unlike buildHardlinkDestDir no isolation folder is added here.
-func (s *Service) seasonPackDestDir(ctx context.Context, inst *models.Instance, baseDir string, torrentBytes []byte, indexer string) string {
+func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, inst *models.Instance, baseDir string, torrentBytes []byte, indexer string) string {
 	switch inst.HardlinkDirPreset {
 	case "by-tracker":
 		incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, &CrossSeedRequest{IndexerName: indexer})
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
 	case "by-instance":
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(inst.Name))
+		return d.Join(baseDir, pathutil.SanitizePathSegment(inst.Name))
 	default: // "flat" or unknown
 		return baseDir
 	}
@@ -763,11 +756,12 @@ func seasonPackBaseDirMatchesAllSources(ctx context.Context, backend fsops.Backe
 }
 
 func nearestExistingParent(ctx context.Context, backend fsops.Backend, path string) string {
-	for dir := filepath.Dir(path); dir != "." && dir != ""; dir = filepath.Dir(dir) {
+	d := backend.Paths()
+	for dir := d.Dir(path); dir != "." && dir != ""; dir = d.Dir(dir) {
 		if _, err := backend.Stat(ctx, dir); err == nil {
 			return dir
 		}
-		next := filepath.Dir(dir)
+		next := d.Dir(dir)
 		if next == dir {
 			break
 		}
@@ -968,14 +962,16 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 
 // seasonPackReleasesMatchWithReason reports whether a pack release and a candidate
 // match under the season-pack settings, returning the field-level reject reason (empty
-// on a match) so callers can log why a candidate episode was filtered. sourceAliasTitles
-// are the pack show's alternate titles
-// (from Sonarr) and are only added to the source (pack) side, matching the
+// on a match) so callers can log why a candidate episode was filtered. sourceName and
+// candidateName are the raw release names, so the AKA and slash title rules run; they
+// are empty when only file names are compared. sourceAliasTitles are the pack show's
+// alternate titles (from Sonarr) and are only added to the source (pack) side, matching the
 // search path: expanding the candidate side would let an unrelated show whose title
 // happens to equal one of the pack's aliases match by accident.
 func (m matcher) seasonPackReleasesMatchWithReason(
 	source *rls.Release,
 	candidate *rls.Release,
+	sourceName, candidateName string,
 	findIndividualEpisodes bool,
 	settings *models.CrossSeedAutomationSettings,
 	sourceAliasTitles []string,
@@ -1008,7 +1004,7 @@ func (m matcher) seasonPackReleasesMatchWithReason(
 	// Run the standard field matcher first so the most informative reason (e.g. a title
 	// mismatch for an unrelated show) surfaces before the season-pack-specific variant and
 	// source gates. This changes only which reason is reported first, not the outcome.
-	if ok, reason := m.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, "", "", sourceAliasTitles, nil, findIndividualEpisodes); !ok {
+	if ok, reason := m.releasesMatchWithReasonAndNamesAndTitles(&sourceCopy, &candidateCopy, sourceName, candidateName, sourceAliasTitles, nil, findIndividualEpisodes); !ok {
 		return false, reason
 	}
 	if !seasonPackNonPackVariantsMatch(&sourceCopy, &candidateCopy) {
@@ -1162,6 +1158,7 @@ func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName 
 func (s *Service) computeCoverage(
 	ctx context.Context,
 	instances []*models.Instance,
+	packName string,
 	packRelease *rls.Release,
 	packEpisodes map[episodeIdentity]packEpisodeOrigin,
 	totalEpisodes int,
@@ -1176,7 +1173,7 @@ func (s *Service) computeCoverage(
 			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
-		matched := s.matchEpisodeCandidatesDetailed(cached, packRelease, packEpisodes, settings, aliasTitles)
+		matched := s.matchEpisodeCandidatesDetailed(cached, packName, packRelease, packEpisodes, settings, aliasTitles)
 		if len(matched) == 0 {
 			continue
 		}
@@ -1198,6 +1195,7 @@ func (s *Service) computeCoverage(
 // callers that link files use the first candidate per identity.
 func (s *Service) matchEpisodeCandidatesDetailed(
 	cached []qbittorrent.CrossInstanceTorrentView,
+	packName string,
 	packRelease *rls.Release,
 	packEpisodes map[episodeIdentity]packEpisodeOrigin,
 	settings *models.CrossSeedAutomationSettings,
@@ -1285,7 +1283,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			}
 		}
 
-		if ok, reason := m.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
+		if ok, reason := m.seasonPackReleasesMatchWithReason(packRelease, resolved, packName, torrent.Name, true, settings, aliasTitles); !ok {
 			logFiltered(torrent.Name, reason)
 			continue
 		}
@@ -1316,6 +1314,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 
 func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 	ctx context.Context,
+	d fsops.PathDialect,
 	instanceID int,
 	candidates map[episodeIdentity][]episodeMatch,
 	packFiles qbt.TorrentFiles,
@@ -1372,7 +1371,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				continue
 			}
 
-			localFile, err := resolveSeasonPackLocalFileCandidate(id, candidate, files, normalizer)
+			localFile, err := resolveSeasonPackLocalFileCandidate(d, id, candidate, files, normalizer)
 			if err != nil {
 				reject(candidate, "episode_file_invalid")
 				lastErr = err
@@ -1383,7 +1382,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				lastErr = fmt.Errorf("%w: file size mismatch for %s: pack declares %d bytes, local file is %d bytes", errLayoutMismatch, expectedFile.file.Name, expectedFile.file.Size, localFile.size)
 				continue
 			}
-			if ok, reason := m.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !candidate.manual && !ok {
+			if ok, reason := m.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, "", "", false, settings, aliasTitles); !candidate.manual && !ok {
 				reject(candidate, "release_mismatch")
 				lastErr = fmt.Errorf("%w: release mismatch for %s: %s", errLayoutMismatch, expectedFile.file.Name, reason)
 				continue
@@ -1449,6 +1448,7 @@ func sortedEpisodeCandidateIDs(candidates map[episodeIdentity][]episodeMatch) []
 }
 
 func resolveSeasonPackLocalFileCandidate(
+	d fsops.PathDialect,
 	id episodeIdentity,
 	episode episodeMatch,
 	files qbt.TorrentFiles,
@@ -1476,7 +1476,7 @@ func resolveSeasonPackLocalFileCandidate(
 		matchCount++
 		matchedFileSize = file.Size
 		matchedRelease = parsed
-		matchedSourcePath = resolveSeasonPackSourcePath(episode.contentPath, files, file.Name)
+		matchedSourcePath = resolveSeasonPackSourcePath(d, episode.contentPath, files, file.Name)
 	}
 
 	if matchCount != 1 || matchedRelease == nil || matchedSourcePath == "" || (episode.manual && playableCount != 1) {
@@ -1491,7 +1491,7 @@ func resolveSeasonPackLocalFileCandidate(
 	}, nil
 }
 
-func resolveSeasonPackSourcePath(contentPath string, files qbt.TorrentFiles, fileName string) string {
+func resolveSeasonPackSourcePath(d fsops.PathDialect, contentPath string, files qbt.TorrentFiles, fileName string) string {
 	rootDir := resolveRootlessContentDir(&qbt.Torrent{ContentPath: contentPath}, files)
 	if rootDir == "" {
 		return ""
@@ -1504,7 +1504,7 @@ func resolveSeasonPackSourcePath(contentPath string, files qbt.TorrentFiles, fil
 		}
 	}
 
-	candidatePath, ok := safeSeasonPackJoin(rootDir, relativePath)
+	candidatePath, ok := safeSeasonPackJoin(d, rootDir, relativePath)
 	if !ok {
 		return ""
 	}
@@ -1546,6 +1546,7 @@ func firstMatchedEpisodeCategory(episodes map[episodeIdentity]episodeMatch) stri
 // buildSeasonPackPlan builds a TreePlan that assembles episode files from multiple
 // local torrents into the layout expected by the season pack torrent.
 func buildSeasonPackPlan(
+	d fsops.PathDialect,
 	packFiles qbt.TorrentFiles,
 	packRelease *rls.Release,
 	packName string,
@@ -1560,7 +1561,7 @@ func buildSeasonPackPlan(
 	// layout. RootDir therefore stays the PARENT directory so the folder is created exactly
 	// once; setting it to <destDir>/<packName> double-nests on disk and in qBittorrent
 	// (discussions #2082 / #2087). packDir is kept for rollback cleanup and to validate packName.
-	packDir, ok := safeSeasonPackJoin(destDir, packName)
+	packDir, ok := safeSeasonPackJoin(d, destDir, packName)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid pack root path %q", errLayoutMismatch, packName)
 	}
@@ -1595,13 +1596,13 @@ func buildSeasonPackPlan(
 		if localFile.size != pf.Size {
 			continue
 		}
-		if ok, _ := m.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !localFile.manual && !ok {
+		if ok, _ := m.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, "", "", false, settings, aliasTitles); !localFile.manual && !ok {
 			continue
 		}
 
 		// hardlinktree validates the torrent path, the same check link mode's
 		// plans go through, and the backends trust the plan.
-		filePlan, err := hardlinktree.BuildSingleFilePlan(plan.RootDir, pf.Name, localFile.sourcePath)
+		filePlan, err := hardlinktree.BuildSingleFilePlan(d, plan.RootDir, pf.Name, localFile.sourcePath)
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid pack target path %q: %w", errLayoutMismatch, pf.Name, err)
 		}
@@ -1621,30 +1622,30 @@ func buildSeasonPackPlan(
 	return build, nil
 }
 
-func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
+func safeSeasonPackJoin(d fsops.PathDialect, rootDir, relativePath string) (string, bool) {
 	slashPath := strings.ReplaceAll(relativePath, "\\", "/")
 	if strings.HasPrefix(slashPath, "/") {
 		return "", false
 	}
 
-	cleanedPath := filepath.Clean(filepath.FromSlash(slashPath))
+	cleanedPath := d.Clean(d.FromSlash(slashPath))
 	if cleanedPath == "." ||
-		filepath.IsAbs(cleanedPath) ||
-		isWindowsDriveAbs(filepath.ToSlash(cleanedPath)) ||
+		d.IsAbs(cleanedPath) ||
+		isWindowsDriveAbs(d.ToSlash(cleanedPath)) ||
 		cleanedPath == ".." ||
-		strings.HasPrefix(cleanedPath, ".."+string(filepath.Separator)) {
+		strings.HasPrefix(cleanedPath, ".."+d.Separator()) {
 		return "", false
 	}
 
-	candidatePath := filepath.Join(rootDir, cleanedPath)
-	relativeToRoot, err := filepath.Rel(rootDir, candidatePath)
+	candidatePath := d.Join(rootDir, cleanedPath)
+	relativeToRoot, err := d.Rel(rootDir, candidatePath)
 	if err != nil {
 		return "", false
 	}
 	if relativeToRoot == ".." ||
-		strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) ||
-		filepath.IsAbs(relativeToRoot) ||
-		isWindowsDriveAbs(filepath.ToSlash(relativeToRoot)) {
+		strings.HasPrefix(relativeToRoot, ".."+d.Separator()) ||
+		d.IsAbs(relativeToRoot) ||
+		isWindowsDriveAbs(d.ToSlash(relativeToRoot)) {
 		return "", false
 	}
 

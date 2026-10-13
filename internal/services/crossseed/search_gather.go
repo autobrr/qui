@@ -27,8 +27,10 @@ type gatherInput struct {
 	req           *jackett.TorznabSearchRequest
 	tagSourcedIDs bool
 	// altTitle is the alternate-title query; empty skips that pass.
-	altTitle    string
-	torrentName string
+	altTitle string
+	// altTitleSeason replaces the season on the alternate-title pass. Nil keeps the season of req.
+	altTitleSeason *int
+	torrentName    string
 }
 
 // gather returns the response with every pass's results merged, the covered
@@ -100,7 +102,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// passes reuse the Torznab result cache instead of re-hitting indexers.
 	// Outcome reporting keys on indexer ID under the primary job. A failed
 	// pass drops its targets from the covered set.
-	retry := func(pass string, targets []int, query string) error {
+	retry := func(pass string, targets []int, query string, season *int) error {
 		if len(targets) == 0 {
 			return nil
 		}
@@ -115,6 +117,9 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		clearSearchRequestIDs(&retryReq)
 		retryReq.Query = query
 		retryReq.IndexerIDs = targets
+		if season != nil {
+			retryReq.Season = season
+		}
 		if yearlessRetryRan {
 			retryReq.Year = 0
 		}
@@ -158,7 +163,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// primary pass and are covered by the passes below.
 	if in.tagSourcedIDs {
 		targets := intersectInts(g.idCapIndexers(waitCtx, req), unsatisfied())
-		if err := retry("title retry after tag-sourced IDs", targets, req.Query); err != nil {
+		if err := retry("title retry after tag-sourced IDs", targets, req.Query, nil); err != nil {
 			return nil, nil, false, err
 		}
 	}
@@ -172,7 +177,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		// already produced a usable candidate is left alone, because
 		// cross-seed success is per tracker, not per search.
 		if in.altTitle != "" {
-			if err := retry("alternate title", unsatisfied(), in.altTitle); err != nil {
+			if err := retry("alternate title", unsatisfied(), in.altTitle, in.altTitleSeason); err != nil {
 				return nil, nil, false, err
 			}
 		}
@@ -180,7 +185,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		// out "and". A literal q only matches one spelling; the match loop
 		// dedupes the merged candidates by GUID/download URL.
 		if altQuery, ok := alternateConnectorQuery(req.Query); ok {
-			if err := retry("alternate connector", unsatisfied(), altQuery); err != nil {
+			if err := retry("alternate connector", unsatisfied(), altQuery, nil); err != nil {
 				return nil, nil, false, err
 			}
 		}
