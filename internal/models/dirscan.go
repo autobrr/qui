@@ -572,6 +572,15 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		return nil, fmt.Errorf("marshal allowed download clients: %w", err)
 	}
 
+	// Stored file IDs only mean the same file on the filesystem the old target
+	// instance read them from, so rename detection must not reuse them.
+	// Cleared first: a failed clear then leaves the old target, and the retry clears again.
+	if params.TargetInstanceID != nil && *params.TargetInstanceID != previousTargetInstanceID {
+		if _, err := s.db.ExecContext(ctx, `UPDATE dir_scan_files SET file_id = NULL WHERE directory_id = ?`, id); err != nil {
+			return nil, fmt.Errorf("clear file ids: %w", err)
+		}
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE dir_scan_directories
 		SET path = ?,
@@ -589,14 +598,6 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, boolToInt(existing.SkipIndividualEpisodes), id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
-	}
-
-	// Stored file IDs only mean the same file on the filesystem the old target
-	// instance read them from, so rename detection must not reuse them.
-	if params.TargetInstanceID != nil && *params.TargetInstanceID != previousTargetInstanceID {
-		if _, err := s.db.ExecContext(ctx, `UPDATE dir_scan_files SET file_id = NULL WHERE directory_id = ?`, id); err != nil {
-			return nil, fmt.Errorf("clear file ids: %w", err)
-		}
 	}
 
 	return s.GetDirectory(ctx, id)
