@@ -26,7 +26,6 @@ import (
 	"math"
 	"net/url"
 	"path"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -904,6 +903,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 		sourceHash:            sourceTorrent.Hash,
 		sourceSavePath:        sourceTorrent.SavePath,
 		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
+		sourceLocal:           instanceIsLocal(instances, sourceInstanceID),
 	}
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
@@ -1046,6 +1046,7 @@ type localMatchContext struct {
 	sourceHash            string
 	sourceSavePath        string
 	sourceHasFileIdentity bool
+	sourceLocal           bool
 
 	// Lazy-loaded source file data
 	fetched          bool
@@ -1189,9 +1190,13 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 	sourceIDs := matchCtx.getSourceFileIDs()
-	filesShareAllocation := s.filesShareAllocation
-	if filesShareAllocation == nil && sharedextents.Supported {
-		filesShareAllocation = sharedextents.FilesShareAllocation
+	// The allocation check is a syscall on qui's own disk, so both paths must be local.
+	var filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
+	if matchCtx.sourceLocal && models.FilesystemAccessMode(candidateInstance) == models.FilesystemModeLocal {
+		filesShareAllocation = s.filesShareAllocation
+		if filesShareAllocation == nil && sharedextents.Supported {
+			filesShareAllocation = sharedextents.FilesShareAllocation
+		}
 	}
 	if len(sourceIDs) == 0 && filesShareAllocation == nil {
 		return ""
@@ -1436,14 +1441,15 @@ func forEachLocalTorrentFile(
 	files qbt.TorrentFiles,
 	fn func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool,
 ) error {
-	base := filepath.Clean(filepath.FromSlash(savePath))
-	if !filepath.IsAbs(base) {
+	d := backend.Paths()
+	base := d.Clean(d.FromSlash(savePath))
+	if !d.IsAbs(base) {
 		return nil
 	}
 
 	var firstErr error
 	for _, file := range files {
-		fullPath, ok := resolveLocalTorrentFile(base, file.Name)
+		fullPath, ok := resolveLocalTorrentFile(d, base, file.Name)
 		if !ok {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
@@ -1468,7 +1474,7 @@ func forEachLocalTorrentFile(
 	return firstErr
 }
 
-func resolveLocalTorrentFile(base, name string) (string, bool) {
+func resolveLocalTorrentFile(d fsops.PathDialect, base, name string) (string, bool) {
 	// Names carrying a literal backslash are rejected rather than rewritten:
 	// backslash is a legal filename byte on Linux, and inventing a nested
 	// path from it makes the file read as missing while it exists.
@@ -1483,9 +1489,9 @@ func resolveLocalTorrentFile(base, name string) (string, bool) {
 		return "", false
 	}
 
-	fullPath := filepath.Join(base, filepath.FromSlash(cleanName))
-	rel, err := filepath.Rel(base, fullPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	fullPath := d.Join(base, d.FromSlash(cleanName))
+	rel, err := d.Rel(base, fullPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+d.Separator()) {
 		return "", false
 	}
 	return fullPath, true
@@ -1503,6 +1509,17 @@ func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool 
 	for _, instance := range instances {
 		if instance.ID == instanceID {
 			return models.FilesystemCapabilitiesOf(instance).Identity
+		}
+	}
+	return false
+}
+
+// instanceIsLocal reports whether the instance with the given ID reads its
+// files on qui's own disk.
+func instanceIsLocal(instances []*models.Instance, instanceID int) bool {
+	for _, instance := range instances {
+		if instance.ID == instanceID {
+			return models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
 		}
 	}
 	return false
@@ -14482,6 +14499,7 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 // For "flat" preset, isolation is always used to keep torrents separated.
 func (s *Service) buildHardlinkDestDir(
 	ctx context.Context,
+	d fsops.PathDialect,
 	instance *models.Instance,
 	baseDir string,
 	torrentHash, torrentName string,
@@ -14506,19 +14524,19 @@ func (s *Service) buildHardlinkDestDir(
 		// Get tracker display name using incoming torrent's tracker domain
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
 		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName), isolationFolder)
+			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)), isolationFolder)
 		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
 
 	case "by-instance":
 		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName), isolationFolder)
+			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)), isolationFolder)
 		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+		return d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
 
 	default: // "flat" or unknown
 		// For flat layout, always use isolation folder to keep torrents separated
-		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return d.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
 	}
 }
 
@@ -14528,6 +14546,7 @@ func (s *Service) buildHardlinkDestDir(
 // a torrent-specific path with an isolation folder suffix.
 func (s *Service) buildCategorySavePath(
 	ctx context.Context,
+	d fsops.PathDialect,
 	instance *models.Instance,
 	baseDir string,
 	incomingTrackerDomain string,
@@ -14537,9 +14556,9 @@ func (s *Service) buildCategorySavePath(
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
+		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
 	case "by-instance":
-		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
+		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
 	default: // "flat" or unknown
 		return baseDir
 	}
@@ -14587,7 +14606,7 @@ func LinkIntoMatchingBaseDir(ctx context.Context, configuredDirs string, sourceP
 
 	var lastErr, linkErr error
 
-	for _, dir := range rankBaseDirs(dirs, sourcePath) {
+	for _, dir := range rankBaseDirs(backend.Paths(), dirs, sourcePath) {
 		if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
@@ -14630,17 +14649,17 @@ func splitBaseDirs(configuredDirs string) []string {
 // rankBaseDirs orders dirs by the number of leading path components they share
 // with source, so the dir on the source's own disk comes first. Ties keep the
 // configured order.
-func rankBaseDirs(dirs []string, source string) []string {
+func rankBaseDirs(d fsops.PathDialect, dirs []string, source string) []string {
 	ranked := slices.Clone(dirs)
 	slices.SortStableFunc(ranked, func(a, b string) int {
-		return cmp.Compare(sharedPathComponents(b, source), sharedPathComponents(a, source))
+		return cmp.Compare(sharedPathComponents(d, b, source), sharedPathComponents(d, a, source))
 	})
 	return ranked
 }
 
-func sharedPathComponents(a, b string) int {
-	aParts := strings.Split(filepath.Clean(a), string(filepath.Separator))
-	bParts := strings.Split(filepath.Clean(b), string(filepath.Separator))
+func sharedPathComponents(d fsops.PathDialect, a, b string) int {
+	aParts := strings.Split(d.Clean(a), d.Separator())
+	bParts := strings.Split(d.Clean(b), d.Separator())
 	n := 0
 	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
 		n++
@@ -14654,7 +14673,8 @@ func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matc
 		if !ok {
 			return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
 		}
-		filePath := filepath.Join(props.SavePath, filepath.FromSlash(relativePath))
+		d := backend.Paths()
+		filePath := d.Join(props.SavePath, d.FromSlash(relativePath))
 		if _, err := backend.Stat(ctx, filePath); err == nil {
 			return filePath, true
 		}

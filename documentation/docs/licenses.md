@@ -37,13 +37,13 @@ If the old server no longer exists, for example after a hardware failure or a de
 
 ## Recover a lost license key
 
-Log in to [licenses.getqui.com](https://licenses.getqui.com/) with the email address that you used at checkout. The portal lists your license keys. You can also recover the key from the Dodo customer portal, linked in **Settings → Premium Themes**.
+Sign up or sign in at [licenses.getqui.com](https://licenses.getqui.com/) with the email address that you used to buy the license. The portal lists your license keys. **Settings → Premium Themes** also links to the portal.
 
 ## Troubleshooting
 
 ### "License activation limit has been reached"
 
-All activation slots for your key are in use. Deactivate an old activation from the other qui instance (**Settings → Premium Themes → Remove**). If that server is gone, use [licenses.getqui.com](https://licenses.getqui.com/).
+All activation slots for your key are in use. Go to [licenses.getqui.com](https://licenses.getqui.com/). Sign up or sign in with the email address that you used to buy the license. Open **Machine Instances** and deactivate a machine that you no longer use. Then activate the key again. If you can still open qui on the old machine, you can also remove the license there (**Settings → Premium Themes → Remove**).
 
 ### "This license was activated on a different machine"
 

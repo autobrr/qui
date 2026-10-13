@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -2634,6 +2635,9 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 	}
 	for _, file := range member.Files {
 		targetPath, err := partialPoolLocalPath(member, file)
+		if errors.Is(err, hardlinktree.ErrUnstorableName) {
+			continue // Propagation rejects this name before staging, so nothing was staged for it.
+		}
 		if err != nil {
 			return fmt.Errorf("resolve staging target: %w", err)
 		}
@@ -2641,10 +2645,14 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 		if file.SourceFileID != nil {
 			if sourceMember, sourceFile := partialPoolFileByID(pool, *file.SourceFileID); sourceMember != nil && sourceFile != nil {
 				sourcePath, sourceErr := partialPoolLocalPath(sourceMember, sourceFile)
-				if sourceErr != nil {
+				switch {
+				case errors.Is(sourceErr, hardlinktree.ErrUnstorableName):
+					// Propagation never stages from such a source, so there is nothing to protect.
+				case sourceErr != nil:
 					return fmt.Errorf("resolve staging source: %w", sourceErr)
+				default:
+					protectedPaths = append(protectedPaths, sourcePath)
 				}
-				protectedPaths = append(protectedPaths, sourcePath)
 			}
 		}
 		root, _ := partialPoolReflinkStagingPaths(targetPath)
@@ -2844,7 +2852,7 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 
-	plan, err := hardlinktree.BuildSingleFilePlan(targetMember.RootPath, targetFile.RelativePath, sourcePath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, targetMember.RootPath, targetFile.RelativePath, sourcePath)
 	if err != nil {
 		markManual("plan_build_failed", err.Error())
 		return false

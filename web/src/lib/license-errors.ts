@@ -3,36 +3,37 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-export function getLicenseErrorMessage(error: Error | null): string {
-  if (!error) return ""
+// Returns a settings namespace key for the license error.
+export function getLicenseErrorKey(error: Error | null): string | null {
+  if (!error) return null
 
   const errorMessage = error.message.toLowerCase()
 
   if (errorMessage.includes("expired")) {
-    return "Your license key has expired."
+    return "themes.license.errors.expired"
   } else if (errorMessage.includes("no longer active") || errorMessage.includes("not active")) {
-    return "This license key is no longer active."
+    return "themes.license.errors.notActive"
   } else if (errorMessage.includes("not valid") || errorMessage.includes("invalid")) {
-    return "This license key is invalid."
+    return "themes.license.errors.invalid"
   } else if (errorMessage.includes("not found") || errorMessage.includes("404")) {
-    return "The license key you entered is not valid."
+    return "themes.license.errors.notFound"
   } else if (errorMessage.includes("does not match required conditions")) {
-    return "This license was activated on a different machine. The database appears to have been copied."
+    return "themes.license.errors.databaseCopied"
   } else if (errorMessage.includes("does not match")) {
-    return "License key does not match required conditions."
+    return "themes.license.errors.conditionsMismatch"
   } else if (errorMessage.includes("activation limit exceeded")) {
-    return "License activation limit has been reached. Deactivate it from the other machine in qui."
+    return "themes.license.errors.activationLimit"
   } else if (errorMessage.includes("limit") && errorMessage.includes("reached")) {
-    return "License activation limit has been reached."
+    return "themes.license.errors.limitReached"
   } else if (errorMessage.includes("usage")) {
-    return "License usage limit exceeded."
+    return "themes.license.errors.usageLimit"
   } else if (errorMessage.includes("timeout") || errorMessage.includes("network") || errorMessage.includes("temporar")) {
-    return "Unable to reach the license service. Please try again shortly."
+    return "themes.license.errors.unreachable"
   } else if (errorMessage.includes("too many requests") || errorMessage.includes("429")) {
-    return "Too many attempts. Please wait a moment and try again."
+    return "themes.license.errors.tooManyAttempts"
   } else if (errorMessage.includes("rate limit")) {
-    return "Please wait before trying again."
+    return "themes.license.errors.rateLimited"
   } else {
-    return "Failed to validate license key. Please try again."
+    return "themes.license.errors.generic"
   }
 }

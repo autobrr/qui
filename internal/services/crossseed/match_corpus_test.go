@@ -155,6 +155,7 @@ const (
 	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
+	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 )
 
 var corpusRows = []corpusRow{
@@ -389,6 +390,38 @@ var corpusRows = []corpusRow{
 			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
 			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
 			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
+		},
+	},
+	{
+		name:           "bracket batch BDRip against a BluRay season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]",
+		candidate:      "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+		},
+	},
+	{
+		name:           "bracket batch with a Hi10 tag against a Hi10P season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]",
+		candidate:      "Kaiju Squad 2014 S01 1080p BluRay Dual-Audio FLAC 2.0 Hi10P x264-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
 		},
 	},
 	{

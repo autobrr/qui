@@ -442,7 +442,7 @@
       "managementTitle": "Správa licencí",
       "managementDescription": "Spravujte svou licenci motivu a přístup k premium motivům",
       "providers": {
-        "dodoPortal": "Dodo portál"
+        "licensePortal": "licenční portál"
       },
       "status": {
         "unlockTitle": "Odemknout premium motivy",
@@ -475,7 +475,23 @@
         "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}"
       },
       "invalid": {
-        "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, deaktivujte ji na jiném stroji, na kterém je aktuálně aktivní."
+        "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, přejděte na <portal>licenses.getqui.com</portal>, zaregistrujte se nebo se přihlaste e-mailem, který jste použili při nákupu licence, a v Machine Instances deaktivujte stroj, který už nepoužíváte."
+      },
+      "errors": {
+        "expired": "Platnost vašeho licenčního klíče vypršela.",
+        "notActive": "Tento licenční klíč již není aktivní.",
+        "invalid": "Tento licenční klíč je neplatný.",
+        "notFound": "Zadaný licenční klíč není platný.",
+        "databaseCopied": "Tato licence byla aktivována na jiném stroji. Zdá se, že databáze byla zkopírována.",
+        "conditionsMismatch": "Licenční klíč nesplňuje požadované podmínky.",
+        "activationLimit": "Byl dosažen limit aktivací licence. Přejděte na <portal>licenses.getqui.com</portal> a zaregistrujte se nebo se přihlaste e-mailem, který jste použili při nákupu licence. Otevřete Machine Instances, deaktivujte stroj, který už nepoužíváte, a zkuste to znovu.",
+        "limitReached": "Byl dosažen limit aktivací licence.",
+        "usageLimit": "Byl překročen limit použití licence.",
+        "unreachable": "Nelze se spojit s licenční službou. Zkuste to prosím za chvíli znovu.",
+        "tooManyAttempts": "Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.",
+        "rateLimited": "Před dalším pokusem prosím počkejte.",
+        "generic": "Ověření licenčního klíče se nezdařilo. Zkuste to prosím znovu.",
+        "deleteFailed": "Odebrání licence se nezdařilo. Zkuste to prosím znovu."
       },
       "actions": {
         "addLicense": "Přidat licenci",
@@ -488,7 +504,7 @@
         "activate": "Aktivovat licenci",
         "validating": "Ověřuji...",
         "openDodoCheckout": "Otevřít DodoPayments checkout",
-        "openDodoPortal": "Otevřít Dodo portál"
+        "openLicensePortal": "Otevřít licenční portál"
       },
       "deleteDialog": {
         "title": "Odstranit licenci?",
@@ -528,7 +544,7 @@
           },
           "findLicenseKey": {
             "title": "Najděte svůj licenční klíč",
-            "description": "Licenční klíč se zobrazí po dokončení platby. Můžete ho také obnovit později z portálu Dodo."
+            "description": "Licenční klíč se zobrazí po dokončení platby. Můžete ho také obnovit později z licenčního portálu."
           },
           "activateLicense": {
             "title": "Aktivujte svou licenci",

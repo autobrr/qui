@@ -283,7 +283,7 @@ func TestBuildLinkTreeMatchedFiles_UsesTorrentFileSize(t *testing.T) {
 
 	// The bug was that existing[0].Size used the searchee file size instead of the
 	// torrent file size. Exact file-size matching means these should now be equal.
-	_, err = hardlinktree.BuildPlan(linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
+	_, err = hardlinktree.BuildPlan(fsops.HostPaths, linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
 	if err != nil {
 		t.Fatalf("BuildPlan should succeed with exact matched sizes, got: %v", err)
 	}
