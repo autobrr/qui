@@ -287,6 +287,79 @@ describe("useTorrentActions - delete", () => {
     expect(cache.total).toBe(2)
     expect(cache.totalCount).toBe(2)
   })
+
+  it("select-all delete sends the chosen cross-seeds in a second targeted request", async () => {
+    const { result } = renderActions()
+    const crossSeedTargets = [
+      { instanceId: 7, hash: "cs1" },
+      { instanceId: 9, hash: "cs2" },
+    ]
+
+    await act(async () => {
+      await result.current.handleDelete(
+        ["a"],
+        true,
+        undefined,
+        "",
+        undefined,
+        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets }
+      )
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
+    const first = mockedApi.bulkAction.mock.calls[0][1]
+    expect(first.selectAll).toBe(true)
+    expect(first.hashes).toEqual([])
+    const second = mockedApi.bulkAction.mock.calls[1][1]
+    expect(second.selectAll).toBeFalsy()
+    expect(second.hashes).toEqual(["cs1", "cs2"])
+    expect(second.targets).toEqual(crossSeedTargets)
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/50")
+    expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
+  })
+
+  it("deleteFiles applies to the cross-seed request too", async () => {
+    // Seed persisted deleteFiles=true so usePersistedDeleteFiles starts true
+    localStorage.setItem("qui-delete-files-lock", JSON.stringify(true))
+    localStorage.setItem("qui-delete-files-default", JSON.stringify(true))
+
+    const { result } = renderActions()
+    const crossSeedTargets = [
+      { instanceId: 7, hash: "cs1" },
+      { instanceId: 9, hash: "cs2" },
+    ]
+
+    await act(async () => {
+      await result.current.handleDelete(
+        ["a"],
+        true,
+        undefined,
+        "",
+        undefined,
+        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets }
+      )
+    })
+
+    expect(mockedApi.bulkAction.mock.calls[0][1].deleteFiles).toBe(true)
+    expect(mockedApi.bulkAction.mock.calls[1][1].deleteFiles).toBe(true)
+  })
+
+  it("non-select-all delete ignores crossSeedTargets", async () => {
+    const { result } = renderActions()
+
+    await act(async () => {
+      await result.current.handleDelete(
+        ["h1"],
+        false,
+        undefined,
+        undefined,
+        undefined,
+        { crossSeedTargets: [{ instanceId: 7, hash: "cs1" }] }
+      )
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe("useTorrentActions - tags", () => {

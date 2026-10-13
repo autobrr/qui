@@ -1836,8 +1836,10 @@ export function TorrentCardsMobile({
       hashes = selectedRequestHashes
     }
 
+    const selectAllDelete = !torrentToDelete && isAllSelected
+
     // Include cross-seed hashes if user opted to delete them
-    const crossSeedHashesToDelete = deleteCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
+    const crossSeedHashesToDelete = deleteCrossSeeds && !selectAllDelete ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
     const hashesToDelete = [...hashes, ...crossSeedHashesToDelete]
 
     let visibleHashes: string[]
@@ -1877,6 +1879,7 @@ export function TorrentCardsMobile({
         totalSelected: totalToDelete,
         actionTargets: deleteCrossSeeds && deleteActionTargets ? crossSeedDeleteTargets : deleteActionTargets,
         excludeTargets: !torrentToDelete && isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
+        crossSeedTargets: selectAllDelete && deleteCrossSeeds ? buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId) : undefined,
       }
     )
     setTorrentToDelete(null)
