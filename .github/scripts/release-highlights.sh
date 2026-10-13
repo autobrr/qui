@@ -3,8 +3,8 @@
 # Claude, inserts them under "## Changelog", and publishes the draft release.
 # Usage: release-highlights.sh [--dry-run] <tag>
 # --dry-run prints the new body and does not edit or publish the release.
-# Needs gh with write access to autobrr/qui, curl, jq, and the tags in the
-# local clone. Needs RELEASE_NOTES_ANTHROPIC_API_KEY.
+# Needs gh with write access to autobrr/qui, jq, the tags in the local clone,
+# and Claude Code (claude) signed in, for example with CLAUDE_CODE_OAUTH_TOKEN.
 #
 # If the sections cannot be made, the script prints a ::warning:: line and
 # publishes the release with the body unchanged. Only a failed publish exits
@@ -87,17 +87,13 @@ collect_input() {
 
 # Prints the Breaking changes and Highlights sections as Markdown.
 write_sections() {
-	if [[ -z ${RELEASE_NOTES_ANTHROPIC_API_KEY:-} ]]; then
-		warn "RELEASE_NOTES_ANTHROPIC_API_KEY is not set"
-		return 1
-	fi
 	{
 		cat <<'EOF'
 You write two sections of the GitHub release notes for qui, a web UI that self-hosters use to manage qBittorrent instances. The input after these instructions has two writing skills and the pull requests (PRs) in the release. Write only Markdown, with no text before or after the sections.
 
 ## Breaking changes
 
-Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body says that users must act. If nothing breaks, leave the section out. Never write "None".
+Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body has a Breaking change section with text other than the template comment, "None", or "N/A". A Behaviour change section is material for the Highlights, never for this section. If nothing breaks, leave the section out. Never write "None".
 
 - Write one bullet for each breaking change. Do not group them.
 - Start with the change in bold, then say in one or two sentences what the user must do. Keep only what the user needs to act: the option name, the new value, the error text that they will see.
@@ -150,34 +146,19 @@ EOF
 		collect_input
 	} >"$work/prompt.md" || return 1
 
-	jq -n --rawfile prompt "$work/prompt.md" '{
-		model: "claude-opus-5-5",
-		max_tokens: 16000,
-		messages: [{role: "user", content: $prompt}]
-	}' >"$work/request.json" || return 1
-
-	local status
-	status=$(curl -sS --max-time 600 -o "$work/response.json" -w '%{http_code}' \
-		https://api.anthropic.com/v1/messages \
-		-H "x-api-key: $RELEASE_NOTES_ANTHROPIC_API_KEY" \
-		-H 'anthropic-version: 2023-06-01' \
-		-H 'content-type: application/json' \
-		--data-binary "@$work/request.json") || {
-		warn "the Claude request failed"
+	# --safe-mode loads no CLAUDE.md, skill, or setting from the repo or the
+	# user, and --tools "" leaves Claude no tools, so only the prompt counts.
+	claude -p --safe-mode --tools "" --no-session-persistence \
+		--model claude-opus-5-5 --effort medium --system-prompt "You write release notes." \
+		--output-format json <"$work/prompt.md" >"$work/response.json" || {
+		warn "the Claude request failed: $(jq -r '.result // empty' "$work/response.json" 2>/dev/null)"
 		return 1
 	}
-	if [[ $status != 2* ]]; then
-		warn "Claude returned HTTP $status: $(jq -r '.error.message // empty' "$work/response.json" 2>/dev/null)"
+	if [[ $(jq -r .is_error "$work/response.json") != false ]]; then
+		warn "Claude returned an error: $(jq -r '.result // .subtype' "$work/response.json")"
 		return 1
 	fi
-	local stop_reason
-	stop_reason=$(jq -r .stop_reason "$work/response.json")
-	if [[ $stop_reason != end_turn ]]; then
-		warn "Claude stopped with stop_reason $stop_reason"
-		return 1
-	fi
-	# Opus 5.5 always returns a thinking block first. Read only the text blocks.
-	jq -j '[.content[] | select(.type == "text") | .text] | join("")' "$work/response.json"
+	jq -j .result "$work/response.json"
 }
 
 new_body=$body
