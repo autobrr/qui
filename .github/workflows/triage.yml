@@ -89,6 +89,9 @@ jobs:
 
   triage-discussion:
     runs-on: ubuntu-latest
+    # The claude environment holds CLAUDE_CODE_OAUTH_TOKEN and allows only develop,
+    # so a workflow pushed on another branch cannot read the token.
+    environment: claude
     timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' && inputs.discussion_number
     # One run per discussion at a time: a creation event and the sweep can

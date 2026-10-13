@@ -892,9 +892,11 @@ func joinNormalizedCodecSlice(slice []string) string {
 func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
+	seasonlessEpisodes := false
 	for _, cf := range candidateFiles {
 		if !shouldIgnoreFile(cf.Name, m.normalizer()) {
 			fileRelease := m.parseFileRelease(cf.Name)
+			seasonlessEpisodes = seasonlessEpisodes || (fileRelease.Series == 0 && fileRelease.Episode > 0)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
 			key := makeReleaseKey(enrichedRelease)
@@ -951,7 +953,13 @@ func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetR
 	// candidate through; the file-level matcher decides by size containment at
 	// apply. Candidates with parseable episode keys skip this, so a well-named
 	// pack that simply lacks the target episode still rejects here.
-	if targetRelease.Series > 0 && candidateRelease.Series == targetRelease.Series &&
+	// A fansub batch without a season ("[Group] Show - 01 (BD 1080p).mkv")
+	// counts as season 1.
+	candidateSeries := candidateRelease.Series
+	if candidateSeries == 0 && seasonlessEpisodes {
+		candidateSeries = 1
+	}
+	if targetRelease.Series > 0 && candidateSeries == targetRelease.Series &&
 		!hasEpisodeLevelKeys(candidateReleases) {
 		return "release-match"
 	}
