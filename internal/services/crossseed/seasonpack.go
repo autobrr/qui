@@ -28,7 +28,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // videoExtensions lists playable video file extensions used to identify
@@ -182,7 +181,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 		return nil, "invalid_torrent", "failed to parse torrent metadata", nil
 	}
 
-	packEpisodes := extractPackEpisodes(meta.Files, packRelease)
+	packEpisodes := s.matcher().extractPackEpisodes(meta.Files, packRelease)
 	if len(packEpisodes) == 0 {
 		return nil, "invalid_torrent", "no playable episode files found in torrent", nil
 	}
@@ -620,9 +619,9 @@ func (s *Service) planSeasonPack(
 
 	destDir := s.seasonPackDestDir(ctx, inst, selectedBaseDir, prep.torrentBytes, indexer)
 
-	planBuild, err := buildSeasonPackPlan(
+	planBuild, err := s.matcher().buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		destDir, localFiles, normalizerForService(s), prep.settings, prep.aliasTitles,
+		destDir, localFiles, prep.settings, prep.aliasTitles,
 	)
 	if err != nil {
 		return nil, episodes, err
@@ -845,6 +844,7 @@ func findInstance(instances []*models.Instance, id int) *models.Instance {
 // enriched from the torrent-level release. seasonlessOrigin reports whether the file
 // name itself carried no season (Series 0 before enrichment), i.e. it was
 // absolute-numbered. Torrent file names are slash-delimited, so path.Base is used.
+// A multi-episode file such as "S01E01E02" is read as its first episode.
 func (m matcher) parseSeasonPackEpisodePayload(
 	fileName string,
 	torrentRelease *rls.Release,
@@ -913,9 +913,8 @@ type packEpisodeOrigin struct {
 // (absolute episode 1 exists only in season 1), so those files are really S<N>E<ep>
 // and tagging them absolute would let another season's absolute-numbered locals
 // satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
-func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
+func (m matcher) extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
-	var m matcher
 
 	minSeasonlessEpisode := -1
 	for _, f := range files {
@@ -1558,13 +1557,12 @@ func firstMatchedEpisodeCategory(episodes map[episodeIdentity]episodeMatch) stri
 
 // buildSeasonPackPlan builds a TreePlan that assembles episode files from multiple
 // local torrents into the layout expected by the season pack torrent.
-func buildSeasonPackPlan(
+func (m matcher) buildSeasonPackPlan(
 	packFiles qbt.TorrentFiles,
 	packRelease *rls.Release,
 	packName string,
 	destDir string,
 	localFiles map[episodeIdentity]seasonPackLocalFile,
-	normalizer *stringutils.Normalizer[string, string],
 	settings *models.CrossSeedAutomationSettings,
 	aliasTitles []string,
 ) (*seasonPackPlanBuild, error) {
@@ -1581,7 +1579,6 @@ func buildSeasonPackPlan(
 		RootDir: destDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
-	m := matcher{stringNormalizer: normalizer}
 	build := &seasonPackPlanBuild{
 		plan:              plan,
 		packDir:           packDir,

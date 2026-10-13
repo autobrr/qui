@@ -574,9 +574,6 @@ func (m matcher) searchCandidateMetadataConsistent(
 	}
 
 	advertised := m.parseReleaseName(advertisedName)
-	if advertised == nil {
-		return false, "missing advertised release metadata"
-	}
 	actualRelease := *actual.release
 	advertisedRelease := *advertised
 	normalizer := m.normalizer()

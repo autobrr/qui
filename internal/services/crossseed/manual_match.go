@@ -147,7 +147,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	proposalLimit := manualMatchProposalLimit
 	assemblyUnavailable := ""
 	if packMode {
-		packEpisodeCount = len(extractPackEpisodes(meta.Files, sourceRelease))
+		packEpisodeCount = len(s.matcher().extractPackEpisodes(meta.Files, sourceRelease))
 		proposalLimit = min(manualMatchCoarseLimit, packEpisodeCount+manualMatchProposalLimit)
 		assemblyUnavailable = manualAssemblyUnavailableReason(instance)
 		if packEpisodeCount == 0 {

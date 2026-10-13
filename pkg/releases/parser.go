@@ -89,9 +89,10 @@ func (p *Parser) Parse(name string) *rls.Release {
 // enrichEpisodeRange turns a multi-episode release such as "S00E02-E05" into a
 // pack. rls reports it as its first episode, so the pack looks like a single
 // episode, but it keeps the whole list in SeriesEpisodes. Done at parse time so
-// the result lands in the cache.
+// the result lands in the cache. A music name keeps its type: "Band-Podcast.E05.E06-FLAC"
+// is an album, and the music query reads its artist only from a music release.
 func enrichEpisodeRange(release *rls.Release) {
-	if release == nil || release.Episode == 0 {
+	if release == nil || release.Episode == 0 || release.Type == rls.Music {
 		return
 	}
 	if !IsEpisodeRange(release) {

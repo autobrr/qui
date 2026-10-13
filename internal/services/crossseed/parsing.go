@@ -225,12 +225,12 @@ func demoteMusicToVideo(release *rls.Release) *rls.Release {
 	return &demoted
 }
 
-// ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
+// parseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
-func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
+func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
 	// First, try RLS's built-in parsing on the torrent name directly
 	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
-	torrentRelease := *matcher{}.parseReleaseName(torrentName)
+	torrentRelease := *m.parseReleaseName(torrentName)
 
 	// If RLS detected it as music and extracted artist/title, use that
 	if torrentRelease.Type == rls.Music && torrentRelease.Artist != "" && torrentRelease.Title != "" {

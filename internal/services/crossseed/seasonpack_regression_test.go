@@ -138,13 +138,12 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		"Show.S01//Show.S01E01.1080p.WEB.x264-GRP.mkv",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := buildSeasonPackPlan(
+			_, err := matcher{}.buildSeasonPackPlan(
 				qbt.TorrentFiles{{Name: name, Size: 10}},
 				&packRelease,
 				"Show.S01.1080p.WEB.x264-GRP",
 				t.TempDir(),
 				localFiles,
-				normalizerForService(nil),
 				nil,
 				nil,
 			)
@@ -182,13 +181,12 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 		},
 	}
 
-	_, err := buildSeasonPackPlan(
+	_, err := matcher.buildSeasonPackPlan(
 		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
 		&packRelease,
 		"K-On! S01 1080p BluRay",
 		t.TempDir(),
 		localFiles,
-		normalizerForService(nil),
 		nil,
 		nil,
 	)
@@ -225,7 +223,7 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 		},
 	}
 
-	build, err := buildSeasonPackPlan(
+	build, err := matcher{}.buildSeasonPackPlan(
 		qbt.TorrentFiles{
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
 			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
@@ -235,7 +233,6 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 		"Show.S01.1080p.WEB.x264-GRP",
 		t.TempDir(),
 		localFiles,
-		normalizerForService(nil),
 		nil,
 		nil,
 	)
@@ -684,6 +681,8 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 
 // A seeded two-episode torrent holds the same file as the pack. Both sides read
 // the range file as its first episode, so qui links it instead of downloading it.
+// Plain rls already read the pack file as E01. The cached parser reads it as a
+// pack, so this test fails if the pack side stops taking the first episode.
 func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	const (
 		packName  = "Show.S01.1080p.WEB.x264-GRP"
@@ -696,9 +695,9 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	}
 	id := episodeIdentity{series: 1, episode: 1}
 
-	require.Contains(t, extractPackEpisodes(packFiles, &packRelease), id)
-
 	m := matcher{releaseCache: NewReleaseCache()}
+	require.Contains(t, m.extractPackEpisodes(packFiles, &packRelease), id)
+
 	localFile, err := m.resolveSeasonPackLocalFileCandidate(id, episodeMatch{
 		torrentHash: "range",
 		contentPath: "/media/" + rangeName + ".mkv",
@@ -706,10 +705,10 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	}, qbt.TorrentFiles{{Name: rangeName + ".mkv", Size: 20}})
 	require.NoError(t, err)
 
-	build, err := buildSeasonPackPlan(
+	build, err := m.buildSeasonPackPlan(
 		packFiles, &packRelease, packName, t.TempDir(),
 		map[episodeIdentity]seasonPackLocalFile{id: localFile},
-		normalizerForService(nil), nil, nil,
+		nil, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, build.plan.Files, 1)
