@@ -122,14 +122,24 @@ func (s *Service) webhookCandidate(
 	}
 	if policy.skipRecheck && searchDecisionRequiresVerification(decision.provenance()) {
 		decision.Accepted = false
+		decision.Class = searchCandidateClassRejected
 		decision.RejectReason = webhookSkipRecheckReason
+		return WebhookCheckMatch{}, decision
+	}
+
+	sourceSize := searchSourceSize(torrent)
+	// A season pack can take an episode without a size check, so a local
+	// torrent with no reported size gets here. Its size difference has no value.
+	if announceSize > 0 && sourceSize <= 0 {
+		decision.Accepted = false
+		decision.Class = searchCandidateClassRejected
+		decision.RejectReason = "unknown local size"
 		return WebhookCheckMatch{}, decision
 	}
 
 	matchType := "metadata"
 	var sizeDiff float64
 	if announceSize > 0 {
-		sourceSize := searchSourceSize(torrent)
 		diff := math.Abs(float64(announceSize) - float64(sourceSize))
 		sizeDiff = (diff / float64(sourceSize)) * 100.0
 		if int64(announceSize) == sourceSize {
@@ -155,12 +165,6 @@ func (s *Service) webhookCandidate(
 		Float64("matchScore", matchScore).
 		Str("matchReasons", matchReasons).
 		Msg("Webhook cross-seed: matched existing torrent")
-
-	// TODO: Consider adding a configuration flag to control whether webhook-based
-	// cross-seed checks require fully completed torrents or can also treat
-	// in-progress downloads as matches. This would likely be exposed via the
-	// "Global Cross-Seed Settings" block in CrossSeedPage.tsx so users can tune
-	// webhook behavior for their setup.
 
 	return WebhookCheckMatch{
 		InstanceID:   instance.ID,

@@ -13763,9 +13763,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	)
 
 	// A rejected torrent of the announced group is a near miss: log why, so a
-	// missed cross-seed can be traced without comparing names by hand.
-	normalizer := normalizerForService(s)
-	announcedGroup := normalizer.Normalize(incomingRelease.Group)
+	// missed cross-seed can be traced without comparing names by hand. A fansub
+	// tag such as [SubsPlease] parses to the site, so the site stands in for an
+	// empty group.
+	m := s.matcher()
+	announcedGroup := m.normalizedGroupSiteIdentity(incomingRelease)
 
 	// Search each instance for matching torrents
 	for _, instance := range instances {
@@ -13838,8 +13840,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				tolerateOneSidedChecksum: true,
 			})
 			if !decision.Accepted {
-				if announcedGroup != "" && normalizer.Normalize(s.releaseCache.Parse(torrent.Name).Group) == announcedGroup {
-					log.Debug().
+				if evt := log.Debug(); evt.Enabled() && announcedGroup != "" &&
+					m.normalizedGroupSiteIdentity(s.releaseCache.Parse(torrent.Name)) == announcedGroup {
+					evt.
 						Str("source", "cross-seed.webhook").
 						Int("instanceId", instance.ID).
 						Str("incomingName", req.TorrentName).

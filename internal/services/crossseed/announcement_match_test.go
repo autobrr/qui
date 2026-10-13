@@ -580,6 +580,7 @@ func TestWebhookCandidate(t *testing.T) {
 	const (
 		movie   = "The.Squad.of.Madame.K.1953.1080p.BluRay.x264-GRP"
 		episode = "Kaiju.Squad.S01E01.1080p.WEB.H264-GRP"
+		pack    = "Kaiju.Squad.S01.1080p.WEB.H264-GRP"
 		size    = int64(1_449_551_462)
 	)
 	tests := []struct {
@@ -587,16 +588,22 @@ func TestWebhookCandidate(t *testing.T) {
 		source      string
 		announce    string
 		skipRecheck bool
+		// unknownSize leaves the local torrent without a reported size.
+		unknownSize bool
 		wantClass   searchCandidateClass
 		wantReason  string
 	}{
 		{name: "match", source: movie, announce: "The Squad of Madame K... 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassStrict},
 		{name: "classifier reject", source: movie, announce: "Other Title 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassRejected, wantReason: "title mismatch"},
-		{name: "skip recheck", source: episode, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", skipRecheck: true, wantClass: searchCandidateClassExactSizeFallback, wantReason: webhookSkipRecheckReason},
+		{name: "skip recheck", source: episode, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", skipRecheck: true, wantClass: searchCandidateClassRejected, wantReason: webhookSkipRecheckReason},
+		{name: "unknown local size", source: pack, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", unknownSize: true, wantClass: searchCandidateClassRejected, wantReason: "unknown local size"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			row := corpusRow{source: tt.source, sourceSize: size}
+			if tt.unknownSize {
+				row.sourceSize = 0
+			}
 			svc := row.corpusService(false)
 			torrent := row.sourceTorrent()
 			announced := namedRelease{release: svc.releaseCache.Parse(tt.announce), rawName: tt.announce}
