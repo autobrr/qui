@@ -68,12 +68,23 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+// Pins a column to the right edge of a table that scrolls sideways, so its
+// buttons stay in view. The opaque card background hides the cells that scroll
+// under it, and the hover color matches the row hover of TableRow.
+const pinEndClass =
+  "sticky right-0 bg-card [tr:hover>&]:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))]"
+
+type PinEndProps = {
+  pinEnd?: boolean
+}
+
+function TableHead({ className, pinEnd, ...props }: React.ComponentProps<"th"> & PinEndProps) {
   return (
     <th
       data-slot="table-head"
       className={cn(
         "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        pinEnd && pinEndClass,
         className
       )}
       {...props}
@@ -81,12 +92,13 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({ className, pinEnd, ...props }: React.ComponentProps<"td"> & PinEndProps) {
   return (
     <td
       data-slot="table-cell"
       className={cn(
         "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        pinEnd && pinEndClass,
         className
       )}
       {...props}

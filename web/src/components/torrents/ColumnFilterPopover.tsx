@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { ColumnType, DurationUnit, FilterOperation, SizeUnit, SpeedUnit } from "@/lib/column-constants"
-import { type ColumnFilter, getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
+import { type ColumnFilter, getDefaultOperation, getOperations, getSizeUnitOptions, getSpeedUnitOptions } from "@/lib/column-filter-utils"
 import { cn } from "@/lib/utils"
 import { CaseSensitive, Check, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
@@ -55,22 +55,6 @@ function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
 
   return (document.scrollingElement as HTMLElement | null) ?? document.documentElement
 }
-
-const SIZE_UNITS: { value: SizeUnit; label: string }[] = [
-  { value: "B", label: "B" },
-  { value: "KiB", label: "KiB" },
-  { value: "MiB", label: "MiB" },
-  { value: "GiB", label: "GiB" },
-  { value: "TiB", label: "TiB" },
-]
-
-const SPEED_UNITS: { value: SpeedUnit; label: string }[] = [
-  { value: "B/s", label: "B/s" },
-  { value: "KiB/s", label: "KiB/s" },
-  { value: "MiB/s", label: "MiB/s" },
-  { value: "GiB/s", label: "GiB/s" },
-  { value: "TiB/s", label: "TiB/s" },
-]
 
 const DURATION_UNITS: DurationUnit[] = ["seconds", "minutes", "hours", "days"]
 
@@ -142,7 +126,7 @@ function ValueInput({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SIZE_UNITS.map((u) => (
+            {getSizeUnitOptions().map((u) => (
               <SelectItem key={u.value} value={u.value}>
                 {u.label}
               </SelectItem>
@@ -172,7 +156,7 @@ function ValueInput({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SPEED_UNITS.map((u) => (
+            {getSpeedUnitOptions().map((u) => (
               <SelectItem key={u.value} value={u.value}>
                 {u.label}
               </SelectItem>

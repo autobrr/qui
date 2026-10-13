@@ -557,7 +557,8 @@
       "toast": {
         "success": "Configurações avançadas atualizadas",
         "error": "Falha ao atualizar configurações avançadas"
-      }
+      },
+      "unitSeconds": "segundos"
     },
     "reannounce": {
       "title": "Reanunciar",

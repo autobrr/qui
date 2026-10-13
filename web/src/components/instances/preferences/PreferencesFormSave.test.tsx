@@ -10,6 +10,7 @@ import type { ComponentType } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import "@/i18n"
 import { server } from "@/test/msw/server"
 import type { AppPreferences } from "@/types"
 
@@ -29,7 +30,11 @@ const { toast, i18n, fieldVisibility, capabilities } = vi.hoisted(() => ({
 }))
 
 vi.mock("sonner", () => ({ toast }))
-vi.mock("react-i18next", () => ({ useTranslation: () => i18n, Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey }))
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
+  useTranslation: () => i18n,
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+}))
 vi.mock("@/hooks/useQBittorrentAppInfo", () => ({ useQBittorrentFieldVisibility: () => fieldVisibility }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => capabilities }))
 

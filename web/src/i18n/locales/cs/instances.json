@@ -557,7 +557,8 @@
       "toast": {
         "success": "Pokročilá nastavení sítě úspěšně aktualizována",
         "error": "Nepodařilo se aktualizovat pokročilá nastavení sítě"
-      }
+      },
+      "unitSeconds": "sekundy"
     },
     "reannounce": {
       "title": "Nastavení opakovaného hlášení",

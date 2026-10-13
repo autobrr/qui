@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Update Available",
     "versionAvailable": "Version {{version}} is now available",
-    "viewRelease": "View Release",
     "dismiss": "Dismiss"
   },
   "pwaUpdate": {
@@ -218,6 +217,25 @@
       "year_one": "{{count}} year",
       "year_other": "{{count}} years"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Support qui",

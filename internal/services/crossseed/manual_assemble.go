@@ -100,7 +100,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planned.build, resp.LinkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil

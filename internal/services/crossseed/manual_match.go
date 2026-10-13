@@ -14,6 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -346,7 +347,7 @@ func (s *Service) manualMatchEffectiveSavePath(
 	if instance == nil || (!instance.UseReflinks && !instance.UseHardlinks) {
 		return targetSavePath
 	}
-	baseDir := s.previewLinkBaseDir(ctx, instance, targetSavePath)
+	baseDir, d := s.previewLinkBaseDir(ctx, instance, targetSavePath)
 	if baseDir == "" {
 		return targetSavePath
 	}
@@ -355,24 +356,31 @@ func (s *Service) manualMatchEffectiveSavePath(
 		treeFiles = append(treeFiles, hardlinktree.TorrentFile{Path: f.Name, Size: f.Size})
 	}
 	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name}
-	return s.buildHardlinkDestDir(ctx, instance, baseDir, torrentHash, torrentName, candidate, trackerDomain, &CrossSeedRequest{}, treeFiles)
+	return s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, trackerDomain, &CrossSeedRequest{}, treeFiles)
 }
 
 // previewLinkBaseDir picks the configured link base directory on the same
 // filesystem as samplePath, in LinkIntoMatchingBaseDir order but without its
-// MkdirAll side effect. Falls back to the best-ranked directory.
-func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) string {
-	dirs := rankBaseDirs(splitBaseDirs(instance.HardlinkBaseDir), samplePath)
+// MkdirAll side effect. Falls back to the best-ranked directory. The dialect
+// is the backend's, or the host's when the backend cannot be read.
+func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) (string, fsops.PathDialect) {
+	dirs := splitBaseDirs(instance.HardlinkBaseDir)
 	if len(dirs) == 0 {
-		return ""
+		return "", fsops.HostPaths
 	}
+	d := fsops.HostPaths
 	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
-	if backendErr == nil && backend != nil && samplePath != "" {
+	haveBackend := backendErr == nil && backend != nil
+	if haveBackend {
+		d = backend.Paths()
+	}
+	dirs = rankBaseDirs(d, dirs, samplePath)
+	if haveBackend && samplePath != "" {
 		for _, dir := range dirs {
 			if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
-				return dir
+				return dir, d
 			}
 		}
 	}
-	return dirs[0]
+	return dirs[0], d
 }

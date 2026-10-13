@@ -133,12 +133,17 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 		},
 		// Counted here rather than in PublicKeyCallback: that callback must stay
 		// stateless (gosec G408), and the log hook sees every attempt anyway.
-		AuthLogCallback: func(_ ssh.ConnMetadata, method string, _ error) {
+		// A success also counts as an accept: x/crypto calls this hook before it
+		// answers, so the count is in place before the client's dial returns.
+		AuthLogCallback: func(_ ssh.ConnMetadata, method string, err error) {
 			if method != "publickey" {
 				return
 			}
 			server.mu.Lock()
 			server.auths++
+			if err == nil {
+				server.accepts++
+			}
 			server.mu.Unlock()
 		},
 	}
@@ -195,7 +200,7 @@ func (s *Server) Auths() int {
 	return s.auths
 }
 
-// Accepts returns the number of completed SSH handshakes.
+// Accepts returns the number of SSH handshakes that passed authentication.
 func (s *Server) Accepts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -250,7 +255,6 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = sshConn.Close() }()
 
 	s.mu.Lock()
-	s.accepts++
 	s.live[sshConn] = struct{}{}
 	s.mu.Unlock()
 	defer func() {

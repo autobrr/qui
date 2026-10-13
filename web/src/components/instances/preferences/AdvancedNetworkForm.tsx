@@ -13,6 +13,7 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Settings, HardDrive, Zap, Ban, Radio, AlertTriangle } from "lucide-react"
 import { usePreferencesForm } from "@/hooks/usePreferencesForm"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import { unitLabel } from "@/lib/unit-format"
 import type { AppPreferences } from "@/types"
 import { useTranslation } from "react-i18next"
 
@@ -289,7 +290,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                 {(field) => (
                   <NumberInput
                     label={t("preferences.advancedNetwork.stopTrackerTimeout")}
-                    unit="seconds"
+                    unit={t("preferences.advancedNetwork.unitSeconds")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
                     min={1}
@@ -333,7 +334,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                     {(field) => (
                       <NumberInput
                         label={t("preferences.advancedNetwork.sendBufferWatermark")}
-                        unit="KiB"
+                        unit={unitLabel("KiB")}
                         value={field.state.value}
                         onChange={(value) => field.handleChange(value)}
                         min={1}
@@ -346,7 +347,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                     {(field) => (
                       <NumberInput
                         label={t("preferences.advancedNetwork.sendBufferLowWatermark")}
-                        unit="KiB"
+                        unit={unitLabel("KiB")}
                         value={field.state.value}
                         onChange={(value) => field.handleChange(value)}
                         min={1}
@@ -428,7 +429,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                 {(field) => (
                   <NumberInput
                     label={t("preferences.advancedNetwork.diskQueueSize")}
-                    unit="bytes"
+                    unit={unitLabel("B")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
                     min={1024}
@@ -452,7 +453,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                   <div className="space-y-2">
                     <NumberInput
                       label={t("preferences.advancedNetwork.checkingMemoryUse")}
-                      unit="MiB"
+                      unit={unitLabel("MiB")}
                       value={field.state.value}
                       onChange={(value) => field.handleChange(value)}
                       min={1}
@@ -487,7 +488,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                     {(field) => (
                       <NumberInput
                         label={t("preferences.advancedNetwork.diskCacheSize")}
-                        unit="MiB"
+                        unit={unitLabel("MiB")}
                         value={field.state.value}
                         onChange={(value) => field.handleChange(value)}
                         min={-1}
@@ -500,7 +501,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                     {(field) => (
                       <NumberInput
                         label={t("preferences.advancedNetwork.diskCacheTtl")}
-                        unit="seconds"
+                        unit={t("preferences.advancedNetwork.unitSeconds")}
                         value={field.state.value}
                         onChange={(value) => field.handleChange(value)}
                         min={1}
@@ -516,7 +517,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                   {(field) => (
                     <NumberInput
                       label={t("preferences.advancedNetwork.workingSetLimit")}
-                      unit="MiB"
+                      unit={unitLabel("MiB")}
                       value={field.state.value}
                       onChange={(value) => field.handleChange(value)}
                       min={1}
@@ -610,7 +611,7 @@ function AdvancedNetworkFields({ instanceId, preferences, onSuccess }: AdvancedN
                 <div className="space-y-2">
                   <NumberInput
                     label={t("preferences.advancedNetwork.turnoverInterval")}
-                    unit="seconds"
+                    unit={t("preferences.advancedNetwork.unitSeconds")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
                     min={0}

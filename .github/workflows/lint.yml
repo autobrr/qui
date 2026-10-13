@@ -60,6 +60,9 @@ jobs:
         working-directory: web
         run: pnpm check:i18n
 
+      - name: Check for mojibake
+        run: make check-mojibake
+
   backend:
     runs-on: ubuntu-latest
 
