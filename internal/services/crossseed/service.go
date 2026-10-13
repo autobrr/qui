@@ -13351,7 +13351,11 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 
 	// qBittorrent returns the full file path for single-file torrents.
 	if len(candidateFiles) == 1 {
-		dir := normalizePath(path.Dir(contentPath))
+		dir := path.Dir(contentPath)
+		if strings.HasPrefix(contentPath, "//") {
+			dir = "/" + dir
+		}
+		dir = normalizePath(dir)
 		if dir == "." {
 			return ""
 		}

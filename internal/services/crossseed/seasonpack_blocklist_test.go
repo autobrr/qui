@@ -78,7 +78,7 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 	episodeTorrents := make([]qbt.Torrent, 0, len(packFiles))
 	for i, file := range packFiles {
 		episodeTorrents = append(episodeTorrents, qbt.Torrent{
-			Hash: fmt.Sprintf("e%02d", i+1), Name: strings.TrimSuffix(file, ".mkv"), ContentPath: "/media/" + file, Progress: 1.0,
+			Hash: fmt.Sprintf("e%02d", i+1), Name: strings.TrimSuffix(file, ".mkv"), ContentPath: seasonPackSourcePath(t, file), Progress: 1.0,
 		})
 	}
 

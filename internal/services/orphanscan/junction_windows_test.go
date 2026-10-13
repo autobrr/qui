@@ -73,6 +73,22 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 		}
 	})
 
+	t.Run("deletion of the containing directory preserves the seeded alias", func(t *testing.T) {
+		disposition, err := safeDeleteTarget(t.Context(), root, scanRoot, tfm, nil, backend)
+		require.NoError(t, err)
+		assert.Equal(t, deleteDispositionSkippedInUse, disposition)
+		got, err := os.ReadFile(aliasFile)
+		require.NoError(t, err)
+		assert.Equal(t, payload, got)
+	})
+
+	t.Run("unowned junction cannot be deleted as a regular file", func(t *testing.T) {
+		_, err := safeDeleteFile(t.Context(), scanRoot, unownedJunction, tfm, backend)
+		require.Error(t, err)
+		_, err = os.Lstat(unownedJunction)
+		require.NoError(t, err)
+	})
+
 	t.Run("confirmed deletion still removes ordinary orphan", func(t *testing.T) {
 		disposition, err := safeDeleteTarget(t.Context(), scanRoot, orphan, tfm, nil, backend)
 		require.NoError(t, err)

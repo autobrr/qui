@@ -77,6 +77,9 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFi
 	if info.IsDir {
 		return 0, fmt.Errorf("refusing to delete directory as file: %s", target)
 	}
+	if !info.Mode.IsRegular() {
+		return 0, fmt.Errorf("refusing to delete non-regular file: %s", target)
+	}
 
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -172,7 +175,8 @@ func safeDeleteTarget(ctx context.Context, scanRoot, target string, tfm *Torrent
 }
 
 func safeDeleteSymlink(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
-	if tfm.Has(normalizePath(backend.Paths(), target)) {
+	normalized := normalizePath(backend.Paths(), target)
+	if tfm.Has(normalized) || tfm.HasAnyInDir(normalized) {
 		return deleteDispositionSkippedInUse, nil
 	}
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {
@@ -185,6 +189,9 @@ func safeDeleteSymlink(ctx context.Context, target string, tfm *TorrentFileMap, 
 }
 
 func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
+	if tfm.HasAnyInDir(normalizePath(backend.Paths(), target)) {
+		return deleteDispositionSkippedInUse, nil
+	}
 	if err := checkDirContainsInUseFile(ctx, target, tfm, backend); err != nil {
 		if errors.Is(err, ErrInUse) {
 			return deleteDispositionSkippedInUse, nil
