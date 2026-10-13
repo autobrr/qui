@@ -1,6 +1,6 @@
 # Remote Filesystem Backend Design (SSH/SFTP-native)
 
-Status: draft for maintainer review. Supersedes the remote-helper design
+Status: largely built; kept as the design reference. Supersedes the remote-helper design
 (PR #1913, closed but kept as reference — it documents the deployable-agent
 tier and its NDJSON wire protocol, which remain the fallback if this design
 hits a performance wall).
@@ -89,7 +89,7 @@ Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, implemented in the remote-backend PR** (raised by com6056
+fixed-size form, planned for slice 3e (#2726) and not shipped yet** (raised by com6056
 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
@@ -160,9 +160,28 @@ backend is manipulated with that backend's dialect; host-only paths (the
 data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
 slash-delimited and stay inside their instance's backend domain end to
 end. 3c moved the free-space path source, missing-files, the hardlink
-index, the dirscan scanner and the fileid index onto the dialect; orphan
-scan follows #2918 (#2930) and cross-seed, managed-delete cleanup and the
-sync manager follow 3d, when writes make them reachable.
+index, the dirscan scanner and the fileid index onto the dialect. Orphan
+scan moved in #2930: its comparison keys keep the dialect's own separators
+(a canonical slash key would merge a Windows UNC path with a rooted one),
+peers' roots and file maps are built in the scanning backend's dialect, and
+ignore paths are validated at save time in the dialect of the instance's
+backend, which is the one the scan reads them in. Cross-seed moved in #2943:
+link mode, season packs, the Manual match preview and local-match evidence
+take the dialect from the backend each function holds, and a season pack
+plans and creates its tree on one backend read. `hardlinktree`'s plan
+builders take the dialect as a leading parameter, through a four-method
+`hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
+imports `hardlinktree`, so the dependency cannot point the other way), and
+they check torrent paths in slash grammar on every host. When the
+destination dialect is Windows they also reject any component Windows
+cannot store as a file name: a colon, which NTFS reads as an alternate data
+stream of another file (found natively by Audionut on #3140), the other
+reserved characters, control characters, a trailing dot or space, and the
+reserved device names. The partial pool,
+`hardlinktree.Create`, reflink creation and the shared-allocation check are
+host code and run only for local instances. Managed-delete cleanup (#2947),
+the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
+`filepath`.
 
 ## Path and Command Safety
 
@@ -264,9 +283,10 @@ sync manager follow 3d, when writes make them reachable.
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
   qui, so the user makes that call, never the code. On a background
-  reconnect nobody is there to prompt, so a mismatch parks the instance
-  in a needs-reconfirmation state and fails every fsop until a human
-  clears it.
+  reconnect nobody is there to prompt, so a mismatch fails every fsop on
+  the instance. The refusal lives only in memory (see Connection Pool):
+  confirming or replacing the pin clears it, and so does a restart, after
+  which the next dial is refused again while the key is still wrong.
 - The pin belongs to the host, not the credential: deleting SSH
   credentials keeps the pin, `ssh-test` against a pinned instance routes
   into the mismatch flow rather than first contact, and editing host or
@@ -382,7 +402,9 @@ exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
 `Get-ChildItem` sweeps) is possible later if demand appears; the opaque
 FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
-every other remote path.
+every other remote path. Because such a remote uses `SlashPaths`, the Windows
+name check above does not apply, so a POSIX name containing `:` is still
+accepted and would land as an NTFS alternate data stream, a known gap.
 
 ## Field Validation
 
@@ -423,7 +445,7 @@ scratch directories and a temporarily added, uniquely tagged
 
 ## Rollout
 
-1. Foundation (open): #1914 backend interface, #1915 callsite migration.
+1. Foundation (merged): #1914 backend interface, #1915 callsite migration.
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
@@ -443,24 +465,24 @@ scratch directories and a temporarily added, uniquely tagged
    instance" and stays. Text a local user also sees keeps its develop
    wording, and the slice adds it to the reverse list in #2917's body.
    (#2916 Decisions)
-5. Feature rollout per service, degraded-mode UX. Most consumers still
-   admit an instance on `HasLocalFilesystemAccess` rather than on its
-   filesystem mode: automations
+5. Feature rollout per service, degraded-mode UX. Consumers admit an
+   instance on a filesystem capability (`Pool.Require`,
+   `models.FilesystemCapabilitiesOf`): automations
    (missing-files condition, hardlink index; rule save and dry-run
    validation), dirscan, cross-seed (link mode, manual assemble,
    mediainfo, season pack, partial pool, local-match detection), the sync
-   manager's hardlink base dir, the disc-scan route (which checks for
-   local mode, not the flag), and two routes that read file content, which
+   manager's hardlink base dir, the disc-scan route (which requires
+   `CapabilityContent`), and two routes that read file content, which
    no `Backend` method covers yet: the torrents handler's local-access
-   routes and the proxy mediainfo route. The exception is the free-space
+   routes and the proxy mediainfo route. The free-space
    path source: its preview and scheduled-run paths call `Statfs` only
    after `Pool.Require` grants the Read capability, and rule save
    validation also checks Read. A remote-mode instance has Read, so it
    already reports remote free space, and that is the intended figure. A gate
    reads the instance before the work starts, so the reads after it
    resolve backend and mode from one later read and refuse every mode but
-   local. The hardlink index, dirscan and the sync manager's cleanup do
-   that through `Pool.LocalBackend`, and missing files through
+   local. Dirscan does that through
+   `Pool.LocalBackend`, and missing files through
    `Pool.Resolve`. An instance whose local access was turned off after the
    gate is then refused rather than read over SSH at a local path. Orphan
    scan admits an instance on Read, walks the backend `Pool.Require`

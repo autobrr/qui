@@ -67,6 +67,7 @@ docs/*
 !docs/remote-backend-design.md
 !docs/agents/
 !docs/adr/
+!docs/standards/
 .mcp_unused.json
 config.toml
 .env

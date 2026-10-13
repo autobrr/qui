@@ -38,6 +38,7 @@ export interface VersionInfo {
   latestVersion?: string
   updateAvailable: boolean
   selfUpdate: boolean
+  selfUpdateUnavailableReason: "" | "container" | "disabled" | "development" | "directory"
   restart: boolean
 }
 
@@ -312,6 +313,10 @@ export interface ThemeSettings {
   mode: ThemeMode
   variation?: string
 }
+
+export type ThemeSlot = "default" | "mobile"
+
+export type ThemeSlots = Partial<Record<ThemeSlot, ThemeSettings>>
 
 export interface BuiltinTheme {
   id: string

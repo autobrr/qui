@@ -1,0 +1,29 @@
+* @s0up4200
+
+/internal/clientmigrate/ @s0up4200 @zze0s
+
+/internal/services/crossseed/ @s0up4200 @nitrobass24 @Audionut
+/internal/services/dirscan/ @s0up4200 @nitrobass24
+/internal/services/orphanscan/ @s0up4200 @com6056
+/internal/services/automations/hardlink_index*.go @s0up4200 @nitrobass24
+/internal/fsops/ @s0up4200 @nitrobass24 @com6056
+/internal/sshpool/ @s0up4200 @nitrobass24 @com6056
+/internal/api/ @s0up4200 @nitrobass24
+/internal/qbittorrent/ @s0up4200 @Audionut
+/internal/models/ @s0up4200 @nitrobass24
+/internal/models/credential_* @s0up4200 @com6056
+/internal/backups/ @s0up4200 @nitrobass24
+/internal/testutil/ @s0up4200 @nitrobass24
+
+/web/src/components/torrents/ @s0up4200 @nitrobass24
+/web/src/hooks/ @s0up4200 @nitrobass24
+/web/src/types/ @s0up4200 @nitrobass24
+/web/src/test/ @s0up4200 @nitrobass24
+/web/src/components/query-builder/ @s0up4200 @ColinHebert @nitrobass24
+/web/src/i18n/ @s0up4200 @ColinHebert
+
+*_windows*.go @s0up4200 @Audionut
+/internal/api/*_windows*.go @s0up4200 @nitrobass24 @Audionut
+/internal/fsops/**/*_windows*.go @s0up4200 @nitrobass24 @com6056 @Audionut
+/internal/services/crossseed/*_windows*.go @s0up4200 @nitrobass24 @Audionut
+/internal/services/orphanscan/*_windows*.go @s0up4200 @com6056 @Audionut

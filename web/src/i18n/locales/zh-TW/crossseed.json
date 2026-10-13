@@ -280,7 +280,7 @@
       "rescueTitleMismatches": "挽救標題不匹配的結果",
       "rescueTitleMismatchesDescription": "每次源搜尋會在所有索引器中合計嘗試最多三個大小完全相同的結果。qui 會先檢查所有資料，再啟動種子。啟用跳過重新檢查會關閉此規則。",
       "skipRecheck": "跳過需要重新檢查的匹配",
-      "skipRecheckDescription": "跳過需要重新命名對齊、額外檔案或光碟佈局（BDMV/VIDEO_TS）的匹配。關閉此選項時，這些匹配預設會強制重新檢查。",
+      "skipRecheckDescription": "跳過需要重新命名對齊、額外檔案或光碟佈局（BDMV/VIDEO_TS）的匹配。完整的匹配（每個檔案都有大小相同的檔案，沒有額外檔案，最多只有路徑不同）仍會加入，且不重新檢查。季包中的單集、光碟佈局、資訊不同的精確大小匹配、大小相同但名稱不明確的檔案，以及重新命名的 .nfo 或字幕檔案，都不屬於完整的匹配。關閉此選項時，這些匹配預設會強制重新檢查。",
       "pieceBoundaryDisabled": "塊邊界安全檢查目前已停用",
       "pieceBoundaryEnabled": "塊邊界安全檢查已啟用",
       "pieceBoundaryDisabledDescription": "即使額外檔案與內容共享塊也允許匹配。如果內容不同，可能會損壞已做種的檔案。請考慮使用引用連結模式。",

@@ -130,9 +130,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		// The root is subject to IgnorePaths like every other entry, as it is
-		// locally: an ignored root yields an empty walk, not a lone root entry.
-		if slices.Contains(opts.IgnorePaths, root) {
+		if opts.Skip(path.Base(root), root, fi.IsDir(), true) {
 			return
 		}
 		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
@@ -289,9 +287,7 @@ func (w *walker) list(job walkJob) {
 	for _, fi := range entries {
 		name := fi.Name()
 		childPath := path.Join(job.dir, name)
-		if (opts.SkipHidden && strings.HasPrefix(name, ".")) ||
-			(fi.IsDir() && ignoredDirName(name, opts)) ||
-			slices.Contains(opts.IgnorePaths, childPath) {
+		if opts.Skip(name, childPath, fi.IsDir(), false) {
 			continue
 		}
 		childRel := path.Join(job.rel, name)
@@ -304,16 +300,6 @@ func (w *walker) list(job walkJob) {
 			w.enqueue(walkJob{dir: childPath, rel: childRel})
 		}
 	}
-}
-
-// ignoredDirName matches case-insensitively: these are OS/NAS metadata dirs
-// ($RECYCLE.BIN, @eaDir) whose on-disk case varies.
-func ignoredDirName(name string, opts fsops.WalkOptions) bool {
-	return slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
-		return strings.EqualFold(ignored, name)
-	}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
-		return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
-	})
 }
 
 // lostConnection tells a request that failed because the transport went away

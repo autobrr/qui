@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -143,6 +145,12 @@ func (s *Service) buildReleaseView(
 	if !policy.useDerivedTV || !isTVRelease(derived) {
 		return view
 	}
+	if season := seasonFromTitleNumeral(derived); season > 0 {
+		numeralSeason := *derived
+		numeralSeason.Series = season
+		derived = &numeralSeason
+		view.numeralSeason = true
+	}
 	if policy.preserveExplicitRawGroup && releaseHasExplicitGroupTag(parsed) {
 		preservedIdentity := *derived
 		preservedIdentity.Group = parsed.Group
@@ -152,6 +160,41 @@ func (s *Service) buildReleaseView(
 	}
 	view.release = derived
 	return view
+}
+
+// seasonFromTitleNumeral reads a last-word II to X as the season of a pack
+// that has no season anywhere else: "Kaiju Squad 100 II - 07" files carry only
+// the numeral, and trackers list the pack as S02. A larger numeral is more
+// often part of the real title than a season.
+func seasonFromTitleNumeral(release *rls.Release) int {
+	if release.Series > 0 || release.Episode > 0 {
+		return 0
+	}
+	_, last, ok := strings.CutLast(release.Title, " ")
+	if !ok {
+		return 0
+	}
+	season := slices.IndexFunc([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, func(numeral string) bool {
+		return strings.EqualFold(numeral, last)
+	})
+	if season < 2 {
+		return 0
+	}
+	return season
+}
+
+// withTitleNumeralSeason gives a release with only a title numeral the season
+// of the other release, when the numeral names that season.
+func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
+	// A numeral season is 2 or more, so a lower season skips the copy when both sides have no season.
+	// A movie with a year, such as "Rocky III 1982", is a sequel and not a season.
+	if release == nil || other == nil || other.Series < 2 || isYearBearingMovieRelease(release) ||
+		seasonFromTitleNumeral(release) != other.Series {
+		return release
+	}
+	withSeason := *release
+	withSeason.Series = other.Series
+	return &withSeason
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {

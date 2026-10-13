@@ -1868,20 +1868,28 @@ func tagStateChangesTags(state *torrentDesiredState) bool {
 	return false
 }
 
-// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink state:
+// hardlinkUse names the kinds of hardlink scope that a delete decision rests on.
+type hardlinkUse struct {
+	single bool // the link counts of this instance: HARDLINK_SCOPE, includeHardlinks, signature grouping
+	cross  bool // the counts after the cross-instance step: HARDLINK_SCOPE_CROSS
+}
+
+// deleteUsesHardlinkData reports which hardlink state a rule's delete decision rests on:
 // the delete condition, the sorting, includeHardlinks, or hardlink signature grouping. A
 // rule that sorts or groups by that data picks its delete batch from the index just as
 // surely as one that conditions on it.
-func deleteUsesHardlinkData(rule *models.Automation) bool {
+func deleteUsesHardlinkData(rule *models.Automation) hardlinkUse {
 	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
-		return false
+		return hardlinkUse{}
 	}
 	deleteOnly := *rule
 	deleteOnly.Enabled = true
 	deleteOnly.Conditions = &models.ActionConditions{Delete: rule.Conditions.Delete}
 	needs := NeedsFor([]*models.Automation{&deleteOnly})
-	return rule.Conditions.Delete.IncludeHardlinks || needs.HardlinkScope || needs.HardlinkCrossScope ||
-		ruleUsesHardlinkSignatureGrouping(rule)
+	return hardlinkUse{
+		single: rule.Conditions.Delete.IncludeHardlinks || needs.HardlinkScope || ruleUsesHardlinkSignatureGrouping(rule),
+		cross:  needs.HardlinkCrossScope,
+	}
 }
 
 // blockedDeleteCandidates returns the queued deletions that must not run because their
@@ -1898,14 +1906,16 @@ func (s *Service) blockedDeleteCandidates(
 	pendingByHash map[string]pendingDeletion,
 	ruleByID map[int]*models.Automation,
 ) map[string]string {
-	var candidates []string
+	candidates := make(map[string]hardlinkUse)
 	for _, hashes := range deleteHashesByMode {
 		for _, hash := range hashes {
 			pending, queued := pendingByHash[hash]
-			if !queued || !deleteUsesHardlinkData(ruleByID[pending.ruleID]) {
+			if !queued {
 				continue
 			}
-			candidates = append(candidates, hash)
+			if use := deleteUsesHardlinkData(ruleByID[pending.ruleID]); use != (hardlinkUse{}) {
+				candidates[hash] = use
+			}
 		}
 	}
 

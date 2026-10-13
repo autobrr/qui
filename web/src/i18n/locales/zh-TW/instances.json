@@ -557,7 +557,8 @@
       "toast": {
         "success": "進階網路設定更新成功",
         "error": "進階網路設定更新失敗"
-      }
+      },
+      "unitSeconds": "秒"
     },
     "reannounce": {
       "title": "配置重新通報",
@@ -1510,6 +1511,7 @@
           "noMatches": "無匹配",
           "exportedToInstance": "匯出到實例"
         },
+        "actionFallback": "未知操作（{{action}}）",
         "summary": {
           "tagsChangedBoth": "{{added}} 將被標記，{{removed}} 將被取消標記",
           "tagsAdded": "{{count}} 將被標記",

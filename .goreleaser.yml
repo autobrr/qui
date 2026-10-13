@@ -79,6 +79,10 @@ archives:
 
 release:
   prerelease: auto
+  # The Release job adds the Highlights and then publishes the draft.
+  draft: true
+  # A re-run of a failed tag build replaces the draft that it left.
+  replace_existing_draft: true
   footer: |
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui/compare/{{ .PreviousTag }}...{{ .Tag }}
 

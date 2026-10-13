@@ -1680,6 +1680,7 @@
   "stateLabels": {
     "downloading": "Stahování",
     "metaDL": "Načítání metadat",
+    "forcedMetaDL": "(F) Načítání metadat",
     "allocating": "Přidělování",
     "stalledDL": "Pozastavené stahování",
     "queuedDL": "Ve frontě",
@@ -1697,8 +1698,10 @@
     "error": "Chyba",
     "missingFiles": "Chybějící soubory",
     "checkingResumeData": "Kontrola obnovovacích dat",
-    "moving": "Přesouvání"
+    "moving": "Přesouvání",
+    "unknown": "Neznámý"
   },
+  "stateLabelFallback": "Nerozpoznáno",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

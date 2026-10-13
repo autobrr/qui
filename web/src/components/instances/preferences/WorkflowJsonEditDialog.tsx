@@ -73,7 +73,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
               setError(null)
             }}
           />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="text-sm text-destructive whitespace-pre-line">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

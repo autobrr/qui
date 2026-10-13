@@ -100,7 +100,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if err := s.createSeasonPackTree(ctx, inst, planned.build, resp.LinkMode); err != nil {
+	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
@@ -142,7 +142,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	prep := &seasonPackPrep{
 		manual: true, rejected: make(map[string]string), settings: settings,
-		meta: meta, torrentBytes: torrentBytes, packRelease: packRelease,
+		meta: meta, torrentBytes: torrentBytes, packName: meta.Name, packRelease: packRelease,
 		packEpisodes: extractPackEpisodes(meta.Files, packRelease),
 	}
 	prep.totalEpisodes = len(prep.packEpisodes)
@@ -195,7 +195,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				return planned, nil
 			}
 		}
-		candidates = s.matchEpisodeCandidatesDetailed(cached, packRelease, prep.packEpisodes, settings, nil)
+		candidates = s.matchEpisodeCandidatesDetailed(cached, prep.packName, packRelease, prep.packEpisodes, settings, nil)
 	} else {
 		candidates = make(map[episodeIdentity][]episodeMatch)
 		for _, hash := range hashes {

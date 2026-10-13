@@ -47,8 +47,8 @@ const (
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type"`           // "qbittorrent" or "path"
-	Path string              `json:"path,omitempty"` // Required when Type == "path"
+	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'."`
+	Path string              `json:"path,omitempty" doc:"With type 'path': the path to read. Needs filesystem access on the instance."`
 }
 
 // ScoreRuleType defines the type of score rule.
@@ -75,31 +75,31 @@ const (
 
 // FieldMultiplierScoreRule applies a multiplier to a numeric field.
 type FieldMultiplierScoreRule struct {
-	Field      ConditionField `json:"field"`
-	Multiplier float64        `json:"multiplier"`
+	Field      ConditionField `json:"field" doc:"The condition field whose value is multiplied."`
+	Multiplier float64        `json:"multiplier" doc:"The number to multiply the field value by. The result is added to the score."`
 }
 
 // ConditionalScoreRule adds a flat score if a condition is met.
 type ConditionalScoreRule struct {
-	Condition *RuleCondition `json:"condition"`
-	Score     float64        `json:"score"`
+	Condition *RuleCondition `json:"condition" doc:"When the torrent matches this condition, score is added."`
+	Score     float64        `json:"score" doc:"The score to add."`
 }
 
 // ScoreRule defines a single weighted rule for scoring torrents.
 type ScoreRule struct {
-	Type            ScoreRuleType             `json:"type"`
-	FieldMultiplier *FieldMultiplierScoreRule `json:"fieldMultiplier,omitempty"`
-	Conditional     *ConditionalScoreRule     `json:"conditional,omitempty"`
+	Type            ScoreRuleType             `json:"type" doc:"The kind of rule."`
+	FieldMultiplier *FieldMultiplierScoreRule `json:"fieldMultiplier,omitempty" doc:"With type 'field_multiplier': the field and multiplier."`
+	Conditional     *ConditionalScoreRule     `json:"conditional,omitempty" doc:"With type 'conditional': the condition and score."`
 }
 
 // SortingConfig defines how torrents are sorted before processing.
 // This is the top-level structure stored in the `sorting_config` JSON column.
 type SortingConfig struct {
-	SchemaVersion string         `json:"schemaVersion"`
-	Type          SortingType    `json:"type"`            // "simple" or "score"
-	Direction     SortDirection  `json:"direction"`       // "ASC" or "DESC"
-	Field         ConditionField `json:"field,omitempty"` // for "simple"
-	ScoreRules    []ScoreRule    `json:"scoreRules,omitempty"`
+	SchemaVersion string         `json:"schemaVersion" doc:"Must be '1'."`
+	Type          SortingType    `json:"type" doc:"'simple' sorts by one field. 'score' sorts by the sum of 'scoreRules'."`
+	Direction     SortDirection  `json:"direction" doc:"'ASC' or 'DESC'."`
+	Field         ConditionField `json:"field,omitempty" doc:"With type 'simple': the condition field to sort by."`
+	ScoreRules    []ScoreRule    `json:"scoreRules,omitempty" doc:"With type 'score': the rules that add up to the score of each torrent."`
 }
 
 func (c *SortingConfig) Validate() error {
@@ -852,15 +852,15 @@ const (
 
 // RuleCondition represents a condition or group of conditions for filtering torrents.
 type RuleCondition struct {
-	Field      ConditionField    `json:"field,omitempty"`
-	Operator   ConditionOperator `json:"operator"`
-	GroupID    string            `json:"groupId,omitempty"` // Optional grouping ID for GROUP_SIZE/IS_GROUPED conditions
-	Value      string            `json:"value,omitempty"`
-	MinValue   *float64          `json:"minValue,omitempty"`
-	MaxValue   *float64          `json:"maxValue,omitempty"`
-	Regex      bool              `json:"regex,omitempty"`
-	Negate     bool              `json:"negate,omitempty"`
-	Conditions []*RuleCondition  `json:"conditions,omitempty"`
+	Field      ConditionField    `json:"field,omitempty" doc:"The condition field to test. Leave it out on an 'AND' or 'OR' group."`
+	Operator   ConditionOperator `json:"operator" doc:"An operator that the field allows, or 'AND' or 'OR' for a group."`
+	GroupID    string            `json:"groupId,omitempty" doc:"For 'GROUP_SIZE' and 'IS_GROUPED': the group to use. A built-in group ID or the id of a group in 'conditions.grouping'. Default: 'conditions.grouping.defaultGroupId'."`
+	Value      string            `json:"value,omitempty" doc:"The value to compare, always as a JSON string, also for numbers and yes/no values. Not used with 'BETWEEN'."`
+	MinValue   *float64          `json:"minValue,omitempty" doc:"For 'BETWEEN': the lower end of the range, as a JSON number."`
+	MaxValue   *float64          `json:"maxValue,omitempty" doc:"For 'BETWEEN': the upper end of the range, as a JSON number. On 'SYSTEM_HOUR', 'SYSTEM_MINUTE', 'SYSTEM_DAY_OF_WEEK' and 'SYSTEM_MONTH', a 'minValue' above 'maxValue' wraps past the end of the field."`
+	Regex      bool              `json:"regex,omitempty" doc:"When 'true', 'value' is a regular expression. Applies to string fields. 'MATCHES' always uses a regular expression."`
+	Negate     bool              `json:"negate,omitempty" doc:"When 'true', the condition matches when the test is false."`
+	Conditions []*RuleCondition  `json:"conditions,omitempty" doc:"For an 'AND' or 'OR' group: the child conditions."`
 	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
 }
 
@@ -885,141 +885,135 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion    string                  `json:"schemaVersion"`
-	Grouping         *GroupingConfig         `json:"grouping,omitempty"`
-	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty"`
-	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty"`
-	Pause            *PauseAction            `json:"pause,omitempty"`
-	Resume           *ResumeAction           `json:"resume,omitempty"`
-	Recheck          *RecheckAction          `json:"recheck,omitempty"`
-	Reannounce       *ReannounceAction       `json:"reannounce,omitempty"`
-	Delete           *DeleteAction           `json:"delete,omitempty"`
-	Tag              *TagAction              `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
-	Tags             []*TagAction            `json:"tags,omitempty"` // Preferred multi-tag actions
-	Category         *CategoryAction         `json:"category,omitempty"`
-	Move             *MoveAction             `json:"move,omitempty"`
-	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty"`
-	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty"`
-	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty"`
+	SchemaVersion    string                  `json:"schemaVersion" doc:"Must be '1'."`
+	Grouping         *GroupingConfig         `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
+	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty" doc:"Set upload and download speed limits."`
+	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty" doc:"Set ratio and seeding time limits."`
+	Pause            *PauseAction            `json:"pause,omitempty" doc:"Pause matching torrents."`
+	Resume           *ResumeAction           `json:"resume,omitempty" doc:"Resume matching torrents."`
+	Recheck          *RecheckAction          `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
+	Reannounce       *ReannounceAction       `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
+	Delete           *DeleteAction           `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
+	Tag              *TagAction              `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags             []*TagAction            `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
+	Category         *CategoryAction         `json:"category,omitempty" doc:"Set the category of matching torrents."`
+	Move             *MoveAction             `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
+	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
+	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
+	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
 type SpeedLimitAction struct {
-	Enabled     bool           `json:"enabled"`
-	UploadKiB   *int64         `json:"uploadKiB,omitempty"`
-	DownloadKiB *int64         `json:"downloadKiB,omitempty"`
-	Condition   *RuleCondition `json:"condition,omitempty"`
+	Enabled     bool           `json:"enabled" doc:"Whether the action runs."`
+	UploadKiB   *int64         `json:"uploadKiB,omitempty" doc:"Upload limit in KiB/s. '0' removes the limit. Leave it out to keep the current limit."`
+	DownloadKiB *int64         `json:"downloadKiB,omitempty" doc:"Download limit in KiB/s. '0' removes the limit. Leave it out to keep the current limit."`
+	Condition   *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // ShareLimitsAction configures share limit (ratio/seeding time) application with optional conditions.
 type ShareLimitsAction struct {
-	Enabled            bool           `json:"enabled"`
-	RatioLimit         *float64       `json:"ratioLimit,omitempty"`
-	SeedingTimeMinutes *int64         `json:"seedingTimeMinutes,omitempty"`
-	ShareLimitAction   *string        `json:"shareLimitAction,omitempty"`
-	ShareLimitsMode    *string        `json:"shareLimitsMode,omitempty"`
-	Condition          *RuleCondition `json:"condition,omitempty"`
+	Enabled            bool           `json:"enabled" doc:"Whether the action runs."`
+	RatioLimit         *float64       `json:"ratioLimit,omitempty" doc:"Ratio limit. '-2' uses the global setting, '-1' means no limit. Leave it out to keep the current limit."`
+	SeedingTimeMinutes *int64         `json:"seedingTimeMinutes,omitempty" doc:"Seeding time limit in minutes. '-2' uses the global setting, '-1' means no limit. Leave it out to keep the current limit."`
+	ShareLimitAction   *string        `json:"shareLimitAction,omitempty" doc:"What qBittorrent does when a limit is reached. Needs qBittorrent Web API 2.15.1+. Leave it out to use the global setting."`
+	ShareLimitsMode    *string        `json:"shareLimitsMode,omitempty" doc:"Whether any limit or all limits must be reached. Needs qBittorrent Web API 2.16.0+. Leave it out to use the global setting."`
+	Condition          *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // PauseAction configures pause action with conditions.
 type PauseAction struct {
-	Enabled   bool           `json:"enabled"`
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // ResumeAction configures resume action with conditions.
 type ResumeAction struct {
-	Enabled   bool           `json:"enabled"`
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // RecheckAction configures force recheck action with optional conditions.
 type RecheckAction struct {
-	Enabled   bool           `json:"enabled"`
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // ReannounceAction configures force reannounce action with optional conditions.
 type ReannounceAction struct {
-	Enabled   bool           `json:"enabled"`
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // AutoManagementAction configures automatic torrent management (ATM) with optional conditions.
 type AutoManagementAction struct {
-	Enabled   bool           `json:"enabled"`
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"'true' turns automatic torrent management on, 'false' turns it off."`
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
-	Enabled          bool           `json:"enabled"`
-	Mode             string         `json:"mode"`                       // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
-	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
-	GroupID          string         `json:"groupId,omitempty"`          // Optional grouping ID for expanding/atomically applying deletes
-	Atomic           string         `json:"atomic,omitempty"`           // Optional atomic policy: "all" (apply only if all group members match)
-	Condition        *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
+	Mode             string         `json:"mode" doc:"What to delete. Default: 'delete'. When 'condition' uses 'FREE_SPACE', the mode must not be 'delete', because a delete that keeps the files frees no disk space."`
+	IncludeHardlinks bool           `json:"includeHardlinks,omitempty" doc:"Also delete torrents that share files through hardlinks. Only with mode 'deleteWithFilesIncludeCrossSeeds', and needs local filesystem access."`
+	GroupID          string         `json:"groupId,omitempty" doc:"Only with mode 'delete'. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
+	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' deletes the group only when every torrent in it matches."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Required when 'enabled' is 'true'. The action deletes only torrents that match this condition."`
 }
 
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
-	Enabled           bool           `json:"enabled"`
-	Tags              []string       `json:"tags"`                        // Tags to manage (fallback if UseTrackerAsTag has no domains)
-	Mode              string         `json:"mode"`                        // "full", "add", "remove"
-	DeleteFromClient  bool           `json:"deleteFromClient,omitempty"`  // Delete managed tags from qBittorrent before applying matches
-	UseTrackerAsTag   bool           `json:"useTrackerAsTag,omitempty"`   // Derive tag from torrent's tracker domain
-	UseDisplayName    bool           `json:"useDisplayName,omitempty"`    // Use tracker customization display name instead of raw domain
-	IncludeCrossSeeds bool           `json:"includeCrossSeeds,omitempty"` // Also apply tag changes to cross-seeds (ignored with UseTrackerAsTag)
-	Condition         *RuleCondition `json:"condition,omitempty"`
+	Enabled           bool           `json:"enabled" doc:"Whether the action runs."`
+	Tags              []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
+	Mode              string         `json:"mode" doc:"'full' adds the tags to matching torrents and removes them from the others. 'add' only adds. 'remove' only removes them from matching torrents."`
+	DeleteFromClient  bool           `json:"deleteFromClient,omitempty" doc:"Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags."`
+	UseTrackerAsTag   bool           `json:"useTrackerAsTag,omitempty" doc:"Use the tracker domain of each torrent as its tag."`
+	UseDisplayName    bool           `json:"useDisplayName,omitempty" doc:"With 'useTrackerAsTag': use the tracker display name in place of the domain."`
+	IncludeCrossSeeds bool           `json:"includeCrossSeeds,omitempty" doc:"Also apply the tag changes to the cross-seeds of each matching torrent. Ignored with 'useTrackerAsTag'."`
+	Condition         *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
-	Enabled           bool   `json:"enabled"`
-	Category          string `json:"category"`                    // Empty clears the category
-	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
-	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
+	Enabled           bool   `json:"enabled" doc:"Whether the action runs."`
+	Category          string `json:"category" doc:"The category to set. An empty string removes the category."`
+	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty" doc:"Also move the cross-seeds of each matching torrent to the category."`
+	GroupID           string `json:"groupId,omitempty" doc:"Change the category of each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent
 	// (same ContentPath + SavePath) is found in one of the listed categories.
-	BlockIfCrossSeedInCategories []string       `json:"blockIfCrossSeedInCategories,omitempty"`
-	Condition                    *RuleCondition `json:"condition,omitempty"`
+	BlockIfCrossSeedInCategories []string       `json:"blockIfCrossSeedInCategories,omitempty" doc:"Skip a torrent when one of its cross-seeds is in one of these categories."`
+	Condition                    *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 type MoveAction struct {
-	Enabled          bool           `json:"enabled"`
-	Path             string         `json:"path"`
-	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty"`
-	GroupID          string         `json:"groupId,omitempty"` // Optional grouping ID for move cross-seed protection/atomicity
-	Atomic           string         `json:"atomic,omitempty"`  // Optional atomic policy: "all" (apply only if all group members match)
-	Condition        *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
+	Path             string         `json:"path" doc:"The new save path."`
+	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty" doc:"Skip a torrent when one of its cross-seeds does not match 'condition'. Not used when 'groupId' is set."`
+	GroupID          string         `json:"groupId,omitempty" doc:"Move each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
+	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' moves the group only when every torrent in it matches."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // GroupingConfig defines how torrents can be grouped for group-aware actions and conditions.
 // Group definitions are per-rule (stored inside the rule's conditions JSON).
 type GroupingConfig struct {
-	// DefaultGroupID is the group to use for group-derived condition fields (e.g. GROUP_SIZE, IS_GROUPED).
-	DefaultGroupID string            `json:"defaultGroupId,omitempty"`
-	Groups         []GroupDefinition `json:"groups,omitempty"`
+	DefaultGroupID string            `json:"defaultGroupId,omitempty" doc:"The group that 'GROUP_SIZE' and 'IS_GROUPED' use when the condition has no 'groupId'. A built-in group ID or the id of a group in 'groups'."`
+	Groups         []GroupDefinition `json:"groups,omitempty" doc:"Custom group definitions."`
 }
 
 // GroupDefinition defines a single grouping strategy.
 type GroupDefinition struct {
-	ID string `json:"id"`
-	// Keys are combined to form a group key.
-	// Supported keys are documented in the automations service (built-ins include contentPath, savePath, effectiveName, contentType, tracker, rlsSource, rlsResolution, rlsCodec, rlsGroup, hardlinkSignature).
-	Keys []string `json:"keys"`
-	// AmbiguousPolicy controls how groups are handled when ContentPath is ambiguous (ContentPath == SavePath).
-	// Valid: "verify_overlap" (default for contentPath group), "skip".
-	AmbiguousPolicy string `json:"ambiguousPolicy,omitempty"`
-	// MinFileOverlapPercent applies when AmbiguousPolicy == "verify_overlap". Defaults to 90.
-	MinFileOverlapPercent int `json:"minFileOverlapPercent,omitempty"`
+	ID                    string   `json:"id" doc:"The group ID. Conditions and actions refer to the group by this ID."`
+	Keys                  []string `json:"keys" doc:"Torrents with equal values for all these keys are in the same group."`
+	AmbiguousPolicy       string   `json:"ambiguousPolicy,omitempty" doc:"What the delete, category, and move actions do when they expand to the group, 'contentPath' is one of the keys, and a torrent content path equals its save path. 'verify_overlap' compares the files. 'skip' does not expand the action to the group. 'GROUP_SIZE' and 'IS_GROUPED' ignore this setting."`
+	MinFileOverlapPercent int      `json:"minFileOverlapPercent,omitempty" doc:"With 'verify_overlap': the percentage of files that must overlap. Default '90'."`
 }
 
 // ExternalProgramAction configures external program execution with optional conditions.
 type ExternalProgramAction struct {
-	Enabled   bool           `json:"enabled"`
-	ProgramID int            `json:"programId"` // FK to external_programs table
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
+	ProgramID int            `json:"programId" doc:"The ID of the external program in this qui. An export keeps the ID of the qui that made it."` // FK to external_programs table
+	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // Validate checks that the ExternalProgramAction has valid configuration.
@@ -1035,15 +1029,15 @@ func (a *ExternalProgramAction) Validate() error {
 
 // ExportToInstanceAction configures exporting a torrent to a different qBittorrent instance.
 type ExportToInstanceAction struct {
-	Enabled          bool           `json:"enabled"`
-	TargetInstanceID int            `json:"targetInstanceId"`        // Destination qBittorrent instance
-	SavePath         string         `json:"savePath"`                // Save path on target (Go template supported)
-	Category         string         `json:"category,omitempty"`      // Category on target instance
-	Tags             []string       `json:"tags,omitempty"`          // Tags on target instance
-	Paused           bool           `json:"paused,omitempty"`        // Start paused on target
-	SkipChecking     *bool          `json:"skipChecking,omitempty"`  // Skip hash check (defaults true)
-	ContentLayout    string         `json:"contentLayout,omitempty"` // "Original", "Subfolder", "NoSubfolder"
-	Condition        *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
+	TargetInstanceID int            `json:"targetInstanceId" doc:"The ID of the target instance in this qui. The ID is in the URL of the instance page, '/instances/ID'."`
+	SavePath         string         `json:"savePath" doc:"The save path on the target instance. Supports Go templates."`
+	Category         string         `json:"category,omitempty" doc:"The category on the target instance."`
+	Tags             []string       `json:"tags,omitempty" doc:"The tags on the target instance."`
+	Paused           bool           `json:"paused,omitempty" doc:"Add the torrent paused."`
+	SkipChecking     *bool          `json:"skipChecking,omitempty" doc:"Skip the hash check on the target instance. Default 'true'."`
+	ContentLayout    string         `json:"contentLayout,omitempty" doc:"The content layout on the target instance. Leave it out to use the default layout of the target instance."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // SkipCheckingEnabled returns the effective skip_checking value (defaults true).

@@ -836,6 +836,9 @@ type namedRelease struct {
 	release   *rls.Release
 	rawName   string
 	tagOrigin *rls.Release
+	// numeralSeason marks a Series read from the title numeral, which the
+	// main search query leaves out.
+	numeralSeason bool
 }
 
 // groupIdentityViews exposes both the selected-file-derived public view and the

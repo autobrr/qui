@@ -15,6 +15,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -227,10 +228,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "one.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(root, "one.mkv"))) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "two.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(root, "two.mkv"))) {
 		t.Fatalf("expected instance 2 file to be protected")
 	}
 
@@ -313,10 +314,10 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
 		t.Fatalf("expected instance 1 actual content path to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
 		t.Fatalf("expected instance 2 actual content path to be merged when content paths overlap")
 	}
 }
@@ -480,10 +481,10 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(rootA, "one.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(rootA, "one.mkv"))) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if result.fileMap.Has(normalizePath(filepath.Join(rootB, "two.mkv"))) {
+	if result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(rootB, "two.mkv"))) {
 		t.Fatalf("did not expect instance 2 file to be merged without overlap")
 	}
 }
@@ -511,7 +512,7 @@ func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback
 		return &models.OrphanScanRun{ScanPaths: []string{"/stale/root"}}, nil
 	}
 
-	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), 2)
+	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), fsops.HostPaths, 2)
 	if err != nil {
 		t.Fatalf("instanceScanRootsForOverlap: %v", err)
 	}
@@ -578,7 +579,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(stableRoot, "one.mkv"))) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
@@ -644,7 +645,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(stableRoot, "one.mkv"))) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if len(result.scanRoots) != 0 {
