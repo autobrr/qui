@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -339,6 +338,7 @@ func (s *Service) processLinkMode(
 	if err != nil {
 		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
+	d := backend.Paths()
 
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the link base directory.
@@ -374,7 +374,7 @@ func (s *Service) processLinkMode(
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
 		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: filepath.Join(props.SavePath, filepath.FromSlash(f.Name)),
+			AbsPath: d.Join(props.SavePath, d.FromSlash(f.Name)),
 			RelPath: f.Name,
 			Size:    f.Size,
 		})
@@ -401,9 +401,9 @@ func (s *Service) processLinkMode(
 	err = LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend, func(baseDir string) error {
 		selectedBaseDir = baseDir
 		// Build destination directory based on preset and torrent structure
-		destDir = s.buildHardlinkDestDir(ctx, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+		destDir = s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 		// Build link tree plan with only the linkable files
-		plan, planErr = hardlinktree.BuildPlan(candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+		plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
 		if planErr != nil {
 			return planErr
 		}
@@ -455,7 +455,7 @@ func (s *Service) processLinkMode(
 	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
-		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		categorySavePath := s.buildCategorySavePath(ctx, d, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
 		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).

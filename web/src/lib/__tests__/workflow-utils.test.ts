@@ -100,6 +100,13 @@ describe("fromImportFormat", () => {
 
   it("forces enabled=false on every import", () => {
     expect(fromImportFormat(baseExport(), []).enabled).toBe(false)
+    expect(fromImportFormat(baseExport({ enabled: true }), []).enabled).toBe(false)
+  })
+
+  // A rule pasted from an API response carries its old position; the import must still go to the end.
+  it("drops sortOrder so the backend appends the rule", () => {
+    const result = fromImportFormat(baseExport({ sortOrder: 3 }), [])
+    expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("sortOrder")
   })
 
   it("uniquifies the name against existing names", () => {
@@ -119,10 +126,17 @@ describe("fromImportFormat", () => {
     expect(result).not.toHaveProperty("trackerDomains")
   })
 
-  it("defaults dryRun to false and notify to true when omitted", () => {
+  // The backend checks every key and lists each problem, so unknown keys must reach it.
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = fromImportFormat(baseExport({ enabeld: true, extra: { a: 1 } }), [])
+    expect(result).toHaveProperty("enabeld", true)
+    expect(result).toHaveProperty("extra", { a: 1 })
+  })
+
+  it("leaves omitted dryRun and notify to the backend defaults", () => {
     const result = fromImportFormat(baseExport(), [])
-    expect(result.dryRun).toBe(false)
-    expect(result.notify).toBe(true)
+    expect(result).not.toHaveProperty("dryRun")
+    expect(result).not.toHaveProperty("notify")
   })
 
   it("preserves explicit dryRun and notify from the import", () => {
@@ -131,9 +145,9 @@ describe("fromImportFormat", () => {
     expect(result.notify).toBe(false)
   })
 
-  it("includes intervalSeconds only when present and not equal to default", () => {
-    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), [])).not.toHaveProperty("intervalSeconds")
-    expect(fromImportFormat(baseExport({ intervalSeconds: 60 }), []).intervalSeconds).toBe(60)
+  it("passes intervalSeconds as written", () => {
+    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), []).intervalSeconds).toBe(900)
+    expect(fromImportFormat(baseExport({ intervalSeconds: 30 }), []).intervalSeconds).toBe(30)
   })
 })
 
@@ -162,13 +176,13 @@ describe("toDuplicateInput", () => {
   })
 })
 
-// Intent: "Edit as JSON" replaces the exported fields and keeps the state the
+// Intent: "Edit as JSON" sends the JSON as written and keeps the state the
 // JSON never carries: enabled and sortOrder. An omitted optional key resets to
-// its default, the same as an import would.
+// its backend default, the same as an import would.
 describe("toEditInput", () => {
-  it("keeps enabled and sortOrder from the rule and takes every other field from the JSON", () => {
+  it("keeps enabled and sortOrder from the rule and takes every other key from the JSON", () => {
     const rule = makeAutomation({ id: 5, enabled: true, sortOrder: 3, dryRun: true, intervalSeconds: 60, name: "Old" })
-    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions })
+    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions, enabled: false, sortOrder: 9 })
     expect(result).toEqual({
       name: "New",
       enabled: true,
@@ -176,12 +190,13 @@ describe("toEditInput", () => {
       trackerPattern: "",
       trackerDomains: ["a.com"],
       conditions,
-      freeSpaceSource: undefined,
-      sortingConfig: undefined,
-      dryRun: false,
-      notify: true,
     })
     expect(result).not.toHaveProperty("id")
+  })
+
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = toEditInput(makeAutomation(), { name: "x", trackerPattern: "*", conditions, notfy: false })
+    expect(result).toHaveProperty("notfy", false)
   })
 })
 
@@ -261,38 +276,21 @@ describe("parseImportJSON", () => {
     )
   })
 
-  it("drops a trackerDomains array with a non-string element", () => {
-    const result = parseImportJSON(JSON.stringify({
+  it("keeps every key as written, unknown keys too", () => {
+    const input = {
       name: "x",
       conditions: { schemaVersion: "1" },
-      trackerPattern: "a.com",
       trackerDomains: ["b.com", 1],
-    }))
-    expect(result.data?.trackerPattern).toBe("a.com")
-    expect(result.data).not.toHaveProperty("trackerDomains")
+      intervalSeconds: 30,
+      enabeld: true,
+    }
+    expect(parseImportJSON(JSON.stringify(input)).data).toEqual(input)
   })
 
   it("leaves a missing tracker to the backend", () => {
     const result = parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } }))
     expect(result.error).toBeNull()
-    expect(result.data?.trackerPattern).toBe("")
-    expect(result.data).not.toHaveProperty("trackerDomains")
-  })
-
-  it("includes intervalSeconds only when it's a number >= 60", () => {
-    const withInterval = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      intervalSeconds: 120,
-    }))
-    expect(withInterval.data?.intervalSeconds).toBe(120)
-
-    const tooSmall = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      intervalSeconds: 30,
-    }))
-    expect(tooSmall.data?.intervalSeconds).toBeUndefined()
+    expect(result.data).not.toHaveProperty("trackerPattern")
   })
 
   it("keeps dryRun: true from the export shape", () => {

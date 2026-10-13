@@ -165,8 +165,23 @@ scan moved in #2930: its comparison keys keep the dialect's own separators
 (a canonical slash key would merge a Windows UNC path with a rooted one),
 peers' roots and file maps are built in the scanning backend's dialect, and
 ignore paths are validated at save time in the dialect of the instance's
-backend, which is the one the scan reads them in. Cross-seed, managed-delete
-cleanup and the sync manager follow 3d, when writes make them reachable.
+backend, which is the one the scan reads them in. Cross-seed moved in #2943:
+link mode, season packs, the Manual match preview and local-match evidence
+take the dialect from the backend each function holds, and a season pack
+plans and creates its tree on one backend read. `hardlinktree`'s plan
+builders take the dialect as a leading parameter, through a four-method
+`hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
+imports `hardlinktree`, so the dependency cannot point the other way), and
+they check torrent paths in slash grammar on every host. When the
+destination dialect is Windows they also reject any component Windows
+cannot store as a file name: a colon, which NTFS reads as an alternate data
+stream of another file (found natively by Audionut on #3140), the other
+reserved characters, control characters, a trailing dot or space, and the
+reserved device names. The partial pool,
+`hardlinktree.Create`, reflink creation and the shared-allocation check are
+host code and run only for local instances. Managed-delete cleanup (#2947),
+the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
+`filepath`.
 
 ## Path and Command Safety
 
@@ -387,7 +402,9 @@ exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
 `Get-ChildItem` sweeps) is possible later if demand appears; the opaque
 FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
-every other remote path.
+every other remote path. Because such a remote uses `SlashPaths`, the Windows
+name check above does not apply, so a POSIX name containing `:` is still
+accepted and would land as an NTFS alternate data stream, a known gap.
 
 ## Field Validation
 

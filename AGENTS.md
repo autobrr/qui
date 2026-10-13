@@ -36,7 +36,7 @@ When you write or review code, follow the rules for its area in `CODING_STANDARD
 - Full Go suite: `make test` (`go test -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
 
-CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags; a change to only `**.md` or the `Makefile` skips it. `test.yml` runs the Postgres tests and the migration parity check. Run the full suite locally only when asked, or when one change crosses many packages.
+CI runs `go test ./...` in `release.yml` on pull requests, and with `-race` on pushes to `main`, `develop`, and tags; a change to only `**.md` or the `Makefile` skips it. `test.yml` runs the Postgres tests, the migration parity check, the automations docs JSON examples test, and the generated JSON reference test, also on a PR that changes only `documentation/`. Run the full suite locally only when asked, or when one change crosses many packages.
 
 Before you open a PR or add commits to one, do the performance checks in `docs/agents/performance-checks.md` for the full PR diff.
 
@@ -112,6 +112,7 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 - Report a defect only when the change causes a concrete wrong behavior. Name the trigger and the result for the user. If you cannot name both, omit the finding.
 - Check the merge base. If `develop` already has the problem, still report it, but label it "already on develop" and do not call it a regression.
 - When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- A claim about Windows runtime behavior (cmd.exe parsing, PATHEXT, junctions, short paths, GUI detachment) needs a native run. Cross-compilation, command-construction assertions, and skipped capability tests do not show runtime behavior. If you can run Windows, run a minimal repro and record the environment, the exact command, and the result. If you cannot, ask the PR author a question with repro steps. The maintainer does not run Windows, and Windows contributors know its behavior better.
 - Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstrings.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
 - The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.

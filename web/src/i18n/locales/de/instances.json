@@ -557,7 +557,8 @@
       "toast": {
         "success": "Erweiterte Netzwerkeinstellungen erfolgreich aktualisiert",
         "error": "Aktualisieren der erweiterten Netzwerkeinstellungen fehlgeschlagen"
-      }
+      },
+      "unitSeconds": "Sekunden"
     },
     "reannounce": {
       "title": "Reannounce konfigurieren",

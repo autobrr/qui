@@ -724,7 +724,9 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			// live indexers degrades to a partial response instead of failing the
 			// whole multi-indexer search.
 			if cachedPortion != nil {
-				log.Warn().
+				// Trace: rate-limited indexers hit this on every search, and search
+				// history already records each failed indexer task.
+				log.Trace().
 					Err(err).
 					Int("indexers_requested", len(indexersToSearch)).
 					Int("cached_results", len(cachedResults)).
@@ -2112,7 +2114,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				earliestRateLimit = rateLimitErr
 			}
 			localResumeAt := resumeAt.In(time.Local)
-			log.Warn().
+			log.Trace().
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
 				Time("resume_at", localResumeAt).
