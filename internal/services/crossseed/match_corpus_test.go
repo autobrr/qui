@@ -155,6 +155,7 @@ const (
 	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
+	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 )
 
 var corpusRows = []corpusRow{
@@ -325,6 +326,23 @@ var corpusRows = []corpusRow{
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
+	},
+	{
+		name:           "bracket batch with a Ma10 tag against a season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]",
+		candidate:      "Kaiju Squad 2003 AKA Kaiju Kyoutai S01 720p BluRay Dual-Audio FLAC 2.0 x265-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathApply:        knownDifference(corpusNoMatch, 3037, "Apply admits the search decision, but its file check reads the local torrent name again, and a batch name without a season reads as a movie."),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+		},
 	},
 	{
 		name:          "two-sided CRC that differs",
