@@ -4915,7 +4915,8 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				slices.Contains(searchDecision.RelaxedDifferences, "group")
 			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
 				(searchDecision.Class == searchCandidateClassTitleRescue ||
-					searchDecision.Class == searchCandidateClassWebSourceRelabel)
+					searchDecision.Class == searchCandidateClassWebSourceRelabel ||
+					searchDecision.Class == searchCandidateClassHybridTolerance)
 			if replaysRelaxedDecision && !m.explicitGroupsAgree(sourceSide, targetSide) {
 				continue
 			}
@@ -4947,6 +4948,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					}
 					if searchRelaxedStructure(mismatchReason) {
 						structureRelaxedHash = hashKey
+					}
+				case searchDecision.Class == searchCandidateClassHybridTolerance:
+					if !m.hybridIsOnlyStrictDifference(fallbackInput, mismatchReason) {
+						continue
 					}
 				default:
 					continue
@@ -9820,7 +9825,7 @@ func searchCandidateClassPriority(class searchCandidateClass) int {
 		return 4
 	case searchCandidateClassWebSourceRelabel:
 		return 3
-	case searchCandidateClassExactSizeFallback:
+	case searchCandidateClassExactSizeFallback, searchCandidateClassHybridTolerance:
 		return 2
 	case searchCandidateClassTitleRescue:
 		return 1
