@@ -372,6 +372,11 @@ func onlyTemplate(t *testing.T, dir string) os.FileInfo {
 }
 
 func TestTemplateCacheDirFallsBackToTempDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+
 	// A regular file where the cache directory should be makes it impossible
 	// to create, even for root.
 	blocker := filepath.Join(t.TempDir(), "not-a-dir")
@@ -383,8 +388,20 @@ func TestTemplateCacheDirFallsBackToTempDir(t *testing.T) {
 	t.Setenv("HOME", blocker)
 	t.Setenv("LocalAppData", blocker)
 
-	if got, want := templateCacheDir(), filepath.Join(os.TempDir(), "qui-testdb"); got != want {
+	got, err := templateCacheDir()
+	if err != nil {
+		t.Fatalf("templateCacheDir() error = %v", err)
+	}
+	want := filepath.Join(os.TempDir(), "qui-testdb-"+fallbackDirSuffix())
+	if got != want {
 		t.Fatalf("templateCacheDir() = %q, want %q", got, want)
+	}
+	info, err := os.Lstat(got)
+	if err != nil {
+		t.Fatalf("stat fallback dir: %v", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("fallback %s is not a real directory: mode %s", got, info.Mode())
 	}
 }
 
@@ -392,7 +409,104 @@ func TestTemplateCacheDirUsesEnvOverride(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "custom")
 	t.Setenv(cacheDirEnv, dir)
 
-	if got := templateCacheDir(); got != dir {
+	got, err := templateCacheDir()
+	if err != nil {
+		t.Fatalf("templateCacheDir() error = %v", err)
+	}
+	if got != dir {
 		t.Fatalf("templateCacheDir() = %q, want %q", got, dir)
+	}
+}
+
+func TestSanitizeFallbackUser(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "plain", in: "alice", want: "alice"},
+		{name: "domain backslash", in: `CORP\alice`, want: "alice"},
+		{name: "domain slash", in: "CORP/alice", want: "alice"},
+		{name: "spaces", in: "John Doe", want: "John-Doe"},
+		{name: "empty", in: "", want: "user"},
+		{name: "dots only", in: "..", want: "user"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeFallbackUser(tt.in); got != tt.want {
+				t.Fatalf("sanitizeFallbackUser(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnsurePrivateDir(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, path string)
+		wantErr string
+	}{
+		{
+			name: "creates missing directory",
+		},
+		{
+			name: "accepts existing private directory",
+			prepare: func(t *testing.T, path string) {
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "rejects file",
+			prepare: func(t *testing.T, path string) {
+				if err := os.WriteFile(path, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantErr: "not a directory",
+		},
+		{
+			name: "rejects symlink",
+			prepare: func(t *testing.T, path string) {
+				target := filepath.Join(t.TempDir(), "target")
+				if err := os.Mkdir(target, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, path); err != nil {
+					t.Skipf("symlink: %v", err)
+				}
+			},
+			wantErr: "symlink",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "qui-testdb-fallback")
+			if tt.prepare != nil {
+				tt.prepare(t, path)
+			}
+			err := ensurePrivateDir(path)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ensurePrivateDir() error = %v", err)
+				}
+				info, err := os.Lstat(path)
+				if err != nil {
+					t.Fatalf("stat created dir: %v", err)
+				}
+				if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+					t.Fatalf("path %s is not a real directory: mode %s", path, info.Mode())
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("ensurePrivateDir() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ensurePrivateDir() error = %v, want substring %q", err, tt.wantErr)
+			}
+		})
 	}
 }
