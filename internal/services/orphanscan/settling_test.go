@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -485,4 +486,19 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 
 	assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(t.Context(), []string{upper, lower}, backend, nil))
 	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend, nil))
+}
+
+// A remote backend reports no file identity, so only a byte-identical root is
+// dropped; a case variant is kept because nothing confirms it is the same dir.
+func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T) {
+	noID := &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}, FileIDErr: errors.New("no identity")}
+	root := "/remote/TrackerName"
+	lower := "/remote/trackername"
+	backend := &rootIdentityBackend{
+		Backend: newSlashBackend(nil, root, lower),
+		infos:   map[string]*fsops.LstatInfo{root: noID, lower: noID},
+	}
+
+	assert.Equal(t, []string{root}, dedupeCaseVariantRoots(t.Context(), []string{root, root + "/"}, backend))
+	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend))
 }
