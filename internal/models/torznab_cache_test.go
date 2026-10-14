@@ -193,14 +193,16 @@ func awaitTorrentCacheTouch(t *testing.T, db *database.DB, indexerID int, cacheK
 	}, 5*time.Second, 10*time.Millisecond)
 }
 
-// evictionGate holds a delete-by-id until hold is closed.
+// evictionGate reproduces the pre-fix race: it holds any delete on
+// torznab_torrent_cache until hold is closed, so a reintroduced per-miss
+// eviction in Fetch fails the test whatever shape its SQL takes.
 type evictionGate struct {
 	db   dbinterface.Querier
 	hold chan struct{}
 }
 
 func (g *evictionGate) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	if strings.Contains(query, "DELETE FROM torznab_torrent_cache WHERE id") {
+	if strings.Contains(query, "DELETE FROM torznab_torrent_cache") {
 		<-g.hold
 	}
 	return g.db.ExecContext(ctx, query, args...)

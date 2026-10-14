@@ -68,7 +68,8 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 	}
 
 	if maxAge > 0 && time.Since(cachedAt) > maxAge {
-		// Leave the row. A delete of this id can run after Store rewrites it.
+		// Report a miss and leave the row. Cleanup owns reclamation: a delete
+		// of this id here could run after Store rewrites it.
 		return nil, false, nil
 	}
 
