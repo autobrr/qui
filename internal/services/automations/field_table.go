@@ -6,6 +6,8 @@ package automations
 import (
 	"slices"
 
+	qbt "github.com/autobrr/go-qbittorrent"
+
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -54,6 +56,18 @@ type FieldSpec struct {
 
 // ContentLayouts are the values of exportToInstance.contentLayout. An empty value keeps the target's default.
 var ContentLayouts = []string{"Original", "Subfolder", "NoSubfolder"}
+
+// TagModes are the values of tags[].mode.
+var TagModes = []string{models.TagModeFull, models.TagModeAdd, models.TagModeRemove}
+
+// DeleteModes are the values of delete.mode. An empty value means 'delete'.
+var DeleteModes = []string{models.DeleteModeKeepFiles, models.DeleteModeWithFiles, models.DeleteModeWithFilesPreserveCrossSeeds, models.DeleteModeWithFilesIncludeCrossSeeds}
+
+// ShareLimitActions are the values of shareLimits.shareLimitAction. An empty value or 'Default' uses the global setting.
+var ShareLimitActions = []string{qbt.ShareLimitActionStop, qbt.ShareLimitActionRemove, qbt.ShareLimitActionRemoveWithContent, qbt.ShareLimitActionEnableSuperSeeding}
+
+// ShareLimitsModes are the values of shareLimits.shareLimitsMode. An empty value or 'Default' uses the global setting.
+var ShareLimitsModes = []string{qbt.ShareLimitsModeMatchAny, qbt.ShareLimitsModeMatchAll}
 
 var (
 	stringOperators = []ConditionOperator{
