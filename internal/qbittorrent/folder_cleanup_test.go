@@ -1293,6 +1293,42 @@ func TestFolderCleanupStopLeavesNoGoroutine(t *testing.T) {
 	})
 }
 
+// hungLstat is a mount where every Lstat blocks until release is closed,
+// whatever its context, as os.Lstat does on a hung NFS mount.
+type hungLstat struct {
+	*memTree
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (h *hungLstat) Lstat(_ context.Context, _ string) (*fsops.LstatInfo, error) {
+	select {
+	case h.entered <- struct{}{}:
+	default:
+	}
+	<-h.release
+	return nil, fs.ErrNotExist
+}
+
+// A worker stuck in a hung Lstat must not hold shutdown, so Stop returns
+// after stopWait and leaves the worker to its call.
+func TestFolderCleanupStopReturnsPastAHungLstat(t *testing.T) {
+	t.Parallel()
+	backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
+	t.Cleanup(func() { close(backend.release) })
+	fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
+	fc.tick = time.Millisecond
+	fc.stopWait = 100 * time.Millisecond
+	fc.Start(t.Context())
+	fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
+		Layout: layoutRootFolder, ContentExisted: true}}, 0)
+	<-backend.entered
+
+	start := time.Now()
+	fc.Stop()
+	require.Less(t, time.Since(start), 2*time.Second)
+}
+
 // Run once with -race: the worker ticks while many callers hand over work.
 func TestFolderCleanupConcurrentEnqueue(t *testing.T) {
 	root := t.TempDir()

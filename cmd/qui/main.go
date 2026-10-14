@@ -1021,6 +1021,9 @@ func (app *Application) runServer() {
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
 		}
 
+		// Deferred so it also runs when Shutdown returns an error. Stop
+		// ignores snapshots a request still hands in.
+		defer folderCleanup.Stop()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
 		}
@@ -1030,8 +1033,6 @@ func (app *Application) runServer() {
 		// chain, a read in flight gets ErrConnectionLost, and either ends with
 		// the process.
 		sshPool.Close()
-		// After Shutdown, so no request can hand it more work.
-		folderCleanup.Stop()
 		return nil
 	}
 

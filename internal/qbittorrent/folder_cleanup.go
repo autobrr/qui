@@ -33,6 +33,9 @@ const (
 	// folderCleanupPrepareBudget bounds it for qui's own operations, well
 	// inside the 60 s automations allow for applying their actions.
 	folderCleanupPrepareBudget = 30 * time.Second
+	// folderCleanupStopWait bounds how long Stop waits for a worker stuck in
+	// a filesystem call that ignores its context, so shutdown goes on.
+	folderCleanupStopWait = 5 * time.Second
 	// folderCleanupCapacity bounds the folders and top-level entries held across
 	// the queue. A batch past it is left to orphan scan.
 	folderCleanupCapacity = 65536
@@ -50,6 +53,7 @@ type FolderCleanup struct {
 	// item waits for its torrent to leave. Tests shorten them before Start.
 	tick     time.Duration
 	deadline time.Duration
+	stopWait time.Duration
 	capacity int
 	// prepareBudget and proxyPrepareBudget bound how long qui's own
 	// operations and proxied requests wait on their snapshots.
@@ -185,6 +189,7 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 		ignores:            ignores,
 		tick:               folderCleanupTick,
 		deadline:           folderCleanupDeadline,
+		stopWait:           folderCleanupStopWait,
 		capacity:           folderCleanupCapacity,
 		prepareBudget:      folderCleanupPrepareBudget,
 		proxyPrepareBudget: folderCleanupProxyPrepareBudget,
@@ -198,13 +203,22 @@ func (c *FolderCleanup) Start(ctx context.Context) {
 	go c.run(ctx)
 }
 
-// Stop drops pending work and waits for the worker to exit. Snapshots handed in
-// afterwards are ignored.
+// Stop drops pending work and waits up to stopWait for the worker to exit.
+// Snapshots handed in afterwards are ignored. A worker that has not exited by
+// then, such as one inside a hung filesystem call, is left to finish its tick,
+// which takes no new work.
 func (c *FolderCleanup) Stop() {
 	c.drop()
-	if c.cancel != nil {
-		c.cancel()
-		<-c.done
+	if c.cancel == nil {
+		return
+	}
+	c.cancel()
+	timer := time.NewTimer(c.stopWait)
+	defer timer.Stop()
+	select {
+	case <-c.done:
+	case <-timer.C:
+		log.Warn().Dur("wait", c.stopWait).Msg("folder cleanup: worker did not stop in time, leaving it to finish its tick")
 	}
 }
 
