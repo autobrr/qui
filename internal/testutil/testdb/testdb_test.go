@@ -370,3 +370,29 @@ func onlyTemplate(t *testing.T, dir string) os.FileInfo {
 	}
 	return info
 }
+
+func TestTemplateCacheDirFallsBackToTempDir(t *testing.T) {
+	// A regular file where the cache directory should be makes it impossible
+	// to create, even for root.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(cacheDirEnv, "")
+	t.Setenv("XDG_CACHE_HOME", blocker)
+	t.Setenv("HOME", blocker)
+	t.Setenv("LocalAppData", blocker)
+
+	if got, want := templateCacheDir(), filepath.Join(os.TempDir(), "qui-testdb"); got != want {
+		t.Fatalf("templateCacheDir() = %q, want %q", got, want)
+	}
+}
+
+func TestTemplateCacheDirUsesEnvOverride(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "custom")
+	t.Setenv(cacheDirEnv, dir)
+
+	if got := templateCacheDir(); got != dir {
+		t.Fatalf("templateCacheDir() = %q, want %q", got, dir)
+	}
+}

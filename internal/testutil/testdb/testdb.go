@@ -161,22 +161,24 @@ func CloneMigratedSQLite(t testing.TB, name string) string {
 }
 
 var migratedTemplatePath = sync.OnceValues(func() (string, error) {
-	dir, err := templateCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return cachedTemplate(dir, database.SQLiteMigrations(), buildMigratedTemplate)
+	return cachedTemplate(templateCacheDir(), database.SQLiteMigrations(), buildMigratedTemplate)
 })
 
-func templateCacheDir() (string, error) {
+// templateCacheDir returns QUI_TESTDB_CACHE_DIR when it is set. Otherwise it
+// returns qui/testdb in the user cache directory, or qui-testdb in the temp
+// directory when the user cache directory cannot be found or created (a
+// sandbox with a read-only or missing HOME, such as the Nix builder).
+func templateCacheDir() string {
 	if dir := os.Getenv(cacheDirEnv); dir != "" {
-		return dir, nil
+		return dir
 	}
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("find template cache dir (set %s): %w", cacheDirEnv, err)
+	if cache, err := os.UserCacheDir(); err == nil {
+		dir := filepath.Join(cache, "qui", "testdb")
+		if err := os.MkdirAll(dir, 0o700); err == nil {
+			return dir
+		}
 	}
-	return filepath.Join(dir, "qui", "testdb"), nil
+	return filepath.Join(os.TempDir(), "qui-testdb")
 }
 
 // cachedTemplate returns the template in dir that matches migrations, and
