@@ -1570,6 +1570,11 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 	for _, root := range scanRoots {
 		covered := false
 		for _, cover := range covers {
+			// A filesystem root covers every path. Pruning with it would drop
+			// every scan root and fail the run; the walk must still ignore them.
+			if isAbsoluteFilesystemRoot(d, cover) {
+				continue
+			}
 			if isSameOrDescendantPath(d, root, cover) {
 				covered = true
 				break
@@ -1580,6 +1585,26 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 		}
 	}
 	return filtered
+}
+
+// isAbsoluteFilesystemRoot reports whether p is "/", a drive root ("C:\"), or a
+// UNC share root. After Clean, only those keep a trailing separator, except a
+// share root which Cleans to "\\server\share".
+func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
+	cleaned := d.Clean(p)
+	sep := d.Separator()
+	if sep == "" || cleaned == "" {
+		return false
+	}
+	if strings.HasSuffix(cleaned, sep) {
+		return true
+	}
+	if strings.HasPrefix(cleaned, sep+sep) {
+		rest := cleaned[len(sep)*2:]
+		server, share, found := strings.Cut(rest, sep)
+		return found && server != "" && share != "" && !strings.Contains(share, sep)
+	}
+	return false
 }
 
 func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend, instance *models.Instance) bool {

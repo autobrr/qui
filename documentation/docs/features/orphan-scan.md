@@ -124,7 +124,7 @@ Otherwise, qui reports the path as unavailable.
 
 <OrphanScanDefaultIgnores />
 
-If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path.
+If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path. A filesystem root (`/`, `C:\`, or a network share root) is different: qui keeps the scan paths and walks them as ignored, so the run completes with no orphans.
 
 ## Max items per run behavior
 
