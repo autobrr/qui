@@ -13,11 +13,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/text/unicode/norm"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -214,7 +212,7 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 		ignored:  ignored,
 	}
 	for _, p := range slices.Concat(stops, kept) {
-		scope.keptKeys[foldKey(d, p)] = struct{}{}
+		scope.keptKeys[fsops.NormalizePath(d, p)] = struct{}{}
 	}
 	return scope, scope.indexLive(torrents, ready), nil
 }
@@ -330,11 +328,11 @@ func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder)
 // where the snapshot left it. A move compares content paths, because
 // qBittorrent changes an ATM torrent's save path before the files move.
 func (p *pendingFolder) waitsFor(d fsops.PathDialect, t *qbt.Torrent) bool {
-	return !p.snap.Move || foldKey(d, t.ContentPath) == foldKey(d, p.snap.ContentPath)
+	return !p.snap.Move || fsops.NormalizePath(d, t.ContentPath) == fsops.NormalizePath(d, p.snap.ContentPath)
 }
 
 func (s *cleanupScope) markLive(p string, mark liveMark) {
-	key := foldKey(s.d, p)
+	key := fsops.NormalizePath(s.d, p)
 	if !s.d.IsAbs(key) {
 		return
 	}
@@ -349,7 +347,7 @@ func (s *cleanupScope) markLive(p string, mark liveMark) {
 }
 
 func (s *cleanupScope) protected(dir string) bool {
-	key := foldKey(s.d, dir)
+	key := fsops.NormalizePath(s.d, dir)
 	if _, kept := s.keptKeys[key]; kept {
 		return true
 	}
@@ -360,7 +358,7 @@ func (s *cleanupScope) protected(dir string) bool {
 // stop or kept folder, an ignore path or a live torrent's path is not the
 // torrent's.
 func (s *cleanupScope) sealed(dir string) bool {
-	key := foldKey(s.d, dir)
+	key := fsops.NormalizePath(s.d, dir)
 	if _, kept := s.keptKeys[key]; kept {
 		return true
 	}
@@ -382,7 +380,7 @@ func (s *cleanupScope) insideSealed(anchor, dir string) bool {
 // is wider than "a file the torrent lists", which would need every live file
 // list on every check, and it never deletes more.
 func (s *cleanupScope) junkKept(file string) bool {
-	key := foldKey(s.d, file)
+	key := fsops.NormalizePath(s.d, file)
 	for {
 		if s.live[key]&liveContent != 0 {
 			return true
@@ -531,37 +529,8 @@ func (s *cleanupScope) failed(ctx context.Context, err error, p string) bool {
 	return false
 }
 
-// foldKey is orphan scan's normalizePath: a macOS or Windows volume
-// bind-mounted into Linux is case-insensitive. It is for matching protected
-// folders and junk only, where a fold keeps more; the climb compares exactly.
-func foldKey(d fsops.PathDialect, p string) string {
-	p = d.Clean(p)
-	if isASCII(p) {
-		// Already NFC, and lowering cannot unclean it.
-		return strings.ToLower(p)
-	}
-	return nfcClean(d, strings.ToLower(nfcClean(d, p)))
-}
-
-func isASCII(s string) bool {
-	for i := range len(s) {
-		if s[i] >= utf8.RuneSelf {
-			return false
-		}
-	}
-	return true
-}
-
-func nfcClean(d fsops.PathDialect, p string) string {
-	p = d.Clean(p)
-	if utf8.ValidString(p) && !norm.NFC.IsNormalString(p) {
-		p = norm.NFC.String(p)
-	}
-	return p
-}
-
 // pathUnder reports whether child is strictly below parent; both are cleaned
-// paths or both keys from foldKey. A root parent already ends in the separator.
+// paths or both keys from fsops.NormalizePath. A root parent already ends in the separator.
 func pathUnder(d fsops.PathDialect, child, parent string) bool {
 	if len(child) <= len(parent) || !strings.HasPrefix(child, parent) {
 		return false

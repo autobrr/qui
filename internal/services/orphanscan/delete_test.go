@@ -84,7 +84,7 @@ func TestSafeDeleteFile_SkipsWhenInUse(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, target))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, target))
 
 	disp, err := safeDeleteFile(context.Background(), root, target, tfm, local.NewBackend())
 	if err != nil {
@@ -176,7 +176,7 @@ func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, fileInUse))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, fileInUse))
 
 	unit := filepath.Join(root, "Movie.2024")
 	disp, err := safeDeleteTarget(context.Background(), root, unit, tfm, nil, local.NewBackend())
@@ -259,7 +259,7 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 
 	// Mark the symlink path as in-use by a torrent.
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, linkPath))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, linkPath))
 
 	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, nil, local.NewBackend())
 	if err != nil {
@@ -439,7 +439,7 @@ func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 
 	t.Run("torrent-owned child is treated as in use", func(t *testing.T) {
 		tfm := NewTorrentFileMap(fsops.HostPaths)
-		tfm.Add(normalizePath(fsops.HostPaths, ownedFile))
+		tfm.Add(fsops.NormalizePath(fsops.HostPaths, ownedFile))
 
 		disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, nil, local.NewBackend())
 		if err != nil {

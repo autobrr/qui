@@ -81,7 +81,7 @@ func abandonedDirCandidates(
 		if underDeletedPath(d, dir.Path, deletedPaths) {
 			continue
 		}
-		normDir := normalizePath(d, dir.Path)
+		normDir := fsops.NormalizePath(d, dir.Path)
 		if slices.Contains(normRoots, normDir) {
 			continue
 		}
@@ -160,7 +160,7 @@ func underDeletedPath(d fsops.PathDialect, dir string, deletedPaths map[string]s
 func normalizePaths(d fsops.PathDialect, paths []string) []string {
 	normalized := make([]string, len(paths))
 	for i, p := range paths {
-		normalized[i] = normalizePath(d, p)
+		normalized[i] = fsops.NormalizePath(d, p)
 	}
 	return normalized
 }

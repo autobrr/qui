@@ -1361,8 +1361,8 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 	// The climb limit compares exactly; a case variant is only protected.
 	require.Empty(t, scope.stopFor(`c:\data\torrents\tv\Show`))
 	require.Empty(t, scope.stopFor(`D:\elsewhere`))
-	require.True(t, pathUnder(d, foldKey(d, `C:\x`), foldKey(d, `C:\`)))
-	require.False(t, pathUnder(d, foldKey(d, `C:\Data\TorrentsX`), foldKey(d, `C:\Data\Torrents`)))
+	require.True(t, pathUnder(d, fsops.NormalizePath(d, `C:\x`), fsops.NormalizePath(d, `C:\`)))
+	require.False(t, pathUnder(d, fsops.NormalizePath(d, `C:\Data\TorrentsX`), fsops.NormalizePath(d, `C:\Data\Torrents`)))
 
 	snap := folderSnapshot{SavePath: `C:\Data\Torrents\TV`, DownloadPath: `C:\Data\Incomplete`, ContentPath: `C:\Data\Incomplete\Show`, Layout: layoutRootFolder}
 	anchor, folder, ok := snap.placement(d)

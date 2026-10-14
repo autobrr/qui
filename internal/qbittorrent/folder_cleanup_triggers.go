@@ -197,10 +197,10 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 		}
 		if t.DownloadPath == "" {
 			return t.Progress < 1 && op.Target != "" && d.Clean(t.SavePath) != d.Clean(op.Target) &&
-				pathAtOrUnder(d, foldKey(d, t.ContentPath), foldKey(d, t.SavePath))
+				pathAtOrUnder(d, fsops.NormalizePath(d, t.ContentPath), fsops.NormalizePath(d, t.SavePath))
 		}
 		return d.Clean(t.DownloadPath) != d.Clean(op.Target) &&
-			pathAtOrUnder(d, foldKey(d, t.ContentPath), foldKey(d, t.DownloadPath))
+			pathAtOrUnder(d, fsops.NormalizePath(d, t.ContentPath), fsops.NormalizePath(d, t.DownloadPath))
 	case FolderCleanupSetCategory:
 		return t.AutoManaged && t.Category != op.Target
 	case FolderCleanupEnableATM:
@@ -225,8 +225,8 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 		t := &torrents[i]
 		snaps[i] = folderSnapshot{InstanceID: instanceID, Hash: t.Hash, SavePath: t.SavePath,
 			DownloadPath: t.DownloadPath, ContentPath: t.ContentPath, Layout: layoutRootFolder, Move: move}
-		content := foldKey(d, t.ContentPath)
-		if content == foldKey(d, t.SavePath) || (t.DownloadPath != "" && content == foldKey(d, t.DownloadPath)) {
+		content := fsops.NormalizePath(d, t.ContentPath)
+		if content == fsops.NormalizePath(d, t.SavePath) || (t.DownloadPath != "" && content == fsops.NormalizePath(d, t.DownloadPath)) {
 			snaps[i].Layout = layoutNoRootFolder
 			noRoot = append(noRoot, t.Hash)
 		}

@@ -152,7 +152,7 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save path.
-		if w.tfm.HasAnyInDir(normalizePath(w.d, dir.Path)) {
+		if w.tfm.HasAnyInDir(fsops.NormalizePath(w.d, dir.Path)) {
 			continue
 		}
 		dirs = append(dirs, *dir)
@@ -202,7 +202,7 @@ func (w *scanWalker) resolveDiscUnits() {
 	discRoots := make(map[string]string)
 	for du := range w.discUnitsWithOrphan {
 		if _, inUse := w.discUnitsInUse[du]; !inUse {
-			discRoots[cleanPath(w.d, du)] = du
+			discRoots[fsops.CleanPath(w.d, du)] = du
 		}
 	}
 	if len(discRoots) == 0 {
@@ -210,7 +210,7 @@ func (w *scanWalker) resolveDiscUnits() {
 	}
 
 	for unit, entry := range w.orphanUnits {
-		discUnitPath, ok := outermostDiscUnit(w.d, cleanPath(w.d, unit), discRoots)
+		discUnitPath, ok := outermostDiscUnit(w.d, fsops.CleanPath(w.d, unit), discRoots)
 		if !ok {
 			continue
 		}
@@ -319,7 +319,7 @@ func walkScanRootWithUnitFilter(
 		}
 
 		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
-		normPath := normalizePath(w.d, path)
+		normPath := fsops.NormalizePath(w.d, path)
 		if w.tfm.Has(normPath) {
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
@@ -445,7 +445,7 @@ func discUnitFromParentMarker(
 ) (unitPath string, ok bool) {
 	// Do not fold: the cached decision holds the first caller's absolute path, so
 	// two case-variant sibling directories would share one entry.
-	key := cleanPath(backend.Paths(), candidateAbs) + "|" + markerUpper
+	key := fsops.CleanPath(backend.Paths(), candidateAbs) + "|" + markerUpper
 	if unitCache != nil {
 		if decision, ok := unitCache[key]; ok {
 			if decision.disableGrouping {
@@ -575,7 +575,7 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 			if _, ok := allowedDirs[nameUpper]; ok {
 				continue
 			}
-			if tfm.HasAnyInDir(normalizePath(d, full)) {
+			if tfm.HasAnyInDir(fsops.NormalizePath(d, full)) {
 				return false
 			}
 			continue
@@ -583,7 +583,7 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 		if _, ok := allowedFiles[nameUpper]; ok {
 			continue
 		}
-		if tfm.Has(normalizePath(d, full)) {
+		if tfm.Has(fsops.NormalizePath(d, full)) {
 			return false
 		}
 	}
@@ -593,11 +593,11 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 
 // isIgnoredPath checks if path matches any ignore prefix with boundary safety.
 // Ensures /data/foo doesn't match /data/foobar (requires separator after prefix).
-// Uses normalizePath for consistent comparison across platforms.
+// Uses fsops.NormalizePath for consistent comparison across platforms.
 func isIgnoredPath(d fsops.PathDialect, path string, ignorePaths []string) bool {
-	normPath := normalizePath(d, path)
+	normPath := fsops.NormalizePath(d, path)
 	for _, prefix := range ignorePaths {
-		normPrefix := normalizePath(d, prefix)
+		normPrefix := fsops.NormalizePath(d, prefix)
 		if normPath == normPrefix || isPathUnderNormalized(d, normPath, normPrefix) {
 			return true
 		}
@@ -650,9 +650,9 @@ func isPathProtectedByIgnorePaths(d fsops.PathDialect, path string, ignorePaths 
 	}
 
 	// Check if any ignore path is a descendant of this path
-	normPath := normalizePath(d, path)
+	normPath := fsops.NormalizePath(d, path)
 	for _, ignorePath := range ignorePaths {
-		if isPathUnderNormalized(d, normalizePath(d, ignorePath), normPath) {
+		if isPathUnderNormalized(d, fsops.NormalizePath(d, ignorePath), normPath) {
 			return true
 		}
 	}
@@ -691,7 +691,7 @@ func NormalizeIgnorePaths(d fsops.PathDialect, paths []string) ([]string, error)
 		if !d.IsAbs(cleaned) {
 			return nil, fmt.Errorf("ignore path must be absolute: %s", p)
 		}
-		result = append(result, cleanPath(d, cleaned))
+		result = append(result, fsops.CleanPath(d, cleaned))
 	}
 	return result, nil
 }

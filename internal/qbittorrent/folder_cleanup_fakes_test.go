@@ -130,9 +130,9 @@ func (f *fakeIgnores) IgnoredPathMatcher(_ context.Context, _ int, d fsops.PathD
 		return nil, f.err
 	}
 	return func(p string) bool {
-		key := foldKey(d, p)
+		key := fsops.NormalizePath(d, p)
 		for _, ignored := range f.paths {
-			ignoredKey := foldKey(d, ignored)
+			ignoredKey := fsops.NormalizePath(d, ignored)
 			if pathAtOrUnder(d, key, ignoredKey) || pathUnder(d, ignoredKey, key) {
 				return true
 			}
