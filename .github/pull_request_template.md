@@ -4,9 +4,13 @@
 
 Fixes # (issue)
 
+## Breaking change
+
+<!--- Delete this section unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Say what they must do. --->
+
 ## Behaviour change
 
-<!--- Name each change existing users get without doing anything: a saved rule, setting, or API value that now matches or means something else. Say what they must do. Delete this section if there is none. --->
+<!--- Optional notes on changes that existing users notice after they update but need no action for, for example a new sort order or label. Delete this section if there is none. --->
 
 ## How has this been tested?
 
