@@ -68,7 +68,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/redact"
-	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -8692,13 +8691,18 @@ func alternateConnectorQuery(query string) (string, bool) {
 // normalized form differs from the primary query, so the retry never repeats
 // the query that already returned nothing.
 // Returns ("", false) when no distinct alternate title exists.
+// Dir Scan has no Service, so it parses through the default parser.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
+	return matcher{}.alternateTitleQuery(primaryQuery, release, arrTitles, releaseName)
+}
+
+func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
 	primary := stringutils.NormalizeForMatching(primaryQuery)
 	candidates := make([]string, 0, len(arrTitles)+4)
 	candidates = append(candidates, arrTitles...)
 	candidates = append(candidates, releaseAlt(release))
-	for _, part := range rawAKATitleParts(releaseName) {
-		parsed := releases.DefaultParser.Parse(part)
+	for _, part := range m.rawAKATitleParts(releaseName) {
+		parsed := m.parseReleaseName(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
 	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
@@ -9009,7 +9013,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
 		// too. Audiobooks are excluded here only; they still take the music query shaping below.
-		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+		queryRelease = s.matcher().parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 	}
 	if query == "" {
 		safeQuery := BuildTorznabQuery(sourceTorrent.Name, queryRelease, contentInfo.IsMusic)
@@ -9277,7 +9281,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			musicRelease = *sourceRelease
 		} else {
 			// Try to parse music info from torrent name
-			musicRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+			musicRelease = *s.matcher().parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		}
 
 		if musicRelease.Artist != "" {
@@ -9398,7 +9402,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	usable := s.searchUsablePredicate(searchBase)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		gatherIn.altTitle, _ = AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
+		gatherIn.altTitle, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
 		if searchSource.numeralSeason {
 			gatherIn.altTitleSeason = new(searchRelease.Series)
 		}
