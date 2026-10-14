@@ -11,7 +11,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -511,15 +510,11 @@ func (s *cleanupScope) remove(ctx context.Context, dir string) bool {
 		return true
 	case errors.Is(err, fs.ErrNotExist):
 		return true
-	case isDirNotEmpty(err):
+	case fsops.IsDirNotEmpty(err):
 		log.Debug().Str("dir", dir).Msg("folder cleanup: kept folder, not empty")
 		return false
 	}
 	return s.failed(ctx, err, dir)
-}
-
-func isDirNotEmpty(err error) bool {
-	return errors.Is(err, syscall.ENOTEMPTY) || strings.Contains(strings.ToLower(err.Error()), "not empty")
 }
 
 func (s *cleanupScope) failed(ctx context.Context, err error, p string) bool {

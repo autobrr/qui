@@ -6,6 +6,10 @@ package fsops
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"strings"
+	"syscall"
 )
 
 // Sentinel errors returned by Backend implementations.
@@ -41,3 +45,28 @@ var (
 	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.
 	ErrUnsupported = fmt.Errorf("operation is not supported by this filesystem backend: %w", errors.ErrUnsupported)
 )
+
+// IsDirNotEmpty reports whether err comes from removing a folder that is not
+// empty. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY
+// there, so the text is matched too. It is the text of the underlying error,
+// since a folder named "Not Empty" puts those words in the path.
+func IsDirNotEmpty(err error) bool {
+	if errors.Is(err, syscall.ENOTEMPTY) {
+		return true
+	}
+	for {
+		var pathErr *fs.PathError
+		var linkErr *os.LinkError
+		var syscallErr *os.SyscallError
+		switch {
+		case errors.As(err, &pathErr):
+			err = pathErr.Err
+		case errors.As(err, &linkErr):
+			err = linkErr.Err
+		case errors.As(err, &syscallErr):
+			err = syscallErr.Err
+		default:
+			return strings.Contains(strings.ToLower(err.Error()), "not empty")
+		}
+	}
+}
