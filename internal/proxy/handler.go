@@ -1750,15 +1750,6 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
 
-	var folders qbittorrent.FolderCleanupBatch
-	if form, ok := parseQBTForm(r, bodyBytes); ok {
-		folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
-			Kind:   qbittorrent.FolderCleanupSetLocation,
-			Hashes: splitHashes(form.get("hashes")),
-			Target: strings.TrimSpace(form.get("location")),
-		})
-	}
-
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	// Use background context with timeout to avoid cancellation issues
 	defer func() {
@@ -1799,7 +1790,10 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	h.forwardThenQueue(w, r, bodyBytes, folders)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
+			Target: strings.TrimSpace(form.get("location"))}, true
+	})
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -2009,13 +2003,6 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting delete request for cache invalidation")
 
-	var folders qbittorrent.FolderCleanupBatch
-	if form, ok := parseQBTForm(r, bodyBytes); ok && strings.EqualFold(form.get("deleteFiles"), "true") {
-		folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
-			Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes")),
-		})
-	}
-
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
 		// Capture panic value if any
@@ -2055,5 +2042,8 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	h.forwardThenQueue(w, r, bodyBytes, folders)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+			strings.EqualFold(form.get("deleteFiles"), "true")
+	})
 }

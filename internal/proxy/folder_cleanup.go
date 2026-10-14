@@ -30,9 +30,31 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
-// forwardThenQueue sends the original body to qBittorrent and queues the
-// folder cleanup only when qBittorrent accepted the request.
-func (h *Handler) forwardThenQueue(w http.ResponseWriter, r *http.Request, body []byte, folders qbittorrent.FolderCleanupBatch) {
+// interceptForFolderCleanup forwards a write that can move torrents, with a
+// snapshot taken first.
+func (h *Handler) interceptForFolderCleanup(w http.ResponseWriter, r *http.Request, opFor func(form qbtForm) (qbittorrent.FolderCleanupOp, bool)) {
+	body, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", GetInstanceIDFromContext(r.Context())).Str("path", r.URL.Path).Msg("Failed to read request body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	h.forwardWithFolderCleanup(w, r, body, opFor)
+}
+
+// forwardWithFolderCleanup snapshots the torrents opFor names, sends body to
+// qBittorrent, and queues the cleanup only when qBittorrent accepted it. A
+// body that does not parse is forwarded unchanged with no snapshot, so
+// intercepting cannot break a request qBittorrent would take.
+func (h *Handler) forwardWithFolderCleanup(w http.ResponseWriter, r *http.Request, body []byte, opFor func(form qbtForm) (qbittorrent.FolderCleanupOp, bool)) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	var folders qbittorrent.FolderCleanupBatch
+	if form, ok := parseQBTForm(r, body); ok {
+		if op, ok := opFor(form); ok {
+			folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, op)
+		}
+	}
 	rec := &statusRecorder{ResponseWriter: w}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	h.proxy.ServeHTTP(rec, r)
@@ -40,29 +62,8 @@ func (h *Handler) forwardThenQueue(w http.ResponseWriter, r *http.Request, body 
 		folders.Queue()
 		// The cleanup judges folders against the sync cache, so refresh it
 		// as qui does after its own writes.
-		h.syncManager.HintMainDataRefresh(GetInstanceIDFromContext(r.Context()), "proxy_folder_cleanup")
+		h.syncManager.HintMainDataRefresh(instanceID, "proxy_folder_cleanup")
 	}
-}
-
-// interceptForFolderCleanup forwards a write that can move torrents, with a
-// snapshot taken first. A body that does not parse is forwarded unchanged with
-// no snapshot, so intercepting cannot break a request qBittorrent would take.
-func (h *Handler) interceptForFolderCleanup(w http.ResponseWriter, r *http.Request, opFor func(form qbtForm) (qbittorrent.FolderCleanupOp, bool)) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	body, err := bufferRequestBody(r)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Str("path", r.URL.Path).Msg("Failed to read request body")
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	var folders qbittorrent.FolderCleanupBatch
-	if form, ok := parseQBTForm(r, body); ok {
-		if op, ok := opFor(form); ok {
-			folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, op)
-		}
-	}
-	h.forwardThenQueue(w, r, body, folders)
 }
 
 // qbtForm is a request's parameters as qBittorrent 5 reads them for a POST
