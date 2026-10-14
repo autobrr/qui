@@ -509,6 +509,17 @@ func TestFolderCleanupSetDownloadPathAdmits(t *testing.T) {
 	}
 }
 
+// A torrent still fetching metadata reports no content path. Clean would
+// make that ".", qui's working folder, so no operation snapshots it.
+func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
+	t.Parallel()
+	torrent := qbt.Torrent{SavePath: "/data/torrents/tv", Category: "tv"}
+	for kind := FolderCleanupDelete; kind <= FolderCleanupEditCategory; kind++ {
+		op := FolderCleanupOp{Kind: kind, Target: "/data/torrents/movies"}
+		require.False(t, op.mayMove(fsops.SlashPaths, &torrent), "kind %d", kind)
+	}
+}
+
 // remoteRowStore answers every instance read with a row in remote mode.
 type remoteRowStore struct{}
 

@@ -162,6 +162,11 @@ func lookupTorrents(syncManager *qbt.SyncManager, hashes []string) []qbt.Torrent
 // Preferences are not read, because their 30 s cache can say "no move" for a
 // torrent that then moves, and that miss would be silent.
 func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
+	// A torrent still fetching metadata has no content path, which Clean
+	// would turn into qui's own working folder.
+	if t.ContentPath == "" {
+		return false
+	}
 	switch op.Kind {
 	case FolderCleanupDelete:
 		return true
