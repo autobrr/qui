@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -159,6 +160,20 @@ func TestFolderCleanupTriggerBulkDeleteWithFiles(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
 	r.add(r.perRelease(hashA, "tv"))
+
+	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	r.requireGone("torrents/tv/Show.S01E01-GRP")
+	require.DirExists(t, r.p("torrents/tv"))
+}
+
+// A delete with files of a torrent whose first file was never downloaded
+// still removes the save path and the subfolder it leaves.
+func TestFolderCleanupTriggerDeleteWithFirstFileMissing(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.add(qbtstub.Torrent{Hash: hashA, Name: "Show.S01E01-GRP", SavePath: r.p("torrents/tv/Show.S01E01-GRP"), Category: "tv",
+		Layout: qbtstub.NoRootFolder, Files: []string{"Show.S01E01.nfo", "Sample/sample.mkv", "Show.S01E01.mkv"}})
+	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.nfo")))
 
 	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
@@ -413,6 +428,53 @@ func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 	} {
 		batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: tc.hashes})
 		require.Len(t, batch.snaps, tc.want, "%q", tc.hashes)
+	}
+}
+
+// Without a root folder the content reads as there when any top-level entry
+// is, so a first file set to Do Not Download or removed by hand does not leave
+// the folder behind. Only the first folderCleanupContentProbes entries are
+// checked, a junk name such as Thumbs.db never counts, since an empty mount
+// point can hold one, and a passed deadline reads as missing.
+func TestFolderCleanupMarkContentChecksEachTopLevelEntry(t *testing.T) {
+	t.Parallel()
+	files := []string{"Show.S01E01.nfo", "Sample/sample.mkv", "Show.S01E01.mkv"}
+	many := make([]string, folderCleanupContentProbes+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("e%02d.mkv", i)
+	}
+	expired, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, tc := range []struct {
+		name   string
+		files  []string
+		onDisk []string
+		ctx    context.Context
+		want   bool
+	}{
+		{name: "first file there", files: files, onDisk: []string{"Show.S01E01.nfo"}, want: true},
+		{name: "first file missing", files: files, onDisk: []string{"Sample/sample.mkv", "Show.S01E01.mkv"}, want: true},
+		{name: "first file's folder missing", files: files[1:], onDisk: []string{"Show.S01E01.mkv"}, want: true},
+		{name: "all missing", files: files},
+		{name: "past the probe limit", files: many, onDisk: many[len(many)-1:]},
+		{name: "only a junk name there", files: []string{"Thumbs.db", ".DS_Store", "Show.S01E01.mkv"}, onDisk: []string{"Thumbs.db", ".DS_Store"}},
+		{name: "a junk name and real content there", files: []string{"desktop.ini", "Show.S01E01.mkv"}, onDisk: []string{"desktop.ini", "Show.S01E01.mkv"}, want: true},
+		{name: "deadline passed", files: files, onDisk: files, ctx: expired},
+	} {
+		save := filepath.Join(t.TempDir(), "Rel-GRP")
+		require.NoError(t, os.MkdirAll(save, 0o755))
+		for _, f := range tc.onDisk {
+			p := filepath.Join(save, filepath.FromSlash(f))
+			require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+			require.NoError(t, os.WriteFile(p, []byte("x"), 0o600))
+		}
+		ctx := tc.ctx
+		if ctx == nil {
+			ctx = t.Context()
+		}
+		snap := folderSnapshot{SavePath: save, ContentPath: save, Layout: layoutNoRootFolder, Files: tc.files}
+		snap.markContent(ctx, local.NewBackend())
+		require.Equal(t, tc.want, snap.ContentExisted, tc.name)
 	}
 }
 

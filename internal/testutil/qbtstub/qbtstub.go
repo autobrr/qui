@@ -8,7 +8,9 @@ package qbtstub
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -246,14 +248,17 @@ func (s *Server) relocate(from, to *Torrent) {
 }
 
 // remove deletes the files the way qBittorrent before 5.2.2 does: the root
-// folder whole, but only the files of a torrent without one.
+// folder whole, but only the files of a torrent without one. A file already
+// missing, such as one set to Do Not Download, is skipped.
 func (s *Server) remove(t *Torrent) {
 	if t.Layout == RootFolder {
 		assert.NoError(s.t, os.RemoveAll(s.contentPath(t)))
 		return
 	}
 	for _, f := range s.diskFiles(t) {
-		assert.NoError(s.t, os.Remove(f))
+		if err := os.Remove(f); !errors.Is(err, fs.ErrNotExist) {
+			assert.NoError(s.t, err)
+		}
 	}
 }
 

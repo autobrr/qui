@@ -22,6 +22,11 @@ import (
 // before it is sent to qBittorrent.
 const folderCleanupStatConcurrency = 8
 
+// folderCleanupContentProbes bounds the top-level entries checked for one
+// torrent without a root folder. When none of them exists the content reads as
+// missing, which leaves the folder to orphan scan, as for an unmounted disk.
+const folderCleanupContentProbes = 16
+
 // FolderCleanupKind names a qui operation that can leave folders behind.
 type FolderCleanupKind uint8
 
@@ -242,28 +247,33 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 
 // markContent Stats the content. Without a root folder the content path is the
 // save path, which still exists as an empty mount point when the disk below it
-// is gone, so the first listed entry is checked instead.
+// is gone, so the top-level entries are checked instead, until one exists: a
+// file set to Do Not Download or removed by hand is missing on its own.
 func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend) {
 	d := backend.Paths()
-	target := d.Clean(s.ContentPath)
-	if s.Layout == layoutNoRootFolder {
-		if len(s.Files) == 0 {
+	if s.Layout != layoutNoRootFolder {
+		info, err := backend.Stat(ctx, d.Clean(s.ContentPath))
+		if err != nil {
 			return
 		}
-		first, ok := cleanTorrentFileName(s.Files[0])
-		if !ok {
-			return
+		s.ContentExisted = true
+		if s.Layout == layoutRootFolder && !info.IsDir {
+			s.Layout = layoutSingleFile
 		}
-		first, _, _ = strings.Cut(first, "/")
-		target = d.Join(target, d.FromSlash(first))
+		return
 	}
-	info, err := backend.Stat(ctx, target)
+	top, err := topLevelNames(s.Files)
 	if err != nil {
 		return
 	}
-	s.ContentExisted = true
-	if s.Layout == layoutRootFolder && !info.IsDir {
-		s.Layout = layoutSingleFile
+	// An empty mount point can hold one of these, written by a file manager.
+	top = slices.DeleteFunc(top, isJunkName)
+	save := d.Clean(s.ContentPath)
+	for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
+		if _, err := backend.Stat(ctx, d.Join(save, d.FromSlash(name))); err == nil {
+			s.ContentExisted = true
+			return
+		}
 	}
 }
 

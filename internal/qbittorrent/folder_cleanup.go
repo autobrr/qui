@@ -258,24 +258,20 @@ func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
 func newPendingFolder(snap folderSnapshot, expires time.Time) (*pendingFolder, error) {
 	item := &pendingFolder{snap: snap, expires: expires}
 	if snap.Layout == layoutNoRootFolder {
+		top, err := topLevelNames(snap.Files)
+		if err != nil {
+			return nil, err
+		}
+		if len(top) == 0 {
+			return nil, errors.New("no file list")
+		}
+		item.topLevel = top
 		dirs := make(map[string]struct{})
-		top := make(map[string]struct{})
 		for _, name := range snap.Files {
-			clean, ok := cleanTorrentFileName(name)
-			if !ok {
-				return nil, fmt.Errorf("unsafe file name %q", name)
-			}
-			first, _, _ := strings.Cut(clean, "/")
-			if _, seen := top[first]; !seen {
-				top[first] = struct{}{}
-				item.topLevel = append(item.topLevel, first)
-			}
+			clean, _ := cleanTorrentFileName(name)
 			for dir := path.Dir(clean); dir != "."; dir = path.Dir(dir) {
 				dirs[dir] = struct{}{}
 			}
-		}
-		if len(item.topLevel) == 0 {
-			return nil, errors.New("no file list")
 		}
 		for dir := range dirs {
 			item.relDirs = append(item.relDirs, dir)
@@ -289,6 +285,25 @@ func newPendingFolder(snap folderSnapshot, expires time.Time) (*pendingFolder, e
 	}
 	item.snap.Files = nil
 	return item, nil
+}
+
+// topLevelNames returns the distinct slash names directly in the save path, in
+// file order. It fails on a name cleanTorrentFileName refuses.
+func topLevelNames(files []string) ([]string, error) {
+	var top []string
+	seen := make(map[string]struct{})
+	for _, name := range files {
+		clean, ok := cleanTorrentFileName(name)
+		if !ok {
+			return nil, fmt.Errorf("unsafe file name %q", name)
+		}
+		first, _, _ := strings.Cut(clean, "/")
+		if _, dup := seen[first]; !dup {
+			seen[first] = struct{}{}
+			top = append(top, first)
+		}
+	}
+	return top, nil
 }
 
 // cleanTorrentFileName validates a torrent-internal slash name. qBittorrent
