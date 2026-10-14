@@ -1027,6 +1027,7 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 	maps.Copy(crossCounts, augmented)
 	index.crossFileIDMap = crossCounts
 	index.CrossScopeByHash = computeScopeMap(&hardlinkBuildState{
+		instance:          state.instance,
 		globalFileIDMap:   crossCounts,
 		torrentInfoByHash: state.torrentInfoByHash,
 	})
