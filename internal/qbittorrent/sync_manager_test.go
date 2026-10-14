@@ -2601,34 +2601,77 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
 }
 
+// debouncedSyncTimes records when each debounced sync runs. With no client
+// pool, each sync logs this warning and returns.
+func debouncedSyncTimes(t *testing.T) func() []time.Time {
+	t.Helper()
+	var mu sync.Mutex
+	var times []time.Time
+	originalLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "Client pool is nil, skipping sync" {
+			mu.Lock()
+			times = append(times, time.Now())
+			mu.Unlock()
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+	return func() []time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(times)
+	}
+}
+
 // Hints closer together than the debounce delay must not hold off the sync for
 // as long as they keep coming.
 func TestDebouncedSyncHasAMaximumWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// With no client pool, each sync logs this warning and returns.
-		var synced atomic.Int32
-		originalLogger := log.Logger
-		log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
-			if msg == "Client pool is nil, skipping sync" {
-				synced.Add(1)
-			}
-		}))
-		t.Cleanup(func() { log.Logger = originalLogger })
-		syncs := func() int { return int(synced.Load()) }
+		syncTimes := debouncedSyncTimes(t)
 		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
 
-		// A hint every 150 ms for 3 s.
-		for start := time.Now(); time.Since(start) < 3*time.Second; {
+		// A hint every 150 ms for 4 s. Each sync ends a one second window, and
+		// the next window opens with the next hint, so the storm syncs at 1 s,
+		// 2.05 s and 3.1 s.
+		var hints []time.Time
+		for start := time.Now(); time.Since(start) < 4*time.Second; {
+			hints = append(hints, time.Now())
 			sm.syncAfterModification(1, nil, "storm")
 			time.Sleep(150 * time.Millisecond)
 		}
 		synctest.Wait()
-		during := syncs()
-		require.GreaterOrEqual(t, during, 2, "hints kept postponing the sync")
+		syncs := syncTimes()
+		require.Len(t, syncs, 3, "the storm synced at %v", syncs)
+
+		var previous time.Time
+		for _, synced := range syncs {
+			i := slices.IndexFunc(hints, func(hint time.Time) bool { return hint.After(previous) })
+			require.NotEqual(t, -1, i, "a sync ran with no hint pending")
+			first := hints[i]
+			require.LessOrEqual(t, synced.Sub(first), syncDebounceMaxWait,
+				"a sync started %v after the first pending hint", synced.Sub(first))
+			previous = synced
+		}
 
 		time.Sleep(time.Second)
 		synctest.Wait()
-		require.Equal(t, during+1, syncs(), "the last hints still get one sync")
+		require.Len(t, syncTimes(), len(syncs)+1, "the last hints still get one sync")
+	})
+}
+
+func TestDebouncedSyncWaitsTheDelayForASingleHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		start := time.Now()
+		sm.syncAfterModification(1, nil, "single")
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.Len(t, syncs, 1)
+		require.Equal(t, 200*time.Millisecond, syncs[0].Sub(start))
 	})
 }
 
