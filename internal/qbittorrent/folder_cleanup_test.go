@@ -894,6 +894,49 @@ func TestFolderCleanupQueueOverflowWarnsOnce(t *testing.T) {
 	})
 }
 
+// gatedTree holds the worker in its first Lstat until gate closes.
+type gatedTree struct {
+	*memTree
+	gate chan struct{}
+	once sync.Once
+}
+
+func (g *gatedTree) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	g.once.Do(func() { <-g.gate })
+	return g.memTree.Lstat(ctx, p)
+}
+
+// The batch a tick works on stays counted while it works unlocked, so work
+// handed over meanwhile cannot push the queue past its capacity, which would
+// make the next operation drop every torrent.
+func TestFolderCleanupCountsTheBatchInFlight(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		gated := &gatedTree{memTree: e.fs.(*memTree), gate: make(chan struct{})}
+		e.req.backend = gated
+		e.fc.mu.Lock()
+		e.fc.capacity = 4
+		e.fc.mu.Unlock()
+		warnings := captureLogs(t, zerolog.WarnLevel)
+
+		e.tree("torrents/tv/A/a.mkv")
+		e.fc.enqueue([]folderSnapshot{e.rootFolder("torrents/tv", "A")}, 0)
+		time.Sleep(e.fc.Tick)
+		synctest.Wait()
+		more := make([]folderSnapshot, 0, 4)
+		for _, name := range []string{"B", "C", "D", "E"} {
+			e.tree("torrents/tv/" + name + "/x.mkv")
+			more = append(more, e.rootFolder("torrents/tv", name))
+		}
+		e.fc.enqueue(more, 0)
+		require.Len(t, warnings(), 1, "A still holds its room, so E does not fit")
+
+		close(gated.gate)
+		synctest.Wait()
+		require.Zero(t, e.fc.room(), "A is back for a retry, next to B, C and D")
+	})
+}
+
 func TestFolderCleanupStopDropsPendingWork(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		e.tree("torrents/tv/Busy-GRP/a.mkv", "torrents/tv/Late-GRP/")

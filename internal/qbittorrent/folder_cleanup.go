@@ -343,11 +343,13 @@ func (c *FolderCleanup) run(ctx context.Context) {
 	}
 }
 
+// runTick keeps the batch counted in held while it works unlocked, so an
+// enqueue meanwhile sees the room the batch may take back, and releases the
+// cost of each item that does not come back for a retry.
 func (c *FolderCleanup) runTick(ctx context.Context) {
 	c.mu.Lock()
 	batch := c.pending
 	c.pending = nil
-	c.held = 0
 	c.mu.Unlock()
 	if len(batch) == 0 {
 		return
@@ -397,11 +399,16 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 		}
 	}
 
+	released := 0
+	for _, item := range batch {
+		released += item.cost()
+	}
+	for _, item := range retry {
+		released -= item.cost()
+	}
 	c.mu.Lock()
 	if !c.stopped {
-		for _, item := range retry {
-			c.held += item.cost()
-		}
+		c.held -= released
 		c.pending = append(retry, c.pending...)
 	}
 	c.mu.Unlock()
