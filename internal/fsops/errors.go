@@ -48,10 +48,13 @@ var (
 
 // IsDirNotEmpty reports whether err comes from removing a folder that is not
 // empty. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY
-// there, so the text is matched too. It is the text of the underlying error,
-// since a folder named "Not Empty" puts those words in the path.
+// there, so that code is checked on Windows. Windows translates its messages,
+// so the code is what matches a localized install. The English text is still
+// matched as a fallback for an error that carries no code. It is the text of
+// the underlying error, since a folder named "Not Empty" puts those words in
+// the path.
 func IsDirNotEmpty(err error) bool {
-	if errors.Is(err, syscall.ENOTEMPTY) {
+	if errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err) {
 		return true
 	}
 	for {
