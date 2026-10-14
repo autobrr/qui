@@ -136,6 +136,25 @@ func TestFolderCleanupTriggerKeepsMonitoredFolders(t *testing.T) {
 	r.requireKept("torrents/watch", "torrents/from-watch")
 }
 
+// A default save path changed in qBittorrent's WebUI is a stop folder on the
+// next check, while qui's cached preferences still hold the old one, which
+// lies above it.
+func TestFolderCleanupTriggerReadsPreferencesFresh(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	_, err = client.GetAppPreferences(t.Context())
+	require.NoError(t, err)
+
+	r.stub.SetDefaultSavePath(r.p("torrents/new"))
+	r.add(qbtstub.Torrent{Hash: hashA, Name: "Rel", SavePath: r.p("torrents/new"), Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})
+
+	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	r.requireGone("torrents/new/Rel")
+	r.requireKept("torrents/new")
+}
+
 func TestFolderCleanupTriggerBulkDeleteWithFiles(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)

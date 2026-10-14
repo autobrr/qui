@@ -97,6 +97,14 @@ func (s *Server) AddCategory(name, savePath string) {
 	s.categories[name] = savePath
 }
 
+// SetDefaultSavePath changes the default save path, as an edit in
+// qBittorrent's own WebUI does, without qui seeing the request.
+func (s *Server) SetDefaultSavePath(p string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.savePath = p
+}
+
 // Add adds a torrent and writes its files.
 func (s *Server) Add(t Torrent) {
 	s.mu.Lock()

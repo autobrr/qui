@@ -71,6 +71,9 @@ type backendRequirer interface {
 // send a request per torrent: the worker calls them on every check.
 type folderView interface {
 	liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
+	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error)
+	// stopFolderInputs reads the preferences with a request.
 	stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error)
 	// categoryNesting refreshes qBittorrent's capabilities with a request,
 	// so the worker keeps its answer for folderCleanupVersionTTL.
@@ -398,20 +401,48 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		return retry
 	}
 
-	scope, waiting, err := c.buildScope(ctx, instanceID, instance, backend, ready)
+	// The usual first check after a delete finds the torrent's own row still
+	// cached. That alone decides it waits, so the scope, a full read of the
+	// cached torrents and a preferences request, is built only for the rest.
+	hashes := make([]string, len(ready))
+	for i, item := range ready {
+		hashes[i] = item.snap.Hash
+	}
+	rows, err := c.view.ownRows(ctx, instanceID, hashes)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
 		return append(retry, ready...)
 	}
-	if len(waiting) > 0 {
-		c.view.hintRefresh(instanceID)
-	}
+	d := backend.Paths()
+	hint := false
+	judge := make([]*pendingFolder, 0, len(ready))
 	for _, item := range ready {
-		if _, wait := waiting[item]; wait {
+		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, &t) {
+			hint = true
 			retry = append(retry, item)
 			continue
 		}
-		scope.clean(ctx, item)
+		judge = append(judge, item)
+	}
+	if len(judge) > 0 {
+		scope, waiting, err := c.buildScope(ctx, instanceID, instance, backend, judge)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
+			retry = append(retry, judge...)
+		} else {
+			// The full read can be newer than the row read above, so it decides.
+			for _, item := range judge {
+				if _, wait := waiting[item]; wait {
+					hint = true
+					retry = append(retry, item)
+					continue
+				}
+				scope.clean(ctx, item)
+			}
+		}
+	}
+	if hint {
+		c.view.hintRefresh(instanceID)
 	}
 	return retry
 }

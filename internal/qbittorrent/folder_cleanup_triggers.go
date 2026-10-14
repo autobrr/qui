@@ -257,18 +257,42 @@ func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend)
 	}
 }
 
-// liveTorrents reads the cached torrents without a request. An instance that
-// has not synced yet is an error, not an empty list, which would protect
-// nothing.
-func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+// syncedMainData reads the cache without a request. An instance that has not
+// synced yet is an error, not an empty cache, which would protect nothing.
+func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
 	client, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataReadCached)
+	if err != nil {
+		return nil, nil, err
+	}
+	if client == nil || syncManager == nil || client.GetLastSyncUpdate().IsZero() {
+		return nil, nil, fmt.Errorf("instance %d has not synced yet", instanceID)
+	}
+	return client, syncManager, nil
+}
+
+func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	if client == nil || syncManager == nil || client.GetLastSyncUpdate().IsZero() {
-		return nil, fmt.Errorf("instance %d has not synced yet", instanceID)
-	}
 	return syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{}), nil
+}
+
+// ownRows reads the cached rows of hashes, one map read each, keyed by
+// canonicalizeHash. A hash without a row is left out.
+func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error) {
+	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	rows := make(map[string]qbt.Torrent, len(hashes))
+	for _, hash := range hashes {
+		hash = canonicalizeHash(hash)
+		if t, ok := syncManager.GetTorrentUnchecked(hash); ok {
+			rows[hash] = t
+		}
+	}
+	return rows, nil
 }
 
 func (sm *SyncManager) hintRefresh(instanceID int) {
@@ -288,24 +312,24 @@ func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nes
 	return nestingSupport{Nests: client.NestsCategorySavePaths(), Always: client.SubcategoriesAlwaysEnabled()}, nil
 }
 
-// stopFolderInputs reads the cached preferences and categories. The worker
-// combines the use_subcategories preference read here with categoryNesting
-// by CategorySavePathsNest's rule, as orphan scan does, so the two agree on
-// a category folder, except for up to a minute after the instance's
-// qBittorrent version changes, through an upgrade in place or an edit that
-// points the instance at another qBittorrent, while the worker still reuses
-// the old version's answer.
+// stopFolderInputs reads the preferences from qBittorrent and the categories
+// from the cache. The preferences are not taken from their 30 s cache, which
+// only qui's own changes drop: a default save path changed in qBittorrent's
+// WebUI would not be a stop folder yet, and a failed refresh would serve the
+// old one indefinitely. The worker combines the use_subcategories preference
+// read here with categoryNesting by CategorySavePathsNest's rule, as orphan
+// scan does, so the two agree on a category folder, except for up to a minute
+// after the instance's qBittorrent version changes, through an upgrade in
+// place or an edit that points the instance at another qBittorrent, while the
+// worker still reuses the old version's answer.
 func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error) {
-	client, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataReadCached)
+	client, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return stopInputs{}, err
 	}
-	if client == nil || syncManager == nil || client.GetLastSyncUpdate().IsZero() {
-		return stopInputs{}, fmt.Errorf("instance %d has not synced yet", instanceID)
-	}
-	prefs, err := client.GetAppPreferences(ctx)
+	prefs, err := client.refreshAppPreferences(ctx)
 	if err != nil {
-		return stopInputs{}, fmt.Errorf("failed to get app preferences: %w", err)
+		return stopInputs{}, err
 	}
 	return stopInputs{
 		DefaultSavePath:  prefs.SavePath,

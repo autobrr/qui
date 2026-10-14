@@ -69,6 +69,25 @@ func (v *fakeView) liveTorrents(context.Context, int) ([]qbt.Torrent, error) {
 	return append([]qbt.Torrent(nil), v.torrents...), v.liveErr
 }
 
+func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[string]qbt.Torrent, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.liveErr != nil {
+		return nil, v.liveErr
+	}
+	want := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		want[canonicalizeHash(hash)] = struct{}{}
+	}
+	rows := make(map[string]qbt.Torrent)
+	for _, t := range v.torrents {
+		if _, ok := want[canonicalizeHash(t.Hash)]; ok {
+			rows[canonicalizeHash(t.Hash)] = t
+		}
+	}
+	return rows, nil
+}
+
 func (v *fakeView) stopFolderInputs(context.Context, int) (stopInputs, error) {
 	v.inputReads.Add(1)
 	v.mu.Lock()

@@ -144,9 +144,10 @@ const (
 )
 
 // cleanupScope is what one check of one instance judges folders against. It is
-// built only when some item's content is gone, because it costs a full read of
-// the cached torrents and, at most once a minute per instance while the
-// request succeeds, a WebAPI version request.
+// built only when some item's content is gone and its own row no longer holds
+// it, because it costs a full read of the cached torrents, a preferences
+// request and, at most once a minute per instance while the request succeeds,
+// a WebAPI version request.
 type cleanupScope struct {
 	backend fsops.Backend
 	d       fsops.PathDialect
@@ -161,6 +162,12 @@ type cleanupScope struct {
 // the snapshot left it.
 func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance *models.Instance, backend fsops.Backend, ready []*pendingFolder) (*cleanupScope, map[*pendingFolder]struct{}, error) {
 	d := backend.Paths()
+	// Ahead of the requests below, so an ignore path that cannot be read does
+	// not send them on every tick until the deadline.
+	ignored, err := c.ignores.IgnoredPathMatcher(ctx, instanceID, d)
+	if err != nil {
+		return nil, nil, err
+	}
 	in, err := c.view.stopFolderInputs(ctx, instanceID)
 	if err != nil {
 		return nil, nil, err
@@ -170,14 +177,9 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 		return nil, nil, err
 	}
 	// CategorySavePathsNest's rule. The preference comes from this check's
-	// read, so a toggle made in qui's UI, which drops the cached preferences,
-	// is seen on the next check, and any other toggle once that cache expires.
+	// read, so a toggle is seen on the next check.
 	in.UseSubcategories = nesting.Nests && (nesting.Always || in.UseSubcategories)
 	stops, kept, err := stopFolders(d, in, instance.HardlinkBaseDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	ignored, err := c.ignores.IgnoredPathMatcher(ctx, instanceID, d)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -298,7 +300,7 @@ func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder)
 	for i := range torrents {
 		t := &torrents[i]
 		for _, item := range byHash[canonicalizeHash(t.Hash)] {
-			if !item.snap.Move || foldKey(d, t.ContentPath) == foldKey(d, item.snap.ContentPath) {
+			if item.waitsFor(d, t) {
 				waiting[item] = struct{}{}
 			}
 		}
@@ -309,6 +311,12 @@ func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder)
 		}
 	}
 	return waiting
+}
+
+// waitsFor reports whether t, the item's own row, still shows the torrent
+// where the snapshot left it.
+func (p *pendingFolder) waitsFor(d fsops.PathDialect, t *qbt.Torrent) bool {
+	return !p.snap.Move || foldKey(d, t.ContentPath) == foldKey(d, p.snap.ContentPath)
 }
 
 func (s *cleanupScope) markLive(p string, mark liveMark) {

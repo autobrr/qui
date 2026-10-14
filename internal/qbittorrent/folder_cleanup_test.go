@@ -678,6 +678,33 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 	})
 }
 
+// A torrent's own row decides that it waits, so a check that finds every
+// item waiting builds no scope: no full read of the cached torrents and no
+// preferences request. It still asks for a sync.
+func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
+	for _, move := range []bool{false, true} {
+		t.Run(fmt.Sprint("move=", move), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				e := newCleanupEnv(t, slashBackend)
+				e.tree("torrents/tv/Show/Rel/")
+				snap := e.rootFolder("torrents/tv/Show", "Rel")
+				snap.Move = move
+				e.rm("torrents/tv/Show/Rel")
+				e.view.setTorrents(row(snap))
+				e.run(snap)
+				e.tick(4)
+				require.Zero(t, e.view.inputReads.Load())
+				require.EqualValues(t, 5, e.view.refreshes.Load())
+
+				e.view.setTorrents()
+				e.tick(1)
+				require.EqualValues(t, 1, e.view.inputReads.Load())
+				e.requireTree([]string{"torrents/tv"}, []string{"torrents/tv/Show"})
+			})
+		})
+	}
+}
+
 // A symlink found while walking down is never entered, and keeps its folder.
 func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
@@ -977,9 +1004,8 @@ func TestFolderCleanupNestsAsCategorySavePathsNestDoes(t *testing.T) {
 	}
 }
 
-// qui drops its cached preferences when it changes them, so a
-// use_subcategories toggle made through qui reaches the next check, even
-// while the version check is still held. A stale value would leave the real
+// The preferences are read on every check, so a use_subcategories toggle
+// reaches the next check, even while the version check is still held. A stale value would leave the real
 // category folder out of the stop folders.
 func TestFolderCleanupSeesAUseSubcategoriesToggle(t *testing.T) {
 	for _, tc := range []struct {
