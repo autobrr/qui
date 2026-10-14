@@ -885,6 +885,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 		ctx:                   ctx,
 		svc:                   s,
 		sourceInstanceID:      sourceInstanceID,
+		sourceInstance:        instanceByID(instances, sourceInstanceID),
 		sourceHash:            sourceTorrent.Hash,
 		sourceSavePath:        sourceTorrent.SavePath,
 		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
@@ -1028,6 +1029,7 @@ type localMatchContext struct {
 	ctx                   context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
 	svc                   *Service
 	sourceInstanceID      int
+	sourceInstance        *models.Instance // scopes sourceFileIDs; nil reads as the qui host
 	sourceHash            string
 	sourceSavePath        string
 	sourceHasFileIdentity bool
@@ -1043,7 +1045,7 @@ type localMatchContext struct {
 	// Lazy-loaded FileIDs of the source's hard-linked files (nlink > 1),
 	// used to detect hardlinked cross-seed copies.
 	fileIDsFetched bool
-	sourceFileIDs  map[hardlink.FileID]struct{}
+	sourceFileIDs  map[fsops.FileKey]struct{}
 
 	// Local verification errors (first error per category, for strict mode).
 	candidateFilesErr error
@@ -1105,7 +1107,7 @@ func (m *localMatchContext) sharesLargestFileSize(candidate *qbittorrent.CrossIn
 // extra links can be shared with another torrent, so nlink == 1 files are skipped.
 // Fetch errors are recorded by getSourceFiles for strict mode; stat failures are
 // best-effort skips since a missing file carries no hardlink evidence.
-func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
+func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 	if m.fileIDsFetched {
 		return m.sourceFileIDs
 	}
@@ -1126,10 +1128,10 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		return nil
 	}
 
-	ids := make(map[hardlink.FileID]struct{})
+	ids := make(map[fsops.FileKey]struct{})
 	if err := forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
 		if nlink > 1 {
-			ids[id] = struct{}{}
+			ids[fsops.FileKeyOf(id, m.sourceInstance)] = struct{}{}
 		}
 		return true
 	}); err != nil && m.verificationErr == nil {
@@ -1142,13 +1144,14 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 func candidateSharesSourceFileID(
 	ctx context.Context,
 	backend fsops.Backend,
-	sourceIDs map[hardlink.FileID]struct{},
+	candidateInstance *models.Instance,
+	sourceIDs map[fsops.FileKey]struct{},
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) (bool, error) {
 	shared := false
 	err := forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
-		if _, ok := sourceIDs[id]; ok {
+		if _, ok := sourceIDs[fsops.FileKeyOf(id, candidateInstance)]; ok {
 			shared = true
 			return false
 		}
@@ -1202,7 +1205,7 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	shared, err := candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, sourceIDs, candidate.SavePath, candidateFiles)
+	shared, err := candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, candidateInstance, sourceIDs, candidate.SavePath, candidateFiles)
 	if shared {
 		return matchTypeHardlink
 	}
@@ -1222,8 +1225,8 @@ func (s *Service) localLinkedMatchType(
 	}
 	pairs := pairLocalTorrentFiles(
 		matchCtx.ctx,
-		sourceBackend,
-		candidateBackend,
+		sourceBackend, matchCtx.sourceInstance,
+		candidateBackend, candidateInstance,
 		matchCtx.sourceSavePath,
 		matchCtx.sourceFiles,
 		candidate.SavePath,
@@ -1289,7 +1292,7 @@ type localFilePair struct {
 type localTorrentFile struct {
 	file           qbt.TorrentFile
 	fullPath       string
-	fileID         hardlink.FileID
+	fileID         fsops.FileKey
 	hasFileID      bool
 	normalizedPath string
 	basename       string
@@ -1298,14 +1301,16 @@ type localTorrentFile struct {
 func pairLocalTorrentFiles(
 	ctx context.Context,
 	sourceBackend fsops.Backend,
+	sourceInstance *models.Instance,
 	candidateBackend fsops.Backend,
+	candidateInstance *models.Instance,
 	sourceSavePath string,
 	sourceFiles qbt.TorrentFiles,
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) []localFilePair {
-	source := collectLocalTorrentFiles(ctx, sourceBackend, sourceSavePath, sourceFiles)
-	candidate := collectLocalTorrentFiles(ctx, candidateBackend, candidateSavePath, candidateFiles)
+	source := collectLocalTorrentFiles(ctx, sourceBackend, sourceInstance, sourceSavePath, sourceFiles)
+	candidate := collectLocalTorrentFiles(ctx, candidateBackend, candidateInstance, candidateSavePath, candidateFiles)
 
 	sourceByPath := indexLocalFiles(source, func(file localTorrentFile) string {
 		return localFileSizeKey(file.normalizedPath, file.file.Size)
@@ -1365,7 +1370,7 @@ func pairLocalTorrentFiles(
 	return pairs
 }
 
-func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) []localTorrentFile {
+func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, instance *models.Instance, savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
 	// Unresolvable names are already recorded by the FileID pass over both torrents
 	// in localLinkedMatchType, which runs before any pairing.
@@ -1377,8 +1382,8 @@ func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, savePa
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
-			fileID:         info.FileID,
-			hasFileID:      !info.FileID.IsZero(),
+			fileID:         fsops.FileKeyOf(info.FileID, instance),
+			hasFileID:      !fsops.FileKeyOf(info.FileID, instance).IsZero(),
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})
@@ -1491,12 +1496,19 @@ func hasWindowsDrivePrefix(name string) bool {
 // instanceHasFileIdentity reports whether qui trusts the file identity of the
 // instance with the given ID.
 func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool {
-	for _, instance := range instances {
-		if instance.ID == instanceID {
-			return models.FilesystemCapabilitiesOf(instance).Identity
-		}
+	if instance := instanceByID(instances, instanceID); instance != nil {
+		return models.FilesystemCapabilitiesOf(instance).Identity
 	}
 	return false
+}
+
+func instanceByID(instances []*models.Instance, instanceID int) *models.Instance {
+	for _, instance := range instances {
+		if instance.ID == instanceID {
+			return instance
+		}
+	}
+	return nil
 }
 
 // instanceIsLocal reports whether the instance with the given ID reads its

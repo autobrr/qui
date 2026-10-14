@@ -187,7 +187,7 @@ func TestAugmentCrossInstanceScope_NoDeficits(t *testing.T) {
 			"hash2": HardlinkScopeTorrentsOnly,
 		},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap:   make(map[hardlink.FileID]*fileIDTracker),
+			globalFileIDMap:   make(map[fsops.FileKey]*fileIDTracker),
 			seenPaths:         make(map[string]struct{}),
 			torrentInfoByHash: make(map[string]*torrentFileInfo),
 		},
@@ -241,7 +241,7 @@ func TestAugmentCrossInstanceScope_DeficitWithNoOtherInstances(t *testing.T) {
 			"hash1": HardlinkScopeOutsideQBitTorrent,
 		},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[hardlink.FileID]*fileIDTracker{fid: tracker},
+			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): tracker},
 			seenPaths:       make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
 				"hash1": {
@@ -307,7 +307,7 @@ func lstatFileID(t *testing.T, path string) (hardlink.FileID, uint64) {
 func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBuildState {
 	t.Helper()
 	state := &hardlinkBuildState{
-		globalFileIDMap:   make(map[hardlink.FileID]*fileIDTracker),
+		globalFileIDMap:   make(map[fsops.FileKey]*fileIDTracker),
 		seenPaths:         make(map[string]struct{}),
 		torrentInfoByHash: make(map[string]*torrentFileInfo),
 	}
@@ -321,10 +321,10 @@ func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBu
 			info.fileIDs = append(info.fileIDs, fid)
 			if nlink > 1 {
 				info.hasHardlinks = true
-				tracker := state.globalFileIDMap[fid]
+				tracker := state.globalFileIDMap[state.key(fid)]
 				if tracker == nil {
 					tracker = &fileIDTracker{nlink: nlink}
-					state.globalFileIDMap[fid] = tracker
+					state.globalFileIDMap[state.key(fid)] = tracker
 				}
 				if _, seen := state.seenPaths[p]; !seen {
 					state.seenPaths[p] = struct{}{}
@@ -488,7 +488,7 @@ func TestCrossScope_CrossInstanceResolvesDeficit(t *testing.T) {
 
 	// Simulate Phase 2: Lstat Instance B's file and augment state.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[fidB]
+	tracker := state.globalFileIDMap[state.key(fidB)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID with Instance A")
 	}
@@ -538,7 +538,7 @@ func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
 
 	// Phase 2: augment with Instance B.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[fidB]
+	tracker := state.globalFileIDMap[state.key(fidB)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID")
 	}
@@ -593,7 +593,7 @@ func TestCrossScope_DeficitSetResolution(t *testing.T) {
 
 	// Phase 2: augment with Instance B's file1 (resolves file1's deficit).
 	fidB1, _ := lstatFileID(t, fileB1)
-	if tracker := state.globalFileIDMap[fidB1]; tracker != nil {
+	if tracker := state.globalFileIDMap[state.key(fidB1)]; tracker != nil {
 		state.seenPaths[fileB1] = struct{}{}
 		tracker.uniquePathCount++
 	}
@@ -628,7 +628,7 @@ func TestCrossScope_SeenPathsDedup(t *testing.T) {
 	})
 
 	fid, _ := lstatFileID(t, fileA)
-	tracker := state.globalFileIDMap[fid]
+	tracker := state.globalFileIDMap[state.key(fid)]
 	if tracker == nil {
 		t.Skip("nlink=1, no hardlinks to test (filesystem may not support)")
 	}
@@ -667,8 +667,8 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 	index := &HardlinkIndex{
 		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[hardlink.FileID]*fileIDTracker{
-				fid: {nlink: 2, uniquePathCount: 1},
+			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{
+				fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1},
 			},
 			seenPaths: make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
@@ -913,7 +913,7 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 	// Torrents with allAccessible=false should not appear in cross-scope.
 	fid := createFile(t, filepath.Join(t.TempDir(), "shared-file"))
 	state := &hardlinkBuildState{
-		globalFileIDMap: map[hardlink.FileID]*fileIDTracker{},
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{},
 		seenPaths:       make(map[string]struct{}),
 		torrentInfoByHash: map[string]*torrentFileInfo{
 			"accessible": {
