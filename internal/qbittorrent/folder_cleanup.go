@@ -30,6 +30,12 @@ const (
 	// catches an in-place upgrade. The use_subcategories preference is not
 	// reused: it is read on every check.
 	folderCleanupVersionTTL = time.Minute
+	// folderCleanupProxyPrepareBudget bounds the snapshot a proxied request
+	// waits on before it is sent, well inside the timeouts clients use.
+	folderCleanupProxyPrepareBudget = 5 * time.Second
+	// folderCleanupPrepareBudget bounds it for qui's own operations, well
+	// inside the 60 s automations allow for applying their actions.
+	folderCleanupPrepareBudget = 30 * time.Second
 	// folderCleanupCapacity bounds the folders and top-level entries held across
 	// the queue. A batch past it is left to orphan scan.
 	folderCleanupCapacity = 65536
@@ -49,6 +55,10 @@ type FolderCleanup struct {
 	Tick     time.Duration
 	Deadline time.Duration
 	capacity int
+	// prepareBudget and proxyPrepareBudget bound how long qui's own
+	// operations and proxied requests wait on their snapshots.
+	prepareBudget      time.Duration
+	proxyPrepareBudget time.Duration
 
 	// nesting holds what each instance's qBittorrent version says about
 	// category nesting, read and written by the worker alone.
@@ -171,12 +181,14 @@ func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel)
 // NewFolderCleanup returns a stopped cleanup; Start runs its worker.
 func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatcher) *FolderCleanup {
 	return &FolderCleanup{
-		pool:     pool,
-		view:     view,
-		ignores:  ignores,
-		Tick:     folderCleanupTick,
-		Deadline: folderCleanupDeadline,
-		capacity: folderCleanupCapacity,
+		pool:               pool,
+		view:               view,
+		ignores:            ignores,
+		Tick:               folderCleanupTick,
+		Deadline:           folderCleanupDeadline,
+		capacity:           folderCleanupCapacity,
+		prepareBudget:      folderCleanupPrepareBudget,
+		proxyPrepareBudget: folderCleanupProxyPrepareBudget,
 	}
 }
 
@@ -398,7 +410,6 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 				Msg("folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan")
 		}
 	}
-
 	released := 0
 	for _, item := range batch {
 		released += item.cost()

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,6 +51,7 @@ type triggerRig struct {
 	stub       *qbtstub.Server
 	sm         *SyncManager
 	instanceID int
+	instances  *models.InstanceStore
 }
 
 func newTriggerRig(t *testing.T) *triggerRig {
@@ -71,6 +73,7 @@ func newTriggerRig(t *testing.T) *triggerRig {
 		&models.InstanceUpdateParams{HardlinkBaseDir: &baseDir})
 	require.NoError(t, err)
 	r.instanceID = instance.ID
+	r.instances = instanceStore
 
 	client, err := NewClientWithTimeout(instance.ID, r.stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
@@ -518,6 +521,140 @@ func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 		op := FolderCleanupOp{Kind: kind, Target: "/data/torrents/movies"}
 		require.False(t, op.mayMove(fsops.SlashPaths, &torrent), "kind %d", kind)
 	}
+}
+
+// hungBackend is a mount where a Stat under hang returns only once release is
+// closed, whatever its context, as os.Stat does on a hung NFS mount. stats
+// counts every Stat that reached it.
+type hungBackend struct {
+	fsops.Backend
+	hang    string
+	mu      sync.Mutex
+	release chan struct{}
+	stats   atomic.Int32
+	inside  atomic.Int32
+}
+
+func (b *hungBackend) unhang() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	select {
+	case <-b.release:
+	default:
+		close(b.release)
+	}
+}
+
+func (b *hungBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	b.stats.Add(1)
+	if strings.HasPrefix(p, b.hang) {
+		b.inside.Add(1)
+		defer b.inside.Add(-1)
+		b.mu.Lock()
+		release := b.release
+		b.mu.Unlock()
+		<-release
+	}
+	return b.Backend.Stat(context.Background(), p)
+}
+
+type hungRequirer struct {
+	backendRequirer
+	backend *hungBackend
+}
+
+func (h hungRequirer) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
+	_, instance, err := h.backendRequirer.Require(ctx, instanceID, capability)
+	if err != nil {
+		return nil, nil, err
+	}
+	return h.backend, instance, nil
+}
+
+// hungRig holds hashA in tv and hashB in movies, with every Stat under hashB's
+// save path hung until the test ends.
+func hungRig(t *testing.T) (*triggerRig, *hungBackend) {
+	r := newTriggerRig(t)
+	r.add(r.perRelease(hashA, "tv"), qbtstub.Torrent{Hash: hashB, Name: "Film-GRP", SavePath: r.p("torrents/movies/Film-GRP"),
+		Category: "movies", Layout: qbtstub.NoRootFolder, Files: []string{"Film.mkv"}})
+	backend := &hungBackend{Backend: local.NewBackend(), hang: r.p("torrents/movies/Film-GRP"), release: make(chan struct{})}
+	fc := NewFolderCleanup(hungRequirer{r.sm.folderCleanup.Load().pool, backend}, r.sm, &fakeIgnores{})
+	fc.Tick = rigTick
+	fc.prepareBudget = 200 * time.Millisecond
+	fc.proxyPrepareBudget = 200 * time.Millisecond
+	fc.Start(t.Context())
+	t.Cleanup(fc.Stop)
+	t.Cleanup(backend.unhang)
+	r.sm.SetFolderCleanup(fc)
+	return r, backend
+}
+
+// A prepare returns at its budget even while a Stat that ignores its context
+// hangs. The torrent checked by then reads as existing, the hung one as
+// missing, and the abandoned Stat changes nothing once it returns.
+func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
+	t.Parallel()
+	for _, proxied := range []bool{false, true} {
+		t.Run(fmt.Sprintf("proxied=%v", proxied), func(t *testing.T) {
+			t.Parallel()
+			r, backend := hungRig(t)
+			prepare := r.sm.PrepareFolderCleanup
+			if proxied {
+				prepare = r.sm.PrepareProxiedFolderCleanup
+			}
+
+			start := time.Now()
+			batch := prepare(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA, hashB}})
+			require.Less(t, time.Since(start), 2*time.Second)
+			existed := map[string]bool{}
+			for _, snap := range batch.snaps {
+				existed[snap.Hash] = snap.ContentExisted
+			}
+			require.Equal(t, map[string]bool{hashA: true, hashB: false}, existed)
+			require.EqualValues(t, 1, backend.inside.Load(), "hashB's Stat is still hung")
+
+			backend.unhang()
+			require.Eventually(t, func() bool { return backend.inside.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+			for _, snap := range batch.snaps {
+				require.Equal(t, snap.Hash == hashA, snap.ContentExisted, snap.Hash)
+			}
+		})
+	}
+}
+
+// An automation deletes under a 60 s timeout, so a hung Stat may cost it the
+// cleanup but not the delete. The healthy torrent's folder is still cleaned.
+func TestFolderCleanupBulkDeletePastAHungStat(t *testing.T) {
+	t.Parallel()
+	r, _ := hungRig(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	require.NoError(t, r.sm.BulkAction(ctx, r.instanceID, []string{hashA, hashB}, "deleteWithFiles"))
+	require.Equal(t, 1, r.stub.Writes("torrents/delete"))
+	r.requireGone("torrents/tv/Show.S01E01-GRP")
+	r.requireKept("torrents/movies/Film-GRP")
+	require.NoFileExists(t, r.p("torrents/movies/Film-GRP/Film.mkv"))
+}
+
+// With ctx already done no Stat starts, so the outcome at the deadline does
+// not depend on which ready case select picks.
+func TestFolderCleanupSnapshotStartsNoStatPastTheDeadline(t *testing.T) {
+	t.Parallel()
+	r, backend := hungRig(t)
+	stats := backend.stats.Load()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	torrents := []qbt.Torrent{
+		{Hash: hashA, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-A")},
+		{Hash: hashB, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-B")},
+	}
+
+	for range 50 {
+		snaps := r.sm.snapshotFolders(ctx, r.instanceID, backend, torrents, false)
+		require.Len(t, snaps, 2)
+	}
+	require.Equal(t, stats, backend.stats.Load())
 }
 
 // remoteRowStore answers every instance read with a row in remote mode.

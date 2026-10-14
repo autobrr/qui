@@ -59,7 +59,7 @@ func (h *Handler) interceptForFolderCleanup(w http.ResponseWriter, r *http.Reque
 	var folders qbittorrent.FolderCleanupBatch
 	if form, ok := parseQBTForm(r, body); ok {
 		if op, ok := opFor(form); ok {
-			folders = h.syncManager.PrepareFolderCleanup(ctx, instanceID, op)
+			folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, op)
 		}
 	}
 	h.forwardThenQueue(w, r, body, folders)

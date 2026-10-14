@@ -168,6 +168,61 @@ func TestProxyFolderCleanupDeleteAll(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
 
+// hungMount is the local filesystem with every Stat under hang blocked until
+// release closes, whatever its context, as os.Stat does on a hung NFS mount.
+type hungMount struct {
+	fsops.Backend
+	hang    string
+	release chan struct{}
+}
+
+func (m hungMount) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	if strings.HasPrefix(p, m.hang) {
+		<-m.release
+	}
+	return m.Backend.Stat(context.Background(), p)
+}
+
+type hungMountPool struct {
+	*fsops.Pool
+	mount hungMount
+}
+
+func (h hungMountPool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
+	_, instance, err := h.Pool.Require(ctx, instanceID, capability)
+	if err != nil {
+		return nil, nil, err
+	}
+	return h.mount, instance, nil
+}
+
+// A client gives up on its own timeout, so the delete goes out once the
+// proxy's 5 s prepare budget runs out, not the 30 s qui's own operations get.
+// The torrent checked by then is cleaned up, and the one on the hung mount
+// keeps its folder for orphan scan.
+func TestProxyFolderCleanupHungMountDoesNotHoldTheRequest(t *testing.T) {
+	t.Parallel()
+	r := newProxyRig(t)
+	r.add(r.perRelease(proxyHashA, "tv"), qbtstub.Torrent{Hash: proxyHashB, Name: "Film-GRP", SavePath: r.p("torrents/movies/Film-GRP"),
+		Category: "movies", Layout: qbtstub.NoRootFolder, Files: []string{"Film.mkv"}})
+	mount := hungMount{Backend: local.NewBackend(), hang: r.p("torrents/movies/Film-GRP"), release: make(chan struct{})}
+	t.Cleanup(func() { close(mount.release) })
+	fc := qbittorrent.NewFolderCleanup(hungMountPool{fsops.NewPool(r.handler.instanceStore, local.NewBackend()), mount}, r.handler.syncManager, noIgnores{})
+	fc.Tick = rigTick
+	fc.Start(t.Context())
+	t.Cleanup(fc.Stop)
+	r.handler.syncManager.SetFolderCleanup(fc)
+
+	start := time.Now()
+	rec := r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes="+proxyHashA+"|"+proxyHashB+"&deleteFiles=true")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Less(t, time.Since(start), 15*time.Second)
+	require.Equal(t, 1, r.stub.Writes("torrents/delete"))
+	r.requireGone("torrents/tv/Show.S01E01-GRP")
+	r.requireKept("torrents/movies/Film-GRP")
+	require.NoFileExists(t, r.p("torrents/movies/Film-GRP/Film.mkv"))
+}
+
 // qBittorrent answers 200 to a delete naming a hash it does not accept, and
 // deletes nothing. The torrent stays, so its folders, here holding nothing but
 // junk files, must too.

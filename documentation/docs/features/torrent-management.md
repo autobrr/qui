@@ -26,6 +26,8 @@ When the save path is not inside a folder from the first item in this list, qui 
 
 qui waits up to two minutes for qBittorrent to finish deleting or moving the files, and for the torrent to leave the instance after a delete or show its new content path after a move. Then it gives up and leaves the folder to [orphan scan](./orphan-scan.md#abandoned-directories). A move to another disk that takes longer is also left to orphan scan, and a torrent that turns out not to be deleted or moved keeps its folder. If the content was already missing before the delete or move, for example because a disk was not mounted, qui leaves the folder alone.
 
+Before it sends a delete or move, qui checks the content for at most 5 seconds for a request that comes through the reverse proxy, and for at most 30 seconds for one from the qui UI or an automation, even when a disk or network mount stops answering. Content it has not checked by then is left to orphan scan.
+
 qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those. Instances reached over SSH are skipped for now.
 
 ## Tags and categories

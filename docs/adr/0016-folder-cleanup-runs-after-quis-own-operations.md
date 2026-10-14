@@ -14,4 +14,5 @@ Folder cleanup starts only from a delete or a move that qui makes or proxies: a 
 ## Consequences
 
 - Deletes made in the qBittorrent WebUI, by qBittorrent's share-limit actions, or by a client that talks to qBittorrent directly leave their folders to orphan scan's abandoned directories.
-- A new qui operation that deletes or moves content must call `PrepareFolderCleanup` before its request and `Queue` after qBittorrent accepts it, or its folders stay behind.
+- A new qui operation that deletes or moves content must call `PrepareFolderCleanup` before its request, or `PrepareProxiedFolderCleanup` for a request a client proxies, and `Queue` after qBittorrent accepts it, or its folders stay behind.
+- The prepare waits at most 30 seconds for qui's own operations and 5 seconds for a proxied request, even on a hung mount, and content it has not checked by then is left to orphan scan.

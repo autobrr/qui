@@ -12,7 +12,6 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -82,12 +81,31 @@ func (sm *SyncManager) SetFolderCleanup(fc *FolderCleanup) {
 
 // PrepareFolderCleanup snapshots the torrents op is about to delete or move,
 // from the sync cache plus one Stat per torrent. Call it before sending the
-// request, and Queue the result only once qBittorrent accepted it.
+// request, and Queue the result only once qBittorrent accepted it. It returns
+// within 30 s even while a Stat hangs: content not checked by then reads as
+// missing, which leaves its folder to orphan scan. ctx itself is left as it
+// was, for the request.
 func (sm *SyncManager) PrepareFolderCleanup(ctx context.Context, instanceID int, op FolderCleanupOp) FolderCleanupBatch {
+	return sm.prepareFolderCleanup(ctx, instanceID, op, false)
+}
+
+// PrepareProxiedFolderCleanup is PrepareFolderCleanup for a proxied request,
+// whose client gives up on its own timeout, so it returns within 5 s.
+func (sm *SyncManager) PrepareProxiedFolderCleanup(ctx context.Context, instanceID int, op FolderCleanupOp) FolderCleanupBatch {
+	return sm.prepareFolderCleanup(ctx, instanceID, op, true)
+}
+
+func (sm *SyncManager) prepareFolderCleanup(ctx context.Context, instanceID int, op FolderCleanupOp, proxied bool) FolderCleanupBatch {
 	fc := sm.folderCleanup.Load()
 	if fc == nil {
 		return FolderCleanupBatch{}
 	}
+	budget := fc.prepareBudget
+	if proxied {
+		budget = fc.proxyPrepareBudget
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	backend, instance, err := fc.pool.Require(ctx, instanceID, models.CapabilityWrite)
 	if err != nil {
 		if !errors.Is(err, fsops.ErrNotCapable) {
@@ -238,48 +256,103 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 		}
 	}
 
-	var g errgroup.Group
-	g.SetLimit(folderCleanupStatConcurrency)
-	for i := range snaps {
-		g.Go(func() error {
-			snaps[i].markContent(ctx, backend)
-			return nil
-		})
+	// Each Stat marks its own copy and reports it on a channel with room for
+	// all of them, so one still running when ctx ends, as os.Stat on a hung
+	// mount does, writes nothing the caller reads and never blocks.
+	type marked struct {
+		i       int
+		snap    folderSnapshot
+		checked bool
 	}
-	_ = g.Wait()
+	results := make(chan marked, len(snaps))
+	limit := make(chan struct{}, folderCleanupStatConcurrency)
+	started, received, checked := 0, 0, 0
+	for i := range snaps {
+		select {
+		case limit <- struct{}{}:
+		case <-ctx.Done():
+		}
+		// select picks at random when both are ready, so a done ctx starts nothing.
+		if ctx.Err() != nil {
+			break
+		}
+		started++
+		go func(i int, snap folderSnapshot) {
+			ok := snap.markContent(ctx, backend)
+			<-limit
+			results <- marked{i, snap, ok}
+		}(i, snaps[i])
+	}
+collect:
+	for received < started {
+		select {
+		case m := <-results:
+			received++
+			if m.checked {
+				snaps[m.i] = m.snap
+				checked++
+			}
+		case <-ctx.Done():
+			break collect
+		}
+	}
+	// Results that landed as ctx ended are read too, so the outcome does not
+	// depend on which ready case select picked.
+	for drained := false; !drained && received < started; {
+		select {
+		case m := <-results:
+			received++
+			if m.checked {
+				snaps[m.i] = m.snap
+				checked++
+			}
+		default:
+			drained = true
+		}
+	}
+	if checked < len(snaps) {
+		log.Info().Err(ctx.Err()).Int("instanceID", instanceID).Int("torrents", len(snaps)-checked).
+			Msg("folder cleanup: content not checked in time, leaving these torrents' folders to orphan scan")
+	}
 	return snaps
 }
 
 // markContent Stats the content. Without a root folder the content path is the
 // save path, which still exists as an empty mount point when the disk below it
 // is gone, so the top-level entries are checked instead, until one exists: a
-// file set to Do Not Download or removed by hand is missing on its own.
-func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend) {
+// file set to Do Not Download or removed by hand is missing on its own. It
+// reports false when ctx ended before the check finished.
+func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend) bool {
 	d := backend.Paths()
 	if s.Layout != layoutNoRootFolder {
 		info, err := backend.Stat(ctx, d.Clean(s.ContentPath))
 		if err != nil {
-			return
+			return true
 		}
 		s.ContentExisted = true
 		if s.Layout == layoutRootFolder && !info.IsDir {
 			s.Layout = layoutSingleFile
 		}
-		return
+		return true
 	}
 	top, err := topLevelNames(s.Files)
 	if err != nil {
-		return
+		return true
 	}
 	// An empty mount point can hold one of these, written by a file manager.
 	top = slices.DeleteFunc(top, isJunkName)
 	save := d.Clean(s.ContentPath)
 	for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
+		// ctx ended, so the content counts as not checked.
+		if ctx.Err() != nil {
+			return false
+		}
 		if _, err := backend.Stat(ctx, d.Join(save, d.FromSlash(name))); err == nil {
 			s.ContentExisted = true
-			return
+			return true
 		}
 	}
+	return true
 }
 
 // syncedMainData reads the cache without a request. An instance that has not

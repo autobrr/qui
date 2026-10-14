@@ -1752,7 +1752,7 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 
 	var folders qbittorrent.FolderCleanupBatch
 	if form, ok := parseQBTForm(r, bodyBytes); ok {
-		folders = h.syncManager.PrepareFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
+		folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
 			Kind:   qbittorrent.FolderCleanupSetLocation,
 			Hashes: splitHashes(form.get("hashes")),
 			Target: strings.TrimSpace(form.get("location")),
@@ -2011,7 +2011,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	var folders qbittorrent.FolderCleanupBatch
 	if form, ok := parseQBTForm(r, bodyBytes); ok && strings.EqualFold(form.get("deleteFiles"), "true") {
-		folders = h.syncManager.PrepareFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
+		folders = h.syncManager.PrepareProxiedFolderCleanup(ctx, instanceID, qbittorrent.FolderCleanupOp{
 			Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes")),
 		})
 	}
