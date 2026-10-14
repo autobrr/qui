@@ -55,6 +55,12 @@ type FieldSpec struct {
 // ContentLayouts are the values of exportToInstance.contentLayout. An empty value keeps the target's default.
 var ContentLayouts = []string{"Original", "Subfolder", "NoSubfolder"}
 
+// TagModes are the values of tags[].mode.
+var TagModes = []string{models.TagModeFull, models.TagModeAdd, models.TagModeRemove}
+
+// DeleteModes are the values of delete.mode. An empty value means 'delete'.
+var DeleteModes = []string{models.DeleteModeKeepFiles, models.DeleteModeWithFiles, models.DeleteModeWithFilesPreserveCrossSeeds, models.DeleteModeWithFilesIncludeCrossSeeds}
+
 var (
 	stringOperators = []ConditionOperator{
 		OperatorEqual, OperatorNotEqual, OperatorContains, OperatorNotContains,
