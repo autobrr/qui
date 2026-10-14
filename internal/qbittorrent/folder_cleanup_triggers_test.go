@@ -159,6 +159,34 @@ func TestFolderCleanupTriggerReadsPreferencesFresh(t *testing.T) {
 	r.requireKept("torrents/new")
 }
 
+// The worker reads the view on every check, so the requests it costs must not
+// grow with the torrents in the cache or the hashes it asks about.
+func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
+	t.Parallel()
+	requests := func(hashes ...string) map[string]int {
+		r := newTriggerRig(t)
+		for _, hash := range hashes {
+			r.add(qbtstub.Torrent{Hash: hash, Name: hash[:4], SavePath: r.p("torrents/tv"), Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})
+		}
+		ctx := t.Context()
+		count := func(call func() error) int {
+			before := r.stub.Requests()
+			require.NoError(t, call())
+			return r.stub.Requests() - before
+		}
+		return map[string]int{
+			"liveTorrents": count(func() error { _, err := r.sm.liveTorrents(ctx, r.instanceID); return err }),
+			"ownRows":      count(func() error { _, err := r.sm.ownRows(ctx, r.instanceID, hashes); return err }),
+			"stopFolderInputs": count(func() error {
+				_, err := r.sm.stopFolderInputs(ctx, r.instanceID)
+				return err
+			}),
+			"categoryNesting": count(func() error { _, err := r.sm.categoryNesting(ctx, r.instanceID); return err }),
+		}
+	}
+	require.Equal(t, requests(hashA), requests(hashA, hashB, hashC))
+}
+
 func TestFolderCleanupTriggerBulkDeleteWithFiles(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)

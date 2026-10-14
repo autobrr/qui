@@ -164,11 +164,8 @@ const (
 	liveContent
 )
 
-// cleanupScope is what one check of one instance judges folders against. It is
-// built only when some item's content is gone and its own row no longer holds
-// it, because it costs a full read of the cached torrents, a preferences
-// request and, at most once a minute per instance while the request succeeds,
-// a WebAPI version request.
+// cleanupScope is what one check of one instance judges folders against. It
+// costs a full read of the cached torrents and a preferences request.
 type cleanupScope struct {
 	backend fsops.Backend
 	d       fsops.PathDialect
@@ -294,12 +291,7 @@ func stopFolders(d fsops.PathDialect, in stopInputs, hardlinkBaseDirs string) (s
 }
 
 // indexLive marks every live torrent's paths and their ancestors, and returns
-// the items that must wait for their torrent's row. A torrent's own row counts
-// like any other: the cache cannot tell a delete it has not caught up with
-// from one qBittorrent ignored. A deleted torrent waits until its row is gone.
-// A moved torrent waits while its row shows the old content path, since
-// qBittorrent changes an ATM torrent's save path at once but its content path
-// only once the files have moved.
+// the items whose own row still holds them (waitsFor).
 func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder) map[*pendingFolder]struct{} {
 	d := s.d
 	byHash := make(map[string][]*pendingFolder, len(ready))
@@ -335,7 +327,8 @@ func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder)
 }
 
 // waitsFor reports whether t, the item's own row, still shows the torrent
-// where the snapshot left it.
+// where the snapshot left it. A move compares content paths, because
+// qBittorrent changes an ATM torrent's save path before the files move.
 func (p *pendingFolder) waitsFor(d fsops.PathDialect, t *qbt.Torrent) bool {
 	return !p.snap.Move || foldKey(d, t.ContentPath) == foldKey(d, p.snap.ContentPath)
 }

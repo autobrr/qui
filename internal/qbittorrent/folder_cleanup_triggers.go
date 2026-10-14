@@ -150,14 +150,9 @@ func folderCleanupCandidates(syncManager *qbt.SyncManager, d fsops.PathDialect, 
 	return slices.DeleteFunc(torrents, func(t qbt.Torrent) bool { return !op.mayMove(d, &t) })
 }
 
-// lookupTorrents resolves hashes from the cache the way qBittorrent's WebAPI
-// does (TorrentID::fromString, then Session::getTorrent): a hash names a
-// torrent only when it is exactly that torrent's own 40-character hash, in
-// either case. No trimming and no v1 or v2 variant, unlike BulkAction:
-// qBittorrent leaves such a torrent in place, so it must not be snapshotted.
-// The cache is keyed by that hash, in lower case as qBittorrent reports it, so
-// one exact-key read per hash both finds the torrent and rejects every other
-// string: a padded hash, a v2 hash or another variant of it is not a key.
+// lookupTorrents resolves hashes as qBittorrent's WebAPI does: only a
+// torrent's own hash, in either case, names it. A padded or v2 hash, which
+// BulkAction accepts but qBittorrent ignores, is not a cache key.
 func lookupTorrents(syncManager *qbt.SyncManager, hashes []string) []qbt.Torrent {
 	var found []qbt.Torrent
 	seen := make(map[string]struct{}, len(hashes))
@@ -410,16 +405,9 @@ func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nes
 	return nestingSupport{Nests: client.NestsCategorySavePaths(), Always: client.SubcategoriesAlwaysEnabled()}, nil
 }
 
-// stopFolderInputs reads the preferences from qBittorrent and the categories
-// from the cache. The preferences are not taken from their 30 s cache, which
-// only qui's own changes drop: a default save path changed in qBittorrent's
-// WebUI would not be a stop folder yet, and a failed refresh would serve the
-// old one indefinitely. The worker combines the use_subcategories preference
-// read here with categoryNesting by CategorySavePathsNest's rule, as orphan
-// scan does, so the two agree on a category folder, except for up to a minute
-// after the instance's qBittorrent version changes, through an upgrade in
-// place or an edit that points the instance at another qBittorrent, while the
-// worker still reuses the old version's answer.
+// stopFolderInputs reads the preferences from qBittorrent, not from their 30 s
+// cache, so a default save path changed in its WebUI is a stop folder on the
+// next check. The categories come from the cache.
 func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error) {
 	client, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {

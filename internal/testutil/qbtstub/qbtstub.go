@@ -82,8 +82,9 @@ type Server struct {
 	// folder maps to 0 (save there), 1 (the default save path) or a path.
 	ScanDirs map[string]any
 
-	writes map[string]int
-	bodies map[string]string
+	writes   map[string]int
+	bodies   map[string]string
+	requests int
 }
 
 // New starts a stub whose default save path is savePath.
@@ -137,6 +138,13 @@ func (s *Server) Writes(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writes[endpoint]
+}
+
+// Requests counts every request qBittorrent received.
+func (s *Server) Requests() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requests
 }
 
 // LastBody is the raw body of the last write to an endpoint.
@@ -281,6 +289,7 @@ func (s *Server) selected(list, sep string) []*Torrent {
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.requests++
 	endpoint := strings.TrimPrefix(r.URL.Path, "/api/v2/")
 	if r.Method == http.MethodPost && endpoint != "auth/login" {
 		body, err := io.ReadAll(r.Body)

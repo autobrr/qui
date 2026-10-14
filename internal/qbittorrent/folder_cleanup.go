@@ -24,12 +24,8 @@ import (
 const (
 	folderCleanupTick     = 3 * time.Second
 	folderCleanupDeadline = 2 * time.Minute
-	// folderCleanupVersionTTL is how long the worker reuses what an
-	// instance's qBittorrent version says about category nesting. Reading it
-	// refreshes qBittorrent's capabilities with a request, which would
-	// otherwise go out on every tick that has work, and a later refresh still
-	// catches an in-place upgrade. The use_subcategories preference is not
-	// reused: it is read on every check.
+	// folderCleanupVersionTTL is how long the worker reuses an instance's
+	// category nesting support, which costs a request to read.
 	folderCleanupVersionTTL = time.Minute
 	// folderCleanupProxyPrepareBudget bounds the snapshot a proxied request
 	// waits on before it is sent, well inside the timeouts clients use.
@@ -51,8 +47,7 @@ type FolderCleanup struct {
 	ignores ignoreMatcher
 
 	// Tick is how often the worker checks its queue, and Deadline how long an
-	// item waits for its torrent to leave. They default to the production
-	// values. Tests may shorten them before Start; they must not change after.
+	// item waits for its torrent to leave. Tests shorten them before Start.
 	Tick     time.Duration
 	Deadline time.Duration
 	capacity int
@@ -78,8 +73,8 @@ type backendRequirer interface {
 	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
-// folderView is the sync manager's cached view of an instance. No method may
-// send a request per torrent: the worker calls them on every check.
+// folderView is the sync manager's cached view of an instance, read on every
+// check. Its requests do not grow with the torrent count.
 type folderView interface {
 	liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
