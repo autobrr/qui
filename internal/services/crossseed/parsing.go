@@ -232,14 +232,11 @@ func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torr
 	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
 	torrentRelease := *m.parseReleaseName(torrentName)
 
-	// If RLS detected it as music and extracted artist/title, use that
-	if torrentRelease.Type == rls.Music && torrentRelease.Artist != "" && torrentRelease.Title != "" {
-		// Use RLS's parsed results but preserve any content-based detection from baseRelease
+	// rls fills Artist only for a music parse. The parser can still turn a music
+	// name with an episode range into a TV pack, so read Artist, not Type.
+	if torrentRelease.Artist != "" && torrentRelease.Title != "" {
 		musicRelease := torrentRelease
-		// Keep any fields from content detection that might be more accurate
-		if baseRelease.Type == rls.Music {
-			musicRelease.Type = rls.Music
-		}
+		musicRelease.Type = rls.Music
 		return &musicRelease
 	}
 

@@ -199,6 +199,15 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		// rls reads this name as music. The range must still read as a pack.
+		name:          "episode range with a music-style name against its first episode",
+		source:        "Talk.Show-Part.E05.E06-WEB-2021-GRP",
+		candidate:     "Talk.Show-Part.E05-WEB-2021-GRP",
+		sourceSize:    2 * corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:           "season numeral pack against season pack",
 		source:         "Kaiju.Squad.III.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju.Squad.S03.1080p.WEB.H264-GRP",

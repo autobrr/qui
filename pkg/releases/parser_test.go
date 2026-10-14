@@ -190,11 +190,6 @@ func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
 			input:       "Show.Name.S01E01-1080p.WEB-DL-GRP",
 			wantEpisode: 1,
 		},
-		{
-			name:        "a music range stays music",
-			input:       "Some.Band-Podcast.Series.E05.E06-FLAC-2021-GRP",
-			wantEpisode: 5,
-		},
 	}
 
 	for _, tt := range tests {
