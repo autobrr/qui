@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path"
 	"slices"
 	"strings"
@@ -173,7 +174,10 @@ type pendingFolder struct {
 	// judgeErr is why the last check could not judge the item's folders, so
 	// a drop at the deadline can say cleanup did not run.
 	judgeErr error
-	expires  time.Time
+	// unreadable is the path the last content check could not read, which
+	// keeps the item waiting.
+	unreadable *fs.PathError
+	expires    time.Time
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
@@ -388,6 +392,7 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 	now := time.Now()
 	unjudged := make(map[int]int)
 	judgeErr := make(map[int]error)
+	unreadable := make(map[int][]*fs.PathError)
 	retry = slices.DeleteFunc(retry, func(item *pendingFolder) bool {
 		if now.Before(item.expires) {
 			return false
@@ -396,6 +401,10 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 		if item.judgeErr != nil {
 			unjudged[id]++
 			judgeErr[id] = item.judgeErr
+			return true
+		}
+		if item.unreadable != nil {
+			unreadable[id] = append(unreadable[id], item.unreadable)
 			return true
 		}
 		log.Debug().Int("instanceID", item.snap.InstanceID).Str("hash", item.snap.Hash).Str("contentPath", item.snap.ContentPath).
@@ -409,7 +418,16 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 			log.Warn().Err(judgeErr[id]).Int("instanceID", id).Int("torrents", n).
 				Msg("folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan")
 		}
+		if u := unreadable[id]; len(u) > 0 {
+			examples := make([]string, 0, min(len(u), 3))
+			for _, e := range u[:min(len(u), 3)] {
+				examples = append(examples, e.Path)
+			}
+			log.Warn().Err(u[0].Err).Int("instanceID", id).Int("torrents", len(u)).Strs("paths", examples).
+				Msg("folder cleanup: could not read the content before the deadline, leaving these torrents' folders in place")
+		}
 	}
+
 	released := 0
 	for _, item := range batch {
 		released += item.cost()

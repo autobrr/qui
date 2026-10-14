@@ -53,18 +53,20 @@ func (s *folderSnapshot) placement(d fsops.PathDialect) (anchor, folder string, 
 
 // contentLeft reports whether qBittorrent has not finished deleting or moving
 // the torrent's content out yet. A retry while the content is there costs one
-// Lstat, plus one ReadDir when the entry is a folder.
+// Lstat, plus one ReadDir when the entry is a folder. A path it cannot read
+// counts as content left and is recorded on item.
 func contentLeft(ctx context.Context, backend fsops.Backend, item *pendingFolder) bool {
+	item.unreadable = nil
 	d := backend.Paths()
 	anchor, _, ok := item.snap.placement(d)
 	if !ok {
 		return false
 	}
 	if item.snap.Layout != layoutNoRootFolder {
-		return entryLeft(ctx, backend, d.Clean(item.snap.ContentPath))
+		return entryLeft(ctx, backend, d.Clean(item.snap.ContentPath), item)
 	}
 	for item.gone < len(item.topLevel) {
-		if entryLeft(ctx, backend, d.Join(anchor, d.FromSlash(item.topLevel[item.gone]))) {
+		if entryLeft(ctx, backend, d.Join(anchor, d.FromSlash(item.topLevel[item.gone])), item) {
 			return true
 		}
 		item.gone++
@@ -74,36 +76,45 @@ func contentLeft(ctx context.Context, backend fsops.Backend, item *pendingFolder
 
 // entryLeft treats a folder that holds only folders and junk as gone, since
 // that is what qBittorrent before 5.2.2 leaves behind.
-func entryLeft(ctx context.Context, backend fsops.Backend, p string) bool {
+func entryLeft(ctx context.Context, backend fsops.Backend, p string, item *pendingFolder) bool {
 	info, err := backend.Lstat(ctx, p)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return false
-	case err != nil, !info.IsDir:
+	case err != nil:
+		item.unreadable = unreadableAt("lstat", p, err)
+		return true
+	case !info.IsDir:
 		return true
 	}
-	return holdsFiles(ctx, backend, p)
+	return holdsFiles(ctx, backend, p, item)
 }
 
-func holdsFiles(ctx context.Context, backend fsops.Backend, dir string) bool {
+func holdsFiles(ctx context.Context, backend fsops.Backend, dir string, item *pendingFolder) bool {
 	entries, err := backend.ReadDir(ctx, dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false
 	}
 	if err != nil {
+		item.unreadable = unreadableAt("readdir", dir, err)
 		return true
 	}
 	var subdirs []string
 	for _, e := range entries {
-		switch {
-		case e.IsDir && !e.IsSymlink:
+		if e.IsDir && !e.IsSymlink {
 			subdirs = append(subdirs, backend.Paths().Join(dir, e.Name))
-		case !junkFile(ctx, backend, dir, e):
+			continue
+		}
+		junk, err := junkFile(ctx, backend, dir, e)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			item.unreadable = unreadableAt("lstat", backend.Paths().Join(dir, e.Name), err)
+		}
+		if !junk {
 			return true
 		}
 	}
 	for _, sub := range subdirs {
-		if holdsFiles(ctx, backend, sub) {
+		if holdsFiles(ctx, backend, sub, item) {
 			return true
 		}
 	}
@@ -113,13 +124,23 @@ func holdsFiles(ctx context.Context, backend fsops.Backend, dir string) bool {
 // junkFile reports whether e is a regular file with a junk name. A junction
 // (which Go on Windows reports as neither a folder nor a symlink), a FIFO or a
 // socket can carry such a name too, and counts as a real file. DirEntry does
-// not tell them apart, so only a junk name costs an Lstat.
-func junkFile(ctx context.Context, backend fsops.Backend, dir string, e fsops.DirEntry) bool {
+// not tell them apart, so only a junk name costs an Lstat, whose error is
+// returned.
+func junkFile(ctx context.Context, backend fsops.Backend, dir string, e fsops.DirEntry) (bool, error) {
 	if e.IsDir || e.IsSymlink || !isJunkName(e.Name) {
-		return false
+		return false, nil
 	}
 	info, err := backend.Lstat(ctx, backend.Paths().Join(dir, e.Name))
-	return err == nil && info.Mode.IsRegular()
+	return err == nil && info.Mode.IsRegular(), err
+}
+
+// unreadableAt is why p could not be read, with the path once even when err
+// already names it.
+func unreadableAt(op, p string, err error) *fs.PathError {
+	if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
+		return pathErr
+	}
+	return &fs.PathError{Op: op, Path: p, Err: err}
 }
 
 // isJunkName is qBittorrent's list from Utils::Fs::smartRemoveEmptyFolderTree,
@@ -439,6 +460,7 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 func (s *cleanupScope) walkDown(ctx context.Context, dir string) {
 	entries, err := s.backend.ReadDir(ctx, dir)
 	if err != nil {
+		// The remove that follows reads dir again and warns.
 		return
 	}
 	for _, e := range entries {
@@ -479,7 +501,7 @@ func (s *cleanupScope) remove(ctx context.Context, dir string) bool {
 	junk := make([]string, 0, len(entries))
 	for _, e := range entries {
 		file := s.d.Join(dir, e.Name)
-		if !junkFile(ctx, s.backend, dir, e) || s.junkKept(file) {
+		if isJunk, _ := junkFile(ctx, s.backend, dir, e); !isJunk || s.junkKept(file) {
 			log.Debug().Str("dir", dir).Msg("folder cleanup: kept folder, not empty")
 			return false
 		}

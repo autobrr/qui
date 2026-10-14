@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -1193,6 +1194,81 @@ func TestFolderCleanupWarnsWhenARemoveFails(t *testing.T) {
 		e.run(e.noRoot("torrents/tv/Show/Rel-GRP", "a.mkv"))
 		require.Equal(t, []string{"folder cleanup: could not remove folder"}, warnings())
 		e.requireTree([]string{"torrents/tv/Show/Rel-GRP"}, nil)
+	})
+}
+
+// qBittorrent before 5.2.2 leaves the subfolders of a torrent without a root
+// folder. One qui cannot read keeps the torrent waiting, so the drop at the
+// deadline names it, in one warning for every torrent dropped on that tick.
+func TestFolderCleanupWarnsAboutAFolderItCannotRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		logs := captureLogFields(t, zerolog.WarnLevel, "paths")
+		e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Other-GRP/Extras/")
+		unreadable := []string{e.p("torrents/tv/Rel-GRP/Extras"), e.p("torrents/tv/Other-GRP/Extras")}
+		e.fs.(*memTree).readErr = func(p string) error {
+			if slices.Contains(unreadable, p) {
+				return fs.ErrPermission
+			}
+			return nil
+		}
+		e.run(e.noRoot("torrents/tv/Rel-GRP", "Extras/x.mkv", "a.mkv"), e.noRoot("torrents/tv/Other-GRP", "Extras/x.mkv", "a.mkv"))
+		e.tick(5)
+		require.Empty(t, logs())
+
+		time.Sleep(e.fc.Deadline)
+		synctest.Wait()
+		require.Equal(t, [][2]string{{"folder cleanup: could not read the content before the deadline, leaving these torrents' folders in place",
+			strings.Join(unreadable, ",")}}, logs())
+		e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", "torrents/tv/Other-GRP/Extras"}, nil)
+	})
+}
+
+// A junk-named file qui can list but not Lstat, such as in a folder with read
+// but no execute permission, keeps the torrent waiting like an unreadable
+// folder, so the drop at the deadline names it too.
+func TestFolderCleanupWarnsAboutAFileItCannotRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		logs := captureLogFields(t, zerolog.WarnLevel, "paths")
+		e.tree("torrents/tv/Rel-GRP/Extras/Thumbs.db")
+		unreadable := e.p("torrents/tv/Rel-GRP/Extras/Thumbs.db")
+		e.fs.(*memTree).lstatErr = func(p string) error {
+			if p == unreadable {
+				return fs.ErrPermission
+			}
+			return nil
+		}
+		e.run(e.noRoot("torrents/tv/Rel-GRP", "Extras/x.mkv", "a.mkv"))
+		time.Sleep(e.fc.Deadline)
+		synctest.Wait()
+		require.Equal(t, [][2]string{{"folder cleanup: could not read the content before the deadline, leaving these torrents' folders in place",
+			unreadable}}, logs())
+		e.requireTree([]string{"torrents/tv/Rel-GRP/Extras/Thumbs.db"}, nil)
+	})
+}
+
+// A folder that turns unreadable between the content check and the walk down
+// is warned about by the remove that follows.
+func TestFolderCleanupWalkDownWarnsAboutAFolderItCannotRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		logs := captureLogFields(t, zerolog.WarnLevel, "path")
+		e.tree("torrents/tv/Show/A/Sub/")
+		sub := e.p("torrents/tv/Show/A/Sub")
+		reads := 0
+		e.fs.(*memTree).readErr = func(p string) error {
+			if p != sub {
+				return nil
+			}
+			if reads++; reads > 1 {
+				return fs.ErrPermission
+			}
+			return nil
+		}
+		e.run(e.rootFolder("torrents/tv/Show", "A"))
+		require.Equal(t, [][2]string{{"folder cleanup: could not remove folder", sub}}, logs())
+		e.requireTree([]string{"torrents/tv/Show/A/Sub"}, nil)
 	})
 }
 

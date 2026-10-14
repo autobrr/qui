@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -182,7 +183,11 @@ type memTree struct {
 	mu        sync.Mutex
 	kinds     map[string]memKind
 	removeErr map[string]error
-	calls     atomic.Int32
+	// readErr, when set, fails a ReadDir of p with the error it returns, and
+	// lstatErr an Lstat.
+	readErr  func(p string) error
+	lstatErr func(p string) error
+	calls    atomic.Int32
 }
 
 type memKind uint8
@@ -277,6 +282,11 @@ func (m *memTree) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	if !ok {
 		return nil, notExist("lstat", p)
 	}
+	if m.lstatErr != nil {
+		if err := m.lstatErr(p); err != nil {
+			return nil, &fs.PathError{Op: "lstat", Path: p, Err: err}
+		}
+	}
 	return &fsops.LstatInfo{Path: p, IsDir: kind == memDir, IsSymlink: kind == memLink, Mode: kind.mode()}, nil
 }
 
@@ -297,6 +307,11 @@ func (m *memTree) ReadDir(_ context.Context, p string) ([]fsops.DirEntry, error)
 	defer m.mu.Unlock()
 	if kind, ok := m.kinds[p]; !ok || kind == memFile {
 		return nil, notExist("readdir", p)
+	}
+	if m.readErr != nil {
+		if err := m.readErr(p); err != nil {
+			return nil, &fs.PathError{Op: "readdir", Path: p, Err: err}
+		}
 	}
 	var entries []fsops.DirEntry
 	for name, kind := range m.kinds {
@@ -487,6 +502,50 @@ func skipSymlinksOnWindows(t *testing.T, e *cleanupEnv) {
 	if runtime.GOOS == "windows" && e.d == fsops.HostPaths {
 		t.Skip("creating a symlink needs a privilege on Windows")
 	}
+}
+
+// captureLogFields records, for each message logged at level or above while it
+// is installed, the message and the string value of field, or the values of a
+// list field joined by commas.
+func captureLogFields(t *testing.T, level zerolog.Level, field string) func() [][2]string {
+	var mu sync.Mutex
+	var buf strings.Builder
+	orig := log.Logger
+	log.Logger = zerolog.New(lockedWriter{&mu, &buf}).Level(level)
+	t.Cleanup(func() { log.Logger = orig })
+	return func() [][2]string {
+		mu.Lock()
+		defer mu.Unlock()
+		var out [][2]string
+		for line := range strings.Lines(buf.String()) {
+			var entry map[string]any
+			require.NoError(t, json.Unmarshal([]byte(line), &entry))
+			var value string
+			switch v := entry[field].(type) {
+			case string:
+				value = v
+			case []any:
+				parts := make([]string, len(v))
+				for i, part := range v {
+					parts[i], _ = part.(string)
+				}
+				value = strings.Join(parts, ",")
+			}
+			out = append(out, [2]string{entry["message"].(string), value})
+		}
+		return out
+	}
+}
+
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  *strings.Builder
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 // captureLogs records the messages logged at level or above while it is
