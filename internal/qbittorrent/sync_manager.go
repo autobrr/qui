@@ -393,8 +393,8 @@ type SyncManager struct {
 
 	syncDebounceMu      sync.Mutex
 	debouncedSyncTimers map[int]*time.Timer
-	// debounceSince holds when the oldest hint not yet synced arrived.
-	debounceSince         map[int]time.Time
+	// syncDebounceSince holds when the oldest hint not yet synced arrived.
+	syncDebounceSince     map[int]time.Time
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
 
@@ -4158,8 +4158,8 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	if sm.debouncedSyncTimers == nil {
 		sm.debouncedSyncTimers = make(map[int]*time.Timer)
 	}
-	if sm.debounceSince == nil {
-		sm.debounceSince = make(map[int]time.Time)
+	if sm.syncDebounceSince == nil {
+		sm.syncDebounceSince = make(map[int]time.Time)
 	}
 
 	if existing, ok := sm.debouncedSyncTimers[instanceID]; ok {
@@ -4170,12 +4170,12 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	// Hints that keep arriving within the delay would otherwise postpone the
 	// sync for as long as they last.
 	now := time.Now()
-	since, ok := sm.debounceSince[instanceID]
+	since, ok := sm.syncDebounceSince[instanceID]
 	if !ok {
 		since = now
-		sm.debounceSince[instanceID] = now
+		sm.syncDebounceSince[instanceID] = now
 	}
-	delay = min(delay, max(since.Add(syncDebounceMaxWait).Sub(now), 0))
+	delay = min(delay, since.Add(syncDebounceMaxWait).Sub(now))
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
@@ -4185,7 +4185,7 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		self := timer
 		// A timer that fired after a newer hint replaced it leaves that hint's window alone.
 		if sm.debouncedSyncTimers[instanceID] == self {
-			delete(sm.debounceSince, instanceID)
+			delete(sm.syncDebounceSince, instanceID)
 		}
 		sm.syncDebounceMu.Unlock()
 		sm.runDebouncedSync(instanceID, client, operation, self)
