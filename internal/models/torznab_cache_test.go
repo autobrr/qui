@@ -201,8 +201,65 @@ type evictionGate struct {
 	hold chan struct{}
 }
 
+const torznabTorrentCacheDeletePrefix = "DELETE FROM TORZNAB_TORRENT_CACHE"
+
+func normalizedSQL(query string) string {
+	return strings.ToUpper(strings.Join(strings.Fields(query), " "))
+}
+
+func isTorznabTorrentCacheDelete(query string) bool {
+	return strings.Contains(normalizedSQL(query), torznabTorrentCacheDeletePrefix)
+}
+
+func TestEvictionGateTorrentCacheDeleteMatcher(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		{
+			name:  "canonical",
+			query: "DELETE FROM torznab_torrent_cache WHERE last_used_at < ?",
+			want:  true,
+		},
+		{
+			name:  "lowercase",
+			query: "delete from torznab_torrent_cache where id = ?",
+			want:  true,
+		},
+		{
+			name:  "extra whitespace",
+			query: "DELETE   FROM   torznab_torrent_cache WHERE id = ?",
+			want:  true,
+		},
+		{
+			name: "multiline",
+			query: `DELETE
+				FROM torznab_torrent_cache
+				WHERE id = ?`,
+			want: true,
+		},
+		{
+			name:  "other table",
+			query: "DELETE FROM torznab_search_cache WHERE id = ?",
+			want:  false,
+		},
+		{
+			name:  "update",
+			query: "UPDATE torznab_torrent_cache SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
+			want:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isTorznabTorrentCacheDelete(tt.query))
+		})
+	}
+}
+
 func (g *evictionGate) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	if strings.Contains(query, "DELETE FROM torznab_torrent_cache") {
+	if isTorznabTorrentCacheDelete(query) {
 		<-g.hold
 	}
 	return g.db.ExecContext(ctx, query, args...)
