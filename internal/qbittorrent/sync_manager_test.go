@@ -2675,6 +2675,39 @@ func TestDebouncedSyncWaitsTheDelayForASingleHint(t *testing.T) {
 	})
 }
 
+// A timer whose callback runs after a newer hint replaced it must leave the
+// window open, or the max wait restarts from a later hint.
+func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		sm.syncAfterModification(1, nil, "first")
+		// Stand in for a newer hint whose timer replaced the first one, so the
+		// first callback finds itself replaced when it fires at 200 ms. The next
+		// hint stops this timer, as it would a real one.
+		replacement := time.NewTimer(time.Hour)
+		t.Cleanup(func() { replacement.Stop() })
+		sm.syncDebounceMu.Lock()
+		sm.debouncedSyncTimers[1] = replacement
+		sm.syncDebounceMu.Unlock()
+
+		// A hint every 140 ms from 100 ms to 1.22 s.
+		time.Sleep(100 * time.Millisecond)
+		stormStart := time.Now()
+		for range 9 {
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(140 * time.Millisecond)
+		}
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.GreaterOrEqual(t, len(syncs), 2)
+		require.LessOrEqual(t, syncs[1].Sub(stormStart), syncDebounceMaxWait,
+			"the first storm hint waited %v for the sync after the replaced timer's", syncs[1].Sub(stormStart))
+	})
+}
+
 // App preferences are a cosmetic ~150-field blob. A failure to render them must
 // not blank the torrent table or turn every stream frame for the instance into an
 // error, so the field is dropped and the list is served.
