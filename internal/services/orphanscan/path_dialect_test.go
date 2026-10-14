@@ -20,6 +20,24 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+// winRootTestDialect carries Windows drive and UNC roots through ignore matching on
+// every GOOS. Clean and Separator match a Windows host; other methods delegate.
+type winRootTestDialect struct{ fsops.PathDialect }
+
+func (w winRootTestDialect) Separator() string { return `\` }
+
+func (w winRootTestDialect) Clean(p string) string {
+	p = strings.ReplaceAll(p, "/", `\`)
+	switch {
+	case p == `C:`:
+		return `C:\`
+	case strings.HasPrefix(p, `\\`):
+		return strings.TrimSuffix(p, `\`)
+	default:
+		return p
+	}
+}
+
 // slashBackend is a remote as orphan scan sees it on any host: the slash dialect
 // over an in-memory tree. On a Windows host a host filepath call shows up as a
 // backslashed path or as a file the tree does not hold.
@@ -281,6 +299,27 @@ func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
 	// A parent that does not end in the separator keeps the boundary rule.
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foobar", "/data/foo"))
 	require.True(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foo/bar", "/data/foo"))
+
+	win := winRootTestDialect{fsops.HostPaths}
+	driveRoot := win.Clean(`C:\`)
+	require.True(t, isPathUnderNormalized(win, `C:\data\x.mkv`, driveRoot))
+	require.True(t, isPathUnderNormalized(win, win.Clean(`C:\data\x.mkv`), win.Clean(`C:/`)))
+	require.False(t, isPathUnderNormalized(win, driveRoot, driveRoot))
+	driveIgnore := []string{driveRoot}
+	require.True(t, isIgnoredPath(win, `C:\data\x.mkv`, driveIgnore))
+	require.True(t, isIgnoredPath(win, driveRoot, driveIgnore))
+	require.True(t, isPathProtectedByIgnorePaths(win, `C:\data\x.mkv`, driveIgnore))
+
+	uncRoot := win.Clean(`\\server\share`)
+	require.True(t, isPathUnderNormalized(win, `\\server\share\orphan.mkv`, uncRoot))
+	uncIgnore := []string{uncRoot}
+	require.True(t, isIgnoredPath(win, `\\server\share\orphan.mkv`, uncIgnore))
+	require.True(t, isPathProtectedByIgnorePaths(win, `\\server\share\orphan.mkv`, uncIgnore))
+
+	b := newSlashBackend(map[string]int64{"/data/orphan.mkv": 1})
+	orphans, _, err := walkScanRoot(t.Context(), "/data", NewTorrentFileMap(fsops.SlashPaths), ignore, 0, 100, b)
+	require.NoError(t, err)
+	require.Empty(t, orphans)
 }
 
 // A remote scan stores the paths the remote walk produced, byte for byte, on
