@@ -38,6 +38,7 @@ export interface VersionInfo {
   latestVersion?: string
   updateAvailable: boolean
   selfUpdate: boolean
+  selfUpdateUnavailableReason: "" | "container" | "disabled" | "development" | "directory"
   restart: boolean
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func TestDirScanStore_UpsertFile_ReplacesChangedFileIDForSamePath(t *testing.T) {
@@ -149,4 +150,54 @@ func bytesOfLength(length int, value byte) []byte {
 		result[i] = value
 	}
 	return result
+}
+
+// The first scan after the migration stores the tagged ID; the scan after
+// that sees the same ID at a new path and moves the row instead of adding one.
+// A directory moved to another instance keeps its rows but drops their file
+// IDs: an ID only means the same file on the filesystem it was read from.
+func TestDirScanStore_UpdateDirectory_ClearsFileIDsWhenTargetInstanceChanges(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	first, err := instanceStore.Create(ctx, "First", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	second, err := instanceStore.Create(ctx, "Second", "http://localhost:8081", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    first.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	id := hardlink.UnixFileID(7, 42).Bytes()
+	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
+		DirectoryID: dir.ID,
+		FilePath:    "/data/media/a.mkv",
+		FileSize:    1,
+		FileModTime: time.Now(),
+		FileID:      id,
+		Status:      models.DirScanFileStatusPending,
+	}))
+
+	enabled := false
+	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{Enabled: &enabled})
+	require.NoError(t, err)
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, id, files[0].FileID, "an update that keeps the instance keeps the IDs")
+
+	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{TargetInstanceID: &second.ID})
+	require.NoError(t, err)
+	files, err = store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Empty(t, files[0].FileID)
 }

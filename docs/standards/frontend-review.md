@@ -16,3 +16,9 @@
 - Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
 - Status text, computed previews, section intros, and empty states are not field help. The rule does not apply to them.
 - If the help text only repeats the label, delete it. Do not move it to a tooltip.
+
+## Tables
+
+- In a table whose last column holds row actions, set the `pinEnd` prop on the `TableHead` and on each `TableCell` of that column. Import both from `@/components/ui/table`. Do not write your own sticky classes. When long text makes the table wider than its container, the table scrolls sideways, and the actions stay in view. Some browsers hide the sideways scrollbar, so without `pinEnd` the user does not see the actions.
+- `pinEnd` gives the column the card background color. Use it only on a table that sits on a card.
+- Do not set `display: flex` on a `TableCell` with `pinEnd`. Put the flex layout on a `div` inside the cell.

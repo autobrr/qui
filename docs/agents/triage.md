@@ -1,6 +1,6 @@
 # Triage playbook
 
-How to triage one discussion in the Issue Triage or Feature Requests categories. The triage workflow (`.github/workflows/triage.yml`) and the local `/triage` skill both obey this file.
+How to triage one discussion in the Issue Triage or Feature Requests categories. The triage workflow (`.github/workflows/triage.yml`) and the local `/triage` skill both obey this file. The workflow triages only the Issue Triage category. A maintainer triages feature requests with `/triage`.
 
 ## Labels
 
@@ -36,7 +36,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 
 ## Steps
 
-1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer.
+1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. The exception is a local session on a `ready-for-human` discussion whose last triage comment is a log hand-off: continue, and fetch the logs. If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If the missing information is in logs behind a log link, use the log hand-off in `ready-for-human` instead. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
 2. Read `GLOSSARY.md` and `docs/architecture.md` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
@@ -84,6 +84,8 @@ The report lacks a detail that blocks a decision. Post this comment, add `needs-
 - question 1
 ```
 
+If logs would help, ask the reporter to upload them at https://bin.getqui.com and post the Paste link in a comment.
+
 Each question must name the exact detail you need. Put everything you established into the first list, so the next pass does not repeat your work.
 
 A bug report whose code path no longer matches the report, with no fix found in merged pull requests, is also `needs-info`: ask the reporter to retest on the current release and name that release. A report that still matches the code is a confirmed bug and goes to `ready-for-agent` or `ready-for-human`. The daily sweep closes a `needs-info` discussion if nobody answers in 30 days.
@@ -96,14 +98,25 @@ The bug is confirmed against the code path and an agent can fix it without a des
 
 1. Run `create-issue` with a short title and the agent brief as the body. The command prints the issue URL.
 2. Post one comment: the disclaimer line, then `Tracked in <issue URL>.`
-3. Add `ready-for-agent`, remove `needs-triage`.
+3. Add `ready-for-agent`. Remove `needs-triage` and `needs-confirmation`.
 4. Run `close RESOLVED`.
 
 Do not post the brief on the discussion. It lives in the issue, and the issue body links back with `From discussion #N`.
 
 ### ready-for-human
 
-Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
+Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`. Remove `needs-triage`, and for a `bug` also `needs-confirmation`. Do not create an issue.
+
+#### Log hand-off
+
+Decide from the code first. A log link alone does not change the outcome. If the outcome depends on what the logs show, and the workflow cannot read them, hand the discussion to a maintainer:
+
+1. Post one comment in the Triage Notes layout. List what triage established. In place of the questions for the reporter, name the question that the logs must answer. End with `@s0up4200 will read the logs that you shared. You do not need to do anything else.`
+2. Add `ready-for-human`. Remove `needs-info` or `needs-triage`.
+
+Do not post the agent brief. The maintainer fetches the logs, answers the question, and triages the discussion again.
+
+In the local session that reads the logs, prove the cause with a live run before a comment names it. If the `field-test` skill is installed, use it. For a search bug, run the same search again with the cache skipped. If a live run is not possible, call the cause a theory in the comment, and name the check that can prove it.
 
 ## Agent brief
 
@@ -130,6 +143,9 @@ What happens after the work is complete. Name edge cases and error conditions.
 
 **Out of scope:**
 - What this work must not change
+
+**Logs:**
+- Each log link from the report, exactly as the reporter wrote it, or `None`
 ```
 
 Brief rules:
@@ -137,7 +153,8 @@ Brief rules:
 - Describe behavior, not procedure. The agent explores the code itself.
 - Name types, functions, endpoints, and config keys. Do not name file paths or line numbers. They go stale.
 - Each acceptance criterion is testable on its own.
+- Copy log links into **Logs** without a change, also links to other paste sites.
 
 ## Privacy
 
-Never repeat a tracker URL that has a path, query, or key. Never repeat a release name copied from the report. Describe the shape instead: "an anime season pack with a bracketed group tag".
+Never repeat a tracker URL that has a path, query, or key. A Paste link on bin.getqui.com is not a tracker URL. Only maintainers can read it, so copy it into the brief. Never quote log lines in a public comment or issue. Summarize them. Never repeat a release name copied from the report. Describe the shape instead: "an anime season pack with a bracketed group tag".

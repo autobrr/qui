@@ -83,14 +83,14 @@ the exec tier (3e, #2726), which is the first thing that can fill them.
 
 ## File Identity Over the Wire — DECIDED
 
-Remote identity is (device, inode) parsed from GNU `find`/`stat` output. But
-`hardlink.FileID` is platform-compiled: unix builds carry `Dev`/`Ino`,
-Windows builds carry a volume serial plus a 16-byte identifier. A qui host
-on Windows cannot represent a Linux seedbox's identity in today's struct.
+Remote identity is (device, inode) parsed from GNU `find`/`stat` output. Before
+#2970, `hardlink.FileID` was platform-compiled: unix builds carried `Dev`/`Ino`,
+Windows builds a volume serial plus a 16-byte identifier, so a qui host on
+Windows could not represent a Linux seedbox's identity.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, planned for slice 3e (#2726) and not shipped yet** (raised by com6056
-on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
+fixed-size form, landed in #2970 before the remote backend uses it**
+(raised by com6056 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
 across develop's consumers, so the ripple is the same size now or later.
@@ -103,18 +103,23 @@ well-defined, and `IsZero()` then means "no identity" rather than "a
 backend wrote zeros" (load-bearing: the hardlink index trusts any FileID
 returned without error, so zeroes-as-identity would collapse torrents
 into one delete-safe group). `Bytes()` returns the tagged form: dirscan
-keys its FileID index on `string(FileID.Bytes())` and persists it as
-`dir_scan_files.file_id` under a partial index on
+persists it as `dir_scan_files.file_id` under a partial index on
 `(directory_id, file_id)` matched by rename detection, so the encoding
-change ships with a migration (or a read path accepting the legacy
-widths) whenever it lands. Consumer churn is otherwise unchanged: `==`,
-map keys, and `IsZero()` all survive; the churn is per-platform
+change ships with a migration that sets `dir_scan_files.file_id` to
+NULL; there is no legacy read path, the next scan fills the column
+again. `IsZero()` survives unchanged; `==` and bare map keys give way
+to the helper below, and the rest of the churn is per-platform
 constructors and test literals.
 
 Guard regardless of representation: FileID comparisons are only valid
 within one backend/host, and `==` still compiles cross-host, so
-comparisons go through a helper that takes the backend scope (or the
-scope rides in the value). Remote-sourced identity is always kind 3, even
+comparisons go through `fsops.SameFile`, which takes the two instances
+the IDs came from, and indexes key on `fsops.FileKey`, the ID bound to
+its instance. IDs of different kinds never match; two kind 3 IDs match
+only when both instances have the same SSH host and port, and a kind 3 ID
+with no instance or no SSH host matches nothing. The bytes a
+unix ID stores are still the device and inode, under the tag.
+Remote-sourced identity is always kind 3, even
 when the remote is unix and the bytes are a `dev`/`ino`: it is parsed
 from command output on a host qui does not control, and the tag keeps
 peer-asserted identity type-distinct from kernel-attested identity. Peer
@@ -165,8 +170,23 @@ scan moved in #2930: its comparison keys keep the dialect's own separators
 (a canonical slash key would merge a Windows UNC path with a rooted one),
 peers' roots and file maps are built in the scanning backend's dialect, and
 ignore paths are validated at save time in the dialect of the instance's
-backend, which is the one the scan reads them in. Cross-seed, managed-delete
-cleanup and the sync manager follow 3d, when writes make them reachable.
+backend, which is the one the scan reads them in. Cross-seed moved in #2943:
+link mode, season packs, the Manual match preview and local-match evidence
+take the dialect from the backend each function holds, and a season pack
+plans and creates its tree on one backend read. `hardlinktree`'s plan
+builders take the dialect as a leading parameter, through a four-method
+`hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
+imports `hardlinktree`, so the dependency cannot point the other way), and
+they check torrent paths in slash grammar on every host. When the
+destination dialect is Windows they also reject any component Windows
+cannot store as a file name: a colon, which NTFS reads as an alternate data
+stream of another file (found natively by Audionut on #3140), the other
+reserved characters, control characters, a trailing dot or space, and the
+reserved device names. The partial pool,
+`hardlinktree.Create`, reflink creation and the shared-allocation check are
+host code and run only for local instances. Managed-delete cleanup (#2947),
+the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
+`filepath`.
 
 ## Path and Command Safety
 
@@ -387,7 +407,9 @@ exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
 `Get-ChildItem` sweeps) is possible later if demand appears; the opaque
 FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
-every other remote path.
+every other remote path. Because such a remote uses `SlashPaths`, the Windows
+name check above does not apply, so a POSIX name containing `:` is still
+accepted and would land as an NTFS alternate data stream, a known gap.
 
 ## Field Validation
 

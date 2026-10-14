@@ -94,6 +94,7 @@ const STRING_OVERRIDES: Record<string, string> = {
   "torrents:stateLabels.forcedDL": "(F) Receiving",
   "torrents:stateLabels.forcedUP": "(F) Sharing",
   "torrents:stateLabels.metaDL": "Fetching Info",
+  "torrents:stateLabels.forcedMetaDL": "(F) Fetching Info",
 }
 
 function interpolate(template: string, options: Record<string, unknown>): string {

@@ -16,6 +16,7 @@ Before you add a language, follow `docs/agents/adding-a-language.md`.
 
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
+- Byte and speed units and their decimal separator are the exception: they are localized, so render them through `web/src/lib/unit-format.ts` and never hardcode `KiB`, `MiB/s` or `Mbps`.
 - Keep a glossary for product names and torrent/domain terms.
 - Plurals use the i18next v4 CLDR suffixes:
   - English needs `_one` and `_other`.

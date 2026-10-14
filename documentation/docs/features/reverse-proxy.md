@@ -79,6 +79,23 @@ If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-see
 
 The reverse proxy works with any application that supports qBittorrent's Web API.
 
+## Behind nginx or another proxy with basic auth
+
+If a reverse proxy in front of qui asks for basic auth, turn off basic auth for the `/proxy/` path. The proxy otherwise rejects requests from external applications before they reach qui.
+
+If you use nginx, add this location block. The example uses the base URL `/qui/` and the upstream name that swizzin creates. On swizzin, put the block in `/etc/nginx/apps/qui-proxy.conf` and replace `USERNAME` with your swizzin user.
+
+```nginx
+location /qui/proxy/ {
+    proxy_pass              http://USERNAME.qui;
+    proxy_set_header        Host $host;
+    proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+    auth_basic off;
+}
+```
+
+On the server that runs nginx, run `nginx -t && systemctl reload nginx`.
+
 ## Security features
 
 - **API key authentication**: each client needs its own key.

@@ -44,6 +44,18 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --json title,state,labels,body,comments`. If the number is a discussion, run `gh discussion view <number> --comments`.
 
+## Log links
+
+Reporters upload logs to brrbin at `bin.getqui.com` and post the Paste link (`https://bin.getqui.com/p/<id>`) in the Log link field of the discussion. An issue from triage copies the links into the **Logs** section of the agent brief.
+
+1. Collect the log links from the issue body and comments. If the issue has none, open the discussion in its `From discussion #N` line and collect them there.
+2. Run `brrbin fetch <link>...` for each `bin.getqui.com` link. The command writes the files to `~/.cache/brrbin/<id>/` and prints one path per line. It needs `bin.getqui.com` in `BRRBIN_HOSTS` and a maintainer sign-in. The first sign-in needs a human to enter a GitHub device code.
+3. Open a link to another paste site in the browser, or ask the user to open it.
+
+If `brrbin fetch` prints `private paste`, the Paste expired or does not exist. Write that the logs are not available. Ask the reporter for a new upload only if the bug cannot be diagnosed without the logs.
+
+Never quote log lines in an issue, a discussion, or a pull request. They are public. Summarize the lines instead.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.

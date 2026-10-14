@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/releases"
 )
 
 // searchCandidateClass identifies the search-only rule that admitted a result.
@@ -493,7 +492,9 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	if (sourceArtist != "" || candidateArtist != "") && sourceArtist != candidateArtist {
 		return false, "artist mismatch"
 	}
-	if source.Year != candidate.Year {
+	// Trackers add a year to names that the local torrent does not carry, so a
+	// year on one side only is not a conflict. Two different years are.
+	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
 		return false, "year mismatch"
 	}
 	if source.Month != candidate.Month || source.Day != candidate.Day {
@@ -574,10 +575,7 @@ func (m matcher) searchCandidateMetadataConsistent(
 		return true, ""
 	}
 
-	advertised := releases.DefaultParser.Parse(advertisedName)
-	if advertised == nil {
-		return false, "missing advertised release metadata"
-	}
+	advertised := m.parseReleaseName(advertisedName)
 	actualRelease := *actual.release
 	advertisedRelease := *advertised
 	normalizer := m.normalizer()
@@ -852,7 +850,7 @@ func (m matcher) groupIdentityViews(side namedRelease) []namedRelease {
 		return views
 	}
 	rawView := side
-	rawView.release = releases.DefaultParser.Parse(side.rawName)
+	rawView.release = m.parseReleaseName(side.rawName)
 	normalizer := m.normalizer()
 	currentGroup := ""
 	if side.release != nil {
@@ -973,7 +971,7 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 	add(side.release)
 	add(side.tagOrigin)
 	if side.rawName != "" {
-		add(releases.DefaultParser.Parse(side.rawName))
+		add(m.parseReleaseName(side.rawName))
 	}
 	return provenance
 }

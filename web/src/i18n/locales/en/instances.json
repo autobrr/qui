@@ -557,7 +557,8 @@
       "toast": {
         "success": "Advanced network settings updated successfully",
         "error": "Failed to update advanced network settings"
-      }
+      },
+      "unitSeconds": "seconds"
     },
     "reannounce": {
       "title": "Configure Reannounce",
@@ -1535,6 +1536,7 @@
           "noMatches": "No matches",
           "exportedToInstance": "Export to instance"
         },
+        "actionFallback": "Unknown action ({{action}})",
         "summary": {
           "tagsChangedBoth": "{{added}} would be tagged, {{removed}} would be untagged",
           "tagsAdded": "{{count}} would be tagged",

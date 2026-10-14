@@ -1526,6 +1526,7 @@
   "stateLabels": {
     "downloading": "下载中",
     "metaDL": "获取元数据中",
+    "forcedMetaDL": "(强制) 获取元数据中",
     "allocating": "分配空间中",
     "stalledDL": "停滞",
     "queuedDL": "排队中",
@@ -1543,8 +1544,10 @@
     "error": "错误",
     "missingFiles": "文件丢失",
     "checkingResumeData": "校验恢复数据中",
-    "moving": "移动中"
+    "moving": "移动中",
+    "unknown": "未知"
   },
+  "stateLabelFallback": "无法识别",
   "sort": {
     "label": "排序",
     "ascending": "升序",
