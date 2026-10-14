@@ -372,6 +372,7 @@ func TestProxyFolderCleanupSetDownloadPath(t *testing.T) {
 	r := newProxyRig(t)
 	torrent := r.perRelease(proxyHashA, "tv")
 	torrent.DownloadPath = r.p("torrents/incomplete/Show.S01E01-GRP")
+	torrent.Incomplete = true
 	r.add(torrent)
 
 	body := url.Values{"id": {proxyHashA}, "path": {r.p("torrents/incomplete/tv")}}.Encode()
@@ -379,6 +380,22 @@ func TestProxyFolderCleanupSetDownloadPath(t *testing.T) {
 	r.requireGone("torrents/incomplete/Show.S01E01-GRP")
 	require.DirExists(t, r.p("torrents/incomplete"))
 	require.FileExists(t, r.p("torrents/incomplete/tv/Show.S01E01.mkv"))
+}
+
+// Without a download path, qBittorrent moves an incomplete torrent from its
+// save path into the new download path. The save path stays, since the
+// torrent still names it; the subfolder its files sat in goes.
+func TestProxyFolderCleanupSetDownloadPathFromSavePath(t *testing.T) {
+	t.Parallel()
+	r := newProxyRig(t)
+	r.add(qbtstub.Torrent{Hash: proxyHashA, Name: "Show", SavePath: r.p("torrents/tv"), Category: "tv", Incomplete: true,
+		Layout: qbtstub.NoRootFolder, Files: []string{"Show/Show.S01E01.mkv"}})
+
+	body := url.Values{"id": {proxyHashA}, "path": {r.p("torrents/incomplete/tv")}}.Encode()
+	require.Equal(t, http.StatusOK, r.post(r.handler.handleSetDownloadPath, "torrents/setDownloadPath", body).Code)
+	r.requireGone("torrents/tv/Show")
+	require.DirExists(t, r.p("torrents/tv"))
+	require.FileExists(t, r.p("torrents/incomplete/tv/Show/Show.S01E01.mkv"))
 }
 
 // A rejected delete: a rejected move would also be held by its unmoved row,

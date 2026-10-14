@@ -43,8 +43,10 @@ type Torrent struct {
 	DownloadPath string
 	Category     string
 	AutoTMM      bool
-	Layout       Layout
-	Files        []string
+	// Incomplete is a torrent still downloading, which setDownloadPath moves.
+	Incomplete bool
+	Layout     Layout
+	Files      []string
 	// InfohashV1 and InfohashV2 are reported as the WebAPI does; Hash alone
 	// names the torrent in a request.
 	InfohashV1 string
@@ -323,9 +325,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if t.movingFrom != nil {
 				content = t.movingFrom
 			}
+			progress := 1.0
+			if t.Incomplete {
+				progress = 0.5
+			}
 			torrents[h] = map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
-				"infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2}
+				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2}
 		}
 		categories := map[string]any{}
 		for name, p := range s.categories {
@@ -358,12 +364,21 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "torrents/setDownloadPath":
+		// TorrentImpl::setDownloadPath: an incomplete torrent moves into the
+		// new path, or back to its save path when that is empty.
 		for _, t := range s.selected(param("id"), "|") {
-			if !t.AutoTMM && t.DownloadPath != "" {
-				save := t.SavePath
-				s.move(t, param("path"))
-				t.SavePath, t.DownloadPath = save, param("path")
+			p := param("path")
+			if t.AutoTMM || p == t.DownloadPath {
+				continue
 			}
+			save, dest := t.SavePath, p
+			if dest == "" {
+				dest = save
+			}
+			if t.Incomplete {
+				s.move(t, dest)
+			}
+			t.SavePath, t.DownloadPath = save, p
 		}
 	case "torrents/setCategory":
 		category := param("category")

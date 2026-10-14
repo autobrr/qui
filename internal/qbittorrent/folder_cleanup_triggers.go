@@ -165,8 +165,18 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 	case FolderCleanupSetSavePath:
 		return !t.AutoManaged && d.Clean(t.SavePath) != d.Clean(op.Target)
 	case FolderCleanupSetDownloadPath:
-		// Only content still in the download path moves.
-		return !t.AutoManaged && t.DownloadPath != "" && d.Clean(t.DownloadPath) != d.Clean(op.Target) &&
+		// TorrentImpl::setDownloadPath moves an incomplete torrent from where
+		// its content sits, its download path or, without one, its save path,
+		// into the new path. A complete torrent stays put: without a download
+		// path only Progress tells it apart, with one its content path does.
+		if t.AutoManaged {
+			return false
+		}
+		if t.DownloadPath == "" {
+			return t.Progress < 1 && op.Target != "" && d.Clean(t.SavePath) != d.Clean(op.Target) &&
+				pathAtOrUnder(d, foldKey(d, t.ContentPath), foldKey(d, t.SavePath))
+		}
+		return d.Clean(t.DownloadPath) != d.Clean(op.Target) &&
 			pathAtOrUnder(d, foldKey(d, t.ContentPath), foldKey(d, t.DownloadPath))
 	case FolderCleanupSetCategory:
 		return t.AutoManaged && t.Category != op.Target

@@ -416,6 +416,37 @@ func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 	}
 }
 
+// qBittorrent's setDownloadPath moves an incomplete torrent with ATM off from
+// where its content sits into the new path. A complete torrent does not move,
+// and admitting every one of a bulk change over seeding torrents would hold
+// the queue for the deadline.
+func TestFolderCleanupSetDownloadPathAdmits(t *testing.T) {
+	t.Parallel()
+	const save, download = "/data/torrents/tv/Rel-GRP", "/data/torrents/incomplete/Rel-GRP"
+	for _, tc := range []struct {
+		name    string
+		torrent qbt.Torrent
+		target  string
+		want    bool
+	}{
+		{"from the save path", qbt.Torrent{SavePath: save, ContentPath: save, Progress: 0.5}, "/data/torrents/incomplete/tv", true},
+		{"from the save path, root folder", qbt.Torrent{SavePath: save, ContentPath: save + "/Rel"}, "/data/torrents/incomplete/tv", true},
+		{"complete, in the save path", qbt.Torrent{SavePath: save, ContentPath: save, Progress: 1}, "/data/torrents/incomplete/tv", false},
+		{"complete root folder, in the save path", qbt.Torrent{SavePath: save, ContentPath: save + "/Rel", Progress: 1}, "/data/torrents/incomplete/tv", false},
+		{"to the save path itself", qbt.Torrent{SavePath: save, ContentPath: save}, save + "/", false},
+		{"empty target without a download path", qbt.Torrent{SavePath: save, ContentPath: save}, "", false},
+		{"content outside the save path", qbt.Torrent{SavePath: save, ContentPath: "/data/elsewhere"}, "/data/torrents/incomplete/tv", false},
+		{"ATM", qbt.Torrent{SavePath: save, ContentPath: save, AutoManaged: true}, "/data/torrents/incomplete/tv", false},
+		{"from the download path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: download}, "/data/torrents/incomplete/tv", true},
+		{"back to the save path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: download}, "", true},
+		{"same download path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: download}, download, false},
+		{"complete, already in the save path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: save}, "/data/torrents/incomplete/tv", false},
+	} {
+		op := FolderCleanupOp{Kind: FolderCleanupSetDownloadPath, Target: tc.target}
+		require.Equal(t, tc.want, op.mayMove(fsops.SlashPaths, &tc.torrent), tc.name)
+	}
+}
+
 // remoteRowStore answers every instance read with a row in remote mode.
 type remoteRowStore struct{}
 
