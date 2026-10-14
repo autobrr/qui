@@ -159,8 +159,11 @@ type pendingFolder struct {
 	topLevel []string
 	// gone counts the leading topLevel entries already seen gone, so a retry
 	// stats only what was still there.
-	gone    int
-	expires time.Time
+	gone int
+	// judgeErr is why the last check could not judge the item's folders, so
+	// a drop at the deadline can say cleanup did not run.
+	judgeErr error
+	expires  time.Time
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
@@ -369,14 +372,30 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 	}
 
 	now := time.Now()
+	unjudged := make(map[int]int)
+	judgeErr := make(map[int]error)
 	retry = slices.DeleteFunc(retry, func(item *pendingFolder) bool {
 		if now.Before(item.expires) {
 			return false
+		}
+		id := item.snap.InstanceID
+		if item.judgeErr != nil {
+			unjudged[id]++
+			judgeErr[id] = item.judgeErr
+			return true
 		}
 		log.Debug().Int("instanceID", item.snap.InstanceID).Str("hash", item.snap.Hash).Str("contentPath", item.snap.ContentPath).
 			Msg("folder cleanup: torrent still in its folder at the deadline, dropped")
 		return true
 	})
+	// Each failure was logged at Debug as it may pass. One that lasted to the
+	// deadline, such as an ignore path the host cannot read, turns cleanup off.
+	for _, id := range order {
+		if n := unjudged[id]; n > 0 {
+			log.Warn().Err(judgeErr[id]).Int("instanceID", id).Int("torrents", n).
+				Msg("folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan")
+		}
+	}
 
 	c.mu.Lock()
 	if !c.stopped {
@@ -388,16 +407,27 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 	c.mu.Unlock()
 }
 
+// markUnjudged records err on items whose folders could not be judged, to retry.
+func markUnjudged(instanceID int, err error, items []*pendingFolder) []*pendingFolder {
+	log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
+	for _, item := range items {
+		item.judgeErr = err
+	}
+	return items
+}
+
 // checkInstance cleans the items whose content is gone and returns the ones to
 // check again.
 func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items []*pendingFolder) []*pendingFolder {
+	for _, item := range items {
+		item.judgeErr = nil
+	}
 	backend, instance, err := c.pool.Require(ctx, instanceID, models.CapabilityWrite)
 	if errors.Is(err, fsops.ErrNotCapable) {
 		return nil
 	}
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: backend unavailable, will retry")
-		return items
+		return markUnjudged(instanceID, err, items)
 	}
 	// Remote instances wait for their own ticket, even once they can write.
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
@@ -425,8 +455,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 	rows, err := c.view.ownRows(ctx, instanceID, hashes)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
-		return append(retry, ready...)
+		return append(retry, markUnjudged(instanceID, err, ready)...)
 	}
 	d := backend.Paths()
 	hint := false
@@ -442,8 +471,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	if len(judge) > 0 {
 		scope, waiting, err := c.buildScope(ctx, instanceID, instance, backend, judge)
 		if err != nil {
-			log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: cannot judge folders yet, will retry")
-			retry = append(retry, judge...)
+			retry = append(retry, markUnjudged(instanceID, err, judge)...)
 		} else {
 			// The full read can be newer than the row read above, so it decides.
 			for _, item := range judge {

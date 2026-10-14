@@ -956,6 +956,55 @@ func TestFolderCleanupFailsClosed(t *testing.T) {
 	}
 }
 
+// A check that fails until the deadline, such as for an ignore path the host
+// cannot read, leaves the folders to orphan scan, so the drop is a warning,
+// once for the batch. A torrent whose content never left is dropped at Debug.
+func TestFolderCleanupWarnsWhenItCannotJudgeByTheDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		warnings := captureLogs(t, zerolog.WarnLevel)
+		e.ignores.err = errors.New(`ignore path "/mnt/data/keep" is not absolute`)
+		e.tree("torrents/tv/Show/A/", "torrents/tv/Show/B/", "torrents/tv/Show/C/c.mkv")
+		e.run(e.rootFolder("torrents/tv/Show", "A"), e.rootFolder("torrents/tv/Show", "B"), e.rootFolder("torrents/tv/Show", "C"))
+		require.Empty(t, warnings(), "a failure that may pass stays at Debug")
+
+		time.Sleep(e.fc.Deadline)
+		synctest.Wait()
+		require.Equal(t, []string{"folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan"}, warnings())
+		e.requireTree([]string{"torrents/tv/Show/A", "torrents/tv/Show/B"}, nil)
+	})
+}
+
+// A backend that stays unavailable to the deadline also leaves the folders to
+// orphan scan, so it warns like a scope that cannot be built.
+func TestFolderCleanupWarnsWhenTheBackendStaysUnavailable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		warnings := captureLogs(t, zerolog.WarnLevel)
+		e.req.err = errors.New("backend unavailable")
+		e.tree("torrents/tv/Show/A/")
+		e.run(e.rootFolder("torrents/tv/Show", "A"))
+		require.Empty(t, warnings(), "a failure that may pass stays at Debug")
+
+		time.Sleep(e.fc.Deadline)
+		synctest.Wait()
+		require.Equal(t, []string{"folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan"}, warnings())
+		e.requireTree([]string{"torrents/tv/Show/A"}, nil)
+	})
+}
+
+// Each check records its own failure, so the deadline warning cannot quote
+// one an earlier check saw.
+func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
+	t.Parallel()
+	unavailable := errors.New("backend unavailable")
+	fc := NewFolderCleanup(&fakeRequirer{err: unavailable}, &fakeView{}, &fakeIgnores{})
+	item := &pendingFolder{judgeErr: errors.New("ignore paths unreadable")}
+
+	require.Equal(t, []*pendingFolder{item}, fc.checkInstance(t.Context(), 1, []*pendingFolder{item}))
+	require.ErrorIs(t, item.judgeErr, unavailable)
+}
+
 // nestEnv gives subcategory tv/anime a different folder flat and nested,
 // because its parent tv has its own save path: torrents/tv/anime flat and
 // media/tv/anime nested. One check has already run, so the version check is
