@@ -1792,7 +1792,7 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
 		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
-			Target: strings.TrimSpace(form.get("location"))}, true
+			Path: strings.TrimSpace(form.get("location"))}, true
 	})
 }
 

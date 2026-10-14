@@ -5786,7 +5786,7 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 		return err
 	}
 
-	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Target: category})
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Category: category})
 	if err := client.SetCategoryCtx(ctx, hashes, category); err != nil {
 		return err
 	}
@@ -5911,7 +5911,7 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEditCategory, Target: name, NewPath: path})
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEditCategory, EditedCategory: name, Path: path})
 	if err := client.EditCategoryCtx(ctx, name, path); err != nil {
 		return err
 	}
@@ -6225,7 +6225,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		return errors.New("location cannot be empty")
 	}
 
-	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Target: location})
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location})
 	// Set the location - this will disable Auto TMM and move the torrents
 	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 		return fmt.Errorf("failed to set torrent location: %w", err)

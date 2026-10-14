@@ -51,11 +51,13 @@ type FolderCleanupOp struct {
 	// Hashes are the torrents; ["all"] means every torrent. EditCategory
 	// ignores it.
 	Hashes []string
-	// Target is the new location or path, the new category, or for
-	// EditCategory the category being edited.
-	Target string
-	// NewPath is EditCategory's new save path.
-	NewPath string
+	// Path is the new location, save path or download path, or for
+	// EditCategory the category's new save path.
+	Path string
+	// Category is SetCategory's new category.
+	Category string
+	// EditedCategory is the category EditCategory changes.
+	EditedCategory string
 }
 
 // FolderCleanupBatch holds the snapshots taken before an operation.
@@ -138,7 +140,7 @@ func folderCleanupCandidates(syncManager *qbt.SyncManager, d fsops.PathDialect, 
 	var torrents []qbt.Torrent
 	switch {
 	case op.Kind == FolderCleanupEditCategory:
-		if category, ok := syncManager.GetCategoriesUnchecked()[op.Target]; ok && d.Clean(category.SavePath) == d.Clean(op.NewPath) {
+		if category, ok := syncManager.GetCategoriesUnchecked()[op.EditedCategory]; ok && d.Clean(category.SavePath) == d.Clean(op.Path) {
 			return nil
 		}
 		torrents = syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
@@ -184,9 +186,9 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 	case FolderCleanupDelete:
 		return true
 	case FolderCleanupSetLocation:
-		return d.Clean(t.SavePath) != d.Clean(op.Target)
+		return d.Clean(t.SavePath) != d.Clean(op.Path)
 	case FolderCleanupSetSavePath:
-		return !t.AutoManaged && d.Clean(t.SavePath) != d.Clean(op.Target)
+		return !t.AutoManaged && d.Clean(t.SavePath) != d.Clean(op.Path)
 	case FolderCleanupSetDownloadPath:
 		// TorrentImpl::setDownloadPath moves an incomplete torrent from where
 		// its content sits, its download path or, without one, its save path,
@@ -196,17 +198,17 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 			return false
 		}
 		if t.DownloadPath == "" {
-			return t.Progress < 1 && op.Target != "" && d.Clean(t.SavePath) != d.Clean(op.Target) &&
+			return t.Progress < 1 && op.Path != "" && d.Clean(t.SavePath) != d.Clean(op.Path) &&
 				pathAtOrUnder(d, fsops.NormalizePath(d, t.ContentPath), fsops.NormalizePath(d, t.SavePath))
 		}
-		return d.Clean(t.DownloadPath) != d.Clean(op.Target) &&
+		return d.Clean(t.DownloadPath) != d.Clean(op.Path) &&
 			pathAtOrUnder(d, fsops.NormalizePath(d, t.ContentPath), fsops.NormalizePath(d, t.DownloadPath))
 	case FolderCleanupSetCategory:
-		return t.AutoManaged && t.Category != op.Target
+		return t.AutoManaged && t.Category != op.Category
 	case FolderCleanupEnableATM:
 		return !t.AutoManaged
 	case FolderCleanupEditCategory:
-		return t.AutoManaged && (t.Category == op.Target || strings.HasPrefix(t.Category, op.Target+"/"))
+		return t.AutoManaged && (t.Category == op.EditedCategory || strings.HasPrefix(t.Category, op.EditedCategory+"/"))
 	}
 	return false
 }

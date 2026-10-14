@@ -102,7 +102,7 @@ func splitHashes(list string) []string {
 
 func (h *Handler) handleSetCategory(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetCategory, Hashes: splitHashes(form.get("hashes")), Target: form.get("category")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetCategory, Hashes: splitHashes(form.get("hashes")), Category: form.get("category")}, true
 	})
 }
 
@@ -115,19 +115,19 @@ func (h *Handler) handleSetAutoManagement(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleEditCategory(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupEditCategory, Target: form.get("category"), NewPath: form.get("savePath")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupEditCategory, EditedCategory: form.get("category"), Path: form.get("savePath")}, true
 	})
 }
 
 // setSavePath and setDownloadPath name their torrents "id", not "hashes".
 func (h *Handler) handleSetSavePath(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetSavePath, Hashes: splitHashes(form.get("id")), Target: form.get("path")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetSavePath, Hashes: splitHashes(form.get("id")), Path: form.get("path")}, true
 	})
 }
 
 func (h *Handler) handleSetDownloadPath(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetDownloadPath, Hashes: splitHashes(form.get("id")), Target: form.get("path")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetDownloadPath, Hashes: splitHashes(form.get("id")), Path: form.get("path")}, true
 	})
 }

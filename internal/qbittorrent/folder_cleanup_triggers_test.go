@@ -535,7 +535,7 @@ func TestFolderCleanupSetDownloadPathAdmits(t *testing.T) {
 		{"same download path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: download}, download, false},
 		{"complete, already in the save path", qbt.Torrent{SavePath: save, DownloadPath: download, ContentPath: save}, "/data/torrents/incomplete/tv", false},
 	} {
-		op := FolderCleanupOp{Kind: FolderCleanupSetDownloadPath, Target: tc.target}
+		op := FolderCleanupOp{Kind: FolderCleanupSetDownloadPath, Path: tc.target}
 		require.Equal(t, tc.want, op.mayMove(fsops.SlashPaths, &tc.torrent), tc.name)
 	}
 }
@@ -546,7 +546,7 @@ func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 	t.Parallel()
 	torrent := qbt.Torrent{SavePath: "/data/torrents/tv", Category: "tv"}
 	for kind := FolderCleanupDelete; kind <= FolderCleanupEditCategory; kind++ {
-		op := FolderCleanupOp{Kind: kind, Target: "/data/torrents/movies"}
+		op := FolderCleanupOp{Kind: kind, Path: "/data/torrents/movies", Category: "movies", EditedCategory: "tv"}
 		require.False(t, op.mayMove(fsops.SlashPaths, &torrent), "kind %d", kind)
 	}
 }
