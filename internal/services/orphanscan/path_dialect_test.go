@@ -268,6 +268,21 @@ func TestPathDialect_IgnorePathMatching(t *testing.T) {
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/a\\b", "/data/a"))
 }
 
+func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
+	t.Parallel()
+
+	ignore := []string{"/"}
+	require.True(t, isPathUnderNormalized(fsops.SlashPaths, "/data/x.mkv", "/"))
+	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/", "/"))
+	require.True(t, isIgnoredPath(fsops.SlashPaths, "/data/x.mkv", ignore))
+	require.True(t, isIgnoredPath(fsops.SlashPaths, "/", ignore))
+	require.True(t, isPathProtectedByIgnorePaths(fsops.SlashPaths, "/data/x.mkv", ignore))
+
+	// A parent that does not end in the separator keeps the boundary rule.
+	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foobar", "/data/foo"))
+	require.True(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foo/bar", "/data/foo"))
+}
+
 // A remote scan stores the paths the remote walk produced, byte for byte, on
 // any host.
 func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {
