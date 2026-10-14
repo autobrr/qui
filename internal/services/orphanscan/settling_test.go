@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
 )
 
 type mockHealthChecker struct {
@@ -44,6 +46,16 @@ func (b *rootIdentityBackend) Lstat(ctx context.Context, path string) (*fsops.Ls
 	}
 	infoCopy := *info
 	return &infoCopy, nil
+}
+
+type walkDirCounter struct {
+	fsops.Backend
+	walks *atomic.Int32
+}
+
+func (b *walkDirCounter) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	b.walks.Add(1)
+	return b.Backend.WalkDir(ctx, root, opts)
 }
 
 func TestReadinessChecks(t *testing.T) {
@@ -501,4 +513,50 @@ func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T)
 
 	assert.Equal(t, []string{root}, dedupeCaseVariantRoots(t.Context(), []string{root, root + "/"}, backend))
 	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend))
+}
+
+// Declaring the default save path alongside a torrent at the same root must not
+// walk it twice when the backend cannot confirm file identity.
+func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
+	t.Parallel()
+
+	const root = "/srv/data"
+	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
+	slash := newSlashBackend(map[string]int64{
+		root + "/owned.mkv":  1,
+		root + "/orphan.mkv": 2,
+	}, root)
+	identity := &rootIdentityBackend{
+		Backend: slash,
+		infos: map[string]*fsops.LstatInfo{
+			root:       noID,
+			root + "/": noID,
+		},
+	}
+	walks := &atomic.Int32{}
+	backend := &walkDirCounter{Backend: identity, walks: walks}
+
+	f := newModeFixture(t, "orphanscan-dedupe-exact-roots", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return backend
+	})
+	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+	}
+	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+	}
+	stubSync(f.svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: root + "/"}, nil
+	}
+
+	settings, err := f.store.GetSettings(t.Context(), 1)
+	require.NoError(t, err)
+	settings.ScanDefaultSavePath = true
+	_, err = f.store.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	assert.Equal(t, []string{root}, run.ScanPaths)
+	assert.Equal(t, int32(1), walks.Load())
 }
