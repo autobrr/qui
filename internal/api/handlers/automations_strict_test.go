@@ -213,6 +213,12 @@ func TestAutomationStrictDecode(t *testing.T) {
 			want: []string{`conditions.delete.mode: mode does not allow "deleteFiles"; it allows delete, deleteWithFiles, deleteWithFilesPreserveCrossSeeds, deleteWithFilesIncludeCrossSeeds`},
 		},
 		{
+			name: "unknown share limit action, default mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"shareLimits":{"enabled":true,"shareLimitAction":"Remov","shareLimitsMode":"default"}}}`,
+			want: []string{`conditions.shareLimits.shareLimitAction: shareLimitAction does not allow "Remov"; it allows Stop, Remove, RemoveWithContent, EnableSuperSeeding`},
+		},
+		{
 			name: "condition in a score rule",
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
 				"sortingConfig":{"schemaVersion":"1","type":"score","direction":"DESC","scoreRules":[
