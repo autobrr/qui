@@ -46,10 +46,10 @@ type FolderCleanup struct {
 	view    folderView
 	ignores ignoreMatcher
 
-	// Tick is how often the worker checks its queue, and Deadline how long an
+	// tick is how often the worker checks its queue, and deadline how long an
 	// item waits for its torrent to leave. Tests shorten them before Start.
-	Tick     time.Duration
-	Deadline time.Duration
+	tick     time.Duration
+	deadline time.Duration
 	capacity int
 	// prepareBudget and proxyPrepareBudget bound how long qui's own
 	// operations and proxied requests wait on their snapshots.
@@ -183,8 +183,8 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 		pool:               pool,
 		view:               view,
 		ignores:            ignores,
-		Tick:               folderCleanupTick,
-		Deadline:           folderCleanupDeadline,
+		tick:               folderCleanupTick,
+		deadline:           folderCleanupDeadline,
 		capacity:           folderCleanupCapacity,
 		prepareBudget:      folderCleanupPrepareBudget,
 		proxyPrepareBudget: folderCleanupProxyPrepareBudget,
@@ -230,7 +230,7 @@ func (c *FolderCleanup) room() int {
 // blocks on the filesystem. alreadyDropped counts torrents the caller left out
 // for lack of room, so the one warning carries the full count.
 func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
-	expires := time.Now().Add(c.Deadline)
+	expires := time.Now().Add(c.deadline)
 	items := make([]*pendingFolder, 0, len(snaps))
 	for _, snap := range snaps {
 		// Content that was missing before the operation may be an unmounted
@@ -341,7 +341,7 @@ func hasDriveLetter(name string) bool {
 
 func (c *FolderCleanup) run(ctx context.Context) {
 	defer close(c.done)
-	ticker := time.NewTicker(c.Tick)
+	ticker := time.NewTicker(c.tick)
 	defer ticker.Stop()
 	for {
 		select {

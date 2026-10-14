@@ -437,7 +437,7 @@ func row(snap folderSnapshot) qbt.Torrent {
 // tick lets the worker run n ticks on the bubble's fake clock.
 func (e *cleanupEnv) tick(n int) {
 	for range n {
-		time.Sleep(e.fc.Tick)
+		time.Sleep(e.fc.tick)
 		synctest.Wait()
 	}
 }

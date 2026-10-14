@@ -26,15 +26,12 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick replaces the 3 s production tick. It stays well above the 200 ms
-// debounced sync after a write: a hint on every tick closer than that would
-// keep postponing the sync the worker waits on.
-const rigTick = 500 * time.Millisecond
+// rigTick is folder cleanup's production tick, which the rig runs at.
+const rigTick = 3 * time.Second
 
 // rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
 // removed by mistake is gone by the time requireKept looks, even when the
-// worker first waits a tick for the sync to drop the torrent's row. In the
-// rig a removal lands about 0.5 s after the request.
+// worker first waits a tick for the sync to drop the torrent's row.
 const rigKeptWait = 2*rigTick + 500*time.Millisecond
 
 const proxyHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -82,7 +79,6 @@ func newProxyRig(t *testing.T) *proxyRig {
 
 	sm := qbittorrent.NewSyncManager(pool, nil)
 	fc := qbittorrent.NewFolderCleanup(fsops.NewPool(instanceStore, local.NewBackend()), sm, noIgnores{})
-	fc.Tick = rigTick
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 	sm.SetFolderCleanup(fc)
@@ -122,12 +118,15 @@ func (r *proxyRig) postAs(handle http.HandlerFunc, endpoint, contentType, body s
 	return rec
 }
 
+// requireGone polls, so a passing test returns as soon as rel goes. The wait
+// leaves room past the two ticks a removal can take, for a loaded run under
+// -race.
 func (r *proxyRig) requireGone(rel string) {
 	r.t.Helper()
 	require.Eventually(r.t, func() bool {
 		_, err := os.Lstat(r.p(rel))
 		return err != nil
-	}, 10*time.Second, 50*time.Millisecond, "%s must be removed", rel)
+	}, 20*time.Second, 50*time.Millisecond, "%s must be removed", rel)
 }
 
 // requireKept waits out a tick and the sync, then checks rel is still there.
@@ -208,7 +207,6 @@ func TestProxyFolderCleanupHungMountDoesNotHoldTheRequest(t *testing.T) {
 	mount := hungMount{Backend: local.NewBackend(), hang: r.p("torrents/movies/Film-GRP"), release: make(chan struct{})}
 	t.Cleanup(func() { close(mount.release) })
 	fc := qbittorrent.NewFolderCleanup(hungMountPool{fsops.NewPool(r.handler.instanceStore, local.NewBackend()), mount}, r.handler.syncManager, noIgnores{})
-	fc.Tick = rigTick
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 	r.handler.syncManager.SetFolderCleanup(fc)

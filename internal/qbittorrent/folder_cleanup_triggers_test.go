@@ -81,7 +81,7 @@ func newTriggerRig(t *testing.T) *triggerRig {
 
 	r.sm = NewSyncManager(&ClientPool{instanceStore: instanceStore, clients: map[int]*Client{instance.ID: client}}, nil)
 	fc := NewFolderCleanup(fsops.NewPool(instanceStore, local.NewBackend()), r.sm, &fakeIgnores{})
-	fc.Tick = rigTick
+	fc.tick = rigTick
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 	r.sm.SetFolderCleanup(fc)
@@ -392,7 +392,7 @@ func TestFolderCleanupTriggerDoesNotWaitForCleanup(t *testing.T) {
 	require.DirExists(t, r.p("torrents/tv/Show.S01E01-GRP"))
 	require.Len(t, fc.pending, 1)
 
-	fc.Tick = rigTick
+	fc.tick = rigTick
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
@@ -607,7 +607,7 @@ func hungRig(t *testing.T) (*triggerRig, *hungBackend) {
 		Category: "movies", Layout: qbtstub.NoRootFolder, Files: []string{"Film.mkv"}})
 	backend := &hungBackend{Backend: local.NewBackend(), hang: r.p("torrents/movies/Film-GRP"), release: make(chan struct{})}
 	fc := NewFolderCleanup(hungRequirer{r.sm.folderCleanup.Load().pool, backend}, r.sm, &fakeIgnores{})
-	fc.Tick = rigTick
+	fc.tick = rigTick
 	fc.prepareBudget = 200 * time.Millisecond
 	fc.proxyPrepareBudget = 200 * time.Millisecond
 	fc.Start(t.Context())

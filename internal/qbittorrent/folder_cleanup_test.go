@@ -601,7 +601,7 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 					snap.Move = move
 					e.view.setTorrents(row(snap))
 					e.run(snap)
-					time.Sleep(e.fc.Deadline)
+					time.Sleep(e.fc.deadline)
 					synctest.Wait()
 					e.requireTree(tc.layout, nil)
 					require.Positive(t, e.view.refreshes.Load(), "a row still in place asks for a sync")
@@ -616,7 +616,7 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 			snap := e.noRoot("torrents/tv/Show/Rel-GRP", "a/b.mkv")
 			e.view.setTorrents(qbt.Torrent{Hash: snap.Hash, SavePath: e.p("torrents/movies"), ContentPath: e.p("torrents/movies")})
 			e.run(snap)
-			time.Sleep(e.fc.Deadline)
+			time.Sleep(e.fc.deadline)
 			synctest.Wait()
 			e.requireTree([]string{"torrents/tv/Show/Rel-GRP/a"}, nil)
 		})
@@ -781,7 +781,7 @@ func TestFolderCleanupJunkFiles(t *testing.T) {
 				snap := e.rootFolder("torrents/tv/Show", "Rel-GRP")
 				e.rm("torrents/tv/Show/Rel-GRP/a.mkv")
 				e.run(snap)
-				e.tick(int(e.fc.Deadline/e.fc.Tick) + 2)
+				e.tick(int(e.fc.deadline/e.fc.tick) + 2)
 				e.requireTree([]string{junction, "torrents/tv/Show"}, removed)
 			})
 		})
@@ -866,7 +866,7 @@ func TestFolderCleanupWaitsForSlowDeletes(t *testing.T) {
 			logs := captureLogs(t, zerolog.DebugLevel)
 			e.tree("torrents/tv/Rel-GRP/a.mkv")
 			e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
-			time.Sleep(e.fc.Deadline)
+			time.Sleep(e.fc.deadline)
 			synctest.Wait()
 			require.Contains(t, logs(), "folder cleanup: torrent still in its folder at the deadline, dropped")
 
@@ -922,7 +922,7 @@ func TestFolderCleanupCountsTheBatchInFlight(t *testing.T) {
 
 		e.tree("torrents/tv/A/a.mkv")
 		e.fc.enqueue([]folderSnapshot{e.rootFolder("torrents/tv", "A")}, 0)
-		time.Sleep(e.fc.Tick)
+		time.Sleep(e.fc.tick)
 		synctest.Wait()
 		more := make([]folderSnapshot, 0, 4)
 		for _, name := range []string{"B", "C", "D", "E"} {
@@ -1012,7 +1012,7 @@ func TestFolderCleanupWarnsWhenItCannotJudgeByTheDeadline(t *testing.T) {
 		e.run(e.rootFolder("torrents/tv/Show", "A"), e.rootFolder("torrents/tv/Show", "B"), e.rootFolder("torrents/tv/Show", "C"))
 		require.Empty(t, warnings(), "a failure that may pass stays at Debug")
 
-		time.Sleep(e.fc.Deadline)
+		time.Sleep(e.fc.deadline)
 		synctest.Wait()
 		require.Equal(t, []string{"folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan"}, warnings())
 		e.requireTree([]string{"torrents/tv/Show/A", "torrents/tv/Show/B"}, nil)
@@ -1030,7 +1030,7 @@ func TestFolderCleanupWarnsWhenTheBackendStaysUnavailable(t *testing.T) {
 		e.run(e.rootFolder("torrents/tv/Show", "A"))
 		require.Empty(t, warnings(), "a failure that may pass stays at Debug")
 
-		time.Sleep(e.fc.Deadline)
+		time.Sleep(e.fc.deadline)
 		synctest.Wait()
 		require.Equal(t, []string{"folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan"}, warnings())
 		e.requireTree([]string{"torrents/tv/Show/A"}, nil)
@@ -1216,7 +1216,7 @@ func TestFolderCleanupWarnsAboutAFolderItCannotRead(t *testing.T) {
 		e.tick(5)
 		require.Empty(t, logs())
 
-		time.Sleep(e.fc.Deadline)
+		time.Sleep(e.fc.deadline)
 		synctest.Wait()
 		require.Equal(t, [][2]string{{"folder cleanup: could not read the content before the deadline, leaving these torrents' folders in place",
 			strings.Join(unreadable, ",")}}, logs())
@@ -1240,7 +1240,7 @@ func TestFolderCleanupWarnsAboutAFileItCannotRead(t *testing.T) {
 			return nil
 		}
 		e.run(e.noRoot("torrents/tv/Rel-GRP", "Extras/x.mkv", "a.mkv"))
-		time.Sleep(e.fc.Deadline)
+		time.Sleep(e.fc.deadline)
 		synctest.Wait()
 		require.Equal(t, [][2]string{{"folder cleanup: could not read the content before the deadline, leaving these torrents' folders in place",
 			unreadable}}, logs())
@@ -1299,7 +1299,7 @@ func TestFolderCleanupConcurrentEnqueue(t *testing.T) {
 	tree := localTree{Backend: local.NewBackend(), t: t}
 	view := &fakeView{inputs: stopInputs{DefaultSavePath: root}}
 	fc := NewFolderCleanup(&fakeRequirer{backend: tree, instance: models.Instance{HasLocalFilesystemAccess: true}}, view, &fakeIgnores{})
-	fc.Tick = time.Millisecond
+	fc.tick = time.Millisecond
 	fc.Start(t.Context())
 	t.Cleanup(fc.Stop)
 
