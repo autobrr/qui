@@ -174,11 +174,24 @@ func (m matcher) releasesMatchWithReasonAndNames(source, candidate *rls.Release,
 }
 
 func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	return m.namedReleasesMatchWithReasonAndTitles(
+		namedRelease{release: source, rawName: sourceName},
+		namedRelease{release: candidate, rawName: candidateName},
+		sourceTitles, candidateTitles, findIndividualEpisodes,
+	)
+}
+
+// namedReleasesMatchWithReasonAndTitles is the strict match on full identity
+// views, so the group check can read the selected-file tags too.
+func (m matcher) namedReleasesMatchWithReasonAndTitles(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
+	sourceName, candidateName := sourceSide.rawName, candidateSide.rawName
 	if source == candidate {
 		return true, ""
 	}
 	// rls reads a bare "Title III" as a movie, so only the other side can say that its numeral is a season.
 	source, candidate = withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source)
+	sourceSide.release, candidateSide.release = source, candidate
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
@@ -187,11 +200,7 @@ func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := m.validateGroupSiteAndChecksum(
-		namedRelease{release: source, rawName: sourceName},
-		namedRelease{release: candidate, rawName: candidateName},
-		false,
-	); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, false); !ok {
 		return false, reason
 	}
 	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {

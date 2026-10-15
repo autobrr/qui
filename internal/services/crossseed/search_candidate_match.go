@@ -172,11 +172,9 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	ignoreSizeCheck := input.FindIndividualEpisodes &&
 		isTVSeasonPack(input.Source.release) && isTVEpisode(input.Candidate.release)
 
-	strictMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-		input.Source.release,
-		input.Candidate.release,
-		input.Source.rawName,
-		input.Candidate.rawName,
+	strictMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+		input.Source,
+		input.Candidate,
 		input.SourceTitles,
 		input.CandidateTitles,
 		input.FindIndividualEpisodes,
@@ -391,11 +389,9 @@ func (m matcher) oneSidedChecksumIsOnlyStrictDifference(input searchCandidateInp
 	if !ok {
 		return false
 	}
-	matches, _ := m.releasesMatchWithReasonAndNamesAndTitles(
-		replayInput.Source.release,
-		replayInput.Candidate.release,
-		replayInput.Source.rawName,
-		replayInput.Candidate.rawName,
+	matches, _ := m.namedReleasesMatchWithReasonAndTitles(
+		replayInput.Source,
+		replayInput.Candidate,
 		replayInput.SourceTitles,
 		replayInput.CandidateTitles,
 		replayInput.FindIndividualEpisodes,
@@ -540,11 +536,9 @@ func (m matcher) replayRelaxedDifferences(input searchCandidateInput, mismatchRe
 		if !ok {
 			return nil, false, "invalid recorded release difference"
 		}
-		matches, reason := m.releasesMatchWithReasonAndNamesAndTitles(
-			replayInput.Source.release,
-			replayInput.Candidate.release,
-			replayInput.Source.rawName,
-			replayInput.Candidate.rawName,
+		matches, reason := m.namedReleasesMatchWithReasonAndTitles(
+			replayInput.Source,
+			replayInput.Candidate,
 			replayInput.SourceTitles,
 			replayInput.CandidateTitles,
 			replayInput.FindIndividualEpisodes,
@@ -615,11 +609,9 @@ func (m matcher) searchCandidateMetadataConsistent(
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
 	input, _ = applyEpisodeMap(input)
-	matches, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-		input.Source.release,
-		input.Candidate.release,
-		input.Source.rawName,
-		input.Candidate.rawName,
+	matches, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+		input.Source,
+		input.Candidate,
 		input.SourceTitles,
 		input.CandidateTitles,
 		findIndividualEpisodes,
@@ -989,7 +981,9 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 // text tags before the group rebuilds the name, so "x265-Fansub" and
 // "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
 // origins as groupTagProvenance, because a view built from the files can carry
-// the Group of the torrent name without the tags of that name.
+// the Group of the torrent name without the tags of that name. Every origin
+// whose group tag is the Group must rebuild the Site, so a selected file that
+// names "Big-Moe-Fansub" vetoes a torrent name that says "Moe-Fansub".
 func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 	if sited.release == nil || grouped.release == nil {
 		return false
@@ -1005,18 +999,27 @@ func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 	if grouped.rawName != "" {
 		rawRelease = m.parseReleaseName(grouped.rawName)
 	}
+	spelled := false
 	for _, origin := range [...]*rls.Release{grouped.release, grouped.tagOrigin, rawRelease} {
-		if origin != nil && normalizer.Normalize(origin.Group) == group &&
-			normalizer.Normalize(dashSuffixGroupName(origin)) == site {
-			return true
+		if origin == nil {
+			continue
 		}
+		groupTag, name := dashSuffixGroupName(origin)
+		if normalizer.Normalize(groupTag) != group {
+			continue
+		}
+		if normalizer.Normalize(name) != site {
+			return false
+		}
+		spelled = true
 	}
-	return false
+	return spelled
 }
 
-// dashSuffixGroupName joins the group tag with the text tags directly before
-// it. Any other tag, such as a codec or HDR tag, ends the run.
-func dashSuffixGroupName(release *rls.Release) string {
+// dashSuffixGroupName returns the group tag and that tag joined with the text
+// tags directly before it. Any other tag, such as a codec or HDR tag, ends the
+// run.
+func dashSuffixGroupName(release *rls.Release) (groupTag, name string) {
 	tags := release.Tags()
 	groupIndex := -1
 	for i, tag := range slices.Backward(tags) {
@@ -1026,10 +1029,11 @@ func dashSuffixGroupName(release *rls.Release) string {
 		}
 	}
 	if groupIndex < 0 {
-		return ""
+		return "", ""
 	}
 
-	parts := []string{tags[groupIndex].Text()}
+	groupTag = tags[groupIndex].Text()
+	parts := []string{groupTag}
 	for i := groupIndex - 1; i >= 0; i-- {
 		if tags[i].Is(rls.TagTypeDelim, rls.TagTypeWhitespace) {
 			continue
@@ -1040,7 +1044,7 @@ func dashSuffixGroupName(release *rls.Release) string {
 		parts = append(parts, tags[i].Text())
 	}
 	slices.Reverse(parts)
-	return strings.Join(parts, "-")
+	return groupTag, strings.Join(parts, "-")
 }
 
 func (m matcher) explicitGroupsAgree(left, right namedRelease) bool {

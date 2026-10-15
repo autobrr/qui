@@ -4911,11 +4911,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-				fallbackInput.Source.release,
-				fallbackInput.Candidate.release,
-				fallbackInput.Source.rawName,
-				fallbackInput.Candidate.rawName,
+			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+				fallbackInput.Source,
+				fallbackInput.Candidate,
 				fallbackInput.SourceTitles,
 				fallbackInput.CandidateTitles,
 				req.FindIndividualEpisodes,
