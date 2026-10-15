@@ -1439,6 +1439,13 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
+	// A backend that lstats in batches gets every path in one call. The others
+	// get one Lstat per file, so fn can stop before the rest are read.
+	lstat := backend.Lstat
+	if batch, ok := backend.(fsops.BatchLstater); ok {
+		lstat = batchedLstat(ctx, batch, d, base, files)
+	}
+
 	var firstErr error
 	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(d, base, file.Name)
@@ -1448,7 +1455,7 @@ func forEachLocalTorrentFile(
 			}
 			continue
 		}
-		info, err := backend.Lstat(ctx, fullPath)
+		info, err := lstat(ctx, fullPath)
 		if err != nil {
 			// ENOTDIR: a parent of the path is a file, so this file is missing too.
 			if firstErr == nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
@@ -1464,6 +1471,26 @@ func forEachLocalTorrentFile(
 		}
 	}
 	return firstErr
+}
+
+// batchedLstat lstats every file that resolves under base in one LstatAll and
+// returns a Lstat that reads the answers.
+func batchedLstat(ctx context.Context, batch fsops.BatchLstater, d fsops.PathDialect, base string, files qbt.TorrentFiles) func(context.Context, string) (*fsops.LstatInfo, error) {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		if fullPath, ok := resolveLocalTorrentFile(d, base, file.Name); ok {
+			paths = append(paths, fullPath)
+		}
+	}
+	infos, errs := batch.LstatAll(ctx, paths)
+	index := make(map[string]int, len(paths))
+	for i, p := range paths {
+		index[p] = i
+	}
+	return func(_ context.Context, p string) (*fsops.LstatInfo, error) {
+		i := index[p]
+		return infos[i], errs[i]
+	}
 }
 
 func resolveLocalTorrentFile(d fsops.PathDialect, base, name string) (string, bool) {

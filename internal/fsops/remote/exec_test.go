@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -301,4 +303,96 @@ func TestComparePaths(t *testing.T) {
 	paths := []string{"b", "a/b", "a", "a b", "a/a/z", "a-b", "a/a"}
 	slices.SortFunc(paths, comparePaths)
 	assert.Equal(t, []string{"a", "a/a", "a/a/z", "a/b", "a b", "a-b", "b"}, paths)
+}
+
+// lstatAllTree is a directory with one of each kind of path LstatAll gets,
+// and enough plain files for two batches.
+func lstatAllTree(t *testing.T) []string {
+	t.Helper()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "it's -rf $(x).mkv")
+	require.NoError(t, os.WriteFile(file, []byte("data"), 0o600))
+	require.NoError(t, os.Link(file, filepath.Join(dir, "hardlink.mkv")))
+	require.NoError(t, os.Symlink(file, filepath.Join(dir, "symlink.mkv")))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o700))
+	paths := make([]string, 0, 5+lstatBatchPaths)
+	paths = append(paths, file, filepath.Join(dir, "hardlink.mkv"), filepath.Join(dir, "symlink.mkv"), filepath.Join(dir, "sub"), filepath.Join(dir, "missing"))
+	for i := range lstatBatchPaths {
+		p := filepath.Join(dir, "sub", "f"+strconv.Itoa(i))
+		require.NoError(t, os.WriteFile(p, nil, 0o600))
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+func finds(server *sshtest.Server) int {
+	n := 0
+	for _, words := range server.Commands() {
+		if len(words) > 1 && words[1] == "find" {
+			n++
+		}
+	}
+	return n
+}
+
+// assertLstatAllMatchesLstat compares each LstatAll answer with Lstat. sftp
+// attrs carry whole seconds, so the mtimes compare at that precision.
+func assertLstatAllMatchesLstat(t *testing.T, backend *Backend, paths []string) {
+	t.Helper()
+	infos, errs := backend.LstatAll(t.Context(), paths)
+	require.Len(t, infos, len(paths))
+	require.Len(t, errs, len(paths))
+	for i, p := range paths {
+		want, wantErr := backend.Lstat(t.Context(), p)
+		if wantErr != nil {
+			require.ErrorIs(t, errs[i], fs.ErrNotExist, p)
+			require.ErrorIs(t, wantErr, fs.ErrNotExist, p)
+			assert.Nil(t, infos[i], p)
+			continue
+		}
+		require.NoError(t, errs[i], p)
+		got := *infos[i]
+		assert.Equal(t, want.ModTime.Truncate(time.Second), got.ModTime.Truncate(time.Second), p)
+		got.ModTime, want.ModTime = time.Time{}, time.Time{}
+		assert.Equal(t, *want, got, p)
+	}
+}
+
+func TestExecLstatAllMatchesLstat(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newExecBackend(t)
+	paths := lstatAllTree(t)
+
+	before := len(server.Commands())
+	infos, errs := backend.LstatAll(t.Context(), paths)
+	ran := server.Commands()[before:]
+	require.Len(t, ran, 2, "one find per batch, and no stat per path")
+	assert.Equal(t, "find", ran[0][1])
+	assert.Equal(t, "find", ran[1][1])
+	for i := range paths {
+		if i == 4 {
+			require.ErrorIs(t, errs[i], fs.ErrNotExist)
+			continue
+		}
+		require.NoError(t, errs[i], paths[i])
+		assert.Equal(t, paths[i], infos[i].Path)
+	}
+	assert.False(t, infos[0].FileID.IsZero())
+	assert.Equal(t, infos[0].FileID, infos[1].FileID, "a hardlink has the identity of its source")
+	assert.True(t, infos[2].FileID.IsZero(), "LstatAll never follows a symlink")
+
+	// Lstat runs a stat per path, so the field by field check reads the
+	// special paths and one file from each batch.
+	assertLstatAllMatchesLstat(t, backend, append(paths[:6:6], paths[len(paths)-1]))
+}
+
+func TestSFTPLstatAllIsLstat(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newBackend(t)
+	paths := lstatAllTree(t)[:5]
+
+	assertLstatAllMatchesLstat(t, backend, paths)
+	assert.Zero(t, finds(server))
 }

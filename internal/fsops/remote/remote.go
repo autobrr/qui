@@ -44,7 +44,10 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 	return &Backend{pool: pool, inst: inst}
 }
 
-var _ fsops.Backend = (*Backend)(nil)
+var (
+	_ fsops.Backend      = (*Backend)(nil)
+	_ fsops.BatchLstater = (*Backend)(nil)
+)
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
 // number, so hardlink identity degrades to zero FileID plus this error, which

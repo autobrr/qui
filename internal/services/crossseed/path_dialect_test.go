@@ -232,6 +232,53 @@ func TestPathDialect_ForEachLocalFileIDOnSlashSavePath(t *testing.T) {
 	require.ErrorContains(t, err, "cannot be resolved under the save path")
 }
 
+// batchSlashBackend is a slashBackend that also lstats in batches, the way
+// the remote backend does on the exec tier.
+type batchSlashBackend struct {
+	*slashBackend
+	batches [][]string
+}
+
+func (b *batchSlashBackend) LstatAll(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	b.batches = append(b.batches, paths)
+	infos := make([]*fsops.LstatInfo, len(paths))
+	errs := make([]error, len(paths))
+	for i, p := range paths {
+		infos[i], errs[i] = b.Lstat(ctx, p)
+	}
+	return infos, errs
+}
+
+func TestForEachLocalTorrentFileBatchesOnABatchBackend(t *testing.T) {
+	t.Parallel()
+
+	backend := &batchSlashBackend{slashBackend: newSlashBackend([]string{"/data"}, "/data/tv/ep1.mkv", "/data/tv/ep3.mkv")}
+	files := qbt.TorrentFiles{{Name: "ep1.mkv"}, {Name: "../x"}, {Name: "ep2.mkv"}, {Name: "ep3.mkv"}}
+
+	var ids []hardlink.FileID
+	err := forEachLocalFileID(t.Context(), backend, "/data/tv", files, func(id hardlink.FileID, _ uint64) bool {
+		ids = append(ids, id)
+		return true
+	})
+	require.ErrorContains(t, err, "cannot be resolved under the save path")
+	require.Equal(t, []hardlink.FileID{testFileID(1), testFileID(2)}, ids, "a missing file is skipped")
+	want := []string{"/data/tv/ep1.mkv", "/data/tv/ep2.mkv", "/data/tv/ep3.mkv"}
+	require.Equal(t, [][]string{want}, backend.batches, "one batch of the files that resolve")
+	require.Equal(t, want, backend.stats, "no Lstat outside the batch")
+}
+
+// A backend without batches keeps one Lstat per file, so a caller that stops
+// early reads no more files.
+func TestForEachLocalTorrentFileStopsEarlyWithoutBatches(t *testing.T) {
+	t.Parallel()
+
+	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep1.mkv", "/data/tv/ep2.mkv")
+	err := forEachLocalFileID(t.Context(), backend, "/data/tv", qbt.TorrentFiles{{Name: "ep1.mkv"}, {Name: "ep2.mkv"}},
+		func(hardlink.FileID, uint64) bool { return false })
+	require.NoError(t, err)
+	require.Equal(t, []string{"/data/tv/ep1.mkv"}, backend.stats)
+}
+
 func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	t.Parallel()
 

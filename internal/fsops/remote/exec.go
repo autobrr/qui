@@ -41,6 +41,20 @@ const (
 // because NUL is the one byte a path cannot hold.
 const findFormat = `%y %D %i %n %s %T@ %m %P\0`
 
+// lstatFormat is findFormat with the path as given, for find on a list of
+// paths at depth 0.
+const lstatFormat = `%y %D %i %n %s %T@ %m %p\0`
+
+const (
+	// lstatBatchPaths and lstatBatchBytes size one find of LstatAll. The
+	// command goes to the shell as one argument, and Linux caps one argument
+	// at 128 KiB.
+	lstatBatchPaths = 1000
+	lstatBatchBytes = 64 << 10
+	// lstatBatchTimeout bounds one find of LstatAll.
+	lstatBatchTimeout = 30 * time.Second
+)
+
 var errWalkLimit = fmt.Errorf("walk stops at %d entries", findEntryLimit)
 
 // execTier reports whether the stored tier says this instance runs commands.
@@ -133,6 +147,83 @@ func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow
 	info.FileID, info.Nlinks, info.FileIDErr = b.identity(ctx, info.Path, follow)
 }
 
+// LstatAll answers fsops.BatchLstater. On the exec tier, one find lstats a
+// batch of paths, with identity, in two round trips. Lstat answers each path
+// that find did not print, such as a missing one, so the error is the one
+// Lstat gives. On the sftp tier, Lstat answers every path.
+//
+// The paths must be absolute: find reads an argument that starts with "-",
+// "!" or "(" as an expression.
+func (b *Backend) LstatAll(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	found := make(map[string]findEntry, len(paths))
+	if b.execTier() {
+		b.lstatFind(ctx, paths, found)
+	}
+
+	infos := make([]*fsops.LstatInfo, len(paths))
+	errs := make([]error, len(paths))
+	for i, p := range paths {
+		e, ok := found[p]
+		if !ok {
+			infos[i], errs[i] = b.Lstat(ctx, p)
+			continue
+		}
+		info := &fsops.LstatInfo{
+			Path:      p,
+			Size:      e.size,
+			ModTime:   e.modTime,
+			IsDir:     e.mode.IsDir(),
+			IsSymlink: e.mode&fs.ModeSymlink != 0,
+			Mode:      e.mode,
+		}
+		// Lstat gives identity to regular files and directories only.
+		if e.mode.IsRegular() || e.mode.IsDir() {
+			info.FileID, info.Nlinks = e.id, e.nlink
+		}
+		infos[i] = info
+	}
+	return infos, errs
+}
+
+// lstatFind puts the find record of each path it can read into found, by
+// path, one batch at a time.
+//
+// ponytail: the batches run one after the other. Running them on the exec
+// sessions of the connection at once is the upgrade if a torrent with many
+// thousand files is ever slow.
+func (b *Backend) lstatFind(ctx context.Context, paths []string, found map[string]findEntry) {
+	conn, err := b.exec(ctx)
+	if err != nil {
+		return
+	}
+	for len(paths) > 0 {
+		n, size := 0, 0
+		for n < len(paths) && n < lstatBatchPaths && (n == 0 || size+len(paths[n]) <= lstatBatchBytes) {
+			size += len(paths[n])
+			n++
+		}
+		batchCtx, cancel := context.WithTimeout(ctx, lstatBatchTimeout)
+		entries, err := find(batchCtx, conn, sshpool.Command{
+			Name:       "find",
+			Options:    []string{"-P"},
+			Paths:      paths[:n],
+			Expression: []string{"-maxdepth", "0", "-printf", lstatFormat},
+		})
+		cancel()
+		for _, e := range entries {
+			found[e.rel] = e
+		}
+		// find exits non-zero for a missing path and still prints the rest.
+		// A lost connection or an end of ctx stops the batches, and Lstat
+		// then answers the paths that are left.
+		if err != nil && (ctx.Err() != nil || errors.Is(err, sshpool.ErrConnect)) {
+			log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: batch lstat stopped")
+			return
+		}
+		paths = paths[n:]
+	}
+}
+
 // sameFilesystemExec compares the device numbers of the two paths. It follows
 // links, as the local backend does.
 func (b *Backend) sameFilesystemExec(ctx context.Context, p1, p2 string) (bool, error) {
@@ -168,7 +259,12 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: walking over sftp")
 		return false
 	}
-	entries, err := find(ctx, conn, root)
+	entries, err := find(ctx, conn, sshpool.Command{
+		Name:       "find",
+		Options:    []string{"-P"},
+		Paths:      []string{root},
+		Expression: []string{"-mindepth", "1", "-printf", findFormat},
+	})
 	switch {
 	case ctx.Err() != nil:
 		return true
@@ -225,21 +321,20 @@ type findEntry struct {
 	nlink   uint64
 }
 
-// find streams the find output and parses it record by record.
-func find(ctx context.Context, conn *sshpool.Conn, root string) ([]findEntry, error) {
+// find runs cmd, streams its output and parses it record by record. When the
+// command exits non-zero after clean output, the entries it printed come back
+// with the error.
+func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command) ([]findEntry, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		err := conn.Stream(ctx, sshpool.Command{
-			Name:       "find",
-			Options:    []string{"-P"},
-			Paths:      []string{root},
-			Expression: []string{"-mindepth", "1", "-printf", findFormat},
-		}, pw)
-		_ = pw.CloseWithError(err)
+		err := conn.Stream(ctx, cmd, pw)
+		// The reader sees a clean end and takes the exit status from done,
+		// so a non-zero exit keeps the records before it.
+		_ = pw.Close()
 		done <- err
 	}()
 	// stop ends the command early: the closed pipe unblocks a write in flight.
@@ -256,10 +351,7 @@ func find(ctx context.Context, conn *sshpool.Conn, root string) ([]findEntry, er
 		record, err := reader.ReadSlice(0)
 		switch {
 		case errors.Is(err, io.EOF) && len(record) == 0:
-			if err := <-done; err != nil {
-				return nil, err
-			}
-			return entries, nil
+			return entries, <-done
 		case errors.Is(err, io.EOF):
 			return stop(fmt.Errorf("find output ends inside a record: %q", record))
 		case errors.Is(err, bufio.ErrBufferFull):

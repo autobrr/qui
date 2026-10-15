@@ -102,3 +102,11 @@ type Backend interface {
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
 }
+
+// BatchLstater is a Backend that answers Lstat for many paths in one request.
+// A caller that knows all its paths up front checks for it, so a remote host
+// costs a few round trips per batch and not a few per path.
+type BatchLstater interface {
+	// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i].
+	LstatAll(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
