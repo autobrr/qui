@@ -75,12 +75,16 @@ non-link strategies, which is the safe degradation.
 | `RemoveTree` | `REMOVE` over the recorded handle | same |
 | `SupportsReflink` | false | false |
 
-`StatBatch`/`LstatBatch` were dropped from `fsops.Backend` pending a
-consumer; this backend is that consumer. pkg/sftp pipelines concurrent
-requests over the one session, and the exec path fills a batch with a single
-`xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. Batch stat comes
-after the exec tier, in #2971.
+Batch lstat is the optional `fsops.BatchLstater`. It is not on
+`fsops.Backend`. A caller that knows all its paths checks for it, and a
+backend without it gets one `Lstat` per path. The remote backend implements
+it since #2726. On the exec tier, one `find -maxdepth 0 -printf` reads up to
+1,000 paths with their identity in two round trips. `Lstat` answers each
+path that `find` did not print, such as a missing one, so the errors are
+the same. On the sftp tier, `Lstat` answers each path. Cross-seed hardlink
+matching uses it: a 20-file pack takes about 200 ms at 100 ms of delay, not
+about 6 s. Batch stat that follows links, pipelined sftp requests, and the
+hardlink index and missing-files callers come in #2971.
 
 ## File Identity Over the Wire — DECIDED
 
@@ -478,7 +482,8 @@ scratch directories and a temporarily added, uniquely tagged
    - 3c (#2724): path dialect on the backend and the callsite sweep.
    - 3d (#2725): SFTP write operations.
    - 3e (#2726): the exec tier and remote file identity. The pool hands out
-     the ssh client for bounded exec sessions. Batch stat is #2971.
+     the ssh client for bounded exec sessions, and batch lstat for
+     cross-seed matching. The rest of batch stat is #2971.
 4. Frontend. Lands last. It is the only UI path that sets up SSH access,
    so it gates the rollout for users. Until #2917 ships, no UI text names
    SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
