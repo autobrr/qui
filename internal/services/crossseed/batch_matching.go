@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"maps"
+	"path"
 	"slices"
 
 	"github.com/autobrr/go-cache/ttlcache"
@@ -305,10 +306,11 @@ func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources
 }
 
 // sharedPathGroups groups the torrents whose cached paths allow a shared file
-// on disk: the torrents with one content path, and the torrents of a save path
-// that holds a multi-file torrent without a subfolder (its content path is the
-// save path). It returns the indexes into torrents of each group with two or
-// more members.
+// on disk: the torrents with one content path, a torrent with the torrents
+// whose content path is inside its content path, and the torrents of a save
+// path that holds a multi-file torrent without a subfolder (its content path is
+// the save path). It returns the indexes into torrents of each group with two
+// or more members.
 func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 	byContentPath := make(map[string][]int)
 	bySavePath := make(map[string][]int)
@@ -331,6 +333,14 @@ func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 	for _, group := range byContentPath {
 		if len(group) > 1 {
 			groups = append(groups, group)
+		}
+	}
+	// qui adds an episode cross-seed inside the folder of its season pack.
+	for contentPath, group := range byContentPath {
+		for inner, dir := contentPath, path.Dir(contentPath); dir != inner && dir != "." && dir != "/"; inner, dir = dir, path.Dir(dir) {
+			if outer := byContentPath[dir]; len(outer) > 0 {
+				groups = append(groups, slices.Concat(group, outer))
+			}
 		}
 	}
 	for savePath, group := range bySavePath {

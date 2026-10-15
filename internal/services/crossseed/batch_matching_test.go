@@ -177,6 +177,15 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
 	})
 
+	t.Run("an episode inside the folder of its season pack shares the file", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", "Harbor.Watch.S02.1080p.WEB.h264-GRP", "/data/tv", "/data/tv/Season2",
+				qbt.TorrentFiles{{Name: "Season2/" + cmEpisodeFile, Size: 1000}, {Name: "Season2/other.mkv", Size: 1000}}),
+			crossMatchTorrent(1, "bbb", cmEpisode, "/data/tv/Season2", "/data/tv/Season2/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
 	t.Run("an unreadable torrent in a flat folder counts as sharing files", func(t *testing.T) {
 		result := buildCrossMatch(t, sameNeeds,
 			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),

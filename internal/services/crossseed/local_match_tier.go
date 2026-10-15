@@ -129,6 +129,12 @@ func (s *Service) localMatchPrefilter(
 	if normalizedContentPath != "" && normalizedContentPath == candidateContentPath {
 		return "", true
 	}
+	// qui adds an episode cross-seed inside the folder of its season pack.
+	if normalizedContentPath != "" && candidateContentPath != "" &&
+		(strings.HasPrefix(candidateContentPath, normalizedContentPath+"/") ||
+			strings.HasPrefix(normalizedContentPath, candidateContentPath+"/")) {
+		return "", true
+	}
 	// qBittorrent reports the save path as the content path of a multi-file
 	// torrent without a subfolder, so its files can sit next to the other
 	// torrent's files.

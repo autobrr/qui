@@ -152,6 +152,38 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 			want: matchTypeContentPath,
 		},
 		{
+			name: "episode inside the folder of its season pack shares the file",
+			source: qbt.Torrent{
+				Hash:        tierSourceHash,
+				Name:        "Harbor.Watch.S02E01.1080p.WEB.h264-GRP",
+				SavePath:    "/data/tv/Harbor.Watch.S02",
+				ContentPath: "/data/tv/Harbor.Watch.S02/Harbor.Watch.S02E01.mkv",
+			},
+			sourceFiles: qbt.TorrentFiles{{Name: "Harbor.Watch.S02E01.mkv", Size: 1000}},
+			candidate:   tierCandidate(1, "Harbor.Watch.S02.1080p.WEB.h264-GRP", "/data/tv", "/data/tv/Harbor.Watch.S02"),
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Harbor.Watch.S02/Harbor.Watch.S02E01.mkv", Size: 1000},
+				{Name: "Harbor.Watch.S02/Harbor.Watch.S02E02.mkv", Size: 1000},
+			},
+			want: matchTypeContentPath,
+		},
+		{
+			name: "season pack shares the file of an episode inside its folder",
+			source: qbt.Torrent{
+				Hash:        tierSourceHash,
+				Name:        "Harbor.Watch.S02.1080p.WEB.h264-GRP",
+				SavePath:    "/data/tv",
+				ContentPath: "/data/tv/Harbor.Watch.S02",
+			},
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Harbor.Watch.S02/Harbor.Watch.S02E01.mkv", Size: 1000},
+				{Name: "Harbor.Watch.S02/Harbor.Watch.S02E02.mkv", Size: 1000},
+			},
+			candidate:      tierCandidate(1, "Harbor.Watch.S02E01.1080p.WEB.h264-GRP", "/data/tv/Harbor.Watch.S02", "/data/tv/Harbor.Watch.S02/Harbor.Watch.S02E01.mkv"),
+			candidateFiles: qbt.TorrentFiles{{Name: "Harbor.Watch.S02E01.mkv", Size: 1000}},
+			want:           matchTypeContentPath,
+		},
+		{
 			name:           "same paths on another instance are a separate copy",
 			source:         tierSingleFileSource(),
 			sourceFiles:    sourceFiles,
