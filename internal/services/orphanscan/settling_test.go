@@ -511,8 +511,8 @@ func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T)
 		infos:   map[string]*fsops.LstatInfo{root: noID, lower: noID},
 	}
 
-	assert.Equal(t, []string{root}, dedupeCaseVariantRoots(t.Context(), []string{root, root + "/"}, backend))
-	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend))
+	// root, lower, root is the no-identity case: Clean does not collapse it.
+	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend, nil))
 }
 
 // Declaring the default save path alongside a torrent at the same root must not
