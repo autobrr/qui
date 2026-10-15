@@ -27,7 +27,8 @@ Fixes # (issue)
 
 <!--- Delete this section if your change has no visible UI.
       Do not show private tracker names, tracker URLs, torrent names, or save paths.
-      Turn on incognito mode before you capture, or blur these columns. --->
+      Turn on incognito mode before you capture, or blur these columns.
+      To keep real torrent data private, link a Paste from https://bin.getqui.com. --->
 
 ## Checklist
 
