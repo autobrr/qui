@@ -514,6 +514,14 @@ func isPathUnderNormalized(d fsops.PathDialect, child, parent string) bool {
 	return strings.HasSuffix(parent, sep) || strings.HasPrefix(child[len(parent):], sep)
 }
 
+// separatorTerminatedRoot is a cleaned path that already ends in the dialect
+// separator ("/", "D:\\"). Ignore matching uses that suffix; deletes must not,
+// or a scan root at the filesystem root would allow removals develop refused.
+func separatorTerminatedRoot(d fsops.PathDialect, p string) bool {
+	sep := d.Separator()
+	return sep != "" && strings.HasSuffix(p, sep)
+}
+
 var discRootAllowedFiles = map[string]struct{}{
 	"DESKTOP.INI": {},
 	"THUMBS.DB":   {},

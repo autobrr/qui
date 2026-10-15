@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,56 @@ func (w winRootTestDialect) Clean(p string) string {
 	default:
 		return p
 	}
+}
+
+func (w winRootTestDialect) IsAbs(p string) bool {
+	p = strings.ReplaceAll(p, "/", `\`)
+	if len(p) >= 2 && p[1] == ':' {
+		return true
+	}
+	return strings.HasPrefix(p, `\\`)
+}
+
+// uncHostRootTestDialect keeps a share-less \\host\ as a trailing-separator
+// root whose Dir never walks above the share volume, matching Windows UNC.
+type uncHostRootTestDialect struct{ fsops.PathDialect }
+
+func (uncHostRootTestDialect) Separator() string { return `\` }
+
+func (d uncHostRootTestDialect) Clean(p string) string {
+	p = strings.ReplaceAll(p, "/", `\`)
+	switch p {
+	case `\\host`, `\\host\`:
+		return `\\host\`
+	default:
+		return strings.TrimRight(p, `\`)
+	}
+}
+
+func (d uncHostRootTestDialect) Dir(p string) string {
+	p = d.Clean(p)
+	if p == `\\host\` {
+		return p
+	}
+	i := strings.LastIndex(p, `\`)
+	if i < 0 {
+		return p
+	}
+	if p[:i] == `\\host` {
+		return p
+	}
+	return p[:i]
+}
+
+type dialectLstatBackend struct {
+	fsops.Backend
+	d fsops.PathDialect
+}
+
+func (b *dialectLstatBackend) Paths() fsops.PathDialect { return b.d }
+
+func (b *dialectLstatBackend) Lstat(context.Context, string) (*fsops.LstatInfo, error) {
+	return &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}}, nil
 }
 
 // slashBackend is a remote as orphan scan sees it on any host: the slash dialect
@@ -317,9 +368,40 @@ func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
 	require.True(t, isPathProtectedByIgnorePaths(win, `\\server\share\orphan.mkv`, uncIgnore))
 
 	b := newSlashBackend(map[string]int64{"/data/orphan.mkv": 1})
-	orphans, _, err := walkScanRoot(t.Context(), "/data", NewTorrentFileMap(fsops.SlashPaths), ignore, 0, 100, b)
+	orphans, _, err := walkScanRoot(t.Context(), "/data", NewTorrentFileMap(fsops.SlashPaths), ignore, 0, 100, b, nil)
 	require.NoError(t, err)
 	require.Empty(t, orphans)
+}
+
+func TestPathDialect_FilesystemRootDeletesRefused(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, findScanRoot(fsops.SlashPaths, "/data/x.mkv", []string{"/"}))
+	require.ErrorContains(t, withinScanRoot(fsops.SlashPaths, "/", "/data/x.mkv"), "escapes scan root")
+
+	win := winRootTestDialect{fsops.HostPaths}
+	driveRoot := win.Clean(`C:\`)
+	require.Empty(t, findScanRoot(win, `C:\data\x.mkv`, []string{driveRoot}))
+	require.ErrorContains(t, withinScanRoot(win, driveRoot, `C:\data\x.mkv`), "escapes scan root")
+}
+
+func TestPruneNestedScanRoots_SharelessHostRootDoesNotLoop(t *testing.T) {
+	t.Parallel()
+
+	d := uncHostRootTestDialect{fsops.HostPaths}
+	b := &dialectLstatBackend{Backend: newTestBackend(), d: d}
+	roots := []string{`\\host\`, `\\host\share\x`}
+
+	done := make(chan []string, 1)
+	go func() {
+		done <- pruneNestedScanRoots(t.Context(), roots, b)
+	}()
+	select {
+	case got := <-done:
+		require.Equal(t, roots, got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("pruneNestedScanRoots did not return for a share-less \\\\host\\ root")
+	}
 }
 
 // A remote scan stores the paths the remote walk produced, byte for byte, on

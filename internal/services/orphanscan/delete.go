@@ -46,7 +46,7 @@ func withinScanRoot(d fsops.PathDialect, scanRoot, target string) error {
 	if normTarget == normRoot {
 		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
 	}
-	if !isPathUnderNormalized(d, normTarget, normRoot) {
+	if separatorTerminatedRoot(d, normRoot) || !isPathUnderNormalized(d, normTarget, normRoot) {
 		return fmt.Errorf("path escapes scan root: %s", target)
 	}
 	return nil

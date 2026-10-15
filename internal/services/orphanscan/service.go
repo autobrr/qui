@@ -253,6 +253,11 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 				if dir == cleaned[j] {
 					break
 				}
+				// Dir of \\host\share never reaches a share-less \\host\.
+				if d.Dir(dir) == dir {
+					covered = false
+					break
+				}
 			}
 			if covered {
 				break
@@ -2044,6 +2049,9 @@ func findScanRoot(d fsops.PathDialect, path string, scanRoots []string) string {
 	longest := ""
 	for _, root := range scanRoots {
 		nRoot := normalizePath(d, root)
+		if nPath != nRoot && separatorTerminatedRoot(d, nRoot) {
+			continue
+		}
 		if nPath != nRoot && !isPathUnderNormalized(d, nPath, nRoot) {
 			continue
 		}
