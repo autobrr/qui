@@ -51,6 +51,10 @@ type FreeSpaceSourceState struct {
 
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
+	// The deletion projection uses the same snapshot and hardlink index as execution.
+	torrentsByHash map[string]qbt.Torrent
+	hardlinkIndex  *HardlinkIndex
+
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
@@ -131,9 +135,9 @@ type EvalContext struct {
 	// buildCrossSeedGroups reads it.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
-	// whose cross-seed fields on that side are unknown for this run, because a
-	// file list could not be read. A condition on those fields never matches
-	// them, so a rule that tests for "no cross-seed" cannot act on a read error.
+	// whose cross-seed checks on that side are incomplete for this run.
+	// Only confirmed positive existence or seeding values remain known, so a
+	// rule that tests for "no cross-seed" cannot act on a read error.
 	SameInstanceCrossSeedUnknown map[string]struct{}
 	CrossInstanceUnknown         map[string]struct{}
 

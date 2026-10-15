@@ -1899,13 +1899,13 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 
 	// Simulate "needed" mode processing: each deletion updates SpaceToClear
 	crossSeeds := testCrossSeedGroups(allTorrents)
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, crossSeeds)
+	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, crossSeeds, true)
 	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, crossSeeds)
+	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, crossSeeds, true)
 	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, crossSeeds)
+	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, crossSeeds, true)
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 

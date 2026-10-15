@@ -113,7 +113,23 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 		data.localAccess && !ctx.InstanceHasLocalAccess {
 		return false
 	}
-	return data.known(ctx, hash)
+	if data.known(ctx, hash) {
+		return true
+	}
+	// An unread extra candidate cannot undo a confirmed positive match.
+	var confirmed map[string]struct{}
+	switch field {
+	case FieldExistsOnSameInstance:
+		confirmed = ctx.SameInstanceCrossSeedHashSet
+	case FieldSeedingOnSameInstance:
+		confirmed = ctx.SameInstanceCrossSeedSeedingHashSet
+	case FieldExistsOnOtherInstance:
+		confirmed = ctx.CrossInstanceHashSet
+	case FieldSeedingOnOtherInstance:
+		confirmed = ctx.CrossInstanceSeedingHashSet
+	}
+	_, matched := confirmed[hash]
+	return matched
 }
 
 // NeedsFor reports the data that the enabled rules read: through the conditions

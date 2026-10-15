@@ -780,8 +780,9 @@ If you set no save path but set a category, qui enables qBittorrent's Automatic 
 Automations detect cross-seeded torrents (same content and files) and can handle them specially:
 
 - **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
-- **Read errors**: If qui cannot read the instance list, read a file list, or complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui tries again on the next run.
+- **Read errors**: If qui cannot read the instance list, read a file list, or complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui tries again on the next run. A confirmed positive existence or seeding result stays known when another candidate cannot be checked. Cross-seed tags and action-group safety stay unknown until the checks complete.
 - **Grouping**: Delete, move, and category actions treat torrents that use any of the same files on disk as one group. This includes subtitles and other files that matching ignores, because deleting those files can break another torrent.
+- **Torrent lookup errors**: If qui cannot load the current torrent snapshot for cross-seed checks, the automation run stops. Previews show an error.
 - **Unknown groups**: A move, or a category action with **Include affected cross-seeds**, skips a group when a file check cannot complete.
 - **Nested save folders**: Automatic moves skip a group when its torrents have different save folders. Giving those torrents the same destination can separate their shared files.
 - **Delete rules**:
@@ -1154,6 +1155,8 @@ The preview expands and shows cross-seeds only in `Remove with files (include cr
 - qui does not treat torrents in the same directory that use different files as cross-seeds. qui removes their files.
 - If torrents share files or the file comparison cannot complete, qui keeps the files.
 - Only torrents whose files qui removes contribute to the free-space projection.
+
+With **Include hardlinked copies**, a free-space rule counts the complete group that deletion selects through shared paths and hardlinks. Each physical file counts once. The preview uses the same estimate.
 
 **Example:** If you have 400GB free and a rule "Delete if Free Space < 500GB" in `Remove with files` mode, qui deletes the oldest torrents. It stops when the cumulative freed space reaches 100GB. A 50GB torrent and its cross-seed (same files) count as 50GB freed, not 100GB.
 

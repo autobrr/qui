@@ -6,6 +6,7 @@ package automations
 import (
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -145,5 +146,37 @@ func TestNeedsFor(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, NeedsFor(tt.rules))
 		})
+	}
+}
+
+func TestCrossSeedFields_ConfirmedPositiveSurvivesUnreadCandidate(t *testing.T) {
+	t.Parallel()
+	torrent := qbt.Torrent{Hash: "source"}
+	for _, confirmed := range []bool{false, true} {
+		var matches map[string]struct{}
+		if confirmed {
+			matches = map[string]struct{}{torrent.Hash: {}}
+		}
+		ctx := &EvalContext{
+			SameInstanceCrossSeedHashSet: matches, SameInstanceCrossSeedSeedingHashSet: matches,
+			CrossInstanceHashSet: matches, CrossInstanceSeedingHashSet: matches,
+			SameInstanceCrossSeedUnknown: map[string]struct{}{torrent.Hash: {}},
+			CrossInstanceUnknown:         map[string]struct{}{torrent.Hash: {}},
+		}
+		for _, field := range []ConditionField{FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance} {
+			for _, value := range []string{"true", "false"} {
+				for _, negate := range []bool{false, true} {
+					cond := &RuleCondition{Field: field, Operator: models.OperatorEqual, Value: value, Negate: negate}
+					want := confirmed && ((value == "true") != negate)
+					require.Equal(t, want, EvaluateConditionWithContext(cond, torrent, ctx, 0), "field=%s value=%s negate=%t confirmed=%t", field, value, negate, confirmed)
+				}
+			}
+		}
+		require.False(t, conditionDataKnown(FieldCrossSeedTags, torrent.Hash, ctx), "the tag set can still be incomplete")
+		require.False(t, crossSeedGroupKnown(torrent, nil, ctx), "action safety still needs the unread candidate")
+		ctx.SameInstanceCrossSeedSeedingHashSet = nil
+		ctx.CrossInstanceSeedingHashSet = nil
+		require.False(t, conditionDataKnown(FieldSeedingOnSameInstance, torrent.Hash, ctx), "confirmed existence does not prove seeding")
+		require.False(t, conditionDataKnown(FieldSeedingOnOtherInstance, torrent.Hash, ctx))
 	}
 }

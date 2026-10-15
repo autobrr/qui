@@ -15,6 +15,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -201,6 +202,12 @@ func processTorrents(
 	}
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
+	if evalCtx != nil && evalCtx.hardlinkIndex != nil && rulesNeedHardlinkSignatureMap(rules) {
+		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(torrents))
+		for _, torrent := range torrents {
+			evalCtx.torrentsByHash[torrent.Hash] = torrent
+		}
+	}
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -532,7 +539,13 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
 				// accidentally mutate a previously-loaded rule's projection state.
 				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, crossSeeds)
+					if !updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, crossSeeds, state.deleteIncludeHardlinks) {
+						state.shouldDelete = false
+						if stats != nil {
+							stats.DeleteApplied--
+							stats.DeleteConditionNotMet++
+						}
+					}
 				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
@@ -864,41 +877,40 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
 // When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
 // double-counting torrents that share the same physical files via hardlinks.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds crossSeedGroups) {
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds crossSeedGroups, includeHardlinks bool) bool {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
-		return
+		return true
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
 	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
-		return
+		return true
 	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
-		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds)
-		return
+		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
 	}
 	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
 		// File verification above established that this torrent has no shared files.
 		// Do not deduplicate unrelated torrents that merely use the same directory.
 		evalCtx.SpaceToClear += torrent.Size
-		return
+		return true
 	}
 
 	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
 	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
 	// whole hardlink group via expansion; this avoids affecting other delete modes.
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
-		evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		includeHardlinks && evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
 		if sig, ok := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
 			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
 				// Already counted this hardlink group
-				return
+				return true
 			}
 			// Mark signature as counted and add size
 			evalCtx.HardlinkSignaturesToClear[sig] = struct{}{}
 			evalCtx.SpaceToClear += torrent.Size
-			return
+			return true
 		}
 	}
 
@@ -911,74 +923,105 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		evalCtx.SpaceToClear += torrent.Size - counted
 		evalCtx.FilesToClear[key] = torrent.Size
 	}
+	return true
 }
 
-func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) {
+func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, includeHardlinks bool) bool {
 	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
-		return
+		return true
 	}
 
-	group := crossSeeds[torrent.Hash]
-	verifiedHashes, ok := crossSeedGroupMembers(
-		torrent,
-		group,
-		evalCtx.CrossSeedHashesToClear,
-		func(_ []string) (map[string]qbt.TorrentFiles, error) {
-			return evalCtx.CrossSeedFilesByHash, nil
-		},
-	)
-	if !ok {
-		return
-	}
-	for _, hash := range verifiedHashes {
-		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
-	}
-
-	if evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if signature := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; signature != "" {
-			if _, counted := evalCtx.HardlinkSignaturesToClear[signature]; counted {
-				return
-			}
-			evalCtx.HardlinkSignaturesToClear[signature] = struct{}{}
+	torrents := evalCtx.torrentsByHash
+	if torrents == nil {
+		torrents = make(map[string]qbt.Torrent, len(crossSeeds[torrent.Hash])+1)
+		torrents[torrent.Hash] = torrent
+		for _, member := range crossSeeds[torrent.Hash] {
+			torrents[member.Hash] = member
 		}
 	}
+	var hardlinks *HardlinkIndex
+	if includeHardlinks {
+		hardlinks = evalCtx.hardlinkIndex
+	}
+	expanded, ok := deleteCrossSeedGroup(torrent, torrents, crossSeeds, hardlinks,
+		evalCtx.CrossSeedHashesToClear, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
+	if !ok {
+		return false
+	}
+	return projectCrossSeedDeletionGroup(torrents, expanded.expandedSet, evalCtx, hardlinks)
+}
 
-	evalCtx.SpaceToClear += verifiedCrossSeedFileBytes(torrent, group, verifiedHashes, evalCtx.CrossSeedFilesByHash)
+func projectCrossSeedDeletionGroup(torrents map[string]qbt.Torrent, hashes map[string]struct{}, evalCtx *EvalContext, hardlinks *HardlinkIndex) bool {
+	bytes, ok := verifiedCrossSeedFileBytes(torrents, hashes, evalCtx.CrossSeedFilesByHash, hardlinks)
+	if !ok {
+		return false
+	}
+	for hash := range hashes {
+		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
+	}
+	evalCtx.SpaceToClear += bytes
+	return true
 }
 
 func verifiedCrossSeedFileBytes(
-	trigger qbt.Torrent,
-	group []qbt.Torrent,
-	verifiedHashes []string,
+	torrents map[string]qbt.Torrent,
+	hashes map[string]struct{},
 	filesByHash map[string]qbt.TorrentFiles,
-) int64 {
-	if len(filesByHash[trigger.Hash]) == 0 {
-		return trigger.Size
-	}
-
-	verified := make(map[string]struct{}, len(verifiedHashes))
-	for _, hash := range verifiedHashes {
-		verified[hash] = struct{}{}
-	}
-
-	maxSizeByPath := make(map[string]int64, len(filesByHash[trigger.Hash]))
-	var totalBytes int64
-	for _, torrent := range group {
-		if _, ok := verified[torrent.Hash]; !ok {
-			continue
+	hardlinks *HardlinkIndex,
+) (int64, bool) {
+	// A singleton without a hardlink expansion needs no file list.
+	if len(hashes) == 1 {
+		for hash := range hashes {
+			if len(filesByHash[hash]) == 0 {
+				return torrents[hash].Size, true
+			}
 		}
-		for _, file := range filesByHash[torrent.Hash] {
-			resolvedPath := resolvedTorrentFilePath(torrent, file.Name)
+	}
+
+	idsByPath := make(map[string]fsops.FileKey)
+	if hardlinks != nil {
+		hardlinks.crossScopeMu.Lock()
+		defer hardlinks.crossScopeMu.Unlock()
+		if hardlinks.buildState == nil {
+			return 0, false
+		}
+		for hash := range hashes {
+			if info := hardlinks.buildState.torrentInfoByHash[hash]; info != nil {
+				for _, file := range info.linkedFiles {
+					if key, ok := hardlinks.buildState.key(file.fileID); ok {
+						idsByPath[normalizePath(file.path)] = key
+					}
+				}
+			}
+		}
+	}
+
+	maxSizeByPath := make(map[string]int64)
+	maxSizeByID := make(map[fsops.FileKey]int64)
+	var totalBytes int64
+	for hash := range hashes {
+		if len(filesByHash[hash]) == 0 {
+			return 0, false
+		}
+		for _, file := range filesByHash[hash] {
+			resolvedPath := resolvedTorrentFilePath(torrents[hash], file.Name)
 			previousSize := maxSizeByPath[resolvedPath]
+			key, linked := idsByPath[resolvedPath]
+			if linked {
+				previousSize = maxSizeByID[key]
+			}
 			if file.Size <= previousSize {
 				continue
 			}
-			maxSizeByPath[resolvedPath] = file.Size
+			if linked {
+				maxSizeByID[key] = file.Size
+			} else {
+				maxSizeByPath[resolvedPath] = file.Size
+			}
 			totalBytes += file.Size - previousSize
 		}
 	}
-
-	return totalBytes
+	return totalBytes, true
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.

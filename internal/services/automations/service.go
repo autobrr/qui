@@ -886,7 +886,7 @@ func (c *previewConfig) normalize() {
 // buildEvalContext fills an EvalContext with the data that needs asks for. The live run,
 // the preview, and the dry run all build their context here. The instance can be nil when
 // the preview could not load it; the filesystem data then stays unloaded.
-func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance *models.Instance, torrents []qbt.Torrent, needs RuleNeeds) (*EvalContext, *HardlinkIndex) {
+func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance *models.Instance, torrents []qbt.Torrent, needs RuleNeeds) (*EvalContext, *HardlinkIndex, error) {
 	evalCtx := &EvalContext{ReleaseParser: s.releaseParser}
 	if instance != nil {
 		evalCtx.setFilesystemAccess(instance)
@@ -942,7 +942,11 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 	}
 
 	if needs.CrossMatch != (CrossMatchNeeds{}) {
-		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs.CrossMatch))
+		result := s.buildCrossMatchSets(ctx, instanceID, needs.CrossMatch)
+		if result != nil && result.Err != nil {
+			return nil, nil, fmt.Errorf("failed to build cross-seed snapshot: %w", result.Err)
+		}
+		s.applyCrossMatchResult(evalCtx, result)
 	}
 
 	if needs.SeasonPack {
@@ -961,18 +965,19 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
-	return evalCtx, hardlinkIndex
+	evalCtx.hardlinkIndex = hardlinkIndex
+	return evalCtx, hardlinkIndex, nil
 }
 
 // previewEvalContext builds the evaluation context for a preview of one rule. A preview goes
 // on without the instance when it cannot load it.
-func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent) (*EvalContext, *HardlinkIndex, *models.Instance) {
+func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent) (*EvalContext, *HardlinkIndex, *models.Instance, error) {
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
 	}
-	evalCtx, hardlinkIndex := s.buildEvalContext(ctx, instanceID, instance, torrents, previewNeeds(rule))
-	return evalCtx, hardlinkIndex, instance
+	evalCtx, hardlinkIndex, err := s.buildEvalContext(ctx, instanceID, instance, torrents, previewNeeds(rule))
+	return evalCtx, hardlinkIndex, instance, err
 }
 
 // setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
@@ -1028,7 +1033,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, hardlinkIndex, instance := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	evalCtx, hardlinkIndex, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	if err != nil {
+		return nil, err
+	}
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1043,7 +1051,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds || deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
-		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx)
+		var projectionHardlinks *HardlinkIndex
+		if ruleUsesIncludeCrossSeedsFreeSpace(rule) && rule.Conditions.Delete.IncludeHardlinks {
+			projectionHardlinks = hardlinkIndex
+		}
+		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx, projectionHardlinks)
 	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
@@ -1271,7 +1283,7 @@ func (s *Service) previewDeleteStandard(
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
-			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, crossSeeds)
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, crossSeeds, false)
 		}
 
 		matchIndex++
@@ -1408,6 +1420,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		torrentByHash[torrent.Hash] = torrent
 	}
 
+	evalCtx.torrentsByHash = torrentByHash
 	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
 
 	for i := range torrents {
@@ -1424,13 +1437,13 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		if !ok {
 			continue
 		}
+		if !eligibleMode && evalCtx.CrossSeedHashesToClear != nil &&
+			!projectCrossSeedDeletionGroup(torrentByHash, expanded.expandedSet, evalCtx, expansionHardlinks) {
+			continue
+		}
 		maps.Copy(state.expandedSet, expanded.expandedSet)
 		maps.Copy(state.crossSeedSet, expanded.crossSeedSet)
 		maps.Copy(state.hardlinkCopySet, expanded.hardlinkCopySet)
-
-		if !eligibleMode {
-			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, crossSeeds)
-		}
 	}
 
 	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule, scoreByHash), nil
@@ -1444,6 +1457,7 @@ func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIn
 	if !ConditionUsesField(cond, FieldFreeSpace) {
 		return
 	}
+	evalCtx.hardlinkIndex = hardlinkIndex
 	evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 	evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 }
@@ -1538,7 +1552,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, _, instance := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	evalCtx, _, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	if err != nil {
+		return nil, err
+	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
@@ -1987,7 +2004,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	evalCtx, hardlinkIndex := s.buildEvalContext(ctx, instanceID, instance, torrents, needs)
+	evalCtx, hardlinkIndex, err := s.buildEvalContext(ctx, instanceID, instance, torrents, needs)
+	if err != nil {
+		s.notifyAutomationFailure(ctx, instanceID, err)
+		return nil, err
+	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
@@ -2046,7 +2067,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 	if rulesNeedCrossSeedFiles(eligibleRules) {
-		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx)
+		var projectionHardlinks *HardlinkIndex
+		if rulesNeedHardlinkSignatureMap(eligibleRules) {
+			projectionHardlinks = hardlinkIndex
+		}
+		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx, projectionHardlinks)
 	}
 
 	// Ensure lastApplied map is initialized for this instance
@@ -2156,10 +2181,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 	s.mu.Unlock()
 
-	// Build torrent lookups for cross-seed detection
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, t := range torrents {
-		torrentByHash[t.Hash] = t
+	// Reuse the projection's snapshot for deletion expansion.
+	torrentByHash := evalCtx.torrentsByHash
+	if torrentByHash == nil {
+		torrentByHash = make(map[string]qbt.Torrent, len(torrents))
+		for _, t := range torrents {
+			torrentByHash[t.Hash] = t
+		}
 	}
 	ruleByID := make(map[int]*models.Automation, len(eligibleRules))
 	for _, r := range eligibleRules {
@@ -4460,11 +4488,18 @@ func inheritRuleRefForMoveGroup(expandedHash, triggerHash string, ruleByHash map
 	ruleByHash[expandedHash] = ref
 }
 
-func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups crossSeedGroups, evalCtx *EvalContext) {
-	if len(groups) == 0 {
+func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups crossSeedGroups, evalCtx *EvalContext, hardlinks *HardlinkIndex) {
+	if len(groups) == 0 && hardlinks == nil {
 		return
 	}
 	hashes := slices.Sorted(maps.Keys(groups))
+	if hardlinks != nil {
+		for _, group := range hardlinks.DeleteSafeGroupBySignature {
+			hashes = append(hashes, group...)
+		}
+		slices.Sort(hashes)
+		hashes = slices.Compact(hashes)
+	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	evalCtx.CrossSeedFilesByHash = filesByHash

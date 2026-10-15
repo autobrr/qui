@@ -460,3 +460,13 @@ func TestBuildCrossMatchSets_InstanceListFailureIsUnknown(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildCrossMatchSets_CurrentSnapshotFailure(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("torrent snapshot unavailable")
+	svc := newTestService()
+	svc.syncManager = &tierSyncManager{snapshotErr: wantErr}
+	result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{SameContent: true})
+	require.ErrorIs(t, result.Err, wantErr)
+	require.Nil(t, result.SameInstanceContentByHash)
+}

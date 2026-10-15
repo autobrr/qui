@@ -91,7 +91,8 @@ func TestMissingFilesSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 					func(*models.Instance) fsops.Backend { return absentBackend{} }),
 			}
 			rule := &models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}
-			evalCtx, _ := service.buildEvalContext(t.Context(), 1, snapshot, []qbt.Torrent{torrent}, previewNeeds(rule))
+			evalCtx, _, err := service.buildEvalContext(t.Context(), 1, snapshot, []qbt.Torrent{torrent}, previewNeeds(rule))
+			require.NoError(t, err)
 
 			missing, known := evalCtx.HasMissingFilesByHash[torrent.Hash]
 			require.Equal(t, test.known, known)

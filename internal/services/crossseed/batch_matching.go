@@ -30,6 +30,7 @@ type CrossMatchNeeds struct {
 
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult struct {
+	Err                  error // The current torrent snapshot could not be read.
 	SameInstanceExists   map[string]struct{}
 	SameInstanceSeeding  map[string]struct{}
 	OtherInstanceExists  map[string]struct{}
@@ -46,7 +47,7 @@ type CrossMatchResult struct {
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceUnknown and OtherInstanceUnknown hold the torrents whose
 	// file list, candidate's file list, or instance list could not be read.
-	// Their cross-seed condition values are unknown for this run.
+	// Conditions without a confirmed positive match are unknown for this run.
 	SameInstanceUnknown  map[string]struct{}
 	OtherInstanceUnknown map[string]struct{}
 }
@@ -107,6 +108,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	currentTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, currentInstanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", currentInstanceID).Msg("crossseed: failed to get current instance torrents")
+		result.Err = err
 		return result
 	}
 

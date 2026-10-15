@@ -27,9 +27,10 @@ const (
 // and file lists. A hash in failHashes fails its file fetch.
 type tierSyncManager struct {
 	localMatchSyncManager
-	source     qbt.Torrent
-	candidates map[int][]qbittorrent.CrossInstanceTorrentView
-	failHashes map[string]bool
+	source      qbt.Torrent
+	candidates  map[int][]qbittorrent.CrossInstanceTorrentView
+	failHashes  map[string]bool
+	snapshotErr error
 }
 
 //nolint:gocritic // Interface requires value type for TorrentFilterOptions.
@@ -38,7 +39,7 @@ func (m *tierSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOpt
 }
 
 func (m *tierSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	return m.candidates[instanceID], nil
+	return m.candidates[instanceID], m.snapshotErr
 }
 
 func (m *tierSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
