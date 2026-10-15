@@ -6,8 +6,10 @@ package crossseed
 import (
 	"context"
 	"io/fs"
+	"os"
 	"path"
 	"strings"
+	"syscall"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -30,6 +32,7 @@ type slashBackend struct {
 	devices []string // SameFilesystem is true for two paths under one of these
 	stats   []string
 	plans   []hardlinktree.TreePlan
+	removed int // RemoveTree calls
 }
 
 func newSlashBackend(devices []string, files ...string) *slashBackend {
@@ -102,7 +105,12 @@ func (b *slashBackend) HardlinkTree(_ context.Context, plan *hardlinktree.TreePl
 	return created, nil
 }
 
-func (b *slashBackend) RemoveTree(context.Context, *fsops.TreeCreateResult) error { return nil }
+func (b *slashBackend) RemoveTree(context.Context, *fsops.TreeCreateResult) error {
+	b.removed++
+	return nil
+}
+
+func (b *slashBackend) Remove(context.Context, string, fsops.RemoveOptions) error { return nil }
 
 func slashBackendService(instance *models.Instance, backend fsops.Backend) *Service {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}}}
@@ -255,12 +263,101 @@ func TestPathDialect_SelectSeasonPackBaseDirWalksSlashParents(t *testing.T) {
 	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep.mkv")
 	backend.dirs["/data/hl"] = struct{}{}
 
-	got, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new",
+	got, _, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new",
 		map[episodeIdentity]seasonPackLocalFile{{series: 1, episode: 1}: {sourcePath: "/data/tv/ep.mkv"}})
 
 	require.NoError(t, err)
 	require.Equal(t, "/data/hl/new", got)
 	require.Contains(t, backend.stats, "/data/hl")
+}
+
+// Season pack base dirs follow rankBaseDirs like single cross-seeds (#3156): a
+// missing dir listed first no longer wins over one nearer the sources.
+func TestSelectSeasonPackBaseDir_RanksBySharedPrefix(t *testing.T) {
+	t.Parallel()
+
+	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep.mkv")
+	backend.dirs["/data/tv/hl"] = struct{}{}
+	backend.dirs["/mnt/hl"] = struct{}{}
+
+	got, rest, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new, /mnt/hl, /data/tv/hl",
+		map[episodeIdentity]seasonPackLocalFile{{series: 1, episode: 1}: {sourcePath: "/data/tv/ep.mkv"}})
+
+	require.NoError(t, err)
+	require.Equal(t, "/data/tv/hl", got)
+	require.Equal(t, []string{"/data/hl/new", "/mnt/hl"}, rest)
+}
+
+// A cross-device error in one base dir rolls back and retries in the next ranked
+// one on the sources' filesystem; any other link error fails at once (#3156).
+func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testing.T) {
+	tests := []struct {
+		name        string
+		firstErr    error
+		wantApplied bool
+		wantRoots   []string
+	}{
+		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
+		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fix := newSeasonPackFixture(t)
+			inst := &models.Instance{
+				ID: 1, Name: "SlashInst", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true,
+				HardlinkBaseDir: "/data/tv/hl, /data/usb/hl, /data/hl2",
+			}
+			hashes := []string{"e01", "e02", "e03", "e04"}
+			sources := make([]string, 0, len(fix.packFiles))
+			torrents := make([]qbt.Torrent, 0, len(fix.packFiles))
+			for i, fileName := range fix.packFiles {
+				source := "/data/tv/" + fileName
+				sources = append(sources, source)
+				torrents = append(torrents, qbt.Torrent{Hash: hashes[i], Name: strings.TrimSuffix(fileName, path.Ext(fileName)), ContentPath: source, Progress: 1.0})
+			}
+			// /data/usb is another disk, so the retry skips it.
+			backend := newSlashBackend([]string{"/data/usb", "/data"}, sources...)
+			backend.dirs["/data/tv/hl"] = struct{}{}
+			backend.dirs["/data/usb/hl"] = struct{}{}
+			backend.dirs["/data/hl2"] = struct{}{}
+
+			baseSM := newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: torrents}, map[int]*models.Instance{inst.ID: inst})
+			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
+			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+			var roots []string
+			s := &Service{
+				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:              sm,
+				releaseCache:             NewReleaseCache(),
+				automationSettingsLoader: defaultSettings(true, 0.75),
+				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					roots = append(roots, plan.RootDir)
+					if len(roots) == 1 {
+						return &fsops.TreeCreateResult{Created: 1}, tt.firstErr
+					}
+					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+				},
+			}
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
+
+			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+				TorrentName: fix.packName,
+				TorrentData: fix.torrentData,
+				InstanceIDs: []int{inst.ID},
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantApplied, resp.Applied, "%+v", resp)
+			require.Equal(t, tt.wantRoots, roots)
+			require.Equal(t, 1, backend.removed, "the first partial tree is rolled back")
+			if tt.wantApplied {
+				require.Equal(t, "/data/hl2", sm.addCalls[0].options["savepath"])
+			} else {
+				require.Equal(t, "link_failed", resp.Reason)
+				require.Empty(t, sm.addCalls)
+			}
+		})
+	}
 }
 
 // On a Windows host the season pack resolved remote sources as `\data\tv\...`,
