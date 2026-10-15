@@ -45,8 +45,8 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 }
 
 var (
-	_ fsops.Backend      = (*Backend)(nil)
-	_ fsops.BatchLstater = (*Backend)(nil)
+	_ fsops.Backend     = (*Backend)(nil)
+	_ fsops.BatchStater = (*Backend)(nil)
 )
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode

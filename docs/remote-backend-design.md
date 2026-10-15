@@ -75,16 +75,18 @@ non-link strategies, which is the safe degradation.
 | `RemoveTree` | `REMOVE` over the recorded handle | same |
 | `SupportsReflink` | false | false |
 
-Batch lstat is the optional `fsops.BatchLstater`. It is not on
-`fsops.Backend`. A caller that knows all its paths checks for it, and a
-backend without it gets one `Lstat` per path. The remote backend implements
-it since #2726. On the exec tier, one `find -maxdepth 0 -printf` reads up to
+Batch stat is the optional `fsops.BatchStater`. It is not on
+`fsops.Backend`. A caller that knows all its paths calls `fsops.LstatAll`,
+which uses `LstatBatch` when the backend has it and one `Lstat` per path
+when it does not. The remote backend has `LstatBatch` since #2726. On the exec tier, one `find -maxdepth 0 -printf` reads up to
 1,000 paths with their identity in two round trips. `Lstat` answers each
 path that `find` did not print, such as a missing one, so the errors are
 the same. On the sftp tier, `Lstat` answers each path. Cross-seed hardlink
 matching uses it: a 20-file pack takes about 200 ms at 100 ms of delay, not
-about 6 s. Batch stat that follows links, pipelined sftp requests, and the
-hardlink index and missing-files callers come in #2971.
+about 6 s. `StatBatch` and `fsops.StatAll`, which follow links, pipelined
+sftp requests, and the hardlink index and missing-files callers come in
+#2971. The exec tier uses `find` and not `xargs -0 stat`, because `find`
+prints the same record as the walk, so one parser reads both.
 
 ## File Identity Over the Wire — DECIDED
 

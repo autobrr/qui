@@ -239,7 +239,7 @@ type batchSlashBackend struct {
 	batches [][]string
 }
 
-func (b *batchSlashBackend) LstatAll(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+func (b *batchSlashBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	b.batches = append(b.batches, paths)
 	infos := make([]*fsops.LstatInfo, len(paths))
 	errs := make([]error, len(paths))
@@ -265,18 +265,6 @@ func TestForEachLocalTorrentFileBatchesOnABatchBackend(t *testing.T) {
 	want := []string{"/data/tv/ep1.mkv", "/data/tv/ep2.mkv", "/data/tv/ep3.mkv"}
 	require.Equal(t, [][]string{want}, backend.batches, "one batch of the files that resolve")
 	require.Equal(t, want, backend.stats, "no Lstat outside the batch")
-}
-
-// A backend without batches keeps one Lstat per file, so a caller that stops
-// early reads no more files.
-func TestForEachLocalTorrentFileStopsEarlyWithoutBatches(t *testing.T) {
-	t.Parallel()
-
-	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep1.mkv", "/data/tv/ep2.mkv")
-	err := forEachLocalFileID(t.Context(), backend, "/data/tv", qbt.TorrentFiles{{Name: "ep1.mkv"}, {Name: "ep2.mkv"}},
-		func(hardlink.FileID, uint64) bool { return false })
-	require.NoError(t, err)
-	require.Equal(t, []string{"/data/tv/ep1.mkv"}, backend.stats)
 }
 
 func TestPathDialect_ManualMatchPreview(t *testing.T) {

@@ -46,12 +46,12 @@ const findFormat = `%y %D %i %n %s %T@ %m %P\0`
 const lstatFormat = `%y %D %i %n %s %T@ %m %p\0`
 
 const (
-	// lstatBatchPaths and lstatBatchBytes size one find of LstatAll. The
+	// lstatBatchPaths and lstatBatchBytes size one find of LstatBatch. The
 	// command goes to the shell as one argument, and Linux caps one argument
 	// at 128 KiB.
 	lstatBatchPaths = 1000
 	lstatBatchBytes = 64 << 10
-	// lstatBatchTimeout bounds one find of LstatAll.
+	// lstatBatchTimeout bounds one find of LstatBatch.
 	lstatBatchTimeout = 30 * time.Second
 )
 
@@ -147,14 +147,14 @@ func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow
 	info.FileID, info.Nlinks, info.FileIDErr = b.identity(ctx, info.Path, follow)
 }
 
-// LstatAll answers fsops.BatchLstater. On the exec tier, one find lstats a
+// LstatBatch answers fsops.BatchStater. On the exec tier, one find lstats a
 // batch of paths, with identity, in two round trips. Lstat answers each path
 // that find did not print, such as a missing one, so the error is the one
 // Lstat gives. On the sftp tier, Lstat answers every path.
 //
 // The paths must be absolute: find reads an argument that starts with "-",
 // "!" or "(" as an expression.
-func (b *Backend) LstatAll(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	found := make(map[string]findEntry, len(paths))
 	if b.execTier() {
 		b.lstatFind(ctx, paths, found)

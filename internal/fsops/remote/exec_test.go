@@ -305,9 +305,9 @@ func TestComparePaths(t *testing.T) {
 	assert.Equal(t, []string{"a", "a/a", "a/a/z", "a/b", "a b", "a-b", "b"}, paths)
 }
 
-// lstatAllTree is a directory with one of each kind of path LstatAll gets,
+// lstatBatchTree is a directory with one of each kind of path LstatBatch gets,
 // and enough plain files for two batches.
-func lstatAllTree(t *testing.T) []string {
+func lstatBatchTree(t *testing.T) []string {
 	t.Helper()
 	dir := t.TempDir()
 	file := filepath.Join(dir, "it's -rf $(x).mkv")
@@ -335,11 +335,11 @@ func finds(server *sshtest.Server) int {
 	return n
 }
 
-// assertLstatAllMatchesLstat compares each LstatAll answer with Lstat. sftp
+// assertLstatBatchMatchesLstat compares each LstatBatch answer with Lstat. sftp
 // attrs carry whole seconds, so the mtimes compare at that precision.
-func assertLstatAllMatchesLstat(t *testing.T, backend *Backend, paths []string) {
+func assertLstatBatchMatchesLstat(t *testing.T, backend *Backend, paths []string) {
 	t.Helper()
-	infos, errs := backend.LstatAll(t.Context(), paths)
+	infos, errs := backend.LstatBatch(t.Context(), paths)
 	require.Len(t, infos, len(paths))
 	require.Len(t, errs, len(paths))
 	for i, p := range paths {
@@ -358,14 +358,14 @@ func assertLstatAllMatchesLstat(t *testing.T, backend *Backend, paths []string) 
 	}
 }
 
-func TestExecLstatAllMatchesLstat(t *testing.T) {
+func TestExecLstatBatchMatchesLstat(t *testing.T) {
 	t.Parallel()
 
 	backend, server := newExecBackend(t)
-	paths := lstatAllTree(t)
+	paths := lstatBatchTree(t)
 
 	before := len(server.Commands())
-	infos, errs := backend.LstatAll(t.Context(), paths)
+	infos, errs := backend.LstatBatch(t.Context(), paths)
 	ran := server.Commands()[before:]
 	require.Len(t, ran, 2, "one find per batch, and no stat per path")
 	assert.Equal(t, "find", ran[0][1])
@@ -380,19 +380,19 @@ func TestExecLstatAllMatchesLstat(t *testing.T) {
 	}
 	assert.False(t, infos[0].FileID.IsZero())
 	assert.Equal(t, infos[0].FileID, infos[1].FileID, "a hardlink has the identity of its source")
-	assert.True(t, infos[2].FileID.IsZero(), "LstatAll never follows a symlink")
+	assert.True(t, infos[2].FileID.IsZero(), "LstatBatch never follows a symlink")
 
 	// Lstat runs a stat per path, so the field by field check reads the
 	// special paths and one file from each batch.
-	assertLstatAllMatchesLstat(t, backend, append(paths[:6:6], paths[len(paths)-1]))
+	assertLstatBatchMatchesLstat(t, backend, append(paths[:6:6], paths[len(paths)-1]))
 }
 
-func TestSFTPLstatAllIsLstat(t *testing.T) {
+func TestSFTPLstatBatchIsLstat(t *testing.T) {
 	t.Parallel()
 
 	backend, server := newBackend(t)
-	paths := lstatAllTree(t)[:5]
+	paths := lstatBatchTree(t)[:5]
 
-	assertLstatAllMatchesLstat(t, backend, paths)
+	assertLstatBatchMatchesLstat(t, backend, paths)
 	assert.Zero(t, finds(server))
 }
