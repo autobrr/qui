@@ -241,7 +241,7 @@ func TestAugmentCrossInstanceScope_DeficitWithNoOtherInstances(t *testing.T) {
 			"hash1": HardlinkScopeOutsideQBitTorrent,
 		},
 		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): tracker},
+			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{testFileKey(fid, nil): tracker},
 			seenPaths:       make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
 				"hash1": {
@@ -321,10 +321,10 @@ func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBu
 			info.fileIDs = append(info.fileIDs, fid)
 			if nlink > 1 {
 				info.hasHardlinks = true
-				tracker := state.globalFileIDMap[state.key(fid)]
+				tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
 				if tracker == nil {
 					tracker = &fileIDTracker{nlink: nlink}
-					state.globalFileIDMap[state.key(fid)] = tracker
+					state.globalFileIDMap[testFileKey(fid, state.instance)] = tracker
 				}
 				if _, seen := state.seenPaths[p]; !seen {
 					state.seenPaths[p] = struct{}{}
@@ -488,7 +488,7 @@ func TestCrossScope_CrossInstanceResolvesDeficit(t *testing.T) {
 
 	// Simulate Phase 2: Lstat Instance B's file and augment state.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[state.key(fidB)]
+	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID with Instance A")
 	}
@@ -538,7 +538,7 @@ func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
 
 	// Phase 2: augment with Instance B.
 	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[state.key(fidB)]
+	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
 	if tracker == nil {
 		t.Fatal("expected Instance B's file to share FileID")
 	}
@@ -593,7 +593,7 @@ func TestCrossScope_DeficitSetResolution(t *testing.T) {
 
 	// Phase 2: augment with Instance B's file1 (resolves file1's deficit).
 	fidB1, _ := lstatFileID(t, fileB1)
-	if tracker := state.globalFileIDMap[state.key(fidB1)]; tracker != nil {
+	if tracker := state.globalFileIDMap[testFileKey(fidB1, state.instance)]; tracker != nil {
 		state.seenPaths[fileB1] = struct{}{}
 		tracker.uniquePathCount++
 	}
@@ -628,7 +628,7 @@ func TestCrossScope_SeenPathsDedup(t *testing.T) {
 	})
 
 	fid, _ := lstatFileID(t, fileA)
-	tracker := state.globalFileIDMap[state.key(fid)]
+	tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
 	if tracker == nil {
 		t.Skip("nlink=1, no hardlinks to test (filesystem may not support)")
 	}
@@ -668,7 +668,7 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
 		buildState: &hardlinkBuildState{
 			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{
-				fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1},
+				testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1},
 			},
 			seenPaths: make(map[string]struct{}),
 			torrentInfoByHash: map[string]*torrentFileInfo{
@@ -1238,4 +1238,10 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 			require.Equal(t, tt.want, blocked)
 		})
 	}
+}
+
+// testFileKey is fsops.FileKeyOf for a test ID that is known to have a key.
+func testFileKey(id hardlink.FileID, instance *models.Instance) fsops.FileKey {
+	key, _ := fsops.FileKeyOf(id, instance)
+	return key
 }

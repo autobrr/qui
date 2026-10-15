@@ -1130,8 +1130,8 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 
 	ids := make(map[fsops.FileKey]struct{})
 	if err := forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
-		if nlink > 1 {
-			ids[fsops.FileKeyOf(id, m.sourceInstance)] = struct{}{}
+		if key, ok := fsops.FileKeyOf(id, m.sourceInstance); ok && nlink > 1 {
+			ids[key] = struct{}{}
 		}
 		return true
 	}); err != nil && m.verificationErr == nil {
@@ -1151,7 +1151,8 @@ func candidateSharesSourceFileID(
 ) (bool, error) {
 	shared := false
 	err := forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
-		if _, ok := sourceIDs[fsops.FileKeyOf(id, candidateInstance)]; ok {
+		key, ok := fsops.FileKeyOf(id, candidateInstance)
+		if _, found := sourceIDs[key]; ok && found {
 			shared = true
 			return false
 		}
@@ -1379,11 +1380,12 @@ func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, instan
 			return true
 		}
 		normalizedPath := normalizeTorrentRelativePath(file.Name)
+		fileID, hasFileID := fsops.FileKeyOf(info.FileID, instance)
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
-			fileID:         fsops.FileKeyOf(info.FileID, instance),
-			hasFileID:      !fsops.FileKeyOf(info.FileID, instance).IsZero(),
+			fileID:         fileID,
+			hasFileID:      hasFileID,
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})

@@ -118,7 +118,8 @@ type hardlinkBuildState struct {
 }
 
 // key binds a FileID this instance reported to the filesystem it came from.
-func (state *hardlinkBuildState) key(id hardlink.FileID) fsops.FileKey {
+// ok is false for an ID that names no file; see fsops.FileKeyOf.
+func (state *hardlinkBuildState) key(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, state.instance)
 }
 
@@ -323,7 +324,10 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 
 	for _, info := range torrentInfoByHash {
 		for _, lf := range info.linkedFiles {
-			key := fsops.FileKeyOf(lf.fileID, instance)
+			key, ok := fsops.FileKeyOf(lf.fileID, instance)
+			if !ok {
+				continue
+			}
 			tracker := globalFileIDMap[key]
 			if tracker == nil {
 				tracker = &fileIDTracker{nlink: lf.nlink}
@@ -390,7 +394,9 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 	}
 	for _, info := range scanned {
 		for _, fileID := range info.fileIDs {
-			staleFileIDs[previous.key(fileID)] = struct{}{}
+			if key, ok := previous.key(fileID); ok {
+				staleFileIDs[key] = struct{}{}
+			}
 		}
 	}
 
@@ -461,7 +467,8 @@ func scopeAfterRescan(info *torrentFileInfo, instance *models.Instance, fileIDMa
 	hasInside, hasOutside := false, false
 	for _, lf := range info.linkedFiles {
 		uniquePaths := 1
-		if tracker := fileIDMap[fsops.FileKeyOf(lf.fileID, instance)]; tracker != nil && tracker.uniquePathCount > 1 {
+		key, ok := fsops.FileKeyOf(lf.fileID, instance)
+		if tracker := fileIDMap[key]; ok && tracker != nil && tracker.uniquePathCount > 1 {
 			uniquePaths = tracker.uniquePathCount
 		}
 
@@ -612,7 +619,9 @@ func planTorrentRescan(previous *hardlinkBuildState, torrentByHash map[string]qb
 			rescan[hash] = struct{}{}
 		}
 		for _, fileID := range info.fileIDs {
-			staleFileIDs[previous.key(fileID)] = struct{}{}
+			if key, ok := previous.key(fileID); ok {
+				staleFileIDs[key] = struct{}{}
+			}
 		}
 	}
 
@@ -644,7 +653,8 @@ func planSharingRescan(
 			continue
 		}
 		for _, fileID := range info.fileIDs {
-			if _, stale := staleFileIDs[previous.key(fileID)]; stale {
+			key, ok := previous.key(fileID)
+			if _, stale := staleFileIDs[key]; ok && stale {
 				sharing[hash] = struct{}{}
 				break
 			}
@@ -1209,9 +1219,9 @@ func (s *Service) scanOtherInstancesForDeficits(
 					continue
 				}
 
-				key := fsops.FileKeyOf(fileID, otherInstance)
+				key, ok := fsops.FileKeyOf(fileID, otherInstance)
 				tracker, isDeficit := deficitSet[key]
-				if !isDeficit {
+				if !ok || !isDeficit {
 					continue
 				}
 
@@ -1254,8 +1264,9 @@ func computeScopeMap(state *hardlinkBuildState) map[string]string {
 func scopeForTorrent(info *torrentFileInfo, state *hardlinkBuildState) string {
 	hasInside, hasOutside := false, false
 	for _, fileID := range info.fileIDs {
-		tracker := state.globalFileIDMap[state.key(fileID)]
-		if tracker == nil || tracker.nlink <= 1 {
+		key, ok := state.key(fileID)
+		tracker := state.globalFileIDMap[key]
+		if !ok || tracker == nil || tracker.nlink <= 1 {
 			continue // Not hard-linked
 		}
 		if tracker.uniquePathCount > 1 {

@@ -68,6 +68,7 @@ func TestFileIDZero(t *testing.T) {
 
 	require.True(t, (FileID{}).IsZero())
 	require.True(t, RemoteFileID(nil).IsZero())
+	require.True(t, RemoteFileID(make([]byte, 25)).IsZero(), "input longer than 24 bytes is not cut to a shorter identity")
 	require.True(t, FileIDFromBytes([]byte{1, 2, 3}).IsZero(), "a pre-tag row decodes to no identity")
 	require.True(t, FileIDFromBytes(make([]byte, 16)).IsZero(), "a pre-tag unix row decodes to no identity")
 	require.False(t, UnixFileID(0, 0).IsZero(), "a real dev 0 ino 0 is still an identity")

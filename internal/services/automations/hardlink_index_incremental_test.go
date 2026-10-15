@@ -192,7 +192,7 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 
 	staleFileIDs := map[fsops.FileKey]struct{}{}
 	for _, fileID := range infoA.fileIDs {
-		staleFileIDs[fsops.FileKeyOf(fileID, nil)] = struct{}{}
+		staleFileIDs[testFileKey(fileID, nil)] = struct{}{}
 	}
 
 	sharing := planSharingRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current, map[string]struct{}{"planned": {}}, staleFileIDs)
@@ -317,7 +317,7 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 
 	state := deriveLinkCounts(nil, map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
 
-	tracker := state.globalFileIDMap[state.key(fresh.fileIDs[0])]
+	tracker := state.globalFileIDMap[testFileKey(fresh.fileIDs[0], state.instance)]
 	require.NotNil(t, tracker)
 	require.Equal(t, uint64(9), tracker.nlink)
 	require.Equal(t, 2, tracker.uniquePathCount, "two distinct paths point at the file")
