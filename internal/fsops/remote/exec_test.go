@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,13 +39,16 @@ func newExecBackend(t *testing.T) (*Backend, *sshtest.Server) {
 
 func unixID(t *testing.T, p string, follow bool) (hardlink.FileID, uint64) {
 	t.Helper()
-	var st syscall.Stat_t
-	stat := syscall.Lstat
+	stat := os.Lstat
 	if follow {
-		stat = syscall.Stat
+		stat = os.Stat
 	}
-	require.NoError(t, stat(p, &st))
-	return remoteFileID(uint64(st.Dev), st.Ino), uint64(st.Nlink) //nolint:unconvert // Dev is not uint64 on every arch
+	fi, err := stat(p)
+	require.NoError(t, err)
+	id, nlink, err := hardlink.GetFileID(fi, p)
+	require.NoError(t, err)
+	// The unix ID holds dev and ino in the layout remoteFileID writes.
+	return hardlink.RemoteFileID(id.Bytes()[1:17]), nlink
 }
 
 func TestExecIdentity(t *testing.T) {
