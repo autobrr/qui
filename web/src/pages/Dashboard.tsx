@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable } from "@/lib/sync-stream-state"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { MigrationHint } from "@/components/instances/MigrationHint"
@@ -98,7 +99,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
-import { createStreamKey, useSyncStreamManager } from "@/contexts/SyncStreamContext"
+import { createStreamKey, useSyncStreamManager, type StreamState } from "@/contexts/SyncStreamContext"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
 import { useCreateTrackerCustomization, useDeleteTrackerCustomization, useTrackerCustomizations, useUpdateTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -579,59 +580,41 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           })
         })
 
-        const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
-          if (cancelRef.current) {
-            return
-          }
-
+        const applyStreamState = (snapshot: StreamState) => {
+          const streamUsable = isStreamUsable(snapshot)
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
               ...current,
-              streamConnected: snapshot.connected,
-              streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
-              hasLiveDashboardStatsPayload: snapshot.connected &&
-                !snapshot.error &&
+              streamConnected: streamUsable,
+              streamError: snapshot.error ?? (streamUsable ? null : current.streamError),
+              hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
             }
 
             if (snapshot.error) {
               next.error = snapshot.error
               next.isLoading = false
-            } else if (snapshot.connected && !current.isLoading) {
+            } else if (streamUsable && !current.isLoading) {
               next.error = null
             }
 
-            if (!snapshot.connected || snapshot.error) {
+            if (!streamUsable) {
               next.instanceMeta = null
             }
 
             return next
           })
+        }
+
+        const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+          if (!cancelRef.current) {
+            applyStreamState(snapshot)
+          }
         })
 
         const initialSnapshot = syncStream.getState(streamKey)
         if (initialSnapshot) {
-          applyInstanceData(instance.id, current => {
-            const next: InstanceStreamData = {
-              ...current,
-              streamConnected: initialSnapshot.connected,
-              streamError: initialSnapshot.error ?? current.streamError,
-              hasLiveDashboardStatsPayload: initialSnapshot.connected &&
-                !initialSnapshot.error &&
-                current.hasLiveDashboardStatsPayload,
-            }
-
-            if (initialSnapshot.error) {
-              next.error = initialSnapshot.error
-              next.isLoading = false
-            }
-
-            if (!initialSnapshot.connected || initialSnapshot.error) {
-              next.instanceMeta = null
-            }
-
-            return next
-          })
+          applyStreamState(initialSnapshot)
         }
 
         streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe, cancelRef })
