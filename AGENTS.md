@@ -89,7 +89,11 @@ Frontend-specific rules live in `web/AGENTS.md`. Before you edit, spec, or revie
   - Naming a work in prose, or building a name from a real title and group tag, is allowed. The rule is about strings copied from someone's client, not about which words you use.
   - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; tracked files under `docs/` count as published.
   - New test fixtures and code comments use names built by the rule above. Do not sweep the existing ones.
-  - Screenshots: capture from an instance you fill with synthetic torrents. If the bug shows only on a real library, blur the name, tracker, and save path columns.
+  - Screenshots attached to a PR: capture from an instance you fill with synthetic torrents. If the bug shows only on a real library, blur the name, tracker, and save path columns. Only the maintainers can open brrbin Evidence, so it can show real names. In each capture, mask passkeys, announce URLs, and API keys.
+- To show screenshots or recordings in a pull request:
+  1. If `command -v brrbin` finds brrbin, run `brrbin publish --help` and follow it. If it exits with code 4, stop and ask the user to run `brrbin login`. If it exits with code 6, attach the screenshots to the pull request.
+  2. If brrbin is not installed, run `gh api "orgs/autobrr/teams/brrbin/memberships/$(gh api user --jq .login)" --jq .state`. If it prints `active`, run `GOPRIVATE=github.com/autobrr/brrbin go install github.com/autobrr/brrbin@latest`, then do step 1. If `command -v brrbin` still finds nothing, run `dir=$(go env GOBIN); [ -n "$dir" ] || dir="$(go env GOPATH | cut -d: -f1)/bin"` and tell the user to add `$dir` to `PATH`.
+  3. Otherwise, attach the screenshots to the pull request. If `gh api "orgs/autobrr/members/$(gh api user --jq .login)" --silent` succeeds, also tell the user: "brrbin publishes screenshots for members of the autobrr/brrbin team. Ask an org admin to add you."
 
 ## Field Test
 
