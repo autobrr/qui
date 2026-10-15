@@ -93,7 +93,7 @@ You write two sections of the GitHub release notes for qui, a web UI that self-h
 
 ## Breaking changes
 
-Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body has a Breaking change section with text other than the template comment, "No breaking change.", "None", or "N/A". A Behaviour change section is material for the Highlights, never for this section. If nothing breaks, leave the section out. Never write "None".
+Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" before the colon in its commit subject, or its body has a Breaking change section that describes a change. The template comment does not count. Text that says nothing breaks, such as "No breaking change." (any case, with or without the period or a plural), "None", or "N/A", does not count either. A Behaviour change section is material for the Highlights, never for this section. If nothing breaks, leave the section out. Never write "None".
 
 - Write one bullet for each breaking change. Do not group them.
 - Start with the change in bold, then say in one or two sentences what the user must do. Keep only what the user needs to act: the option name, the new value, the error text that they will see.
