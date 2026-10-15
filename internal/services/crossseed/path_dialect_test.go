@@ -32,7 +32,8 @@ type slashBackend struct {
 	devices []string // SameFilesystem is true for two paths under one of these
 	stats   []string
 	plans   []hardlinktree.TreePlan
-	removed int // RemoveTree calls
+	removed int   // RemoveTree calls
+	size    int64 // file size Lstat reports, 5 when unset
 }
 
 func newSlashBackend(devices []string, files ...string) *slashBackend {
@@ -62,7 +63,11 @@ func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, err
 		return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir, Nlinks: 1}, nil
 	}
 	if id, ok := b.files[p]; ok {
-		return &fsops.LstatInfo{Path: p, Size: 5, FileID: id, Nlinks: 2}, nil
+		size := b.size
+		if size == 0 {
+			size = 5
+		}
+		return &fsops.LstatInfo{Path: p, Size: size, FileID: id, Nlinks: 2}, nil
 	}
 	return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrNotExist}
 }
@@ -294,11 +299,13 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 	tests := []struct {
 		name        string
 		firstErr    error
+		manual      bool
 		wantApplied bool
 		wantRoots   []string
 	}{
 		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
+		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -340,6 +347,18 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			}
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
+			if tt.manual {
+				// Manual assembly stats each source, so report the torrent's size.
+				backend.size = baseSM.files["e01"][0].Size
+				resp, err := s.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{
+					InstanceID: inst.ID, TorrentData: fix.torrentData, TargetHashes: hashes,
+				})
+				require.NoError(t, err)
+				require.True(t, resp.Applied, "%+v", resp)
+				require.Equal(t, tt.wantRoots, roots)
+				require.Equal(t, "/data/hl2", resp.Destination, "the response names the dir that was used")
+				return
+			}
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
