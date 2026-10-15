@@ -250,7 +250,6 @@ func TestExecCapabilities(t *testing.T) {
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
 		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, gnuUserland: true},
 		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true},
-		{name: "gnu userland without xargs", mode: sshtest.ExecGNUNoXargs, exec: true},
 	}
 
 	for _, tt := range tests {
@@ -274,6 +273,23 @@ func TestExecCapabilities(t *testing.T) {
 			assert.Equal(t, wantTier, report.Capabilities.Tier())
 		})
 	}
+}
+
+// A host that runs the GNU tools but refuses sftp serves no pooled connection,
+// so it must not read as the exec tier.
+func TestExecTierNeedsSFTP(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	server.SetSFTP(sshtest.SFTPRefuse)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	require.NotNil(t, report.Capabilities)
+	assert.False(t, report.Capabilities.SFTP)
+	assert.True(t, report.Capabilities.GNUUserland)
+	assert.Equal(t, models.SSHTierSFTP, report.Capabilities.Tier())
 }
 
 // Not parallel: SetSFTPExtensions mutates a package global in pkg/sftp, and the

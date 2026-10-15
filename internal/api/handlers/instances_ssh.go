@@ -156,6 +156,11 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 	}
 	if report.Capabilities != nil {
 		h.storeSSHTier(r.Context(), instance.ID, report.Capabilities)
+		// A pooled connection keeps the tier its own probe found, so a new
+		// tier only reaches the backend through a new connection.
+		if report.Capabilities.Tier() != instance.SSHTier {
+			h.sshPool.Invalidate(instance.ID)
+		}
 		response.Capabilities = &SSHCapabilities{
 			SFTP:        report.Capabilities.SFTP,
 			Statvfs:     report.Capabilities.Statvfs,

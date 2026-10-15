@@ -47,8 +47,8 @@ existing target is always a conflict and fails the create — never a
 silent skip (raised by Audionut on #1914). The degraded mode must be
 surfaced in the UI, not silent.
 
-**SFTP+exec** (tier `exec`): the key runs a shell with GNU `find`, `stat`
-and `xargs`. Identity comes from `find`/`stat`, and `SameFilesystem` is
+**SFTP+exec** (tier `exec`): the key runs a shell with GNU `find` and
+`stat`. Identity comes from `find`/`stat`, and `SameFilesystem` is
 exact. Only the tier is stored, not each probe flag, because no other flag
 changes a capability yet. Reflink is not probed, and reflinks are off on
 every remote tier. A host without the GNU tools gets tier `sftp`.
@@ -146,7 +146,7 @@ at all.
 - `LC_ALL=C` and NUL separators everywhere; torrent filenames can contain
   nearly anything except NUL and `/`.
 - Probe GNU vs BSD userland at connect (`find -printf` and `stat -c` are
-  GNU-only). A host without GNU `find`, `stat` and `xargs` gets tier `sftp`.
+  GNU-only). A host without GNU `find` and `stat` gets tier `sftp`.
 - Every exec honors ctx cancellation. One command has a 30 s timeout and
   keeps at most 1 MiB of output. `find` has no total output cap: it has a
   cap for each record, a cap of 500,000 entries, and ctx.
@@ -210,7 +210,7 @@ the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
   file names always join beneath one.
 - Exec command lines never interpolate raw paths into a shell string:
   arguments are strictly quoted, and options are terminated with `--`
-  before any path for `find`, `stat` and `xargs`.
+  before any path for `find` and `stat`.
 - Symlink policy for destructive ops: recursion never follows a link, on
   any tier. A symlinked directory is never descended; the link itself is
   removed, never the target's contents. The local backend's

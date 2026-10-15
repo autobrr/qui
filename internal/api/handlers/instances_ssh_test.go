@@ -566,6 +566,33 @@ func TestSSHRoutesWriteTheTier(t *testing.T) {
 	assert.Equal(t, models.SSHTierSFTP, tier(), "replace, down")
 }
 
+// A pooled connection keeps the tier its probe found. A test that finds a new
+// tier ends that connection, so the backend gets the new tier; a test that
+// finds the same tier leaves it alone.
+func TestSSHTestRenewsTheConnectionWhenTheTierChanges(t *testing.T) {
+	f := newSSHFixture(t, "ssh-test-tier-renews")
+	f.putCredentials()
+	f.server.SetExec(sshtest.ExecSFTPOnly)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	client, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	_, err = f.sshPool.Exec(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrNoExec)
+
+	f.sshTest()
+	again, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	assert.Same(t, client, again, "a test that finds the same tier keeps the connection")
+
+	f.server.SetExec(sshtest.ExecGNU)
+	f.sshTest()
+	_, err = f.sshPool.Exec(t.Context(), stored)
+	require.NoError(t, err, "the next connection has the tier the test found")
+}
+
 func (f *sshFixture) listBody() string {
 	f.t.Helper()
 

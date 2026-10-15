@@ -7129,7 +7129,7 @@ components:
 
     FilesystemCapabilities:
       type: object
-      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find, stat and xargs.
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find and stat.
       required: [read, identity, trustedIdentity, write, content]
       properties:
         read:

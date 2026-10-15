@@ -37,9 +37,9 @@ const (
 	// ExecHang accepts the command and never answers it, the way a wedged or
 	// tarpitting host does. Only the client's own deadline ends the session.
 	ExecHang
-	// ExecGNUNoXargs is ExecGNU on a host without xargs: a command that
-	// names xargs fails the way a missing tool does.
-	ExecGNUNoXargs
+	// ExecStallOpen accepts the first session channel of a connection, the
+	// one sftp opens, and never answers the open of any later one.
+	ExecStallOpen
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -90,7 +90,7 @@ const hardlinkExtension = "hardlink@openssh.com"
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
 
-const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\nxargs (GNU findutils) 4.8.0\n"
+const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
 
 // Server is an in-process SSH server listening on loopback. It serves the sftp
 // subsystem through pkg/sftp and answers exec requests per its ExecMode, and it
@@ -278,6 +278,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	stalled := make(chan struct{})
 	defer close(stalled)
 
+	opened := 0
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only session channels")
@@ -287,6 +288,11 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.mu.Lock()
 		s.channels++
 		s.mu.Unlock()
+
+		opened++
+		if opened > 1 && s.execMode() == ExecStallOpen {
+			continue
+		}
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
@@ -428,9 +434,6 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
 	switch {
-	case mode == ExecGNUNoXargs && strings.Contains(command, "xargs"):
-		_, _ = io.WriteString(channel.Stderr(), "sh: xargs: command not found\n")
-		return 127
 	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
 	case strings.Contains(command, "--version"):

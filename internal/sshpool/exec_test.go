@@ -150,7 +150,6 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 		{"an existing instance moves up", sshtest.ExecGNU, models.SSHTierSFTP, models.SSHTierExec},
 		{"a key that lost its shell moves down", sshtest.ExecSFTPOnly, models.SSHTierExec, models.SSHTierSFTP},
 		{"a bsd userland moves down", sshtest.ExecBSD, models.SSHTierExec, models.SSHTierSFTP},
-		{"a host without xargs moves down", sshtest.ExecGNUNoXargs, models.SSHTierExec, models.SSHTierSFTP},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,6 +201,27 @@ func TestPoolTierDropsOnReconnect(t *testing.T) {
 	_, err = pool.Exec(t.Context(), inst)
 	require.ErrorIs(t, err, ErrNoExec)
 	assert.Equal(t, models.SSHTierSFTP, inst.SSHTier)
+}
+
+// A host that never answers the probe's session open costs the probe its
+// deadline, not the connection: the open has no ctx of its own, and the pool
+// holds the instance's lock while it waits.
+func TestPoolProbeDoesNotWaitOnAStalledSessionOpen(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecStallOpen)
+	inst := pinnedInstanceAt(t, server.Addr)
+	inst.SSHTier = models.SSHTierExec
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	pool.dialer.timeout = 200 * time.Millisecond
+	t.Cleanup(pool.Close)
+
+	_, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err, "a stalled session open must not fail the sftp connection")
+	assert.Equal(t, models.SSHTierExec, inst.SSHTier)
+	_, err = pool.Exec(t.Context(), inst)
+	require.ErrorIs(t, err, ErrNoExec)
 }
 
 // A probe that gets no answer is not a tier: the row keeps what it had.

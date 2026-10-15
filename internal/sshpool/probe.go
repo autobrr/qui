@@ -17,7 +17,7 @@ import (
 
 // gnuProbeCommand asks the tools the remote file operations lean on for their
 // version. It is a fixed string with nothing interpolated into it.
-const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version && LC_ALL=C xargs --version"
+const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 
 // outputLimit caps what a probe keeps from a remote command. The server is the
 // thing being probed, so its output is not trusted to be short.
@@ -64,10 +64,11 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 	return capabilities, checkAlive(client)
 }
 
-// Tier is the tier these capabilities give: exec needs a shell with the GNU
-// tools, and every other host gets sftp.
+// Tier is the tier these capabilities give: exec needs sftp and a shell with
+// the GNU tools, and every other host gets sftp. Every pooled connection opens
+// sftp first, so exec without sftp serves nothing.
 func (c *Capabilities) Tier() models.SSHTier {
-	if c.Exec && c.GNUUserland {
+	if c.SFTP && c.Exec && c.GNUUserland {
 		return models.SSHTierExec
 	}
 	return models.SSHTierSFTP
@@ -87,19 +88,37 @@ func isGNU(out []byte) bool {
 // answer: the row keeps its tier and this connection gets sftp. The probe
 // runs on its own deadline, because one caller giving up says nothing about
 // the host.
+//
+// The session open and checkAlive block inside x/crypto with no ctx, the
+// caller holds the instance's lock, and keepalive starts only after this
+// returns. So the probe runs aside and this waits for the deadline at most.
+// Closing the client would also end the wait, but a hung exec channel is no
+// reason to lose sftp.
 func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.Client, slots chan struct{}) models.SSHTier {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.dialer.timeout)
 	defer cancel()
 
-	conn := &Conn{client: client, slots: slots, used: func() {}}
-	out, err := conn.output(ctx, gnuProbeCommand, p.dialer.timeout, outputLimit)
-	tier := models.SSHTierSFTP
-	switch {
-	case err == nil && isGNU(out):
-		tier = models.SSHTierExec
-	case err != nil && (ctx.Err() != nil || checkAlive(client) != nil):
-		log.Debug().Int("instanceID", row.ID).Err(err).Msg("sshpool: exec probe got no answer")
-		return tier
+	answer := make(chan models.SSHTier, 1)
+	go func() {
+		conn := &Conn{client: client, slots: slots, used: func() {}}
+		out, err := conn.output(ctx, gnuProbeCommand, p.dialer.timeout, outputLimit)
+		switch {
+		case err == nil && isGNU(out):
+			answer <- models.SSHTierExec
+		case err != nil && (ctx.Err() != nil || checkAlive(client) != nil):
+			answer <- ""
+		default:
+			answer <- models.SSHTierSFTP
+		}
+	}()
+	var tier models.SSHTier
+	select {
+	case tier = <-answer:
+	case <-ctx.Done():
+	}
+	if tier == "" {
+		log.Debug().Int("instanceID", row.ID).Msg("sshpool: exec probe got no answer")
+		return models.SSHTierSFTP
 	}
 
 	if tier != row.SSHTier {
