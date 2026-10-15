@@ -288,7 +288,7 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	))
 
 	// Strict matching tolerates the missing candidate tag exactly as before.
-	ok, reason := svc.matcher().validateGroupSiteAndChecksum(siteOnly, bare, false)
+	ok, reason := svc.matcher().validateGroupSiteAndChecksum(namedRelease{release: siteOnly}, namedRelease{release: bare}, false)
 	require.True(t, ok, "unexpected rejection: %s", reason)
 
 	// An empty identity still cannot buy exact-size permission.
@@ -1184,4 +1184,42 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 			})
 		}
 	})
+}
+
+// A hyphenated fansub name stays whole in its bracket form but splits at the
+// last dash in its suffix form. The exact-size identity check must still read
+// one group, here where strict matching fails on the source.
+func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
+	const (
+		bracket = "[Moe-Fansub] Example Knight S01 [BD HEVC 1080p FLAC]"
+		suffix  = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Moe-Fansub"
+		other   = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Fansub"
+	)
+	svc := newGroupFallbackService()
+	side := func(name string) namedRelease {
+		return namedRelease{release: svc.releaseCache.Parse(name), rawName: name}
+	}
+	input := func(source, candidate string) searchCandidateInput {
+		return searchCandidateInput{
+			Source:        side(source),
+			Candidate:     side(candidate),
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		}
+	}
+
+	for _, pair := range [][2]string{{bracket, suffix}, {suffix, bracket}} {
+		pairInput := input(pair[0], pair[1])
+		ok, reason := svc.matcher().releasesMatchWithReasonAndNames(
+			pairInput.Source.release, pairInput.Candidate.release, pair[0], pair[1], false)
+		require.False(t, ok)
+		require.Equal(t, sourceMismatchReason, reason)
+
+		ok, reason = svc.matcher().validateExactSizeSearchIdentity(pairInput)
+		require.True(t, ok, "%s against %s: %s", pair[0], pair[1], reason)
+	}
+
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(input(bracket, other))
+	require.False(t, ok)
+	require.Equal(t, "group/site mismatch", reason)
 }

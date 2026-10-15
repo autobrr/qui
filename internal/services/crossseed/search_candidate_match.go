@@ -222,8 +222,8 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		mismatchReason == titleMismatchReason &&
 		decision.SizeEvidence.matches():
 		if ok, reason := m.releasesMatchExceptTitleWithReason(
-			input.Source.release,
-			input.Candidate.release,
+			input.Source,
+			input.Candidate,
 			input.FindIndividualEpisodes,
 		); ok {
 			class = searchCandidateClassTitleRescue
@@ -470,6 +470,12 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 
 	sourceIdentity := m.normalizedGroupSiteIdentity(source)
 	candidateIdentity := m.normalizedGroupSiteIdentity(candidate)
+	switch {
+	case m.dashSuffixGroupSpellsSite(input.Source, input.Candidate):
+		candidateIdentity = normalizer.Normalize(source.Site)
+	case m.dashSuffixGroupSpellsSite(input.Candidate, input.Source):
+		sourceIdentity = normalizer.Normalize(candidate.Site)
+	}
 	if sourceIdentity == "" || candidateIdentity == "" ||
 		(sourceIdentity != candidateIdentity &&
 			!m.crossFieldGroupSiteFallback(input.Source, input.Candidate)) {
@@ -974,6 +980,67 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 		add(m.parseReleaseName(side.rawName))
 	}
 	return provenance
+}
+
+// dashSuffixGroupSpellsSite reports whether grouped, which carries a Group and
+// no Site, names the fansub in the Site of sited. rls keeps a bracket name such
+// as "[Moe-Fansub]" whole in Site, but splits the suffix "x265-Moe-Fansub" at
+// the last dash into a text tag "Moe" and Group "Fansub". Only the full run of
+// text tags before the group rebuilds the name, so "x265-Fansub" and
+// "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
+// origins as groupTagProvenance, because a view built from the files can carry
+// the Group of the torrent name without the tags of that name.
+func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
+	if sited.release == nil || grouped.release == nil {
+		return false
+	}
+	normalizer := m.normalizer()
+	site := normalizer.Normalize(sited.release.Site)
+	group := normalizer.Normalize(grouped.release.Group)
+	if site == "" || group == "" || normalizer.Normalize(grouped.release.Site) != "" {
+		return false
+	}
+
+	var rawRelease *rls.Release
+	if grouped.rawName != "" {
+		rawRelease = m.parseReleaseName(grouped.rawName)
+	}
+	for _, origin := range [...]*rls.Release{grouped.release, grouped.tagOrigin, rawRelease} {
+		if origin != nil && normalizer.Normalize(origin.Group) == group &&
+			normalizer.Normalize(dashSuffixGroupName(origin)) == site {
+			return true
+		}
+	}
+	return false
+}
+
+// dashSuffixGroupName joins the group tag with the text tags directly before
+// it. Any other tag, such as a codec or HDR tag, ends the run.
+func dashSuffixGroupName(release *rls.Release) string {
+	tags := release.Tags()
+	groupIndex := -1
+	for i, tag := range slices.Backward(tags) {
+		if tag.Is(rls.TagTypeGroup) {
+			groupIndex = i
+			break
+		}
+	}
+	if groupIndex < 0 {
+		return ""
+	}
+
+	parts := []string{tags[groupIndex].Text()}
+	for i := groupIndex - 1; i >= 0; i-- {
+		if tags[i].Is(rls.TagTypeDelim, rls.TagTypeWhitespace) {
+			continue
+		}
+		if !tags[i].Is(rls.TagTypeText) {
+			break
+		}
+		parts = append(parts, tags[i].Text())
+	}
+	slices.Reverse(parts)
+	return strings.Join(parts, "-")
 }
 
 func (m matcher) explicitGroupsAgree(left, right namedRelease) bool {
