@@ -625,6 +625,30 @@ func (m matcher) searchCandidateMetadataConsistent(
 	return ok, reason
 }
 
+// strictMatchWithoutTargetSite reports whether a strict search decision still
+// holds when the target's site tag is the only apply-time difference.
+func (m matcher) strictMatchWithoutTargetSite(input searchCandidateInput, decision searchDecisionProvenance, findIndividualEpisodes bool) bool {
+	target := input.Source.release
+	if target == nil || input.Candidate.release == nil || decision.SearchCandidateName == "" {
+		return false
+	}
+	if ok, _ := m.searchCandidateMetadataConsistent(decision.SearchCandidateName, input.Source, nil, nil, decision.EpisodeMap, findIndividualEpisodes); !ok {
+		return false
+	}
+	unprefixed := *target
+	unprefixed.Site = ""
+	ok, _ := m.releasesMatchWithReasonAndNamesAndTitles(
+		&unprefixed,
+		input.Candidate.release,
+		input.Source.rawName,
+		input.Candidate.rawName,
+		input.SourceTitles,
+		input.CandidateTitles,
+		findIndividualEpisodes,
+	)
+	return ok
+}
+
 // withRelaxedDifferenceNeutralized removes one release-field rejection so the
 // strict matcher can expose the next one. Callers iterate until strict matching
 // succeeds or an unrecorded difference appears.
