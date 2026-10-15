@@ -265,6 +265,53 @@ func TestBuildCrossMatchSets_SeedingAndTags(t *testing.T) {
 	require.Equal(t, []string{"paused-tag", "seed-tag"}, result.SameInstanceTagsByHash["aaa"])
 }
 
+func TestBuildCrossMatchSets_SharedPayloadKeepsAllSeedingAndTagMatches(t *testing.T) {
+	a := crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	b := crossMatchTorrent(1, "bbb", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	c := crossMatchTorrent(1, "ccc", cmEpisode, "/data/flat", "/data/flat", cmFile(cmEpisodeFile, 1000))
+	a.view.State, b.view.State = qbt.TorrentStateStoppedUp, qbt.TorrentStateStoppedUp
+	c.view.Tags = "third-copy"
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true, SameSeeding: true, SameTags: true, SameContent: true}, a, b, c)
+	require.Contains(t, result.SameInstanceSeeding, "aaa")
+	require.Contains(t, result.SameInstanceSeeding, "bbb")
+	require.Equal(t, []string{"third-copy"}, result.SameInstanceTagsByHash["aaa"])
+	require.Len(t, result.SameInstanceContentByHash, 3)
+	for hash, peers := range result.SameInstanceContentByHash {
+		require.NotEmpty(t, peers)
+		require.NotContains(t, peers, hash)
+	}
+}
+
+func TestBuildCrossMatchSets_SharedSidecarsStayOutOfMatchConditions(t *testing.T) {
+	for _, collectContent := range []bool{false, true} {
+		t.Run(map[bool]string{false: "conditions only", true: "with safety groups"}[collectContent], func(t *testing.T) {
+			result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true, SameSeeding: true, SameTags: true, SameContent: collectContent},
+				crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}, {Name: "notes.txt", Size: 10},
+				}),
+				crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}, {Name: "info.nfo", Size: 10},
+				}),
+				crossMatchTorrent(1, "ccc", "Silver.Lantern.2019.2160p.WEB.h265-THIRD", "/data/flat", "/data/flat", qbt.TorrentFiles{
+					{Name: "third.mkv", Size: 3000}, {Name: "notes.txt", Size: 10}, {Name: "info.nfo", Size: 10},
+				}),
+			)
+			require.Empty(t, result.SameInstanceExists)
+			require.Empty(t, result.SameInstanceSeeding)
+			require.Empty(t, result.SameInstanceTagsByHash)
+			if collectContent {
+				require.Len(t, result.SameInstanceContentByHash, 3)
+				for hash, peers := range result.SameInstanceContentByHash {
+					require.NotEmpty(t, peers)
+					require.NotContains(t, peers, hash)
+				}
+			} else {
+				require.Nil(t, result.SameInstanceContentByHash)
+			}
+		})
+	}
+}
+
 func TestBuildCrossMatchSets_OtherInstance(t *testing.T) {
 	otherNeeds := CrossMatchNeeds{OtherExists: true}
 

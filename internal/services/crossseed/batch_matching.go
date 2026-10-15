@@ -120,7 +120,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	files := &batchFiles{
 		svc:       s,
 		instances: instances,
-		byKey:     make(map[string]*sameDataFiles),
+		byKey:     make(map[string]*batchFileData),
 		fetched:   make(map[string]qbt.TorrentFiles),
 		links:     make(map[string]*localMatchContext),
 		linkTiers: make(map[[2]string]localLinkResult),
@@ -144,7 +144,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	files.prefetch(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, otherPicks)
 
 	if samePicks != nil {
-		files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs.SameSeeding)
+		result.SameInstanceContentByHash = files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs)
 		result.SameInstanceExists = make(map[string]struct{})
 		result.SameInstanceUnknown = make(map[string]struct{})
 		if needs.SameSeeding {
@@ -153,17 +153,17 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		if needs.SameTags {
 			result.SameInstanceTagsByHash = make(map[string][]string)
 		}
-		if needs.SameContent {
-			result.SameInstanceContentByHash = make(map[string][]string)
-		}
 		for i := range currentTorrents {
 			if ctx.Err() != nil {
 				break
 			}
 			source := currentTorrents[i].Torrent
 			m := s.classifyCandidates(ctx, source, currentInstanceID, samePicks[i], true, needs.SameTags, files)
-			if needs.SameContent && len(m.content) > 0 {
-				result.SameInstanceContentByHash[source.Hash] = m.content
+			if needs.SameContent && len(m.unreadCandidates) > 0 {
+				hashes := result.SameInstanceContentByHash[source.Hash]
+				hashes = append(hashes, m.unreadCandidates...)
+				slices.Sort(hashes)
+				result.SameInstanceContentByHash[source.Hash] = slices.Compact(hashes)
 			}
 			if m.unread {
 				result.SameInstanceUnknown[source.Hash] = struct{}{}
@@ -213,7 +213,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 type batchFiles struct {
 	svc       *Service
 	instances []*models.Instance
-	byKey     map[string]*sameDataFiles     // nil value: the fetch failed
+	byKey     map[string]*batchFileData     // nil value: the fetch failed
 	fetched   map[string]qbt.TorrentFiles   // file lists that prefetch read
 	links     map[string]*localMatchContext // per source, keeps its stat results
 	// linkTiers holds the link check result per pair of torrents. A link
@@ -226,11 +226,16 @@ type localLinkResult struct {
 	unread bool
 }
 
-func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath string) (sameDataFiles, bool) {
+type batchFileData struct {
+	data  sameDataFiles
+	files qbt.TorrentFiles
+}
+
+func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath string) (batchFileData, bool) {
 	key := cacheKeyForTorrentFiles(instanceID, hash)
 	if data, ok := b.byKey[key]; ok {
 		if data == nil {
-			return sameDataFiles{}, false
+			return batchFileData{}, false
 		}
 		return *data, true
 	}
@@ -238,17 +243,14 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	var err error
 	if !ok {
 		files, err = b.svc.getTorrentFilesCached(ctx, instanceID, hash)
-		if err == nil {
-			b.fetched[key] = files
-		}
 	}
 	if err != nil || len(files) == 0 {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
 			Msg("crossseed: skipping cross-match candidate without a file list")
 		b.byKey[key] = nil
-		return sameDataFiles{}, false
+		return batchFileData{}, false
 	}
-	data := newSameDataFiles(savePath, files, normalizerForService(b.svc))
+	data := batchFileData{data: newSameDataFiles(savePath, files, normalizerForService(b.svc)), files: files}
 	b.byKey[key] = &data
 	return data, true
 }
@@ -363,41 +365,79 @@ func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
 // torrents that share a file path with it. One index of file paths finds them,
 // so a flat folder costs its file count, not its pair count. A torrent whose
 // file list cannot be read is paired with every member of its groups, so that
-// a delete or move fails closed.
+// a delete or move fails closed. Safety groups also include ignored files.
 func (b *batchFiles) addSharedPathPicks(
 	ctx context.Context,
 	instanceID int,
 	torrents []qbittorrent.CrossInstanceTorrentView,
 	pathGroups [][]int,
 	picks [][]*candidatePick,
-	needsSeeding bool,
-) {
-	picked := make(map[int]map[string]*candidatePick)
-	link := func(i, j int, sharesFilePath bool) {
+	needs CrossMatchNeeds,
+) map[string][]string {
+	capacity := 0
+	for _, group := range pathGroups {
+		capacity = max(capacity, len(group))
+	}
+	var sharedPaths map[string][]string
+	if needs.SameContent {
+		sharedPaths = make(map[string][]string, capacity)
+	}
+
+	picked := make(map[int]map[string]struct{})
+	link := func(i, j int) {
 		if i == j {
 			return
 		}
 		have := picked[i]
 		if have == nil {
-			have = make(map[string]*candidatePick, len(picks[i])+1)
+			have = make(map[string]struct{}, len(picks[i])+1)
 			for _, p := range picks[i] {
-				have[p.entry.hash] = p
+				have[p.entry.hash] = struct{}{}
 			}
 			picked[i] = have
 		}
-		entry := newCandidateEntry(&torrents[j], needsSeeding)
-		if existing, ok := have[entry.hash]; ok {
-			existing.sharesFilePath = existing.sharesFilePath || sharesFilePath
+		entry := newCandidateEntry(&torrents[j], needs.SameSeeding)
+		if _, ok := have[entry.hash]; ok {
 			return
 		}
-		pick := &candidatePick{entry: entry, sharesFilePath: sharesFilePath}
-		have[entry.hash] = pick
-		picks[i] = append(picks[i], pick)
+		have[entry.hash] = struct{}{}
+		picks[i] = append(picks[i], &candidatePick{entry: entry})
 	}
 
-	read := make(map[int]bool)
-	byPath := make(map[string][]int)
-	allByPath := make(map[string][]int)
+	var parent []int
+	if sharedPaths != nil && len(pathGroups) > 0 {
+		parent = make([]int, len(torrents))
+		for i := range parent {
+			parent[i] = i
+		}
+	}
+	root := func(i int) int {
+		for parent[i] != i {
+			parent[i] = parent[parent[i]]
+			i = parent[i]
+		}
+		return i
+	}
+	// A connecting edge is enough; repeated shared files need no more edges.
+	share := func(i, j int) {
+		if sharedPaths == nil || i == j {
+			return
+		}
+		a, z := root(i), root(j)
+		if a == z {
+			return
+		}
+		parent[z] = a
+		first, next := torrents[i].Hash, torrents[j].Hash
+		sharedPaths[first] = append(sharedPaths[first], next)
+		sharedPaths[next] = append(sharedPaths[next], first)
+	}
+	var firstByPath map[string]int
+	if needs.SameContent {
+		firstByPath = make(map[string]int, capacity)
+	}
+	read := make(map[int]bool, capacity)
+	byPath := make(map[string][]int, capacity)
 	for _, group := range pathGroups {
 		for _, i := range group {
 			if _, done := read[i]; done {
@@ -405,31 +445,26 @@ func (b *batchFiles) addSharedPathPicks(
 			}
 			data, ok := b.get(ctx, instanceID, torrents[i].Hash, torrents[i].SavePath)
 			read[i] = ok
-			if !ok || torrents[i].SavePath == "" {
-				continue
-			}
-			for p := range data.paths {
+			for p := range data.data.paths {
 				byPath[p] = append(byPath[p], i)
 			}
-			// Destructive actions must preserve shared sidecars too.
-			for _, file := range b.fetched[cacheKeyForTorrentFiles(instanceID, torrents[i].Hash)] {
-				p := normalizePathForComparison(torrents[i].SavePath + "/" + file.Name)
-				allByPath[p] = append(allByPath[p], i)
+			if sharedPaths != nil && ok && torrents[i].SavePath != "" {
+				for _, file := range data.files {
+					p := normalizePathForComparison(torrents[i].SavePath + "/" + file.Name)
+					if first, exists := firstByPath[p]; exists {
+						share(first, i)
+					} else {
+						firstByPath[p] = i
+					}
+				}
 			}
 		}
 	}
 	for _, sharing := range byPath {
 		for _, i := range sharing {
 			for _, j := range sharing {
-				link(i, j, true)
+				link(i, j)
 			}
-		}
-	}
-	// One shared member connects the safety group without checking every pair.
-	for _, sharing := range allByPath {
-		for _, i := range sharing[1:] {
-			link(sharing[0], i, true)
-			link(i, sharing[0], true)
 		}
 	}
 	for _, group := range pathGroups {
@@ -438,11 +473,16 @@ func (b *batchFiles) addSharedPathPicks(
 				continue
 			}
 			for _, j := range group {
-				link(i, j, false)
-				link(j, i, false)
+				link(i, j)
+				link(j, i)
+				share(i, j)
 			}
 		}
 	}
+	for _, hashes := range sharedPaths {
+		slices.Sort(hashes)
+	}
+	return sharedPaths
 }
 
 // linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
@@ -571,9 +611,8 @@ type indexMatch struct {
 	// memberTags holds the non-empty raw Tags strings of the matches, sorted,
 	// when collectTags is set.
 	memberTags []string
-	// content holds same-instance torrents that share any file path, including
-	// ignored files, and candidates whose files could not be read.
-	content []string
+	// Unread candidates outside the path groups still need conservative action grouping.
+	unreadCandidates []string
 	// unread is set when the file list of the source or of a candidate could
 	// not be read, so the other fields may be wrong.
 	unread bool
@@ -583,9 +622,8 @@ type indexMatch struct {
 // tier it gets if its file sizes pair with the source. It is empty for a
 // torrent that addSharedPathPicks added.
 type candidatePick struct {
-	entry          candidateEntry
-	nameOrRelease  string
-	sharesFilePath bool
+	entry         candidateEntry
+	nameOrRelease string
 }
 
 // selectCandidates selects the Name and Release candidates of a source torrent
@@ -642,8 +680,7 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 
 // classifyCandidates classifies each candidate of a source torrent with
 // localMatchTier. sameInstance allows the Content tier. A candidate whose file
-// list cannot be read is not a match and sets unread, and on the same instance
-// it goes into content.
+// list cannot be read is not a match and sets unread.
 func (s *Service) classifyCandidates(
 	ctx context.Context,
 	source *qbt.Torrent,
@@ -663,7 +700,7 @@ func (s *Service) classifyCandidates(
 		if sameInstance {
 			for _, p := range picks {
 				if p.entry.view.ContentPath != "" {
-					result.content = append(result.content, p.entry.hash)
+					result.unreadCandidates = append(result.unreadCandidates, p.entry.hash)
 				}
 			}
 		}
@@ -680,18 +717,15 @@ func (s *Service) classifyCandidates(
 		if !ok {
 			result.unread = true
 			if sameInstance {
-				result.content = append(result.content, c.hash)
+				result.unreadCandidates = append(result.unreadCandidates, c.hash)
 			}
 			continue
 		}
-		tier := localMatchTier(sameInstance, p.nameOrRelease, sourceData, candidateData, nil)
+		tier := localMatchTier(sameInstance, p.nameOrRelease, sourceData.data, candidateData.data, nil)
 		if tier == "" && p.nameOrRelease != "" {
 			linked := files.linkedTier(ctx, source, sourceInstanceID, c)
 			tier = linked.tier
 			result.unread = result.unread || linked.unread
-		}
-		if sameInstance && (p.sharesFilePath || tier == matchTypeContentPath) {
-			result.content = append(result.content, c.hash)
 		}
 		if tier == "" {
 			continue
@@ -706,7 +740,6 @@ func (s *Service) classifyCandidates(
 	}
 
 	slices.Sort(result.memberTags)
-	slices.Sort(result.content)
 	return result
 }
 
