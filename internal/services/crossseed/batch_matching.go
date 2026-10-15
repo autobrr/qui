@@ -5,8 +5,10 @@ package crossseed
 
 import (
 	"context"
+	"maps"
 	"slices"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
@@ -106,65 +108,73 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		svc:       s,
 		instances: instances,
 		byKey:     make(map[string]*sameDataFiles),
+		fetched:   make(map[string]qbt.TorrentFiles),
 		links:     make(map[string]*localMatchContext),
 		linkTiers: make(map[[2]string]string),
 	}
 
-	// Build same-instance index and match
+	// Select the candidates of every torrent first, so that the file lists they
+	// need are read in one batch per instance.
+	var samePicks, otherPicks [][]*candidatePick
 	if needsSame {
-		sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding)
-		if sameIdx != nil {
-			result.SameInstanceExists = make(map[string]struct{})
-			if needs.SameSeeding {
-				result.SameInstanceSeeding = make(map[string]struct{})
+		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding); sameIdx != nil {
+			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true)
+		}
+	}
+	if needsOther && listErr == nil {
+		if otherIdx := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding); otherIdx != nil {
+			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false)
+		}
+	}
+	files.prefetch(ctx, currentInstanceID, currentTorrents, samePicks, otherPicks)
+
+	if samePicks != nil {
+		result.SameInstanceExists = make(map[string]struct{})
+		if needs.SameSeeding {
+			result.SameInstanceSeeding = make(map[string]struct{})
+		}
+		if needs.SameTags {
+			result.SameInstanceTagsByHash = make(map[string][]string)
+		}
+		if needs.SameContent {
+			result.SameInstanceContentByHash = make(map[string][]string)
+		}
+		for i := range currentTorrents {
+			if ctx.Err() != nil {
+				break
 			}
-			if needs.SameTags {
-				result.SameInstanceTagsByHash = make(map[string][]string)
+			source := currentTorrents[i].Torrent
+			m := s.classifyCandidates(ctx, source, currentInstanceID, samePicks[i], true, needs.SameTags, files)
+			if needs.SameContent && len(m.content) > 0 {
+				result.SameInstanceContentByHash[source.Hash] = m.content
 			}
-			if needs.SameContent {
-				result.SameInstanceContentByHash = make(map[string][]string)
+			if !m.matched {
+				continue
 			}
-			for i := range currentTorrents {
-				if ctx.Err() != nil {
-					break
-				}
-				source := currentTorrents[i].Torrent
-				m := s.matchAgainstIndex(ctx, source, currentInstanceID, sameIdx, true, needs.SameTags, files)
-				if needs.SameContent && len(m.content) > 0 {
-					result.SameInstanceContentByHash[source.Hash] = m.content
-				}
-				if !m.matched {
-					continue
-				}
-				result.SameInstanceExists[source.Hash] = struct{}{}
-				if needs.SameSeeding && m.seeding {
-					result.SameInstanceSeeding[source.Hash] = struct{}{}
-				}
-				if needs.SameTags && len(m.memberTags) > 0 {
-					result.SameInstanceTagsByHash[source.Hash] = m.memberTags
-				}
+			result.SameInstanceExists[source.Hash] = struct{}{}
+			if needs.SameSeeding && m.seeding {
+				result.SameInstanceSeeding[source.Hash] = struct{}{}
+			}
+			if needs.SameTags && len(m.memberTags) > 0 {
+				result.SameInstanceTagsByHash[source.Hash] = m.memberTags
 			}
 		}
 	}
 
-	// Build other-instance index and match
-	if needsOther && listErr == nil {
-		otherIdx := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding)
-		if otherIdx != nil {
-			result.OtherInstanceExists = make(map[string]struct{})
-			if needs.OtherSeeding {
-				result.OtherInstanceSeeding = make(map[string]struct{})
+	if otherPicks != nil {
+		result.OtherInstanceExists = make(map[string]struct{})
+		if needs.OtherSeeding {
+			result.OtherInstanceSeeding = make(map[string]struct{})
+		}
+		for i := range currentTorrents {
+			if ctx.Err() != nil {
+				break
 			}
-			for i := range currentTorrents {
-				if ctx.Err() != nil {
-					break
-				}
-				source := currentTorrents[i].Torrent
-				if m := s.matchAgainstIndex(ctx, source, currentInstanceID, otherIdx, false, false, files); m.matched {
-					result.OtherInstanceExists[source.Hash] = struct{}{}
-					if needs.OtherSeeding && m.seeding {
-						result.OtherInstanceSeeding[source.Hash] = struct{}{}
-					}
+			source := currentTorrents[i].Torrent
+			if m := s.classifyCandidates(ctx, source, currentInstanceID, otherPicks[i], false, false, files); m.matched {
+				result.OtherInstanceExists[source.Hash] = struct{}{}
+				if needs.OtherSeeding && m.seeding {
+					result.OtherInstanceSeeding[source.Hash] = struct{}{}
 				}
 			}
 		}
@@ -179,6 +189,7 @@ type batchFiles struct {
 	svc       *Service
 	instances []*models.Instance
 	byKey     map[string]*sameDataFiles     // nil value: the fetch failed
+	fetched   map[string]qbt.TorrentFiles   // file lists that prefetch read
 	links     map[string]*localMatchContext // per source, keeps its stat results
 	// linkTiers holds the link check result per pair of torrents. A link
 	// goes both ways, so the pair is checked once.
@@ -193,7 +204,11 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 		}
 		return *data, true
 	}
-	files, err := b.svc.getTorrentFilesCached(ctx, instanceID, hash)
+	files, ok := b.fetched[key]
+	var err error
+	if !ok {
+		files, err = b.svc.getTorrentFilesCached(ctx, instanceID, hash)
+	}
 	if err != nil || len(files) == 0 {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
 			Msg("crossseed: skipping cross-match candidate without a file list")
@@ -203,6 +218,60 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	data := newSameDataFiles(savePath, files, normalizerForService(b.svc))
 	b.byKey[key] = &data
 	return data, true
+}
+
+// selectAllCandidates runs selectCandidates for each torrent of the instance.
+func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorrent.CrossInstanceTorrentView, idx *matchIndex, sameInstance bool) [][]*candidatePick {
+	picks := make([][]*candidatePick, len(torrents))
+	for i := range torrents {
+		if ctx.Err() != nil {
+			break
+		}
+		picks[i] = s.selectCandidates(torrents[i].Torrent, idx, sameInstance)
+	}
+	return picks
+}
+
+// prefetch reads the file lists of the sources with candidates and of their
+// candidates, in one GetTorrentFilesBatch call per instance. The sync manager
+// then fetches the lists that it has no copy of in parallel, not one after
+// another. A list that the call does not return is read again by get.
+func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources []qbittorrent.CrossInstanceTorrentView, picksBySource ...[][]*candidatePick) {
+	need := make(map[int]map[string]struct{})
+	add := func(instanceID int, hash string) {
+		if need[instanceID] == nil {
+			need[instanceID] = make(map[string]struct{})
+		}
+		need[instanceID][hash] = struct{}{}
+	}
+	for _, picks := range picksBySource {
+		for i, sourcePicks := range picks {
+			if len(sourcePicks) == 0 || sources[i].ContentPath == "" {
+				continue
+			}
+			add(sourceInstanceID, normalizeHash(sources[i].Hash))
+			for _, p := range sourcePicks {
+				if p.entry.view.ContentPath != "" {
+					add(p.entry.instanceID, p.entry.hash)
+				}
+			}
+		}
+	}
+
+	for instanceID, hashSet := range need {
+		hashes := slices.Collect(maps.Keys(hashSet))
+		filesByHash, err := b.svc.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("crossseed: some cross-match file lists could not be read")
+		}
+		for hash, files := range filesByHash {
+			key := cacheKeyForTorrentFiles(instanceID, hash)
+			b.fetched[key] = files
+			if b.svc.torrentFilesCache != nil {
+				b.svc.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
+			}
+		}
+	}
 }
 
 // linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
@@ -339,7 +408,7 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 	}
 }
 
-// indexMatch is the result of matchAgainstIndex for one source torrent.
+// indexMatch is the result of classifyCandidates for one source torrent.
 type indexMatch struct {
 	matched bool
 	seeding bool // a match is seeding
@@ -352,27 +421,21 @@ type indexMatch struct {
 	content []string
 }
 
-// matchAgainstIndex selects the candidates of a source torrent from the index
-// with the same prefilter as the Cross-Seed tab, and classifies each one with
-// localMatchTier. sameInstance excludes the source itself and allows the
-// Content tier. A candidate whose file list cannot be read is not a match, but
-// on the same instance it goes into content.
-func (s *Service) matchAgainstIndex(
-	ctx context.Context,
-	source *qbt.Torrent,
-	sourceInstanceID int,
-	idx *matchIndex,
-	sameInstance, collectTags bool,
-	files *batchFiles,
-) indexMatch {
+// candidatePick is a candidate that passed the prefilter. nameOrRelease is the
+// tier it gets if its file sizes pair with the source.
+type candidatePick struct {
+	entry         candidateEntry
+	nameOrRelease string
+}
+
+// selectCandidates selects the candidates of a source torrent from the index
+// with the same prefilter as the Cross-Seed tab. sameInstance excludes the
+// source itself.
+func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameInstance bool) []*candidatePick {
 	sourceHash := normalizeHash(source.Hash)
 
-	type pick struct {
-		entry         candidateEntry
-		nameOrRelease string
-	}
-	var picks []*pick
-	byKey := make(map[string]*pick)
+	var picks []*candidatePick
+	byKey := make(map[string]*candidatePick)
 	add := func(c candidateEntry, nameOrRelease string) {
 		if sameInstance && c.hash == sourceHash {
 			return
@@ -384,7 +447,7 @@ func (s *Service) matchAgainstIndex(
 			}
 			return
 		}
-		p := &pick{entry: c, nameOrRelease: nameOrRelease}
+		p := &candidatePick{entry: c, nameOrRelease: nameOrRelease}
 		byKey[key] = p
 		picks = append(picks, p)
 	}
@@ -434,7 +497,21 @@ func (s *Service) matchAgainstIndex(
 			}
 		}
 	}
+	return picks
+}
 
+// classifyCandidates classifies each candidate of a source torrent with
+// localMatchTier. sameInstance allows the Content tier. A candidate whose file
+// list cannot be read is not a match, but on the same instance it goes into
+// content.
+func (s *Service) classifyCandidates(
+	ctx context.Context,
+	source *qbt.Torrent,
+	sourceInstanceID int,
+	picks []*candidatePick,
+	sameInstance, collectTags bool,
+	files *batchFiles,
+) indexMatch {
 	var result indexMatch
 	// A magnet without metadata has no files, so nothing holds its data.
 	if len(picks) == 0 || source.ContentPath == "" {
