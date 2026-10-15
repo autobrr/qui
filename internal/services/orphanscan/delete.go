@@ -46,7 +46,8 @@ func withinScanRoot(d fsops.PathDialect, scanRoot, target string) error {
 	if normTarget == normRoot {
 		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
 	}
-	if separatorTerminatedRoot(d, normRoot) || !isPathUnderNormalized(d, normTarget, normRoot) {
+	// Same boundary as findScanRoot, including a UNC share root without a trailing separator.
+	if isAbsoluteFilesystemRoot(d, normRoot) || !isPathUnderNormalized(d, normTarget, normRoot) {
 		return fmt.Errorf("path escapes scan root: %s", target)
 	}
 	return nil

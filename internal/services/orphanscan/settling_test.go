@@ -281,8 +281,11 @@ func TestFilterCoveredScanRoots_FilesystemRoot(t *testing.T) {
 	assert.Equal(t, []string{win.Clean(`C:\data\library`), win.Clean(`C:\data\staging`)}, got)
 
 	uncRoots := []string{`\\server\share\library`, `\\server\share\staging`}
+	wantUNC := []string{win.Clean(`\\server\share\library`), win.Clean(`\\server\share\staging`)}
 	got = filterCoveredScanRoots(win, uncRoots, []string{win.Clean(`\\server\share`)})
-	assert.Equal(t, []string{win.Clean(`\\server\share\library`), win.Clean(`\\server\share\staging`)}, got)
+	assert.Equal(t, wantUNC, got)
+	got = filterCoveredScanRoots(win, uncRoots, []string{win.Clean(`\\server\share\`)})
+	assert.Equal(t, wantUNC, got)
 }
 
 func TestMetadataIgnoreRoots(t *testing.T) {

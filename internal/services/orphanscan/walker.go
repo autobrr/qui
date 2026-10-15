@@ -508,18 +508,10 @@ func isPathUnderNormalized(d fsops.PathDialect, child, parent string) bool {
 	if len(child) <= len(parent) || !strings.HasPrefix(child, parent) {
 		return false
 	}
-	// A cleaned root ("/", "D:\\", a UNC share root) already ends in the
-	// separator, so every longer path with its prefix is below it.
+	// "/" and "D:\" already end in the separator. A UNC share root may not
+	// ("\\server\share"), so the next character of the child still has to be one.
 	sep := d.Separator()
 	return strings.HasSuffix(parent, sep) || strings.HasPrefix(child[len(parent):], sep)
-}
-
-// separatorTerminatedRoot is a cleaned path that already ends in the dialect
-// separator ("/", "D:\\"). Ignore matching uses that suffix; deletes must not,
-// or a scan root at the filesystem root would allow removals develop refused.
-func separatorTerminatedRoot(d fsops.PathDialect, p string) bool {
-	sep := d.Separator()
-	return sep != "" && strings.HasSuffix(p, sep)
 }
 
 var discRootAllowedFiles = map[string]struct{}{

@@ -1593,8 +1593,8 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 }
 
 // isAbsoluteFilesystemRoot reports whether p is "/", a drive root ("C:\"), or a
-// UNC share root. After Clean, only those keep a trailing separator, except a
-// share root which Cleans to "\\server\share".
+// UNC share root. Clean keeps a trailing separator on / and C:\ and on
+// \\server\share\ ; \\server\share has none, so the prefix check covers it.
 func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
 	cleaned := d.Clean(p)
 	sep := d.Separator()
@@ -2049,7 +2049,9 @@ func findScanRoot(d fsops.PathDialect, path string, scanRoots []string) string {
 	longest := ""
 	for _, root := range scanRoots {
 		nRoot := normalizePath(d, root)
-		if nPath != nRoot && separatorTerminatedRoot(d, nRoot) {
+		// A filesystem root is not a delete boundary. That includes a UNC share
+		// root, which Clean can leave without a trailing separator.
+		if nPath != nRoot && isAbsoluteFilesystemRoot(d, nRoot) {
 			continue
 		}
 		if nPath != nRoot && !isPathUnderNormalized(d, nPath, nRoot) {

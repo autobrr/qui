@@ -33,7 +33,15 @@ func (w winRootTestDialect) Clean(p string) string {
 	case p == `C:`:
 		return `C:\`
 	case strings.HasPrefix(p, `\\`):
-		return strings.TrimSuffix(p, `\`)
+		// Windows Clean keeps a trailing separator on a UNC share root and
+		// drops it on every longer path.
+		trimmed := strings.TrimSuffix(p, `\`)
+		rest := strings.TrimPrefix(trimmed, `\\`)
+		server, share, found := strings.Cut(rest, `\`)
+		if strings.HasSuffix(p, `\`) && found && server != "" && share != "" && !strings.Contains(share, `\`) {
+			return trimmed + `\`
+		}
+		return trimmed
 	default:
 		return p
 	}
@@ -383,6 +391,17 @@ func TestPathDialect_FilesystemRootDeletesRefused(t *testing.T) {
 	driveRoot := win.Clean(`C:\`)
 	require.Empty(t, findScanRoot(win, `C:\data\x.mkv`, []string{driveRoot}))
 	require.ErrorContains(t, withinScanRoot(win, driveRoot, `C:\data\x.mkv`), "escapes scan root")
+
+	// Windows Clean leaves \\server\share without a separator and keeps one on
+	// \\server\share\. Both are the share root, so neither is a delete boundary.
+	require.Equal(t, `\\server\share`, win.Clean(`\\server\share`))
+	require.Equal(t, `\\server\share\`, win.Clean(`\\server\share\`))
+	for _, root := range []string{`\\server\share`, `\\server\share\`} {
+		require.Empty(t, findScanRoot(win, `\\server\share\orphan.mkv`, []string{root}))
+		require.ErrorContains(t, withinScanRoot(win, root, `\\server\share\orphan.mkv`), "escapes scan root")
+	}
+	require.Equal(t, `\\server\share\library`, findScanRoot(win, `\\server\share\library\orphan.mkv`, []string{`\\server\share`, `\\server\share\library`}))
+	require.NoError(t, withinScanRoot(win, `\\server\share\library`, `\\server\share\library\orphan.mkv`))
 }
 
 func TestPruneNestedScanRoots_SharelessHostRootDoesNotLoop(t *testing.T) {
