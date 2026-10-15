@@ -4562,8 +4562,9 @@ func fileOverlapPercent(triggerFiles fileOverlapIndex, candidate qbt.Torrent, ca
 	return (matchedBytes * 100) / smallerBytes
 }
 
-// crossSeedGroupMembers returns the members of a shared-ContentPath group that hold the
-// same data as the trigger and are therefore safe to delete with it.
+// crossSeedGroupMembers returns the members of a shared-ContentPath group that share files
+// with the trigger, directly or through another such member, and are therefore safe to
+// delete with it.
 //
 // A shared ContentPath only proves the torrents write into the same directory: unrelated
 // packs whose payload folder carries the same name (a bare "Season 2" root) all report the
@@ -4602,23 +4603,42 @@ func crossSeedGroupMembers(
 		return nil, false
 	}
 
-	triggerFiles := buildFileOverlapIndex(trigger, filesByHash[trigger.Hash])
 	verified := []string{trigger.Hash}
-	for _, candidate := range candidates {
-		percent := fileOverlapPercent(triggerFiles, candidate, filesByHash[candidate.Hash])
-		switch {
-		case percent >= minFileOverlapPercent:
+	verifiedFiles := []fileOverlapIndex{buildFileOverlapIndex(trigger, filesByHash[trigger.Hash])}
+	// A member can share files with the trigger only through another member, as
+	// an episode, its season pack, and the next episode do. Check each candidate
+	// against every verified member until no candidate joins.
+	for joined := true; joined; {
+		joined = false
+		pending := candidates[:0]
+		for _, candidate := range candidates {
+			shares := false
+			for _, memberFiles := range verifiedFiles {
+				percent := fileOverlapPercent(memberFiles, candidate, filesByHash[candidate.Hash])
+				switch {
+				case percent >= minFileOverlapPercent:
+					shares = true
+				case percent != 0:
+					log.Warn().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).Int64("overlapPercent", percent).
+						Msg("automations: skipping entire group due to partial file overlap")
+					return nil, false
+				}
+			}
+			if !shares {
+				pending = append(pending, candidate)
+				continue
+			}
 			verified = append(verified, candidate.Hash)
-		case percent == 0:
-			// Same directory, different content: not a cross-seed of the trigger.
-			log.Debug().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).
-				Str("contentPath", trigger.ContentPath).
-				Msg("automations: excluding torrent that shares the content path but no files")
-		default:
-			log.Warn().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).Int64("overlapPercent", percent).
-				Msg("automations: skipping entire group due to partial file overlap")
-			return nil, false
+			verifiedFiles = append(verifiedFiles, buildFileOverlapIndex(candidate, filesByHash[candidate.Hash]))
+			joined = true
 		}
+		candidates = pending
+	}
+	for _, candidate := range candidates {
+		// Same directory, different content: not a cross-seed of the trigger.
+		log.Debug().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).
+			Str("contentPath", trigger.ContentPath).
+			Msg("automations: excluding torrent that shares the content path but no files")
 	}
 	return verified, true
 }
@@ -4946,6 +4966,8 @@ func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatch
 	if result.OtherInstanceSeeding != nil {
 		evalCtx.CrossInstanceSeedingHashSet = result.OtherInstanceSeeding
 	}
+	evalCtx.SameInstanceCrossSeedUnknown = result.SameInstanceUnknown
+	evalCtx.CrossInstanceUnknown = result.OtherInstanceUnknown
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks

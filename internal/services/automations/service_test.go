@@ -1404,6 +1404,27 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, []string{layoutTrigger.Hash, layoutCrossSeed.Hash}, got)
 	})
+
+	t.Run("a member that shares files only through another member is deleted too", func(t *testing.T) {
+		episode1 := qbt.Torrent{Hash: "ep1", ContentPath: "/data/Pack/01.mkv", SavePath: "/data/Pack"}
+		pack := qbt.Torrent{Hash: "pack", ContentPath: "/data/Pack", SavePath: "/data"}
+		episode2 := qbt.Torrent{Hash: "ep2", ContentPath: "/data/Pack/02.mkv", SavePath: "/data/Pack"}
+		filesByHash := map[string]qbt.TorrentFiles{
+			episode1.Hash: {{Name: "01.mkv", Size: 1000}},
+			pack.Hash:     {{Name: "Pack/01.mkv", Size: 1000}, {Name: "Pack/02.mkv", Size: 1000}},
+			episode2.Hash: {{Name: "02.mkv", Size: 1000}},
+		}
+
+		got, ok := crossSeedGroupMembers(
+			episode1,
+			[]qbt.Torrent{episode1, episode2, pack},
+			nil,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+		)
+
+		assert.True(t, ok)
+		assert.Equal(t, []string{"ep1", "pack", "ep2"}, got, "deleting the pack breaks the second episode")
+	})
 }
 
 // -----------------------------------------------------------------------------
