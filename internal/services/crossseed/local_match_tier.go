@@ -102,6 +102,7 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 // candidate gets if its file sizes pair with the source. ok is false for a
 // candidate that cannot be a cross-seed.
 func (s *Service) localMatchPrefilter(
+	sameInstance bool,
 	source *qbt.Torrent,
 	sourceRelease *rls.Release,
 	candidate *qbittorrent.CrossInstanceTorrentView,
@@ -125,6 +126,9 @@ func (s *Service) localMatchPrefilter(
 		}
 	}
 
+	if !sameInstance {
+		return "", false
+	}
 	candidateContentPath := normalizePathForComparison(candidate.ContentPath)
 	if normalizedContentPath != "" && normalizedContentPath == candidateContentPath {
 		return "", true

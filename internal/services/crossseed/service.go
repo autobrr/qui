@@ -985,7 +985,7 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		nameOrRelease, ok := s.localMatchPrefilter(sourceTorrent, sourceRelease, cached, normalizedContentPath)
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
 		if !ok {
 			continue
 		}

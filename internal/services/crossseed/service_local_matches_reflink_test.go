@@ -75,6 +75,7 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 			candidate := hardlinkTestCandidate(candidateDir)
 			candidate.Name = tt.candidateName
 			initial, ok := service.localMatchPrefilter(
+				true,
 				source,
 				service.releaseCache.Parse(source.Name),
 				candidate,

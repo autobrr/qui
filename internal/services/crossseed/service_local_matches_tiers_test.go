@@ -286,6 +286,24 @@ func TestFindLocalMatches_HardlinkWithExtraFile(t *testing.T) {
 	requireTier(t, response.Matches, matchTypeHardlink)
 }
 
+func TestFindLocalMatches_CrossInstancePathOnlyFetchFailure(t *testing.T) {
+	for _, candidatePath := range []string{"/data/movies", "/data/movies/" + tierMovieFile, "/data/movies/" + tierMovieFile + "/extra.mkv"} {
+		t.Run(candidatePath, func(t *testing.T) {
+			sm := &tierSyncManager{
+				files: map[string]qbt.TorrentFiles{
+					normalizeHash(tierSourceHash): {{Name: tierMovieFile, Size: 1000}},
+				},
+				source: tierSingleFileSource(),
+				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{2: {
+					tierCandidate(2, "Harbor.Lights.2021.720p.WEB.h264-OTHER", "/data/movies", candidatePath),
+				}},
+				failHashes: map[string]bool{normalizeHash(tierCandidateHash): true},
+			}
+			require.Empty(t, findTier(t, sm))
+		})
+	}
+}
+
 // A failed candidate file fetch fails the delete dialog and is skipped in the tab.
 func TestFindLocalMatches_CandidateFetchFailure(t *testing.T) {
 	sm := &tierSyncManager{
