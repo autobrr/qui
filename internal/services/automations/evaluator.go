@@ -43,6 +43,8 @@ type FreeSpaceSourceState struct {
 	SpaceToClear int64
 	// FilesToClear holds the largest size counted for each cross-seed group key, to avoid double-counting.
 	FilesToClear map[string]int64
+	// FileBytesToClear counts selected files by resolved path for ordinary file deletes.
+	FileBytesToClear map[string]int64
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
 	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
@@ -81,6 +83,8 @@ type EvalContext struct {
 	SpaceToClear int64
 	// FilesToClear holds the largest size counted for each cross-seed group key by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
 	FilesToClear map[string]int64
+	// FileBytesToClear holds the active rule's selected file sizes by resolved path.
+	FileBytesToClear map[string]int64
 	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
 	CrossSeedFilesByHash map[string]qbt.TorrentFiles
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).
@@ -1312,6 +1316,7 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 		ctx.FreeSpace = math.MaxInt64
 		ctx.SpaceToClear = 0
 		ctx.FilesToClear = nil
+		ctx.FileBytesToClear = nil
 		ctx.CrossSeedHashesToClear = nil
 		ctx.HardlinkSignaturesToClear = nil
 		ctx.ActiveFreeSpaceSource = ""
@@ -1321,6 +1326,7 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 	ctx.FreeSpace = state.FreeSpace
 	ctx.SpaceToClear = state.SpaceToClear
 	ctx.FilesToClear = state.FilesToClear
+	ctx.FileBytesToClear = state.FileBytesToClear
 	ctx.CrossSeedHashesToClear = state.CrossSeedHashesToClear
 	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
 	ctx.ActiveFreeSpaceSource = sourceKey
@@ -1340,6 +1346,7 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 
 	state.SpaceToClear = ctx.SpaceToClear
 	state.FilesToClear = ctx.FilesToClear
+	state.FileBytesToClear = ctx.FileBytesToClear
 	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
 	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

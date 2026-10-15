@@ -355,7 +355,7 @@ func TestMoveSkippedWhenAlreadyInTargetPath(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
 
 	// Already in target path, move should not be set
 	require.False(t, state.shouldMove)
@@ -397,7 +397,7 @@ func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
 
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/data/archive", state.movePath)
@@ -434,7 +434,7 @@ func TestMovePathNormalization(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
 
 	// Paths should be normalized and match, so move should be skipped
 	require.False(t, state.shouldMove)
@@ -843,16 +843,23 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		}
 
 		allTorrents := []qbt.Torrent{torrent1, torrent2}
+		evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "movie", Size: 50000000000}},
+			"def456": {{Name: "movie", Size: 50000000000}},
+		}
 		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
 		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
 
 		// Should only count once
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 1)
+		require.Len(t, evalCtx.FileBytesToClear, 1)
 	})
 
-	t.Run("counts the largest member of a group that holds different files", func(t *testing.T) {
-		evalCtx := &EvalContext{FilesToClear: make(map[string]int64)}
+	t.Run("counts the file union of an episode and its pack", func(t *testing.T) {
+		evalCtx := &EvalContext{FilesToClear: make(map[string]int64), CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
+			"ep":   {{Name: "ep1.mkv", Size: 1000}},
+			"pack": {{Name: "Pack/ep1.mkv", Size: 1000}, {Name: "Pack/ep2.mkv", Size: 1000}},
+		}}
 		episode := qbt.Torrent{Hash: "ep", Size: 1000, ContentPath: "/data/Pack/ep1.mkv", SavePath: "/data/Pack"}
 		pack := qbt.Torrent{Hash: "pack", Size: 2000, ContentPath: "/data/Pack", SavePath: "/data"}
 		groups := buildCrossSeedGroups([]qbt.Torrent{episode, pack}, &EvalContext{
@@ -1260,6 +1267,10 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	}
 
 	evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
+	evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{
+		"a": {{Name: "movie", Size: 30000000000}},
+		"b": {{Name: "movie", Size: 30000000000}},
+	}
 	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// torrent1 (30GB) -> SpaceToClear = 30GB, effective = 40GB < 60GB (still matches)

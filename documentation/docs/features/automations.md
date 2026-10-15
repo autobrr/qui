@@ -1119,7 +1119,9 @@ When a delete rule uses the **Free Space** condition, qui tracks freed space cum
 1. **Configurable processing order**: qui processes torrents according to the automation's Torrent Priority (Default, Simple, or Score). This lets you prioritize cleanups (for example, largest files first, or lowest score first).
 2. **Cumulative space tracking**: As qui marks each torrent for deletion, qui adds its size to the projected free space (only when the delete mode frees disk bytes).
 3. **Stop when satisfied**: Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match.
-4. **Cross-seed aware**: qui counts cross-seeded torrents that share the same files once to avoid overestimating freed space.
+4. **Cross-seed aware**: For `Delete with files`, qui counts the files selected for deletion. Each shared file path counts once, even when an unselected torrent connects the selected torrents into one shared-file group.
+
+For `Delete with files`, a required file list that cannot be read stops that rule's deletions for the run. The **Needed to reach target** preview returns an error. Estimates use reported sizes, not actual disk allocation.
 
 **Preview views for Free Space rules**
 

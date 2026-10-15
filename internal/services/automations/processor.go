@@ -202,6 +202,7 @@ func processTorrents(
 	}
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
+	failedDeleteRules := make(map[int]struct{})
 	if evalCtx != nil && evalCtx.hardlinkIndex != nil && rulesNeedHardlinkSignatureMap(rules) {
 		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(torrents))
 		for _, torrent := range torrents {
@@ -239,6 +240,9 @@ func processTorrents(
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
+			if _, failed := failedDeleteRules[rule.ID]; failed {
+				continue
+			}
 			if state.shouldDelete {
 				// Once delete is triggered, stop processing further rules
 				break
@@ -247,12 +251,34 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents)
+			if err := processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents); err != nil {
+				failedDeleteRules[rule.ID] = struct{}{}
+				evalCtx.SpaceToClear = 0
+				clear(evalCtx.FilesToClear)
+				clear(evalCtx.FileBytesToClear)
+				log.Warn().Err(err).Int("ruleID", rule.ID).Str("ruleName", rule.Name).
+					Msg("automations: skipping free-space delete rule")
+			}
 		}
 
 		// Only store if there are actions to take
 		if hasActions(state) {
 			states[torrent.Hash] = state
+		}
+	}
+
+	// A late file-read failure cancels the rule's earlier selections too.
+	for hash, state := range states {
+		if _, failed := failedDeleteRules[state.deleteRuleID]; !failed || !state.shouldDelete {
+			continue
+		}
+		state.shouldDelete = false
+		if ruleStats := stats[state.deleteRuleID]; ruleStats != nil {
+			ruleStats.DeleteApplied--
+			ruleStats.DeleteConditionNotMet++
+		}
+		if !hasActions(state) {
+			delete(states, hash)
 		}
 	}
 
@@ -265,10 +291,10 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) error {
 	conditions := rule.Conditions
 	if conditions == nil {
-		return
+		return nil
 	}
 
 	// Load the rule's free space source state before evaluating any conditions.
@@ -545,6 +571,9 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 							stats.DeleteApplied--
 							stats.DeleteConditionNotMet++
 						}
+						if state.deleteMode == DeleteModeWithFiles {
+							return fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+						}
 					}
 				}
 			} else if stats != nil {
@@ -557,6 +586,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
 		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeeds, stats, state)
 	}
+	return nil
 }
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
@@ -894,6 +924,23 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		// File verification above established that this torrent has no shared files.
 		// Do not deduplicate unrelated torrents that merely use the same directory.
 		evalCtx.SpaceToClear += torrent.Size
+		return true
+	}
+	if deleteMode == DeleteModeWithFiles && len(crossSeeds[torrent.Hash]) > 0 {
+		files := evalCtx.CrossSeedFilesByHash[torrent.Hash]
+		if len(files) == 0 {
+			return false
+		}
+		if evalCtx.FileBytesToClear == nil {
+			evalCtx.FileBytesToClear = make(map[string]int64)
+		}
+		for _, file := range files {
+			path := resolvedTorrentFilePath(torrent, file.Name)
+			if counted := evalCtx.FileBytesToClear[path]; file.Size > counted {
+				evalCtx.SpaceToClear += file.Size - counted
+				evalCtx.FileBytesToClear[path] = file.Size
+			}
+		}
 		return true
 	}
 

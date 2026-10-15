@@ -1050,7 +1050,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	eligibleMode := previewView == "eligible"
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds || deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+	if ruleNeedsCrossSeedFiles(rule) {
 		var projectionHardlinks *HardlinkIndex
 		if ruleUsesIncludeCrossSeedsFreeSpace(rule) && rule.Conditions.Delete.IncludeHardlinks {
 			projectionHardlinks = hardlinkIndex
@@ -1283,7 +1283,9 @@ func (s *Service) previewDeleteStandard(
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
-			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, crossSeeds, false)
+			if !updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, crossSeeds, false) {
+				return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
+			}
 		}
 
 		matchIndex++
@@ -4980,7 +4982,8 @@ func ruleNeedsCrossSeedFiles(rule *models.Automation) bool {
 		return false
 	}
 	return deleteAction.Mode == DeleteModeWithFilesIncludeCrossSeeds ||
-		deleteAction.Mode == DeleteModeWithFilesPreserveCrossSeeds
+		deleteAction.Mode == DeleteModeWithFilesPreserveCrossSeeds ||
+		(deleteAction.Mode == DeleteModeWithFiles && ConditionUsesField(deleteAction.Condition, FieldFreeSpace))
 }
 
 func rulesNeedCrossSeedFiles(rules []*models.Automation) bool {
