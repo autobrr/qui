@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -15,22 +16,16 @@ import (
 
 // sameDataFiles holds the files of a torrent that decide whether another
 // torrent holds the same data. Files that search ignores (nfo, srt, samples,
-// and the rest of the ignore list) are left out, unless every file is on the
-// ignore list, as for a movie named Proof.
+// and the rest of the ignore list) are left out, as contentFiles describes.
 type sameDataFiles struct {
 	paths map[string]struct{} // save path joined with the file name, normalized
 	sizes []int64             // sorted
 }
 
 func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) sameDataFiles {
-	allIgnored := !slices.ContainsFunc(files, func(file qbt.TorrentFile) bool {
-		return !shouldIgnoreFile(file.Name, normalizer)
-	})
+	files = contentFiles(files, normalizer)
 	data := sameDataFiles{paths: make(map[string]struct{}, len(files))}
 	for _, file := range files {
-		if !allIgnored && shouldIgnoreFile(file.Name, normalizer) {
-			continue
-		}
 		if savePath != "" {
 			data.paths[normalizePathForComparison(savePath+"/"+file.Name)] = struct{}{}
 		}
@@ -38,6 +33,32 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 	}
 	slices.Sort(data.sizes)
 	return data
+}
+
+// contentFiles removes the files that search ignores. A file with an ignored
+// extension (nfo, srt) is always a sidecar. An ignored path keyword (proof,
+// extras) can be part of the title, as for a movie named Proof, so when every
+// remaining file has one, those files stay. A torrent of sidecars only keeps
+// all its files.
+func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) qbt.TorrentFiles {
+	var noSidecars, content qbt.TorrentFiles
+	for _, file := range files {
+		name := normalizer.Normalize(file.Name)
+		if slices.ContainsFunc(DefaultIgnoredExtensions, func(ext string) bool { return strings.HasSuffix(name, ext) }) {
+			continue
+		}
+		noSidecars = append(noSidecars, file)
+		if !slices.ContainsFunc(DefaultIgnoredPathKeywords, func(keyword string) bool { return strings.Contains(name, keyword) }) {
+			content = append(content, file)
+		}
+	}
+	switch {
+	case len(content) > 0:
+		return content
+	case len(noSidecars) > 0:
+		return noSidecars
+	}
+	return files
 }
 
 func (d sameDataFiles) sharesPath(other sameDataFiles) bool {

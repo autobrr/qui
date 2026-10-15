@@ -198,6 +198,17 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 		require.NotContains(t, result.SameInstanceExists, "ccc", "a copy with other file sizes is not a cross-seed")
 	})
 
+	t.Run("a copy with an ignored word in its title leaves its sidecars out", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", proof, "/data/copy", "/data/copy/"+proof,
+				qbt.TorrentFiles{{Name: proof + "/" + proof + ".mkv", Size: 1000}, {Name: proof + "/" + proof + ".nfo", Size: 2}}),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Contains(t, result.SameInstanceExists, "bbb")
+		require.Empty(t, result.SameInstanceContentByHash, "separate copies share no file")
+	})
+
 	t.Run("an unreadable candidate counts as sharing files for grouping only", func(t *testing.T) {
 		result := buildCrossMatch(t, sameNeeds,
 			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
