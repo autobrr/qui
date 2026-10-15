@@ -58,8 +58,11 @@ jobs:
             [[ -n $behaviour ]] || missing+=("Behaviour change (write \"No behaviour change.\" if users notice nothing)")
             performance=$(section 'Performance') || performance=
             [[ -n $performance ]] && ! [[ ${performance,,} =~ ^(none|n/?a)\.?$ ]] || missing+=("Performance (if no performance risk applies, say why)")
-            disclosure=$(section 'AI disclosure' | grep -vF 'Was any AI used in this PR?' || true)
-            [[ -n $disclosure ]] || missing+=("AI disclosure")
+            # Remove only the template question, so an answer on the same line stays.
+            disclosure=$(section 'AI disclosure') || disclosure=
+            disclosure=${disclosure//"Was any AI used in this PR?"/}
+            disclosure=${disclosure//"Roughly how much of the code was AI-written, and what model/tool?"/}
+            [[ -n ${disclosure//[[:space:]]/} ]] || missing+=("AI disclosure")
             for m in "${missing[@]}"; do errors+=("Fill in this section from .github/pull_request_template.md: $m"); done
           fi
 
