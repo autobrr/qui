@@ -131,9 +131,34 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 			if ruleTemplatesUseTrackerName(ac) {
 				needs.TrackerNames = true
 			}
+			if actionsGroupCrossSeeds(ac) {
+				needs.CrossMatch.SameContent = true
+			}
 		}
 	}
 	return needs
+}
+
+// actionsGroupCrossSeeds reports whether an enabled action reads the cross-seed
+// groups: a delete that keeps, expands to, or counts once the torrents that share
+// files, any move (it takes the torrents that share files along), and a category
+// change that blocks on or includes cross-seeds.
+func actionsGroupCrossSeeds(ac *models.ActionConditions) bool {
+	if del := ac.Delete; del != nil && del.Enabled {
+		switch del.Mode {
+		case DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds:
+			return true
+		case DeleteModeWithFiles:
+			if ConditionUsesField(del.Condition, FieldFreeSpace) {
+				return true
+			}
+		}
+	}
+	if move := ac.Move; move != nil && move.Enabled {
+		return true
+	}
+	cat := ac.Category
+	return cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)
 }
 
 // previewNeeds is NeedsFor of one rule as if it were enabled: the preview shows

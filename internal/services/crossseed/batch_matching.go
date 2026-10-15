@@ -5,7 +5,7 @@ package crossseed
 
 import (
 	"context"
-	"sort"
+	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -20,6 +20,7 @@ type CrossMatchNeeds struct {
 	SameExists   bool
 	SameSeeding  bool
 	SameTags     bool
+	SameContent  bool
 	OtherExists  bool
 	OtherSeeding bool
 }
@@ -34,13 +35,25 @@ type CrossMatchResult struct {
 	// its same-instance cross-seed matches (self excluded). A hash is present only
 	// when at least one match carries a non-empty tag string.
 	SameInstanceTagsByHash map[string][]string
+	// SameInstanceContentByHash maps a source hash to the hashes of the torrents
+	// on the same instance that share at least one file on disk with it (the
+	// Content tier, self excluded). A candidate whose files could not be read is
+	// also listed, so that a delete or move fails closed. A hash is present only
+	// when it has such a torrent.
+	SameInstanceContentByHash map[string][]string
 }
 
 // candidateEntry holds pre-computed data for a candidate torrent.
 type candidateEntry struct {
-	hash    string
-	tags    string
-	seeding bool
+	hash       string
+	tags       string
+	seeding    bool
+	instanceID int
+	savePath   string
+	// ambiguous is true when the content path equals the save path: a
+	// multi-file torrent without a subfolder.
+	ambiguous bool
+	view      *qbittorrent.CrossInstanceTorrentView
 }
 
 // releaseCandidate extends candidateEntry with parsed release metadata for rls matching.
@@ -50,21 +63,25 @@ type releaseCandidate struct {
 	release *rls.Release
 }
 
-// matchIndex holds pre-built indexes for efficient batch matching
-// of source torrents against candidate torrents.
+// matchIndex holds pre-built indexes that select the candidates of a source
+// torrent before their file lists are fetched.
 type matchIndex struct {
 	byContentPath map[string][]candidateEntry       // key: normalizedContentPath (non-ambiguous only)
+	bySavePath    map[string][]candidateEntry       // key: normalized save path
 	byName        map[string][]candidateEntry       // key: normalizeLowerTrim(name)
 	byReleaseKey  map[releaseKey][]releaseCandidate // for release metadata matching
 }
 
-// BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds
-// on the same instance and/or other instances, using the same matching strategies
-// as "Filter Cross-Seeds": content path, exact name, and release metadata matching.
-// All data comes from the SyncManager cache — no API calls to qBittorrent.
+// BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
+// same instance and/or other instances. It uses the same per-file rule as the
+// Cross-Seed tab (localMatchTier), without the retitled rescue. The cached
+// torrent fields select the candidates, and only their file lists are fetched,
+// through the files cache. The Hardlink and Reflink check runs only for a Name
+// or Release candidate whose file sizes do not pair, because only that
+// candidate can change the result.
 func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
 	result := &CrossMatchResult{}
-	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags
+	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags || needs.SameContent
 	needsOther := needs.OtherExists || needs.OtherSeeding
 
 	if !needsSame && !needsOther {
@@ -78,6 +95,21 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		return result
 	}
 
+	// Without the instance list, the link check stays off and the
+	// other-instance sets stay empty.
+	instances, listErr := s.instanceStore.List(ctx)
+	if listErr != nil {
+		log.Error().Err(listErr).Msg("crossseed: failed to list instances for cross-matching")
+	}
+
+	files := &batchFiles{
+		svc:       s,
+		instances: instances,
+		byKey:     make(map[string]*sameDataFiles),
+		links:     make(map[string]*localMatchContext),
+		linkTiers: make(map[[2]string]string),
+	}
+
 	// Build same-instance index and match
 	if needsSame {
 		sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding)
@@ -89,32 +121,34 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 			if needs.SameTags {
 				result.SameInstanceTagsByHash = make(map[string][]string)
 			}
+			if needs.SameContent {
+				result.SameInstanceContentByHash = make(map[string][]string)
+			}
 			for i := range currentTorrents {
 				if ctx.Err() != nil {
 					break
 				}
 				source := currentTorrents[i].Torrent
-				if matched, matchSeeding, memberTags := s.matchAgainstIndex(source, sameIdx, true, needs.SameTags); matched {
-					result.SameInstanceExists[source.Hash] = struct{}{}
-					if needs.SameSeeding && matchSeeding {
-						result.SameInstanceSeeding[source.Hash] = struct{}{}
-					}
-					if needs.SameTags && len(memberTags) > 0 {
-						result.SameInstanceTagsByHash[source.Hash] = memberTags
-					}
+				m := s.matchAgainstIndex(ctx, source, currentInstanceID, sameIdx, true, needs.SameTags, files)
+				if needs.SameContent && len(m.content) > 0 {
+					result.SameInstanceContentByHash[source.Hash] = m.content
+				}
+				if !m.matched {
+					continue
+				}
+				result.SameInstanceExists[source.Hash] = struct{}{}
+				if needs.SameSeeding && m.seeding {
+					result.SameInstanceSeeding[source.Hash] = struct{}{}
+				}
+				if needs.SameTags && len(m.memberTags) > 0 {
+					result.SameInstanceTagsByHash[source.Hash] = m.memberTags
 				}
 			}
 		}
 	}
 
 	// Build other-instance index and match
-	if needsOther {
-		instances, err := s.instanceStore.List(ctx)
-		if err != nil {
-			log.Error().Err(err).Msg("crossseed: failed to list instances for cross-instance matching")
-			return result
-		}
-
+	if needsOther && listErr == nil {
 		otherIdx := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding)
 		if otherIdx != nil {
 			result.OtherInstanceExists = make(map[string]struct{})
@@ -126,9 +160,9 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 					break
 				}
 				source := currentTorrents[i].Torrent
-				if matched, matchSeeding, _ := s.matchAgainstIndex(source, otherIdx, false, false); matched {
+				if m := s.matchAgainstIndex(ctx, source, currentInstanceID, otherIdx, false, false, files); m.matched {
 					result.OtherInstanceExists[source.Hash] = struct{}{}
-					if needs.OtherSeeding && matchSeeding {
+					if needs.OtherSeeding && m.seeding {
 						result.OtherInstanceSeeding[source.Hash] = struct{}{}
 					}
 				}
@@ -139,18 +173,84 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	return result
 }
 
+// batchFiles keeps the file data of each torrent for one BuildCrossMatchSets
+// call, so that a torrent that is a candidate of many sources is read once.
+type batchFiles struct {
+	svc       *Service
+	instances []*models.Instance
+	byKey     map[string]*sameDataFiles     // nil value: the fetch failed
+	links     map[string]*localMatchContext // per source, keeps its stat results
+	// linkTiers holds the link check result per pair of torrents. A link
+	// goes both ways, so the pair is checked once.
+	linkTiers map[[2]string]string
+}
+
+func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath string) (sameDataFiles, bool) {
+	key := cacheKeyForTorrentFiles(instanceID, hash)
+	if data, ok := b.byKey[key]; ok {
+		if data == nil {
+			return sameDataFiles{}, false
+		}
+		return *data, true
+	}
+	files, err := b.svc.getTorrentFilesCached(ctx, instanceID, hash)
+	if err != nil || len(files) == 0 {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
+			Msg("crossseed: skipping cross-match candidate without a file list")
+		b.byKey[key] = nil
+		return sameDataFiles{}, false
+	}
+	data := newSameDataFiles(savePath, files, normalizerForService(b.svc))
+	b.byKey[key] = &data
+	return data, true
+}
+
+// linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
+// files are linked copies of the source files, as the Cross-Seed tab checks
+// them. A stat failure counts as no link.
+func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, c candidateEntry) string {
+	candidateInstance := instanceByID(b.instances, c.instanceID)
+	// Check the cheap gates here, so that a source without file identity
+	// never builds a context.
+	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
+		!instanceHasFileIdentity(b.instances, sourceInstanceID) {
+		return ""
+	}
+	key := cacheKeyForTorrentFiles(sourceInstanceID, source.Hash)
+	pair := [2]string{key, cacheKeyForTorrentFiles(c.instanceID, c.hash)}
+	if pair[1] < pair[0] {
+		pair[0], pair[1] = pair[1], pair[0]
+	}
+	if tier, ok := b.linkTiers[pair]; ok {
+		return tier
+	}
+	matchCtx, ok := b.links[key]
+	if !ok {
+		matchCtx = &localMatchContext{
+			ctx:                   ctx,
+			svc:                   b.svc,
+			sourceInstanceID:      sourceInstanceID,
+			sourceInstance:        instanceByID(b.instances, sourceInstanceID),
+			sourceHash:            source.Hash,
+			sourceSavePath:        source.SavePath,
+			sourceContentPath:     source.ContentPath,
+			sourceHasFileIdentity: true,
+			sourceLocal:           instanceIsLocal(b.instances, sourceInstanceID),
+		}
+		b.links[key] = matchCtx
+	}
+	tier := b.svc.localLinkedMatchType(matchCtx, candidateInstance, c.view)
+	b.linkTiers[pair] = tier
+	return tier
+}
+
 // buildIndexFromViews builds a matchIndex from CrossInstanceTorrentViews.
 func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentView, needsSeeding bool) *matchIndex {
 	if len(views) == 0 {
 		return nil
 	}
 
-	idx := &matchIndex{
-		byContentPath: make(map[string][]candidateEntry),
-		byName:        make(map[string][]candidateEntry),
-		byReleaseKey:  make(map[releaseKey][]releaseCandidate),
-	}
-
+	idx := newMatchIndex()
 	for i := range views {
 		view := &views[i]
 		s.indexView(idx, view, needsSeeding)
@@ -159,14 +259,18 @@ func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentVi
 	return idx
 }
 
-// buildOtherInstanceIndex builds a matchIndex from all torrents on other instances.
-func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool) *matchIndex {
-	idx := &matchIndex{
+func newMatchIndex() *matchIndex {
+	return &matchIndex{
 		byContentPath: make(map[string][]candidateEntry),
+		bySavePath:    make(map[string][]candidateEntry),
 		byName:        make(map[string][]candidateEntry),
 		byReleaseKey:  make(map[releaseKey][]releaseCandidate),
 	}
+}
 
+// buildOtherInstanceIndex builds a matchIndex from all torrents on other instances.
+func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool) *matchIndex {
+	idx := newMatchIndex()
 	hasEntries := false
 
 	for _, inst := range instances {
@@ -197,17 +301,23 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 
 // indexView adds a single torrent view to all indexes.
 func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) {
-	entry := candidateEntry{
-		hash:    normalizeHash(view.Hash),
-		tags:    view.Tags,
-		seeding: needsSeeding && isTorrentViewSeeding(view),
-	}
-
-	// Index by content path (non-ambiguous only)
 	contentPath := normalizePathForComparison(view.ContentPath)
 	savePath := normalizePathForComparison(view.SavePath)
-	if contentPath != "" && contentPath != savePath {
+	entry := candidateEntry{
+		hash:       normalizeHash(view.Hash),
+		tags:       view.Tags,
+		seeding:    needsSeeding && isTorrentViewSeeding(view),
+		instanceID: view.InstanceID,
+		savePath:   view.SavePath,
+		ambiguous:  contentPath != "" && contentPath == savePath,
+		view:       view,
+	}
+
+	if contentPath != "" && !entry.ambiguous {
 		idx.byContentPath[contentPath] = append(idx.byContentPath[contentPath], entry)
+	}
+	if savePath != "" {
+		idx.bySavePath[savePath] = append(idx.bySavePath[savePath], entry)
 	}
 
 	// Index by normalized name
@@ -229,93 +339,153 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 	}
 }
 
-// matchAgainstIndex checks if a source torrent matches any candidate in the index.
-// When excludeSelf is true, candidates with the same hash as the source are skipped
-// (used for same-instance matching where the source torrent is in the index).
-// When collectTags is true, the non-empty raw Tags strings of every distinct match
-// are returned sorted; a candidate matching via several strategies counts once.
-// Returns (matched, anyMatchSeeding, memberTags).
-func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, excludeSelf, collectTags bool) (matched bool, matchSeeding bool, memberTags []string) {
+// indexMatch is the result of matchAgainstIndex for one source torrent.
+type indexMatch struct {
+	matched bool
+	seeding bool // a match is seeding
+	// memberTags holds the non-empty raw Tags strings of the matches, sorted,
+	// when collectTags is set.
+	memberTags []string
+	// content holds the hashes of the matches in the Content tier, and of the
+	// same-instance candidates whose files could not be read. A delete or move
+	// must treat an unread candidate as one that shares files.
+	content []string
+}
+
+// matchAgainstIndex selects the candidates of a source torrent from the index
+// with the same prefilter as the Cross-Seed tab, and classifies each one with
+// localMatchTier. sameInstance excludes the source itself and allows the
+// Content tier. A candidate whose file list cannot be read is not a match, but
+// on the same instance it goes into content.
+func (s *Service) matchAgainstIndex(
+	ctx context.Context,
+	source *qbt.Torrent,
+	sourceInstanceID int,
+	idx *matchIndex,
+	sameInstance, collectTags bool,
+	files *batchFiles,
+) indexMatch {
 	sourceHash := normalizeHash(source.Hash)
 
-	var seen map[string]struct{}
-	if collectTags {
-		seen = make(map[string]struct{})
+	type pick struct {
+		entry         candidateEntry
+		nameOrRelease string
 	}
-	record := func(c candidateEntry) {
-		matched = true
-		if c.seeding {
-			matchSeeding = true
-		}
-		if !collectTags {
+	var picks []*pick
+	byKey := make(map[string]*pick)
+	add := func(c candidateEntry, nameOrRelease string) {
+		if sameInstance && c.hash == sourceHash {
 			return
 		}
-		if _, dup := seen[c.hash]; dup {
-			return
-		}
-		seen[c.hash] = struct{}{}
-		if c.tags != "" {
-			memberTags = append(memberTags, c.tags)
-		}
-	}
-
-	// Strategy 1: Content path match (non-ambiguous)
-	contentPath := normalizePathForComparison(source.ContentPath)
-	savePath := normalizePathForComparison(source.SavePath)
-	if contentPath != "" && contentPath != savePath {
-		if candidates, ok := idx.byContentPath[contentPath]; ok {
-			for _, c := range candidates {
-				if excludeSelf && c.hash == sourceHash {
-					continue
-				}
-				record(c)
+		key := cacheKeyForTorrentFiles(c.instanceID, c.hash)
+		if p, ok := byKey[key]; ok {
+			if p.nameOrRelease == "" {
+				p.nameOrRelease = nameOrRelease
 			}
+			return
 		}
+		p := &pick{entry: c, nameOrRelease: nameOrRelease}
+		byKey[key] = p
+		picks = append(picks, p)
 	}
 
-	// Strategy 2: Exact name match
 	name := normalizeLowerTrim(source.Name)
 	if name != "" {
-		if candidates, ok := idx.byName[name]; ok {
-			for _, c := range candidates {
-				if excludeSelf && c.hash == sourceHash {
-					continue
-				}
-				record(c)
-			}
+		for _, c := range idx.byName[name] {
+			add(c, matchTypeName)
 		}
 	}
 
-	// Strategy 3: Release metadata match
 	sourceRelease := s.matcher().parseReleaseName(source.Name)
-	sourceTitle := normalizeLowerTrim(sourceRelease.Title)
-	if sourceTitle != "" {
-		key := makeReleaseKey(sourceRelease)
-		if candidates, ok := idx.byReleaseKey[key]; ok {
-			for _, c := range candidates {
-				if excludeSelf && c.hash == sourceHash {
-					continue
-				}
-				match, reason := s.matcher().releasesMatchWithReason(sourceRelease, c.release, false)
-				logReleaseMatchDecision(
-					source.Name,
-					c.name,
-					false,
-					sourceRelease,
-					c.release,
-					match,
-					reason,
-					"crossseed: release metadata candidate evaluated",
-				)
-				if match {
-					record(c.candidateEntry)
-				}
+	if normalizeLowerTrim(sourceRelease.Title) != "" {
+		for _, c := range idx.byReleaseKey[makeReleaseKey(sourceRelease)] {
+			if sameInstance && c.hash == sourceHash {
+				continue
+			}
+			match, reason := s.matcher().releasesMatchWithReason(sourceRelease, c.release, false)
+			logReleaseMatchDecision(
+				source.Name,
+				c.name,
+				false,
+				sourceRelease,
+				c.release,
+				match,
+				reason,
+				"crossseed: release metadata candidate evaluated",
+			)
+			if match {
+				add(c.candidateEntry, matchTypeRelease)
 			}
 		}
 	}
 
-	sort.Strings(memberTags)
-	return matched, matchSeeding, memberTags
+	contentPath := normalizePathForComparison(source.ContentPath)
+	savePath := normalizePathForComparison(source.SavePath)
+	sourceAmbiguous := contentPath != "" && contentPath == savePath
+	if contentPath != "" && !sourceAmbiguous {
+		for _, c := range idx.byContentPath[contentPath] {
+			add(c, "")
+		}
+	}
+	if savePath != "" {
+		for _, c := range idx.bySavePath[savePath] {
+			if sourceAmbiguous || c.ambiguous {
+				add(c, "")
+			}
+		}
+	}
+
+	var result indexMatch
+	// A magnet without metadata has no files, so nothing holds its data.
+	if len(picks) == 0 || source.ContentPath == "" {
+		return result
+	}
+	sourceData, ok := files.get(ctx, sourceInstanceID, source.Hash, source.SavePath)
+	if !ok {
+		if sameInstance {
+			for _, p := range picks {
+				if p.entry.view.ContentPath != "" {
+					result.content = append(result.content, p.entry.hash)
+				}
+			}
+		}
+		return result
+	}
+
+	for _, p := range picks {
+		c := p.entry
+		// A magnet without metadata has no files.
+		if c.view.ContentPath == "" {
+			continue
+		}
+		candidateData, ok := files.get(ctx, c.instanceID, c.hash, c.savePath)
+		if !ok {
+			if sameInstance {
+				result.content = append(result.content, c.hash)
+			}
+			continue
+		}
+		tier := localMatchTier(sameInstance, p.nameOrRelease, sourceData, candidateData, nil)
+		if tier == "" && p.nameOrRelease != "" {
+			tier = files.linkedTier(ctx, source, sourceInstanceID, c)
+		}
+		if tier == "" {
+			continue
+		}
+		result.matched = true
+		if c.seeding {
+			result.seeding = true
+		}
+		if tier == matchTypeContentPath {
+			result.content = append(result.content, c.hash)
+		}
+		if collectTags && c.tags != "" {
+			result.memberTags = append(result.memberTags, c.tags)
+		}
+	}
+
+	slices.Sort(result.memberTags)
+	return result
 }
 
 // isTorrentViewSeeding checks if a CrossInstanceTorrentView is in a seeding state.

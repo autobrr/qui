@@ -803,15 +803,14 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 		"h3": {id: 30, name: "Rule A Override"},
 	}
 
-	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash)
-	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentByHash, ruleByHash)
+	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"], torrentByHash["h3"]})
+	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash, crossSeeds)
+	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentByHash, ruleByHash, crossSeeds)
 	require.Len(t, got, 2)
 	require.Len(t, gotShuffled, 2)
 
-	keyA, ok := makeCrossSeedKey(torrentByHash["h1"])
-	require.True(t, ok)
-	keyB, ok := makeCrossSeedKey(torrentByHash["h2"])
-	require.True(t, ok)
+	keyA := crossSeeds.key(torrentByHash["h1"])
+	keyB := crossSeeds.key(torrentByHash["h2"])
 
 	// Selection must be stable regardless of incoming hash order.
 	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
@@ -833,10 +832,10 @@ func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 	}
 	// Only h2 opts into cross-seed expansion, so rule attribution must use it.
 	expandableHashes := []string{"h2"}
-	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash)
+	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"]})
+	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash, crossSeeds)
 
-	key, ok := makeCrossSeedKey(torrentByHash["h1"])
-	require.True(t, ok)
+	key := crossSeeds.key(torrentByHash["h1"])
 	require.Len(t, got, 1)
 	require.Equal(t, ruleRef{id: 20, name: "Expanding rule"}, got[key])
 }
@@ -862,14 +861,11 @@ func TestBuildRuleCountsFromHashMaps(t *testing.T) {
 func TestInheritRuleRefForCrossSeed(t *testing.T) {
 	t.Parallel()
 
-	key := crossSeedKey{
-		contentPath: "/downloads/group-a",
-		savePath:    "/downloads",
-	}
+	const key = "h1"
 	ruleByHash := map[string]ruleRef{
 		"h1": {id: 10, name: "Rule A"},
 	}
-	ruleByCrossSeedKey := map[crossSeedKey]ruleRef{
+	ruleByCrossSeedKey := map[string]ruleRef{
 		key: {id: 10, name: "Rule A"},
 	}
 
@@ -1079,8 +1075,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -1124,8 +1120,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -1167,7 +1163,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -1208,7 +1204,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1263,7 +1259,7 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 		0,
 		true,
 		nil,
-		buildContentPathIndex(torrents),
+		testCrossSeedGroups(torrents),
 		func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
 	)
 
@@ -1408,114 +1404,6 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, []string{layoutTrigger.Hash, layoutCrossSeed.Hash}, got)
 	})
-}
-
-// -----------------------------------------------------------------------------
-// findCrossSeedGroup tests
-// -----------------------------------------------------------------------------
-
-// Groups by ContentPath equality only; does not expand by SavePath.
-// Cross-seeds are exact file matches (same content from different trackers).
-func TestFindCrossSeedGroup(t *testing.T) {
-	tests := []struct {
-		scenario    string
-		target      qbt.Torrent
-		allTorrents []qbt.Torrent
-		wantCount   int
-		wantHashes  []string
-	}{
-		{
-			scenario: "unique ContentPath => group contains only target",
-			target: qbt.Torrent{
-				Hash:        "abc123",
-				Name:        "My.Movie.2024.1080p.BluRay.x264-GRP",
-				ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP",
-			},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-				{Hash: "def456", Name: "Other.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/Other.Movie.2024.1080p.BluRay.x264-GRP"},
-			},
-			wantCount:  1,
-			wantHashes: []string{"abc123"},
-		},
-		{
-			scenario: "same ContentPath (cross-seed from different tracker) => both in group",
-			target: qbt.Torrent{
-				Hash:        "abc123",
-				Name:        "My.Movie.2024.1080p.BluRay.x264-GRP",
-				ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP",
-			},
-			allTorrents: []qbt.Torrent{
-				// Same release cross-seeded to two trackers (identical files, different .torrent)
-				{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-				{Hash: "xyz789", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-				{Hash: "def456", Name: "Other.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/Other.Movie.2024.1080p.BluRay.x264-GRP"},
-			},
-			wantCount:  2,
-			wantHashes: []string{"abc123", "xyz789"},
-		},
-		{
-			scenario: "ContentPath match is case-insensitive",
-			target: qbt.Torrent{
-				Hash:        "abc123",
-				Name:        "My.Movie.2024.1080p.BluRay.x264-GRP",
-				ContentPath: "/Downloads/Movies/My.Movie.2024.1080p.BluRay.x264-GRP",
-			},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/Downloads/Movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-				{Hash: "xyz789", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/my.movie.2024.1080p.bluray.x264-grp"},
-			},
-			wantCount:  2,
-			wantHashes: []string{"abc123", "xyz789"},
-		},
-		{
-			scenario: "same SavePath but different ContentPath => NOT grouped",
-			target: qbt.Torrent{
-				Hash:        "abc123",
-				Name:        "My.Movie.2024.1080p.BluRay.x264-GRP",
-				SavePath:    "/downloads/movies",
-				ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP",
-			},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", SavePath: "/downloads/movies", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-				// Different releases in same SavePath - NOT cross-seeds (different files)
-				{Hash: "def456", Name: "Other.Movie.2024.1080p.BluRay.x264-GRP", SavePath: "/downloads/movies", ContentPath: "/downloads/movies/Other.Movie.2024.1080p.BluRay.x264-GRP"},
-				{Hash: "ghi789", Name: "Another.Movie.2024.1080p.BluRay.x264-GRP", SavePath: "/downloads/movies", ContentPath: "/downloads/movies/Another.Movie.2024.1080p.BluRay.x264-GRP"},
-			},
-			wantCount:  1,
-			wantHashes: []string{"abc123"}, // Only target; others share SavePath but NOT ContentPath
-		},
-		{
-			scenario: "empty ContentPath => returns nil (no grouping possible)",
-			target: qbt.Torrent{
-				Hash:        "abc123",
-				Name:        "Unknown",
-				ContentPath: "",
-			},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc123", Name: "Unknown", ContentPath: ""},
-				{Hash: "def456", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
-			},
-			wantCount:  0,
-			wantHashes: nil,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.scenario, func(t *testing.T) {
-			got := findCrossSeedGroup(tc.target, buildContentPathIndex(tc.allTorrents))
-			if tc.wantHashes == nil {
-				assert.Nil(t, got)
-			} else {
-				assert.Len(t, got, tc.wantCount)
-				gotHashes := make([]string, len(got))
-				for i, torrent := range got {
-					gotHashes[i] = torrent.Hash
-				}
-				assert.ElementsMatch(t, tc.wantHashes, gotHashes)
-			}
-		})
-	}
 }
 
 // -----------------------------------------------------------------------------
@@ -1859,10 +1747,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 		},
 	}
 
-	cpIndex := buildContentPathIndex(allTorrents)
+	crossSeeds := testCrossSeedGroups(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex, filesByHash)
+			got := deleteFreesSpace(tc.mode, target, crossSeeds, filesByHash)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1894,10 +1782,10 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 		},
 	}
 
-	cpIndex := buildContentPathIndex(allTorrents)
+	crossSeeds := testCrossSeedGroups(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex, nil)
+			got := deleteFreesSpace(tc.mode, target, crossSeeds, nil)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1918,18 +1806,18 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 
 	evalCtx := &EvalContext{
 		SpaceToClear: 0,
-		FilesToClear: make(map[crossSeedKey]struct{}),
+		FilesToClear: make(map[string]struct{}),
 	}
 
 	// Simulate "needed" mode processing: each deletion updates SpaceToClear
-	cpIndex := buildContentPathIndex(allTorrents)
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, cpIndex)
+	crossSeeds := testCrossSeedGroups(allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, crossSeeds)
 	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, cpIndex)
+	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, crossSeeds)
 	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, cpIndex)
+	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, crossSeeds)
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 
@@ -1943,7 +1831,7 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	}
 
 	// findCrossSeedGroup should return both a and b for target a
-	group := findCrossSeedGroup(allTorrents[0], buildContentPathIndex(allTorrents))
+	group := testCrossSeedGroups(allTorrents)[allTorrents[0].Hash]
 	require.NotNil(t, group)
 	assert.Len(t, group, 2)
 
@@ -2272,7 +2160,7 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		torrents,
 		states,
 		map[int]*models.Automation{1: rule},
-		nil,
+		&EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)},
 		true,
 	)
 

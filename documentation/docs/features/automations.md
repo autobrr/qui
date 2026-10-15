@@ -777,7 +777,8 @@ If you set no save path but set a category, qui enables qBittorrent's Automatic 
 
 Automations detect cross-seeded torrents (same content and files) and can handle them specially:
 
-- **Detection**: Cross-seed condition fields match on content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload that has the same exact byte size. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
+- **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
+- **Grouping**: Delete, move, and category actions treat the torrents that use one of the same files on disk as one cross-seed group.
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together.

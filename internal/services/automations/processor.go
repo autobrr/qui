@@ -200,8 +200,7 @@ func processTorrents(
 		states = make(map[string]*torrentDesiredState)
 	}
 
-	crossSeedIndex := buildCrossSeedIndex(torrents)
-	cpIndex := buildContentPathIndex(torrents)
+	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -241,7 +240,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents, cpIndex)
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeeds, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
@@ -259,7 +258,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent, cpIndex contentPathIndex) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeeds crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -460,7 +459,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
 
 		// Apply category change only if condition matches AND not blocked by cross-seed protection
-		if shouldApply && !shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
+		if shouldApply && !shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeeds) {
 			if stats != nil {
 				stats.CategoryApplied++
 			}
@@ -468,11 +467,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryRuleID = rule.ID
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 			state.categoryRule = ruleRef{id: rule.ID, name: rule.Name}
-			groupID := strings.TrimSpace(conditions.Category.GroupID)
-			if groupID == "" && conditions.Category.IncludeCrossSeeds {
-				groupID = GroupCrossSeedContentSavePath
-			}
-			state.categoryGroupID = groupID
+			state.categoryGroupID = strings.TrimSpace(conditions.Category.GroupID)
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
 		}
@@ -541,7 +536,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
 				// accidentally mutate a previously-loaded rule's projection state.
 				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
+					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, crossSeeds)
 				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
@@ -551,11 +546,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
-		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
+		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeeds, stats, state)
 	}
 }
 
-func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
+func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups, stats *ruleRunStats, state *torrentDesiredState) {
 	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
 	if !pathValid {
 		if stats != nil {
@@ -572,7 +567,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	blocked := false
 	// If groupId is set, move expansion/atomicity is handled via grouping; skip legacy cross-seed blocking.
 	if strings.TrimSpace(action.GroupID) == "" {
-		blocked = shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
+		blocked = shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx)
 	}
 	if conditionMet && !alreadyAtDest && !blocked {
 		if stats != nil {
@@ -605,18 +600,11 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	}
 }
 
-func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
-	if len(protectedCategories) == 0 || crossSeedIndex == nil {
+func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeeds crossSeedGroups) bool {
+	if len(protectedCategories) == 0 {
 		return false
 	}
-	key, ok := makeCrossSeedKey(torrent)
-	if !ok {
-		return false
-	}
-	group, ok := crossSeedIndex[key]
-	if !ok || len(group) == 0 {
-		return false
-	}
+	group := crossSeeds[torrent.Hash]
 	for _, other := range group {
 		if other.Hash == torrent.Hash {
 			continue
@@ -628,16 +616,12 @@ func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCatego
 	return false
 }
 
-func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
+func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
 	if moveAction == nil || !moveAction.BlockIfCrossSeed {
 		return false
 	}
-	key, ok := makeCrossSeedKey(torrent)
-	if !ok {
-		return false
-	}
-	group, ok := crossSeedIndex[key]
-	if !ok || len(group) == 0 {
+	group := crossSeeds[torrent.Hash]
+	if len(group) == 0 {
 		return false
 	}
 
@@ -719,21 +703,6 @@ func containsStringFold(list []string, candidate string) bool {
 		}
 	}
 	return false
-}
-
-func buildCrossSeedIndex(torrents []qbt.Torrent) map[crossSeedKey][]qbt.Torrent {
-	if len(torrents) == 0 {
-		return nil
-	}
-	index := make(map[crossSeedKey][]qbt.Torrent)
-	for _, t := range torrents {
-		key, ok := makeCrossSeedKey(t)
-		if !ok {
-			continue
-		}
-		index[key] = append(index[key], t)
-	}
-	return index
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
@@ -880,18 +849,18 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
 // When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
 // double-counting torrents that share the same physical files via hardlinks.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, cpIndex contentPathIndex) {
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds crossSeedGroups) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
+	if !deleteFreesSpace(deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
 		return
 	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
-		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, cpIndex)
+		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds)
 		return
 	}
 	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
@@ -918,30 +887,25 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		}
 	}
 
-	// Fall back to cross-seed key dedupe
-	crossSeedKey, ok := makeCrossSeedKey(torrent)
-	if !ok {
-		// If the torrent cannot be a cross-seed, we add the file size to the cumulative space to clear
-		evalCtx.SpaceToClear += torrent.Size
-		return
-	}
+	// Fall back to cross-seed group dedupe
+	key := crossSeeds.key(torrent)
 
 	// If the torrent is a cross-seed of a torrent that has already been counted, we don't count it again
-	if _, ok := evalCtx.FilesToClear[crossSeedKey]; ok {
+	if _, ok := evalCtx.FilesToClear[key]; ok {
 		return
 	}
 
 	// This is a new torrent, so we add the file size to the cumulative space to clear
 	evalCtx.SpaceToClear += torrent.Size
-	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
+	evalCtx.FilesToClear[key] = struct{}{}
 }
 
-func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, cpIndex contentPathIndex) {
+func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) {
 	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
 		return
 	}
 
-	group := findCrossSeedGroup(torrent, cpIndex)
+	group := crossSeeds[torrent.Hash]
 	verifiedHashes, ok := crossSeedGroupMembers(
 		torrent,
 		group,

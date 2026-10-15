@@ -41,8 +41,8 @@ type FreeSpaceSourceState struct {
 	FreeSpace int64
 	// SpaceToClear is the cumulative disk space that will be freed by deletions.
 	SpaceToClear int64
-	// FilesToClear tracks cross-seed keys already counted to avoid double-counting.
-	FilesToClear map[crossSeedKey]struct{}
+	// FilesToClear tracks cross-seed group keys already counted to avoid double-counting.
+	FilesToClear map[string]struct{}
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
 	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
@@ -75,8 +75,8 @@ type EvalContext struct {
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
 	SpaceToClear int64
-	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
-	FilesToClear map[crossSeedKey]struct{}
+	// FilesToClear holds the cross-seed group keys already counted by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
+	FilesToClear map[string]struct{}
 	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
 	CrossSeedFilesByHash map[string]qbt.TorrentFiles
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).
@@ -117,7 +117,7 @@ type EvalContext struct {
 	CrossInstanceSeedingHashSet map[string]struct{}
 
 	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
-	// (same content path, different hash) on the same instance.
+	// (same data, decided per file) on the same instance.
 	SameInstanceCrossSeedHashSet map[string]struct{}
 	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
 	// seeding (Progress >= 1.0) on the same instance.
@@ -125,6 +125,11 @@ type EvalContext struct {
 	// SameInstanceCrossSeedTagsByHash maps a torrent hash to the raw Tags strings of
 	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
 	SameInstanceCrossSeedTagsByHash map[string][]string
+	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
+	// instance that share at least one file on disk with it (self excluded).
+	// Built when a delete, move, or category action groups cross-seeds;
+	// buildCrossSeedGroups reads it.
+	SameInstanceContentByHash map[string][]string
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:

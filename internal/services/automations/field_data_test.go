@@ -68,7 +68,7 @@ func TestNeedsFor(t *testing.T) {
 		{name: "legacy tag", rules: enabled(&models.ActionConditions{Tag: &models.TagAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "tags", rules: enabled(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Condition: scope}}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "category", rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
-		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
+		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}}},
 		{name: "external program", rules: enabled(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "auto management that turns ATM off", rules: enabled(&models.ActionConditions{AutoManagement: &models.AutoManagementAction{Enabled: false, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "export to instance", rules: enabled(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
@@ -98,7 +98,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "include hardlinks",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, IncludeHardlinks: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}}),
-			want:  RuleNeeds{HardlinkScope: true},
+			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "include hardlinks outside the include-cross-seeds mode",
@@ -116,7 +116,22 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "tracker name in a move path",
 			rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}),
-			want:  RuleNeeds{TrackerNames: true},
+			want:  RuleNeeds{TrackerNames: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "preserve cross-seeds delete",
+			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}}),
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "plain delete with files counts free space once per cross-seed group",
+			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFiles, Condition: &RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"}}}),
+			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "category that blocks on cross-seeds",
+			rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, BlockIfCrossSeedInCategories: []string{"keep"}}}),
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "needs of several rules add up",
