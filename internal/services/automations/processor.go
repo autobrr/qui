@@ -455,11 +455,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Category (last rule wins - just set desired, service will filter no-ops)
 	if conditions.Category != nil && conditions.Category.Enabled {
-		shouldApply := conditions.Category.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
-
-		// Apply category change only if condition matches AND not blocked by cross-seed protection
-		if shouldApply && !shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeeds) {
+		if shouldApplyCategoryAction(&torrent, getCategoryAction(rule), evalCtx, crossSeeds) {
 			if stats != nil {
 				stats.CategoryApplied++
 			}
@@ -564,11 +560,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
-	blocked := false
-	// If groupId is set, move expansion/atomicity is handled via grouping; skip legacy cross-seed blocking.
-	if strings.TrimSpace(action.GroupID) == "" {
-		blocked = shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx)
-	}
+	blocked := conditionMet && !alreadyAtDest && shouldBlockMoveForCrossSeeds(torrent, action, crossSeeds, evalCtx)
 	if conditionMet && !alreadyAtDest && !blocked {
 		if stats != nil {
 			stats.MoveApplied++
@@ -616,12 +608,35 @@ func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCatego
 	return false
 }
 
-func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
-	if moveAction == nil || !moveAction.BlockIfCrossSeed {
+func crossSeedGroupKnown(torrent qbt.Torrent, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
+	if evalCtx == nil {
+		return true
+	}
+	if !sameInstanceCrossSeedKnown(evalCtx, torrent.Hash) {
 		return false
 	}
+	for _, member := range crossSeeds[torrent.Hash] {
+		if !sameInstanceCrossSeedKnown(evalCtx, member.Hash) {
+			return false
+		}
+	}
+	return true
+}
+
+func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeeds crossSeedGroups, evalCtx *EvalContext) bool {
+	if moveAction == nil {
+		return false
+	}
+	if !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		return true
+	}
 	group := crossSeeds[torrent.Hash]
-	if len(group) == 0 {
+	for _, other := range group {
+		if normalizePath(other.SavePath) != normalizePath(torrent.SavePath) {
+			return true
+		}
+	}
+	if !moveAction.BlockIfCrossSeed || strings.TrimSpace(moveAction.GroupID) != "" || len(group) == 0 {
 		return false
 	}
 

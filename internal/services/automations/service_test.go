@@ -1322,6 +1322,19 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 	}
 }
 
+func TestSharedSidecarKeepsFilesAndBlocksGroupDeletion(t *testing.T) {
+	first := qbt.Torrent{Hash: "first", SavePath: "/data", ContentPath: "/data"}
+	second := qbt.Torrent{Hash: "second", SavePath: "/data", ContentPath: "/data"}
+	group := []qbt.Torrent{first, second}
+	files := map[string]qbt.TorrentFiles{
+		first.Hash:  {{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}},
+		second.Hash: {{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}},
+	}
+	require.True(t, shouldPreserveCrossSeedFiles(first, crossSeedGroups{first.Hash: group, second.Hash: group}, files))
+	_, ok := crossSeedGroupMembers(first, group, nil, cachedTorrentFilesFetcher(files))
+	require.False(t, ok, "partial overlap must keep both torrents and their files")
+}
+
 func TestCrossSeedGroupMembers(t *testing.T) {
 	// Two unrelated packs whose payload folder is a bare "Season 2", so qBittorrent
 	// reports the same content path for both while they hold different files.

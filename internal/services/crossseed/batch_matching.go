@@ -238,6 +238,9 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	var err error
 	if !ok {
 		files, err = b.svc.getTorrentFilesCached(ctx, instanceID, hash)
+		if err == nil {
+			b.fetched[key] = files
+		}
 	}
 	if err != nil || len(files) == 0 {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
@@ -369,29 +372,32 @@ func (b *batchFiles) addSharedPathPicks(
 	picks [][]*candidatePick,
 	needsSeeding bool,
 ) {
-	picked := make(map[int]map[string]struct{})
-	link := func(i, j int) {
+	picked := make(map[int]map[string]*candidatePick)
+	link := func(i, j int, sharesFilePath bool) {
 		if i == j {
 			return
 		}
 		have := picked[i]
 		if have == nil {
-			have = make(map[string]struct{}, len(picks[i])+1)
+			have = make(map[string]*candidatePick, len(picks[i])+1)
 			for _, p := range picks[i] {
-				have[p.entry.hash] = struct{}{}
+				have[p.entry.hash] = p
 			}
 			picked[i] = have
 		}
 		entry := newCandidateEntry(&torrents[j], needsSeeding)
-		if _, ok := have[entry.hash]; ok {
+		if existing, ok := have[entry.hash]; ok {
+			existing.sharesFilePath = existing.sharesFilePath || sharesFilePath
 			return
 		}
-		have[entry.hash] = struct{}{}
-		picks[i] = append(picks[i], &candidatePick{entry: entry})
+		pick := &candidatePick{entry: entry, sharesFilePath: sharesFilePath}
+		have[entry.hash] = pick
+		picks[i] = append(picks[i], pick)
 	}
 
 	read := make(map[int]bool)
 	byPath := make(map[string][]int)
+	allByPath := make(map[string][]int)
 	for _, group := range pathGroups {
 		for _, i := range group {
 			if _, done := read[i]; done {
@@ -399,16 +405,31 @@ func (b *batchFiles) addSharedPathPicks(
 			}
 			data, ok := b.get(ctx, instanceID, torrents[i].Hash, torrents[i].SavePath)
 			read[i] = ok
+			if !ok || torrents[i].SavePath == "" {
+				continue
+			}
 			for p := range data.paths {
 				byPath[p] = append(byPath[p], i)
+			}
+			// Destructive actions must preserve shared sidecars too.
+			for _, file := range b.fetched[cacheKeyForTorrentFiles(instanceID, torrents[i].Hash)] {
+				p := normalizePathForComparison(torrents[i].SavePath + "/" + file.Name)
+				allByPath[p] = append(allByPath[p], i)
 			}
 		}
 	}
 	for _, sharing := range byPath {
 		for _, i := range sharing {
 			for _, j := range sharing {
-				link(i, j)
+				link(i, j, true)
 			}
+		}
+	}
+	// One shared member connects the safety group without checking every pair.
+	for _, sharing := range allByPath {
+		for _, i := range sharing[1:] {
+			link(sharing[0], i, true)
+			link(i, sharing[0], true)
 		}
 	}
 	for _, group := range pathGroups {
@@ -417,8 +438,8 @@ func (b *batchFiles) addSharedPathPicks(
 				continue
 			}
 			for _, j := range group {
-				link(i, j)
-				link(j, i)
+				link(i, j, false)
+				link(j, i, false)
 			}
 		}
 	}
@@ -550,9 +571,8 @@ type indexMatch struct {
 	// memberTags holds the non-empty raw Tags strings of the matches, sorted,
 	// when collectTags is set.
 	memberTags []string
-	// content holds the hashes of the matches in the Content tier, and of the
-	// same-instance candidates whose files could not be read. A delete or move
-	// must treat an unread candidate as one that shares files.
+	// content holds same-instance torrents that share any file path, including
+	// ignored files, and candidates whose files could not be read.
 	content []string
 	// unread is set when the file list of the source or of a candidate could
 	// not be read, so the other fields may be wrong.
@@ -563,8 +583,9 @@ type indexMatch struct {
 // tier it gets if its file sizes pair with the source. It is empty for a
 // torrent that addSharedPathPicks added.
 type candidatePick struct {
-	entry         candidateEntry
-	nameOrRelease string
+	entry          candidateEntry
+	nameOrRelease  string
+	sharesFilePath bool
 }
 
 // selectCandidates selects the Name and Release candidates of a source torrent
@@ -669,15 +690,15 @@ func (s *Service) classifyCandidates(
 			tier = linked.tier
 			result.unread = result.unread || linked.unread
 		}
+		if sameInstance && (p.sharesFilePath || tier == matchTypeContentPath) {
+			result.content = append(result.content, c.hash)
+		}
 		if tier == "" {
 			continue
 		}
 		result.matched = true
 		if c.seeding {
 			result.seeding = true
-		}
-		if tier == matchTypeContentPath {
-			result.content = append(result.content, c.hash)
 		}
 		if collectTags && c.tags != "" {
 			result.memberTags = append(result.memberTags, c.tags)

@@ -781,7 +781,9 @@ Automations detect cross-seeded torrents (same content and files) and can handle
 
 - **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
 - **Read errors**: If qui cannot read a file list or complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui reads the files again on the next run.
-- **Grouping**: Delete, move, and category actions treat the torrents that use one of the same files on disk as one cross-seed group.
+- **Grouping**: Delete, move, and category actions treat torrents that use any of the same files on disk as one group. This includes subtitles and other files that matching ignores, because deleting those files can break another torrent.
+- **Unknown groups**: A move, or a category action with **Include affected cross-seeds**, skips a group when a file check cannot complete.
+- **Nested save folders**: Automatic moves skip a group when its torrents have different save folders. Giving those torrents the same destination can separate their shared files.
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together.

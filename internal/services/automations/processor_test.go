@@ -2736,3 +2736,50 @@ func TestCategoryCrossSeedExpansion_TakesExtraFilesSiblingAlong(t *testing.T) {
 	added := categoryCrossSeedExpansion("archive", []string{"single"}, states, buildCrossSeedGroups(torrents, evalCtx))
 	require.Equal(t, []categoryExpansion{{hash: "folder", trigger: "single"}}, added)
 }
+
+func TestProcessTorrents_SkipUnsafeCrossSeedMovesAndCategories(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		peerSavePath string
+		unknown      bool
+		wantMove     bool
+		wantCategory bool
+	}{
+		{"known shared root", "/data", false, true, true},
+		{"unread peer", "/data", true, false, false},
+		{"nested save root", "/data/Pack", false, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "source", Tags: "move-me", SavePath: "/data", ContentPath: "/data/Pack"},
+				{Hash: "peer", SavePath: tc.peerSavePath, ContentPath: "/data/Pack/ep.mkv"},
+			}
+			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"source": {"peer"}, "peer": {"source"}}}
+			if tc.unknown {
+				evalCtx.SameInstanceCrossSeedUnknown = map[string]struct{}{"peer": {}}
+			}
+			condition := &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "move-me"}
+			rule := &models.Automation{
+				ID: 1, Enabled: true, TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Move:     &models.MoveAction{Enabled: true, Path: "/archive", Condition: condition},
+					Category: &models.CategoryAction{Enabled: true, Category: "archive", IncludeCrossSeeds: true, Condition: condition},
+				},
+			}
+			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+			if !tc.wantMove && !tc.wantCategory {
+				require.NotContains(t, states, "source")
+			} else {
+				require.Contains(t, states, "source")
+				require.Equal(t, tc.wantMove, states["source"].shouldMove)
+				require.Equal(t, tc.wantCategory, states["source"].category != nil)
+			}
+			groups := buildCrossSeedGroups(torrents, evalCtx)
+			require.Equal(t, tc.wantCategory, shouldApplyCategoryAction(&torrents[0], getCategoryAction(rule), evalCtx, groups), "preview must agree")
+			if !tc.wantMove {
+				rule.Conditions.Move.GroupID = "explicit-group"
+				require.True(t, shouldBlockMoveForCrossSeeds(torrents[0], rule.Conditions.Move, groups, evalCtx), "an explicit group must not bypass move safety")
+			}
+		})
+	}
+}

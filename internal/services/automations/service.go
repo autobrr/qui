@@ -1597,6 +1597,9 @@ func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionCon
 	if catAction.condition != nil && !EvaluateConditionWithContext(catAction.condition, *torrent, evalCtx, 0) {
 		return false
 	}
+	if catAction.includeCrossSeeds && !crossSeedGroupKnown(*torrent, crossSeeds, evalCtx) {
+		return false
+	}
 	return !shouldBlockCategoryChangeForCrossSeeds(*torrent, catAction.blockCategories, crossSeeds)
 }
 
@@ -4353,7 +4356,7 @@ func normalizePath(p string) string {
 // the instance that share at least one file on disk with it, directly or
 // through another member, itself included. All members map to one slice. A
 // torrent without a cross-seed has no entry. The cross-seed matcher decides
-// which torrents share a file (the Content tier of the Cross-Seed tab).
+// which torrents share any file, including files that match classification ignores.
 type crossSeedGroups map[string][]qbt.Torrent
 
 func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSeedGroups {
@@ -4570,7 +4573,10 @@ func fileOverlapPercent(triggerFiles fileOverlapIndex, candidate qbt.Torrent, ca
 	if smallerBytes <= 0 {
 		return overlapUnknown
 	}
-	return (matchedBytes * 100) / smallerBytes
+	if matchedBytes > 0 {
+		return max(1, (matchedBytes*100)/smallerBytes)
+	}
+	return 0
 }
 
 // crossSeedGroupMembers returns the members of a shared-ContentPath group that share files

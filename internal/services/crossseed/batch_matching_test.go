@@ -186,6 +186,18 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
 	})
 
+	t.Run("a shared subtitle joins safety groups without making unrelated payloads cross-seeds", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: cmEpisodeFile, Size: 1000}, {Name: "English.srt", Size: 10}}),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat",
+				qbt.TorrentFiles{{Name: "other.mkv", Size: 2000}, {Name: "English.srt", Size: 10}}),
+		)
+		require.Empty(t, result.SameInstanceExists)
+		require.Empty(t, result.SameInstanceUnknown)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
 	t.Run("an unreadable torrent in a flat folder counts as sharing files", func(t *testing.T) {
 		result := buildCrossMatch(t, sameNeeds,
 			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
