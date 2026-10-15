@@ -222,6 +222,11 @@ func TestPoolProbeDoesNotWaitOnAStalledSessionOpen(t *testing.T) {
 	assert.Equal(t, models.SSHTierExec, inst.SSHTier)
 	_, err = pool.Exec(t.Context(), inst)
 	require.ErrorIs(t, err, ErrNoExec)
+
+	pool.mu.Lock()
+	slots := len(pool.conns[inst.ID].slots)
+	pool.mu.Unlock()
+	assert.Zero(t, slots, "the stuck probe must not hold a slot, or the idle close never runs")
 }
 
 // A probe that gets no answer is not a tier: the row keeps what it had.

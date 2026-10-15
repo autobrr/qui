@@ -93,14 +93,17 @@ func isGNU(out []byte) bool {
 // caller holds the instance's lock, and keepalive starts only after this
 // returns. So the probe runs aside and this waits for the deadline at most.
 // Closing the client would also end the wait, but a hung exec channel is no
-// reason to lose sftp.
-func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.Client, slots chan struct{}) models.SSHTier {
+// reason to lose sftp. The probe takes a slot of its own, not one of the
+// entry's: a probe stuck in a session open would otherwise hold that slot
+// for the life of the connection, and the keepalive never closes a
+// connection with a slot in use.
+func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.Client) models.SSHTier {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.dialer.timeout)
 	defer cancel()
 
 	answer := make(chan models.SSHTier, 1)
 	go func() {
-		conn := &Conn{client: client, slots: slots, used: func() {}}
+		conn := oneShot(client)
 		out, err := conn.output(ctx, gnuProbeCommand, p.dialer.timeout, outputLimit)
 		switch {
 		case err == nil && isGNU(out):
@@ -142,7 +145,7 @@ func checkAlive(client *ssh.Client) error {
 	return nil
 }
 
-// oneShot is a Conn on a connection that only the probe uses.
+// oneShot is a Conn for a probe, with a session slot of its own.
 func oneShot(client *ssh.Client) *Conn {
 	return &Conn{client: client, slots: make(chan struct{}, 1), used: func() {}}
 }
