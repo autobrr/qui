@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -1266,6 +1267,59 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
+}
+
+func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "source", Tags: "delete-me", SavePath: "/a", ContentPath: "/a/01.mkv"},
+		{Hash: "copy", SavePath: "/b", ContentPath: "/b/01.mkv"},
+		{Hash: "pack", SavePath: "/b", ContentPath: "/b"},
+		{Hash: "episode2", SavePath: "/b", ContentPath: "/b/02.mkv"},
+		{Hash: "copy2", SavePath: "/c", ContentPath: "/c/02.mkv"},
+		{Hash: "pack2", SavePath: "/c", ContentPath: "/c"},
+	}
+	files := map[string]qbt.TorrentFiles{
+		"source":   {{Name: "01.mkv", Size: 1000}},
+		"copy":     {{Name: "01.mkv", Size: 1000}},
+		"pack":     {{Name: "01.mkv", Size: 1000}, {Name: "02.mkv", Size: 1000}},
+		"episode2": {{Name: "02.mkv", Size: 1000}},
+		"copy2":    {{Name: "02.mkv", Size: 1000}},
+		"pack2":    {{Name: "02.mkv", Size: 1000}, {Name: "03.mkv", Size: 1000}},
+	}
+	groups := crossSeedGroups{
+		"copy": torrents[1:4], "pack": torrents[1:4], "episode2": torrents[1:4],
+		"copy2": torrents[4:], "pack2": torrents[4:],
+	}
+	hardlinks := &HardlinkIndex{
+		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copy": "one", "episode2": "two", "copy2": "two"},
+		DeleteSafeGroupBySignature: map[string][]string{"one": {"source", "copy"}, "two": {"episode2", "copy2"}},
+	}
+	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
+	rule := &models.Automation{
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{Delete: &models.DeleteAction{
+			Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, IncludeHardlinks: true,
+			Condition: &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "delete-me"},
+		}},
+	}
+	for _, unread := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unread=%t", unread), func(t *testing.T) {
+			fetch := func(_ []string) (map[string]qbt.TorrentFiles, error) {
+				if unread {
+					return nil, errors.New("file lists unavailable")
+				}
+				return files, nil
+			}
+			result, err := svc.previewDeleteIncludeCrossSeeds(rule, torrents, &EvalContext{}, hardlinks, 10, 0, true, nil, groups, fetch)
+			require.NoError(t, err)
+			if unread {
+				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
+			} else {
+				require.Equal(t, 6, result.TotalMatches, "follow Content to Hardlink and Hardlink to Content until no member joins")
+				require.Equal(t, 3, result.CrossSeedCount)
+			}
+		})
+	}
 }
 
 func TestCrossSeedGroupMembers(t *testing.T) {

@@ -567,6 +567,8 @@ When a torrent matches the rule, qui finds other torrents that point to the same
 
 If you enable "Include hardlinked copies" (available only with `deleteWithFilesIncludeCrossSeeds` mode), qui also deletes torrents that share the same physical files through hardlinks, even when their Content Paths differ.
 
+qui follows both hardlinks and shared file paths until it finds every affected torrent. If a hardlinked episode shares its path with a season pack, qui includes the pack and its other cross-seeds. If a file check fails, qui skips the entire deletion group.
+
 - **Requires**: You must enable Local Filesystem Access on the instance.
 - **Safe scope**: qui includes only hardlinks fully contained within qBittorrent's torrent set. qui never follows hardlinks to files outside qBittorrent (for example, your media library).
 - **Preview**: The preview marks hardlink-expanded torrents as "Cross-seed (hardlinked)".
@@ -778,7 +780,7 @@ If you set no save path but set a category, qui enables qBittorrent's Automatic 
 Automations detect cross-seeded torrents (same content and files) and can handle them specially:
 
 - **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
-- **Read errors**: If qui cannot read the file list of a torrent, or the file list of a possible cross-seed of that torrent, the cross-seed condition fields of the torrent are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui reads the files again on the next run.
+- **Read errors**: If qui cannot read a file list or complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui reads the files again on the next run.
 - **Grouping**: Delete, move, and category actions treat the torrents that use one of the same files on disk as one cross-seed group.
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.

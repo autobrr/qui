@@ -1311,17 +1311,69 @@ func (s *crossSeedExpansionState) isAlreadyExpanded(hash string) bool {
 	return included
 }
 
-// addHardlinkCopies adds hardlink copies to the expanded set.
-func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex, triggerHash string) {
-	if hardlinkIndex == nil {
-		return
+// deleteCrossSeedGroup follows shared paths and hardlinks before any torrent is deleted.
+func deleteCrossSeedGroup(
+	trigger qbt.Torrent,
+	torrents map[string]qbt.Torrent,
+	crossSeeds crossSeedGroups,
+	hardlinks *HardlinkIndex,
+	alreadyIncluded map[string]struct{},
+	fetchFiles torrentFilesFetcher,
+) (*crossSeedExpansionState, bool) {
+	state := newCrossSeedExpansionState()
+	state.expandedSet[trigger.Hash] = struct{}{}
+	queue := []qbt.Torrent{trigger}
+	add := func(hash string, linked bool) bool {
+		if _, exists := alreadyIncluded[hash]; exists {
+			return true
+		}
+		if _, exists := state.expandedSet[hash]; exists {
+			return true
+		}
+		torrent, exists := torrents[hash]
+		if !exists {
+			return false
+		}
+		state.expandedSet[hash] = struct{}{}
+		if linked {
+			state.hardlinkCopySet[hash] = struct{}{}
+		} else {
+			state.crossSeedSet[hash] = struct{}{}
+		}
+		queue = append(queue, torrent)
+		return true
 	}
-	for _, hlHash := range hardlinkIndex.GetHardlinkCopies(triggerHash) {
-		if _, exists := s.expandedSet[hlHash]; !exists {
-			s.expandedSet[hlHash] = struct{}{}
-			s.hardlinkCopySet[hlHash] = struct{}{}
+	contentChecked := make(map[string]struct{})
+	linkChecked := make(map[string]struct{})
+	for i := 0; i < len(queue); i++ {
+		member := queue[i]
+		if _, checked := contentChecked[member.Hash]; !checked {
+			group, ok := crossSeedGroupMembers(member, crossSeeds[member.Hash], alreadyIncluded, fetchFiles)
+			if !ok {
+				return nil, false
+			}
+			for _, hash := range group {
+				contentChecked[hash] = struct{}{}
+				if !add(hash, false) {
+					return nil, false
+				}
+			}
+		}
+		if hardlinks == nil {
+			continue
+		}
+		signature := hardlinks.DeleteSafeSignatureByHash[member.Hash]
+		if _, checked := linkChecked[signature]; checked {
+			continue
+		}
+		linkChecked[signature] = struct{}{}
+		for _, hash := range hardlinks.GetHardlinkCopies(member.Hash) {
+			if !add(hash, true) {
+				return nil, false
+			}
 		}
 	}
+	return state, true
 }
 
 // previewDeleteIncludeCrossSeeds handles preview for "include cross-seeds" delete mode.
@@ -1347,6 +1399,14 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	state := newCrossSeedExpansionState()
 	deleteCond := rule.Conditions.Delete
 	includeHardlinks := deleteCond.IncludeHardlinks
+	var expansionHardlinks *HardlinkIndex
+	if includeHardlinks {
+		expansionHardlinks = hardlinkIndex
+	}
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
+	}
 
 	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
 
@@ -1360,15 +1420,13 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		crossSeedGroup := crossSeeds[torrent.Hash]
-
-		if !expandGroupForPreview(torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet, fetchFiles) {
+		expanded, ok := deleteCrossSeedGroup(*torrent, torrentByHash, crossSeeds, expansionHardlinks, state.expandedSet, fetchFiles)
+		if !ok {
 			continue
 		}
-
-		if includeHardlinks {
-			state.addHardlinkCopies(hardlinkIndex, torrent.Hash)
-		}
+		maps.Copy(state.expandedSet, expanded.expandedSet)
+		maps.Copy(state.crossSeedSet, expanded.crossSeedSet)
+		maps.Copy(state.hardlinkCopySet, expanded.hardlinkCopySet)
 
 		if !eligibleMode {
 			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, crossSeeds)
@@ -1441,27 +1499,6 @@ func (s *Service) buildCrossSeedPreviewResult(
 	}
 
 	return result
-}
-
-// expandGroupForPreview expands a trigger torrent with its verified cross-seed group.
-// Returns true if the group was added, false if the whole group must be skipped.
-func expandGroupForPreview(
-	trigger *qbt.Torrent,
-	crossSeedGroup []qbt.Torrent,
-	expandedSet, crossSeedSet map[string]struct{},
-	fetchFiles torrentFilesFetcher,
-) bool {
-	verifiedHashes, ok := crossSeedGroupMembers(*trigger, crossSeedGroup, expandedSet, fetchFiles)
-	if !ok {
-		return false
-	}
-	for _, h := range verifiedHashes {
-		expandedSet[h] = struct{}{}
-		if h != trigger.Hash {
-			crossSeedSet[h] = struct{}{}
-		}
-	}
-	return true
 }
 
 // categoryPreviewState tracks state during category preview processing.
@@ -2163,9 +2200,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// to avoid double-processing
 	includedCrossSeedHashes := make(map[string]struct{})
 
-	// Track hashes that have been processed for hardlink expansion
-	includedHardlinkHashes := make(map[string]struct{})
-
 	for hash, state := range states {
 		torrent := torrentByHash[hash]
 
@@ -2179,55 +2213,32 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 			switch deleteMode {
 			case DeleteModeWithFilesIncludeCrossSeeds:
-				// A shared ContentPath is not proof of shared data, so every member is
-				// verified against the trigger's file list before it is deleted.
-				crossSeedGroup := crossSeeds[torrent.Hash]
-				verifiedHashes, ok := crossSeedGroupMembers(
-					torrent,
-					crossSeedGroup,
-					includedCrossSeedHashes,
-					cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
+				var expansionHardlinks *HardlinkIndex
+				if state.deleteIncludeHardlinks {
+					expansionHardlinks = hardlinkIndex
+				}
+				expanded, ok := deleteCrossSeedGroup(
+					torrent, torrentByHash, crossSeeds, expansionHardlinks,
+					includedCrossSeedHashes, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
 				)
 				if !ok {
-					// Skip this torrent entirely - don't delete trigger or cross-seeds
 					continue
 				}
-				for _, h := range verifiedHashes {
+				for h := range expanded.expandedSet {
 					if h != hash {
 						includedCrossSeedHashes[h] = struct{}{}
 					}
 				}
-				hashesToDelete = verifiedHashes
+				hashesToDelete = slices.Sorted(maps.Keys(expanded.expandedSet))
 				actualMode = DeleteModeWithFiles
 				logMsg = logMsgRemoveTorrentWithFiles
-				if len(verifiedHashes) > 1 {
+				if len(hashesToDelete) > 1 {
 					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
 				}
-				keepingFiles = false
-
-				// Expand with hardlink copies if enabled (O(1) lookup via cached index)
-				if state.deleteIncludeHardlinks && hardlinkIndex != nil {
-					hlCopies := hardlinkIndex.GetHardlinkCopies(hash)
-					if len(hlCopies) > 0 {
-						// Build set from hashesToDelete for O(1) membership check
-						toDeleteSet := make(map[string]struct{}, len(hashesToDelete))
-						for _, h := range hashesToDelete {
-							toDeleteSet[h] = struct{}{}
-						}
-						for _, hlHash := range hlCopies {
-							// Skip if already in hashesToDelete or already processed
-							if _, inDelete := toDeleteSet[hlHash]; inDelete {
-								continue
-							}
-							if _, processed := includedHardlinkHashes[hlHash]; processed {
-								continue
-							}
-							hashesToDelete = append(hashesToDelete, hlHash)
-							includedHardlinkHashes[hlHash] = struct{}{}
-						}
-						logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
-					}
+				if len(expanded.hardlinkCopySet) > 0 {
+					logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
 				}
+				keepingFiles = false
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				hashesToDelete = []string{hash}
 				if shouldPreserveCrossSeedFiles(torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {

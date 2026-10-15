@@ -329,3 +329,37 @@ func TestBuildCrossMatchSets_HardlinkWithExtraFile(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCrossMatchSets_LinkVerificationFailureIsUnknown(t *testing.T) {
+	for _, backendFailure := range []bool{false, true} {
+		t.Run(map[bool]string{true: "backend unavailable", false: "file path cannot be verified"}[backendFailure], func(t *testing.T) {
+			sourceDir, candidateDir := writeHardlinkFixture(t, cmEpisodeFile, true)
+			candidateFile := cmEpisodeFile
+			if !backendFailure {
+				candidateFile = "../outside.mkv"
+			}
+			sm := &tierSyncManager{
+				files: map[string]qbt.TorrentFiles{
+					"aaa": cmFile(cmEpisodeFile, 4),
+					"bbb": {{Name: candidateFile, Size: 4}, {Name: "Menu.m2ts", Size: 9}},
+				},
+				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {
+					crossMatchTorrent(1, "aaa", cmEpisode, sourceDir, filepath.Join(sourceDir, cmEpisodeFile), nil).view,
+					crossMatchTorrent(1, "bbb", cmEpisode, candidateDir, candidateDir, nil).view,
+				}},
+			}
+			svc := hardlinkTestService(nil)
+			if backendFailure {
+				svc.SetBackendPool(nil)
+			}
+			svc.syncManager = sm
+			svc.instanceStore = newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true})
+
+			result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{SameExists: true})
+
+			require.Empty(t, result.SameInstanceExists)
+			require.Contains(t, result.SameInstanceUnknown, "aaa")
+			require.Contains(t, result.SameInstanceUnknown, "bbb", "the cached reverse pair must stay unknown too")
+		})
+	}
+}

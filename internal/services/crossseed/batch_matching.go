@@ -123,7 +123,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		byKey:     make(map[string]*sameDataFiles),
 		fetched:   make(map[string]qbt.TorrentFiles),
 		links:     make(map[string]*localMatchContext),
-		linkTiers: make(map[[2]string]string),
+		linkTiers: make(map[[2]string]localLinkResult),
 	}
 
 	// Select the candidates of every torrent first, so that the file lists they
@@ -218,7 +218,12 @@ type batchFiles struct {
 	links     map[string]*localMatchContext // per source, keeps its stat results
 	// linkTiers holds the link check result per pair of torrents. A link
 	// goes both ways, so the pair is checked once.
-	linkTiers map[[2]string]string
+	linkTiers map[[2]string]localLinkResult
+}
+
+type localLinkResult struct {
+	tier   string
+	unread bool
 }
 
 func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath string) (sameDataFiles, bool) {
@@ -421,14 +426,14 @@ func (b *batchFiles) addSharedPathPicks(
 
 // linkedTier returns matchTypeHardlink or matchTypeReflink when the candidate
 // files are linked copies of the source files, as the Cross-Seed tab checks
-// them. A stat failure counts as no link.
-func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, c candidateEntry) string {
+// them. A failed verification keeps the result unknown.
+func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, c candidateEntry) localLinkResult {
 	candidateInstance := instanceByID(b.instances, c.instanceID)
 	// Check the cheap gates here, so that a source without file identity
 	// never builds a context.
 	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
 		!instanceHasFileIdentity(b.instances, sourceInstanceID) {
-		return ""
+		return localLinkResult{}
 	}
 	key := cacheKeyForTorrentFiles(sourceInstanceID, source.Hash)
 	pair := [2]string{key, cacheKeyForTorrentFiles(c.instanceID, c.hash)}
@@ -454,8 +459,12 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 		b.links[key] = matchCtx
 	}
 	tier := b.svc.localLinkedMatchType(matchCtx, candidateInstance, c.view)
-	b.linkTiers[pair] = tier
-	return tier
+	result := localLinkResult{
+		tier:   tier,
+		unread: tier == "" && (matchCtx.verificationErr != nil || matchCtx.sourceFilesErr != nil || matchCtx.candidateFilesErr != nil),
+	}
+	b.linkTiers[pair] = result
+	return result
 }
 
 // buildIndexFromViews builds a matchIndex from CrossInstanceTorrentViews.
@@ -656,7 +665,9 @@ func (s *Service) classifyCandidates(
 		}
 		tier := localMatchTier(sameInstance, p.nameOrRelease, sourceData, candidateData, nil)
 		if tier == "" && p.nameOrRelease != "" {
-			tier = files.linkedTier(ctx, source, sourceInstanceID, c)
+			linked := files.linkedTier(ctx, source, sourceInstanceID, c)
+			tier = linked.tier
+			result.unread = result.unread || linked.unread
 		}
 		if tier == "" {
 			continue
