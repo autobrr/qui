@@ -521,7 +521,7 @@ func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 	t.Parallel()
 
 	const root = "/srv/data"
-	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
+	noID := &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}, FileIDErr: errors.New("no identity")}
 	slash := newSlashBackend(map[string]int64{
 		root + "/owned.mkv":  1,
 		root + "/orphan.mkv": 2,
