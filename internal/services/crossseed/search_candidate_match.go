@@ -626,10 +626,12 @@ func (m matcher) searchCandidateMetadataConsistent(
 }
 
 // strictMatchWithoutTargetSite reports whether a strict search decision still
-// holds when the target's site tag is the only apply-time difference.
+// holds when the target's site tag is the only apply-time difference. A local
+// torrent with its own site tag is a conflicting fansub identity and stays
+// rejected.
 func (m matcher) strictMatchWithoutTargetSite(input searchCandidateInput, decision searchDecisionProvenance, findIndividualEpisodes bool) bool {
 	target := input.Source.release
-	if target == nil || input.Candidate.release == nil || decision.SearchCandidateName == "" {
+	if target == nil || input.Candidate.release == nil || input.Candidate.release.Site != "" || decision.SearchCandidateName == "" {
 		return false
 	}
 	if ok, _ := m.searchCandidateMetadataConsistent(decision.SearchCandidateName, input.Source, nil, nil, decision.EpisodeMap, findIndividualEpisodes); !ok {

@@ -263,6 +263,7 @@ func TestCrossSeedStrictSearchDecisionIgnoresBracketTitlePrefix(t *testing.T) {
 	}{
 		{name: "strict search decision", localName: sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "added"},
 		{name: "plain apply", localName: sourceName, localFiles: localFiles, wantStatus: "no_match"},
+		{name: "local torrent from another fansub", localName: "[AnoZu]." + sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "no_match"},
 		{name: "different group", localName: strings.Replace(sourceName, "-GRP", "-OTHER", 1), localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "no_match"},
 		{name: "different file sizes", localName: sourceName, localFiles: resizedFiles, decisionClass: searchCandidateClassStrict, wantStatus: "rejected"},
 		{name: "listing for another season", localName: sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, listingTitle: strings.Replace(listingTitle, "S01", "S02", 1), wantStatus: "no_match"},
