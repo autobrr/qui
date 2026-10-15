@@ -130,6 +130,12 @@ type EvalContext struct {
 	// Built when a delete, move, or category action groups cross-seeds;
 	// buildCrossSeedGroups reads it.
 	SameInstanceContentByHash map[string][]string
+	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
+	// whose cross-seed fields on that side are unknown for this run, because a
+	// file list could not be read. A condition on those fields never matches
+	// them, so a rule that tests for "no cross-seed" cannot act on a read error.
+	SameInstanceCrossSeedUnknown map[string]struct{}
+	CrossInstanceUnknown         map[string]struct{}
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:

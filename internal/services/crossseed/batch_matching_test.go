@@ -215,6 +215,7 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 			crossMatchTorrent(1, "bbb", cmEpisode, "/data/other", "/data/other/"+cmEpisodeFile, nil),
 		)
 		require.Empty(t, result.SameInstanceExists, "an unread candidate is not a confirmed cross-seed")
+		require.Contains(t, result.SameInstanceUnknown, "aaa", "nor a confirmed miss")
 		require.Equal(t, []string{"bbb"}, result.SameInstanceContentByHash["aaa"])
 	})
 

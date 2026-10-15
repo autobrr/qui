@@ -71,11 +71,11 @@ var conditionFieldData = map[ConditionField]fieldData{
 		need:  func(n *RuleNeeds) { n.SeasonPackAnyInstance = true },
 		known: func(ctx *EvalContext, _ string) bool { return ctx.SeasonPackSetAnyInstance != nil },
 	},
-	FieldExistsOnSameInstance:   {need: func(n *RuleNeeds) { n.CrossMatch.SameExists = true }},
-	FieldSeedingOnSameInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.SameSeeding = true }},
-	FieldCrossSeedTags:          {need: func(n *RuleNeeds) { n.CrossMatch.SameTags = true }},
-	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }},
-	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }},
+	FieldExistsOnSameInstance:   {need: func(n *RuleNeeds) { n.CrossMatch.SameExists = true }, known: sameInstanceCrossSeedKnown},
+	FieldSeedingOnSameInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.SameSeeding = true }, known: sameInstanceCrossSeedKnown},
+	FieldCrossSeedTags:          {need: func(n *RuleNeeds) { n.CrossMatch.SameTags = true }, known: sameInstanceCrossSeedKnown},
+	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }, known: otherInstanceCrossSeedKnown},
+	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }, known: otherInstanceCrossSeedKnown},
 	FieldFreeSpace:              {need: func(n *RuleNeeds) { n.FreeSpace = true }},
 	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
 	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
@@ -83,12 +83,24 @@ var conditionFieldData = map[ConditionField]fieldData{
 	FieldTrackerMessage:         {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 }
 
+func sameInstanceCrossSeedKnown(ctx *EvalContext, hash string) bool {
+	_, unknown := ctx.SameInstanceCrossSeedUnknown[hash]
+	return !unknown
+}
+
+func otherInstanceCrossSeedKnown(ctx *EvalContext, hash string) bool {
+	_, unknown := ctx.CrossInstanceUnknown[hash]
+	return !unknown
+}
+
 func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
 	// The switch skips the map lookup for the common field that reads only the
 	// torrent; this runs for every leaf on every torrent.
 	switch field {
 	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
-		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance:
+		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance,
+		FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
+		FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance:
 	default:
 		return true
 	}

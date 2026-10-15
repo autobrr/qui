@@ -43,6 +43,11 @@ type CrossMatchResult struct {
 	// also listed, so that a delete or move fails closed. A hash is present only
 	// when it has such a torrent.
 	SameInstanceContentByHash map[string][]string
+	// SameInstanceUnknown and OtherInstanceUnknown hold the torrents whose
+	// file list, or a candidate's file list, could not be read on that side.
+	// Their cross-seed condition values are unknown for this run.
+	SameInstanceUnknown  map[string]struct{}
+	OtherInstanceUnknown map[string]struct{}
 }
 
 // candidateEntry holds pre-computed data for a candidate torrent.
@@ -140,6 +145,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	if samePicks != nil {
 		files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs.SameSeeding)
 		result.SameInstanceExists = make(map[string]struct{})
+		result.SameInstanceUnknown = make(map[string]struct{})
 		if needs.SameSeeding {
 			result.SameInstanceSeeding = make(map[string]struct{})
 		}
@@ -158,6 +164,9 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 			if needs.SameContent && len(m.content) > 0 {
 				result.SameInstanceContentByHash[source.Hash] = m.content
 			}
+			if m.unread {
+				result.SameInstanceUnknown[source.Hash] = struct{}{}
+			}
 			if !m.matched {
 				continue
 			}
@@ -173,6 +182,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 
 	if otherPicks != nil {
 		result.OtherInstanceExists = make(map[string]struct{})
+		result.OtherInstanceUnknown = make(map[string]struct{})
 		if needs.OtherSeeding {
 			result.OtherInstanceSeeding = make(map[string]struct{})
 		}
@@ -181,7 +191,11 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 				break
 			}
 			source := currentTorrents[i].Torrent
-			if m := s.classifyCandidates(ctx, source, currentInstanceID, otherPicks[i], false, false, files); m.matched {
+			m := s.classifyCandidates(ctx, source, currentInstanceID, otherPicks[i], false, false, files)
+			if m.unread {
+				result.OtherInstanceUnknown[source.Hash] = struct{}{}
+			}
+			if m.matched {
 				result.OtherInstanceExists[source.Hash] = struct{}{}
 				if needs.OtherSeeding && m.seeding {
 					result.OtherInstanceSeeding[source.Hash] = struct{}{}
@@ -521,6 +535,9 @@ type indexMatch struct {
 	// same-instance candidates whose files could not be read. A delete or move
 	// must treat an unread candidate as one that shares files.
 	content []string
+	// unread is set when the file list of the source or of a candidate could
+	// not be read, so the other fields may be wrong.
+	unread bool
 }
 
 // candidatePick is a candidate that passed the prefilter. nameOrRelease is the
@@ -585,8 +602,8 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 
 // classifyCandidates classifies each candidate of a source torrent with
 // localMatchTier. sameInstance allows the Content tier. A candidate whose file
-// list cannot be read is not a match, but on the same instance it goes into
-// content.
+// list cannot be read is not a match and sets unread, and on the same instance
+// it goes into content.
 func (s *Service) classifyCandidates(
 	ctx context.Context,
 	source *qbt.Torrent,
@@ -602,6 +619,7 @@ func (s *Service) classifyCandidates(
 	}
 	sourceData, ok := files.get(ctx, sourceInstanceID, source.Hash, source.SavePath)
 	if !ok {
+		result.unread = true
 		if sameInstance {
 			for _, p := range picks {
 				if p.entry.view.ContentPath != "" {
@@ -620,6 +638,7 @@ func (s *Service) classifyCandidates(
 		}
 		candidateData, ok := files.get(ctx, c.instanceID, c.hash, c.savePath)
 		if !ok {
+			result.unread = true
 			if sameInstance {
 				result.content = append(result.content, c.hash)
 			}
