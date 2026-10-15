@@ -24,8 +24,9 @@ jobs:
 
   # The body must answer each required section of .github/pull_request_template.md.
   # Members and bots may skip the template, but a filled Breaking change section
-  # still needs the label. Only the exact text "No breaking change." means that
-  # nothing breaks, so the check never has to guess what the prose means.
+  # still needs the label. Only "No breaking change." means that nothing breaks
+  # (any case, with or without the period or a plural), so the check never has
+  # to guess what the prose means.
   body:
     runs-on: ubuntu-latest
     steps:
