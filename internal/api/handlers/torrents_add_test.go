@@ -221,6 +221,7 @@ type fullMockSyncManager struct {
 	addTorrentErr           error
 	addTorrentFromURLsErr   error
 	addTorrentFromURLsFunc  func(urls []string) (*qbt.TorrentAddResponse, error)
+	getAppPreferencesCalls  int
 }
 
 func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -245,6 +246,7 @@ func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID i
 }
 
 func (m *fullMockSyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	m.getAppPreferencesCalls++
 	return qbt.AppPreferences{}, nil
 }
 
@@ -657,4 +659,57 @@ func TestAddTorrentHandler_NoIndexerID_UsesDirectURL(t *testing.T) {
 
 	// Verify AddTorrent (file method) was NOT called
 	assert.Empty(t, mockSync.addTorrentCalls)
+}
+
+// TestAddTorrentHandler_PausedFormValueIsSentExplicitly verifies that the paused
+// form value always reaches qBittorrent, so its add-stopped preference cannot
+// override the request.
+func TestAddTorrentHandler_PausedFormValueIsSentExplicitly(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name        string
+		paused      string
+		wantOptions map[string]string
+	}{
+		{name: "paused false", paused: "false", wantOptions: map[string]string{"paused": "false", "stopped": "false"}},
+		{name: "paused true", paused: "true", wantOptions: map[string]string{"paused": "true", "stopped": "true"}},
+		{name: "paused absent", wantOptions: map[string]string{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSync := &fullMockSyncManager{}
+			handler := &TorrentsHandler{torrentAdder: mockSync}
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			_ = writer.WriteField("urls", "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567")
+			if tt.paused != "" {
+				_ = writer.WriteField("paused", tt.paused)
+			}
+			_ = writer.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("instanceID", "1")
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+			w := httptest.NewRecorder()
+			handler.AddTorrent(w, req)
+
+			require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+			require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+			options := mockSync.addTorrentFromURLsCalls[0].options
+			for _, key := range []string{"paused", "stopped"} {
+				want, wantSet := tt.wantOptions[key]
+				got, gotSet := options[key]
+				assert.Equal(t, wantSet, gotSet, key)
+				assert.Equal(t, want, got, key)
+			}
+			assert.Zero(t, mockSync.getAppPreferencesCalls)
+		})
+	}
 }

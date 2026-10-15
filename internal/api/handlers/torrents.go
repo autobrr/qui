@@ -646,41 +646,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
-	// NOTE: qBittorrent's API does not properly support the start_paused_enabled preference
-	// (it gets rejected/ignored when set via app/setPreferences). As a workaround, the frontend
-	// now stores this preference in localStorage and applies it when adding torrents.
-	// This complex logic attempts to respect qBittorrent's global preference, but since the
-	// preference cannot be set via API, this is effectively unused in the current implementation.
+	// Send the paused state explicitly so qBittorrent's own add-stopped
+	// preference cannot override the user's choice.
 	if pausedStr := r.FormValue("paused"); pausedStr != "" {
-		requestedPaused := pausedStr == "true"
-
-		// Get current preferences to check start_paused_enabled
-		prefs, err := h.torrentAdder.GetAppPreferences(ctx, instanceID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
-			// If we can't get preferences, apply the requested paused state explicitly
-			if requestedPaused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			} else {
-				options["paused"] = "false"
-				options["stopped"] = "false"
-			}
-		} else {
-			// Only set paused options if the requested state differs from the global preference
-			globalStartPaused := prefs.StartPausedEnabled
-			if requestedPaused != globalStartPaused {
-				if requestedPaused {
-					options["paused"] = "true"
-					options["stopped"] = "true"
-				} else {
-					options["paused"] = "false"
-					options["stopped"] = "false"
-				}
-			}
-			// If requestedPaused == globalStartPaused, don't set paused options
-			// This allows qBittorrent's global preference to take effect
-		}
+		paused := strconv.FormatBool(pausedStr == "true")
+		options["paused"] = paused
+		options["stopped"] = paused
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
