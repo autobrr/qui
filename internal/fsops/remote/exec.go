@@ -55,7 +55,7 @@ const (
 	lstatBatchTimeout = 30 * time.Second
 )
 
-var errWalkLimit = fmt.Errorf("walk stops at %d entries", findEntryLimit)
+var errFindLimit = errors.New("find prints more entries than its limit")
 
 // execTier reports whether the stored tier says this instance runs commands.
 // The live connection decides again: an exec on a connection whose probe
@@ -203,12 +203,14 @@ func (b *Backend) lstatFind(ctx context.Context, paths []string, found map[strin
 			n++
 		}
 		batchCtx, cancel := context.WithTimeout(ctx, lstatBatchTimeout)
+		// find prints at most one record for each path at depth 0, so a
+		// host that prints more is not find.
 		entries, err := find(batchCtx, conn, sshpool.Command{
 			Name:       "find",
 			Options:    []string{"-P"},
 			Paths:      paths[:n],
 			Expression: []string{"-maxdepth", "0", "-printf", lstatFormat},
-		})
+		}, n)
 		cancel()
 		for _, e := range entries {
 			found[e.rel] = e
@@ -264,11 +266,11 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		Options:    []string{"-P"},
 		Paths:      []string{root},
 		Expression: []string{"-mindepth", "1", "-printf", findFormat},
-	})
+	}, findEntryLimit)
 	switch {
 	case ctx.Err() != nil:
 		return true
-	case errors.Is(err, errWalkLimit):
+	case errors.Is(err, errFindLimit):
 		send(ctx, ch, fsops.WalkEntry{Path: root, IsDir: true, RelPath: ".", Err: pathError("walk", root, err)})
 		return true
 	case err != nil:
@@ -321,10 +323,10 @@ type findEntry struct {
 	nlink   uint64
 }
 
-// find runs cmd, streams its output and parses it record by record. When the
-// command exits non-zero after clean output, the entries it printed come back
-// with the error.
-func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command) ([]findEntry, error) {
+// find runs cmd, streams its output and parses it record by record, at most
+// limit records. When the command exits non-zero after clean output, the
+// entries it printed come back with the error.
+func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, limit int) ([]findEntry, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -359,8 +361,8 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command) ([]findE
 		case err != nil:
 			return stop(err)
 		}
-		if len(entries) == findEntryLimit {
-			return stop(errWalkLimit)
+		if len(entries) == limit {
+			return stop(fmt.Errorf("%w of %d", errFindLimit, limit))
 		}
 		entry, err := parseFindRecord(record[:len(record)-1])
 		if err != nil {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -295,6 +296,30 @@ func TestParseFindRecord(t *testing.T) {
 		_, err := parseFindRecord([]byte(bad))
 		assert.Error(t, err, "%q", bad)
 	}
+}
+
+// A host that prints more records than the caller allows, as a hostile host
+// can for a batch, fails the read at the limit and not at the end of its
+// output.
+func TestFindStopsAtItsLimit(t *testing.T) {
+	t.Parallel()
+
+	backend, _ := newExecBackend(t)
+	dir := t.TempDir()
+	for _, name := range []string{"a", "b", "c"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
+	}
+	conn, err := backend.exec(t.Context())
+	require.NoError(t, err)
+	cmd := sshpool.Command{Name: "find", Paths: []string{dir}, Expression: []string{"-mindepth", "1", "-printf", findFormat}}
+
+	entries, err := find(t.Context(), conn, cmd, 2)
+	require.ErrorIs(t, err, errFindLimit)
+	assert.Empty(t, entries)
+
+	entries, err = find(t.Context(), conn, cmd, 3)
+	require.NoError(t, err)
+	assert.Len(t, entries, 3)
 }
 
 func TestComparePaths(t *testing.T) {
