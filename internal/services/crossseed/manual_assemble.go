@@ -143,7 +143,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	prep := &seasonPackPrep{
 		manual: true, rejected: make(map[string]string), settings: settings,
 		meta: meta, torrentBytes: torrentBytes, packName: meta.Name, packRelease: packRelease,
-		packEpisodes: extractPackEpisodes(meta.Files, packRelease),
+		packEpisodes: s.matcher().extractPackEpisodes(meta.Files, packRelease),
 	}
 	prep.totalEpisodes = len(prep.packEpisodes)
 	resp := &ManualAssembleResponse{

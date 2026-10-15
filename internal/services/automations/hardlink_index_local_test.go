@@ -19,6 +19,7 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -177,7 +178,7 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	fid := createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow},
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
-	deficits := map[hardlink.FileID]*fileIDTracker{fid: {nlink: 2, uniquePathCount: 1}}
+	deficits := map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1}}
 	state := &hardlinkBuildState{seenPaths: map[string]struct{}{}}
 
 	stats := service.scanOtherInstancesForDeficits(t.Context(), instanceID, []int{instanceID + 1}, deficits, state)
@@ -185,4 +186,35 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	require.Equal(t, 1, stats.skipped)
 	require.Zero(t, spy.lstats.Load(), "the cross-instance scan must not read the SSH host")
 	require.Len(t, deficits, 1, "the deficit stays unresolved, which keeps the link outside")
+}
+
+func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 955
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "movie.mkv"))
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "cross-remote"), make([]byte, 32))
+	require.NoError(t, err)
+	_, err = store.Create(t.Context(), "peer", "http://127.0.0.1:1", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	service, _ := newLocalGateService(t, instanceID, &switchableRow{row: localRow},
+		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
+	service.instanceStore = store
+
+	// The peer scan cannot resolve a remote deficit, so it stays outside.
+	box := &models.Instance{ID: instanceID, SSHHost: "box.example.invalid", SSHPort: 22}
+	id := hardlink.RemoteFileID([]byte{1, 2, 3})
+	index := &HardlinkIndex{buildState: &hardlinkBuildState{
+		instance:        box,
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(id, box): {nlink: 2, uniquePathCount: 1}},
+		seenPaths:       map[string]struct{}{},
+		torrentInfoByHash: map[string]*torrentFileInfo{
+			"hash": {fileIDs: []hardlink.FileID{id}, allAccessible: true, hasHardlinks: true},
+		},
+	}}
+
+	service.augmentCrossInstanceScope(t.Context(), instanceID, index)
+
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.CrossScopeByHash["hash"])
 }

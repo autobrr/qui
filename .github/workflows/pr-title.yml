@@ -21,3 +21,19 @@ jobs:
             echo "::error::PR has the BREAKING CHANGE label. Mark the title with !, for example feat(api)!: ..."
             exit 1
           fi
+
+  # The template asks for a "Breaking change" section only when existing users
+  # must act after they update, or something they rely on stops working.
+  breaking-section:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'BREAKING CHANGE') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the BREAKING CHANGE label when the body has a Breaking change section
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          section=$(perl -0777 -ne 's/\r//g; s/<!--.*?-->//gs; print $1 if /^##[ \t]*Breaking changes?[ \t]*\n(.*?)(?=^## |\z)/msi' <<<"$BODY" | tr -d '[:space:]')
+          if [[ -n $section ]] && ! grep -qiE '^(none|n/?a)\.?$' <<<"$section"; then
+            echo "::error::The PR body has a Breaking change section. Add the BREAKING CHANGE label, or delete the section if existing users do not have to act."
+            exit 1
+          fi

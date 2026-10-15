@@ -7,7 +7,6 @@ import (
 	"context"
 	"io/fs"
 	"path"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -47,12 +46,9 @@ func newSlashBackend(devices []string, files ...string) *slashBackend {
 	return b
 }
 
-// testFileID builds a nonzero FileID on every OS: both platform structs start
-// with a uint64.
+// testFileID builds a distinct nonzero FileID for file n.
 func testFileID(n uint64) hardlink.FileID {
-	var id hardlink.FileID
-	reflect.ValueOf(&id).Elem().Field(0).SetUint(n)
-	return id
+	return hardlink.UnixFileID(1, n)
 }
 
 func (b *slashBackend) Paths() fsops.PathDialect { return fsops.SlashPaths }

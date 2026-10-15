@@ -201,6 +201,24 @@ func TestAutomationStrictDecode(t *testing.T) {
 			want: []string{`conditions.exportToInstance.contentLayout: contentLayout does not allow "Create subfolder"; it allows Original, Subfolder, NoSubfolder`},
 		},
 		{
+			name: "unknown tag mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"tags":[{"enabled":true,"tags":["x"],"mode":"ful"}]}}`,
+			want: []string{`conditions.tags[0].mode: mode does not allow "ful"; it allows full, add, remove`},
+		},
+		{
+			name: "unknown delete mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"delete":{"enabled":false,"mode":"deleteFiles"}}}`,
+			want: []string{`conditions.delete.mode: mode does not allow "deleteFiles"; it allows delete, deleteWithFiles, deleteWithFilesPreserveCrossSeeds, deleteWithFilesIncludeCrossSeeds`},
+		},
+		{
+			name: "unknown share limit action, default mode",
+			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
+				"shareLimits":{"enabled":true,"shareLimitAction":"Remov","shareLimitsMode":"default"}}}`,
+			want: []string{`conditions.shareLimits.shareLimitAction: shareLimitAction does not allow "Remov"; it allows Stop, Remove, RemoveWithContent, EnableSuperSeeding`},
+		},
+		{
 			name: "condition in a score rule",
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}},
 				"sortingConfig":{"schemaVersion":"1","type":"score","direction":"DESC","scoreRules":[

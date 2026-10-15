@@ -20,3 +20,7 @@ The cross-seed matching rules are methods on a `matcher` value in `internal/serv
 - Production code no longer builds a throwaway `Service` to call a matching rule. The season pack code calls `s.matcher()`, and `buildSeasonPackPlan`, which has no `Service`, builds a `matcher` from the normalizer it is given.
 - A matcher test builds a `matcher{}` with the three inputs the rules read and nothing else.
 - `normalizerForService` stays for the callers outside the matcher files. It guards a nil `Service` and returns `s.matcher().normalizer()`, so the default-normalizer fallback has one body.
+
+## Amendment 2026-10-09: one parser
+
+The release cache is the only parser that the matcher uses. `parseReleaseName` reads each release name and file name. A matcher with no release cache falls back to `releases.DefaultParser`, the same way `normalizer` falls back to the default normalizer. Before this change, a matcher with no cache parsed each name to an empty release. Matcher code does not call `releases.DefaultParser` or `rls.ParseString` directly. The fallback is the only place that names the default parser. Free functions that Dir Scan calls, such as `AlternateTitleQuery`, use a zero `matcher` and get the same fallback. Issue #3060.
