@@ -6,6 +6,7 @@ package hardlinktree
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -172,17 +173,21 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// isDirNotEmpty checks if an error indicates a non-empty directory.
+// isDirNotEmpty checks if an error indicates a non-empty directory. Windows
+// reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY there, and its
+// message can be translated, so that code is checked on Windows. The English
+// text is still matched as a fallback for an error that carries no code. The
+// only caller passes an os.Remove error, a *fs.PathError, and the text is
+// that error's underlying one, since a path holding "not empty" is no proof.
 func isDirNotEmpty(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, syscall.ENOTEMPTY) {
+	if errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err) {
 		return true
 	}
-	// Different OS have different error messages
-	errStr := err.Error()
-	return strings.Contains(errStr, "not empty") ||
-		strings.Contains(errStr, "directory not empty") ||
-		strings.Contains(errStr, "The directory is not empty")
+	if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
+		err = pathErr.Err
+	}
+	return strings.Contains(err.Error(), "not empty")
 }
