@@ -45,7 +45,7 @@ type CrossMatchResult struct {
 	// when it has such a torrent.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceUnknown and OtherInstanceUnknown hold the torrents whose
-	// file list, or a candidate's file list, could not be read on that side.
+	// file list, candidate's file list, or instance list could not be read.
 	// Their cross-seed condition values are unknown for this run.
 	SameInstanceUnknown  map[string]struct{}
 	OtherInstanceUnknown map[string]struct{}
@@ -110,8 +110,8 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		return result
 	}
 
-	// Without the instance list, the link check stays off and the
-	// other-instance sets stay empty.
+	// Keep shared-path safety groups available if the instance list fails.
+	// Conditions become unknown below because link and other-instance checks need it.
 	instances, listErr := s.instanceStore.List(ctx)
 	if listErr != nil {
 		log.Error().Err(listErr).Msg("crossseed: failed to list instances for cross-matching")
@@ -201,6 +201,23 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 				if needs.OtherSeeding && m.seeding {
 					result.OtherInstanceSeeding[source.Hash] = struct{}{}
 				}
+			}
+		}
+	}
+
+	if listErr != nil {
+		if needsSame {
+			result.SameInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
+		}
+		if needsOther {
+			result.OtherInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
+		}
+		for _, torrent := range currentTorrents {
+			if needsSame {
+				result.SameInstanceUnknown[torrent.Hash] = struct{}{}
+			}
+			if needsOther {
+				result.OtherInstanceUnknown[torrent.Hash] = struct{}{}
 			}
 		}
 	}

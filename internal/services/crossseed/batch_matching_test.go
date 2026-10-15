@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"bytes"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -420,5 +421,42 @@ func TestBuildCrossMatchSets_LinkVerificationFailureIsUnknown(t *testing.T) {
 			require.Contains(t, result.SameInstanceUnknown, "aaa")
 			require.Contains(t, result.SameInstanceUnknown, "bbb", "the cached reverse pair must stay unknown too")
 		})
+	}
+}
+
+func TestBuildCrossMatchSets_InstanceListFailureIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &tierSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			"aaa": cmFile(cmEpisodeFile, 4),
+			"bbb": {{Name: cmEpisodeFile, Size: 4}, {Name: "Menu.m2ts", Size: 9}},
+			"ccc": cmFile(cmEpisodeFile, 4),
+		},
+		candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/one", "/data/one/episode.mkv", nil).view,
+			crossMatchTorrent(1, "bbb", cmEpisode, "/data/two", "/data/two", nil).view,
+			crossMatchTorrent(1, "ccc", cmEpisode, "/data/one", "/data/one/episode.mkv", nil).view,
+		}},
+	}
+	svc := newTestService()
+	svc.syncManager = sm
+	svc.instanceStore = &orderedInstanceStore{listErr: errors.New("instance list unavailable")}
+
+	for _, needs := range []CrossMatchNeeds{
+		{SameExists: true, SameSeeding: true, SameTags: true, SameContent: true},
+		{OtherExists: true, OtherSeeding: true},
+	} {
+		result := svc.BuildCrossMatchSets(t.Context(), 1, needs)
+		for _, hash := range []string{"aaa", "bbb", "ccc"} {
+			if needs.SameExists {
+				require.Contains(t, result.SameInstanceUnknown, hash)
+			} else {
+				require.Contains(t, result.OtherInstanceUnknown, hash)
+			}
+		}
+		if needs.SameContent {
+			require.Contains(t, result.SameInstanceContentByHash["aaa"], "ccc", "delete safety must retain known shared paths")
+		}
 	}
 }
