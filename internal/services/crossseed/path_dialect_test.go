@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -300,11 +301,13 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 		name        string
 		firstErr    error
 		manual      bool
+		leaveTree   bool
 		wantApplied bool
 		wantRoots   []string
 	}{
 		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
+		{name: "cross-device with failed creator rollback", firstErr: fmt.Errorf("%w (rollback also failed: %w)", &os.LinkError{Op: "link", Err: syscall.EXDEV}, fs.ErrPermission), leaveTree: true, wantRoots: []string{"/data/tv/hl"}},
 		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 	}
 	for _, tt := range tests {
@@ -340,6 +343,13 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					roots = append(roots, plan.RootDir)
 					if len(roots) == 1 {
+						if tt.leaveTree {
+							// The files the creator could not remove keep the pack dir.
+							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
+								backend.dirs[dir] = struct{}{}
+							}
+							return nil, tt.firstErr
+						}
 						return &fsops.TreeCreateResult{Created: 1}, tt.firstErr
 					}
 					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
