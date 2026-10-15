@@ -7129,15 +7129,18 @@ components:
 
     FilesystemCapabilities:
       type: object
-      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
-      required: [read, identity, write, content]
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find, stat and xargs.
+      required: [read, identity, trustedIdentity, write, content]
       properties:
         read:
           type: boolean
           description: qui can list, stat, and walk paths.
         identity:
           type: boolean
-          description: qui trusts file identity (device and inode) to find hardlinks.
+          description: qui reads file identity (device and inode) to find hardlinks, for matching and deduplication.
+        trustedIdentity:
+          type: boolean
+          description: The file identity comes from the qui host's own kernel, so it can add torrents to a delete, as the include-hardlinks delete option and the hardlink scope conditions do. Only a local instance has it.
         write:
           type: boolean
           description: qui can create and remove hardlink and reflink trees.

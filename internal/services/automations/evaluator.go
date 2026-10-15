@@ -68,9 +68,11 @@ type EvalContext struct {
 	HasSkippedFilesByHash map[string]bool
 	// InstanceHasLocalAccess gates the missing-files field. #2933 lifts it to Read.
 	InstanceHasLocalAccess bool
-	// InstanceHasFileIdentity gates the hardlink fields, apart from
-	// InstanceHasLocalAccess so a remote instance never reads them as known.
-	InstanceHasFileIdentity bool
+	// InstanceHasTrustedIdentity gates the hardlink fields, hardlink grouping
+	// and includeHardlinks. Each of them can add torrents to a delete, so a
+	// remote instance, whose identity only its host asserts, never reads them
+	// as known.
+	InstanceHasTrustedIdentity bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
@@ -389,7 +391,7 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 
 func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
 	ctx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
-	ctx.InstanceHasFileIdentity = models.FilesystemCapabilitiesOf(instance).Identity
+	ctx.InstanceHasTrustedIdentity = models.FilesystemCapabilitiesOf(instance).TrustedIdentity
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.

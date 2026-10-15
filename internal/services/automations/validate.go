@@ -98,10 +98,10 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	hasIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).Identity
+	hasTrustedIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).TrustedIdentity
 	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
 	for field, data := range conditionFieldData {
-		if (data.fileIdentity && !hasIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+		if (data.trustedIdentity && !hasTrustedIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
 			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		}
 	}
@@ -130,7 +130,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
-		if !hasIdentity {
+		if !hasTrustedIdentity {
 			return ruleError("includeHardlinks requires Local Filesystem Access to be enabled on this instance")
 		}
 	}

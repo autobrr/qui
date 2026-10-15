@@ -839,7 +839,8 @@
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
       "noLocalAccess": "Nessun accesso locale",
       "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
-      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote. Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
+      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote.",
+      "remoteNoIdentity": "Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolleranza {{grace}}min",
@@ -1362,7 +1363,8 @@
         "withFilesIncludeCrossSeeds": "Rimuovi con i file (includi i cross-seed)",
         "includeHardlinkedCopies": "Includi le copie con hardlink",
         "includeHardlinkedCopiesDescription": "Elimina anche i torrent che condividono gli stessi file sottostanti tramite hardlink. Include solo gli hardlink completamente interni a qBittorrent; non segue mai gli hardlink esterni.",
-        "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza."
+        "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza.",
+        "remoteNotAvailable": "Non disponibile sulle istanze remote"
       },
       "move": {
         "newSavePath": "Nuovo percorso di salvataggio",

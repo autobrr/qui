@@ -839,7 +839,8 @@
       "description": "Durchsucht Download-Verzeichnisse und identifiziert Orphan-Dateien zum Aufräumen.",
       "noLocalAccess": "Kein lokaler Zugriff",
       "noLocalAccessTooltip": "qui und qBittorrent müssen auf derselben Maschine laufen. Aktiviere \"Lokaler Dateisystemzugriff\" in den Instanzeinstellungen, um den Orphan-Scan zu nutzen.",
-      "remoteLimits": "Löschen und Auto-Cleanup laufen auf Remote-Instanzen noch nicht. qui erkennt außerdem nicht, wenn zwei Pfade dieselbe Datei sind. Eine Datei, die über einen zweiten Pfad erreichbar ist, etwa per Bind-Mount, kann daher gelistet werden, obwohl ein Torrent sie nutzt.",
+      "remoteLimits": "Löschen und Auto-Cleanup laufen auf Remote-Instanzen noch nicht.",
+      "remoteNoIdentity": "qui erkennt außerdem nicht, wenn zwei Pfade dieselbe Datei sind. Eine Datei, die über einen zweiten Pfad erreichbar ist, etwa per Bind-Mount, kann daher gelistet werden, obwohl ein Torrent sie nutzt.",
       "on": "An",
       "off": "Aus",
       "summaryGrace": "Schonfrist {{grace}}min",
@@ -1362,7 +1363,8 @@
         "withFilesIncludeCrossSeeds": "Mit Dateien entfernen (Cross-Seeds einbeziehen)",
         "includeHardlinkedCopies": "Per Hardlink verknüpfte Kopien einbeziehen",
         "includeHardlinkedCopiesDescription": "Löscht auch Torrents, die sich dieselben zugrunde liegenden Dateien per Hardlink teilen. Bezieht nur Hardlinks vollständig innerhalb von qBittorrent ein; folgt niemals Hardlinks nach außen.",
-        "localAccessRequired": "Erfordert, dass \"Local Filesystem Access\" in den Instanz-Einstellungen aktiviert ist."
+        "localAccessRequired": "Erfordert, dass \"Local Filesystem Access\" in den Instanz-Einstellungen aktiviert ist.",
+        "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen"
       },
       "move": {
         "newSavePath": "Neuer Speicherpfad",

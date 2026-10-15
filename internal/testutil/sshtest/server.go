@@ -26,7 +26,8 @@ import (
 type ExecMode int
 
 const (
-	// ExecGNU answers --version with GNU findutils/coreutils banners.
+	// ExecGNU answers --version with GNU findutils/coreutils banners, and runs
+	// every other command through the local sh.
 	ExecGNU ExecMode = iota
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
@@ -36,6 +37,9 @@ const (
 	// ExecHang accepts the command and never answers it, the way a wedged or
 	// tarpitting host does. Only the client's own deadline ends the session.
 	ExecHang
+	// ExecGNUNoXargs is ExecGNU on a host without xargs: a command that
+	// names xargs fails the way a missing tool does.
+	ExecGNUNoXargs
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -86,7 +90,7 @@ const hardlinkExtension = "hardlink@openssh.com"
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
 
-const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\n"
+const versionBannerGNU = "find (GNU findutils) 4.8.0\nstat (GNU coreutils) 8.32\nxargs (GNU findutils) 4.8.0\n"
 
 // Server is an in-process SSH server listening on loopback. It serves the sftp
 // subsystem through pkg/sftp and answers exec requests per its ExecMode, and it
@@ -107,6 +111,7 @@ type Server struct {
 	channels        int
 	stalledReadDirs int
 	heldMutations   int
+	commands        [][]string
 	live            map[*ssh.ServerConn]struct{}
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
@@ -325,7 +330,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
-			if s.exec == ExecHang {
+			if s.execMode() == ExecHang {
 				<-stalled
 				return
 			}
@@ -414,19 +419,40 @@ func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 }
 
 func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
-	if s.exec == ExecSFTPOnly {
+	mode := s.execMode()
+	if mode == ExecSFTPOnly {
 		_, _ = io.WriteString(channel.Stderr(), "This service allows sftp connections only.\n")
 		return 1
 	}
 	// A real login writes shell and motd noise to stderr while the command
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
-	if strings.Contains(command, "--version") && s.exec == ExecGNU {
+	switch {
+	case mode == ExecGNUNoXargs && strings.Contains(command, "xargs"):
+		_, _ = io.WriteString(channel.Stderr(), "sh: xargs: command not found\n")
+		return 127
+	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
-	} else if strings.Contains(command, "--version") {
+	case strings.Contains(command, "--version"):
 		_, _ = io.WriteString(channel, "find: unknown option --version\nstat: unknown option --version\n")
+	case mode != ExecBSD:
+		return s.runShell(channel, command)
 	}
 	return 0
+}
+
+func (s *Server) execMode() ExecMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exec
+}
+
+// SetExec changes what the exec channel does for commands from now on, the
+// way an edit of authorized_keys changes what a key may run.
+func (s *Server) SetExec(mode ExecMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exec = mode
 }
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {

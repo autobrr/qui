@@ -287,3 +287,8 @@ func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, que
 
 	return nil
 }
+
+// SetSSHTier records the tier the last probe of the host found.
+func (s *InstanceStore) SetSSHTier(ctx context.Context, instanceID int, tier SSHTier) error {
+	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, `UPDATE instances SET ssh_tier = ? WHERE id = ?`, string(tier), instanceID)
+}

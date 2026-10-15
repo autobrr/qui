@@ -35,6 +35,7 @@ type credentialSource interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 	GetDecryptedSSHKey(*models.Instance) (string, error)
 	GetHostKeyPin(*models.Instance) ([]byte, error)
+	SetSSHTier(ctx context.Context, instanceID int, tier models.SSHTier) error
 }
 
 // Dialer opens SSH connections: one-shot ones for Test and Confirm, and the
@@ -178,22 +179,28 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 // Confirm dials the instance and succeeds only if the host presents hostKey, so
 // the caller can pin the key the user was shown rather than whatever the host
 // offers at pin time. hostKey is in SSH wire format, the form the pin column
-// holds.
-func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) error {
+// holds. It then probes the host, on the key it just verified, so the caller
+// can store the tier with the pin.
+func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) (*Capabilities, error) {
 	expected, err := ssh.ParsePublicKey(hostKey)
 	if err != nil {
-		return fmt.Errorf("parse host key: %w", err)
+		return nil, fmt.Errorf("parse host key: %w", err)
 	}
 
 	client, err := d.dialExpecting(ctx, inst, expected, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer client.Close()
 
-	// The key was verified during the handshake; a failed teardown is not a
-	// failed confirmation.
-	_ = client.Close()
-	return nil
+	capabilities, err := probe(ctx, client)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	return capabilities, nil
 }
 
 // ErrPinUnusable marks the errors Connect raises before it dials, when the

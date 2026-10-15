@@ -243,10 +243,10 @@ function formatDryRunEventSummary(
   }
 }
 
-function getDisabledFields(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
+function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t) }))
+    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
@@ -769,7 +769,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
-  const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  const hasTrustedIdentity = ruleInstance?.capabilities.trustedIdentity ?? false
+  const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
   const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
   const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
@@ -778,9 +779,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     () => ({
       trackerHealth: supportsTrackerHealth,
       localFilesystemAccess: hasLocalFilesystemAccess,
-      fileIdentity: hasFileIdentity,
+      trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess, hasFileIdentity]
+    [supportsTrackerHealth, hasLocalFilesystemAccess, hasTrustedIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -2501,7 +2502,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 }
                               }}
                               categoryOptions={categoryOptions}
-                              disabledFields={getDisabledFields(fieldCapabilities, t)}
+                              disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                               disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                             />
                             <div className="flex items-center gap-2">
@@ -2583,7 +2584,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     }}
                     allowEmpty
                     categoryOptions={categoryOptions}
-                    disabledFields={getDisabledFields(fieldCapabilities, t)}
+                    disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
@@ -3808,17 +3809,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       type="checkbox"
                                       checked={formState.exprIncludeHardlinks}
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      disabled={!hasFileIdentity}
+                                      disabled={!hasTrustedIdentity}
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
-                                    <span className={!hasFileIdentity ? "opacity-50" : ""}>
+                                    <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasFileIdentity ? (
+                                  {hasTrustedIdentity ? (
                                     <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
+                                  ) : isRemoteInstance ? (
+                                    <p>{t("preferences.workflowDialog.delete.remoteNotAvailable")}</p>
                                   ) : (
                                     <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
                                   )}

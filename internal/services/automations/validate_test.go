@@ -917,6 +917,9 @@ func TestValidateRule(t *testing.T) {
 	local := &models.Instance{HasLocalFilesystemAccess: true}
 	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "100000000000"}
 	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	// A remote instance on the exec tier has Identity, but its identity is
+	// what the host asserts, so nothing that can widen a delete opens for it.
+	remoteExec := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
 	freeSpacePath := func(r *models.Automation) {
 		r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
 		r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
@@ -963,6 +966,10 @@ func TestValidateRule(t *testing.T) {
 		{name: "missing files with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: local},
 		{name: "hardlink scope without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}),
 			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+		{name: "hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: remoteExec,
+			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,
+			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
 		{name: "hardlink scope with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: local},
 		{name: "file field in a disabled action", edit: withConditions(&models.ActionConditions{
 			Pause:  &models.PauseAction{Enabled: true},
@@ -971,6 +978,8 @@ func TestValidateRule(t *testing.T) {
 		{name: "include hardlinks outside include cross-seeds", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFiles}}),
 			wantMsg: "includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'"},
 		{name: "include hardlinks without local access", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}),
+			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
+		{name: "include hardlinks on a remote exec instance", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}), instance: remoteExec,
 			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
 		{name: "external program without program", edit: withConditions(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true}}),
 			wantMsg: "External program action requires a valid program selection"},
