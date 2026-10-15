@@ -26,8 +26,10 @@ Fixes # (issue)
 ## Screenshots (for UI changes)
 
 <!--- Delete this section if your change has no visible UI.
-      Do not show private tracker names, tracker URLs, torrent names, or save paths.
+      Screenshots and recordings on GitHub are public. Do not show private tracker names,
+      tracker URLs, torrent names, or save paths in them.
       Turn on incognito mode before you capture, or blur these columns.
+      Mask passkeys, announce URLs, and API keys in every capture.
       To keep real torrent data private, link a Paste from https://bin.getqui.com. --->
 
 ## Checklist
