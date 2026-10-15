@@ -27,7 +27,7 @@ Fixes # (issue)
 
 <!--- Delete this section if your change has no visible UI.
       Do not show private tracker names, tracker URLs, torrent names, or save paths.
-      Use synthetic torrents, or blur these columns. --->
+      Turn on incognito mode before you capture, or blur these columns. --->
 
 ## Checklist
 
