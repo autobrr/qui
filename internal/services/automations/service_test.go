@@ -1806,7 +1806,7 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 
 	evalCtx := &EvalContext{
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	// Simulate "needed" mode processing: each deletion updates SpaceToClear

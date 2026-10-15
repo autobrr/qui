@@ -52,10 +52,18 @@ type candidateEntry struct {
 	seeding    bool
 	instanceID int
 	savePath   string
-	// ambiguous is true when the content path equals the save path: a
-	// multi-file torrent without a subfolder.
-	ambiguous bool
-	view      *qbittorrent.CrossInstanceTorrentView
+	view       *qbittorrent.CrossInstanceTorrentView
+}
+
+func newCandidateEntry(view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) candidateEntry {
+	return candidateEntry{
+		hash:       normalizeHash(view.Hash),
+		tags:       view.Tags,
+		seeding:    needsSeeding && isTorrentViewSeeding(view),
+		instanceID: view.InstanceID,
+		savePath:   view.SavePath,
+		view:       view,
+	}
 }
 
 // releaseCandidate extends candidateEntry with parsed release metadata for rls matching.
@@ -65,22 +73,21 @@ type releaseCandidate struct {
 	release *rls.Release
 }
 
-// matchIndex holds pre-built indexes that select the candidates of a source
-// torrent before their file lists are fetched.
+// matchIndex holds pre-built indexes that select the Name and Release
+// candidates of a source torrent before their file lists are fetched.
 type matchIndex struct {
-	byContentPath map[string][]candidateEntry       // key: normalizedContentPath (non-ambiguous only)
-	bySavePath    map[string][]candidateEntry       // key: normalized save path
-	byName        map[string][]candidateEntry       // key: normalizeLowerTrim(name)
-	byReleaseKey  map[releaseKey][]releaseCandidate // for release metadata matching
+	byName       map[string][]candidateEntry       // key: normalizeLowerTrim(name)
+	byReleaseKey map[releaseKey][]releaseCandidate // for release metadata matching
 }
 
 // BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
 // same instance and/or other instances. It uses the same per-file rule as the
 // Cross-Seed tab (localMatchTier), without the retitled rescue. The cached
-// torrent fields select the candidates, and only their file lists are fetched,
-// through the files cache. The Hardlink and Reflink check runs only for a Name
-// or Release candidate whose file sizes do not pair, because only that
-// candidate can change the result.
+// torrent fields select the Name and Release candidates and the torrents that
+// can share a file path, and only their file lists are fetched, through the
+// files cache. The Hardlink and Reflink check runs only for a Name or Release
+// candidate whose file sizes do not pair, because only that candidate can
+// change the result.
 func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
 	result := &CrossMatchResult{}
 	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags || needs.SameContent
@@ -116,9 +123,11 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	// Select the candidates of every torrent first, so that the file lists they
 	// need are read in one batch per instance.
 	var samePicks, otherPicks [][]*candidatePick
+	var pathGroups [][]int
 	if needsSame {
 		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding); sameIdx != nil {
 			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true)
+			pathGroups = sharedPathGroups(currentTorrents)
 		}
 	}
 	if needsOther && listErr == nil {
@@ -126,9 +135,10 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false)
 		}
 	}
-	files.prefetch(ctx, currentInstanceID, currentTorrents, samePicks, otherPicks)
+	files.prefetch(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, otherPicks)
 
 	if samePicks != nil {
+		files.addSharedPathPicks(ctx, currentInstanceID, currentTorrents, pathGroups, samePicks, needs.SameSeeding)
 		result.SameInstanceExists = make(map[string]struct{})
 		if needs.SameSeeding {
 			result.SameInstanceSeeding = make(map[string]struct{})
@@ -232,17 +242,23 @@ func (s *Service) selectAllCandidates(ctx context.Context, torrents []qbittorren
 	return picks
 }
 
-// prefetch reads the file lists of the sources with candidates and of their
-// candidates, in one GetTorrentFilesBatch call per instance. The sync manager
-// then fetches the lists that it has no copy of in parallel, not one after
-// another. A list that the call does not return is read again by get.
-func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources []qbittorrent.CrossInstanceTorrentView, picksBySource ...[][]*candidatePick) {
+// prefetch reads the file lists of the torrents in pathGroups, of the sources
+// with candidates, and of their candidates, in one GetTorrentFilesBatch call
+// per instance. The sync manager then fetches the lists that it has no copy of
+// in parallel, not one after another. A list that the call does not return is
+// read again by get.
+func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources []qbittorrent.CrossInstanceTorrentView, pathGroups [][]int, picksBySource ...[][]*candidatePick) {
 	need := make(map[int]map[string]struct{})
 	add := func(instanceID int, hash string) {
 		if need[instanceID] == nil {
 			need[instanceID] = make(map[string]struct{})
 		}
 		need[instanceID][hash] = struct{}{}
+	}
+	for _, group := range pathGroups {
+		for _, i := range group {
+			add(sourceInstanceID, normalizeHash(sources[i].Hash))
+		}
 	}
 	for _, picks := range picksBySource {
 		for i, sourcePicks := range picks {
@@ -269,6 +285,111 @@ func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources
 			b.fetched[key] = files
 			if b.svc.torrentFilesCache != nil {
 				b.svc.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
+			}
+		}
+	}
+}
+
+// sharedPathGroups groups the torrents whose cached paths allow a shared file
+// on disk: the torrents with one content path, and the torrents of a save path
+// that holds a multi-file torrent without a subfolder (its content path is the
+// save path). It returns the indexes into torrents of each group with two or
+// more members.
+func sharedPathGroups(torrents []qbittorrent.CrossInstanceTorrentView) [][]int {
+	byContentPath := make(map[string][]int)
+	bySavePath := make(map[string][]int)
+	flatSavePaths := make(map[string]bool)
+	for i := range torrents {
+		contentPath := normalizePathForComparison(torrents[i].ContentPath)
+		// A magnet without metadata has no files.
+		if contentPath == "" {
+			continue
+		}
+		byContentPath[contentPath] = append(byContentPath[contentPath], i)
+		if savePath := normalizePathForComparison(torrents[i].SavePath); savePath != "" {
+			bySavePath[savePath] = append(bySavePath[savePath], i)
+			if contentPath == savePath {
+				flatSavePaths[savePath] = true
+			}
+		}
+	}
+	var groups [][]int
+	for _, group := range byContentPath {
+		if len(group) > 1 {
+			groups = append(groups, group)
+		}
+	}
+	for savePath, group := range bySavePath {
+		if len(group) > 1 && flatSavePaths[savePath] {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+// addSharedPathPicks adds to the picks of each torrent in pathGroups the
+// torrents that share a file path with it. One index of file paths finds them,
+// so a flat folder costs its file count, not its pair count. A torrent whose
+// file list cannot be read is paired with every member of its groups, so that
+// a delete or move fails closed.
+func (b *batchFiles) addSharedPathPicks(
+	ctx context.Context,
+	instanceID int,
+	torrents []qbittorrent.CrossInstanceTorrentView,
+	pathGroups [][]int,
+	picks [][]*candidatePick,
+	needsSeeding bool,
+) {
+	picked := make(map[int]map[string]struct{})
+	link := func(i, j int) {
+		if i == j {
+			return
+		}
+		have := picked[i]
+		if have == nil {
+			have = make(map[string]struct{}, len(picks[i])+1)
+			for _, p := range picks[i] {
+				have[p.entry.hash] = struct{}{}
+			}
+			picked[i] = have
+		}
+		entry := newCandidateEntry(&torrents[j], needsSeeding)
+		if _, ok := have[entry.hash]; ok {
+			return
+		}
+		have[entry.hash] = struct{}{}
+		picks[i] = append(picks[i], &candidatePick{entry: entry})
+	}
+
+	read := make(map[int]bool)
+	byPath := make(map[string][]int)
+	for _, group := range pathGroups {
+		for _, i := range group {
+			if _, done := read[i]; done {
+				continue
+			}
+			data, ok := b.get(ctx, instanceID, torrents[i].Hash, torrents[i].SavePath)
+			read[i] = ok
+			for p := range data.paths {
+				byPath[p] = append(byPath[p], i)
+			}
+		}
+	}
+	for _, sharing := range byPath {
+		for _, i := range sharing {
+			for _, j := range sharing {
+				link(i, j)
+			}
+		}
+	}
+	for _, group := range pathGroups {
+		for _, i := range group {
+			if read[i] {
+				continue
+			}
+			for _, j := range group {
+				link(i, j)
+				link(j, i)
 			}
 		}
 	}
@@ -330,10 +451,8 @@ func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentVi
 
 func newMatchIndex() *matchIndex {
 	return &matchIndex{
-		byContentPath: make(map[string][]candidateEntry),
-		bySavePath:    make(map[string][]candidateEntry),
-		byName:        make(map[string][]candidateEntry),
-		byReleaseKey:  make(map[releaseKey][]releaseCandidate),
+		byName:       make(map[string][]candidateEntry),
+		byReleaseKey: make(map[releaseKey][]releaseCandidate),
 	}
 }
 
@@ -370,24 +489,7 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 
 // indexView adds a single torrent view to all indexes.
 func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) {
-	contentPath := normalizePathForComparison(view.ContentPath)
-	savePath := normalizePathForComparison(view.SavePath)
-	entry := candidateEntry{
-		hash:       normalizeHash(view.Hash),
-		tags:       view.Tags,
-		seeding:    needsSeeding && isTorrentViewSeeding(view),
-		instanceID: view.InstanceID,
-		savePath:   view.SavePath,
-		ambiguous:  contentPath != "" && contentPath == savePath,
-		view:       view,
-	}
-
-	if contentPath != "" && !entry.ambiguous {
-		idx.byContentPath[contentPath] = append(idx.byContentPath[contentPath], entry)
-	}
-	if savePath != "" {
-		idx.bySavePath[savePath] = append(idx.bySavePath[savePath], entry)
-	}
+	entry := newCandidateEntry(view, needsSeeding)
 
 	// Index by normalized name
 	name := normalizeLowerTrim(view.Name)
@@ -422,34 +524,31 @@ type indexMatch struct {
 }
 
 // candidatePick is a candidate that passed the prefilter. nameOrRelease is the
-// tier it gets if its file sizes pair with the source.
+// tier it gets if its file sizes pair with the source. It is empty for a
+// torrent that addSharedPathPicks added.
 type candidatePick struct {
 	entry         candidateEntry
 	nameOrRelease string
 }
 
-// selectCandidates selects the candidates of a source torrent from the index
-// with the same prefilter as the Cross-Seed tab. sameInstance excludes the
-// source itself.
+// selectCandidates selects the Name and Release candidates of a source torrent
+// from the index with the same prefilter as the Cross-Seed tab. sameInstance
+// excludes the source itself.
 func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameInstance bool) []*candidatePick {
 	sourceHash := normalizeHash(source.Hash)
 
 	var picks []*candidatePick
-	byKey := make(map[string]*candidatePick)
+	picked := make(map[string]struct{})
 	add := func(c candidateEntry, nameOrRelease string) {
 		if sameInstance && c.hash == sourceHash {
 			return
 		}
 		key := cacheKeyForTorrentFiles(c.instanceID, c.hash)
-		if p, ok := byKey[key]; ok {
-			if p.nameOrRelease == "" {
-				p.nameOrRelease = nameOrRelease
-			}
+		if _, ok := picked[key]; ok {
 			return
 		}
-		p := &candidatePick{entry: c, nameOrRelease: nameOrRelease}
-		byKey[key] = p
-		picks = append(picks, p)
+		picked[key] = struct{}{}
+		picks = append(picks, &candidatePick{entry: c, nameOrRelease: nameOrRelease})
 	}
 
 	name := normalizeLowerTrim(source.Name)
@@ -478,22 +577,6 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 			)
 			if match {
 				add(c.candidateEntry, matchTypeRelease)
-			}
-		}
-	}
-
-	contentPath := normalizePathForComparison(source.ContentPath)
-	savePath := normalizePathForComparison(source.SavePath)
-	sourceAmbiguous := contentPath != "" && contentPath == savePath
-	if contentPath != "" && !sourceAmbiguous {
-		for _, c := range idx.byContentPath[contentPath] {
-			add(c, "")
-		}
-	}
-	if savePath != "" {
-		for _, c := range idx.bySavePath[savePath] {
-			if sourceAmbiguous || c.ambiguous {
-				add(c, "")
 			}
 		}
 	}
@@ -562,6 +645,7 @@ func (s *Service) classifyCandidates(
 	}
 
 	slices.Sort(result.memberTags)
+	slices.Sort(result.content)
 	return result
 }
 

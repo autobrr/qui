@@ -15,16 +15,20 @@ import (
 
 // sameDataFiles holds the files of a torrent that decide whether another
 // torrent holds the same data. Files that search ignores (nfo, srt, samples,
-// and the rest of the ignore list) are left out.
+// and the rest of the ignore list) are left out, unless every file is on the
+// ignore list, as for a movie named Proof.
 type sameDataFiles struct {
 	paths map[string]struct{} // save path joined with the file name, normalized
 	sizes []int64             // sorted
 }
 
 func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) sameDataFiles {
+	allIgnored := !slices.ContainsFunc(files, func(file qbt.TorrentFile) bool {
+		return !shouldIgnoreFile(file.Name, normalizer)
+	})
 	data := sameDataFiles{paths: make(map[string]struct{}, len(files))}
 	for _, file := range files {
-		if shouldIgnoreFile(file.Name, normalizer) {
+		if !allIgnored && shouldIgnoreFile(file.Name, normalizer) {
 			continue
 		}
 		if savePath != "" {

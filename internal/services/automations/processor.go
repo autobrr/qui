@@ -890,14 +890,12 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// Fall back to cross-seed group dedupe
 	key := crossSeeds.key(torrent)
 
-	// If the torrent is a cross-seed of a torrent that has already been counted, we don't count it again
-	if _, ok := evalCtx.FilesToClear[key]; ok {
-		return
+	// Members of a group can hold different files, for example an episode and
+	// the season pack that holds it. Count the largest member once.
+	if counted := evalCtx.FilesToClear[key]; torrent.Size > counted {
+		evalCtx.SpaceToClear += torrent.Size - counted
+		evalCtx.FilesToClear[key] = torrent.Size
 	}
-
-	// This is a new torrent, so we add the file size to the cumulative space to clear
-	evalCtx.SpaceToClear += torrent.Size
-	evalCtx.FilesToClear[key] = struct{}{}
 }
 
 func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) {

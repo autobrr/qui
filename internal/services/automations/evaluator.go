@@ -41,8 +41,8 @@ type FreeSpaceSourceState struct {
 	FreeSpace int64
 	// SpaceToClear is the cumulative disk space that will be freed by deletions.
 	SpaceToClear int64
-	// FilesToClear tracks cross-seed group keys already counted to avoid double-counting.
-	FilesToClear map[string]struct{}
+	// FilesToClear holds the largest size counted for each cross-seed group key, to avoid double-counting.
+	FilesToClear map[string]int64
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
 	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
@@ -75,8 +75,8 @@ type EvalContext struct {
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
 	SpaceToClear int64
-	// FilesToClear holds the cross-seed group keys already counted by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
-	FilesToClear map[string]struct{}
+	// FilesToClear holds the largest size counted for each cross-seed group key by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
+	FilesToClear map[string]int64
 	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
 	CrossSeedFilesByHash map[string]qbt.TorrentFiles
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).

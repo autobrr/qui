@@ -989,7 +989,7 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 		return fmt.Errorf("failed to get free space: %w", err)
 	}
 	evalCtx.FreeSpace = freeSpace
-	evalCtx.FilesToClear = make(map[string]struct{})
+	evalCtx.FilesToClear = make(map[string]int64)
 	if ruleUsesIncludeCrossSeedsFreeSpace(rule) {
 		evalCtx.CrossSeedHashesToClear = make(map[string]struct{})
 	}
@@ -1988,7 +1988,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			state := &FreeSpaceSourceState{
 				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
 				SpaceToClear:              0,
-				FilesToClear:              make(map[string]struct{}),
+				FilesToClear:              make(map[string]int64),
 				HardlinkSignaturesToClear: make(map[string]struct{}),
 			}
 			if ruleUsesIncludeCrossSeedsFreeSpace(r) {

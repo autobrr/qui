@@ -783,7 +783,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("adds size for non-cross-seed torrent with deleteWithFiles", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		// A torrent without a cross-seed is a group of its own.
@@ -803,7 +803,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("adds size for first torrent with valid cross-seed key", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		torrent := qbt.Torrent{
@@ -822,7 +822,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("does not double-count cross-seed torrents", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		// First torrent
@@ -850,10 +850,24 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		require.Len(t, evalCtx.FilesToClear, 1)
 	})
 
+	t.Run("counts the largest member of a group that holds different files", func(t *testing.T) {
+		evalCtx := &EvalContext{FilesToClear: make(map[string]int64)}
+		episode := qbt.Torrent{Hash: "ep", Size: 1000, ContentPath: "/data/Pack/ep1.mkv", SavePath: "/data/Pack"}
+		pack := qbt.Torrent{Hash: "pack", Size: 2000, ContentPath: "/data/Pack", SavePath: "/data"}
+		groups := buildCrossSeedGroups([]qbt.Torrent{episode, pack}, &EvalContext{
+			SameInstanceContentByHash: map[string][]string{"ep": {"pack"}, "pack": {"ep"}},
+		})
+
+		updateCumulativeFreeSpaceCleared(episode, evalCtx, DeleteModeWithFiles, groups)
+		updateCumulativeFreeSpaceCleared(pack, evalCtx, DeleteModeWithFiles, groups)
+
+		require.Equal(t, int64(2000), evalCtx.SpaceToClear, "the pack holds the episode file")
+	})
+
 	t.Run("counts different content paths separately", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		torrent1 := qbt.Torrent{
@@ -893,7 +907,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("does not add size for DeleteModeKeepFiles", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		torrent := qbt.Torrent{
@@ -913,7 +927,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("does not add size for preserve-cross-seeds mode when cross-seeds exist", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		// Two torrents resolve to the same file and are cross-seeds.
@@ -948,7 +962,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("adds size for preserve-cross-seeds mode when no cross-seeds exist", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 		}
 
 		// Only one torrent - no cross-seeds
@@ -974,7 +988,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		// (they share the same physical files via hardlinks)
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 			DeleteSafeHardlinkSignatureByHash: map[string]string{
 				"abc123": "fileID1;fileID2", // Same signature = same physical files
 				"def456": "fileID1;fileID2",
@@ -1011,7 +1025,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		// not fall through to cross-seed key dedupe
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 			DeleteSafeHardlinkSignatureByHash: map[string]string{
 				"abc123": "fileID1;fileID2",
 			},
@@ -1039,7 +1053,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		// Mix of torrents: some with hardlink signatures, some without
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 			DeleteSafeHardlinkSignatureByHash: map[string]string{
 				"abc123": "fileID1;fileID2",
 				// def456 has no signature
@@ -1077,7 +1091,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		// even if the delete-safe signature map is set (falls through to cross-seed key dedupe)
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 			DeleteSafeHardlinkSignatureByHash: map[string]string{
 				"abc123": "fileID1;fileID2",
 				"def456": "fileID1;fileID2", // Same signature
@@ -1114,7 +1128,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("grouping signatures remain available while delete-safe dedupe runs", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
-			FilesToClear: make(map[string]struct{}),
+			FilesToClear: make(map[string]int64),
 			HardlinkSignatureByHash: map[string]string{
 				"abc123": "grouping-sig",
 			},
@@ -1177,7 +1191,7 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 	evalCtx := &EvalContext{
 		FreeSpace:    10000000000, // 10GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	err := SortTorrents(torrents, nil, evalCtx)
@@ -1241,7 +1255,7 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	evalCtx := &EvalContext{
 		FreeSpace:    10000000000, // 10GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
@@ -1316,7 +1330,7 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
 				},
 			}
 			evalCtx := &EvalContext{
-				FilesToClear:           make(map[string]struct{}),
+				FilesToClear:           make(map[string]int64),
 				CrossSeedHashesToClear: make(map[string]struct{}),
 				CrossSeedFilesByHash:   tc.sharedFiles,
 			}
@@ -1357,7 +1371,7 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *tes
 		},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear:           make(map[string]struct{}),
+		FilesToClear:           make(map[string]int64),
 		CrossSeedHashesToClear: make(map[string]struct{}),
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {
@@ -1412,7 +1426,7 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 	evalCtx := &EvalContext{
 		FreeSpace:    5000000000, // 5GB - need 10GB more to reach 15GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	err := SortTorrents(torrents, nil, evalCtx)
@@ -1459,7 +1473,7 @@ func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
 	evalCtx := &EvalContext{
 		FreeSpace:    5000000000, // 5GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	err := SortTorrents(torrents, nil, evalCtx)
@@ -1542,7 +1556,7 @@ func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
 	evalCtx := &EvalContext{
 		FreeSpace:    10000000000, // 10GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 	}
 
 	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
@@ -1602,7 +1616,7 @@ func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFil
 	evalCtx := &EvalContext{
 		FreeSpace:    10000000000, // 10GB
 		SpaceToClear: 0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {{Name: "movie/main.mkv", Size: 30000000000}},
 			"b": {{Name: "movie/main.mkv", Size: 30000000000}},
@@ -1648,7 +1662,7 @@ func TestProcessTorrents_PreserveCrossSeedsCountsUnrelatedSharedPath(t *testing.
 	}
 	evalCtx := &EvalContext{
 		FreeSpace:    0,
-		FilesToClear: make(map[string]struct{}),
+		FilesToClear: make(map[string]int64),
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {{Name: "Season 02/Silver Lantern - 01.mkv", Size: torrentSize}},
 			"b": {{Name: "Season 02/Paper Crane - 01.mkv", Size: torrentSize}},
@@ -2634,7 +2648,7 @@ func extraFilesCrossSeedPair() ([]qbt.Torrent, *EvalContext) {
 			SavePath: "/data/movies", ContentPath: "/data/movies"},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear:              make(map[string]struct{}),
+		FilesToClear:              make(map[string]int64),
 		SameInstanceContentByHash: map[string][]string{"single": {"folder"}, "folder": {"single"}},
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"single": {{Name: "Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", Size: 1000}},

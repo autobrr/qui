@@ -167,6 +167,37 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 		require.Empty(t, result.SameInstanceExists)
 	})
 
+	t.Run("a torrent without a subfolder inside another torrent's folder shares the file", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", "Harbor.Watch.S02.1080p.WEB.h264-GRP", "/data", "/data/Season2",
+				cmFile("Season2/"+cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/Season2", "/data/Season2",
+				cmFile(cmEpisodeFile, 1000)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	t.Run("an unreadable torrent in a flat folder counts as sharing files", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", cmEpisode, "/data/flat", "/data/flat/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
+			crossMatchTorrent(1, "bbb", "Quiet.Coast.2020.720p.BluRay.x264-OTHER", "/data/flat", "/data/flat", nil),
+		)
+		require.Empty(t, result.SameInstanceExists)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+	})
+
+	const proof = "Proof.2005.1080p.BluRay.x264-GRP"
+	t.Run("a torrent whose every file is on the ignore list compares all its files", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", "Proof 2005 rehost", "/data/movies", "/data/movies",
+				qbt.TorrentFiles{{Name: proof + ".mkv", Size: 1000}, {Name: proof + ".nfo", Size: 2}}),
+			crossMatchTorrent(1, "ccc", proof, "/data/other", "/data/other/"+proof+".mkv", cmFile(proof+".mkv", 1100)),
+		)
+		require.Equal(t, map[string][]string{"aaa": {"bbb"}, "bbb": {"aaa"}}, result.SameInstanceContentByHash)
+		require.NotContains(t, result.SameInstanceExists, "ccc", "a copy with other file sizes is not a cross-seed")
+	})
+
 	t.Run("an unreadable candidate counts as sharing files for grouping only", func(t *testing.T) {
 		result := buildCrossMatch(t, sameNeeds,
 			crossMatchTorrent(1, "aaa", cmEpisode, "/data/tv", "/data/tv/"+cmEpisodeFile, cmFile(cmEpisodeFile, 1000)),
