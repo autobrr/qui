@@ -39,7 +39,7 @@ End every comment with a hidden marker on its own line. The marker names the out
 <!-- qui-triage:<outcome> -->
 ```
 
-The outcomes are `needs-info`, `pending-duplicate`, `duplicate`, `already-implemented`, `already-fixed`, `out-of-scope`, `external-bug`, `ready-for-agent`, `ready-for-human`, and `log-handoff`. The daily sweep writes `duplicate` and `stale` in the comments that it posts.
+The outcomes are `needs-info`, `pending-duplicate`, `duplicate`, `already-implemented`, `already-fixed`, `out-of-scope`, `external-bug`, `ready-for-agent`, `ready-for-human`, and `log-handoff`. The daily sweep writes `duplicate` and `stale` in the comments that it posts. When a triage run stops at its $5 budget before it applies an outcome, the workflow adds `ready-for-human` and posts a comment that ends with `budget-stop`.
 
 Only a local session writes `.out-of-scope/`, when a human rejects a request on scope.
 
