@@ -141,6 +141,7 @@ The fix has a design question if one of these is true:
 - The fix needs a domain term that `GLOSSARY.md` does not define, or it uses a glossary term with a different meaning.
 - The same fault can happen through more than one caller, and no module owns the broken behavior. The fix then adds the same guard in each caller, or it needs a new shared module.
 - The fix moves behavior from one module to another.
+- The bug comes from state flags that can contradict each other, or from an event that is handled in a state where it is not allowed, and the fix adds one more flag or guard. Ask whether the state belongs in a pure reducer or a state machine.
 
 In a local session, settle the design question with the maintainer. Then continue with `ready-for-agent`.
 
