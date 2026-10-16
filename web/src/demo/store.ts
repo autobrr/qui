@@ -542,12 +542,12 @@ export const PREFERENCE_VIEW: PreferenceField[] = [
   { key: "save_path", value: "/data/torrents", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
   { key: "temp_path_enabled", value: false, tab: "downloads", section: "savingManagement", control: "switch" },
   { key: "temp_path", value: "/data/incomplete", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete", dependsOn: "temp_path_enabled" },
-  { key: "excluded_file_names_enabled", value: false, tab: "downloads", section: "excludedFileNames", control: "switch", readOnly: true, reason: "pending Downloads PR" },
-  { key: "excluded_file_names", value: "", tab: "downloads", section: "excludedFileNames", control: "list", dependsOn: "excluded_file_names_enabled", readOnly: true, reason: "pending Downloads PR" },
+  { key: "excluded_file_names_enabled", value: false, tab: "downloads", section: "excludedFileNames", control: "switch", readOnly: true },
+  { key: "excluded_file_names", value: "", tab: "downloads", section: "excludedFileNames", control: "list", dependsOn: "excluded_file_names_enabled", readOnly: true },
   { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
   { key: "queueing_enabled", value: true, tab: "bittorrent", section: "queueing", control: "switch" },
-  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true, reason: "pending BitTorrent PR" },
-  { key: "add_trackers", value: "", tab: "bittorrent", section: "autoAddTrackers", control: "list", dependsOn: "add_trackers_enabled", readOnly: true, reason: "pending BitTorrent PR" },
+  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true },
+  { key: "add_trackers", value: "", tab: "bittorrent", section: "autoAddTrackers", control: "list", dependsOn: "add_trackers_enabled", readOnly: true },
 ]
 
 export const CAPABILITIES: InstanceCapabilities = {

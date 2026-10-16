@@ -23,8 +23,8 @@ const shownKeysPath = "../../../web/src/lib/preference-catalog-keys.json"
 func appPreferencesKeys() []string {
 	var keys []string
 	typ := reflect.TypeFor[qbt.AppPreferences]()
-	for i := range typ.NumField() {
-		if key, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ","); key != "" && key != "-" {
+	for field := range typ.Fields() {
+		if key, _, _ := strings.Cut(field.Tag.Get("json"), ","); key != "" && key != "-" {
 			keys = append(keys, key)
 		}
 	}
