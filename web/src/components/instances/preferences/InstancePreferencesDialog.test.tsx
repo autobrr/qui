@@ -1,0 +1,242 @@
+/*
+ * Copyright (c) 2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { HttpResponse, http } from "msw"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { TooltipProvider } from "@/components/ui/tooltip"
+import "@/i18n"
+import { server } from "@/test/msw/server"
+import type { PreferenceField } from "@/types"
+
+import { InstancePreferencesDialog } from "./InstancePreferencesDialog"
+
+const { toast, i18n, instances } = vi.hoisted(() => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+  i18n: { t: (key: string) => key },
+  instances: {
+    instances: [{ id: 1, name: "qbit", isActive: true }],
+    deleteInstance: () => {},
+    setInstanceStatus: () => {},
+    isDeleting: false,
+    isUpdatingStatus: false,
+    updatingStatusId: undefined,
+  },
+}))
+
+vi.mock("sonner", () => ({ toast }))
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
+  useTranslation: () => i18n,
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+}))
+vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
+vi.mock("./InstanceSettingsPanel", () => ({ InstanceSettingsPanel: () => null }))
+
+// Radix Switch sizes its hidden form input through ResizeObserver, which jsdom lacks.
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  vi.clearAllMocks()
+})
+
+const view: PreferenceField[] = [
+  { key: "save_path", value: "/data", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
+  { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
+  { key: "up_limit", value: 2048, tab: "speed", section: "globalRateLimits", control: "number", wireUnit: "B/s", displayUnit: "KiB/s" },
+  { key: "dl_limit", value: 0, tab: "speed", section: "globalRateLimits", control: "number", wireUnit: "B/s", displayUnit: "KiB/s" },
+  { key: "dht", value: true, tab: "bittorrent", section: "privacy", control: "switch" },
+  { key: "max_ratio_enabled", value: false, tab: "bittorrent", section: "seedingLimits", control: "switch" },
+  { key: "max_ratio", value: 2, tab: "bittorrent", section: "seedingLimits", control: "number", dependsOn: "max_ratio_enabled" },
+  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true, reason: "pending BitTorrent PR" },
+  { key: "rss_processing_enabled", value: true, tab: "rss", section: "reader", control: "switch" },
+  { key: "disk_queue_size", value: 1048576, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
+  { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
+]
+
+function serveView(fields: PreferenceField[] = view) {
+  server.use(http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)))
+}
+
+// Records the body of each save and answers with the view.
+function recordSaves() {
+  const bodies: Record<string, unknown>[] = []
+  server.use(http.patch("*/api/instances/1/preferences", async ({ request }) => {
+    bodies.push(await request.json() as Record<string, unknown>)
+    return HttpResponse.json(view)
+  }))
+  return bodies
+}
+
+// The input that a field label points at.
+async function fieldFor(labelKey: string) {
+  return document.getElementById((await screen.findByText(labelKey)).closest("label")!.htmlFor) as HTMLInputElement
+}
+
+function save() {
+  fireEvent.click(screen.getByRole("button", { name: "preferences.common.saveChanges" }))
+}
+
+function renderDialog(defaultTab?: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const result = render(
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <InstancePreferencesDialog open onOpenChange={() => {}} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  return { ...result, queryClient }
+}
+
+describe("InstancePreferencesDialog", () => {
+  it("shows the Instance tab, then the qBittorrent tabs that have fields, in the qBittorrent order", async () => {
+    serveView()
+
+    renderDialog()
+
+    await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
+    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual([
+      "preferences.dialog.tabs.instance",
+      "preferences.dialog.tabs.downloads",
+      "preferences.dialog.tabs.connection",
+      "preferences.dialog.tabs.speed",
+      "preferences.dialog.tabs.bittorrent",
+      "preferences.dialog.tabs.rss",
+      "preferences.dialog.tabs.advanced",
+    ])
+  })
+
+  it("shows the rate limits in KiB/s and 0 as unlimited", async () => {
+    serveView()
+
+    renderDialog("speed")
+
+    const upload = await fieldFor("preferences.speedLimits.uploadLimit")
+    const download = await fieldFor("preferences.speedLimits.downloadLimit")
+    expect(upload.value).toBe("2")
+    expect(upload.nextElementSibling?.textContent).toBe("KiB/s")
+    expect(download.value).toBe("")
+    expect(download.placeholder).toBe("common:numberInput.unlimited")
+  })
+
+  it("shows a size in bytes in KiB", async () => {
+    serveView()
+
+    renderDialog("advanced")
+
+    const queueSize = await fieldFor("preferences.advancedNetwork.diskQueueSize")
+    expect(queueSize.value).toBe("1024")
+    expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
+  })
+
+  it("shows a read-only field disabled, with its note", async () => {
+    serveView()
+
+    renderDialog("bittorrent")
+
+    const field = await fieldFor("preferences.fields.addTrackersEnabled")
+    expect(field.disabled).toBe(true)
+    expect(screen.getAllByText("preferences.readOnlyNote")).toHaveLength(1)
+  })
+
+  it("enables a dependent field only while its switch is on", async () => {
+    serveView()
+
+    renderDialog("bittorrent")
+
+    const ratio = await fieldFor("preferences.seedingLimits.maxShareRatio")
+    expect(ratio.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.seedingLimits.enableShareRatioLimit"))
+    expect(ratio.disabled).toBe(false)
+  })
+
+  it("sends only the changed keys, in the wire unit", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("speed")
+
+    fireEvent.change(await fieldFor("preferences.speedLimits.uploadLimit"), { target: { value: "3" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ up_limit: 3072 }])
+  })
+
+  it("sends no request when nothing changed", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("speed")
+
+    await fieldFor("preferences.speedLimits.uploadLimit")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
+  })
+
+  it("sends a key that is changed back after a save", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const dht = await fieldFor("preferences.networkDiscovery.enableDht")
+    fireEvent.click(dht)
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    fireEvent.click(dht)
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(2))
+    expect(bodies).toEqual([{ dht: false }, { dht: true }])
+  })
+
+  it("shows an error toast and keeps the edit when the save fails", async () => {
+    server.use(http.patch("*/api/instances/1/preferences", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+    serveView()
+    renderDialog("bittorrent")
+
+    const dht = await fieldFor("preferences.networkDiscovery.enableDht")
+    fireEvent.click(dht)
+    save()
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("preferences.toast.saveFailed"))
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(dht.getAttribute("aria-checked")).toBe("false")
+  })
+
+  it("keeps its starting values and the edits when the view refreshes", async () => {
+    serveView()
+    const { queryClient } = renderDialog("bittorrent")
+
+    fireEvent.click(await fieldFor("preferences.seedingLimits.enableShareRatioLimit"))
+    serveView(view.map(field => field.key === "dht" || field.key === "max_ratio_enabled" ? { ...field, value: !field.value } : field))
+    await queryClient.refetchQueries({ queryKey: ["instance-preference-view", 1] })
+
+    expect((await fieldFor("preferences.seedingLimits.enableShareRatioLimit")).getAttribute("aria-checked")).toBe("true")
+    expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("sends scan_dirs when one watch folder changes", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("downloads")
+
+    const [first] = await screen.findAllByPlaceholderText("preferences.fileManagement.watchFolders.monitoredFolderPlaceholder")
+    fireEvent.change(first, { target: { value: "/watch/c" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ scan_dirs: { "/watch/c": 0, "/watch/b": 1 } }])
+  })
+})

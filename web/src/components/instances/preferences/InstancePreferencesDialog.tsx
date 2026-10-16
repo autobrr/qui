@@ -26,76 +26,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { cn } from "@/lib/utils"
-import type { Instance } from "@/types"
-import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, RefreshCw, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
-import { Component, lazy, Suspense, useCallback, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
+import type { Instance, PreferenceField } from "@/types"
+import { Cog, Download, Gauge, Globe, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
+import { useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// Lazy load tab content components - only Instance tab is eagerly loaded
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
+import { preferenceTabLabels } from "./labels"
+import { PreferencesForm } from "./PreferencesForm"
+import { preferenceTabsOf, usePreferenceView } from "./preferenceView"
 
-/** Loading fallback for lazy-loaded tab content */
-function TabLoadingFallback() {
-  const { t } = useTranslation("instances")
-  return (
-    <div className="flex items-center justify-center py-12" role="status" aria-live="polite">
-      <div className="text-sm text-muted-foreground">{t("preferences.dialog.loadingFallback")}</div>
-    </div>
-  )
-}
-
-/** Error fallback for lazy-loaded tab content */
-function TabErrorFallback({ onRetry }: { onRetry: () => void }) {
-  const { t } = useTranslation("instances")
-  return (
-    <div className="flex flex-col items-center justify-center py-12 gap-4" role="alert">
-      <p className="text-sm text-muted-foreground">{t("preferences.dialog.errorFallback")}</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw className="mr-2 h-4 w-4" />
-        {t("preferences.dialog.retry")}
-      </Button>
-    </div>
-  )
-}
-
-/** Error boundary for lazy-loaded tab content */
-interface TabErrorBoundaryProps {
-  children: ReactNode
-  onRetry?: () => void
-}
-
-interface TabErrorBoundaryState {
-  hasError: boolean
-}
-
-class TabErrorBoundary extends Component<TabErrorBoundaryProps, TabErrorBoundaryState> {
-  constructor(props: TabErrorBoundaryProps) {
-    super(props)
-    this.state = { hasError: false }
-  }
-
-  static getDerivedStateFromError(): TabErrorBoundaryState {
-    return { hasError: true }
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Tab content failed to load:", error, errorInfo)
-  }
-
-  handleRetry = () => {
-    this.setState({ hasError: false })
-    this.props.onRetry?.()
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <TabErrorFallback onRetry={this.handleRetry} />
-    }
-
-    return this.props.children
-  }
+const TAB_ICONS: Record<PreferenceField["tab"], LucideIcon> = {
+  behavior: SlidersHorizontal,
+  downloads: Download,
+  connection: Wifi,
+  speed: Gauge,
+  bittorrent: Radar,
+  rss: Rss,
+  webui: Globe,
+  advanced: Settings,
 }
 
 interface InstancePreferencesDialogProps {
@@ -107,26 +58,66 @@ interface InstancePreferencesDialogProps {
   defaultTab?: string
 }
 
-interface PreferencesTabSectionProps {
-  value: string
-  title: string
-  description: string
-  children: ReactNode
-}
+// Mounts with the dialog content, so that the view is fetched each time the dialog opens.
+function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: number; instance?: Instance; defaultTab?: string }) {
+  const { t } = useTranslation("instances")
+  const view = usePreferenceView(instanceId)
+  // Seeded only from a view fetched after the dialog opened, so that it does not start from an old cache.
+  const fields = view.isFetchedAfterMount ? view.data : undefined
+  const tabs = fields ? preferenceTabsOf(fields) : []
 
-function PreferencesTabSection({ value, title, description, children }: PreferencesTabSectionProps) {
   return (
-    <TabsContent value={value} className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="space-y-1 mb-6 shrink-0">
-        <h3 className="text-lg font-medium">{title}</h3>
-        <p className="text-sm text-muted-foreground">
-          {description}
-        </p>
+    <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
+      <div className="relative shrink-0">
+        <TabsList className="flex w-full justify-start overflow-x-auto h-11 sm:h-9">
+          <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
+            <Server className="h-4 w-4" />
+            <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.instance")}</span>
+          </TabsTrigger>
+          <div className="h-6 w-px bg-muted-foreground/50 mx-1 sm:mx-2 self-center shrink-0" />
+          {tabs.map(tab => {
+            const Icon = TAB_ICONS[tab]
+            return (
+              <TabsTrigger key={tab} value={tab} className="flex items-center gap-1.5 shrink-0">
+                <Icon className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">{t(preferenceTabLabels[tab].labelKey)}</span>
+              </TabsTrigger>
+            )
+          })}
+          {!fields && (view.isError ? (
+            <span className="flex shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground sm:text-sm" role="alert">
+              {t("preferences.dialog.errorFallback")}
+              <Button variant="ghost" size="sm" onClick={() => view.refetch()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {t("preferences.dialog.retry")}
+              </Button>
+            </span>
+          ) : (
+            <span className="shrink-0 px-2 text-xs text-muted-foreground sm:text-sm" role="status">
+              {t("preferences.dialog.loadingFallback")}
+            </span>
+          ))}
+        </TabsList>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {children}
-      </div>
-    </TabsContent>
+
+      <TabsContent value="instance" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="space-y-1 mb-6 shrink-0">
+          <h3 className="text-lg font-medium">{t("preferences.dialog.sections.instanceConfig.title")}</h3>
+          <p className="text-sm text-muted-foreground">{t("preferences.dialog.sections.instanceConfig.description")}</p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {instance ? (
+            <InstanceSettingsPanel instance={instance} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              {t("preferences.dialog.instanceNotAvailable")}
+            </p>
+          )}
+        </div>
+      </TabsContent>
+
+      {fields && <PreferencesForm key={instanceId} instanceId={instanceId} fields={fields} />}
+    </Tabs>
   )
 }
 
@@ -150,46 +141,6 @@ export function InstancePreferencesDialog({
   const currentInstance = instances?.find(i => i.id === instanceId) ?? instance
   const displayInstanceName = currentInstance?.name ?? instanceName
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [lazyRetryKey, setLazyRetryKey] = useState(0)
-
-  const handleLazyRetry = useCallback(() => {
-    setLazyRetryKey((prev) => prev + 1)
-  }, [])
-
-  const SpeedLimitsForm = useMemo(
-    () => lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm }))),
-    [lazyRetryKey]
-  )
-  const QueueManagementForm = useMemo(
-    () => lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm }))),
-    [lazyRetryKey]
-  )
-  const FileManagementForm = useMemo(
-    () => lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm }))),
-    [lazyRetryKey]
-  )
-  const SeedingLimitsForm = useMemo(
-    () => lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm }))),
-    [lazyRetryKey]
-  )
-  const ConnectionSettingsForm = useMemo(
-    () => lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm }))),
-    [lazyRetryKey]
-  )
-  const NetworkDiscoveryForm = useMemo(
-    () => lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm }))),
-    [lazyRetryKey]
-  )
-  const AdvancedNetworkForm = useMemo(
-    () => lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm }))),
-    [lazyRetryKey]
-  )
-
-  const handleSuccess = () => {
-    // Keep dialog open after successful updates
-    // Users might want to configure multiple sections
-  }
-
   const handleDeleted = () => {
     // Close dialog when instance is deleted
     onOpenChange(false)
@@ -279,144 +230,7 @@ export function InstancePreferencesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
-            <div className="relative shrink-0">
-              <TabsList className="flex w-full justify-start overflow-x-auto h-11 sm:h-9">
-                <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
-                  <Server className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.instance")}</span>
-                </TabsTrigger>
-                <div className="h-6 w-px bg-muted-foreground/50 mx-1 sm:mx-2 self-center shrink-0" />
-                <TabsTrigger value="speed" className="flex items-center gap-1.5 shrink-0">
-                  <Gauge className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.speed")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="queue" className="flex items-center gap-1.5 shrink-0">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.queue")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="files" className="flex items-center gap-1.5 shrink-0">
-                  <Folder className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.files")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="seeding" className="flex items-center gap-1.5 shrink-0">
-                  <Upload className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.seeding")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="connection" className="flex items-center gap-1.5 shrink-0">
-                  <Wifi className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.connection")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="discovery" className="flex items-center gap-1.5 shrink-0">
-                  <Radar className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.discovery")}</span>
-                </TabsTrigger>
-                <TabsTrigger value="advanced" className="flex items-center gap-1.5 shrink-0">
-                  <Settings className="h-4 w-4" />
-                  <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.advanced")}</span>
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <PreferencesTabSection
-              value="instance"
-              title={t("preferences.dialog.sections.instanceConfig.title")}
-              description={t("preferences.dialog.sections.instanceConfig.description")}
-            >
-              {currentInstance ? (
-                <InstanceSettingsPanel instance={currentInstance} onSuccess={handleSuccess} />
-              ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">
-                  {t("preferences.dialog.instanceNotAvailable")}
-                </p>
-              )}
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="speed"
-              title={t("preferences.dialog.sections.speedLimits.title")}
-              description={t("preferences.dialog.sections.speedLimits.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="queue"
-              title={t("preferences.dialog.sections.queueManagement.title")}
-              description={t("preferences.dialog.sections.queueManagement.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="files"
-              title={t("preferences.dialog.sections.fileManagement.title")}
-              description={t("preferences.dialog.sections.fileManagement.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="seeding"
-              title={t("preferences.dialog.sections.seedingLimits.title")}
-              description={t("preferences.dialog.sections.seedingLimits.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="connection"
-              title={t("preferences.dialog.sections.connectionSettings.title")}
-              description={t("preferences.dialog.sections.connectionSettings.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="discovery"
-              title={t("preferences.dialog.sections.networkDiscovery.title")}
-              description={t("preferences.dialog.sections.networkDiscovery.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-            <PreferencesTabSection
-              value="advanced"
-              title={t("preferences.dialog.sections.advancedSettings.title")}
-              description={t("preferences.dialog.sections.advancedSettings.description")}
-            >
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
-            </PreferencesTabSection>
-
-          </Tabs>
+          <PreferenceTabs instanceId={instanceId} instance={currentInstance} defaultTab={defaultTab} />
         </DialogContent>
       </Dialog>
 

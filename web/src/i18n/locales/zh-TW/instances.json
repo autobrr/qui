@@ -144,45 +144,24 @@
       "tabs": {
         "instance": "實例",
         "speed": "速度",
-        "queue": "佇列",
-        "files": "檔案",
-        "seeding": "做種",
         "connection": "連線",
-        "discovery": "發現",
-        "advanced": "進階"
+        "advanced": "進階",
+        "behavior": "行為",
+        "downloads": "下載",
+        "bittorrent": "BitTorrent",
+        "rss": "RSS",
+        "webui": "WebUI"
       },
       "sections": {
         "instanceConfig": {
           "title": "實例配置",
           "description": "配置連線設定、認證和存取選項"
         },
-        "speedLimits": {
-          "title": "速度限制",
-          "description": "配置下載和上傳速度限制"
-        },
         "queueManagement": {
-          "title": "佇列管理",
-          "description": "配置種子佇列設定和活躍種子限制"
-        },
-        "fileManagement": {
-          "title": "檔案管理",
-          "description": "配置檔案路徑和種子管理設定"
+          "title": "佇列管理"
         },
         "seedingLimits": {
-          "title": "做種限制",
-          "description": "配置分享率和做種時間限制"
-        },
-        "connectionSettings": {
-          "title": "連線設定",
-          "description": "配置監聽連接埠、協議設定和連線限制"
-        },
-        "networkDiscovery": {
-          "title": "網路發現",
-          "description": "配置節點發現協議和 Tracker 設定"
-        },
-        "advancedSettings": {
-          "title": "進階設定",
-          "description": "效能調優、磁碟 I/O、節點管理和安全設定"
+          "title": "做種限制"
         }
       }
     },
@@ -227,15 +206,11 @@
       "saving": "儲存中..."
     },
     "speedLimits": {
-      "loading": "正在載入速度限制...",
-      "loadFailed": "載入偏好設定失敗",
       "downloadLimit": "下載限制",
       "uploadLimit": "上傳限制",
       "altDownloadLimit": "備用下載限制",
       "altUploadLimit": "備用上傳限制",
       "scheduleAltLimits": "排程使用備用速率限制",
-      "from": "從：",
-      "to": "到：",
       "when": "時間：",
       "everyDay": "每天",
       "everyWeekday": "每個工作日",
@@ -246,28 +221,9 @@
       "thursday": "週四",
       "friday": "週五",
       "saturday": "週六",
-      "sunday": "週日",
-      "start": "開始",
-      "end": "結束",
-      "timeLabel": "{{label}}時間",
-      "hourLabel": "{{label}}小時（0-23）",
-      "minuteLabel": "{{label}}分鐘（0-59）",
-      "unlimitedPlaceholder": "0（無限制）",
-      "rateUnit": "MiB/s",
-      "validation": {
-        "downloadLimit": "全域下載速率限制必須大於 0 或已停用",
-        "uploadLimit": "全域上傳速率限制必須大於 0 或已停用",
-        "altDownloadLimit": "備用下載速率限制必須大於 0 或已停用",
-        "altUploadLimit": "備用上傳速率限制必須大於 0 或已停用"
-      },
-      "toast": {
-        "success": "速度限制更新成功",
-        "error": "速度限制更新失敗"
-      }
+      "sunday": "週日"
     },
     "queueManagement": {
-      "loading": "正在載入佇列設定...",
-      "loadFailed": "載入偏好設定失敗",
       "enableQueueing": "啟用佇列",
       "enableQueueingDescription": "限制活躍種子數量",
       "maxActiveDownloads": "最大活躍下載數",
@@ -280,25 +236,9 @@
       "maxCheckingTorrentsDescription": "同時檢查的種子最大數量",
       "dontCountSlowTorrents": "不計入慢速種子",
       "dontCountSlowTorrentsDescription": "慢速種子不計入上述活躍數量限制",
-      "slowTorrentDlRateThreshold": "下載速率閾值（KiB/s）",
-      "slowTorrentUlRateThreshold": "上傳速率閾值（KiB/s）",
-      "slowTorrentInactiveTimer": "種子不活躍計時（秒）",
-      "slowTorrentInactiveTimerDescription": "兩項速率需持續低於閾值多久才將種子視為慢速",
-      "validation": {
-        "maxActiveDownloads": "最大活躍下載數必須大於 -1",
-        "maxActiveUploads": "最大活躍上傳數必須大於 -1",
-        "maxActiveTorrents": "最大活躍種子數必須大於 -1"
-      },
-      "toast": {
-        "success": "佇列設定更新成功",
-        "error": "佇列設定更新失敗"
-      }
+      "slowTorrentInactiveTimerDescription": "兩項速率需持續低於閾值多久才將種子視為慢速"
     },
     "fileManagement": {
-      "loading": "正在載入檔案管理設定...",
-      "loadFailed": "載入偏好設定失敗",
-      "saving": "儲存中...",
-      "saveChanges": "儲存更改",
       "autoTorrentManagement": "自動種子管理",
       "autoTorrentManagementDescription": "使用基於分類的路徑進行下載",
       "relocateOnCategoryChange": "分類變更時重定位",
@@ -331,9 +271,7 @@
       "runOnTorrentFinished": "種子完成時執行",
       "runOnTorrentFinishedDescription": "在種子下載完成時觸發",
       "command": "命令",
-      "selectContentLayout": "選擇內容佈局",
       "autorunProgramTip": "提示：用引號包裹佔位符，例如 \"%N\"，以保留空格。",
-      "autorunUnsupported": "需要 qBittorrent 4.5.0+（Web API {{minimum}}+）。此實例報告版本為 {{version}}。",
       "supportedPlaceholders": "支援的佔位符（區分大小寫）",
       "placeholderLabels": {
         "torrentName": "種子名稱",
@@ -365,39 +303,22 @@
         "customSavePathLabel": "自訂儲存路徑",
         "customSavePathPlaceholder": "foldername",
         "remove": "移除"
-      },
-      "toast": {
-        "success": "檔案管理設定更新成功",
-        "error": "檔案管理設定更新失敗"
       }
     },
     "seedingLimits": {
-      "loading": "正在載入做種限制...",
-      "loadFailed": "載入偏好設定失敗",
       "enableShareRatioLimit": "啟用分享率限制",
       "enableShareRatioLimitDescription": "達到分享率時停止做種",
       "maxShareRatio": "最大分享率",
       "maxShareRatioDescription": "達到此上傳/下載比率時停止做種",
       "enableSeedingTimeLimit": "啟用做種時間限制",
       "enableSeedingTimeLimitDescription": "指定時間後停止做種",
-      "maxSeedingTime": "最大做種時間（分鐘）",
-      "maxSeedingTimeDescription": "做種達到此分鐘數後停止",
-      "toast": {
-        "success": "做種限制更新成功",
-        "error": "做種限制更新失敗"
-      }
+      "maxSeedingTimeDescription": "做種達到此分鐘數後停止"
     },
     "connectionSettings": {
-      "loading": "正在載入連線設定...",
-      "versionWarningTitle": "版本資訊有限",
-      "versionWarningDescription": "我們無法確認此實例的 qBittorrent 構建詳情，因此顯示了所有連線選項。請在應用更改前仔細檢查適用性。",
       "listeningPort": "監聽連接埠",
       "portForIncoming": "入站連接埠",
       "portDescription": "用於 BitTorrent 入站連線的連接埠",
       "upnpLeaseDuration": "UPnP 租約時長（0 = 永久）",
-      "upnpLeaseDurationDescription": "UPnP 租約時長（分鐘）（0 為永久，僅限 libtorrent 2.x）",
-      "useRandomPort": "每次啟動時使用隨機連接埠",
-      "useRandomPortDescription": "qBittorrent 啟動時隨機選擇一個連接埠",
       "enableUpnp": "啟用 UPnP/NAT-PMP 連接埠轉發",
       "enableUpnpDescription": "透過路由器自動轉發連接埠",
       "protocolSettings": "協議設定",
@@ -407,15 +328,10 @@
       "protocolTcp": "TCP",
       "protocolUtp": "μTP",
       "utpTcpMixedMode": "μTP-TCP 混合模式",
-      "selectMode": "選擇模式",
       "utpTcpMixedModeDescription": "如何處理 μTP/TCP 混合連線",
       "preferTcp": "優先 TCP",
       "peerProportional": "按節點比例",
       "networkInterface": "網路介面",
-      "networkInterfaceReadOnly": "網路介面（唯讀）",
-      "networkInterfaceDescription": "目前活躍的網路介面。配置需要缺失的 API 端點。",
-      "interfaceIpAddress": "介面 IP 位址（唯讀）",
-      "interfaceIpAddressDescription": "目前介面的 IP 位址。配置需要缺失的 API 端點。",
       "autoDetect": "自動檢測",
       "reannounceOnIpChange": "IP 位址變更時重新向 Tracker 通報",
       "reannounceOnIpChangeDescription": "當 IP 位址變更時自動重新通報",
@@ -430,7 +346,6 @@
       "maxUploadSlotsPerTorrentDescription": "單個種子的最大上傳槽位",
       "allowMultiConnections": "允許來自同一 IP 位址的多個連線",
       "allowMultiConnectionsDescription": "允許同一 NAT 後的多個節點連線",
-      "outgoingPorts": "出站連接埠",
       "outgoingPortsMin": "出站連接埠（最小值）",
       "outgoingPortsMinDescription": "出站連線的最小連接埠（0 = 無限制）",
       "outgoingPortsMax": "出站連接埠（最大值）",
@@ -445,31 +360,15 @@
       "applyIpFilterToTrackersDescription": "根據 IP 過濾規則同時過濾 Tracker 連線",
       "bannedIps": "手動封鎖的 IP 位址",
       "bannedIpsPlaceholder": "輸入要封鎖的 IP 位址（每行一個）：\n192.168.1.100\n10.0.0.50\n2001:db8::1",
-      "bannedIpsDescription": "新增要永久封鎖連線的 IP 位址（每行一個）",
-      "validation": {
-        "listenPort": "入站連接埠必須在 0 到 65535 之間",
-        "maxConnections": "最大連線數限制必須大於 0 或已停用",
-        "maxConnectionsPerTorrent": "每個種子最大連線數限制必須大於 0 或已停用",
-        "maxUploadSlots": "全域上傳槽位數限制必須大於 0 或已停用",
-        "maxUploadSlotsPerTorrent": "每個種子最大上傳槽位數限制必須大於 0 或已停用",
-        "outgoingPortsMin": "出站連接埠範圍最小值必須在 0 到 65535 之間",
-        "outgoingPortsMax": "出站連接埠範圍最大值必須在 0 到 65535 之間"
-      },
-      "toast": {
-        "success": "連線設定更新成功",
-        "error": "連線設定更新失敗"
-      }
+      "bannedIpsDescription": "新增要永久封鎖連線的 IP 位址（每行一個）"
     },
     "networkDiscovery": {
-      "loading": "正在載入網路發現設定...",
-      "peerDiscovery": "節點發現",
       "enableDht": "啟用 DHT（去中心化網路）",
       "enableDhtDescription": "分散式雜湊表，用於在沒有 Tracker 的情況下發現節點",
       "enablePex": "啟用 PEX（節點交換）",
       "enablePexDescription": "與其他節點交換節點清單",
       "enableLsd": "啟用 LSD（本地服務發現）",
       "enableLsdDescription": "在本機網路中發現節點",
-      "trackerSettings": "Tracker 設定",
       "announceToAllTiers": "始終向所有層級通報",
       "announceToAllTiersDescription": "同時向所有 Tracker 層級通報",
       "announceToAllTrackers": "始終向層級中所有 Tracker 通報",
@@ -483,25 +382,14 @@
       "enableAnonymousMode": "啟用匿名模式",
       "enableAnonymousModeDescription": "隱藏用戶端識別和版本",
       "resolvePeerCountries": "解析節點所在國家",
-      "resolvePeerCountriesDescription": "顯示節點的國旗（需要額外頻寬）",
-      "toast": {
-        "success": "網路發現設定更新成功",
-        "error": "網路發現設定更新失敗"
-      }
+      "resolvePeerCountriesDescription": "顯示節點的國旗（需要額外頻寬）"
     },
     "advancedNetwork": {
-      "loading": "正在載入進階網路設定...",
-      "versionWarningTitle": "顯示所有進階選項",
-      "versionWarningDescription": "我們無法確定此實例的 qBittorrent 版本，因此顯示了所有進階設定。部分選項可能不適用於您的環境。",
-      "trackerSettings": "Tracker 設定",
       "announceIp": "向 Tracker 報告的 IP 位址（需要重新啟動）",
       "announceIpDescription": "向 Tracker 通報的 IP 位址（留空則自動檢測）",
-      "performanceOptimization": "效能最佳化",
       "limitUtpProtocol": "對 μTP 協議應用速率限制",
-      "limitUtpProtocolDescription": "限制 μTP 連線以防止泛洪區域網節點",
       "limitTcpOverhead": "對傳輸開銷應用速率限制",
       "limitTcpOverheadDescription": "在速率限制計算中包含協議開銷",
-      "limitUtpConnections": "對 μTP 連線應用速率限制",
       "limitUtpConnectionsDescription": "對 μTP 連線應用上傳/下載限制",
       "peerTosByte": "節點 ToS 位元組",
       "peerTosDescription": "節點連線的服務類型位元組",
@@ -519,7 +407,6 @@
       "sendBufferLowWatermarkDescription": "Socket 傳送緩衝區的下限水位線",
       "watermarkFactor": "水位線因子",
       "watermarkFactorDescription": "傳送緩衝區水位線因子百分比",
-      "diskIoMemory": "磁碟 I/O 和記憶體",
       "coalesceReadsWrites": "合併讀寫",
       "coalesceReadsWritesDescription": "合併相鄰的磁碟讀寫操作以提升效能",
       "asyncIoThreads": "非同步 I/O 執行緒",
@@ -538,26 +425,14 @@
       "diskCacheTtlDescription": "快取資料在記憶體中的保留時間",
       "workingSetLimit": "工作集限制",
       "workingSetLimitDescription": "實體記憶體工作集大小限制",
-      "peerManagement": "節點管理",
       "peerTurnover": "節點更替",
       "peerTurnoverDescription": "斷開/重連的節點百分比",
       "turnoverCutoff": "更替閾值",
       "turnoverCutoffDescription": "節點更替的閾值百分比",
       "turnoverInterval": "更替間隔",
       "turnoverIntervalDescription": "執行節點更替的頻率",
-      "securityIpFiltering": "安全與 IP 過濾",
       "blockPrivilegedPorts": "封鎖特權連接埠的節點",
       "blockPrivilegedPortsDescription": "封鎖使用 1024 以下連接埠的節點連線",
-      "validation": {
-        "checkingMemoryUse": "檢查種子時的預留記憶體必須大於 0 且小於 1024",
-        "peerTurnover": "節點更替必須在 0 到 100 之間",
-        "peerTurnoverCutoff": "節點更替閾值必須在 0 到 100 之間",
-        "peerTurnoverInterval": "節點更替間隔必須大於等於 0 且小於 3600 秒"
-      },
-      "toast": {
-        "success": "進階網路設定更新成功",
-        "error": "進階網路設定更新失敗"
-      },
       "unitSeconds": "秒"
     },
     "reannounce": {
@@ -1572,6 +1447,56 @@
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除"
+    },
+    "sections": {
+      "whenAdding": "新增種子時",
+      "savingManagement": "儲存管理",
+      "excludedFileNames": "排除的檔案名稱",
+      "globalRateLimits": "全域速度限制",
+      "alternativeRateLimits": "替代速度限制",
+      "rateLimitsSettings": "速度限制設定",
+      "autoAddTrackers": "自動將這些 Tracker 新增至新下載",
+      "rssReader": "RSS 閱讀器",
+      "rssAutoDownloader": "RSS 種子自動下載器",
+      "rssSmartEpisodeFilter": "RSS 智慧劇集過濾器",
+      "qbittorrent": "qBittorrent",
+      "libtorrent": "libtorrent"
+    },
+    "fields": {
+      "excludedFileNamesEnabled": "排除檔案名稱",
+      "excludedFileNames": "要排除的檔案名稱（每行一個）",
+      "scheduleFromHour": "開始小時",
+      "scheduleFromMinute": "開始分鐘",
+      "scheduleToHour": "結束小時",
+      "scheduleToMinute": "結束分鐘",
+      "limitLanPeers": "對區域網路 Peer 套用速度限制",
+      "slowTorrentDownloadRate": "下載速度門檻",
+      "slowTorrentUploadRate": "上傳速度門檻",
+      "slowTorrentInactiveTimer": "種子閒置計時器",
+      "maxSeedingTime": "最長做種時間",
+      "addTrackersEnabled": "將 Tracker 新增至新下載",
+      "addTrackers": "Tracker（每行一個）",
+      "interfaceAddress": "介面 IP 位址",
+      "diskIoType": "磁碟 I/O 類型",
+      "diskIoTypeDefault": "預設",
+      "diskIoTypeMmap": "記憶體對映檔案",
+      "diskIoTypePosix": "相容 POSIX",
+      "diskIoTypeSimplePreadPwrite": "簡易 pread/pwrite",
+      "diskIoTypePreadPwrite": "Pread/pwrite",
+      "diskIoReadMode": "磁碟 I/O 讀取模式",
+      "diskIoWriteMode": "磁碟 I/O 寫入模式",
+      "diskIoModeDisableOsCache": "停用系統快取",
+      "diskIoModeEnableOsCache": "啟用系統快取",
+      "diskIoModeWriteThrough": "直寫",
+      "optionValue": "值 {{value}}"
+    },
+    "units": {
+      "minutes": "分鐘"
+    },
+    "readOnlyNote": "qui 目前無法變更此設定。請在 qBittorrent 中變更。",
+    "toast": {
+      "saved": "偏好設定已儲存",
+      "saveFailed": "無法儲存偏好設定"
     }
   },
   "backups": {

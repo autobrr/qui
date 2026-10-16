@@ -2240,10 +2240,15 @@ class ApiClient {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints. The route returns the catalog view. Until the dialog renders
-  // the view, the client turns it back into the preferences object that the forms read.
+  // Preferences endpoints. The route returns the catalog view, which the preferences dialog
+  // renders. Until the screens outside the dialog read the view, the client turns it back
+  // into the preferences object that they read.
+  async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
+  }
+
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
-    return preferencesFromView(await this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`))
+    return preferencesFromView(await this.getInstancePreferenceView(instanceId))
   }
 
   async updateInstancePreferences(
