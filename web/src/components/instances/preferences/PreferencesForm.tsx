@@ -8,7 +8,7 @@ import { TabsContent } from "@/components/ui/tabs"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import type { AppPreferences, PreferenceField } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
-import { useState, type FormEvent } from "react"
+import { memo, useCallback, useState, type FormEvent } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -36,6 +36,8 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   // refresh does not reset open edits.
   const [saved, setSaved] = useState(() => valuesOf(fields))
   const [values, setValues] = useState(saved)
+
+  const setValue = useCallback((key: string, value: unknown) => setValues(previous => ({ ...previous, [key]: value })), [])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
   const valueOf = (field: PreferenceField) => field.key in values ? values[field.key] : field.value
@@ -98,24 +100,15 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {sectionFields.map(field => {
-                      const Widget = preferenceWidgets[field.control]
-                      return (
-                        <div key={field.key} className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
-                          <Widget
-                            id={`preference-${field.key}`}
-                            field={field}
-                            labels={labelsOf(field)!}
-                            value={valueOf(field)}
-                            onChange={value => setValues(previous => ({ ...previous, [field.key]: value }))}
-                            disabled={field.readOnly === true || !isEnabled(field)}
-                          />
-                          {field.readOnly && (
-                            <p className="mt-1 text-xs text-muted-foreground">{t("preferences.readOnlyNote")}</p>
-                          )}
-                        </div>
-                      )
-                    })}
+                    {sectionFields.map(field => (
+                      <PreferenceRow
+                        key={field.key}
+                        field={field}
+                        value={valueOf(field)}
+                        disabled={field.readOnly === true || !isEnabled(field)}
+                        onChange={setValue}
+                      />
+                    ))}
                   </div>
                   {section === "runExternalProgram" && (
                     <AutorunPlaceholders supportsTorrentAdded={byKey.has("autorun_on_torrent_added_enabled")} />
@@ -129,6 +122,32 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
     )
   })
 }
+
+interface PreferenceRowProps {
+  field: PreferenceField
+  value: unknown
+  disabled: boolean
+  onChange: (key: string, value: unknown) => void
+}
+
+// Memoized, so that a keystroke re-renders only the field that changed and the fields that depend on it.
+const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onChange }: PreferenceRowProps) {
+  const { t } = useTranslation("instances")
+  const Widget = preferenceWidgets[field.control]
+  return (
+    <div className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
+      <Widget
+        id={`preference-${field.key}`}
+        field={field}
+        labels={labelsOf(field)!}
+        value={value}
+        onChange={next => onChange(field.key, next)}
+        disabled={disabled}
+      />
+      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t("preferences.readOnlyNote")}</p>}
+    </div>
+  )
+})
 
 const LEGACY_AUTORUN_PLACEHOLDERS = [
   { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },
