@@ -57,6 +57,7 @@ export function useAddTorrentPreferences(instanceId: number | undefined, options
       contentLayout: preferences?.torrent_content_layout || "",
       tempPathEnabled: preferences?.temp_path_enabled ?? false,
       tempPath: preferences?.temp_path || "",
+      startPaused: preferences?.add_stopped_enabled ?? preferences?.start_paused_enabled ?? false,
     },
     autoAddTrackers: Boolean(preferences?.add_trackers_enabled && preferences?.add_trackers),
     excludedFileNamesEnabled: preferences?.excluded_file_names_enabled ?? false,

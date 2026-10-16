@@ -78,9 +78,6 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// NOTE: qBittorrent's app/setPreferences API does not properly support all preferences.
-	// Specifically, start_paused_enabled gets rejected/ignored. The frontend now handles
-	// this preference via localStorage as a workaround.
 	if err := h.syncManager.SetAppPreferences(r.Context(), instanceID, prefs); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:set") {
 			return

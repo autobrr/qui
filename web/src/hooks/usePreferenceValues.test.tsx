@@ -152,6 +152,7 @@ describe("useAddTorrentPreferences", () => {
         add_trackers: "udp://tracker.example.invalid:1337/announce",
         excluded_file_names_enabled: true,
         excluded_file_names: "*.nfo",
+        add_stopped_enabled: true,
       }),
     })
     expect(result.current).toEqual({
@@ -162,6 +163,7 @@ describe("useAddTorrentPreferences", () => {
         contentLayout: "Subfolder",
         tempPathEnabled: true,
         tempPath: "/incomplete",
+        startPaused: true,
       },
       autoAddTrackers: true,
       excludedFileNamesEnabled: true,
@@ -176,11 +178,18 @@ describe("useAddTorrentPreferences", () => {
     expect(result.current.autoAddTrackers).toBe(false)
   })
 
+  it("reads start paused from the key that qBittorrent 4.x sends", () => {
+    const { result } = renderHook(() => useAddTorrentPreferences(1, noFetch), {
+      wrapper: wrapperWith({ start_paused_enabled: true }),
+    })
+    expect(result.current.defaults.startPaused).toBe(true)
+  })
+
   it("returns the built-in defaults before the preferences load", () => {
     const { result } = renderHook(() => useAddTorrentPreferences(1, noFetch), { wrapper: wrapperWith() })
     expect(result.current).toEqual({
       loaded: false,
-      defaults: { autoTMM: true, savePath: "", contentLayout: "", tempPathEnabled: false, tempPath: "" },
+      defaults: { autoTMM: true, savePath: "", contentLayout: "", tempPathEnabled: false, tempPath: "", startPaused: false },
       autoAddTrackers: false,
       excludedFileNamesEnabled: false,
       excludedFileNames: "",
@@ -197,7 +206,7 @@ describe("useAddTorrentPreferences", () => {
 
     rerender({ id: 2 })
     expect(result.current.loaded).toBe(false)
-    expect(result.current.defaults).toEqual({ autoTMM: true, savePath: "", contentLayout: "", tempPathEnabled: false, tempPath: "" })
+    expect(result.current.defaults).toEqual({ autoTMM: true, savePath: "", contentLayout: "", tempPathEnabled: false, tempPath: "", startPaused: false })
   })
 })
 

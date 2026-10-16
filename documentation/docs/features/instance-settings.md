@@ -82,6 +82,16 @@ In the instance settings dialog, open the three-dot menu next to the dialog titl
 
 The settings dialog has tabs for qBittorrent application preferences: **Speed**, **Queue**, **Files**, **Seeding**, **Connect**, **Discovery**, and **Advanced**. qui sends these values to qBittorrent's API. They behave the same as the native WebUI settings.
 
+### Start torrents paused
+
+The **Start Torrents Paused** switch on the **Files** tab changes the qBittorrent preference "Do not start the download automatically". Torrents that other tools add to qBittorrent also start paused.
+
+The add torrent dialog uses this preference as the default for its **Start paused** option. The choice in the dialog always applies to the torrents that you add.
+
+:::note
+Earlier versions of qui kept this setting in qui and did not send it to qBittorrent. After you update qui, open the **Files** tab and set **Start Torrents Paused** again.
+:::
+
 ### Monitored folders
 
 qBittorrent watches folders and adds any torrent file that appears in them. Configure this in qui:
