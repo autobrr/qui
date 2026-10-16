@@ -65,7 +65,9 @@ function renderColdDialog() {
   return {
     ...ui,
     resolvePreferences(resolved: AppPreferences) {
+      // The metadata fallback fetch writes the preferences into the metadata cache.
       metadataResult.data = { categories: {}, tags: [], preferences: resolved }
+      client.setQueryData(["instance-metadata", 1], metadataResult.data)
       ui.rerender(dialog(null))
     },
     openAdvancedTab() {

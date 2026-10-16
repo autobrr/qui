@@ -39,10 +39,11 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
+import { useAddTorrentPreferences } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
 import { cn } from "@/lib/utils"
-import type { AddTorrentResponse, AppPreferences, Torrent } from "@/types"
+import type { AddTorrentResponse, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
@@ -95,18 +96,6 @@ async function parseTorrentFile(file: File): Promise<string | null> {
     return hash.toLowerCase()
   } catch {
     return null
-  }
-}
-
-// Option defaults the instance dictates. Kept in one place because the dialog seeds
-// them twice: once as form defaults, and again when preferences arrive after a cold mount.
-function preferenceDefaults(preferences: AppPreferences | undefined) {
-  return {
-    autoTMM: preferences?.auto_tmm_enabled ?? true,
-    savePath: preferences?.save_path || "",
-    contentLayout: preferences?.torrent_content_layout || "",
-    tempPathEnabled: preferences?.temp_path_enabled ?? false,
-    tempPath: preferences?.temp_path || "",
   }
 }
 
@@ -194,11 +183,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = onOpenChange || setInternalOpen
 
-  // Fetch metadata (categories, tags, preferences) with single API call
   const { data: metadata } = useInstanceMetadata(instanceId)
   const categories = metadata?.categories
   const availableTags = metadata?.tags
-  const preferences = metadata?.preferences
+  // The dialog seeds the preference defaults twice: once as form defaults, and again
+  // when the preferences arrive after a cold mount.
+  const addTorrentPreferences = useAddTorrentPreferences(instanceId, { fetchIfMissing: false })
+  const preferenceDefaults = addTorrentPreferences.defaults
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
@@ -512,8 +503,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       const autoTMM = data.autoTMM
       // When autoTMM is enabled, temp path settings aren't visible/relevant
       const tempPathChanged =
-        !autoTMM && (data.tempPathEnabled !== (preferences?.temp_path_enabled ?? false) ||
-        (data.tempPathEnabled && data.tempPath !== (preferences?.temp_path || "")))
+        !autoTMM && (data.tempPathEnabled !== preferenceDefaults.tempPathEnabled ||
+        (data.tempPathEnabled && data.tempPath !== preferenceDefaults.tempPath))
 
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
@@ -617,7 +608,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       category: "",
       tags: [] as string[],
       startPaused: startPausedEnabled,
-      ...preferenceDefaults(preferences),
+      ...preferenceDefaults,
       skipHashCheck: false,
       sequentialDownload: false,
       firstLastPiecePrio: false,
@@ -640,20 +631,19 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   // fields again when preferences land, skipping anything the user already changed.
   const seededInstanceRef = useRef<number | null>(null)
   useEffect(() => {
-    if (!preferences || seededInstanceRef.current === instanceId) return
+    if (!addTorrentPreferences.loaded || seededInstanceRef.current === instanceId) return
     seededInstanceRef.current = instanceId
 
-    const defaults = preferenceDefaults(preferences)
     // Seeding is not a user edit, so leave the field meta pristine.
-    const pristine = (field: keyof typeof defaults) => !form.getFieldMeta(field)?.isDirty
+    const pristine = (field: keyof typeof preferenceDefaults) => !form.getFieldMeta(field)?.isDirty
     const opts = { dontUpdateMeta: true }
 
-    if (pristine("autoTMM")) form.setFieldValue("autoTMM", defaults.autoTMM, opts)
-    if (pristine("savePath")) form.setFieldValue("savePath", defaults.savePath, opts)
-    if (pristine("contentLayout")) form.setFieldValue("contentLayout", defaults.contentLayout, opts)
-    if (pristine("tempPathEnabled")) form.setFieldValue("tempPathEnabled", defaults.tempPathEnabled, opts)
-    if (pristine("tempPath")) form.setFieldValue("tempPath", defaults.tempPath, opts)
-  }, [form, instanceId, preferences])
+    if (pristine("autoTMM")) form.setFieldValue("autoTMM", preferenceDefaults.autoTMM, opts)
+    if (pristine("savePath")) form.setFieldValue("savePath", preferenceDefaults.savePath, opts)
+    if (pristine("contentLayout")) form.setFieldValue("contentLayout", preferenceDefaults.contentLayout, opts)
+    if (pristine("tempPathEnabled")) form.setFieldValue("tempPathEnabled", preferenceDefaults.tempPathEnabled, opts)
+    if (pristine("tempPath")) form.setFieldValue("tempPath", preferenceDefaults.tempPath, opts)
+  }, [form, instanceId, addTorrentPreferences.loaded, preferenceDefaults])
 
   const setSavePath = useCallback((path: string) => {
     form.setFieldValue("savePath", path)
@@ -1382,7 +1372,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                 <Input
                                   id="savePath"
                                   ref={supportsPathAutocomplete ? savePathInputRef : undefined}
-                                  placeholder={preferences?.save_path || t("addTorrentDialog.options.savePathPlaceholder")}
+                                  placeholder={preferenceDefaults.savePath || t("addTorrentDialog.options.savePathPlaceholder")}
                                   autoComplete="off"
                                   spellCheck={false}
                                   value={field.state.value}
@@ -1457,7 +1447,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                           <Input
                                             id="tempPath"
                                             ref={supportsPathAutocomplete ? tempPathInputRef : undefined}
-                                            placeholder={preferences?.temp_path || t("addTorrentDialog.options.tempPathPlaceholder")}
+                                            placeholder={preferenceDefaults.tempPath || t("addTorrentDialog.options.tempPathPlaceholder")}
                                             autoComplete="off"
                                             spellCheck={false}
                                             value={field.state.value}
@@ -1677,15 +1667,15 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             </Tabs>
 
             {/* Auto-applied Settings Info - Compact */}
-            {(preferences?.add_trackers_enabled && preferences?.add_trackers) || preferences?.excluded_file_names_enabled ? (
+            {addTorrentPreferences.autoAddTrackers || addTorrentPreferences.excludedFileNamesEnabled ? (
               <div className="bg-muted rounded-md p-3 text-xs text-muted-foreground">
                 <p className="font-medium mb-1">{t("addTorrentDialog.options.autoAppliedTitle")}</p>
                 <div className="space-y-0.5">
-                  {preferences?.add_trackers_enabled && preferences?.add_trackers && (
+                  {addTorrentPreferences.autoAddTrackers && (
                     <div>{t("addTorrentDialog.options.autoAddTrackers")}</div>
                   )}
-                  {preferences?.excluded_file_names_enabled && preferences?.excluded_file_names && (
-                    <div>{t("addTorrentDialog.options.fileExclusions", { value: preferences.excluded_file_names })}</div>
+                  {addTorrentPreferences.excludedFileNamesEnabled && addTorrentPreferences.excludedFileNames && (
+                    <div>{t("addTorrentDialog.options.fileExclusions", { value: addTorrentPreferences.excludedFileNames })}</div>
                   )}
                 </div>
               </div>

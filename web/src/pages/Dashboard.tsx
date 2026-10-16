@@ -49,7 +49,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useListenPort } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -749,7 +749,7 @@ function InstanceCard({
     initialData: appInfo ?? undefined,
     fetchIfMissing: !appInfo,
   })
-  const { preferences } = useInstancePreferences(instance.id, { enabled: instance.connected })
+  const listenPort = useListenPort(instance.id, { enabled: instance.connected })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
@@ -777,7 +777,6 @@ function InstanceCard({
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : ""
 
-  const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
 
   const dashboardDataStatusKind = resolveDashboardDataStatusKind({
