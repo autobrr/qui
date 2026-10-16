@@ -267,6 +267,22 @@ describe("FileManagementForm capabilities", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ auto_tmm_enabled: true }])
   })
+
+  it("does not send the version-gated keys after a save from before the capabilities loaded", async () => {
+    const bodies = recordSaves()
+    const { form, showInstance } = renderForm(FileManagementForm)
+
+    fireEvent.click(switchFor("preferences.fileManagement.autoTorrentManagement"))
+    fireEvent.submit(form)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    capabilities.data = { webAPIVersion: "2.11.2", supportsSubcategories: true }
+    showInstance(1)
+    fireEvent.click(switchFor("preferences.fileManagement.autoTorrentManagement"))
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(2))
+    expect(bodies).toEqual([{ auto_tmm_enabled: true }, { auto_tmm_enabled: false }])
+  })
 })
 
 describe("FileManagementForm start paused", () => {

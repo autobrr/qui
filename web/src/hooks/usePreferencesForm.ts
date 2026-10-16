@@ -34,14 +34,14 @@ export function usePreferencesForm<TValues extends Partial<AppPreferences>>({
   // Frozen: TanStack Form resets an untouched form when defaultValues changes, so a preferences refresh would rewrite an open form.
   const [defaultValues] = useState(() => toForm(preferences))
   const payloadOf = (values: TValues): Partial<AppPreferences> => toPayload ? toPayload(values) : values
-  // The values qBittorrent has, as far as this form knows. A save sends only the keys that differ from them.
-  const lastSaved = useRef<Partial<AppPreferences> | null>(null)
+  // The payload of the last successful save. A save sends only the keys that differ from it, or from the starting values for a key it lacks.
+  const lastSaved = useRef<Partial<AppPreferences>>({})
 
   const form = useForm({
     defaultValues,
     onSubmit: async ({ value }) => {
-      // Set at the first save, not at mount: a toPayload that reads the instance capabilities must see them loaded.
-      const baseline = (lastSaved.current ??= payloadOf(defaultValues))
+      // Built at each save: a toPayload that reads the instance capabilities adds keys once they load.
+      const baseline = { ...payloadOf(defaultValues), ...lastSaved.current }
       const payload = payloadOf(value)
       const changed = Object.fromEntries(Object.entries(payload).filter(
         ([key, next]) => JSON.stringify(next) !== JSON.stringify(baseline[key as keyof AppPreferences])
