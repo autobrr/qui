@@ -704,10 +704,11 @@ func TestAddTorrentHandler_StartPausedChoiceApplies(t *testing.T) {
 			wantPaused:  "true",
 		},
 		{
-			name:        "request matches qBittorrent, qBittorrent decides",
+			// qui keeps the preferences for 30 s, so the kept value can be old.
+			name:        "request matches the kept preference, choice still sent",
 			preferences: `{"add_stopped_enabled":true}`,
 			paused:      "true",
-			wantPaused:  "",
+			wantPaused:  "true",
 		},
 	}
 

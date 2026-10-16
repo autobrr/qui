@@ -646,30 +646,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
+	// Always send the choice: qBittorrent 4.x reads paused, 5.x reads stopped.
 	if pausedStr := r.FormValue("paused"); pausedStr != "" {
-		requestedPaused := pausedStr == "true"
-
-		prefs, err := h.torrentAdder.GetAppPreferences(ctx, instanceID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
-			// If we can't get preferences, apply the requested paused state explicitly
-			if requestedPaused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			} else {
-				options["paused"] = "false"
-				options["stopped"] = "false"
-			}
-		} else if requestedPaused != prefs.AddStopped() {
-			// Only set paused options if the requested state differs from the global preference
-			if requestedPaused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			} else {
-				options["paused"] = "false"
-				options["stopped"] = "false"
-			}
-		}
+		paused := strconv.FormatBool(pausedStr == "true")
+		options["paused"] = paused
+		options["stopped"] = paused
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
