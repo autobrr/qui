@@ -78,6 +78,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useRSSPreferences } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { resolveInstanceSelection, usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import {
@@ -99,7 +100,6 @@ import {
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import type {
-  AppPreferences,
   Category,
   RSSArticle,
   RSSAutoDownloadRule,
@@ -179,14 +179,15 @@ export function RSSPage({
   } = useRSSRules(instanceId, {
     enabled: instanceId > 0,
   })
-  const { preferences, updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
+  const { updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
     enabled: instanceId > 0,
   })
+  const rssPreferences = useRSSPreferences(instanceId, { enabled: instanceId > 0 })
   const { data: metadata } = useInstanceMetadata(instanceId)
 
   // Derived state
-  const isRSSProcessingEnabled = preferences?.rss_processing_enabled ?? true
-  const isRSSAutoDownloadingEnabled = preferences?.rss_auto_downloading_enabled ?? true
+  const isRSSProcessingEnabled = rssPreferences.processingEnabled
+  const isRSSAutoDownloadingEnabled = rssPreferences.autoDownloadingEnabled
 
   // SSE status notifications (only on permanent disconnect)
   const sseDisconnectToastShownRef = useRef(false)
@@ -293,7 +294,7 @@ export function RSSPage({
         <div className="flex items-center gap-2">
           {renderInstanceSelector()}
           <RssSettingsPopover
-            preferences={preferences}
+            preferences={rssPreferences}
             updatePreferences={updatePreferences}
             isUpdating={isUpdatingPreferences}
           />
@@ -2336,21 +2337,21 @@ function RssSettingsPopover({
   updatePreferences,
   isUpdating,
 }: {
-  preferences: AppPreferences | undefined
+  preferences: ReturnType<typeof useRSSPreferences>
   updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
   isUpdating: boolean
 }) {
   const { t } = useTranslation("rss")
-  const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
-  const [maxArticles, setMaxArticles] = useState(preferences?.rss_max_articles_per_feed ?? 50)
-  const [downloadRepack, setDownloadRepack] = useState(preferences?.rss_download_repack_proper_episodes ?? false)
+  const [refreshInterval, setRefreshInterval] = useState(preferences.refreshInterval)
+  const [maxArticles, setMaxArticles] = useState(preferences.maxArticlesPerFeed)
+  const [downloadRepack, setDownloadRepack] = useState(preferences.downloadRepackProperEpisodes)
 
   // Sync local state when preferences change
   useEffect(() => {
-    setRefreshInterval(preferences?.rss_refresh_interval ?? 30)
-    setMaxArticles(preferences?.rss_max_articles_per_feed ?? 50)
-    setDownloadRepack(preferences?.rss_download_repack_proper_episodes ?? false)
-  }, [preferences])
+    setRefreshInterval(preferences.refreshInterval)
+    setMaxArticles(preferences.maxArticlesPerFeed)
+    setDownloadRepack(preferences.downloadRepackProperEpisodes)
+  }, [preferences.refreshInterval, preferences.maxArticlesPerFeed, preferences.downloadRepackProperEpisodes])
 
   const handleSave = () => {
     updatePreferences({

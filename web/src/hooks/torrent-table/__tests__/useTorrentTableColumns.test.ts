@@ -28,7 +28,7 @@ function makeParams(overrides: Partial<UseTorrentTableColumnsParams> = {}): UseT
     speedUnit: "bytes",
     trackerIcons: undefined,
     formatTimestamp: (n: number) => String(n),
-    preferences: null,
+    instanceMaxRatio: undefined,
     supportsTrackerHealth: false,
     isUnifiedView: false,
     isCrossInstanceEndpoint: false,
