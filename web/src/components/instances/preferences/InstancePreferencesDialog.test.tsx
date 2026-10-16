@@ -201,8 +201,10 @@ describe("InstancePreferencesDialog", () => {
     expect(bodies).toEqual([{ dht: false }, { dht: true }])
   })
 
-  it("shows an error toast and keeps the edit when the save fails", async () => {
-    server.use(http.patch("*/api/instances/1/preferences", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
+  it("shows an error toast with the reason and keeps the edit when the save fails", async () => {
+    server.use(http.patch("*/api/instances/1/preferences", () =>
+      HttpResponse.text("invalid preferences patch: \"dht\" has a value of the wrong type", { status: 400 })
+    ))
     serveView()
     renderDialog("bittorrent")
 
@@ -210,7 +212,9 @@ describe("InstancePreferencesDialog", () => {
     fireEvent.click(dht)
     save()
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("preferences.toast.saveFailed"))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("preferences.toast.saveFailed", {
+      description: "Invalid preferences patch: \"dht\" has a value of the wrong type",
+    }))
     expect(toast.success).not.toHaveBeenCalled()
     expect(dht.getAttribute("aria-checked")).toBe("false")
   })
@@ -225,6 +229,27 @@ describe("InstancePreferencesDialog", () => {
 
     expect((await fieldFor("preferences.seedingLimits.enableShareRatioLimit")).getAttribute("aria-checked")).toBe("true")
     expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("shows the qBittorrent tabs again when it reopens while the view is still fresh", async () => {
+    serveView()
+    // The stale time of the app's query client.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
+    const dialog = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <InstancePreferencesDialog open={open} onOpenChange={() => {}} instanceId={1} instanceName="qbit" />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(dialog(true))
+    await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
+
+    rerender(dialog(false))
+    await waitFor(() => expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull())
+    rerender(dialog(true))
+
+    await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {

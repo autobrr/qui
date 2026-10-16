@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/ui/tabs"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { formatErrorMessage } from "@/lib/format-error-message"
 import type { AppPreferences, PreferenceField } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { memo, useCallback, useState, type FormEvent } from "react"
@@ -56,7 +57,10 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
         await updatePreferences(changed as Partial<AppPreferences>)
       } catch (error) {
         console.error("Failed to save preferences:", error)
-        toast.error(t("preferences.toast.saveFailed"))
+        // The server names the setting that it rejected, for example a decimal in a whole-number field.
+        toast.error(t("preferences.toast.saveFailed"), {
+          description: error instanceof Error ? formatErrorMessage(error.message) : undefined,
+        })
         return
       }
       setSaved(previous => ({ ...previous, ...changed }))
