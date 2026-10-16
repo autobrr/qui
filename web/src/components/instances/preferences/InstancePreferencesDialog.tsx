@@ -28,15 +28,17 @@ import { formatErrorMessage } from "@/lib/format-error-message"
 import { cn } from "@/lib/utils"
 import type { Instance, PreferenceField } from "@/types"
 import { Cog, Download, Gauge, Globe, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
 import { preferenceTabLabels } from "./labels"
-import { PreferencesForm } from "./PreferencesForm"
 import { preferenceTabsOf, usePreferenceView } from "./preferenceView"
+
+// Loaded on demand: the widgets and their UI share a chunk that the first page load does not need.
+const PreferencesForm = lazy(() => import("./PreferencesForm").then(m => ({ default: m.PreferencesForm })))
 
 const TAB_ICONS: Record<PreferenceField["tab"], LucideIcon> = {
   behavior: SlidersHorizontal,
@@ -116,7 +118,11 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
         </div>
       </TabsContent>
 
-      {fields && <PreferencesForm key={instanceId} instanceId={instanceId} fields={fields} />}
+      {fields && (
+        <Suspense>
+          <PreferencesForm key={instanceId} instanceId={instanceId} fields={fields} />
+        </Suspense>
+      )}
     </Tabs>
   )
 }
