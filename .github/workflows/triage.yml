@@ -16,8 +16,9 @@ on:
         type: string
 
 jobs:
-  # Workaround: claude-code-action doesn't support 'discussion' events directly.
-  # This job catches the discussion events and re-triggers via workflow_dispatch.
+  # The triage job runs only on workflow_dispatch, the one event that the
+  # Console federation rule accepts, so this job re-triggers discussion events
+  # as workflow_dispatch. The sweep and manual runs use the same path.
   # A new Issue Triage discussion is triaged. Any human comment on a
   # needs-info or pending-close Issue Triage discussion re-triggers triage. No self-loop: the
   # agent writes with GITHUB_TOKEN, whose events never start workflows; the
@@ -116,7 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     # The claude environment holds CLAUDE_CODE_OAUTH_TOKEN and allows only
     # develop, so a workflow pushed on another branch cannot read it. The
-    # Console federation rule matches only this job in this environment. The
+    # Console federation rule matches only the claude environment on develop
+    # from workflow_dispatch. The
     # repository variable TRIAGE_AUTH picks the credential: federation (the
     # default) or oauth. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
     environment: claude
@@ -140,9 +142,6 @@ jobs:
       - name: Install the Claude Agent SDK
         run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts/triage
 
-      # The script runs the Agent SDK directly, not claude-code-action. The
-      # action is built on the same SDK, but it tags its runs as Claude Code,
-      # and the Max plan API credits do not cover Claude Code.
       - name: Run discussion triage
         id: triage
         env:
