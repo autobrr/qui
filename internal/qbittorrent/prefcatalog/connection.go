@@ -9,7 +9,6 @@ var connectionEntries = slices.Concat(
 	[]Entry{
 		{Key: "bittorrent_protocol", Tab: TabConnection, Section: "protocol", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions(0, 1, 2)},
 		{Key: "listen_port", Tab: TabConnection, Section: "listeningPort", Control: ControlNumber},
-		{Key: "random_port", Tab: TabConnection, Section: "listeningPort", Control: ControlSwitch},
 		{Key: "upnp", Tab: TabConnection, Section: "listeningPort", Control: ControlSwitch},
 		{Key: "max_connec", Tab: TabConnection, Section: "connectionLimits", Control: ControlNumber},
 		{Key: "max_connec_per_torrent", Tab: TabConnection, Section: "connectionLimits", Control: ControlNumber},
@@ -25,5 +24,8 @@ var connectionEntries = slices.Concat(
 		"proxy_type", "proxy_ip", "proxy_port", "proxy_hostname_lookup", "proxy_auth_enabled",
 		"proxy_username", "proxy_password", "proxy_bittorrent", "proxy_peer_connections",
 		"proxy_rss", "proxy_misc", "proxy_torrents_only"),
+	// qBittorrent 4.4.0 deprecates random_port. There, true sets the listening port to 0, the same as a
+	// listen_port of 0. On 4.3.x it is a separate setting (a new port on each startup), which qui does not show.
+	notShown(TabConnection, "deprecated by qBittorrent", "random_port"),
 	notShown(TabConnection, "pending Connection PR", "ssl_enabled", "ssl_listen_port"),
 )

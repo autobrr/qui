@@ -67,7 +67,6 @@
   "peer_turnover_interval",
   "pex",
   "queueing_enabled",
-  "random_port",
   "reannounce_when_address_changed",
   "request_queue_size",
   "resolve_peer_countries",
