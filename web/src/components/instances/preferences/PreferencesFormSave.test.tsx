@@ -26,7 +26,7 @@ const { toast, i18n, fieldVisibility, capabilities } = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
   i18n: { t: (key: string) => key },
   fieldVisibility: {},
-  capabilities: { data: undefined },
+  capabilities: { data: undefined as Record<string, unknown> | undefined },
 }))
 
 vi.mock("sonner", () => ({ toast }))
@@ -51,7 +51,7 @@ const forms: [string, FormComponent, keyof AppPreferences, string][] = [
   ["NetworkDiscoveryForm", NetworkDiscoveryForm, "dht", "preferences.networkDiscovery.enableDht"],
 ]
 
-// Only the fields a form dereferences without a fallback.
+// The fields a form dereferences without a fallback, plus read-only and object values that a save must not send back.
 const preferences = {
   encryption: 0,
   max_connec: 500,
@@ -59,6 +59,9 @@ const preferences = {
   max_uploads: 20,
   max_uploads_per_torrent: 4,
   scheduler_days: 0,
+  current_network_interface: "wg0",
+  current_interface_address: "10.0.0.2",
+  scan_dirs: { "/watch/a": 0, "/watch/b": 1 } as Record<string, unknown>,
 } as AppPreferences
 
 // Radix Switch sizes its hidden form input through ResizeObserver, which jsdom lacks.
@@ -88,8 +91,11 @@ function renderForm(Form: FormComponent, seed: AppPreferences = preferences, onS
   return { queryClient, form: container.querySelector("form")!, showInstance: (instanceId: number) => rerender(ui(instanceId)) }
 }
 
-function submitForm(Form: FormComponent, onSuccess: () => void) {
-  fireEvent.submit(renderForm(Form, preferences, onSuccess).form)
+// Flips the form's switch first, because a save with no change sends no request.
+function submitEdit(Form: FormComponent, label: string, onSuccess: () => void) {
+  const { form } = renderForm(Form, preferences, onSuccess)
+  fireEvent.click(switchFor(label))
+  fireEvent.submit(form)
 }
 
 // The forms do not tie every switch to its label, so walk up from the label text.
@@ -101,6 +107,16 @@ function switchFor(label: string) {
   return node!.querySelector<HTMLElement>("[role=switch]")!
 }
 
+// Records the body of each save and answers with the preferences.
+function recordSaves() {
+  const bodies: Partial<AppPreferences>[] = []
+  server.use(http.patch("*/api/instances/1/preferences", async ({ request }) => {
+    bodies.push(await request.json() as Partial<AppPreferences>)
+    return HttpResponse.json(preferences)
+  }))
+  return bodies
+}
+
 function failSaves() {
   server.use(http.patch("*/api/instances/1/preferences", () => HttpResponse.json({ error: "boom" }, { status: 500 })))
 }
@@ -110,7 +126,7 @@ describe.each(forms)("%s save", (_name, Form, field, label) => {
     failSaves()
     const onSuccess = vi.fn()
 
-    submitForm(Form, onSuccess)
+    submitEdit(Form, label, onSuccess)
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
     expect(toast.success).not.toHaveBeenCalled()
@@ -128,7 +144,7 @@ describe.each(forms)("%s save", (_name, Form, field, label) => {
     }))
     const onSuccess = vi.fn()
 
-    submitForm(Form, onSuccess)
+    submitEdit(Form, label, onSuccess)
 
     await waitFor(() => expect(received).toBe(true))
     expect(toast.success).not.toHaveBeenCalled()
@@ -151,6 +167,42 @@ describe.each(forms)("%s save", (_name, Form, field, label) => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
     expect(switchFor(label).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("sends only the changed key", async () => {
+    const bodies = recordSaves()
+    const { form } = renderForm(Form, { ...preferences, [field]: false })
+
+    fireEvent.click(switchFor(label))
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ [field]: true }])
+  })
+
+  it("sends no request when nothing changed", async () => {
+    const bodies = recordSaves()
+    const onSuccess = vi.fn()
+
+    fireEvent.submit(renderForm(Form, preferences, onSuccess).form)
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
+    expect(toast.success).toHaveBeenCalledTimes(1)
+  })
+
+  it("sends a key that is changed back after a save", async () => {
+    const bodies = recordSaves()
+    const { form } = renderForm(Form, { ...preferences, [field]: false })
+
+    fireEvent.click(switchFor(label))
+    fireEvent.submit(form)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    fireEvent.click(switchFor(label))
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(2))
+    expect(bodies).toEqual([{ [field]: true }, { [field]: false }])
   })
 
   it("keeps its values when the preferences change while it is open", async () => {
@@ -184,13 +236,61 @@ describe.each(forms)("%s instance switch", (_name, Form, field, label) => {
   })
 })
 
+describe("FileManagementForm watch folders", () => {
+  it("sends scan_dirs when one watch folder changes", async () => {
+    const bodies = recordSaves()
+    const { form } = renderForm(FileManagementForm)
+
+    const [first] = screen.getAllByPlaceholderText("preferences.fileManagement.watchFolders.monitoredFolderPlaceholder")
+    fireEvent.change(first, { target: { value: "/watch/c" } })
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ scan_dirs: { "/watch/c": 0, "/watch/b": 1 } }])
+  })
+})
+
+describe("FileManagementForm capabilities", () => {
+  afterEach(() => {
+    capabilities.data = undefined
+  })
+
+  it("does not send the version-gated keys when the capabilities load after the form", async () => {
+    const bodies = recordSaves()
+    const { form, showInstance } = renderForm(FileManagementForm)
+
+    capabilities.data = { webAPIVersion: "2.11.2", supportsSubcategories: true }
+    showInstance(1)
+    fireEvent.click(switchFor("preferences.fileManagement.autoTorrentManagement"))
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ auto_tmm_enabled: true }])
+  })
+})
+
 describe("FileManagementForm start paused", () => {
+  it("stores the value when it is the only change", async () => {
+    const bodies = recordSaves()
+    const { form } = renderForm(FileManagementForm)
+    const before = localStorage.getItem("qui-start-paused-instance-1")
+
+    fireEvent.click(switchFor("preferences.fileManagement.startTorrentsPaused"))
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
+    expect(localStorage.getItem("qui-start-paused-instance-1")).not.toBe(before)
+  })
+
   it("leaves the stored value unchanged when the save fails", async () => {
     failSaves()
     const { form } = renderForm(FileManagementForm)
     const before = localStorage.getItem("qui-start-paused-instance-1")
 
     fireEvent.click(switchFor("preferences.fileManagement.startTorrentsPaused"))
+    // A change to start paused alone sends no request, so change a qBittorrent preference too.
+    fireEvent.click(switchFor("preferences.fileManagement.autoTorrentManagement"))
     fireEvent.submit(form)
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))

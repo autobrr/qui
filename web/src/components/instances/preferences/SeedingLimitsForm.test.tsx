@@ -52,8 +52,8 @@ afterEach(() => {
   hookResult.preferences.max_ratio = 25
 })
 
-function renderForm() {
-  render(<TooltipProvider><SeedingLimitsForm instanceId={1} /></TooltipProvider>)
+function renderForm(onSuccess?: () => void) {
+  render(<TooltipProvider><SeedingLimitsForm instanceId={1} onSuccess={onSuccess} /></TooltipProvider>)
 }
 
 // The share ratio field is the first number input; the seeding time field follows it.
@@ -63,7 +63,8 @@ function ratioInput() {
 
 describe("SeedingLimitsForm share ratio", () => {
   it("keeps a stored ratio above 10 through an untouched save", async () => {
-    renderForm()
+    const onSuccess = vi.fn()
+    renderForm(onSuccess)
 
     expect(ratioInput().value).toBe("25")
     // A native max attribute below the stored value makes the browser block the submit.
@@ -71,16 +72,22 @@ describe("SeedingLimitsForm share ratio", () => {
     expect(form.checkValidity()).toBe(true)
     fireEvent.submit(form)
 
-    await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 25 })))
+    // The save completes and sends nothing, so the form state still holds the stored value.
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(updatePreferences).not.toHaveBeenCalled()
   })
 
-  it("saves a stored ratio off the 0.05 step grid", async () => {
+  it("completes a save with a stored ratio off the 0.05 step grid", async () => {
     hookResult.preferences.max_ratio = 10.33
-    renderForm()
+    const onSuccess = vi.fn()
+    renderForm(onSuccess)
 
+    expect(ratioInput().value).toBe("10.33")
+    // requestSubmit runs the native validation unless the form sets noValidate, and a step mismatch blocks the save.
     ratioInput().closest("form")!.requestSubmit()
 
-    await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ max_ratio: 10.33 })))
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(updatePreferences).not.toHaveBeenCalled()
   })
 
   it("keeps a typed ratio above the input's default max", async () => {
