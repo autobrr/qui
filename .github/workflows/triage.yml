@@ -114,10 +114,11 @@ jobs:
 
   triage-discussion:
     runs-on: ubuntu-latest
-    # The claude environment holds ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN
-    # and allows only develop, so a workflow pushed on another branch cannot read
-    # them. The repository variable TRIAGE_AUTH picks one: api (the default) or
-    # oauth. See docs/adr/0017-discussion-triage-runs-on-a-capped-api-key.md.
+    # The claude environment holds CLAUDE_CODE_OAUTH_TOKEN and allows only
+    # develop, so a workflow pushed on another branch cannot read it. The
+    # Console federation rule matches only this job in this environment. The
+    # repository variable TRIAGE_AUTH picks the credential: federation (the
+    # default) or oauth. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
     environment: claude
     timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' && inputs.discussion_number
@@ -195,8 +196,13 @@ jobs:
             ${{ vars.TRIAGE_AUTH != 'oauth' && '--max-budget-usd 5' || '' }}
           settings: |
             {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,remove-label,comment,close,create-issue"}}
-          # Pass one credential only. Claude Code prefers the API key when it gets both.
-          anthropic_api_key: ${{ vars.TRIAGE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
+          # Pass one credential only. An empty rule ID turns federation off.
+          # The IDs are not secrets: a token needs a GitHub OIDC token that
+          # matches the rule.
+          anthropic_federation_rule_id: ${{ vars.TRIAGE_AUTH != 'oauth' && 'fdrl_01L8QqdNNYxgrowGMDCkwF2C' || '' }}
+          anthropic_organization_id: 7e6f6244-271b-4543-8e58-21e1ad204aae
+          anthropic_service_account_id: svac_013uKKXN8FTGVnEZVPHQoW69
+          anthropic_workspace_id: wrkspc_01TSR9QMRQGxTyymwXyR53KG
           claude_code_oauth_token: ${{ vars.TRIAGE_AUTH == 'oauth' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
 
       # A run that reaches the $5 stop gives the discussion to a maintainer, so
