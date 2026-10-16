@@ -27,7 +27,7 @@ export interface WidgetProps {
   disabled: boolean
 }
 
-function FieldLabel({ id, labels }: { id: string; labels: FieldLabels }) {
+function FieldLabel({ id, labels }: { id?: string; labels: FieldLabels }) {
   const { t } = useTranslation("instances")
   return (
     <Label htmlFor={id} className="flex items-center gap-2 text-sm font-medium">
@@ -211,7 +211,7 @@ function scanDirsOf(folders: WatchFolder[]): Record<string, number | string> {
   return scanDirs
 }
 
-function WatchFoldersWidget({ id, labels, value, onChange, disabled }: WidgetProps) {
+function WatchFoldersWidget({ labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
   // The rows live here, so that a row with an empty path stays while the user fills it in.
@@ -227,9 +227,9 @@ function WatchFoldersWidget({ id, labels, value, onChange, disabled }: WidgetPro
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <FieldLabel id={id} labels={labels} />
+        {/* The label points at no control: a click on it must not add a folder. */}
+        <FieldLabel labels={labels} />
         <Button
-          id={id}
           type="button"
           variant="outline"
           disabled={disabled}

@@ -281,4 +281,13 @@ describe("InstancePreferencesDialog", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ scan_dirs: { "/watch/c": 0, "/watch/b": 1 } }])
   })
+
+  it("adds no watch folder when the user clicks the Watch Folders label", async () => {
+    serveView()
+    renderDialog("downloads")
+
+    fireEvent.click((await screen.findByText("preferences.fileManagement.watchFolders.title")).closest("label")!)
+
+    expect(screen.getAllByPlaceholderText("preferences.fileManagement.watchFolders.monitoredFolderPlaceholder")).toHaveLength(2)
+  })
 })
