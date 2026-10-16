@@ -120,7 +120,9 @@ export interface AppPreferences {
   save_resume_data_interval: number
 
   // Startup behavior
-  start_paused_enabled: boolean // NOTE: Not supported by qBittorrent API - handled via localStorage
+  // qBittorrent 5.0 renamed start_paused_enabled to add_stopped_enabled. Each version sends one of the two.
+  start_paused_enabled?: boolean
+  add_stopped_enabled?: boolean
 
   // BitTorrent protocol (fully supported)
   dht: boolean

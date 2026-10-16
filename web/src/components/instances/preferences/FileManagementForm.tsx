@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { usePreferencesForm } from "@/hooks/usePreferencesForm"
 import { useIncognitoMode } from "@/lib/incognito"
 import type { AppPreferences } from "@/types"
@@ -161,7 +160,6 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
 function FileManagementFields({ instanceId, preferences, onSuccess }: FileManagementFormProps & { preferences: AppPreferences }) {
   const { t } = useTranslation("instances")
-  const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const [incognitoMode] = useIncognitoMode()
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
@@ -171,6 +169,7 @@ function FileManagementFields({ instanceId, preferences, onSuccess }: FileManage
   const supportsAutorunOnTorrentAdded = isWebAPIVersionAtLeast(webAPIVersion, AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION)
   const autorunPlaceholders = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PLACEHOLDERS : LEGACY_AUTORUN_PLACEHOLDERS
   const autorunProgramPlaceholder = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PROGRAM_PLACEHOLDER : LEGACY_AUTORUN_PROGRAM_PLACEHOLDER
+  const addStoppedKey = "add_stopped_enabled" in preferences ? "add_stopped_enabled" : "start_paused_enabled"
 
   const { form, isUpdating } = usePreferencesForm({
     instanceId,
@@ -180,7 +179,7 @@ function FileManagementFields({ instanceId, preferences, onSuccess }: FileManage
       torrent_changed_tmm_enabled: p.torrent_changed_tmm_enabled ?? true,
       save_path_changed_tmm_enabled: p.save_path_changed_tmm_enabled ?? true,
       category_changed_tmm_enabled: p.category_changed_tmm_enabled ?? true,
-      start_paused_enabled: startPausedEnabled,
+      add_stopped_enabled: p[addStoppedKey] ?? false,
       use_subcategories: Boolean(p.use_subcategories),
       save_path: p.save_path,
       temp_path_enabled: p.temp_path_enabled,
@@ -192,9 +191,9 @@ function FileManagementFields({ instanceId, preferences, onSuccess }: FileManage
       autorun_program: p.autorun_program ?? "",
       watch_folders: getWatchFolders(p.scan_dirs),
     }),
-    // start_paused_enabled is not sent: qBittorrent's API rejects it, so qui stores it itself.
     toPayload: (value) => {
       const payload: Partial<AppPreferences> = {
+        [addStoppedKey]: value.add_stopped_enabled,
         auto_tmm_enabled: value.auto_tmm_enabled,
         torrent_changed_tmm_enabled: value.torrent_changed_tmm_enabled,
         save_path_changed_tmm_enabled: value.save_path_changed_tmm_enabled,
@@ -217,10 +216,7 @@ function FileManagementFields({ instanceId, preferences, onSuccess }: FileManage
       return payload
     },
     i18nPrefix: "preferences.fileManagement",
-    onSaved: (value) => {
-      setStartPausedEnabled(value.start_paused_enabled)
-      onSuccess?.()
-    },
+    onSaved: () => onSuccess?.(),
   })
 
   return (
@@ -312,7 +308,7 @@ function FileManagementFields({ instanceId, preferences, onSuccess }: FileManage
             </form.Field>
           )}
 
-          <form.Field name="start_paused_enabled">
+          <form.Field name="add_stopped_enabled">
             {(field) => (
               <SwitchSetting
                 label={t("preferences.fileManagement.startTorrentsPaused")}

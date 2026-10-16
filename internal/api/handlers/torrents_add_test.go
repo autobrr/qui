@@ -6,6 +6,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -221,6 +222,8 @@ type fullMockSyncManager struct {
 	addTorrentErr           error
 	addTorrentFromURLsErr   error
 	addTorrentFromURLsFunc  func(urls []string) (*qbt.TorrentAddResponse, error)
+	// preferencesJSON is the app/preferences response of the fake qBittorrent.
+	preferencesJSON string
 }
 
 func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -245,7 +248,12 @@ func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID i
 }
 
 func (m *fullMockSyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	return qbt.AppPreferences{}, nil
+	var prefs qbt.AppPreferences
+	if m.preferencesJSON == "" {
+		return prefs, nil
+	}
+	err := json.Unmarshal([]byte(m.preferencesJSON), &prefs)
+	return prefs, err
 }
 
 // fullMockJackettService implements torrentDownloader interface for full handler testing
@@ -657,4 +665,79 @@ func TestAddTorrentHandler_NoIndexerID_UsesDirectURL(t *testing.T) {
 
 	// Verify AddTorrent (file method) was NOT called
 	assert.Empty(t, mockSync.addTorrentCalls)
+}
+
+// TestAddTorrentHandler_StartPausedChoiceApplies verifies that the "start paused"
+// choice of the add request applies on qBittorrent 4.x and 5.x, whatever the
+// "Do not start the download automatically" preference of qBittorrent is.
+func TestAddTorrentHandler_StartPausedChoiceApplies(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		preferences string
+		paused      string
+		wantPaused  string
+	}{
+		{
+			name:        "5.x adds stopped, request starts",
+			preferences: `{"add_stopped_enabled":true}`,
+			paused:      "false",
+			wantPaused:  "false",
+		},
+		{
+			name:        "4.x adds stopped, request starts",
+			preferences: `{"start_paused_enabled":true}`,
+			paused:      "false",
+			wantPaused:  "false",
+		},
+		{
+			name:        "5.x adds started, request pauses",
+			preferences: `{"add_stopped_enabled":false}`,
+			paused:      "true",
+			wantPaused:  "true",
+		},
+		{
+			name:        "5.3 session start_paused is not the add preference",
+			preferences: `{"add_stopped_enabled":false,"start_paused":true}`,
+			paused:      "true",
+			wantPaused:  "true",
+		},
+		{
+			name:        "request matches qBittorrent, qBittorrent decides",
+			preferences: `{"add_stopped_enabled":true}`,
+			paused:      "true",
+			wantPaused:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSync := &fullMockSyncManager{preferencesJSON: tt.preferences}
+			handler := &TorrentsHandler{torrentAdder: mockSync}
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			_ = writer.WriteField("urls", "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678")
+			_ = writer.WriteField("paused", tt.paused)
+			_ = writer.Close()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/instances/1/torrents", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("instanceID", "1")
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+			w := httptest.NewRecorder()
+			handler.AddTorrent(w, req)
+
+			require.Equal(t, http.StatusCreated, w.Code)
+			require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+			options := mockSync.addTorrentFromURLsCalls[0].options
+			assert.Equal(t, tt.wantPaused, options["paused"])
+			assert.Equal(t, tt.wantPaused, options["stopped"])
+		})
+	}
 }

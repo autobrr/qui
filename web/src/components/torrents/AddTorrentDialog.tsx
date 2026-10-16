@@ -38,7 +38,6 @@ import {
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
-import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { useAddTorrentPreferences } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
@@ -175,9 +174,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const duplicateCheckRequestRef = useRef(0)
   const duplicateCheckIndicatorTimeoutRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
-  // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
-  // This works around qBittorrent API not supporting start_paused_enabled setting
-  const [startPausedEnabled] = usePersistedStartPaused(instanceId, false)
 
   // Use controlled state if provided, otherwise use internal state
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
@@ -607,7 +603,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       urls: "",
       category: "",
       tags: [] as string[],
-      startPaused: startPausedEnabled,
       ...preferenceDefaults,
       skipHashCheck: false,
       sequentialDownload: false,
@@ -643,6 +638,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (pristine("contentLayout")) form.setFieldValue("contentLayout", preferenceDefaults.contentLayout, opts)
     if (pristine("tempPathEnabled")) form.setFieldValue("tempPathEnabled", preferenceDefaults.tempPathEnabled, opts)
     if (pristine("tempPath")) form.setFieldValue("tempPath", preferenceDefaults.tempPath, opts)
+    if (pristine("startPaused")) form.setFieldValue("startPaused", preferenceDefaults.startPaused, opts)
   }, [form, instanceId, addTorrentPreferences.loaded, preferenceDefaults])
 
   const setSavePath = useCallback((path: string) => {

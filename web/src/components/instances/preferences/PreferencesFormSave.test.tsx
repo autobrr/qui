@@ -286,30 +286,17 @@ describe("FileManagementForm capabilities", () => {
 })
 
 describe("FileManagementForm start paused", () => {
-  it("stores the value when it is the only change", async () => {
+  it.each([
+    ["qBittorrent 5.x", "add_stopped_enabled"],
+    ["qBittorrent 4.x", "start_paused_enabled"],
+  ] as const)("writes the key that %s sent", async (_version, key) => {
     const bodies = recordSaves()
-    const { form } = renderForm(FileManagementForm)
-    const before = localStorage.getItem("qui-start-paused-instance-1")
+    const { form } = renderForm(FileManagementForm, { ...preferences, [key]: false })
 
     fireEvent.click(switchFor("preferences.fileManagement.startTorrentsPaused"))
     fireEvent.submit(form)
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-    expect(bodies).toEqual([])
-    expect(localStorage.getItem("qui-start-paused-instance-1")).not.toBe(before)
-  })
-
-  it("leaves the stored value unchanged when the save fails", async () => {
-    failSaves()
-    const { form } = renderForm(FileManagementForm)
-    const before = localStorage.getItem("qui-start-paused-instance-1")
-
-    fireEvent.click(switchFor("preferences.fileManagement.startTorrentsPaused"))
-    // A change to start paused alone sends no request, so change a qBittorrent preference too.
-    fireEvent.click(switchFor("preferences.fileManagement.autoTorrentManagement"))
-    fireEvent.submit(form)
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
-    expect(localStorage.getItem("qui-start-paused-instance-1")).toBe(before)
+    expect(bodies).toEqual([{ [key]: true }])
   })
 })
