@@ -4,7 +4,6 @@
 package hardlinktree
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -382,7 +381,6 @@ func TestIsDirNotEmpty(t *testing.T) {
 		{name: "ENOTEMPTY", err: fmt.Errorf("rollback: %w", &fs.PathError{Op: "remove", Path: "/data/x", Err: syscall.ENOTEMPTY}), want: true},
 		{name: "permission denied", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrPermission}, want: false},
 		{name: "not exist", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrNotExist}, want: false},
-		{name: "bare text without a code", err: errors.New("directory not empty"), want: true},
 		{name: "permission denied on a path with not empty", err: &fs.PathError{Op: "remove", Path: "/data/not empty", Err: fs.ErrPermission}, want: false},
 	}
 	for _, tt := range tests {

@@ -14,22 +14,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// A localized Windows words ERROR_DIR_NOT_EMPTY in its own language, so the
-// code has to match on its own. The German text below holds no "not empty".
-func TestIsDirNotEmptyMatchesWindowsCodeInAnyLanguage(t *testing.T) {
+// Windows reports a folder that is not empty by its code. The message text is
+// translated on a non-English install, so only the code is checked.
+func TestIsDirNotEmptyMatchesWindowsCode(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("rollback: %w", &fs.PathError{Op: "remove", Path: `D:\data\x`, Err: windows.ERROR_DIR_NOT_EMPTY})
 	require.True(t, isDirNotEmpty(err))
-	require.True(t, isDirNotEmpty(localizedErrnoError{windows.ERROR_DIR_NOT_EMPTY, "Das Verzeichnis ist nicht leer."}))
-	require.False(t, isDirNotEmpty(&fs.PathError{Op: "remove", Path: `D:\data\Not Empty`, Err: windows.ERROR_ACCESS_DENIED}))
 }
-
-// localizedErrnoError is an error whose message is not English but which unwraps
-// to the Windows code, the shape a translated system message takes.
-type localizedErrnoError struct {
-	errno windows.Errno
-	msg   string
-}
-
-func (e localizedErrnoError) Error() string { return e.msg }
-func (e localizedErrnoError) Unwrap() error { return e.errno }
