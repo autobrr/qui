@@ -146,6 +146,10 @@ case "$cmd" in
     # playbook's closed/label check is the real guard.
     existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
     if [[ -n "$existing" ]]; then
+      # A retry can choose the other state, so the issue takes the state of this run.
+      other=ready-for-human
+      [[ "$state" == ready-for-human ]] && other=ready-for-agent
+      gh issue edit "$existing" --add-label "$state" --remove-label "$other" >&2
       echo "Issue already exists for discussion #$NUMBER: $existing" >&2
       echo "$existing"
       exit 0
