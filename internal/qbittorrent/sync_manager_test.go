@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode/utf8"
 
@@ -2598,6 +2599,113 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		return maindataCalls.Load() >= 2
 	}, time.Second, 5*time.Millisecond,
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+}
+
+// debouncedSyncTimes records when each debounced sync runs. With no client
+// pool, each sync logs this warning and returns.
+func debouncedSyncTimes(t *testing.T) func() []time.Time {
+	t.Helper()
+	var mu sync.Mutex
+	var times []time.Time
+	originalLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "Client pool is nil, skipping sync" {
+			mu.Lock()
+			times = append(times, time.Now())
+			mu.Unlock()
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+	return func() []time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(times)
+	}
+}
+
+// Hints closer together than the debounce delay must not hold off the sync for
+// as long as they keep coming.
+func TestDebouncedSyncHasAMaximumWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		// A hint every 150 ms for 4 s. Each sync ends a one second window, and
+		// the next window opens with the next hint, so the storm syncs at 1 s,
+		// 2.05 s and 3.1 s.
+		var hints []time.Time
+		for start := time.Now(); time.Since(start) < 4*time.Second; {
+			hints = append(hints, time.Now())
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(150 * time.Millisecond)
+		}
+		synctest.Wait()
+		syncs := syncTimes()
+		require.Len(t, syncs, 3, "the storm synced at %v", syncs)
+
+		var previous time.Time
+		for _, synced := range syncs {
+			i := slices.IndexFunc(hints, func(hint time.Time) bool { return hint.After(previous) })
+			require.NotEqual(t, -1, i, "a sync ran with no hint pending")
+			first := hints[i]
+			require.LessOrEqual(t, synced.Sub(first), syncDebounceMaxWait,
+				"a sync started %v after the first pending hint", synced.Sub(first))
+			previous = synced
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+		require.Len(t, syncTimes(), len(syncs)+1, "the last hints still get one sync")
+	})
+}
+
+func TestDebouncedSyncWaitsTheDelayForASingleHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		start := time.Now()
+		sm.syncAfterModification(1, nil, "single")
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.Len(t, syncs, 1)
+		require.Equal(t, 200*time.Millisecond, syncs[0].Sub(start))
+	})
+}
+
+// A timer whose callback runs after a newer hint replaced it must leave the
+// window open, or the max wait restarts from a later hint.
+func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		sm.syncAfterModification(1, nil, "first")
+		// Stand in for a newer hint whose timer replaced the first one, so the
+		// first callback finds itself replaced when it fires at 200 ms. The next
+		// hint stops this timer, as it would a real one.
+		replacement := time.NewTimer(time.Hour)
+		t.Cleanup(func() { replacement.Stop() })
+		sm.syncDebounceMu.Lock()
+		sm.debouncedSyncTimers[1] = replacement
+		sm.syncDebounceMu.Unlock()
+
+		// A hint every 140 ms from 100 ms to 1.22 s.
+		time.Sleep(100 * time.Millisecond)
+		stormStart := time.Now()
+		for range 9 {
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(140 * time.Millisecond)
+		}
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.GreaterOrEqual(t, len(syncs), 2)
+		require.LessOrEqual(t, syncs[1].Sub(stormStart), syncDebounceMaxWait,
+			"the first storm hint waited %v for the sync after the replaced timer's", syncs[1].Sub(stormStart))
+	})
 }
 
 // App preferences are a cosmetic ~150-field blob. A failure to render them must
