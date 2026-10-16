@@ -46,7 +46,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 ## Steps
 
 1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `pending-close`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and no human has commented after the last triage comment, stop and report the same. The exception is a local session on a `ready-for-human` discussion whose last triage comment is a log hand-off: continue, and fetch the logs. If it carries `pending-close` and the reporter commented after the last triage comment, follow "Reply to a likely duplicate". If humans commented but the comments do not add the information that triage asked for, stop without a write and report that the information is still missing. If the missing information is in logs behind a log link, use the log hand-off in `ready-for-human` instead. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer. Collect every log link from the Log link field, the description, and the comments. In a local session, fetch the logs as `docs/agents/issue-tracker.md` describes. The workflow cannot fetch them.
-2. Read `GLOSSARY.md` and `docs/architecture.md` for the area that the discussion names.
+2. Read `GLOSSARY.md`, `docs/architecture.md`, and the ADRs in `docs/adr/` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
 5. For an enhancement, search the codebase for an existing implementation. For a bug, find the code path and decide whether the report still agrees with the code. If it does not, search merged pull requests in that area with `gh search prs --repo <owner/repo> --merged` for the fix. The current release is `gh release list --limit 1 --exclude-pre-releases`.
@@ -131,7 +131,22 @@ A bug report whose code path no longer matches the report, with no fix found in 
 
 `bug` only. An `enhancement` never becomes an issue in triage, whatever category it was filed in: which requests get built is a human decision. An `enhancement` that is not `needs-info` or a mechanical wontfix goes to `ready-for-human`.
 
-The bug is confirmed against the code path and an agent can fix it without a design decision. The issue becomes the only open thread for the work:
+The bug is confirmed against the code path and an agent can fix it without a design decision. Do the design check first. If the check finds a design question, the bug goes to `ready-for-human`.
+
+#### Design check
+
+The fix has a design question if one of these is true:
+
+- The fix goes against an ADR, or it needs a new decision that an ADR would record.
+- The fix needs a domain term that `GLOSSARY.md` does not define, or it uses a glossary term with a different meaning.
+- The same fault can happen through more than one caller, and no module owns the broken behavior. The fix then adds the same guard in each caller, or it needs a new shared module.
+- The fix moves behavior from one module to another.
+
+In a local session, settle the design question with the maintainer. Then continue with `ready-for-agent`.
+
+#### Create the issue
+
+The issue becomes the only open thread for the work:
 
 1. Run `create-issue` with a short title and the agent brief as the body. The command prints the issue URL.
 2. Post one comment: the disclaimer line, then `Tracked in <issue URL>.`
@@ -142,7 +157,7 @@ Do not post the brief on the discussion. It lives in the issue, and the issue bo
 
 ### ready-for-human
 
-Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`. Remove `needs-triage`, and for a `bug` also `needs-confirmation`. Do not create an issue.
+Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, manual testing, or a design question from the design check. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For a design question, the line starts with `Design:` and asks the question, so the maintainer can run `/grill-with-docs` on it. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`. Remove `needs-triage`, and for a `bug` also `needs-confirmation`. Do not create an issue.
 
 #### Log hand-off
 
@@ -181,6 +196,11 @@ What happens after the work is complete. Name edge cases and error conditions.
 **Out of scope:**
 - What this work must not change
 
+**Domain:**
+- Glossary terms: each `GLOSSARY.md` term that the brief uses. Name a missing term as a gap.
+- ADRs: each ADR that the fix touches, or `None`.
+- Owner: the module that owns the broken or missing behavior.
+
 **Logs:**
 - Each log link from the report, exactly as the reporter wrote it, or `None`
 ```
@@ -189,6 +209,7 @@ Brief rules:
 
 - Describe behavior, not procedure. The agent explores the code itself.
 - Name types, functions, endpoints, and config keys. Do not name file paths or line numbers. They go stale.
+- Put the fix in the module that owns the behavior, so that every caller gets it. Do not suggest a guard in one caller.
 - Each acceptance criterion is testable on its own.
 - Copy log links into **Logs** without a change, also links to other paste sites.
 
