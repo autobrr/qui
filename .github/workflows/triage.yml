@@ -139,6 +139,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
 
+      # Claude Code scrubs credentials from the commands it starts only with
+      # bubblewrap, and Ubuntu 24.04 blocks the user namespaces that
+      # bubblewrap needs. claude-code-action sets up the runner the same way.
+      - name: Set up the subprocess sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Install the Claude Agent SDK
         run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts/triage
 
@@ -149,8 +160,11 @@ jobs:
           DISCUSSION_WRITE_ALLOWED_OPS: add-label,remove-label,comment,close,create-issue
           # Bound how many times Claude can invoke the write helper per run, so a
           # prompt-injection in discussion content cannot spam mutations. The
-          # longest playbook path (promote to issue) takes 5 calls.
+          # longest playbook path (promote to issue) takes 5 calls. Claude Code
+          # applies the cap only when it scrubs the subprocess environment. The
+          # scrub keeps GitHub tokens, so gh still works.
           CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 8}'
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
           # When this is empty, the script signs in with federation. The IDs
           # are not secrets: a token needs a GitHub OIDC token that matches
           # the rule.
