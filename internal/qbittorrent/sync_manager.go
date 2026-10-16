@@ -32,6 +32,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -6006,14 +6007,38 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 	return *prefs, nil
 }
 
-// SetAppPreferences updates app preferences
+// GetPreferenceView returns the preference catalog view of the instance preferences.
+func (sm *SyncManager) GetPreferenceView(ctx context.Context, instanceID int) ([]prefcatalog.Field, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	// Without build info, the libtorrent and platform gates pass.
+	var libtorrentVersion, platform string
+	if info, err := client.GetAppInfo(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Preference view without qBittorrent build info")
+	} else if info.BuildInfo != nil {
+		libtorrentVersion = info.BuildInfo.Libtorrent
+		platform = info.BuildInfo.Platform
+	}
+
+	return prefcatalog.View(*prefs, libtorrentVersion, platform)
+}
+
+// SetAppPreferences writes the changed preferences through the preference catalog.
 func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]any) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
+	if err := prefcatalog.Apply(ctx, client.Client, prefs); err != nil {
 		return fmt.Errorf("failed to set preferences: %w", err)
 	}
 
@@ -6022,28 +6047,6 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")
 
-	return nil
-}
-
-// NormalizeScanDirsPreference validates and normalizes the scan_dirs preference
-// using go-qbittorrent's typed monitored folder support.
-func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
-	rawScanDirs, ok := prefs["scan_dirs"]
-	if !ok {
-		return nil
-	}
-
-	encoded, err := json.Marshal(rawScanDirs)
-	if err != nil {
-		return err
-	}
-
-	var scanDirs qbt.MonitoredFolders
-	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
-		return err
-	}
-
-	prefs["scan_dirs"] = scanDirs
 	return nil
 }
 
@@ -6984,29 +6987,33 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (r
 		return fmt.Errorf("failed to get app preferences: %w", err)
 	}
 	originalEnabled := prefs.RssAutoDownloadingEnabled
+	setAutoDownloading := func(enabled bool) error {
+		return prefcatalog.Apply(ctx, client.Client, map[string]any{"rss_auto_downloading_enabled": enabled})
+	}
+	defer client.InvalidateAppPreferencesCache()
 
 	defer func() {
 		if retErr == nil {
 			return
 		}
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, originalEnabled); err != nil {
+		if err := setAutoDownloading(originalEnabled); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Bool("originalEnabled", originalEnabled).Msg("failed to restore RSS auto-downloading state after reprocess error")
 		}
 	}()
 
 	// Ensure it's disabled first (may already be disabled)
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+	if err := setAutoDownloading(false); err != nil {
 		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
 	}
 
 	// Enable to trigger startProcessing() which processes all unread articles
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, true); err != nil {
+	if err := setAutoDownloading(true); err != nil {
 		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
 	}
 
 	// Restore original state if it was disabled
 	if !originalEnabled {
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+		if err := setAutoDownloading(false); err != nil {
 			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
 		}
 	}

@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 )
 
 type PreferencesHandler struct {
@@ -24,13 +26,7 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 	}
 }
 
-// GetPreferences returns app preferences for an instance
-// TODO: The go-qbittorrent library is missing network interface list endpoints:
-// - /api/v2/app/networkInterfaceList (to get available network interfaces)
-// - /api/v2/app/networkInterfaceAddressList (to get addresses for an interface)
-// These are needed to properly populate network interface dropdowns like the official WebUI.
-// For now, current_network_interface and current_interface_address show actual values but
-// cannot be configured with proper dropdown selections.
+// GetPreferences returns the preference catalog view of the instance preferences.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -39,25 +35,10 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	prefs, err := h.syncManager.GetAppPreferences(r.Context(), instanceID)
-	if err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "preferences:get") {
-			return
-		}
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(prefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preferences response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	h.respondWithView(w, r, instanceID, "preferences:get")
 }
 
-// UpdatePreferences updates specific preference fields
+// UpdatePreferences writes the changed preference keys and returns the new view.
 func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -72,37 +53,37 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if err := h.syncManager.NormalizeScanDirsPreference(prefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid scan_dirs value")
-		http.Error(w, "Invalid scan_dirs value", http.StatusBadRequest)
-		return
-	}
 
 	if err := h.syncManager.SetAppPreferences(r.Context(), instanceID, prefs); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:set") {
 			return
 		}
+		if errors.Is(err, prefcatalog.ErrInvalidPatch) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to set app preferences")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Preferences save failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Return updated preferences
-	updatedPrefs, err := h.syncManager.GetAppPreferences(r.Context(), instanceID)
+	h.respondWithView(w, r, instanceID, "preferences:getUpdated")
+}
+
+func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Request, instanceID int, operation string) {
+	view, err := h.syncManager.GetPreferenceView(r.Context(), instanceID)
 	if err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getUpdated") {
+		if respondIfInstanceDisabled(w, err, instanceID, operation) {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated preferences")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get preference view")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(updatedPrefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode updated preferences response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
+	if err := json.NewEncoder(w).Encode(view); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preference view")
 	}
 }
 
