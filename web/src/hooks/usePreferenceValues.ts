@@ -70,8 +70,5 @@ export function useRSSPreferences(instanceId: number | undefined, options?: Pref
   return {
     processingEnabled: preferences?.rss_processing_enabled ?? true,
     autoDownloadingEnabled: preferences?.rss_auto_downloading_enabled ?? true,
-    refreshInterval: preferences?.rss_refresh_interval ?? 30,
-    maxArticlesPerFeed: preferences?.rss_max_articles_per_feed ?? 50,
-    downloadRepackProperEpisodes: preferences?.rss_download_repack_proper_episodes ?? false,
   }
 }

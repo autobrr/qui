@@ -211,22 +211,16 @@ describe("useAddTorrentPreferences", () => {
 })
 
 describe("useRSSPreferences", () => {
-  it("returns the RSS settings", () => {
+  it("returns the RSS switches", () => {
     const { result } = renderHook(() => useRSSPreferences(1, noFetch), {
       wrapper: wrapperWith({
         rss_processing_enabled: false,
         rss_auto_downloading_enabled: false,
-        rss_refresh_interval: 15,
-        rss_max_articles_per_feed: 100,
-        rss_download_repack_proper_episodes: true,
       }),
     })
     expect(result.current).toEqual({
       processingEnabled: false,
       autoDownloadingEnabled: false,
-      refreshInterval: 15,
-      maxArticlesPerFeed: 100,
-      downloadRepackProperEpisodes: true,
     })
   })
 
@@ -235,9 +229,6 @@ describe("useRSSPreferences", () => {
     expect(result.current).toEqual({
       processingEnabled: true,
       autoDownloadingEnabled: true,
-      refreshInterval: 30,
-      maxArticlesPerFeed: 50,
-      downloadRepackProperEpisodes: false,
     })
   })
 })

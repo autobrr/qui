@@ -21,7 +21,6 @@ import {
   Regex,
   Rss,
   Search,
-  Settings,
   Tag,
   Trash2
 } from "lucide-react"
@@ -52,7 +51,6 @@ import {
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -110,6 +108,7 @@ import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { useVirtualizer } from "@tanstack/react-virtual"
 
+import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
 interface RSSPageProps {
@@ -293,11 +292,11 @@ export function RSSPage({
         </div>
         <div className="flex items-center gap-2">
           {renderInstanceSelector()}
-          <RssSettingsPopover
-            key={instanceId}
-            preferences={rssPreferences}
-            updatePreferences={updatePreferences}
-            isUpdating={isUpdatingPreferences}
+          <InstanceSettingsButton
+            instanceId={instanceId}
+            instanceName={instances?.find(inst => inst.id === instanceId)?.name ?? ""}
+            defaultTab="rss"
+            asButton
           />
         </div>
       </div>
@@ -2327,106 +2326,4 @@ function getFeedInfos(items: RSSItems | undefined): FeedInfo[] {
     }
   }
   return infos
-}
-
-// ============================================================================
-// RSS Settings Popover
-// ============================================================================
-
-function RssSettingsPopover({
-  preferences,
-  updatePreferences,
-  isUpdating,
-}: {
-  preferences: ReturnType<typeof useRSSPreferences>
-  updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
-  isUpdating: boolean
-}) {
-  const { t } = useTranslation("rss")
-  const [refreshInterval, setRefreshInterval] = useState(preferences.refreshInterval)
-  const [maxArticles, setMaxArticles] = useState(preferences.maxArticlesPerFeed)
-  const [downloadRepack, setDownloadRepack] = useState(preferences.downloadRepackProperEpisodes)
-
-  // Sync local state when preferences change
-  useEffect(() => {
-    setRefreshInterval(preferences.refreshInterval)
-    setMaxArticles(preferences.maxArticlesPerFeed)
-    setDownloadRepack(preferences.downloadRepackProperEpisodes)
-  }, [preferences.refreshInterval, preferences.maxArticlesPerFeed, preferences.downloadRepackProperEpisodes])
-
-  const handleSave = () => {
-    updatePreferences({
-      rss_refresh_interval: refreshInterval,
-      rss_max_articles_per_feed: maxArticles,
-      rss_download_repack_proper_episodes: downloadRepack,
-    }).then(
-      () => toast.success(t("toast.rssSettingsSaved")),
-      () => toast.error(t("toast.failedToSaveRssSettings"))
-    )
-  }
-
-  return (
-    <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t("settingsPopover.title")}</TooltipContent>
-      </Tooltip>
-      <PopoverContent className="w-72" align="end">
-        <div className="space-y-4">
-          <h4 className="font-medium">{t("settingsPopover.title")}</h4>
-
-          <div className="space-y-3">
-            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">{t("settingsPopover.refreshInterval")}</Label>
-              <Input
-                type="number"
-                className="w-16 h-8 text-center"
-                min={1}
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(parseInt(e.target.value) || 30)}
-              />
-              <span className="text-xs text-muted-foreground w-6">{t("settingsPopover.min")}</span>
-            </div>
-
-            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">{t("settingsPopover.maxArticles")}</Label>
-              <Input
-                type="number"
-                className="w-16 h-8 text-center"
-                min={1}
-                value={maxArticles}
-                onChange={(e) => setMaxArticles(parseInt(e.target.value) || 50)}
-              />
-              <span className="w-6" />
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Auto-Download Settings */}
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">{t("settingsPopover.autoDownload")}</p>
-
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">{t("settingsPopover.downloadRepack")}</Label>
-              <Switch
-                checked={downloadRepack}
-                onCheckedChange={setDownloadRepack}
-              />
-            </div>
-          </div>
-
-          <Button onClick={handleSave} disabled={isUpdating} className="w-full">
-            {isUpdating ? t("settingsPopover.saving") : t("settingsPopover.save")}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
 }

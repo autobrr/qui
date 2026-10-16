@@ -60,6 +60,10 @@ const view: PreferenceField[] = [
   { key: "max_ratio", value: 2, tab: "bittorrent", section: "seedingLimits", control: "number", dependsOn: "max_ratio_enabled" },
   { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true, reason: "pending BitTorrent PR" },
   { key: "rss_processing_enabled", value: true, tab: "rss", section: "reader", control: "switch" },
+  { key: "rss_refresh_interval", value: 30, tab: "rss", section: "reader", control: "number", wireUnit: "min", displayUnit: "min", dependsOn: "rss_processing_enabled" },
+  { key: "rss_max_articles_per_feed", value: 50, tab: "rss", section: "reader", control: "number", dependsOn: "rss_processing_enabled" },
+  { key: "rss_auto_downloading_enabled", value: false, tab: "rss", section: "autoDownloader", control: "switch" },
+  { key: "rss_download_repack_proper_episodes", value: true, tab: "rss", section: "smartEpisodeFilter", control: "switch" },
   { key: "disk_queue_size", value: 1048576, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
@@ -247,6 +251,38 @@ describe("InstancePreferencesDialog", () => {
 
     expect((await fieldFor("preferences.seedingLimits.enableShareRatioLimit")).getAttribute("aria-checked")).toBe("true")
     expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("shows the five RSS settings in the RSS tab", async () => {
+    serveView()
+
+    renderDialog("rss")
+
+    expect((await fieldFor("rss:warnings.enableRss")).getAttribute("aria-checked")).toBe("true")
+    expect((await fieldFor("rss:settingsPopover.refreshInterval")).value).toBe("30")
+    expect((await fieldFor("rss:settingsPopover.maxArticles")).value).toBe("50")
+    expect((await fieldFor("rss:settingsPopover.autoDownload")).getAttribute("aria-checked")).toBe("false")
+    expect((await fieldFor("rss:settingsPopover.downloadRepack")).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
+      "preferences.sections.rssReader",
+      "preferences.sections.rssAutoDownloader",
+      "preferences.sections.rssSmartEpisodeFilter",
+    ])
+  })
+
+  it("keeps an open RSS edit when the view refreshes, and saves only that edit", async () => {
+    const bodies = recordSaves()
+    serveView()
+    const { queryClient } = renderDialog("rss")
+
+    fireEvent.change(await fieldFor("rss:settingsPopover.refreshInterval"), { target: { value: "15" } })
+    serveView(view.map(field => field.key === "rss_refresh_interval" ? { ...field, value: 60 } : field))
+    await queryClient.refetchQueries({ queryKey: ["instance-preference-view", 1] })
+
+    expect((await fieldFor("rss:settingsPopover.refreshInterval")).value).toBe("15")
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ rss_refresh_interval: 15 }])
   })
 
   it("shows the qBittorrent tabs again when it reopens while the view is still fresh", async () => {

@@ -98,12 +98,14 @@ Click **Reprocess** to check all unread articles against all rules again. If you
 
 ## RSS settings
 
-The gear button next to the instance selector opens the **RSS Settings** popover:
+The gear button next to the instance selector opens the settings dialog of the instance on the **RSS** tab. The tab has these settings:
 
-| Setting | Description |
-|---------|-------------|
-| Refresh interval | Minutes between automatic feed refreshes |
-| Max articles per feed | Number of articles qBittorrent keeps per feed |
-| Download REPACK/PROPER | Also downloads REPACK and PROPER versions of matched episodes |
+| Section | Setting | Description |
+|---------|---------|-------------|
+| RSS reader | Enable RSS | Turns RSS feed fetching on or off |
+| RSS reader | Refresh interval | Minutes between automatic feed refreshes |
+| RSS reader | Max articles per feed | Number of articles that qBittorrent keeps for each feed |
+| RSS torrent auto downloader | Auto-Download | Turns the auto-download rules on or off |
+| RSS smart episode filter | Download REPACK/PROPER | Also downloads the REPACK and PROPER versions of matched episodes |
 
-These values are qBittorrent preferences. A change applies to the whole instance.
+You can change the refresh interval and the article limit only while RSS is on. These values are qBittorrent preferences. A change applies to the whole instance. [Instance settings](./instance-settings.md#rss) describes the other tabs of the dialog.
