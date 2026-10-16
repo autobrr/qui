@@ -35,6 +35,7 @@ yarn.lock
 .pnpm-store
 # If needed, package-lock.json shall be added manually using an explicit git add command
 package-lock.json
+!.github/scripts/triage/package-lock.json
 
 # Others
 web/build
