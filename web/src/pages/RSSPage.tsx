@@ -294,6 +294,7 @@ export function RSSPage({
         <div className="flex items-center gap-2">
           {renderInstanceSelector()}
           <RssSettingsPopover
+            key={instanceId}
             preferences={rssPreferences}
             updatePreferences={updatePreferences}
             isUpdating={isUpdatingPreferences}

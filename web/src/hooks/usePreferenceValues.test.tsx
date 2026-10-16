@@ -186,6 +186,19 @@ describe("useAddTorrentPreferences", () => {
       excludedFileNames: "",
     })
   })
+
+  it("does not carry the defaults of one instance to another", () => {
+    const wrapper = wrapperWith({ save_path: "/data/a", auto_tmm_enabled: false })
+    const { result, rerender } = renderHook(({ id }) => useAddTorrentPreferences(id, noFetch), {
+      wrapper,
+      initialProps: { id: 1 },
+    })
+    expect(result.current.defaults.savePath).toBe("/data/a")
+
+    rerender({ id: 2 })
+    expect(result.current.loaded).toBe(false)
+    expect(result.current.defaults).toEqual({ autoTMM: true, savePath: "", contentLayout: "", tempPathEnabled: false, tempPath: "" })
+  })
 })
 
 describe("useRSSPreferences", () => {
