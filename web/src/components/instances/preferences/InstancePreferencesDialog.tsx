@@ -64,8 +64,7 @@ interface InstancePreferencesDialogProps {
 function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: number; instance?: Instance; defaultTab?: string }) {
   const { t } = useTranslation("instances")
   const view = usePreferenceView(instanceId)
-  // Seeded only from a view fetched after the dialog opened, so that it does not start from an old cache.
-  const fields = view.isFetchedAfterMount ? view.data : undefined
+  const fields = view.data
   const tabs = fields ? preferenceTabsOf(fields) : []
 
   return (

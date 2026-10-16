@@ -99,6 +99,24 @@ function renderDialog(defaultTab?: string) {
   return { ...result, queryClient }
 }
 
+// Opens the dialog, waits for its tabs, and closes it. The returned function opens it again.
+async function openAndClose() {
+  // The stale time of the app's query client.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
+  const dialog = (open: boolean) => (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <InstancePreferencesDialog open={open} onOpenChange={() => {}} instanceId={1} instanceName="qbit" />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  const { rerender } = render(dialog(true))
+  await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
+  rerender(dialog(false))
+  await waitFor(() => expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull())
+  return () => rerender(dialog(true))
+}
+
 describe("InstancePreferencesDialog", () => {
   it("shows the Instance tab, then the qBittorrent tabs that have fields, in the qBittorrent order", async () => {
     serveView()
@@ -233,23 +251,22 @@ describe("InstancePreferencesDialog", () => {
 
   it("shows the qBittorrent tabs again when it reopens while the view is still fresh", async () => {
     serveView()
-    // The stale time of the app's query client.
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 5000 } } })
-    const dialog = (open: boolean) => (
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <InstancePreferencesDialog open={open} onOpenChange={() => {}} instanceId={1} instanceName="qbit" />
-        </TooltipProvider>
-      </QueryClientProvider>
-    )
-    const { rerender } = render(dialog(true))
-    await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
+    const reopen = await openAndClose()
 
-    rerender(dialog(false))
-    await waitFor(() => expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull())
-    rerender(dialog(true))
+    reopen()
 
     await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
+  })
+
+  it("shows the retry and not the old fields when the fetch fails on a reopen", async () => {
+    serveView()
+    const reopen = await openAndClose()
+    server.use(http.get("*/api/instances/1/preferences", () => HttpResponse.json({ error: "unreachable" }, { status: 502 })))
+
+    reopen()
+
+    await screen.findByRole("button", { name: "preferences.dialog.retry" })
+    expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull()
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {

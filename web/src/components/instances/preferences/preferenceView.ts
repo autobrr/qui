@@ -17,8 +17,8 @@ export function usePreferenceView(instanceId: number) {
   return useQuery({
     queryKey: preferenceViewKey(instanceId),
     queryFn: () => api.getInstancePreferenceView(instanceId),
-    // The dialog shows the view only after a fetch since it opened, so a view that is still fresh must fetch too.
-    refetchOnMount: "always",
+    // The cache goes when the dialog closes, so a reopen never shows an old view, also when its fetch fails.
+    gcTime: 0,
   })
 }
 
