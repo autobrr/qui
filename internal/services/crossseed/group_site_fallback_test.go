@@ -1233,6 +1233,7 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 		suffix     = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub"
 		bare       = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265"
 		longerFile = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Big-Moe-Fansub.mkv"
+		otherFile  = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Other.mkv"
 	)
 	svc := newGroupFallbackService()
 	m := svc.matcher()
@@ -1256,12 +1257,18 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	require.False(t, ok)
 	require.Equal(t, groupMismatchReason, reason)
 
-	// The torrent name spells the fansub, but the selected file names another.
+	// The torrent name spells the fansub, but the selected file names a longer
+	// fansub or another group entirely.
 	conflicting := namedRelease{
 		release:   svc.releaseCache.Parse(suffix),
 		rawName:   suffix,
 		tagOrigin: svc.releaseCache.Parse(longerFile),
 	}
+	ok, reason = strict(conflicting)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	require.False(t, m.dashSuffixGroupSpellsSite(sited, conflicting))
+	conflicting.tagOrigin = svc.releaseCache.Parse(otherFile)
 	ok, reason = strict(conflicting)
 	require.False(t, ok)
 	require.Equal(t, groupMismatchReason, reason)

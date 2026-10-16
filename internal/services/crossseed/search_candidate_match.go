@@ -982,8 +982,9 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 // "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
 // origins as groupTagProvenance, because a view built from the files can carry
 // the Group of the torrent name without the tags of that name. Every origin
-// whose group tag is the Group must rebuild the Site, so a selected file that
-// names "Big-Moe-Fansub" vetoes a torrent name that says "Moe-Fansub".
+// with a group tag must carry the Group and rebuild the Site, so a selected
+// file that names "Big-Moe-Fansub" or "Other" vetoes a torrent name that says
+// "Moe-Fansub". An origin without a group tag has no say.
 func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 	if sited.release == nil || grouped.release == nil {
 		return false
@@ -1005,10 +1006,14 @@ func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 			continue
 		}
 		groupTag, name := dashSuffixGroupName(origin)
-		if normalizer.Normalize(groupTag) != group {
+		switch normalizer.Normalize(groupTag) {
+		case "":
 			continue
-		}
-		if normalizer.Normalize(name) != site {
+		case group:
+			if normalizer.Normalize(name) != site {
+				return false
+			}
+		default:
 			return false
 		}
 		spelled = true
