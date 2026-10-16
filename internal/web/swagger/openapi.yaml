@@ -3260,7 +3260,10 @@ paths:
       description: |
         Write only the changed preferences. The server rejects the whole patch, and sends
         nothing to qBittorrent, when a key is unknown, read-only, or not shown, or when a
-        value has the wrong type. It does not check ranges.
+        value has the wrong type. It does not check ranges. The server accepts a key that the
+        GET view leaves out because qBittorrent did not send it, or because its libtorrent
+        or platform gate does not match. qBittorrent ignores or stores that value, and the
+        value has no effect.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
