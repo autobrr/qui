@@ -207,6 +207,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISCUSSION_WRITE_ALLOWED_OPS: add-label,remove-label,comment
+          DISCUSSION_NUMBER: ${{ inputs.discussion_number }}
         run: |
           # claude-code-action writes this file, and Claude Code names the
           # subtype. If either changes, budget stops go back to the sweep.
@@ -218,7 +219,7 @@ jobs:
           # discussion, by the same test that the sweep uses.
           # shellcheck disable=SC2016 # GraphQL variables, not shell vars
           untriaged=$(gh api graphql \
-            -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F n=${{ inputs.discussion_number }} \
+            -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F n="$DISCUSSION_NUMBER" \
             -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){discussion(number:$n){closed labels(first:100){nodes{name}}}}}' \
             --jq '.data.repository.discussion | (.closed | not) and ([.labels.nodes[].name] | any(IN("needs-info","pending-close","ready-for-agent","ready-for-human","wontfix")) | not)')
           if [[ "$untriaged" != true ]]; then
