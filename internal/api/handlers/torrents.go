@@ -660,16 +660,14 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				options["paused"] = "false"
 				options["stopped"] = "false"
 			}
-		} else {
+		} else if requestedPaused != prefs.AddStopped() {
 			// Only set paused options if the requested state differs from the global preference
-			if requestedPaused != prefs.AddStopped() {
-				if requestedPaused {
-					options["paused"] = "true"
-					options["stopped"] = "true"
-				} else {
-					options["paused"] = "false"
-					options["stopped"] = "false"
-				}
+			if requestedPaused {
+				options["paused"] = "true"
+				options["stopped"] = "true"
+			} else {
+				options["paused"] = "false"
+				options["stopped"] = "false"
 			}
 		}
 	}
