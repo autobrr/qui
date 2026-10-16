@@ -48,6 +48,22 @@ export interface SelfUpdateResult {
   backupError: string
 }
 
+// One preference of the catalog view that GET /instances/{id}/preferences returns.
+export interface PreferenceField {
+  key: string
+  value: unknown
+  tab: "behavior" | "downloads" | "connection" | "speed" | "bittorrent" | "rss" | "webui" | "advanced"
+  section: string
+  control: "switch" | "number" | "text" | "select" | "path" | "list" | "watchFolders"
+  wireUnit?: string
+  displayUnit?: string
+  optionSource?: "fixed" | "pathAutocomplete"
+  options?: unknown[]
+  dependsOn?: string
+  readOnly?: boolean
+  reason?: string
+}
+
 export interface AppPreferences {
   // Core limits and speeds (fully supported)
   dl_limit: number

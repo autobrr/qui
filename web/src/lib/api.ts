@@ -9,6 +9,7 @@ import type {
   AddTorrentResponse,
   ApplicationInfo,
   AppPreferences,
+  PreferenceField,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
@@ -501,6 +502,10 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
       size: instance.matched_torrent.size ?? 0,
     }: undefined,
   }
+}
+
+function preferencesFromView(fields: PreferenceField[]): AppPreferences {
+  return Object.fromEntries(fields.map(field => [field.key, field.value])) as unknown as AppPreferences
 }
 
 class ApiClient {
@@ -2235,19 +2240,20 @@ class ApiClient {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints
+  // Preferences endpoints. The route returns the catalog view. Until the dialog renders
+  // the view, the client turns it back into the preferences object that the forms read.
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+    return preferencesFromView(await this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`))
   }
 
   async updateInstancePreferences(
     instanceId: number,
     preferences: Partial<AppPreferences>
   ): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+    return preferencesFromView(await this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`, {
       method: "PATCH",
       body: JSON.stringify(preferences),
-    })
+    }))
   }
 
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {

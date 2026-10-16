@@ -20,6 +20,7 @@ linters:
     - errorlint
     - exhaustive
     - fatcontext
+    - forbidigo
     - ginkgolinter
     - gocritic
     - gosec
@@ -37,6 +38,13 @@ linters:
     - whitespace
 
   settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^qbittorrent\.Client\.(SetPreferences\w*|SetMonitoredFolders(Ctx)?|SetRSS(AutoDownloading|Processing)Enabled(Ctx)?)$
+          pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
+          msg: send qBittorrent preference writes through the preference catalog in internal/qbittorrent/prefcatalog
+
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
       # asks for behaviour-bearing branches rather than a case per enum value
@@ -68,6 +76,12 @@ linters:
       - std-error-handling
 
     rules:
+      # The preference catalog is the only code that sends a preference write.
+      - path: internal/qbittorrent/prefcatalog/
+        linters:
+          - forbidigo
+        text: preference catalog
+
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.
       - linters:

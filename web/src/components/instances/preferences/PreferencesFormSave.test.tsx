@@ -64,6 +64,9 @@ const preferences = {
   scan_dirs: { "/watch/a": 0, "/watch/b": 1 } as Record<string, unknown>,
 } as AppPreferences
 
+// The preferences route answers with the catalog view.
+const asView = (prefs: AppPreferences) => Object.entries(prefs).map(([key, value]) => ({ key, value }))
+
 // Radix Switch sizes its hidden form input through ResizeObserver, which jsdom lacks.
 vi.stubGlobal("ResizeObserver", class {
   observe() {}
@@ -112,7 +115,7 @@ function recordSaves() {
   const bodies: Partial<AppPreferences>[] = []
   server.use(http.patch("*/api/instances/1/preferences", async ({ request }) => {
     bodies.push(await request.json() as Partial<AppPreferences>)
-    return HttpResponse.json(preferences)
+    return HttpResponse.json(asView(preferences))
   }))
   return bodies
 }
@@ -140,7 +143,7 @@ describe.each(forms)("%s save", (_name, Form, field, label) => {
     server.use(http.patch("*/api/instances/1/preferences", async () => {
       received = true
       await response
-      return HttpResponse.json(preferences)
+      return HttpResponse.json(asView(preferences))
     }))
     const onSuccess = vi.fn()
 
@@ -227,7 +230,7 @@ describe.each(forms)("%s instance switch", (_name, Form, field, label) => {
   })
 
   it("waits for an uncached instance's preferences before it seeds", async () => {
-    server.use(http.get("*/api/instances/2/preferences", () => HttpResponse.json({ ...preferences, [field]: true })))
+    server.use(http.get("*/api/instances/2/preferences", () => HttpResponse.json(asView({ ...preferences, [field]: true }))))
     const { showInstance } = renderForm(Form, { ...preferences, [field]: false })
 
     showInstance(2)
