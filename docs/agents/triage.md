@@ -143,7 +143,7 @@ The fix has a design question if one of these is true:
 - The fix moves behavior from one module to another.
 - The bug comes from state flags that can contradict each other, or from an event that is handled in a state where it is not allowed, and the fix adds one more flag or guard. Ask whether the state belongs in a pure reducer or a state machine.
 
-In a local session, settle the design question with the maintainer. Then continue with `ready-for-agent`.
+In a local session, settle the design question with the maintainer. Write the decision into the agent brief, and record each new term or decision with the `domain-modeling` skill. Then continue with `ready-for-agent`.
 
 Create the issue with `ready-for-agent`, as "Issue for a confirmed bug" describes.
 
@@ -204,7 +204,7 @@ What happens after the work is complete. Name edge cases and error conditions.
 **Domain:**
 - Glossary terms: each `GLOSSARY.md` term that the brief uses. Name a missing term as a gap.
 - ADRs: each ADR that the fix touches, or `None`.
-- Owner: the module that owns the broken or missing behavior.
+- Owner: the module that owns the broken or missing behavior, or `None` when no module owns it. A missing owner is a design question.
 
 **Logs:**
 - Each log link from the report, exactly as the reporter wrote it, or `None`
