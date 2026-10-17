@@ -137,20 +137,6 @@ linters:
           - forbidigo
         text: ADR 0008
 
-      # The default-parser fallback in parseReleaseName is the one allowed use.
-      # Scoped to that statement so a second use in this file is still reported.
-      - path: internal/services/crossseed/matching\.go
-        linters:
-          - forbidigo
-        source: 'cmp\.Or\(m\.releaseCache, releases\.DefaultParser\)'
-
-      # NewReleaseCache builds the release cache, so it is the one allowed
-      # constructor call.
-      - path: internal/services/crossseed/release_cache\.go
-        linters:
-          - forbidigo
-        source: 'return releases\.NewDefaultParser\(\)'
-
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.
       - linters:
