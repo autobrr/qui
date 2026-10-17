@@ -1493,7 +1493,8 @@
       "logFile": "Log file",
       "autoAddTrackersFromUrl": "Automatically add trackers from a URL to new downloads",
       "whenAddingDuplicate": "When adding a duplicate torrent",
-      "torrentFileBackup": "Backup of .torrent files"
+      "torrentFileBackup": "Backup of .torrent files",
+      "emailNotification": "Email notification upon download completion"
     },
     "fields": {
       "excludedFileNamesEnabled": "Exclude file names",
@@ -1568,6 +1569,23 @@
       "useCategoryPathsInManualMode": "Use category paths in Manual Mode",
       "useCategoryPathsInManualModeDescription": "Resolve a relative save path against the category path instead of the default save path",
       "excludedFileNamesDescription": "qBittorrent does not download a file whose name matches a pattern. The wildcards * and ? work",
+      "mailNotificationEnabled": "Send an email when a download finishes",
+      "mailNotificationSender": "From",
+      "mailNotificationEmail": "To",
+      "mailNotificationEmailDescription": "Separate the emails with a semicolon. Separate the addresses inside one email with a comma",
+      "mailNotificationSmtp": "SMTP server",
+      "mailNotificationSmtpDescription": "A host name or an IP address. To use a port other than the default, add a colon and the port",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "This server requires a secure connection (SSL)",
+      "mailNotificationEncryptionType": "SMTP encryption",
+      "mailNotificationEncryptionTypeDescription": "The default port is 25 for None, 587 for STARTTLS, and 465 for SMTPS",
+      "mailNotificationEncryptionNone": "None",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Authentication",
+      "mailNotificationUsername": "Username",
+      "mailNotificationPassword": "Password",
+      "sendTestEmail": "Send test email",
       "optionValue": "Value {{value}}"
     },
     "units": {
@@ -1576,7 +1594,10 @@
     "readOnlyNote": "qui cannot change this setting yet. Change it in qBittorrent.",
     "toast": {
       "saved": "Preferences saved",
-      "saveFailed": "Failed to save the preferences"
+      "saveFailed": "Failed to save the preferences",
+      "testEmailQueued": "qBittorrent queued the test email",
+      "testEmailQueuedDescription": "qBittorrent uses the saved settings. Check your inbox, and check the qBittorrent log for errors.",
+      "testEmailFailed": "Failed to send the test email"
     }
   },
   "backups": {

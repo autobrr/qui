@@ -1493,7 +1493,8 @@
       "logFile": "Fitxer de registre",
       "autoAddTrackersFromUrl": "Afegeix automàticament els rastrejadors d'un URL a les baixades noves",
       "whenAddingDuplicate": "En afegir un torrent duplicat",
-      "torrentFileBackup": "Còpia de seguretat dels fitxers .torrent"
+      "torrentFileBackup": "Còpia de seguretat dels fitxers .torrent",
+      "emailNotification": "Notificació per correu electrònic en acabar la baixada"
     },
     "fields": {
       "excludedFileNamesEnabled": "Exclou noms de fitxer",
@@ -1568,6 +1569,23 @@
       "useCategoryPathsInManualMode": "Usa els camins de categoria en el mode manual",
       "useCategoryPathsInManualModeDescription": "Resol un camí de desada relatiu respecte al camí de la categoria en lloc del camí predeterminat",
       "excludedFileNamesDescription": "El qBittorrent no baixa cap fitxer el nom del qual coincideixi amb un patró. Els comodins * i ? funcionen",
+      "mailNotificationEnabled": "Envia un correu electrònic quan acabi una baixada",
+      "mailNotificationSender": "De",
+      "mailNotificationEmail": "Per a",
+      "mailNotificationEmailDescription": "Separeu els correus amb un punt i coma. Separeu les adreces d'un mateix correu amb una coma",
+      "mailNotificationSmtp": "Servidor SMTP",
+      "mailNotificationSmtpDescription": "Un nom d'amfitrió o una adreça IP. Per a un port diferent del predeterminat, afegiu dos punts i el port",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Aquest servidor requereix una connexió segura (SSL)",
+      "mailNotificationEncryptionType": "Xifratge SMTP",
+      "mailNotificationEncryptionTypeDescription": "El port predeterminat és 25 per a Cap, 587 per a STARTTLS i 465 per a SMTPS",
+      "mailNotificationEncryptionNone": "Cap",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Autenticació",
+      "mailNotificationUsername": "Nom d'usuari",
+      "mailNotificationPassword": "Contrasenya",
+      "sendTestEmail": "Envia un correu de prova",
       "optionValue": "Valor {{value}}"
     },
     "units": {
@@ -1576,7 +1594,10 @@
     "readOnlyNote": "El qui encara no pot canviar aquest paràmetre. Canvieu-lo al qBittorrent.",
     "toast": {
       "saved": "Preferències desades",
-      "saveFailed": "No s'han pogut desar les preferències"
+      "saveFailed": "No s'han pogut desar les preferències",
+      "testEmailQueued": "El qBittorrent ha posat a la cua el correu de prova",
+      "testEmailQueuedDescription": "El qBittorrent fa servir la configuració desada. Comproveu la safata d'entrada i el registre del qBittorrent per si hi ha errors.",
+      "testEmailFailed": "No s'ha pogut enviar el correu de prova"
     }
   },
   "backups": {

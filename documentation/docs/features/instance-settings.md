@@ -112,6 +112,10 @@ The **Excluded file names** section has a list of file name patterns, one per li
 
 On qBittorrent 5.0 and later, the default save path, the temporary download path, and the backup folders suggest folders on the qBittorrent host while you type. The watch folders get no suggestions. On qBittorrent 4.x, each path field is a plain text box.
 
+The **Email notification upon download completion** section makes qBittorrent send an email when a download finishes. The section has the sender address, the recipient addresses, the SMTP server, and the user name and password for the server. In the recipient field, separate the emails with a semicolon, and separate the addresses in one email with a comma. If the server does not use the default port, add a colon and the port after the server name, for example `smtp.example.com:587`. On qBittorrent 5.3 and later, you select the encryption: None, STARTTLS, or SMTPS. Before qBittorrent 5.3, a switch turns on SSL.
+
+On qBittorrent 5.0 and later, the section has a **Send test email** button. Save your changes before you click the button, because qBittorrent sends the test email with the saved settings. The button stays off while the saved email notification switch is off, because qBittorrent then sends nothing. A success message in qui tells you only that qBittorrent queued the email, and the email can still fail. Look for the email in your inbox, and look for SMTP errors in the qBittorrent log.
+
 The **Run External Program** section has the commands that qBittorrent runs when a torrent is added and when a torrent finishes. A list of placeholders follows them.
 
 #### Start torrents paused

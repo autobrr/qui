@@ -20,6 +20,7 @@ export const downloadsLabels: TabLabels = {
     torrentFileBackup: { labelKey: "preferences.sections.torrentFileBackup" },
     savingManagement: { labelKey: "preferences.sections.savingManagement" },
     excludedFileNames: { labelKey: "preferences.sections.excludedFileNames" },
+    emailNotification: { labelKey: "preferences.sections.emailNotification" },
     runExternalProgram: {
       labelKey: "preferences.fileManagement.runExternalProgram",
       descriptionKey: "preferences.fileManagement.runExternalProgramDescription",
@@ -115,6 +116,31 @@ export const downloadsLabels: TabLabels = {
       labelKey: "preferences.fields.excludedFileNames",
       descriptionKey: "preferences.fields.excludedFileNamesDescription",
     },
+    mail_notification_enabled: { labelKey: "preferences.fields.mailNotificationEnabled" },
+    mail_notification_sender: { labelKey: "preferences.fields.mailNotificationSender" },
+    mail_notification_email: {
+      labelKey: "preferences.fields.mailNotificationEmail",
+      descriptionKey: "preferences.fields.mailNotificationEmailDescription",
+    },
+    mail_notification_smtp: {
+      labelKey: "preferences.fields.mailNotificationSmtp",
+      descriptionKey: "preferences.fields.mailNotificationSmtpDescription",
+      placeholderKey: "preferences.fields.mailNotificationSmtpPlaceholder",
+    },
+    // qBittorrent 5.3 replaced mail_notification_ssl_enabled with mail_notification_encryption_type.
+    mail_notification_ssl_enabled: { labelKey: "preferences.fields.mailNotificationSslEnabled" },
+    mail_notification_encryption_type: {
+      labelKey: "preferences.fields.mailNotificationEncryptionType",
+      descriptionKey: "preferences.fields.mailNotificationEncryptionTypeDescription",
+      options: {
+        None: { labelKey: "preferences.fields.mailNotificationEncryptionNone" },
+        STARTTLS: { labelKey: "preferences.fields.mailNotificationEncryptionStartTls" },
+        SMTPS: { labelKey: "preferences.fields.mailNotificationEncryptionSmtps" },
+      },
+    },
+    mail_notification_auth_enabled: { labelKey: "preferences.fields.mailNotificationAuthEnabled" },
+    mail_notification_username: { labelKey: "preferences.fields.mailNotificationUsername" },
+    mail_notification_password: { labelKey: "preferences.fields.mailNotificationPassword" },
     autorun_on_torrent_added_enabled: {
       labelKey: "preferences.fileManagement.runOnTorrentAdded",
       descriptionKey: "preferences.fileManagement.runOnTorrentAddedDescription",

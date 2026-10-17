@@ -78,11 +78,32 @@ const view: PreferenceField[] = [
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
 
-function serveView(fields: PreferenceField[] = view, { supportsPathAutocomplete = false } = {}) {
+function serveView(fields: PreferenceField[] = view, { supportsPathAutocomplete = false, supportsTestEmail = false } = {}) {
   server.use(
     http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)),
-    http.get("*/api/instances/1/capabilities", () => HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete }))
+    http.get("*/api/instances/1/capabilities", () => HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete, supportsTestEmail }))
   )
+}
+
+// The email notification section of qBittorrent 5.3, with email notification and authentication on.
+function emailView(enabled = true): PreferenceField[] {
+  return [
+    { key: "mail_notification_enabled", value: enabled, tab: "downloads", section: "emailNotification", control: "switch" },
+    { key: "mail_notification_smtp", value: "smtp.example.invalid:465", tab: "downloads", section: "emailNotification", control: "text", dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_encryption_type", value: "SMTPS", tab: "downloads", section: "emailNotification", control: "select", optionSource: "fixed", options: ["None", "STARTTLS", "SMTPS"], dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_auth_enabled", value: true, tab: "downloads", section: "emailNotification", control: "switch", dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_password", value: "secret", tab: "downloads", section: "emailNotification", control: "password", dependsOn: "mail_notification_auth_enabled" },
+  ]
+}
+
+// Counts the test email requests.
+function recordTestEmails() {
+  const sent = { count: 0 }
+  server.use(http.post("*/api/instances/1/preferences/test-email", () => {
+    sent.count++
+    return new HttpResponse(null, { status: 204 })
+  }))
+  return sent
 }
 
 // Answers each folder listing with the folders under /data, and records the folders that were listed.
@@ -556,6 +577,56 @@ describe("InstancePreferencesDialog", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ torrent_files_backup_enabled: true, torrent_files_backup_dir: "/backup", preallocate_all: true }])
+  })
+
+  it("shows the email settings with a password box, and sends a test email", async () => {
+    const bodies = recordSaves()
+    const sent = recordTestEmails()
+    serveView(emailView(), { supportsTestEmail: true })
+    renderDialog("downloads")
+
+    expect((await fieldFor("preferences.fields.mailNotificationEncryptionType")).textContent).toBe("preferences.fields.mailNotificationEncryptionSmtps")
+    const password = await fieldFor("preferences.fields.mailNotificationPassword")
+    expect(password.type).toBe("password")
+    expect(password.disabled).toBe(false)
+    fireEvent.change(password, { target: { value: "hunter2" } })
+
+    fireEvent.click(await screen.findByRole("button", { name: "preferences.fields.sendTestEmail" }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("preferences.toast.testEmailQueued", expect.anything()))
+    expect(sent.count).toBe(1)
+
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("preferences.toast.saved"))
+    expect(bodies).toEqual([{ mail_notification_password: "hunter2" }])
+  })
+
+  it("shows no test email button when qBittorrent cannot send one", async () => {
+    serveView(emailView(), { supportsTestEmail: false })
+    const { queryClient } = renderDialog("downloads")
+
+    await fieldFor("preferences.fields.mailNotificationPassword")
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    expect(screen.queryByRole("button", { name: "preferences.fields.sendTestEmail" })).toBeNull()
+  })
+
+  it("keeps the test email button off until email notification is saved on", async () => {
+    const bodies = recordSaves()
+    const sent = recordTestEmails()
+    serveView(emailView(false), { supportsTestEmail: true })
+    renderDialog("downloads")
+
+    const button = await screen.findByRole("button", { name: "preferences.fields.sendTestEmail" }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    // qBittorrent sends nothing until it has the switch on.
+    fireEvent.click(await fieldFor("preferences.fields.mailNotificationEnabled"))
+    expect(button.disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.mailNotificationPassword")).disabled).toBe(false)
+
+    save()
+    await waitFor(() => expect(button.disabled).toBe(false))
+    expect(bodies).toEqual([{ mail_notification_enabled: true }])
+    fireEvent.click(button)
+    await waitFor(() => expect(sent.count).toBe(1))
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {

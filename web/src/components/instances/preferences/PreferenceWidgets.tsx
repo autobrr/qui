@@ -119,14 +119,18 @@ function NumberWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
 }
 
 // Incognito mode blurs text, paths, and lists: they can hold paths, addresses, and commands.
-function TextWidget({ id, labels, value, onChange, disabled }: WidgetProps) {
+// A password box uses new-password, so that the browser does not fill in the password of qui.
+function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
+  const isPassword = field.control === "password"
   return (
     <div className="space-y-2">
       <FieldLabel id={id} labels={labels} />
       <Input
         id={id}
+        type={isPassword ? "password" : undefined}
+        autoComplete={isPassword ? "new-password" : undefined}
         value={String(value ?? "")}
         disabled={disabled}
         placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}
@@ -374,6 +378,7 @@ export const preferenceWidgets: Record<PreferenceField["control"], ComponentType
   switch: SwitchWidget,
   number: NumberWidget,
   text: TextWidget,
+  password: TextWidget,
   path: PathWidget,
   select: SelectWidget,
   list: ListWidget,

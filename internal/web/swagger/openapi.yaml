@@ -3283,6 +3283,27 @@ paths:
         '500':
           description: The save failed in qBittorrent.
 
+  /api/instances/{instanceID}/preferences/test-email:
+    post:
+      tags:
+        - Instances
+      summary: Send a test email
+      description: |
+        Ask qBittorrent to send a test email with its saved email notification settings.
+        qBittorrent sends nothing when email notification is off. A success means only that
+        qBittorrent queued the email, not that the email went out. qBittorrent writes SMTP
+        errors to its log. Requires qBittorrent 5.0 or later (WebAPI 2.11.2); see
+        `supportsTestEmail` in the instance capabilities.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '204':
+          description: qBittorrent queued the test email.
+        '400':
+          description: Invalid instance ID, or the qBittorrent version is older than 5.0.
+        '500':
+          description: qBittorrent did not accept the request.
+
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
       tags:
@@ -7279,7 +7300,7 @@ components:
           description: The section of the tab.
         control:
           type: string
-          enum: [switch, number, text, select, path, list, watchFolders]
+          enum: [switch, number, text, password, select, path, list, watchFolders]
         wireUnit:
           type: string
           description: The unit of the value, for example B/s.
@@ -7342,6 +7363,21 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsTorrentTmpPath:
+          type: boolean
+          description: Whether the instance accepts a temporary download path when a torrent is added (WebAPI 2.8.4+).
+        supportsPathAutocomplete:
+          type: boolean
+          description: Whether the instance can list folders for path autocomplete (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsTestEmail:
+          type: boolean
+          description: Whether the instance can send a test email (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsFreeSpacePathSource:
+          type: boolean
+          description: Whether qui can read the free space of a path on its own host. False when qui runs on Windows.
+        supportsSetRSSFeedURL:
+          type: boolean
+          description: Whether the instance can change the URL of an RSS feed (WebAPI 2.9.1+).
         supportsShareLimitsAction:
           type: boolean
           description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).

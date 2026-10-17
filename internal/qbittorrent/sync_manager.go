@@ -6003,6 +6003,21 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
+// SendTestEmail asks qBittorrent to send a test email with its saved email notification settings.
+// A nil error means only that qBittorrent queued the email.
+func (sm *SyncManager) SendTestEmail(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SendTestEmailCtx(ctx); err != nil {
+		return fmt.Errorf("failed to send test email: %w", err)
+	}
+
+	return nil
+}
+
 // GetDirectoryContentCtx lists the entries inside a directory that match mode (for autocomplete).
 func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, mode qbt.DirectoryContentMode, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)

@@ -1493,7 +1493,8 @@
       "logFile": "Logdatei",
       "autoAddTrackersFromUrl": "Tracker von einer URL automatisch zu neuen Downloads hinzufügen",
       "whenAddingDuplicate": "Beim Hinzufügen eines doppelten Torrents",
-      "torrentFileBackup": "Sicherung der .torrent-Dateien"
+      "torrentFileBackup": "Sicherung der .torrent-Dateien",
+      "emailNotification": "E-Mail-Benachrichtigung bei Abschluss eines Downloads"
     },
     "fields": {
       "excludedFileNamesEnabled": "Dateinamen ausschließen",
@@ -1568,6 +1569,23 @@
       "useCategoryPathsInManualMode": "Kategoriepfade im manuellen Modus verwenden",
       "useCategoryPathsInManualModeDescription": "Einen relativen Speicherpfad gegen den Kategoriepfad statt gegen den Standard-Speicherpfad auflösen",
       "excludedFileNamesDescription": "qBittorrent lädt keine Datei herunter, deren Name zu einem Muster passt. Die Platzhalter * und ? funktionieren",
+      "mailNotificationEnabled": "Eine E-Mail senden, wenn ein Download fertig ist",
+      "mailNotificationSender": "Von",
+      "mailNotificationEmail": "An",
+      "mailNotificationEmailDescription": "E-Mails mit einem Semikolon trennen. Die Adressen innerhalb einer E-Mail mit einem Komma trennen",
+      "mailNotificationSmtp": "SMTP-Server",
+      "mailNotificationSmtpDescription": "Ein Hostname oder eine IP-Adresse. Für einen anderen Port als den Standardport einen Doppelpunkt und den Port anhängen",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Dieser Server erfordert eine sichere Verbindung (SSL)",
+      "mailNotificationEncryptionType": "SMTP-Verschlüsselung",
+      "mailNotificationEncryptionTypeDescription": "Der Standardport ist 25 für Keine, 587 für STARTTLS und 465 für SMTPS",
+      "mailNotificationEncryptionNone": "Keine",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Authentifizierung",
+      "mailNotificationUsername": "Benutzername",
+      "mailNotificationPassword": "Passwort",
+      "sendTestEmail": "Test-E-Mail senden",
       "optionValue": "Wert {{value}}"
     },
     "units": {
@@ -1576,7 +1594,10 @@
     "readOnlyNote": "qui kann diese Einstellung noch nicht ändern. Ändere sie in qBittorrent.",
     "toast": {
       "saved": "Einstellungen gespeichert",
-      "saveFailed": "Die Einstellungen konnten nicht gespeichert werden"
+      "saveFailed": "Die Einstellungen konnten nicht gespeichert werden",
+      "testEmailQueued": "qBittorrent hat die Test-E-Mail in die Warteschlange gestellt",
+      "testEmailQueuedDescription": "qBittorrent verwendet die gespeicherten Einstellungen. Prüfe deinen Posteingang und das qBittorrent-Log auf Fehler.",
+      "testEmailFailed": "Die Test-E-Mail konnte nicht gesendet werden"
     }
   },
   "backups": {

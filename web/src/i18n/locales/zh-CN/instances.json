@@ -1464,7 +1464,8 @@
       "logFile": "日志文件",
       "autoAddTrackersFromUrl": "自动将 URL 中的 Tracker 添加到新下载",
       "whenAddingDuplicate": "添加重复种子时",
-      "torrentFileBackup": ".torrent 文件备份"
+      "torrentFileBackup": ".torrent 文件备份",
+      "emailNotification": "下载完成时发送电子邮件通知"
     },
     "fields": {
       "excludedFileNamesEnabled": "排除文件名",
@@ -1539,6 +1540,23 @@
       "useCategoryPathsInManualMode": "在手动模式下使用分类路径",
       "useCategoryPathsInManualModeDescription": "相对保存路径以分类路径为基准，而不是默认保存路径",
       "excludedFileNamesDescription": "qBittorrent 不下载名称与模式匹配的文件。支持通配符 * 和 ?",
+      "mailNotificationEnabled": "下载完成时发送电子邮件",
+      "mailNotificationSender": "发件人",
+      "mailNotificationEmail": "收件人",
+      "mailNotificationEmailDescription": "用分号分隔多封邮件，用逗号分隔同一封邮件中的多个地址",
+      "mailNotificationSmtp": "SMTP 服务器",
+      "mailNotificationSmtpDescription": "主机名或 IP 地址。要使用非默认端口，请在末尾加上冒号和端口号",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "此服务器需要安全连接（SSL）",
+      "mailNotificationEncryptionType": "SMTP 加密",
+      "mailNotificationEncryptionTypeDescription": "默认端口：无为 25，STARTTLS 为 587，SMTPS 为 465",
+      "mailNotificationEncryptionNone": "无",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "身份验证",
+      "mailNotificationUsername": "用户名",
+      "mailNotificationPassword": "密码",
+      "sendTestEmail": "发送测试邮件",
       "optionValue": "值 {{value}}"
     },
     "units": {
@@ -1547,7 +1565,10 @@
     "readOnlyNote": "qui 暂时无法更改此设置。请在 qBittorrent 中更改。",
     "toast": {
       "saved": "首选项已保存",
-      "saveFailed": "保存首选项失败"
+      "saveFailed": "保存首选项失败",
+      "testEmailQueued": "qBittorrent 已将测试邮件加入队列",
+      "testEmailQueuedDescription": "qBittorrent 使用已保存的设置。请检查收件箱，并在 qBittorrent 日志中查看错误。",
+      "testEmailFailed": "发送测试邮件失败"
     }
   },
   "backups": {
