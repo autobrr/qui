@@ -4961,6 +4961,14 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					if searchRelaxedStructure(mismatchReason) {
 						structureRelaxedHash = hashKey
 					}
+				case searchDecision.Class == searchCandidateClassStrict && mismatchReason == "site mismatch":
+					// A listing title can omit a bracketed alternate title that
+					// info.name carries, and rls parses that prefix as a site tag.
+					// Replay the strict decision only when the listing still fits
+					// the target and the target matches without the site tag.
+					if !m.strictMatchWithoutTargetSite(fallbackInput, searchDecision, req.FindIndividualEpisodes) {
+						continue
+					}
 				default:
 					continue
 				}
