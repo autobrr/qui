@@ -200,7 +200,7 @@ The **Security** section has the clickjacking protection, the CSRF protection, t
 
 The **Reverse proxy** section has reverse proxy support and the list of trusted proxies. With reverse proxy support, qBittorrent uses the client address from the `X-Forwarded-For` header of a trusted proxy.
 
-The address, the port, HTTPS, the certificate, the key, the username, and the authentication bypass are read-only in qui. qui uses these settings to connect to qBittorrent. A change to one of them can stop the connection. To change one of them:
+The address, the port, HTTPS, the certificate, the key, the username, and the authentication bypass are read-only in qui. qui uses these settings to connect to qBittorrent. A change to one of them can stop the connection. The Host header validation and the server domains are also read-only. If the server domains do not include the host name in the instance URL, qBittorrent rejects every request from qui. To change one of these settings:
 
 1. Change the setting in qBittorrent.
 2. In qui, [edit the instance](#edit-an-instance) and update its URL or its credentials to match.

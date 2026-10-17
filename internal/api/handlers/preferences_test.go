@@ -584,6 +584,7 @@ func TestPreferencesViewWebUI(t *testing.T) {
 	for _, key := range []string{
 		"web_ui_address", "web_ui_port", "use_https", "web_ui_https_cert_path", "web_ui_https_key_path",
 		"web_ui_username", "bypass_local_auth", "bypass_auth_subnet_whitelist_enabled", "bypass_auth_subnet_whitelist",
+		"web_ui_host_header_validation_enabled", "web_ui_domain_list",
 	} {
 		assert.True(t, readOnly[key], key)
 		delete(readOnly, key)
@@ -658,6 +659,7 @@ func TestPreferencesPatchRejections(t *testing.T) {
 		{name: "fetched trackers", body: `{"add_trackers_url_list": "udp://a.invalid"}`, cause: `"add_trackers_url_list" is read-only`},
 		{name: "WebUI connection key", body: `{"web_ui_port": 9090}`, cause: `"web_ui_port" is read-only`},
 		{name: "WebUI username", body: `{"dl_limit": 1, "web_ui_username": "other"}`, cause: `"web_ui_username" is read-only`},
+		{name: "WebUI server domains", body: `{"web_ui_domain_list": "qbit.example.invalid"}`, cause: `"web_ui_domain_list" is read-only`},
 		{name: "not shown WebUI key", body: `{"alternative_webui_enabled": true}`, cause: "alternative_webui_enabled"},
 		{name: "not shown key", body: `{"locale": "de"}`, cause: "locale"},
 		{name: "api key", body: `{"web_ui_api_key": "x"}`, cause: "web_ui_api_key"},
