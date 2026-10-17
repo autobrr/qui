@@ -1632,7 +1632,7 @@
       "enableEmbeddedTracker": "啟用內嵌 Tracker",
       "embeddedTrackerPort": "內嵌 Tracker 連接埠",
       "embeddedTrackerPortForwarding": "為內嵌 Tracker 啟用連接埠轉發",
-      "markOfTheWeb": "為下載的檔案啟用 Mark-of-the-Web（MOTW）",
+      "markOfTheWeb": "為下載的檔案啟用 Mark-of-the-Web（Windows）或隔離（macOS）",
       "ignoreSslErrors": "忽略 SSL 錯誤",
       "ignoreSslErrorsDescription": "qBittorrent 從網路下載時接受無效的憑證，例如 RSS 訂閱源或來自 URL 的 .torrent 檔案",
       "startSessionPaused": "以暫停狀態啟動 BitTorrent 工作階段",

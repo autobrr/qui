@@ -216,7 +216,7 @@ The **qBittorrent** section has these preferences:
 - The resume data storage type, the save interval of the resume data and of the statistics, and the size limit of .torrent files in MiB.
 - The removal mode of torrent content: delete the files permanently, or move them to the trash.
 - The memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only.
-- The recheck of torrents on completion, the embedded tracker with its port and port forwarding, Mark-of-the-Web for downloaded files, and the option to ignore SSL errors.
+- The recheck of torrents on completion, the embedded tracker with its port and port forwarding, Mark-of-the-Web or macOS quarantine for downloaded files, and the option to ignore SSL errors.
 - On qBittorrent 5.3 and later, the start of the BitTorrent session in paused state, and the session shutdown timeout. The paused start pauses every torrent when qBittorrent starts. It is not the [Start torrents paused](#start-torrents-paused) setting of the Downloads tab. An empty shutdown timeout means no limit.
 
 The **libtorrent** section has these preferences:

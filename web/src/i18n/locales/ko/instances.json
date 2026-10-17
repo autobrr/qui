@@ -1632,7 +1632,7 @@
       "enableEmbeddedTracker": "내장 트래커 활성화",
       "embeddedTrackerPort": "내장 트래커 포트",
       "embeddedTrackerPortForwarding": "내장 트래커의 포트 포워딩 활성화",
-      "markOfTheWeb": "다운로드한 파일에 Mark-of-the-Web (MOTW) 활성화",
+      "markOfTheWeb": "다운로드한 파일에 Mark-of-the-Web (Windows) 또는 격리 (macOS) 활성화",
       "ignoreSslErrors": "SSL 오류 무시",
       "ignoreSslErrorsDescription": "qBittorrent가 웹에서 다운로드할 때 유효하지 않은 인증서를 허용합니다. 예: RSS 피드 또는 URL의 .torrent 파일",
       "startSessionPaused": "BitTorrent 세션을 일시 중지 상태로 시작",

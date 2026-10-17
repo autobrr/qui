@@ -1661,7 +1661,7 @@
       "enableEmbeddedTracker": "Activa el rastrejador integrat",
       "embeddedTrackerPort": "Port del rastrejador integrat",
       "embeddedTrackerPortForwarding": "Activa el reenviament de port per al rastrejador integrat",
-      "markOfTheWeb": "Activa Mark-of-the-Web (MOTW) per als fitxers baixats",
+      "markOfTheWeb": "Activa Mark-of-the-Web (Windows) o la quarantena (macOS) per als fitxers baixats",
       "ignoreSslErrors": "Ignora els errors SSL",
       "ignoreSslErrorsDescription": "El qBittorrent accepta un certificat no vàlid quan baixa des del web, per exemple un canal RSS o un fitxer .torrent des d'un URL",
       "startSessionPaused": "Inicia la sessió de BitTorrent en pausa",

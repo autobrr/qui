@@ -1696,7 +1696,7 @@
       "enableEmbeddedTracker": "Zapnout vestavěný tracker",
       "embeddedTrackerPort": "Port vestavěného trackeru",
       "embeddedTrackerPortForwarding": "Zapnout přesměrování portu pro vestavěný tracker",
-      "markOfTheWeb": "Zapnout Mark-of-the-Web (MOTW) pro stažené soubory",
+      "markOfTheWeb": "Zapnout Mark-of-the-Web (Windows) nebo karanténu (macOS) pro stažené soubory",
       "ignoreSslErrors": "Ignorovat chyby SSL",
       "ignoreSslErrorsDescription": "qBittorrent přijme neplatný certifikát, když stahuje z webu, například kanál RSS nebo soubor .torrent z adresy URL",
       "startSessionPaused": "Spustit relaci BitTorrent pozastavenou",

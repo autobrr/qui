@@ -1719,7 +1719,7 @@
       "enableEmbeddedTracker": "Увімкнути вбудований трекер",
       "embeddedTrackerPort": "Порт вбудованого трекера",
       "embeddedTrackerPortForwarding": "Увімкнути переадресацію порту для вбудованого трекера",
-      "markOfTheWeb": "Увімкнути Mark-of-the-Web (MOTW) для завантажених файлів",
+      "markOfTheWeb": "Увімкнути Mark-of-the-Web (Windows) або карантин (macOS) для завантажених файлів",
       "ignoreSslErrors": "Ігнорувати помилки SSL",
       "ignoreSslErrorsDescription": "qBittorrent приймає недійсний сертифікат, коли завантажує з вебу, наприклад RSS-канал або файл .torrent за URL",
       "startSessionPaused": "Запускати сеанс BitTorrent призупиненим",

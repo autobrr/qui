@@ -1661,7 +1661,7 @@
       "enableEmbeddedTracker": "Eingebetteten Tracker aktivieren",
       "embeddedTrackerPort": "Port des eingebetteten Trackers",
       "embeddedTrackerPortForwarding": "Portweiterleitung für den eingebetteten Tracker aktivieren",
-      "markOfTheWeb": "Mark-of-the-Web (MOTW) für heruntergeladene Dateien aktivieren",
+      "markOfTheWeb": "Mark-of-the-Web (Windows) oder Quarantäne (macOS) für heruntergeladene Dateien aktivieren",
       "ignoreSslErrors": "SSL-Fehler ignorieren",
       "ignoreSslErrorsDescription": "qBittorrent akzeptiert ein ungültiges Zertifikat, wenn es aus dem Web herunterlädt, zum Beispiel einen RSS-Feed oder eine .torrent-Datei von einer URL",
       "startSessionPaused": "BitTorrent-Sitzung pausiert starten",

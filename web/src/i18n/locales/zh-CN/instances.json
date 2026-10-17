@@ -1632,7 +1632,7 @@
       "enableEmbeddedTracker": "启用内置 Tracker",
       "embeddedTrackerPort": "内置 Tracker 端口",
       "embeddedTrackerPortForwarding": "为内置 Tracker 启用端口转发",
-      "markOfTheWeb": "为下载的文件启用 Mark-of-the-Web（MOTW）",
+      "markOfTheWeb": "为下载的文件启用 Mark-of-the-Web（Windows）或隔离（macOS）",
       "ignoreSslErrors": "忽略 SSL 错误",
       "ignoreSslErrorsDescription": "qBittorrent 从网络下载时接受无效证书，例如 RSS 订阅源或来自 URL 的 .torrent 文件",
       "startSessionPaused": "以暂停状态启动 BitTorrent 会话",

@@ -1661,7 +1661,7 @@
       "enableEmbeddedTracker": "Enable embedded tracker",
       "embeddedTrackerPort": "Embedded tracker port",
       "embeddedTrackerPortForwarding": "Enable port forwarding for embedded tracker",
-      "markOfTheWeb": "Enable Mark-of-the-Web (MOTW) for downloaded files",
+      "markOfTheWeb": "Enable Mark-of-the-Web (Windows) or quarantine (macOS) for downloaded files",
       "ignoreSslErrors": "Ignore SSL errors",
       "ignoreSslErrorsDescription": "qBittorrent accepts an invalid certificate when it downloads from the web, for example an RSS feed or a .torrent file from a URL",
       "startSessionPaused": "Start BitTorrent session in paused state",
