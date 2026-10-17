@@ -144,45 +144,24 @@
       "tabs": {
         "instance": "Instància",
         "speed": "Velocitat",
-        "queue": "Cua",
-        "files": "Fitxers",
-        "seeding": "Sembra",
         "connection": "Connexió",
-        "discovery": "Descobriment",
-        "advanced": "Avançat"
+        "advanced": "Avançat",
+        "behavior": "Comportament",
+        "downloads": "Baixades",
+        "bittorrent": "BitTorrent",
+        "rss": "RSS",
+        "webui": "WebUI"
       },
       "sections": {
         "instanceConfig": {
           "title": "Configuració de la instància",
           "description": "Configura la connexió, l'autenticació i les opcions d'accés"
         },
-        "speedLimits": {
-          "title": "Límits de velocitat",
-          "description": "Configura els límits de velocitat de baixada i de pujada"
-        },
         "queueManagement": {
-          "title": "Gestió de la cua",
-          "description": "Configura la cua de torrents i els límits de torrents actius"
-        },
-        "fileManagement": {
-          "title": "Gestió de fitxers",
-          "description": "Configura els camins dels fitxers i la gestió dels torrents"
+          "title": "Gestió de la cua"
         },
         "seedingLimits": {
-          "title": "Límits de sembra",
-          "description": "Configura la ràtio de compartició i els límits de temps de sembra"
-        },
-        "connectionSettings": {
-          "title": "Configuració de la connexió",
-          "description": "Configura el port d'escolta, el protocol i els límits de connexió"
-        },
-        "networkDiscovery": {
-          "title": "Descobriment a la xarxa",
-          "description": "Configura els protocols de descobriment de parells i els trackers"
-        },
-        "advancedSettings": {
-          "title": "Configuració avançada",
-          "description": "Ajust del rendiment, I/O de disc, gestió de parells i seguretat"
+          "title": "Límits de sembra"
         }
       }
     },
@@ -227,15 +206,11 @@
       "saving": "S'està desant..."
     },
     "speedLimits": {
-      "loading": "S'estan carregant els límits de velocitat...",
-      "loadFailed": "No s'han pogut carregar les preferències",
       "downloadLimit": "Límit de baixada",
       "uploadLimit": "Límit de pujada",
       "altDownloadLimit": "Límit de baixada alternatiu",
       "altUploadLimit": "Límit de pujada alternatiu",
       "scheduleAltLimits": "Programa l'ús dels límits de velocitat alternatius",
-      "from": "De:",
-      "to": "A:",
       "when": "Quan:",
       "everyDay": "Cada dia",
       "everyWeekday": "Cada dia feiner",
@@ -246,28 +221,9 @@
       "thursday": "Dijous",
       "friday": "Divendres",
       "saturday": "Dissabte",
-      "sunday": "Diumenge",
-      "start": "Inici",
-      "end": "Fi",
-      "timeLabel": "Hora {{label}}",
-      "hourLabel": "Hora {{label}} (0-23)",
-      "minuteLabel": "Minut {{label}} (0-59)",
-      "unlimitedPlaceholder": "0 (il·limitat)",
-      "rateUnit": "MiB/s",
-      "validation": {
-        "downloadLimit": "El límit global de velocitat de baixada ha de ser més gran que 0 o estar desactivat",
-        "uploadLimit": "El límit global de velocitat de pujada ha de ser més gran que 0 o estar desactivat",
-        "altDownloadLimit": "El límit alternatiu de velocitat de baixada ha de ser més gran que 0 o estar desactivat",
-        "altUploadLimit": "El límit alternatiu de velocitat de pujada ha de ser més gran que 0 o estar desactivat"
-      },
-      "toast": {
-        "success": "S'han actualitzat els límits de velocitat correctament",
-        "error": "No s'han pogut actualitzar els límits de velocitat"
-      }
+      "sunday": "Diumenge"
     },
     "queueManagement": {
-      "loading": "S'està carregant la configuració de la cua...",
-      "loadFailed": "No s'han pogut carregar les preferències",
       "enableQueueing": "Activa la cua",
       "enableQueueingDescription": "Limita el nombre de torrents actius",
       "maxActiveDownloads": "Màxim de baixades actives",
@@ -280,35 +236,16 @@
       "maxCheckingTorrentsDescription": "Nombre màxim de torrents que es verifiquen alhora",
       "dontCountSlowTorrents": "No comptis els torrents lents",
       "dontCountSlowTorrentsDescription": "Els torrents lents no compten per als límits d'actius de dalt",
-      "slowTorrentDlRateThreshold": "Llindar de velocitat de baixada (KiB/s)",
-      "slowTorrentUlRateThreshold": "Llindar de velocitat de pujada (KiB/s)",
-      "slowTorrentInactiveTimer": "Temporitzador d'inactivitat del torrent (segons)",
-      "slowTorrentInactiveTimerDescription": "Durant quant de temps han de quedar les dues velocitats per sota dels llindars perquè el torrent compti com a lent",
-      "validation": {
-        "maxActiveDownloads": "El màxim de baixades actives ha de ser més gran que -1",
-        "maxActiveUploads": "El màxim de pujades actives ha de ser més gran que -1",
-        "maxActiveTorrents": "El màxim de torrents actius ha de ser més gran que -1"
-      },
-      "toast": {
-        "success": "S'ha actualitzat la configuració de la cua correctament",
-        "error": "No s'ha pogut actualitzar la configuració de la cua"
-      }
+      "slowTorrentInactiveTimerDescription": "Durant quant de temps han de quedar les dues velocitats per sota dels llindars perquè el torrent compti com a lent"
     },
     "seedingLimits": {
-      "loading": "S'estan carregant els límits de sembra...",
-      "loadFailed": "No s'han pogut carregar les preferències",
       "enableShareRatioLimit": "Activa el límit de ràtio de compartició",
       "enableShareRatioLimitDescription": "Deixa de sembrar quan s'arribi a la ràtio",
       "maxShareRatio": "Ràtio de compartició màxima",
       "maxShareRatioDescription": "Deixa de sembrar en arribar a aquesta ràtio de pujada/baixada",
       "enableSeedingTimeLimit": "Activa el límit de temps de sembra",
       "enableSeedingTimeLimitDescription": "Deixa de sembrar després del temps indicat",
-      "maxSeedingTime": "Temps màxim de sembra (minuts)",
-      "maxSeedingTimeDescription": "Deixa de sembrar al cap d'aquests minuts",
-      "toast": {
-        "success": "S'han actualitzat els límits de sembra correctament",
-        "error": "No s'han pogut actualitzar els límits de sembra"
-      }
+      "maxSeedingTimeDescription": "Deixa de sembrar al cap d'aquests minuts"
     },
     "reannounce": {
       "title": "Configura el reanunci",
@@ -333,10 +270,6 @@
       "enable": "Activa"
     },
     "fileManagement": {
-      "loading": "S'està carregant la configuració de gestió de fitxers...",
-      "loadFailed": "No s'han pogut carregar les preferències",
-      "saving": "S'està desant...",
-      "saveChanges": "Desa els canvis",
       "autoTorrentManagement": "Gestió automàtica dels torrents",
       "autoTorrentManagementDescription": "Fes servir camins basats en la categoria per a les baixades",
       "relocateOnCategoryChange": "Reubica en canviar de categoria",
@@ -369,9 +302,7 @@
       "runOnTorrentFinished": "Executa en acabar un torrent",
       "runOnTorrentFinishedDescription": "S'activa quan un torrent es completa",
       "command": "Ordre",
-      "selectContentLayout": "Selecciona la disposició del contingut",
       "autorunProgramTip": "Consell: posa els marcadors entre cometes, com ara \"%N\", per conservar-ne els espais.",
-      "autorunUnsupported": "Requereix qBittorrent 4.5.0 o superior (API web {{minimum}} o superior). Aquesta instància informa de la {{version}}.",
       "supportedPlaceholders": "Marcadors admesos (distingeixen majúscules i minúscules)",
       "placeholderLabels": {
         "torrentName": "Nom del torrent",
@@ -403,23 +334,13 @@
         "customSavePathLabel": "Camí de desada personalitzat",
         "customSavePathPlaceholder": "nomdelacarpeta",
         "remove": "Suprimeix"
-      },
-      "toast": {
-        "success": "S'ha actualitzat la configuració de gestió de fitxers correctament",
-        "error": "No s'ha pogut actualitzar la configuració de gestió de fitxers"
       }
     },
     "connectionSettings": {
-      "loading": "S'està carregant la configuració de la connexió...",
-      "versionWarningTitle": "Detalls de versió limitats",
-      "versionWarningDescription": "No hem pogut confirmar els detalls de la compilació de qBittorrent d'aquesta instància, així que es mostren totes les opcions de connexió. Comprova que siguin aplicables abans d'aplicar-hi canvis.",
       "listeningPort": "Port d'escolta",
       "portForIncoming": "Port per a les connexions entrants",
       "portDescription": "Port que es fa servir per a les connexions entrants de BitTorrent",
       "upnpLeaseDuration": "Durada de la concessió UPnP (0 = permanent)",
-      "upnpLeaseDurationDescription": "Durada en minuts de la concessió UPnP (0 per a permanent, només libtorrent 2.x)",
-      "useRandomPort": "Fes servir un port aleatori a cada arrencada",
-      "useRandomPortDescription": "Tria un port a l'atzar quan s'inicia qBittorrent",
       "enableUpnp": "Activa la redirecció de ports UPnP/NAT-PMP",
       "enableUpnpDescription": "Redirigeix el port automàticament a través del router",
       "protocolSettings": "Configuració del protocol",
@@ -429,15 +350,10 @@
       "protocolTcp": "TCP",
       "protocolUtp": "μTP",
       "utpTcpMixedMode": "Mode mixt μTP-TCP",
-      "selectMode": "Selecciona un mode",
       "utpTcpMixedModeDescription": "Com s'han de gestionar les connexions mixtes μTP/TCP",
       "preferTcp": "Prefereix TCP",
       "peerProportional": "Proporcional als parells",
       "networkInterface": "Interfície de xarxa",
-      "networkInterfaceReadOnly": "Interfície de xarxa (només de lectura)",
-      "networkInterfaceDescription": "Interfície de xarxa activa actualment. Per configurar-la calen punts finals de l'API que no hi ha.",
-      "interfaceIpAddress": "Adreça IP de la interfície (només de lectura)",
-      "interfaceIpAddressDescription": "Adreça IP de la interfície actual. Per configurar-la calen punts finals de l'API que no hi ha.",
       "autoDetect": "Detecta-ho automàticament",
       "reannounceOnIpChange": "Reanuncia als trackers quan canviï l'adreça IP",
       "reannounceOnIpChangeDescription": "Reanuncia automàticament quan canviï la teva adreça IP",
@@ -452,7 +368,6 @@
       "maxUploadSlotsPerTorrentDescription": "Nombre màxim de ranures de pujada de cada torrent",
       "allowMultiConnections": "Permet diverses connexions des de la mateixa adreça IP",
       "allowMultiConnectionsDescription": "Permet connexions de diversos parells que hi hagi darrere del mateix NAT",
-      "outgoingPorts": "Ports de sortida",
       "outgoingPortsMin": "Ports de sortida (mín.)",
       "outgoingPortsMinDescription": "Port mínim per a les connexions de sortida (0 = sense límit)",
       "outgoingPortsMax": "Ports de sortida (màx.)",
@@ -467,31 +382,15 @@
       "applyIpFilterToTrackersDescription": "Filtra també les connexions amb els trackers segons les regles del filtre d'IP",
       "bannedIps": "Adreces IP expulsades manualment",
       "bannedIpsPlaceholder": "Introdueix les adreces IP que vols expulsar (una per línia):\n192.168.1.100\n10.0.0.50\n2001:db8::1",
-      "bannedIpsDescription": "Afegeix les adreces IP que vols expulsar permanentment (una per línia)",
-      "validation": {
-        "listenPort": "El port que es fa servir per a les connexions entrants ha d'estar entre 0 i 65535",
-        "maxConnections": "El límit del nombre màxim de connexions ha de ser més gran que 0 o estar desactivat",
-        "maxConnectionsPerTorrent": "El límit del nombre màxim de connexions per torrent ha de ser més gran que 0 o estar desactivat",
-        "maxUploadSlots": "El límit global de ranures de pujada ha de ser més gran que 0 o estar desactivat",
-        "maxUploadSlotsPerTorrent": "El límit del nombre màxim de ranures de pujada per torrent ha de ser més gran que 0 o estar desactivat",
-        "outgoingPortsMin": "El mínim de l'interval de ports de sortida ha d'estar entre 0 i 65535",
-        "outgoingPortsMax": "El màxim de l'interval de ports de sortida ha d'estar entre 0 i 65535"
-      },
-      "toast": {
-        "success": "S'ha actualitzat la configuració de la connexió correctament",
-        "error": "No s'ha pogut actualitzar la configuració de la connexió"
-      }
+      "bannedIpsDescription": "Afegeix les adreces IP que vols expulsar permanentment (una per línia)"
     },
     "networkDiscovery": {
-      "loading": "S'està carregant la configuració de descobriment a la xarxa...",
-      "peerDiscovery": "Descobriment de parells",
       "enableDht": "Activa el DHT (xarxa descentralitzada)",
       "enableDhtDescription": "Taula de hash distribuïda per trobar parells sense trackers",
       "enablePex": "Activa el PeX (intercanvi de parells)",
       "enablePexDescription": "Intercanvia llistes de parells amb altres parells",
       "enableLsd": "Activa l'LSD (descobriment de serveis locals)",
       "enableLsdDescription": "Troba parells a la teva xarxa local",
-      "trackerSettings": "Configuració dels trackers",
       "announceToAllTiers": "Anuncia sempre a tots els nivells",
       "announceToAllTiersDescription": "Anuncia a tots els nivells de trackers alhora",
       "announceToAllTrackers": "Anuncia sempre a tots els trackers d'un nivell",
@@ -505,25 +404,14 @@
       "enableAnonymousMode": "Activa el mode anònim",
       "enableAnonymousModeDescription": "Amaga la identificació i la versió del teu client",
       "resolvePeerCountries": "Resol els països dels parells",
-      "resolvePeerCountriesDescription": "Mostra les banderes dels països dels parells (consumeix amplada de banda addicional)",
-      "toast": {
-        "success": "S'ha actualitzat la configuració de descobriment a la xarxa correctament",
-        "error": "No s'ha pogut actualitzar la configuració de descobriment a la xarxa"
-      }
+      "resolvePeerCountriesDescription": "Mostra les banderes dels països dels parells (consumeix amplada de banda addicional)"
     },
     "advancedNetwork": {
-      "loading": "S'està carregant la configuració de xarxa avançada...",
-      "versionWarningTitle": "Es mostren totes les opcions avançades",
-      "versionWarningDescription": "No hem pogut determinar la versió de qBittorrent d'aquesta instància, així que es mostren totes les opcions avançades. Pot ser que algunes no s'apliquin al teu entorn.",
-      "trackerSettings": "Configuració dels trackers",
       "announceIp": "Adreça IP que s'informa als trackers (cal reiniciar)",
       "announceIpDescription": "Adreça IP que s'anuncia als trackers (deixa-ho buit per detectar-la automàticament)",
-      "performanceOptimization": "Optimització del rendiment",
       "limitUtpProtocol": "Aplica el límit de velocitat al protocol μTP",
-      "limitUtpProtocolDescription": "Limita les connexions μTP per no inundar els parells de la xarxa local",
       "limitTcpOverhead": "Aplica el límit de velocitat a la sobrecàrrega de transport",
       "limitTcpOverheadDescription": "Inclou la sobrecàrrega del protocol en el càlcul dels límits de velocitat",
-      "limitUtpConnections": "Aplica el límit de velocitat a les connexions μTP",
       "limitUtpConnectionsDescription": "Aplica els límits de pujada i baixada a les connexions μTP",
       "peerTosByte": "Byte ToS dels parells",
       "peerTosDescription": "Byte de tipus de servei de les connexions amb els parells",
@@ -541,7 +429,6 @@
       "sendBufferLowWatermarkDescription": "Marca d'aigua inferior del búfer d'enviament del sòcol",
       "watermarkFactor": "Factor de la marca d'aigua",
       "watermarkFactorDescription": "Percentatge del factor de la marca d'aigua del búfer d'enviament",
-      "diskIoMemory": "I/O de disc i memòria",
       "coalesceReadsWrites": "Combina les lectures i les escriptures",
       "coalesceReadsWritesDescription": "Combina les lectures i escriptures de disc adjacents per millorar el rendiment",
       "asyncIoThreads": "Fils d'I/O asíncrona",
@@ -560,26 +447,14 @@
       "diskCacheTtlDescription": "Durant quant de temps es mantenen les dades a la memòria cau",
       "workingSetLimit": "Límit del conjunt de treball",
       "workingSetLimitDescription": "Límit de mida del conjunt de treball a la memòria física",
-      "peerManagement": "Gestió dels parells",
       "peerTurnover": "Rotació de parells",
       "peerTurnoverDescription": "Percentatge de parells que es desconnecten i es tornen a connectar",
       "turnoverCutoff": "Llindar de rotació",
       "turnoverCutoffDescription": "Percentatge del llindar de rotació de parells",
       "turnoverInterval": "Interval de rotació",
       "turnoverIntervalDescription": "Cada quant es fa la rotació de parells",
-      "securityIpFiltering": "Seguretat i filtratge d'IP",
       "blockPrivilegedPorts": "Bloqueja els parells que facin servir ports privilegiats",
       "blockPrivilegedPortsDescription": "Bloqueja les connexions de parells que facin servir ports per sota del 1024",
-      "validation": {
-        "checkingMemoryUse": "La memòria reservada per verificar torrents ha de ser més gran que 0 i més petita que 1024",
-        "peerTurnover": "La rotació de parells ha d'estar entre 0 i 100",
-        "peerTurnoverCutoff": "El llindar de rotació de parells ha d'estar entre 0 i 100",
-        "peerTurnoverInterval": "L'interval de rotació de parells ha de ser igual o més gran que 0 i més petit que 3600 segons"
-      },
-      "toast": {
-        "success": "S'ha actualitzat la configuració de xarxa avançada correctament",
-        "error": "No s'ha pogut actualitzar la configuració de xarxa avançada"
-      },
       "unitSeconds": "segons"
     },
     "workflows": {
@@ -1601,6 +1476,128 @@
       },
       "maxItems": "Màxim d'elements",
       "maxItemsTooltip": "Límit de seguretat del nombre d'entrades —fitxers i directoris junts— que una exploració desa per previsualitzar-les i eliminar-les. Els fitxers tenen prioritat sobre els directoris, de manera que una exploració que arribi al límit conserva els fitxers."
+    },
+    "sections": {
+      "whenAdding": "En afegir un torrent",
+      "savingManagement": "Gestió del desament",
+      "excludedFileNames": "Noms de fitxer exclosos",
+      "globalRateLimits": "Límits de velocitat globals",
+      "alternativeRateLimits": "Límits de velocitat alternatius",
+      "rateLimitsSettings": "Configuració dels límits de velocitat",
+      "autoAddTrackers": "Afegeix automàticament aquests rastrejadors a les baixades noves",
+      "rssReader": "Lector RSS",
+      "rssAutoDownloader": "Baixador automàtic de torrents RSS",
+      "rssSmartEpisodeFilter": "Filtre d'episodis intel·ligent RSS",
+      "qbittorrent": "qBittorrent",
+      "libtorrent": "libtorrent",
+      "logFile": "Fitxer de registre",
+      "autoAddTrackersFromUrl": "Afegeix automàticament els rastrejadors d'un URL a les baixades noves",
+      "whenAddingDuplicate": "En afegir un torrent duplicat",
+      "torrentFileBackup": "Còpia de seguretat dels fitxers .torrent",
+      "emailNotification": "Notificació per correu electrònic en acabar la baixada"
+    },
+    "fields": {
+      "excludedFileNamesEnabled": "Exclou noms de fitxer",
+      "excludedFileNames": "Noms de fitxer per excloure (un per línia)",
+      "scheduleFromHour": "Hora d'inici",
+      "scheduleFromMinute": "Minut d'inici",
+      "scheduleToHour": "Hora de final",
+      "scheduleToMinute": "Minut de final",
+      "limitLanPeers": "Aplica el límit de velocitat als parells de la LAN",
+      "slowTorrentDownloadRate": "Llindar de velocitat de baixada",
+      "slowTorrentUploadRate": "Llindar de velocitat de pujada",
+      "slowTorrentInactiveTimer": "Temporitzador d'inactivitat dels torrents",
+      "maxSeedingTime": "Temps màxim de compartició",
+      "addTrackersEnabled": "Afegeix rastrejadors a les baixades noves",
+      "addTrackers": "Rastrejadors (un per línia)",
+      "interfaceAddress": "Adreça IP de la interfície",
+      "diskIoType": "Tipus d'E/S de disc",
+      "diskIoTypeDefault": "Per defecte",
+      "diskIoTypeMmap": "Fitxers mapats a memòria",
+      "diskIoTypePosix": "Compatible amb POSIX",
+      "diskIoTypeSimplePreadPwrite": "pread/pwrite simple",
+      "diskIoTypePreadPwrite": "Pread/pwrite",
+      "diskIoReadMode": "Mode de lectura d'E/S de disc",
+      "diskIoWriteMode": "Mode d'escriptura d'E/S de disc",
+      "diskIoModeDisableOsCache": "Desactiva la memòria cau del sistema",
+      "diskIoModeEnableOsCache": "Activa la memòria cau del sistema",
+      "diskIoModeWriteThrough": "Escriptura directa",
+      "fileLogEnabled": "Escriu el registre en un fitxer",
+      "fileLogPath": "Carpeta del registre",
+      "fileLogBackupEnabled": "Fes una còpia del fitxer de registre quan sigui ple",
+      "fileLogMaxSize": "Mida màxima del fitxer de registre",
+      "fileLogMaxSizeDescription": "Quan el fitxer de registre arriba a aquesta mida, el qBittorrent el mou a un fitxer de còpia i en comença un de nou",
+      "fileLogDeleteOld": "Suprimeix les còpies antigues del registre",
+      "fileLogAge": "Suprimeix les còpies més antigues de",
+      "fileLogAgeType": "Unitat d'antiguitat",
+      "fileLogAgeDays": "Dies",
+      "fileLogAgeMonths": "Mesos",
+      "fileLogAgeYears": "Anys",
+      "maxInactiveSeedingTimeEnabled": "Activa el límit de temps de compartició inactiva",
+      "maxInactiveSeedingTime": "Temps màxim de compartició inactiva",
+      "maxInactiveSeedingTimeDescription": "Actua sobre un torrent que no ha pujat ni baixat res durant aquests minuts",
+      "addTrackersFromUrlEnabled": "Afegeix els rastrejadors d'un URL a les baixades noves",
+      "addTrackersUrl": "URL de la llista de rastrejadors",
+      "addTrackersUrlList": "Rastrejadors obtinguts",
+      "addTrackersUrlListNote": "El qBittorrent obté aquesta llista de l'URL.",
+      "rssFetchDelay": "Retard entre peticions al mateix servidor",
+      "rssSmartEpisodeFilters": "Filtres d'episodis (un per línia)",
+      "rssSmartEpisodeFiltersDescription": "Expressions regulars que troben la temporada i el número d'episodi al títol d'un article",
+      "addToTopOfQueue": "Afegeix al capdamunt de la cua",
+      "torrentStopCondition": "Condició d'aturada del torrent",
+      "torrentStopConditionDescription": "El qBittorrent atura un torrent nou quan arriba a aquest punt",
+      "torrentStopConditionNone": "Cap",
+      "torrentStopConditionMetadataReceived": "Metadades rebudes",
+      "torrentStopConditionFilesChecked": "Fitxers comprovats",
+      "autoDeleteMode": "Suprimeix els fitxers .torrent després",
+      "autoDeleteModeDescription": "Suprimeix el fitxer .torrent que el qBittorrent ha afegit, per exemple des d'una carpeta vigilada",
+      "autoDeleteModeNever": "Mai",
+      "autoDeleteModeIfAdded": "Quan s'afegeix el torrent",
+      "autoDeleteModeAlways": "Sempre, també quan es cancel·la l'addició",
+      "mergeTrackers": "Combina els rastrejadors amb el torrent existent",
+      "torrentFilesBackupEnabled": "Desa una còpia de seguretat de cada fitxer .torrent",
+      "torrentFilesBackupDir": "Carpeta de còpies de seguretat",
+      "torrentFilesFinishedBackupDirEnabled": "Mou la còpia de seguretat quan el torrent acaba",
+      "torrentFilesFinishedBackupDir": "Carpeta de còpies de seguretat per als torrents acabats",
+      "removeTorrentFileBackup": "Elimina la còpia de seguretat quan s'elimina el torrent",
+      "exportDir": "Copia els fitxers .torrent a",
+      "exportDirFin": "Copia els fitxers .torrent de les baixades acabades a",
+      "exportDirDescription": "Deixa-ho buit per no guardar cap còpia",
+      "preallocateAll": "Preassigna l'espai de disc per a tots els fitxers",
+      "incompleteFilesExt": "Afegeix l'extensió .!qB als fitxers incomplets",
+      "useUnwantedFolder": "Conserva els fitxers no seleccionats a la carpeta \".unwanted\"",
+      "useCategoryPathsInManualMode": "Usa els camins de categoria en el mode manual",
+      "useCategoryPathsInManualModeDescription": "Resol un camí de desada relatiu respecte al camí de la categoria en lloc del camí predeterminat",
+      "excludedFileNamesDescription": "El qBittorrent no baixa cap fitxer el nom del qual coincideixi amb un patró. Els comodins * i ? funcionen",
+      "mailNotificationEnabled": "Envia un correu electrònic quan acabi una baixada",
+      "mailNotificationSender": "De",
+      "mailNotificationEmail": "Per a",
+      "mailNotificationEmailDescription": "Separeu els correus amb un punt i coma. Separeu les adreces d'un mateix correu amb una coma",
+      "mailNotificationSmtp": "Servidor SMTP",
+      "mailNotificationSmtpDescription": "Un nom d'amfitrió o una adreça IP. Per a un port diferent del predeterminat, afegiu dos punts i el port",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Aquest servidor requereix una connexió segura (SSL)",
+      "mailNotificationEncryptionType": "Xifratge SMTP",
+      "mailNotificationEncryptionTypeDescription": "El port predeterminat és 25 per a Cap, 587 per a STARTTLS i 465 per a SMTPS",
+      "mailNotificationEncryptionNone": "Cap",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Autenticació",
+      "mailNotificationUsername": "Nom d'usuari",
+      "mailNotificationPassword": "Contrasenya",
+      "sendTestEmail": "Envia un correu de prova",
+      "optionValue": "Valor {{value}}"
+    },
+    "units": {
+      "minutes": "minuts"
+    },
+    "readOnlyNote": "El qui encara no pot canviar aquest paràmetre. Canvieu-lo al qBittorrent.",
+    "toast": {
+      "saved": "Preferències desades",
+      "saveFailed": "No s'han pogut desar les preferències",
+      "testEmailQueued": "El qBittorrent ha posat a la cua el correu de prova",
+      "testEmailQueuedDescription": "El qBittorrent fa servir la configuració desada. Comproveu la safata d'entrada i el registre del qBittorrent per si hi ha errors.",
+      "testEmailFailed": "No s'ha pogut enviar el correu de prova"
     }
   },
   "backups": {

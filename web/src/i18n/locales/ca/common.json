@@ -191,8 +191,7 @@
     "trigger": "Més informació"
   },
   "numberInput": {
-    "unlimited": "Il·limitat",
-    "useUnlimited": " (fes servir -1 per a il·limitat)"
+    "unlimited": "Il·limitat"
   },
   "dateTime": {
     "na": "N/D",

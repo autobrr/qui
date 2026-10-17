@@ -49,6 +49,15 @@ func TestScanWalker_ShouldSkipDuplicate(t *testing.T) {
 	if w.shouldSkipDuplicate(hardlink.FileID{}, 1) {
 		t.Fatal("zero FileID should not be skipped")
 	}
+
+	// A remote ID with no instance has no filesystem scope, so it says
+	// nothing about which file it names: two such files are not aliases.
+	if w.shouldSkipDuplicate(hardlink.RemoteFileID([]byte{1}), 1) {
+		t.Fatal("first unscoped remote file should not be skipped")
+	}
+	if w.shouldSkipDuplicate(hardlink.RemoteFileID([]byte{2}), 1) {
+		t.Fatal("a different unscoped remote file should not be skipped")
+	}
 }
 
 func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {

@@ -191,8 +191,7 @@
     "trigger": "更多信息"
   },
   "numberInput": {
-    "unlimited": "无限制",
-    "useUnlimited": "（使用 -1 表示无限制）"
+    "unlimited": "无限制"
   },
   "dateTime": {
     "na": "N/A",

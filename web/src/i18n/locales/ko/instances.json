@@ -144,45 +144,24 @@
       "tabs": {
         "instance": "인스턴스",
         "speed": "속도",
-        "queue": "대기열",
-        "files": "파일",
-        "seeding": "시딩",
         "connection": "연결",
-        "discovery": "검색",
-        "advanced": "고급"
+        "advanced": "고급",
+        "behavior": "동작",
+        "downloads": "다운로드",
+        "bittorrent": "BitTorrent",
+        "rss": "RSS",
+        "webui": "WebUI"
       },
       "sections": {
         "instanceConfig": {
           "title": "인스턴스 구성",
           "description": "연결 설정, 인증 및 접근 옵션을 구성합니다"
         },
-        "speedLimits": {
-          "title": "속도 제한",
-          "description": "다운로드 및 업로드 속도 제한을 구성합니다"
-        },
         "queueManagement": {
-          "title": "대기열 관리",
-          "description": "토렌트 대기열 설정 및 활성 토렌트 제한을 구성합니다"
-        },
-        "fileManagement": {
-          "title": "파일 관리",
-          "description": "파일 경로 및 토렌트 관리 설정을 구성합니다"
+          "title": "대기열 관리"
         },
         "seedingLimits": {
-          "title": "시딩 제한",
-          "description": "공유 비율 및 시딩 시간 제한을 구성합니다"
-        },
-        "connectionSettings": {
-          "title": "연결 설정",
-          "description": "수신 포트, 프로토콜 설정 및 연결 제한을 구성합니다"
-        },
-        "networkDiscovery": {
-          "title": "네트워크 검색",
-          "description": "피어 검색 프로토콜 및 트래커 설정을 구성합니다"
-        },
-        "advancedSettings": {
-          "title": "고급 설정",
-          "description": "성능 조정, 디스크 I/O, 피어 관리 및 보안 설정"
+          "title": "시딩 제한"
         }
       }
     },
@@ -227,15 +206,11 @@
       "saving": "저장 중..."
     },
     "speedLimits": {
-      "loading": "속도 제한 불러오는 중...",
-      "loadFailed": "환경설정을 불러오지 못했습니다",
       "downloadLimit": "다운로드 제한",
       "uploadLimit": "업로드 제한",
       "altDownloadLimit": "대체 다운로드 제한",
       "altUploadLimit": "대체 업로드 제한",
       "scheduleAltLimits": "대체 속도 제한 사용 예약",
-      "from": "시작:",
-      "to": "종료:",
       "when": "조건:",
       "everyDay": "매일",
       "everyWeekday": "주중 매일",
@@ -246,28 +221,9 @@
       "thursday": "목요일",
       "friday": "금요일",
       "saturday": "토요일",
-      "sunday": "일요일",
-      "start": "시작",
-      "end": "종료",
-      "timeLabel": "{{label}} 시간",
-      "hourLabel": "{{label}} 시(0-23)",
-      "minuteLabel": "{{label}} 분(0-59)",
-      "unlimitedPlaceholder": "0 (무제한)",
-      "rateUnit": "MiB/s",
-      "validation": {
-        "downloadLimit": "전역 다운로드 속도 제한은 0보다 크거나 비활성화되어야 합니다",
-        "uploadLimit": "전역 업로드 속도 제한은 0보다 크거나 비활성화되어야 합니다",
-        "altDownloadLimit": "대체 다운로드 속도 제한은 0보다 크거나 비활성화되어야 합니다",
-        "altUploadLimit": "대체 업로드 속도 제한은 0보다 크거나 비활성화되어야 합니다"
-      },
-      "toast": {
-        "success": "속도 제한이 업데이트되었습니다",
-        "error": "속도 제한을 업데이트하지 못했습니다"
-      }
+      "sunday": "일요일"
     },
     "queueManagement": {
-      "loading": "대기열 설정 불러오는 중...",
-      "loadFailed": "환경설정을 불러오지 못했습니다",
       "enableQueueing": "대기열 활성화",
       "enableQueueingDescription": "활성 토렌트 수 제한",
       "maxActiveDownloads": "최대 활성 다운로드",
@@ -280,25 +236,9 @@
       "maxCheckingTorrentsDescription": "동시에 확인하는 최대 토렌트 수",
       "dontCountSlowTorrents": "느린 토렌트 제외",
       "dontCountSlowTorrentsDescription": "느린 토렌트는 위의 활성 제한에 포함되지 않습니다",
-      "slowTorrentDlRateThreshold": "다운로드 속도 임계값 (KiB/s)",
-      "slowTorrentUlRateThreshold": "업로드 속도 임계값 (KiB/s)",
-      "slowTorrentInactiveTimer": "토렌트 비활성 타이머 (초)",
-      "slowTorrentInactiveTimerDescription": "두 속도가 임계값 아래로 얼마나 유지되어야 느린 토렌트로 간주하는지",
-      "validation": {
-        "maxActiveDownloads": "최대 활성 다운로드는 -1보다 커야 합니다",
-        "maxActiveUploads": "최대 활성 업로드는 -1보다 커야 합니다",
-        "maxActiveTorrents": "최대 활성 토렌트는 -1보다 커야 합니다"
-      },
-      "toast": {
-        "success": "대기열 설정이 업데이트되었습니다",
-        "error": "대기열 설정을 업데이트하지 못했습니다"
-      }
+      "slowTorrentInactiveTimerDescription": "두 속도가 임계값 아래로 얼마나 유지되어야 느린 토렌트로 간주하는지"
     },
     "fileManagement": {
-      "loading": "파일 관리 설정 불러오는 중...",
-      "loadFailed": "환경설정을 불러오지 못했습니다",
-      "saving": "저장 중...",
-      "saveChanges": "변경 사항 저장",
       "autoTorrentManagement": "자동 토렌트 관리",
       "autoTorrentManagementDescription": "다운로드에 카테고리 기반 경로 사용",
       "relocateOnCategoryChange": "카테고리 변경 시 재배치",
@@ -331,9 +271,7 @@
       "runOnTorrentFinished": "토렌트 완료 시 실행",
       "runOnTorrentFinishedDescription": "토렌트가 완료되면 트리거됨",
       "command": "명령",
-      "selectContentLayout": "콘텐츠 레이아웃 선택",
       "autorunProgramTip": "팁: 공백을 유지하려면 자리 표시자를 따옴표로 감싸세요(예: \"%N\").",
-      "autorunUnsupported": "qBittorrent 4.5.0+(Web API {{minimum}}+)가 필요합니다. 이 인스턴스는 {{version}}을(를) 보고합니다.",
       "supportedPlaceholders": "지원되는 자리 표시자(대소문자 구분)",
       "placeholderLabels": {
         "torrentName": "토렌트 이름",
@@ -365,39 +303,22 @@
         "customSavePathLabel": "사용자 지정 저장 경로",
         "customSavePathPlaceholder": "foldername",
         "remove": "제거"
-      },
-      "toast": {
-        "success": "파일 관리 설정이 업데이트되었습니다",
-        "error": "파일 관리 설정을 업데이트하지 못했습니다"
       }
     },
     "seedingLimits": {
-      "loading": "시딩 제한 불러오는 중...",
-      "loadFailed": "환경설정을 불러오지 못했습니다",
       "enableShareRatioLimit": "공유 비율 제한 활성화",
       "enableShareRatioLimitDescription": "비율에 도달하면 시딩 중지",
       "maxShareRatio": "최대 공유 비율",
       "maxShareRatioDescription": "이 업로드/다운로드 비율에서 시딩 중지",
       "enableSeedingTimeLimit": "시딩 시간 제한 활성화",
       "enableSeedingTimeLimitDescription": "지정된 시간 후 시딩 중지",
-      "maxSeedingTime": "최대 시딩 시간(분)",
-      "maxSeedingTimeDescription": "이 분 수만큼 지난 후 시딩 중지",
-      "toast": {
-        "success": "시딩 제한이 업데이트되었습니다",
-        "error": "시딩 제한을 업데이트하지 못했습니다"
-      }
+      "maxSeedingTimeDescription": "이 분 수만큼 지난 후 시딩 중지"
     },
     "connectionSettings": {
-      "loading": "연결 설정 불러오는 중...",
-      "versionWarningTitle": "제한된 버전 세부 정보",
-      "versionWarningDescription": "이 인스턴스의 qBittorrent 빌드 세부 정보를 확인할 수 없어 모든 연결 옵션이 표시됩니다. 변경 사항을 적용하기 전에 적용 가능성을 다시 확인하세요.",
       "listeningPort": "수신 포트",
       "portForIncoming": "수신 연결용 포트",
       "portDescription": "수신 BitTorrent 연결에 사용되는 포트",
       "upnpLeaseDuration": "UPnP 임대 기간(0 = 영구)",
-      "upnpLeaseDurationDescription": "UPnP 임대 기간(분)(0은 영구, libtorrent 2.x 전용)",
-      "useRandomPort": "시작할 때마다 무작위 포트 사용",
-      "useRandomPortDescription": "qBittorrent이 시작될 때 무작위로 포트를 선택합니다",
       "enableUpnp": "UPnP/NAT-PMP 포트 포워딩 활성화",
       "enableUpnpDescription": "라우터를 통해 자동으로 포트 포워딩",
       "protocolSettings": "프로토콜 설정",
@@ -407,15 +328,10 @@
       "protocolTcp": "TCP",
       "protocolUtp": "μTP",
       "utpTcpMixedMode": "μTP-TCP 혼합 모드",
-      "selectMode": "모드 선택",
       "utpTcpMixedModeDescription": "혼합 μTP/TCP 연결을 처리하는 방식",
       "preferTcp": "TCP 선호",
       "peerProportional": "피어 비례",
       "networkInterface": "네트워크 인터페이스",
-      "networkInterfaceReadOnly": "네트워크 인터페이스(읽기 전용)",
-      "networkInterfaceDescription": "현재 활성 네트워크 인터페이스. 구성에는 누락된 API 엔드포인트가 필요합니다.",
-      "interfaceIpAddress": "인터페이스 IP 주소(읽기 전용)",
-      "interfaceIpAddressDescription": "현재 인터페이스의 IP 주소. 구성에는 누락된 API 엔드포인트가 필요합니다.",
       "autoDetect": "자동 감지",
       "reannounceOnIpChange": "IP 주소가 변경되면 트래커에 재요청",
       "reannounceOnIpChangeDescription": "IP 주소가 변경되면 자동으로 재요청",
@@ -430,7 +346,6 @@
       "maxUploadSlotsPerTorrentDescription": "개별 토렌트당 최대 업로드 슬롯",
       "allowMultiConnections": "동일한 IP 주소에서 여러 연결 허용",
       "allowMultiConnectionsDescription": "동일한 NAT 뒤의 여러 피어로부터의 연결 활성화",
-      "outgoingPorts": "발신 포트",
       "outgoingPortsMin": "발신 포트(최소)",
       "outgoingPortsMinDescription": "발신 연결용 최소 포트(0 = 제한 없음)",
       "outgoingPortsMax": "발신 포트(최대)",
@@ -445,31 +360,15 @@
       "applyIpFilterToTrackersDescription": "IP 필터 규칙에 따라 트래커 연결도 필터링",
       "bannedIps": "수동으로 차단된 IP 주소",
       "bannedIpsPlaceholder": "차단할 IP 주소를 입력하세요(한 줄에 하나):\n192.168.1.100\n10.0.0.50\n2001:db8::1",
-      "bannedIpsDescription": "연결을 영구적으로 차단할 IP 주소를 추가하세요(한 줄에 하나)",
-      "validation": {
-        "listenPort": "수신 연결에 사용되는 포트는 0에서 65535 사이여야 합니다",
-        "maxConnections": "최대 연결 수 제한은 0보다 크거나 비활성화되어야 합니다",
-        "maxConnectionsPerTorrent": "토렌트당 최대 연결 수 제한은 0보다 크거나 비활성화되어야 합니다",
-        "maxUploadSlots": "전역 업로드 슬롯 수 제한은 0보다 크거나 비활성화되어야 합니다",
-        "maxUploadSlotsPerTorrent": "토렌트당 최대 업로드 슬롯 수 제한은 0보다 크거나 비활성화되어야 합니다",
-        "outgoingPortsMin": "발신 포트 범위 최솟값은 0에서 65535 사이여야 합니다",
-        "outgoingPortsMax": "발신 포트 범위 최댓값은 0에서 65535 사이여야 합니다"
-      },
-      "toast": {
-        "success": "연결 설정이 업데이트되었습니다",
-        "error": "연결 설정을 업데이트하지 못했습니다"
-      }
+      "bannedIpsDescription": "연결을 영구적으로 차단할 IP 주소를 추가하세요(한 줄에 하나)"
     },
     "networkDiscovery": {
-      "loading": "네트워크 검색 설정 불러오는 중...",
-      "peerDiscovery": "피어 검색",
       "enableDht": "DHT 활성화(분산 네트워크)",
       "enableDhtDescription": "트래커 없이 피어를 찾기 위한 분산 해시 테이블",
       "enablePex": "PeX 활성화(피어 교환)",
       "enablePexDescription": "다른 피어와 피어 목록 교환",
       "enableLsd": "LSD 활성화(로컬 서비스 검색)",
       "enableLsdDescription": "로컬 네트워크에서 피어 찾기",
-      "trackerSettings": "트래커 설정",
       "announceToAllTiers": "항상 모든 계층에 요청",
       "announceToAllTiersDescription": "모든 트래커 계층에 동시에 요청",
       "announceToAllTrackers": "항상 계층 내 모든 트래커에 요청",
@@ -483,25 +382,14 @@
       "enableAnonymousMode": "익명 모드 활성화",
       "enableAnonymousModeDescription": "클라이언트 식별 및 버전 숨기기",
       "resolvePeerCountries": "피어 국가 확인",
-      "resolvePeerCountriesDescription": "피어의 국가 플래그 표시(추가 대역폭 필요)",
-      "toast": {
-        "success": "네트워크 검색 설정이 업데이트되었습니다",
-        "error": "네트워크 검색 설정을 업데이트하지 못했습니다"
-      }
+      "resolvePeerCountriesDescription": "피어의 국가 플래그 표시(추가 대역폭 필요)"
     },
     "advancedNetwork": {
-      "loading": "고급 네트워크 설정 불러오는 중...",
-      "versionWarningTitle": "모든 고급 옵션 표시 중",
-      "versionWarningDescription": "이 인스턴스의 qBittorrent 버전을 확인할 수 없어 모든 고급 설정이 표시됩니다. 일부 옵션은 사용자 환경에 적용되지 않을 수 있습니다.",
-      "trackerSettings": "트래커 설정",
       "announceIp": "트래커에 보고되는 IP 주소(재시작 필요)",
       "announceIpDescription": "트래커에 요청할 IP 주소(자동 감지하려면 비워 두기)",
-      "performanceOptimization": "성능 최적화",
       "limitUtpProtocol": "μTP 프로토콜에 속도 제한 적용",
-      "limitUtpProtocolDescription": "LAN 피어 과부하를 방지하기 위해 μTP 연결 제한",
       "limitTcpOverhead": "전송 오버헤드에 속도 제한 적용",
       "limitTcpOverheadDescription": "속도 제한 계산에 프로토콜 오버헤드 포함",
-      "limitUtpConnections": "μTP 연결에 속도 제한 적용",
       "limitUtpConnectionsDescription": "μTP 연결에 업로드/다운로드 제한 적용",
       "peerTosByte": "피어 ToS 바이트",
       "peerTosDescription": "피어 연결용 서비스 유형(ToS) 바이트",
@@ -519,7 +407,6 @@
       "sendBufferLowWatermarkDescription": "소켓 전송 버퍼의 하한 워터마크",
       "watermarkFactor": "워터마크 계수",
       "watermarkFactorDescription": "전송 버퍼 워터마크 계수 백분율",
-      "diskIoMemory": "디스크 I/O 및 메모리",
       "coalesceReadsWrites": "읽기 및 쓰기 통합",
       "coalesceReadsWritesDescription": "더 나은 성능을 위해 인접한 디스크 읽기 및 쓰기 결합",
       "asyncIoThreads": "비동기 I/O 스레드",
@@ -538,26 +425,14 @@
       "diskCacheTtlDescription": "캐시된 데이터를 메모리에 유지하는 기간",
       "workingSetLimit": "워킹 세트 제한",
       "workingSetLimitDescription": "물리 메모리 워킹 세트 크기 제한",
-      "peerManagement": "피어 관리",
       "peerTurnover": "피어 교체",
       "peerTurnoverDescription": "연결 해제/재연결할 피어의 백분율",
       "turnoverCutoff": "교체 임계값",
       "turnoverCutoffDescription": "피어 교체 임계값 백분율",
       "turnoverInterval": "교체 간격",
       "turnoverIntervalDescription": "피어 교체를 수행하는 빈도",
-      "securityIpFiltering": "보안 및 IP 필터링",
       "blockPrivilegedPorts": "특권 포트의 피어 차단",
       "blockPrivilegedPortsDescription": "1024 미만 포트를 사용하는 피어로부터의 연결 차단",
-      "validation": {
-        "checkingMemoryUse": "토렌트 확인 시 미해결 메모리는 0보다 크고 1024보다 작아야 합니다",
-        "peerTurnover": "피어 교체는 0에서 100 사이여야 합니다",
-        "peerTurnoverCutoff": "피어 교체 임계값은 0에서 100 사이여야 합니다",
-        "peerTurnoverInterval": "피어 교체 간격은 0 이상 3600초 미만이어야 합니다"
-      },
-      "toast": {
-        "success": "고급 네트워크 설정이 업데이트되었습니다",
-        "error": "고급 네트워크 설정을 업데이트하지 못했습니다"
-      },
       "unitSeconds": "초"
     },
     "reannounce": {
@@ -1572,6 +1447,128 @@
       },
       "trackerMatchInclude": "포함",
       "trackerMatchExclude": "제외"
+    },
+    "sections": {
+      "whenAdding": "토렌트를 추가할 때",
+      "savingManagement": "저장 관리",
+      "excludedFileNames": "제외할 파일 이름",
+      "globalRateLimits": "전역 속도 제한",
+      "alternativeRateLimits": "대체 속도 제한",
+      "rateLimitsSettings": "속도 제한 설정",
+      "autoAddTrackers": "새 다운로드에 이 트래커를 자동으로 추가",
+      "rssReader": "RSS 리더",
+      "rssAutoDownloader": "RSS 토렌트 자동 다운로더",
+      "rssSmartEpisodeFilter": "RSS 스마트 에피소드 필터",
+      "qbittorrent": "qBittorrent",
+      "libtorrent": "libtorrent",
+      "logFile": "로그 파일",
+      "autoAddTrackersFromUrl": "URL의 트래커를 새 다운로드에 자동으로 추가",
+      "whenAddingDuplicate": "중복 토렌트를 추가할 때",
+      "torrentFileBackup": ".torrent 파일 백업",
+      "emailNotification": "다운로드 완료 시 이메일 알림"
+    },
+    "fields": {
+      "excludedFileNamesEnabled": "파일 이름 제외",
+      "excludedFileNames": "제외할 파일 이름 (한 줄에 하나씩)",
+      "scheduleFromHour": "시작 시",
+      "scheduleFromMinute": "시작 분",
+      "scheduleToHour": "종료 시",
+      "scheduleToMinute": "종료 분",
+      "limitLanPeers": "LAN 피어에 속도 제한 적용",
+      "slowTorrentDownloadRate": "다운로드 속도 임계값",
+      "slowTorrentUploadRate": "업로드 속도 임계값",
+      "slowTorrentInactiveTimer": "토렌트 비활성 타이머",
+      "maxSeedingTime": "최대 시딩 시간",
+      "addTrackersEnabled": "새 다운로드에 트래커 추가",
+      "addTrackers": "트래커 (한 줄에 하나씩)",
+      "interfaceAddress": "인터페이스 IP 주소",
+      "diskIoType": "디스크 I/O 유형",
+      "diskIoTypeDefault": "기본값",
+      "diskIoTypeMmap": "메모리 매핑 파일",
+      "diskIoTypePosix": "POSIX 호환",
+      "diskIoTypeSimplePreadPwrite": "단순 pread/pwrite",
+      "diskIoTypePreadPwrite": "Pread/pwrite",
+      "diskIoReadMode": "디스크 I/O 읽기 모드",
+      "diskIoWriteMode": "디스크 I/O 쓰기 모드",
+      "diskIoModeDisableOsCache": "OS 캐시 비활성화",
+      "diskIoModeEnableOsCache": "OS 캐시 활성화",
+      "diskIoModeWriteThrough": "Write-through",
+      "fileLogEnabled": "로그를 파일에 기록",
+      "fileLogPath": "로그 폴더",
+      "fileLogBackupEnabled": "로그 파일이 가득 차면 백업",
+      "fileLogMaxSize": "최대 로그 파일 크기",
+      "fileLogMaxSizeDescription": "로그 파일이 이 크기에 도달하면 qBittorrent가 백업 파일로 옮기고 새 파일을 시작합니다",
+      "fileLogDeleteOld": "오래된 백업 로그 삭제",
+      "fileLogAge": "다음보다 오래된 백업 삭제",
+      "fileLogAgeType": "기간 단위",
+      "fileLogAgeDays": "일",
+      "fileLogAgeMonths": "개월",
+      "fileLogAgeYears": "년",
+      "maxInactiveSeedingTimeEnabled": "비활성 시딩 시간 제한 활성화",
+      "maxInactiveSeedingTime": "최대 비활성 시딩 시간",
+      "maxInactiveSeedingTimeDescription": "이 시간(분) 동안 업로드나 다운로드가 없는 토렌트에 동작을 적용합니다",
+      "addTrackersFromUrlEnabled": "URL의 트래커를 새 다운로드에 추가",
+      "addTrackersUrl": "트래커 목록 URL",
+      "addTrackersUrlList": "가져온 트래커",
+      "addTrackersUrlListNote": "qBittorrent가 이 목록을 URL에서 가져옵니다.",
+      "rssFetchDelay": "같은 호스트 요청 지연",
+      "rssSmartEpisodeFilters": "에피소드 필터 (한 줄에 하나씩)",
+      "rssSmartEpisodeFiltersDescription": "글 제목에서 시즌과 에피소드 번호를 찾는 정규식",
+      "addToTopOfQueue": "대기열 맨 위에 추가",
+      "torrentStopCondition": "토렌트 중지 조건",
+      "torrentStopConditionDescription": "qBittorrent는 새 토렌트가 이 시점에 도달하면 중지합니다",
+      "torrentStopConditionNone": "없음",
+      "torrentStopConditionMetadataReceived": "메타데이터 수신됨",
+      "torrentStopConditionFilesChecked": "파일 확인됨",
+      "autoDeleteMode": "추가 후 .torrent 파일 삭제",
+      "autoDeleteModeDescription": "qBittorrent가 추가한 .torrent 파일을 삭제합니다. 예: 감시 폴더의 파일",
+      "autoDeleteModeNever": "안 함",
+      "autoDeleteModeIfAdded": "토렌트가 추가되었을 때",
+      "autoDeleteModeAlways": "항상, 추가를 취소했을 때도",
+      "mergeTrackers": "기존 토렌트에 트래커 병합",
+      "torrentFilesBackupEnabled": "각 .torrent 파일의 백업 저장",
+      "torrentFilesBackupDir": "백업 폴더",
+      "torrentFilesFinishedBackupDirEnabled": "토렌트가 완료되면 백업 이동",
+      "torrentFilesFinishedBackupDir": "완료된 토렌트의 백업 폴더",
+      "removeTorrentFileBackup": "토렌트를 제거할 때 백업도 제거",
+      "exportDir": ".torrent 파일 복사 위치",
+      "exportDirFin": "완료된 다운로드의 .torrent 파일 복사 위치",
+      "exportDirDescription": "복사본을 남기지 않으려면 비워 두세요",
+      "preallocateAll": "모든 파일의 디스크 공간 미리 할당",
+      "incompleteFilesExt": "완료되지 않은 파일에 .!qB 확장자 추가",
+      "useUnwantedFolder": "선택하지 않은 파일을 \".unwanted\" 폴더에 보관",
+      "useCategoryPathsInManualMode": "수동 모드에서 카테고리 경로 사용",
+      "useCategoryPathsInManualModeDescription": "상대 저장 경로를 기본 저장 경로 대신 카테고리 경로를 기준으로 해석합니다",
+      "excludedFileNamesDescription": "qBittorrent는 이름이 패턴과 일치하는 파일을 다운로드하지 않습니다. 와일드카드 * 와 ? 를 사용할 수 있습니다",
+      "mailNotificationEnabled": "다운로드가 끝나면 이메일 보내기",
+      "mailNotificationSender": "보내는 사람",
+      "mailNotificationEmail": "받는 사람",
+      "mailNotificationEmailDescription": "이메일은 세미콜론으로 구분합니다. 한 이메일 안의 주소는 쉼표로 구분합니다",
+      "mailNotificationSmtp": "SMTP 서버",
+      "mailNotificationSmtpDescription": "호스트 이름 또는 IP 주소입니다. 기본 포트가 아닌 포트를 쓰려면 콜론과 포트 번호를 붙이세요",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "이 서버는 보안 연결(SSL)이 필요합니다",
+      "mailNotificationEncryptionType": "SMTP 암호화",
+      "mailNotificationEncryptionTypeDescription": "기본 포트는 없음은 25, STARTTLS는 587, SMTPS는 465입니다",
+      "mailNotificationEncryptionNone": "없음",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "인증",
+      "mailNotificationUsername": "사용자 이름",
+      "mailNotificationPassword": "비밀번호",
+      "sendTestEmail": "테스트 이메일 보내기",
+      "optionValue": "값 {{value}}"
+    },
+    "units": {
+      "minutes": "분"
+    },
+    "readOnlyNote": "qui에서는 아직 이 설정을 변경할 수 없습니다. qBittorrent에서 변경하세요.",
+    "toast": {
+      "saved": "환경 설정을 저장했습니다",
+      "saveFailed": "환경 설정을 저장하지 못했습니다",
+      "testEmailQueued": "qBittorrent가 테스트 이메일을 대기열에 넣었습니다",
+      "testEmailQueuedDescription": "qBittorrent는 저장된 설정을 사용합니다. 받은 편지함과 qBittorrent 로그에서 오류를 확인하세요.",
+      "testEmailFailed": "테스트 이메일을 보내지 못했습니다"
     }
   },
   "backups": {

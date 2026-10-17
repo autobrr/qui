@@ -72,7 +72,7 @@ export function collectMissingKeysForSource({
 
   const localeCache = new Map()
   const missingKeys = new Set()
-  const keyPropertyPattern = /\b(labelKey|titleKey|placeholderKey|descriptionKey):\s*"([^"]+)"/g
+  const keyPropertyPattern = /\b(labelKey|titleKey|placeholderKey|descriptionKey|readOnlyNoteKey):\s*"([^"]+)"/g
   const translationCallPattern = /\b(?:i18n\.)?t\(\s*"([^"]+)"(?:\s*,\s*(\{[\s\S]*?\}))?\s*\)/g
 
   function getLocale(namespace) {

@@ -169,10 +169,13 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 // orphan (#1212). Hardlinked files (nlink>1) are distinct directory entries and
 // each path is reported.
 func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) bool {
-	if fid.IsZero() || nlinks > 1 {
+	if nlinks > 1 {
 		return false
 	}
-	key := fsops.FileKeyOf(fid, w.instance)
+	key, ok := fsops.FileKeyOf(fid, w.instance)
+	if !ok {
+		return false
+	}
 	if _, exists := w.seenFileIDs[key]; exists {
 		return true
 	}

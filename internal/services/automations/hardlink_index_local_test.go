@@ -178,7 +178,7 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	fid := createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow},
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
-	deficits := map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1}}
+	deficits := map[fsops.FileKey]*fileIDTracker{testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1}}
 	state := &hardlinkBuildState{seenPaths: map[string]struct{}{}}
 
 	stats := service.scanOtherInstancesForDeficits(t.Context(), instanceID, []int{instanceID + 1}, deficits, state)
@@ -207,7 +207,7 @@ func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
 	id := hardlink.RemoteFileID([]byte{1, 2, 3})
 	index := &HardlinkIndex{buildState: &hardlinkBuildState{
 		instance:        box,
-		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(id, box): {nlink: 2, uniquePathCount: 1}},
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{testFileKey(id, box): {nlink: 2, uniquePathCount: 1}},
 		seenPaths:       map[string]struct{}{},
 		torrentInfoByHash: map[string]*torrentFileInfo{
 			"hash": {fileIDs: []hardlink.FileID{id}, allAccessible: true, hasHardlinks: true},
