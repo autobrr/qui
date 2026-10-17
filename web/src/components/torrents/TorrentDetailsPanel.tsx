@@ -1742,6 +1742,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
+                  ) : matchesError ? (
+                    // A refetch that fails keeps the last data: the error wins,
+                    // so the stale matches and their delete actions go away.
+                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
+                      {t("crossSeedTable.loadFailed")}
+                    </div>
                   ) : matchingTorrents.length > 0 ? (
                     <div className="space-y-4">
                       <div className="flex flex-col gap-3">
@@ -1962,10 +1968,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           </span>
                         </div>
                       )}
-                    </div>
-                  ) : matchesError ? (
-                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
-                      {t("crossSeedTable.loadFailed")}
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
