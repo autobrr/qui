@@ -254,6 +254,9 @@ func TestExecCapabilities(t *testing.T) {
 		// The GNU tools are there, but the login shell reads '\'' as an
 		// escape, so a quoted path could break out: no exec tier.
 		{name: "non-posix login shell", mode: sshtest.ExecNonPOSIX, exec: true},
+		// A pooled connection keeps sftp open, so a host with MaxSessions 1
+		// has no channel left for a command.
+		{name: "one session at a time", mode: sshtest.ExecOneSession},
 	}
 
 	for _, tt := range tests {

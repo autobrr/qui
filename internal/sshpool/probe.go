@@ -49,12 +49,15 @@ func probe(ctx context.Context, client *ssh.Client, timeout time.Duration) (*Cap
 	stop := context.AfterFunc(ctx, func() { _ = client.Close() })
 	defer stop()
 
+	// sftp stays open while exec is probed, as it does on a pooled
+	// connection: a host that allows one session at a time (MaxSessions 1)
+	// must not earn an exec tier that no pooled connection can use.
 	if sftpClient, err := sftp.NewClient(client); err == nil {
+		defer sftpClient.Close()
 		capabilities.SFTP = true
 		_, capabilities.Statvfs = sftpClient.HasExtension("statvfs@openssh.com")
 		_, capabilities.Hardlink = sftpClient.HasExtension(HardlinkExtension)
 		_, capabilities.Limits = sftpClient.HasExtension("limits@openssh.com")
-		_ = sftpClient.Close()
 	}
 
 	// A key restricted to sftp still opens a session channel: it runs the

@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,6 +45,9 @@ const (
 	// ExecStallOpen accepts the first session channel of a connection, the
 	// one sftp opens, and never answers the open of any later one.
 	ExecStallOpen
+	// ExecOneSession runs commands like ExecGNU but refuses a session channel
+	// while another is open, the way sshd does with MaxSessions 1.
+	ExecOneSession
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -283,6 +287,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer close(stalled)
 
 	opened := 0
+	var open atomic.Int32
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only session channels")
@@ -297,13 +302,19 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		if opened > 1 && s.execMode() == ExecStallOpen {
 			continue
 		}
+		if open.Load() > 0 && s.execMode() == ExecOneSession {
+			_ = newChannel.Reject(ssh.Prohibited, "open failed")
+			continue
+		}
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
 			return
 		}
 
+		open.Add(1)
 		sessions.Go(func() {
+			defer open.Add(-1)
 			s.handleSession(sshConn, channel, requests, stalled)
 		})
 	}
