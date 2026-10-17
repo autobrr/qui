@@ -309,6 +309,17 @@ describe("InstancePreferencesDialog", () => {
     expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
   })
 
+  it("shows the latest fetched trackers when the view refreshes", async () => {
+    serveView()
+    const { queryClient } = renderDialog("bittorrent")
+
+    await fieldFor("preferences.fields.addTrackersUrlList")
+    serveView(view.map(field => field.key === "add_trackers_url_list" ? { ...field, value: "udp://other.example.invalid:6969/announce" } : field))
+    await queryClient.refetchQueries({ queryKey: ["instance-preference-view", 1] })
+
+    expect((await fieldFor("preferences.fields.addTrackersUrlList")).value).toBe("udp://other.example.invalid:6969/announce")
+  })
+
   it("shows the seven RSS settings in the RSS tab", async () => {
     serveView()
 

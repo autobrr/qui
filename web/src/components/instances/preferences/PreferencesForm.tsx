@@ -40,7 +40,8 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   const setValue = useCallback((key: string, value: unknown) => setValues(previous => ({ ...previous, [key]: value })), [])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
-  const valueOf = (field: PreferenceField) => field.key in values ? values[field.key] : field.value
+  // A read-only field has no edits to keep, so it shows the latest view.
+  const valueOf = (field: PreferenceField) => !field.readOnly && field.key in values ? values[field.key] : field.value
   const isEnabled = (field: PreferenceField): boolean => {
     const parent = field.dependsOn ? byKey.get(field.dependsOn) : undefined
     return !parent || (valueOf(parent) === true && isEnabled(parent))
