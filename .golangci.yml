@@ -44,6 +44,9 @@ linters:
         - pattern: ^qbittorrent\.Client\.(SetPreferences\w*|SetMonitoredFolders(Ctx)?|SetRSS(AutoDownloading|Processing)Enabled(Ctx)?)$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
           msg: send qBittorrent preference writes through the preference catalog in internal/qbittorrent/prefcatalog
+        - pattern: ^(qbittorrent\.TorrentFilterOptions\.)?(Sort|Reverse)$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: qui sorts torrents with torrentOrder (ADR 0014)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
