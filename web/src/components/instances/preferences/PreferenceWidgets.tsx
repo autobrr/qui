@@ -138,16 +138,13 @@ function TextWidget({ id, labels, value, onChange, disabled }: WidgetProps) {
 }
 
 // qBittorrent 5.0 and later can list folders, so a folder field suggests them as the user types.
-// A file field, such as the IP filter, has no option source and stays a text box.
-function PathWidget(props: WidgetProps) {
-  const { data: capabilities } = useInstanceCapabilities(props.instanceId)
-  const suggestsFolders = capabilities?.supportsPathAutocomplete && props.field.optionSource === "pathAutocomplete"
-  return suggestsFolders ? <PathAutocompleteWidget {...props} /> : <TextWidget {...props} />
-}
-
-function PathAutocompleteWidget({ id, instanceId, labels, value, onChange, disabled }: WidgetProps) {
+// A file field, such as the IP filter, has no option source and gets no suggestions. The same
+// input stays mounted when the capabilities arrive, so a user who types early keeps the focus.
+function PathWidget({ id, instanceId, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const suggestsFolders = capabilities?.supportsPathAutocomplete && field.optionSource === "pathAutocomplete"
   const {
     suggestions,
     handleInputChange,
@@ -166,14 +163,14 @@ function PathAutocompleteWidget({ id, instanceId, labels, value, onChange, disab
       <Input
         ref={inputRef}
         id={id}
-        autoComplete="off"
+        autoComplete={suggestsFolders ? "off" : undefined}
         spellCheck={false}
         value={String(value ?? "")}
         disabled={disabled}
         placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}
         onChange={(e) => {
           onChange(e.target.value)
-          handleInputChange(e.target.value)
+          if (suggestsFolders) handleInputChange(e.target.value)
         }}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
@@ -187,7 +184,7 @@ function PathAutocompleteWidget({ id, instanceId, labels, value, onChange, disab
                 <button
                   key={entry}
                   type="button"
-                  title={entry}
+                  title={incognitoMode ? undefined : entry}
                   className={cn(
                     "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                     highlightedIndex === index ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",

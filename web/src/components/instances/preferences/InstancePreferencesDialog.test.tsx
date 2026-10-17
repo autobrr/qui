@@ -115,12 +115,12 @@ function save() {
   fireEvent.click(screen.getByRole("button", { name: "preferences.common.saveChanges" }))
 }
 
-function renderDialog(defaultTab?: string) {
+function renderDialog(defaultTab?: string, onOpenChange: (open: boolean) => void = () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const result = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <InstancePreferencesDialog open onOpenChange={() => {}} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
+        <InstancePreferencesDialog open onOpenChange={onOpenChange} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -452,6 +452,46 @@ describe("InstancePreferencesDialog", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     expect(bodies).toEqual([{ save_path: "/data/movies/" }])
+  })
+
+  it("closes only the folder suggestions on the first Escape, and the dialog on the second", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    const onOpenChange = vi.fn()
+    renderDialog("downloads", onOpenChange)
+
+    await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    await screen.findByRole("button", { name: "/data/movies" })
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("button", { name: "/data/movies" })).toBeNull())
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("keeps the same folder input when the capabilities arrive after the user starts typing", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    let answerCapabilities = () => {}
+    const capabilitiesSent = new Promise<void>(resolve => { answerCapabilities = resolve })
+    server.use(http.get("*/api/instances/1/capabilities", async () => {
+      await capabilitiesSent
+      return HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete: true })
+    }))
+    renderDialog("downloads")
+
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    savePath.focus()
+    fireEvent.change(savePath, { target: { value: "/data" } })
+    answerCapabilities()
+
+    await waitFor(() => expect(savePath.getAttribute("autocomplete")).toBe("off"))
+    expect(await fieldFor("preferences.fileManagement.defaultSavePath")).toBe(savePath)
+    expect(document.activeElement).toBe(savePath)
   })
 
   it("suggests no folders for a file path, also when qBittorrent can list folders", async () => {

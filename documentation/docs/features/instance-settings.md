@@ -110,7 +110,7 @@ The **Saving management** section has automatic torrent management and its reloc
 
 The **Excluded file names** section has a list of file name patterns, one per line. qBittorrent does not download a file whose name matches a pattern. qBittorrent 4.5 and later send these preferences.
 
-On qBittorrent 5.0 and later, a path field suggests folders on the qBittorrent host while you type. On qBittorrent 4.x, a path field is a plain text box.
+On qBittorrent 5.0 and later, the default save path, the temporary download path, and the backup folders suggest folders on the qBittorrent host while you type. The watch folders get no suggestions. On qBittorrent 4.x, each path field is a plain text box.
 
 The **Run External Program** section has the commands that qBittorrent runs when a torrent is added and when a torrent finishes. A list of placeholders follows them.
 
