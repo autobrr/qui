@@ -1061,8 +1061,8 @@ type localMatchContext struct {
 
 	// Lazy-loaded source file data
 	fetched        bool
-	sourceFilesErr error // Error from fetching/parsing source files
-	sourceFiles    qbt.TorrentFiles
+	sourceFilesErr error            // Error from fetching/parsing source files
+	sourceFiles    qbt.TorrentFiles // without the files that contentFiles removes
 	sourceData     sameDataFiles
 
 	// Lazy-loaded FileIDs of the source's hard-linked files (nlink > 1),
@@ -1096,8 +1096,9 @@ func (m *localMatchContext) getSourceFiles() error {
 		return m.sourceFilesErr
 	}
 
-	m.sourceFiles = srcFiles
-	m.sourceData = newSameDataFiles(m.sourceSavePath, srcFiles, normalizerForService(m.svc))
+	normalizer := normalizerForService(m.svc)
+	m.sourceFiles = contentFiles(srcFiles, normalizer)
+	m.sourceData = newSameDataFiles(m.sourceSavePath, srcFiles, normalizer)
 	return nil
 }
 
@@ -1194,6 +1195,8 @@ func (s *Service) localLinkedMatchType(
 	if !ok {
 		return ""
 	}
+	// A linked subtitle alone does not make a different video a cross-seed.
+	candidateFiles = contentFiles(candidateFiles, normalizerForService(s))
 
 	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, models.CapabilityIdentity)
 	if err != nil {

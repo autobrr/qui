@@ -137,6 +137,23 @@ func TestLocalLinkedMatchType_SeparateCopy_NoUpgrade(t *testing.T) {
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
 }
 
+func TestLocalLinkedMatchType_LinkedSubtitleOnly_NoUpgrade(t *testing.T) {
+	// The videos differ. Only the subtitle is a hardlink, and subtitles do not count.
+	sourceDir, candidateDir := writeHardlinkFixture(t, "Movie.2023.1080p.WEB.srt", true)
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "Movie.2023.1080p.WEB.mkv"), []byte("data"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(candidateDir, "Movie.2023.1080p.WEB.mkv"), []byte("other!"), 0o600))
+
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    {{Name: "Movie.2023.1080p.WEB.mkv", Size: 4}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+		normalizeHash(hlCandidateHash): {{Name: "Movie.2023.1080p.WEB.mkv", Size: 6}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+	})
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.NoError(t, matchCtx.verificationErr)
+}
+
 func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
