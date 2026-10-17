@@ -40,6 +40,7 @@ linters:
   settings:
     forbidigo:
       analyze-types: true
+      exclude-godoc-examples: false
       forbid:
         - pattern: ^qbittorrent\.Client\.(SetPreferences\w*|SetMonitoredFolders(Ctx)?|SetRSS(AutoDownloading|Processing)Enabled(Ctx)?)$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
