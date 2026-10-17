@@ -16,6 +16,7 @@ formatters:
 linters:
   enable:
     - copyloopvar
+    - depguard
     - errname
     - errorlint
     - exhaustive
@@ -38,12 +39,56 @@ linters:
     - whitespace
 
   settings:
+    depguard:
+      rules:
+        models-is-a-leaf:
+          files: ["**/internal/models/**"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "models never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "models never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "models never imports api, services, or qbittorrent" }
+        services-never-import-api:
+          files: ["**/internal/services/**"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: services never import api }
+        database-is-a-leaf:
+          files: ["**/internal/database/**", "!$test"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "database never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "database never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "database never imports api, services, or qbittorrent" }
+        qbittorrent-never-imports-up:
+          list-mode: lax
+          files: ["**/internal/qbittorrent/**"]
+          allow:
+            # The sync manager queues tracker icon fetches. Removing this edge is a separate change.
+            - github.com/autobrr/qui/internal/services/trackericons
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: qbittorrent never imports api or services }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: qbittorrent never imports api or services }
+        pkg-never-imports-internal:
+          files: ["**/pkg/**", "!$test"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal, desc: pkg packages stand alone and never import internal }
+        gatherer-never-parses:
+          files: ["**/internal/services/crossseed/search_gather.go"]
+          deny:
+            - { pkg: github.com/autobrr/rls, desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007) }
+            - { pkg: github.com/autobrr/qui/pkg/releases, desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007) }
+
     forbidigo:
       analyze-types: true
+      exclude-godoc-examples: false
       forbid:
         - pattern: ^qbittorrent\.Client\.(SetPreferences\w*|SetMonitoredFolders(Ctx)?|SetRSS(AutoDownloading|Processing)Enabled(Ctx)?)$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
           msg: send qBittorrent preference writes through the preference catalog in internal/qbittorrent/prefcatalog
+        - pattern: ^(qbittorrent\.TorrentFilterOptions\.)?(Sort|Reverse)$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: qui sorts torrents with torrentOrder (ADR 0014)
+        - pattern: ^(releases\.(DefaultParser|NewDefaultParser|NewParser)|rls\.(DefaultParser|NewDefaultParser|NewTagParser|NewReleaseScanner|NewScanner|Parse|ParseString|ParseTags|ParseTagsString))$
+          pkg: ^github\.com/autobrr/(qui/pkg/releases|rls)$
+          msg: cross-seed code parses release names through the release cache or matcher.parseReleaseName (ADR 0008)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -81,6 +126,16 @@ linters:
         linters:
           - forbidigo
         text: preference catalog
+
+      # The one-parser rule binds only the cross-seed production code.
+      - path-except: ^internal/services/crossseed/
+        linters:
+          - forbidigo
+        text: ADR 0008
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: ADR 0008
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.
