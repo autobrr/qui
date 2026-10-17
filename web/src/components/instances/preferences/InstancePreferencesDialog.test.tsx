@@ -610,6 +610,8 @@ describe("InstancePreferencesDialog", () => {
   })
 
   it("keeps the test email button off until email notification is saved on", async () => {
+    const bodies = recordSaves()
+    const sent = recordTestEmails()
     serveView(emailView(false), { supportsTestEmail: true })
     renderDialog("downloads")
 
@@ -619,6 +621,12 @@ describe("InstancePreferencesDialog", () => {
     fireEvent.click(await fieldFor("preferences.fields.mailNotificationEnabled"))
     expect(button.disabled).toBe(true)
     expect((await fieldFor("preferences.fields.mailNotificationPassword")).disabled).toBe(false)
+
+    save()
+    await waitFor(() => expect(button.disabled).toBe(false))
+    expect(bodies).toEqual([{ mail_notification_enabled: true }])
+    fireEvent.click(button)
+    await waitFor(() => expect(sent.count).toBe(1))
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {
