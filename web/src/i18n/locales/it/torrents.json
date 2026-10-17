@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
+    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare.",
     "toast": {
       "savePathCopied": "Percorso di salvataggio copiato",
       "copyFailed": "Copia non riuscita"

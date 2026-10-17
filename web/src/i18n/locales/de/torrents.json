@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
+    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden.",
     "toast": {
       "savePathCopied": "Speicherpfad kopiert",
       "copyFailed": "Kopieren fehlgeschlagen"

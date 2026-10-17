@@ -54,6 +54,9 @@ type OptionSource string
 const (
 	SourceFixed            OptionSource = "fixed"
 	SourcePathAutocomplete OptionSource = "pathAutocomplete"
+	// The network binding route lists the interfaces and the addresses of each interface.
+	SourceNetworkInterfaces  OptionSource = "networkInterfaces"
+	SourceInterfaceAddresses OptionSource = "interfaceAddresses"
 )
 
 // Mode says whether qui shows a key and whether a user can change it.
@@ -126,8 +129,8 @@ var byKey = func() map[string]Entry {
 }()
 
 // View returns the fields that qui shows for prefs, in catalog order. It drops
-// the keys that qBittorrent did not send, the keys whose gate fails, and the
-// keys that are not shown.
+// the keys that qBittorrent did not send, the keys whose gate fails, the keys
+// that are not shown, and proxy_auth_enabled before qBittorrent 4.6.
 func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field, error) {
 	// MarshalJSON writes only the keys that qBittorrent sent, and never web_ui_api_key.
 	data, err := json.Marshal(prefs)
@@ -139,10 +142,16 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 		return nil, err
 	}
 
+	// Before 4.6, proxy_type also sets the authentication, and qBittorrent ignores proxy_auth_enabled.
+	numericProxyType := values["proxy_type"].Kind() == '0'
+
 	fields := make([]Field, 0, len(values))
 	for _, entry := range catalog {
 		value, sent := values[entry.Key]
 		if !sent || entry.Mode == NotShown || !entry.Gate.passes(libtorrentVersion, platform) {
+			continue
+		}
+		if entry.Key == "proxy_auth_enabled" && numericProxyType {
 			continue
 		}
 		field := Field{
@@ -159,7 +168,9 @@ func View(prefs qbt.AppPreferences, libtorrentVersion, platform string) ([]Field
 			Reason:       entry.Reason,
 		}
 		for _, option := range entry.Options {
-			if option.Gate.passes(libtorrentVersion, platform) {
+			// An option shows only when it has the JSON type of the value that qBittorrent sent.
+			_, isString := option.Value.(string)
+			if option.Gate.passes(libtorrentVersion, platform) && isString == (value.Kind() == '"') {
 				field.Options = append(field.Options, option.Value)
 			}
 		}

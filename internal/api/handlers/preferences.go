@@ -96,6 +96,31 @@ func (h *PreferencesHandler) SendTestEmail(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetNetworkBinding returns the network interfaces and addresses that qBittorrent can bind to.
+func (h *PreferencesHandler) GetNetworkBinding(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	binding, err := h.syncManager.GetNetworkBinding(r.Context(), instanceID)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:networkBinding") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get network binding")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(binding); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode network binding")
+	}
+}
+
 func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Request, instanceID int, operation string) {
 	view, err := h.syncManager.GetPreferenceView(r.Context(), instanceID)
 	if err != nil {

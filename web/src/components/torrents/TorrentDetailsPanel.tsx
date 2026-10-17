@@ -207,7 +207,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
   // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
-  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -1724,6 +1724,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
+                loadFailed={!!matchesError}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
@@ -1740,6 +1741,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   {isLoadingMatches ? (
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : matchesError ? (
+                    // A refetch that fails keeps the last data: the error wins,
+                    // so the stale matches and their delete actions go away.
+                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
+                      {t("crossSeedTable.loadFailed")}
                     </div>
                   ) : matchingTorrents.length > 0 ? (
                     <div className="space-y-4">

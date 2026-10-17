@@ -1339,15 +1339,15 @@
     "matchTypes": {
       "contentPath": {
         "label": "Content",
-        "description": "Same content location on disk"
+        "description": "Shares a file on disk with this torrent"
       },
       "name": {
         "label": "Name",
-        "description": "Same torrent name"
+        "description": "Separate copy with the same torrent name and file sizes"
       },
       "release": {
         "label": "Release",
-        "description": "Same release (matched by metadata)"
+        "description": "Separate copy of the same release with the same file sizes"
       },
       "hardlink": {
         "label": "Hardlink",
@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "No matching torrents found on other instances",
+    "loadFailed": "Could not check for cross-seed matches. Reload to try again.",
     "toast": {
       "savePathCopied": "Save path copied",
       "copyFailed": "Failed to copy"

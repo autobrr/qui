@@ -66,11 +66,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 const torrent = { hash: "abc", name: "Show.S01", state: "uploading", progress: 1 } as Torrent
 
 const cases = [
-  { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, write: true, content: true }, canReadContent: true },
+  { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, canReadContent: true },
   { name: "a remote instance", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true }, canReadContent: false },
   // The setting is off here, so only the capability can offer the actions.
   { name: "a remote instance with the content capability", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true, content: true }, canReadContent: true },
