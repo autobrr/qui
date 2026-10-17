@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -680,7 +679,7 @@ func parseRunID(w http.ResponseWriter, r *http.Request) (int64, error) {
 func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) error {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusBadRequest, "Target instance not found")
 			return fmt.Errorf("instance not found: %w", err)
 		}
