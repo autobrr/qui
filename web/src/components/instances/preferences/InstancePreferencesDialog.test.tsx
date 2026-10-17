@@ -629,6 +629,44 @@ describe("InstancePreferencesDialog", () => {
     await waitFor(() => expect(sent.count).toBe(1))
   })
 
+  it("shows the proxy with a password box behind the authentication switch", async () => {
+    const bodies = recordSaves()
+    serveView([
+      { key: "i2p_enabled", value: false, tab: "connection", section: "i2p", control: "switch" },
+      { key: "proxy_type", value: "SOCKS5", tab: "connection", section: "proxy", control: "select", optionSource: "fixed", options: ["None", "SOCKS4", "SOCKS5", "HTTP"] },
+      { key: "proxy_ip", value: "127.0.0.1", tab: "connection", section: "proxy", control: "text" },
+      { key: "proxy_auth_enabled", value: false, tab: "connection", section: "proxy", control: "switch" },
+      { key: "proxy_password", value: "", tab: "connection", section: "proxy", control: "password", dependsOn: "proxy_auth_enabled" },
+    ])
+    renderDialog("connection")
+
+    expect((await fieldFor("preferences.fields.proxyType")).textContent).toBe("preferences.fields.proxyTypeSocks5")
+    const password = await fieldFor("preferences.fields.proxyPassword")
+    expect(password.type).toBe("password")
+    expect(password.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.fields.proxyAuthEnabled"))
+    fireEvent.change(password, { target: { value: "hunter2" } })
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
+      "preferences.sections.i2p",
+      "preferences.sections.proxy",
+    ])
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ proxy_auth_enabled: true, proxy_password: "hunter2" }])
+  })
+
+  it("names the proxy types with authentication of qBittorrent 4.5 and earlier", async () => {
+    serveView([
+      { key: "proxy_type", value: 4, tab: "connection", section: "proxy", control: "select", optionSource: "fixed", options: [0, 5, 2, 4, 1, 3] },
+      { key: "proxy_torrents_only", value: false, tab: "connection", section: "proxy", control: "switch" },
+    ])
+    renderDialog("connection")
+
+    expect((await fieldFor("preferences.fields.proxyType")).textContent).toBe("preferences.fields.proxyTypeSocks5Auth")
+    expect(await fieldFor("preferences.fields.proxyTorrentsOnly")).not.toBeNull()
+  })
+
   it("sends scan_dirs when one watch folder changes", async () => {
     const bodies = recordSaves()
     serveView()
