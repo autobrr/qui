@@ -1123,7 +1123,7 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 		return nil
 	}
 
-	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, models.CapabilityIdentity)
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, m.identity())
 	if err != nil {
 		// Unlike a per-file stat failure, a backend outage discards ALL
 		// hardlink evidence for the instance — record it so strict mode
@@ -1171,7 +1171,8 @@ func candidateSharesSourceFileID(
 }
 
 // identity is the capability an instance needs for its file identity to
-// count in this match.
+// count in this match. The backends ask for it again, since the instance
+// list the match started from can be older than the row.
 func (m *localMatchContext) identity() models.FilesystemCapability {
 	if m.trustedIdentityOnly {
 		return models.CapabilityTrustedIdentity
@@ -1213,7 +1214,7 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, models.CapabilityIdentity)
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, matchCtx.identity())
 	if err != nil {
 		// A backend outage discards all evidence for the candidate — record it
 		// so strict mode fails the check instead of reading "no cross-seeds".
@@ -1234,7 +1235,7 @@ func (s *Service) localLinkedMatchType(
 	if filesShareAllocation == nil {
 		return ""
 	}
-	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, models.CapabilityIdentity)
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, matchCtx.identity())
 	if err != nil {
 		if matchCtx.verificationErr == nil {
 			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)

@@ -454,3 +454,46 @@ func TestLocalLinkedMatchType_DeleteDialogNeedsTrustedIdentity(t *testing.T) {
 	matchCtx.trustedIdentityOnly = true
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, remoteExec, candidate), "a delete dialog never trusts remote identity")
 }
+
+// The delete dialog admits instances from the list it loaded at the start. If
+// one left local mode since, its backend now answers from the SSH host, so the
+// lookup must fail rather than count that answer. The remote backend here is
+// the local one, so the files really are hardlinks.
+func TestLocalLinkedMatchType_DeleteDialogRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
+	remoteExec := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
+	for _, tc := range []struct {
+		name   string
+		leftID int
+	}{
+		{name: "source", leftID: 1},
+		{name: "candidate", leftID: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fileName := "Movie.2023.1080p.WEB.mkv"
+			sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+			torrentFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+			svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+				normalizeHash(hlSourceHash):    torrentFiles,
+				normalizeHash(hlCandidateHash): torrentFiles,
+			})
+			rows := map[int]*models.Instance{
+				1: {ID: 1, HasLocalFilesystemAccess: true},
+				2: {ID: 2, HasLocalFilesystemAccess: true},
+			}
+			left := *remoteExec
+			left.ID = tc.leftID
+			rows[tc.leftID] = &left
+			svc.SetBackendPool(fsops.NewPoolWithRemote(&mockInstanceStore{instances: rows},
+				local.NewBackend(), func(*models.Instance) fsops.Backend { return local.NewBackend() }))
+			candidate := hardlinkTestCandidate(candidateDir)
+			candidate.InstanceID = 2
+
+			matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+			matchCtx.trustedIdentityOnly = true
+			loaded := &models.Instance{ID: 2, HasLocalFilesystemAccess: true}
+			require.Empty(t, svc.localLinkedMatchType(matchCtx, loaded, candidate))
+			require.Error(t, matchCtx.verificationErr, "the dialog must fail the check, not read no cross-seeds")
+		})
+	}
+}
