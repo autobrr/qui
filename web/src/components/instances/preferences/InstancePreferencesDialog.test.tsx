@@ -245,6 +245,31 @@ describe("InstancePreferencesDialog", () => {
     expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440, max_ratio_enabled: true }])
   })
 
+  it("sends no seeding limit when its switch turns on and off again", async () => {
+    const bodies = recordSaves()
+    serveView(view.map(field => field.key === "max_ratio_enabled" ? { ...field, value: true } : field))
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    const enabled = await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled")
+    fireEvent.click(enabled)
+    fireEvent.change(inactive, { target: { value: "60" } })
+    fireEvent.blur(inactive)
+    fireEvent.click(enabled)
+    expect(inactive.value).toBe("")
+    // A saved limit comes back when its switch turns on again.
+    const ratio = await fieldFor("preferences.seedingLimits.maxShareRatio")
+    const ratioEnabled = await fieldFor("preferences.seedingLimits.enableShareRatioLimit")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
+  })
+
   it("enables a dependent field only while its switch is on", async () => {
     serveView()
 

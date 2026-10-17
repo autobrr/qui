@@ -39,18 +39,20 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
 
   const setValue = useCallback((key: string, value: unknown) => setValues(previous => {
     const next = { ...previous, [key]: value }
-    // qBittorrent keeps a seeding limit off until it gets a limit, so a switch that turns on
-    // fills an empty box with the starting value of the qBittorrent WebUI.
-    if (value === true) {
-      for (const field of fields) {
-        const labels = field.dependsOn === key ? labelsOf(field) : undefined
-        if (labels?.whenEnabled !== undefined && next[field.key] === labels.unlimited) {
-          next[field.key] = labels.whenEnabled
-        }
+    // qBittorrent turns a seeding limit on when it gets a limit without the switch. So a switch
+    // that turns off empties the box, and a switch that turns on fills an empty box with the
+    // saved limit or the starting value of the qBittorrent WebUI.
+    for (const field of fields) {
+      const labels = field.dependsOn === key ? labelsOf(field) : undefined
+      if (labels?.whenEnabled === undefined) continue
+      if (value === false) {
+        next[field.key] = labels.unlimited
+      } else if (next[field.key] === labels.unlimited) {
+        next[field.key] = saved[field.key] !== labels.unlimited ? saved[field.key] : labels.whenEnabled
       }
     }
     return next
-  }), [fields])
+  }), [fields, saved])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
   // A read-only field has no edits to keep, so it shows the latest view.
