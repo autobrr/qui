@@ -349,7 +349,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -379,7 +379,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	values := make([]string, 0, len(torrents))
 	for _, torrent := range torrents {
-		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 		if shouldIncludeTorrentFieldValue(req.Field, value) {
 			values = append(values, value)
 		}
@@ -391,7 +391,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, contentPath, tags, magnetURI string) string {
 	switch field {
 	case "name":
 		return strings.TrimSpace(name)
@@ -402,7 +402,7 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 			InfohashV2: infohashV2,
 		})
 	case "full_path":
-		return fullPathValue(savePath, name)
+		return strings.TrimSpace(contentPath)
 	case "tags":
 		return tags
 	case "magnet_uri":
@@ -1229,20 +1229,6 @@ func preferredHashValue(torrent *qbt.Torrent) string {
 	}
 
 	return ""
-}
-
-func fullPathValue(savePath, name string) string {
-	normalizedSavePath := strings.ReplaceAll(strings.TrimSpace(savePath), "\\", "/")
-	trimmedName := strings.TrimSpace(name)
-	if normalizedSavePath == "" || trimmedName == "" {
-		return ""
-	}
-
-	if strings.HasSuffix(normalizedSavePath, "/") {
-		return normalizedSavePath + trimmedName
-	}
-
-	return normalizedSavePath + "/" + trimmedName
 }
 
 // BulkAction performs bulk operations on torrents
