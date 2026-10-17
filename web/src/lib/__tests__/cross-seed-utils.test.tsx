@@ -272,6 +272,20 @@ describe("useLocalCrossSeedMatches", () => {
     expect(result.current.isLoadingMatches).toBe(false)
   })
 
+  it("surfaces a rejected strict lookup instead of an empty match list", async () => {
+    mockedApi.getLocalCrossSeedMatches.mockRejectedValue(new Error("overlap check failed"))
+    const { result } = renderHook(
+      () => useLocalCrossSeedMatches(2, makeTorrent({ hash: "h" }), true),
+      { wrapper: makeWrapper() }
+    )
+
+    await waitFor(() => {
+      expect(result.current.matchesError).not.toBeNull()
+    })
+    expect(result.current.matchingTorrents).toEqual([])
+    expect(result.current.isLoadingMatches).toBe(false)
+  })
+
   it("reports a pending matches query while loading and clears it once settled", async () => {
     let resolveMatches: (value: LocalCrossSeedMatch[]) => void = () => {}
     mockedApi.getLocalCrossSeedMatches.mockReturnValue(

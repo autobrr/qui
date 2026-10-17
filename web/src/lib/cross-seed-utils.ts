@@ -110,7 +110,7 @@ export const useLocalCrossSeedMatches = (
   })
 
   // Call the backend API to get local matches
-  const { data: matches, isLoading: isLoadingMatches } = useQuery({
+  const { data: matches, isLoading: isLoadingMatches, error: matchesError } = useQuery({
     queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
     // Strict, like the delete dialogs: the tab offers a select-all delete
     // with files, and a match whose file overlap could not be checked must
@@ -131,6 +131,9 @@ export const useLocalCrossSeedMatches = (
 
   return {
     matchingTorrents,
+    // A strict lookup that could not finish its overlap check rejects; the
+    // tab shows that rather than an empty list that reads as "no matches".
+    matchesError: matchesError ?? null,
     isLoadingMatches: isLoadingInstances || isLoadingMatches,
     isLoadingInstances,
     pendingQueryCount: isLoadingMatches ? 1 : 0,

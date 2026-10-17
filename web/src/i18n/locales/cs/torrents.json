@@ -1422,6 +1422,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
     "toast": {
       "savePathCopied": "Složka pro uložení zkopírována",
       "copyFailed": "Kopírování selhalo"

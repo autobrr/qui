@@ -207,7 +207,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
   // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
-  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -1961,6 +1961,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           </span>
                         </div>
                       )}
+                    </div>
+                  ) : matchesError ? (
+                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
+                      {t("crossSeedTable.loadFailed")}
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
