@@ -346,7 +346,6 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathApply:        knownDifference(corpusNoMatch, 3037, "Apply admits the search decision, but its file check reads the local torrent name again, and a batch name without a season reads as a movie."),
 			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
 			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
 			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
