@@ -38,7 +38,7 @@ import (
 
 // backendPoolGetter provides filesystem backends per instance.
 type backendPoolGetter interface {
-	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
+	Require(ctx context.Context, instanceID int, capabilities ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
 // FilesManager interface for caching torrent files.
@@ -2517,6 +2517,12 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 		if !errors.Is(err, fsops.ErrNotCapable) {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
 		}
+		return nil, nil
+	}
+	// This cleanup still applies host filepath to backend paths, so a remote
+	// instance stays out even with Write. #2947 replaces it; #2948 brings the
+	// replacement to remote instances.
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return nil, nil
 	}
 	if strings.TrimSpace(instance.HardlinkBaseDir) == "" {

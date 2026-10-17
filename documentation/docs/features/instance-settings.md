@@ -57,7 +57,7 @@ If enabled, qui reads the same filesystem as qBittorrent. This setting turns on 
 - **Free space (path)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports.
 - **Has Missing Files condition**: Automation rules check whether a completed torrent has files missing on disk.
 - **MediaInfo**: Show MediaInfo for a file in the Content tab.
-- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy.
+- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy. Hardlink mode also works on a remote instance; reflink mode needs local access.
 - **Cross-seed ID fallback**: Read IMDb, TMDb, and TVDb tags from MKV files when a search finds no results.
 - **Directory scan**: Use the instance as a directory scan target.
 

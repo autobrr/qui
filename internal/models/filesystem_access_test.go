@@ -66,7 +66,7 @@ func TestFilesystemCapabilitiesOf(t *testing.T) {
 	}{
 		{"local", &Instance{HasLocalFilesystemAccess: true}, all},
 		{"local with SSH credentials", &localWithSSH, all},
-		{"remote", remote, FilesystemCapabilities{Read: true}},
+		{"remote", remote, FilesystemCapabilities{Read: true, Write: true}},
 		{"none", &Instance{}, FilesystemCapabilities{}},
 	}
 

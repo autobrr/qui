@@ -103,7 +103,8 @@ export function HardlinkModeSettings({
     const form = getForm(instance)
 
     // Validate before saving
-    if ((form.useHardlinks || form.useReflinks) && !instance.capabilities.write) {
+    const canReflink = instance.capabilities.write && instance.filesystemMode === "local"
+    if ((form.useHardlinks && !instance.capabilities.write) || (form.useReflinks && !canReflink)) {
       const mode = form.useReflinks ? "reflink" : "hardlink"
       toast.error(t("toast.cannotEnableMode", { mode }), {
         description: t("toast.noLocalFilesystemAccess", { name: instance.name }),
@@ -194,6 +195,8 @@ export function HardlinkModeSettings({
               const form = getForm(instance)
               const isDirty = dirtyMap[instance.id] ?? false
               const canEnableModes = instance.capabilities.write
+              // Nothing clones files over sftp, so reflink mode is local-only.
+              const canEnableReflink = canEnableModes && instance.filesystemMode === "local"
 
               return (
                 <AccordionItem
@@ -261,10 +264,10 @@ export function HardlinkModeSettings({
                               value="reflink"
                               id={`mode-reflink-${instance.id}`}
                               className="mt-0.5"
-                              disabled={!canEnableModes}
+                              disabled={!canEnableReflink}
                             />
                             <div className="space-y-0.5 flex-1">
-                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>{t("rules.reflink")}</Label>
+                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableReflink ? "text-muted-foreground" : ""}`}>{t("rules.reflink")}</Label>
                               <p className="text-xs text-muted-foreground">{t("rules.reflinkDescription")}</p>
                             </div>
                           </div>

@@ -65,6 +65,10 @@ func mkdirAllTracked(dir string, created *[]string) error {
 	return nil
 }
 
+// ErrTargetExists reports a target path that already holds a file that is not
+// a link to the source.
+var ErrTargetExists = errors.New("target already exists")
+
 // Create materializes the hardlink tree plan on disk.
 // Creates necessary directories and hardlinks files from source to target paths.
 // On failure, attempts best-effort rollback of created files and returns a nil handle.
@@ -124,7 +128,7 @@ func Create(plan *TreePlan) (*Created, error) {
 				}
 			}
 			// Different file exists at target - this is an error
-			return nil, rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
+			return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath))
 		} else if !os.IsNotExist(err) {
 			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
 		}
