@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -251,4 +252,89 @@ func TestService_GetIcon_CachedIconIssuesNoRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, svc.iconPath(host), path)
 	require.Equal(t, int32(0), transport.calls.Load())
+}
+
+func TestRejectNonPublic(t *testing.T) {
+	t.Parallel()
+
+	blocked := []string{
+		"127.0.0.1", "10.0.0.5", "172.16.0.1", "192.168.1.1", "169.254.169.254",
+		"100.64.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1",
+		"::1", "fe80::1", "fc00::1", "::ffff:10.0.0.1", "::ffff:127.0.0.1",
+	}
+	for _, ip := range blocked {
+		require.ErrorIs(t, rejectNonPublic("tcp", net.JoinHostPort(ip, "443"), nil), errNonPublicAddress, ip)
+	}
+
+	for _, ip := range []string{"1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"} {
+		require.NoError(t, rejectNonPublic("tcp", net.JoinHostPort(ip, "443"), nil), ip)
+	}
+}
+
+func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("http_proxy", "")
+
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer srv.Close()
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), srv.URL+"/favicon.ico")
+	require.ErrorIs(t, err, errNonPublicAddress)
+	require.Zero(t, hits.Load())
+}
+
+func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
+	icon := testPNG(t)
+	var proxiedHost atomic.Pointer[string]
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxiedHost.Store(&r.Host)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(icon)
+	}))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	// 192.0.2.0/24 is a documentation range that counts as public. The proxy
+	// answers, so qui never dials it.
+	data, _, err := svc.fetchIconBytes(t.Context(), "http://192.0.2.10/favicon.ico")
+	require.NoError(t, err)
+	require.Equal(t, icon, data)
+	require.Equal(t, "192.0.2.10", *proxiedHost.Load())
+}
+
+func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
+	var hits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), "http://169.254.169.254/latest/meta-data/")
+	require.ErrorIs(t, err, errNonPublicAddress)
+	require.Zero(t, hits.Load())
+}
+
+func TestCheckPublicHost_ResolvesNames(t *testing.T) {
+	t.Parallel()
+
+	// localhost resolves from the hosts file, so this sends no DNS query.
+	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), errNonPublicAddress)
+	require.NoError(t, checkPublicHost(t.Context(), "192.0.2.10"))
 }

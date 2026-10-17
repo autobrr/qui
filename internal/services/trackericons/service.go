@@ -21,12 +21,15 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	// Same again for .ico, which browsers still serve as a favicon.
@@ -35,6 +38,7 @@ import (
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
+	"golang.org/x/net/http/httpproxy"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
 
@@ -125,7 +129,7 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 
 	svc := &Service{
 		iconDir:           iconDir,
-		client:            &http.Client{Timeout: fetchTimeout},
+		client:            &http.Client{Timeout: fetchTimeout, Transport: newPublicOnlyTransport()},
 		failures:          make(map[string]failureState),
 		activityPublisher: activity.NopPublisher{},
 	}
@@ -145,6 +149,113 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	return svc, nil
+}
+
+// errNonPublicAddress is returned when an icon fetch would connect to an
+// address that is not on the public internet.
+var errNonPublicAddress = errors.New("tracker icon fetch blocked: address is not public")
+
+// sharedAddressSpace is 100.64.0.0/10 (carrier-grade NAT and Tailscale).
+// netip does not count it as private, but it is not on the public internet.
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+
+// newPublicOnlyTransport returns a transport that connects only to public
+// addresses. The torrent author chooses the tracker host, and the tracker page
+// chooses the icon URLs and redirects, so without this check a torrent could
+// make qui send requests into the local network.
+//
+// The proxy from HTTP_PROXY or HTTPS_PROXY is the one exception: the operator
+// configured it, and it is often on the local network. The proxy connects to
+// the target, so before qui sends a request through it, qui resolves the
+// target host and refuses a private address. A DNS server that gives qui and
+// the proxy different answers can still get past this check.
+func newPublicOnlyTransport() *http.Transport {
+	proxyConfig := httpproxy.FromEnvironment()
+	proxyFunc := proxyConfig.ProxyFunc()
+	proxyAddrs := proxyDialAddrs(proxyConfig.HTTPProxy, proxyConfig.HTTPSProxy)
+
+	direct := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	checked := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: rejectNonPublic}
+
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = func(r *http.Request) (*url.URL, error) {
+		proxyURL, err := proxyFunc(r.URL)
+		if proxyURL == nil || err != nil {
+			return proxyURL, err
+		}
+		if err := checkPublicHost(r.Context(), r.URL.Hostname()); err != nil {
+			return nil, err
+		}
+		return proxyURL, nil
+	}
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if slices.ContainsFunc(proxyAddrs, func(p string) bool { return strings.EqualFold(p, addr) }) {
+			return direct.DialContext(ctx, network, addr)
+		}
+		return checked.DialContext(ctx, network, addr)
+	}
+	return t
+}
+
+// rejectNonPublic runs after DNS resolution, so address is always an IP. This
+// also stops a public host name that resolves to a private IP.
+func rejectNonPublic(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	return checkPublicHost(context.Background(), host)
+}
+
+// checkPublicHost resolves host and refuses it if any of its addresses is not
+// public. A host that does not resolve is refused too.
+func checkPublicHost(ctx context.Context, host string) error {
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return checkPublicIP(ip)
+	}
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return err
+	}
+	for _, ip := range ips {
+		if err := checkPublicIP(ip); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkPublicIP(ip netip.Addr) error {
+	ip = ip.Unmap()
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || sharedAddressSpace.Contains(ip) {
+		return fmt.Errorf("%w: %s", errNonPublicAddress, ip)
+	}
+	return nil
+}
+
+// proxyDialAddrs returns the host:port that the transport dials for each proxy
+// URL. A proxy value without a scheme is an http proxy, as in net/http.
+func proxyDialAddrs(proxies ...string) []string {
+	defaultPorts := map[string]string{"http": "80", "https": "443", "socks5": "1080", "socks5h": "1080"}
+	var addrs []string
+	for _, raw := range proxies {
+		if raw == "" {
+			continue
+		}
+		if !strings.Contains(raw, "://") {
+			raw = "http://" + raw
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			continue
+		}
+		port := u.Port()
+		if port == "" {
+			port = defaultPorts[u.Scheme]
+		}
+		addrs = append(addrs, net.JoinHostPort(u.Hostname(), port))
+	}
+	return addrs
 }
 
 // SetActivityPublisher wires the qui server-event hub so newly cached tracker
