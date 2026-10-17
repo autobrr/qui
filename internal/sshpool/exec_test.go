@@ -304,3 +304,31 @@ func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	assert.Equal(t, int32(execSessions-1), conn.parked.Load(), "sftp and one command fill the host")
 	assert.Len(t, conn.slots, execSessions-1, "only the parked slots stay taken, so the idle close can run")
 }
+
+// A command can end while the host's refusal of the next open is on its way.
+// The host was full when it refused, so the open still waits and runs.
+func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
+	t.Parallel()
+	requireShell(t)
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecTwoSessions)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	conn, err := pool.Exec(t.Context(), inst)
+	require.NoError(t, err)
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := conn.Output(t.Context(), Command{Name: "sleep", Paths: []string{"0.05"}})
+		first <- err
+	}()
+	// The first command now holds the host's last session, and it ends before
+	// the refusal of the next open arrives.
+	time.Sleep(20 * time.Millisecond)
+	_, err = conn.Output(t.Context(), Command{Name: "true"})
+	require.NoError(t, err)
+	require.NoError(t, <-first)
+}

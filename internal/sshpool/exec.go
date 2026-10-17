@@ -157,11 +157,14 @@ func (c *Conn) open(ctx context.Context) (*ssh.Session, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+		// A short command can end while the refusal is on its way, so a
+		// session open at the send counts as filling the host too.
+		busy := c.othersOpen(int(c.parked.Load()))
 		session, err := c.newSession(ctx)
 		if err == nil {
 			return session, nil
 		}
-		if _, refused := errors.AsType[*ssh.OpenChannelError](err); refused && c.park() {
+		if _, refused := errors.AsType[*ssh.OpenChannelError](err); refused && c.park(busy) {
 			continue
 		}
 		<-c.slots
@@ -170,19 +173,24 @@ func (c *Conn) open(ctx context.Context) (*ssh.Session, error) {
 	}
 }
 
-// park keeps the caller's slot taken when another session holds a slot, and
-// never parks the last slot. With no other session open, a refusal is not
-// about the limit.
-func (c *Conn) park() bool {
+// park keeps the caller's slot taken when another session held a slot at the
+// open or holds one now, and never parks the last slot. With no other session
+// open, a refusal is not about the limit.
+func (c *Conn) park(busy bool) bool {
 	for {
 		parked := c.parked.Load()
-		if len(c.slots)-int(parked) < 2 || int(parked)+1 >= cap(c.slots) {
+		if !busy && !c.othersOpen(int(parked)) || int(parked)+1 >= cap(c.slots) {
 			return false
 		}
 		if c.parked.CompareAndSwap(parked, parked+1) {
 			return true
 		}
 	}
+}
+
+// othersOpen reports whether a session other than the caller's holds a slot.
+func (c *Conn) othersOpen(parked int) bool {
+	return len(c.slots)-parked > 1
 }
 
 // newSession opens a session. NewSession blocks inside x/crypto with no ctx.

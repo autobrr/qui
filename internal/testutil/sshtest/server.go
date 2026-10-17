@@ -49,7 +49,8 @@ const (
 	// while another is open, the way sshd does with MaxSessions 1.
 	ExecOneSession
 	// ExecTwoSessions refuses a session channel while two are open, the way
-	// sshd does with MaxSessions 2: sftp and one command fill it.
+	// sshd does with MaxSessions 2: sftp and one command fill it. The refusal
+	// arrives late, as over a real network, so a session can end before it.
 	ExecTwoSessions
 )
 
@@ -305,8 +306,12 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		if opened > 1 && s.execMode() == ExecStallOpen {
 			continue
 		}
-		if mode := s.execMode(); (mode == ExecOneSession && open.Load() > 0) || (mode == ExecTwoSessions && open.Load() > 1) {
+		if open.Load() > 0 && s.execMode() == ExecOneSession {
 			_ = newChannel.Reject(ssh.Prohibited, "open failed")
+			continue
+		}
+		if open.Load() > 1 && s.execMode() == ExecTwoSessions {
+			time.AfterFunc(100*time.Millisecond, func() { _ = newChannel.Reject(ssh.Prohibited, "open failed") })
 			continue
 		}
 
