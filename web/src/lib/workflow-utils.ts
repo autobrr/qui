@@ -26,6 +26,25 @@ export interface WorkflowExport {
 /** Parsed import JSON, with every key as written. The backend checks the keys and lists each problem. */
 export type WorkflowImport = WorkflowExport & Record<string, unknown>
 
+// The order one automation run applies actions in; a test holds it equal to the backend's actionRunOrder.
+export const ACTION_RUN_ORDER = [
+  "speedLimits",
+  "shareLimits",
+  "pause",
+  "resume",
+  "recheck",
+  "reannounce",
+  "autoManagement",
+  "tag",
+  "category",
+  "move",
+  "externalProgram",
+  "exportToInstance",
+  "delete",
+] as const
+
+export type WorkflowActionType = (typeof ACTION_RUN_ORDER)[number]
+
 const DEFAULT_INTERVAL_SECONDS = 900
 
 /**
