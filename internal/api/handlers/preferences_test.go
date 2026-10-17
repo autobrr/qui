@@ -27,7 +27,7 @@ import (
 )
 
 // fakePreferencesQbit is a qBittorrent WebUI that serves a captured
-// app/preferences response and records each setPreferences body.
+// app/preferences response and records each setPreferences body and test email.
 type fakePreferencesQbit struct {
 	mu          sync.Mutex
 	webAPI      string
@@ -36,6 +36,7 @@ type fakePreferencesQbit struct {
 	sets        []map[string]any
 	prefsGets   int
 	failSetting bool
+	testEmails  int
 }
 
 func newFakePreferencesQbit(t *testing.T, capture, webAPI string, buildInfo map[string]any) *fakePreferencesQbit {
@@ -73,6 +74,8 @@ func (f *fakePreferencesQbit) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 		f.sets = append(f.sets, patch)
 		maps.Copy(f.prefs, patch)
+	case "app/sendTestEmail":
+		f.testEmails++
 	default:
 		_, _ = io.WriteString(w, "{}")
 	}
@@ -107,9 +110,12 @@ func newPreferencesRig(t *testing.T, fake *fakePreferencesQbit) *preferencesRig 
 	syncManager := internalqbittorrent.NewSyncManager(clientPool, nil)
 	preferences := NewPreferencesHandler(syncManager)
 	rss := NewRSSHandler(syncManager)
+	instances := NewInstancesHandler(instanceStore, nil, nil, clientPool, nil, nil, nil, nil)
 	router := chi.NewRouter()
+	router.Get("/api/instances/{instanceID}/capabilities", instances.GetInstanceCapabilities)
 	router.Get("/api/instances/{instanceID}/preferences", preferences.GetPreferences)
 	router.Patch("/api/instances/{instanceID}/preferences", preferences.UpdatePreferences)
+	router.Post("/api/instances/{instanceID}/preferences/test-email", preferences.SendTestEmail)
 	router.Post("/api/instances/{instanceID}/rss/reprocess", rss.ReprocessRules)
 	return &preferencesRig{router: router, instanceID: instance.ID}
 }
@@ -338,6 +344,10 @@ func TestPreferencesViewDownloadsOnQBittorrent53(t *testing.T) {
 		"use_category_paths_in_manual_mode": "savingManagement", "save_path": "savingManagement",
 		"temp_path_enabled": "savingManagement", "temp_path": "savingManagement", "scan_dirs": "savingManagement",
 		"excluded_file_names_enabled": "excludedFileNames", "excluded_file_names": "excludedFileNames",
+		"mail_notification_enabled": "emailNotification", "mail_notification_sender": "emailNotification",
+		"mail_notification_email": "emailNotification", "mail_notification_smtp": "emailNotification",
+		"mail_notification_encryption_type": "emailNotification", "mail_notification_auth_enabled": "emailNotification",
+		"mail_notification_username": "emailNotification", "mail_notification_password": "emailNotification",
 		"autorun_on_torrent_added_enabled": "runExternalProgram", "autorun_on_torrent_added_program": "runExternalProgram",
 		"autorun_enabled": "runExternalProgram", "autorun_program": "runExternalProgram",
 	}, sections)
@@ -378,6 +388,80 @@ func TestPreferencesViewDownloadsOnQBittorrent4(t *testing.T) {
 		assert.Equal(t, "torrentFileBackup", view[key].Section, key)
 		assert.Equal(t, "path", view[key].Control, key)
 		assert.Empty(t, view[key].DependsOn, key)
+	}
+}
+
+func TestPreferencesViewEmailNotification(t *testing.T) {
+	tests := []struct {
+		capture       string
+		webAPI        string
+		encryptionKey string // the key that sets the encryption on this version
+		missingKey    string // the encryption key of the other versions, which qBittorrent does not send
+	}{
+		{capture: "5.2.4", webAPI: "2.15.1", encryptionKey: "mail_notification_ssl_enabled", missingKey: "mail_notification_encryption_type"},
+		{capture: "5.3.0rc1", webAPI: "2.16.2", encryptionKey: "mail_notification_encryption_type", missingKey: "mail_notification_ssl_enabled"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.capture, func(t *testing.T) {
+			fake := newFakePreferencesQbit(t, tt.capture, tt.webAPI, map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+			rig := newPreferencesRig(t, fake)
+
+			view, _ := rig.view(t)
+
+			assert.NotContains(t, view, tt.missingKey)
+			assert.Equal(t, "mail_notification_enabled", view[tt.encryptionKey].DependsOn)
+			password := view["mail_notification_password"]
+			assert.Equal(t, "password", password.Control)
+			assert.Equal(t, "mail_notification_auth_enabled", password.DependsOn)
+			assert.Equal(t, "mail_notification_enabled", view["mail_notification_auth_enabled"].DependsOn)
+			for _, key := range []string{"mail_notification_sender", "mail_notification_email", "mail_notification_smtp", "mail_notification_username"} {
+				assert.Equal(t, "text", view[key].Control, key)
+			}
+		})
+	}
+
+	fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	rig := newPreferencesRig(t, fake)
+	view, _ := rig.view(t)
+	encryption := view["mail_notification_encryption_type"]
+	assert.Equal(t, "select", encryption.Control)
+	assert.Equal(t, []any{"None", "STARTTLS", "SMTPS"}, encryption.Options)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"mail_notification_enabled": true, "mail_notification_encryption_type": "STARTTLS", "mail_notification_password": "hunter2"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"mail_notification_enabled": true, "mail_notification_encryption_type": "STARTTLS", "mail_notification_password": "hunter2",
+	}}, fake.recordedSets())
+}
+
+func TestPreferencesTestEmail(t *testing.T) {
+	tests := []struct {
+		webAPI            string
+		supportsTestEmail bool
+		wantStatus        int
+		wantSent          int
+	}{
+		{webAPI: "2.9.3", supportsTestEmail: false, wantStatus: http.StatusBadRequest, wantSent: 0},
+		{webAPI: "2.11.2", supportsTestEmail: true, wantStatus: http.StatusNoContent, wantSent: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.webAPI, func(t *testing.T) {
+			fake := newFakePreferencesQbit(t, "5.2.4", tt.webAPI, map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+			rig := newPreferencesRig(t, fake)
+
+			recorder := rig.do(t, http.MethodGet, "/capabilities", "")
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			var capabilities InstanceCapabilitiesResponse
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &capabilities))
+			assert.Equal(t, tt.supportsTestEmail, capabilities.SupportsTestEmail)
+
+			recorder = rig.do(t, http.MethodPost, "/preferences/test-email", "")
+			assert.Equal(t, tt.wantStatus, recorder.Code, recorder.Body.String())
+
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			assert.Equal(t, tt.wantSent, fake.testEmails)
+		})
 	}
 }
 

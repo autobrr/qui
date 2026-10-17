@@ -41,6 +41,16 @@ var downloadsEntries = slices.Concat(
 		{Key: "scan_dirs", Tab: TabDownloads, Section: "savingManagement", Control: ControlWatchFolders},
 		{Key: "excluded_file_names_enabled", Tab: TabDownloads, Section: "excludedFileNames", Control: ControlSwitch},
 		{Key: "excluded_file_names", Tab: TabDownloads, Section: "excludedFileNames", Control: ControlList, DependsOn: "excluded_file_names_enabled"},
+		{Key: "mail_notification_enabled", Tab: TabDownloads, Section: "emailNotification", Control: ControlSwitch},
+		{Key: "mail_notification_sender", Tab: TabDownloads, Section: "emailNotification", Control: ControlText, DependsOn: "mail_notification_enabled"},
+		{Key: "mail_notification_email", Tab: TabDownloads, Section: "emailNotification", Control: ControlText, DependsOn: "mail_notification_enabled"},
+		{Key: "mail_notification_smtp", Tab: TabDownloads, Section: "emailNotification", Control: ControlText, DependsOn: "mail_notification_enabled"},
+		// qBittorrent 5.3 replaced the SSL switch with a choice of encryption.
+		{Key: "mail_notification_ssl_enabled", Tab: TabDownloads, Section: "emailNotification", Control: ControlSwitch, DependsOn: "mail_notification_enabled"},
+		{Key: "mail_notification_encryption_type", Tab: TabDownloads, Section: "emailNotification", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions("None", "STARTTLS", "SMTPS"), DependsOn: "mail_notification_enabled"},
+		{Key: "mail_notification_auth_enabled", Tab: TabDownloads, Section: "emailNotification", Control: ControlSwitch, DependsOn: "mail_notification_enabled"},
+		{Key: "mail_notification_username", Tab: TabDownloads, Section: "emailNotification", Control: ControlText, DependsOn: "mail_notification_auth_enabled"},
+		{Key: "mail_notification_password", Tab: TabDownloads, Section: "emailNotification", Control: ControlPassword, DependsOn: "mail_notification_auth_enabled"},
 		{Key: "autorun_on_torrent_added_enabled", Tab: TabDownloads, Section: "runExternalProgram", Control: ControlSwitch},
 		{Key: "autorun_on_torrent_added_program", Tab: TabDownloads, Section: "runExternalProgram", Control: ControlText, DependsOn: "autorun_on_torrent_added_enabled"},
 		{Key: "autorun_enabled", Tab: TabDownloads, Section: "runExternalProgram", Control: ControlSwitch},
@@ -48,8 +58,4 @@ var downloadsEntries = slices.Concat(
 	},
 	// The default of the "delete files" checkbox in the delete dialog of qBittorrent. qui has its own dialog.
 	notShown(TabDownloads, reasonWebUIOnly, "delete_torrent_content_files"),
-	notShown(TabDownloads, "pending email notification PR",
-		"mail_notification_enabled", "mail_notification_sender", "mail_notification_email", "mail_notification_smtp",
-		"mail_notification_ssl_enabled", "mail_notification_encryption_type", "mail_notification_auth_enabled",
-		"mail_notification_username", "mail_notification_password"),
 )

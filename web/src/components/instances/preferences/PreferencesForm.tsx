@@ -5,7 +5,9 @@
 
 import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/ui/tabs"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences, valuesOf } from "@/hooks/useInstancePreferences"
+import { api } from "@/lib/api"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import type { AppPreferences, PreferenceField } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
@@ -130,6 +132,9 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                       />
                     ))}
                   </div>
+                  {section === "emailNotification" && (
+                    <SendTestEmailButton instanceId={instanceId} disabled={saved.mail_notification_enabled !== true} />
+                  )}
                   {section === "runExternalProgram" && (
                     <AutorunPlaceholders supportsTorrentAdded={byKey.has("autorun_on_torrent_added_enabled")} />
                   )}
@@ -171,6 +176,35 @@ const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, di
     </div>
   )
 })
+
+// qBittorrent sends the test email with its saved settings, and sends nothing while email
+// notification is off. So the button follows the saved switch, not the switch in the form.
+function SendTestEmailButton({ instanceId, disabled }: { instanceId: number; disabled: boolean }) {
+  const { t } = useTranslation("instances")
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const [isSending, setIsSending] = useState(false)
+  if (!capabilities?.supportsTestEmail) return null
+
+  const send = async () => {
+    setIsSending(true)
+    try {
+      await api.sendTestEmail(instanceId)
+      toast.success(t("preferences.toast.testEmailQueued"), { description: t("preferences.toast.testEmailQueuedDescription") })
+    } catch (error) {
+      toast.error(t("preferences.toast.testEmailFailed"), {
+        description: error instanceof Error ? formatErrorMessage(error.message) : undefined,
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" disabled={disabled || isSending} onClick={send}>
+      {t("preferences.fields.sendTestEmail")}
+    </Button>
+  )
+}
 
 const LEGACY_AUTORUN_PLACEHOLDERS = [
   { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },

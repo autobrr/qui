@@ -2251,6 +2251,10 @@ class ApiClient {
     })
   }
 
+  async sendTestEmail(instanceId: number): Promise<void> {
+    await this.request<void>(`/instances/${instanceId}/preferences/test-email`, { method: "POST" })
+  }
+
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",

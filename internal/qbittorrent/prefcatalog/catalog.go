@@ -36,11 +36,12 @@ const (
 type Control string
 
 const (
-	ControlSwitch Control = "switch"
-	ControlNumber Control = "number"
-	ControlText   Control = "text"
-	ControlSelect Control = "select"
-	ControlPath   Control = "path"
+	ControlSwitch   Control = "switch"
+	ControlNumber   Control = "number"
+	ControlText     Control = "text"
+	ControlPassword Control = "password"
+	ControlSelect   Control = "select"
+	ControlPath     Control = "path"
 	// ControlList is a multi-line text box with one item per line.
 	ControlList Control = "list"
 	// ControlWatchFolders is the scan_dirs table: each row is a path and a destination.

@@ -1493,7 +1493,8 @@
       "logFile": "Arquivo de log",
       "autoAddTrackersFromUrl": "Adicionar automaticamente os trackers de uma URL aos novos downloads",
       "whenAddingDuplicate": "Ao adicionar um torrent duplicado",
-      "torrentFileBackup": "Backup dos arquivos .torrent"
+      "torrentFileBackup": "Backup dos arquivos .torrent",
+      "emailNotification": "Notificação por e-mail ao concluir o download"
     },
     "fields": {
       "excludedFileNamesEnabled": "Excluir nomes de arquivos",
@@ -1568,6 +1569,23 @@
       "useCategoryPathsInManualMode": "Usar caminhos de categoria no modo manual",
       "useCategoryPathsInManualModeDescription": "Resolver um caminho de salvamento relativo pelo caminho da categoria em vez do caminho padrão",
       "excludedFileNamesDescription": "O qBittorrent não baixa um arquivo cujo nome corresponde a um padrão. Os curingas * e ? funcionam",
+      "mailNotificationEnabled": "Enviar um e-mail quando um download terminar",
+      "mailNotificationSender": "De",
+      "mailNotificationEmail": "Para",
+      "mailNotificationEmailDescription": "Separe os e-mails com ponto e vírgula. Separe os endereços de um mesmo e-mail com vírgula",
+      "mailNotificationSmtp": "Servidor SMTP",
+      "mailNotificationSmtpDescription": "Um nome de host ou um endereço IP. Para usar uma porta diferente da padrão, adicione dois-pontos e a porta",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Este servidor requer uma conexão segura (SSL)",
+      "mailNotificationEncryptionType": "Criptografia SMTP",
+      "mailNotificationEncryptionTypeDescription": "A porta padrão é 25 para Nenhuma, 587 para STARTTLS e 465 para SMTPS",
+      "mailNotificationEncryptionNone": "Nenhuma",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Autenticação",
+      "mailNotificationUsername": "Nome de usuário",
+      "mailNotificationPassword": "Senha",
+      "sendTestEmail": "Enviar e-mail de teste",
       "optionValue": "Valor {{value}}"
     },
     "units": {
@@ -1576,7 +1594,10 @@
     "readOnlyNote": "O qui ainda não pode alterar esta configuração. Altere-a no qBittorrent.",
     "toast": {
       "saved": "Preferências salvas",
-      "saveFailed": "Falha ao salvar as preferências"
+      "saveFailed": "Falha ao salvar as preferências",
+      "testEmailQueued": "O qBittorrent colocou o e-mail de teste na fila",
+      "testEmailQueuedDescription": "O qBittorrent usa as configurações salvas. Verifique sua caixa de entrada e o log do qBittorrent para ver erros.",
+      "testEmailFailed": "Falha ao enviar o e-mail de teste"
     }
   },
   "backups": {

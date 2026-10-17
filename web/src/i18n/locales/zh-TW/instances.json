@@ -1464,7 +1464,8 @@
       "logFile": "日誌檔案",
       "autoAddTrackersFromUrl": "自動將 URL 中的 Tracker 新增至新下載",
       "whenAddingDuplicate": "新增重複種子時",
-      "torrentFileBackup": ".torrent 檔案備份"
+      "torrentFileBackup": ".torrent 檔案備份",
+      "emailNotification": "下載完成時傳送電子郵件通知"
     },
     "fields": {
       "excludedFileNamesEnabled": "排除檔案名稱",
@@ -1539,6 +1540,23 @@
       "useCategoryPathsInManualMode": "在手動模式下使用分類路徑",
       "useCategoryPathsInManualModeDescription": "相對儲存路徑以分類路徑為基準，而不是預設儲存路徑",
       "excludedFileNamesDescription": "qBittorrent 不下載名稱符合模式的檔案。支援萬用字元 * 和 ?",
+      "mailNotificationEnabled": "下載完成時傳送電子郵件",
+      "mailNotificationSender": "寄件者",
+      "mailNotificationEmail": "收件者",
+      "mailNotificationEmailDescription": "用分號分隔多封郵件，用逗號分隔同一封郵件中的多個位址",
+      "mailNotificationSmtp": "SMTP 伺服器",
+      "mailNotificationSmtpDescription": "主機名稱或 IP 位址。若要使用非預設連接埠，請在結尾加上冒號和連接埠號碼",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "此伺服器需要安全連線（SSL）",
+      "mailNotificationEncryptionType": "SMTP 加密",
+      "mailNotificationEncryptionTypeDescription": "預設連接埠：無為 25，STARTTLS 為 587，SMTPS 為 465",
+      "mailNotificationEncryptionNone": "無",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "驗證",
+      "mailNotificationUsername": "使用者名稱",
+      "mailNotificationPassword": "密碼",
+      "sendTestEmail": "傳送測試郵件",
       "optionValue": "值 {{value}}"
     },
     "units": {
@@ -1547,7 +1565,10 @@
     "readOnlyNote": "qui 目前無法變更此設定。請在 qBittorrent 中變更。",
     "toast": {
       "saved": "偏好設定已儲存",
-      "saveFailed": "無法儲存偏好設定"
+      "saveFailed": "無法儲存偏好設定",
+      "testEmailQueued": "qBittorrent 已將測試郵件加入佇列",
+      "testEmailQueuedDescription": "qBittorrent 使用已儲存的設定。請檢查收件匣，並在 qBittorrent 記錄中查看錯誤。",
+      "testEmailFailed": "傳送測試郵件失敗"
     }
   },
   "backups": {

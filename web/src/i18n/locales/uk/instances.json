@@ -1551,7 +1551,8 @@
       "logFile": "Файл журналу",
       "autoAddTrackersFromUrl": "Автоматично додавати трекери з URL до нових завантажень",
       "whenAddingDuplicate": "Під час додавання дубліката торента",
-      "torrentFileBackup": "Резервна копія файлів .torrent"
+      "torrentFileBackup": "Резервна копія файлів .torrent",
+      "emailNotification": "Сповіщення електронною поштою після завершення завантаження"
     },
     "fields": {
       "excludedFileNamesEnabled": "Виключати імена файлів",
@@ -1626,6 +1627,23 @@
       "useCategoryPathsInManualMode": "Використовувати шляхи категорій у ручному режимі",
       "useCategoryPathsInManualModeDescription": "Обчислювати відносний шлях збереження від шляху категорії, а не від шляху за умовчанням",
       "excludedFileNamesDescription": "qBittorrent не завантажує файл, назва якого збігається з шаблоном. Працюють символи підстановки * і ?",
+      "mailNotificationEnabled": "Надсилати лист, коли завантаження завершиться",
+      "mailNotificationSender": "Від",
+      "mailNotificationEmail": "Кому",
+      "mailNotificationEmailDescription": "Розділяйте листи крапкою з комою. Розділяйте адреси в одному листі комою",
+      "mailNotificationSmtp": "SMTP-сервер",
+      "mailNotificationSmtpDescription": "Ім'я хоста або IP-адреса. Щоб указати порт, відмінний від типового, додайте двокрапку й порт",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Цей сервер вимагає захищеного з'єднання (SSL)",
+      "mailNotificationEncryptionType": "Шифрування SMTP",
+      "mailNotificationEncryptionTypeDescription": "Типовий порт: 25 для «Немає», 587 для STARTTLS і 465 для SMTPS",
+      "mailNotificationEncryptionNone": "Немає",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Автентифікація",
+      "mailNotificationUsername": "Ім'я користувача",
+      "mailNotificationPassword": "Пароль",
+      "sendTestEmail": "Надіслати тестовий лист",
       "optionValue": "Значення {{value}}"
     },
     "units": {
@@ -1634,7 +1652,10 @@
     "readOnlyNote": "qui поки не може змінити це налаштування. Змініть його в qBittorrent.",
     "toast": {
       "saved": "Налаштування збережено",
-      "saveFailed": "Не вдалося зберегти налаштування"
+      "saveFailed": "Не вдалося зберегти налаштування",
+      "testEmailQueued": "qBittorrent поставив тестовий лист у чергу",
+      "testEmailQueuedDescription": "qBittorrent використовує збережені налаштування. Перевірте вхідні листи та журнал qBittorrent на помилки.",
+      "testEmailFailed": "Не вдалося надіслати тестовий лист"
     }
   },
   "backups": {

@@ -1528,7 +1528,8 @@
       "logFile": "Soubor protokolu",
       "autoAddTrackersFromUrl": "Automaticky přidat trackery z URL k novým stahováním",
       "whenAddingDuplicate": "Při přidání duplicitního torrentu",
-      "torrentFileBackup": "Záloha souborů .torrent"
+      "torrentFileBackup": "Záloha souborů .torrent",
+      "emailNotification": "Oznámení e-mailem po dokončení stahování"
     },
     "fields": {
       "excludedFileNamesEnabled": "Vyloučit názvy souborů",
@@ -1603,6 +1604,23 @@
       "useCategoryPathsInManualMode": "Používat cesty kategorií v ručním režimu",
       "useCategoryPathsInManualModeDescription": "Relativní cestu uložení vyhodnotit vůči cestě kategorie místo výchozí cesty uložení",
       "excludedFileNamesDescription": "qBittorrent nestáhne soubor, jehož název odpovídá vzoru. Zástupné znaky * a ? fungují",
+      "mailNotificationEnabled": "Odeslat e-mail, když stahování skončí",
+      "mailNotificationSender": "Od",
+      "mailNotificationEmail": "Komu",
+      "mailNotificationEmailDescription": "E-maily oddělte středníkem. Adresy v rámci jednoho e-mailu oddělte čárkou",
+      "mailNotificationSmtp": "SMTP server",
+      "mailNotificationSmtpDescription": "Název hostitele nebo IP adresa. Pro jiný než výchozí port přidejte dvojtečku a port",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Tento server vyžaduje zabezpečené připojení (SSL)",
+      "mailNotificationEncryptionType": "Šifrování SMTP",
+      "mailNotificationEncryptionTypeDescription": "Výchozí port je 25 pro Žádné, 587 pro STARTTLS a 465 pro SMTPS",
+      "mailNotificationEncryptionNone": "Žádné",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Ověření",
+      "mailNotificationUsername": "Uživatelské jméno",
+      "mailNotificationPassword": "Heslo",
+      "sendTestEmail": "Odeslat testovací e-mail",
       "optionValue": "Hodnota {{value}}"
     },
     "units": {
@@ -1611,7 +1629,10 @@
     "readOnlyNote": "qui zatím toto nastavení nemůže změnit. Změňte ho v qBittorrentu.",
     "toast": {
       "saved": "Předvolby uloženy",
-      "saveFailed": "Předvolby se nepodařilo uložit"
+      "saveFailed": "Předvolby se nepodařilo uložit",
+      "testEmailQueued": "qBittorrent zařadil testovací e-mail do fronty",
+      "testEmailQueuedDescription": "qBittorrent použije uložená nastavení. Zkontrolujte doručenou poštu a v logu qBittorrentu chyby.",
+      "testEmailFailed": "Testovací e-mail se nepodařilo odeslat"
     }
   },
   "backups": {
