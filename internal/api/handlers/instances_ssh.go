@@ -263,7 +263,8 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		}
 		return
 	}
-	// A pin whose probe got no answer stores no tier; the next connect does.
+	// The pin wrote sftp. A probe that got no answer leaves it there, and the
+	// next connect probes again.
 	if capabilities != nil {
 		h.storeSSHTier(r.Context(), instance.ID, capabilities)
 	}

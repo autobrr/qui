@@ -552,6 +552,9 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 			return store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, "other", testSSHKey)
 		},
 		"cleared credentials": func() error { return store.ClearSSHCredentials(ctx, instance.ID) },
+		"replaced host key": func() error {
+			return store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
+		},
 	} {
 		require.NoError(t, store.SetSSHTier(ctx, instance.ID, SSHTierExec))
 		require.NoError(t, change(), name)

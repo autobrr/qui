@@ -222,12 +222,14 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 	if replace {
 		pinnedTerm = "<> ''"
 	}
+	// A new pin may be a different host: the tier is unknown until a probe
+	// answers, so the row says sftp and fails closed meanwhile.
 	query := `
 		UPDATE instances
-		SET ssh_host_key_encrypted = ?
+		SET ssh_host_key_encrypted = ?, ssh_tier = ?
 		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted ` + pinnedTerm
 
-	err = s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, instanceID, host, port)
+	err = s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, string(SSHTierSFTP), instanceID, host, port)
 	if !errors.Is(err, ErrSSHEndpointChanged) {
 		return err
 	}
