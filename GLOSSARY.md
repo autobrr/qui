@@ -62,6 +62,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Automation rule**: One saved set of conditions and actions that qui runs against the torrents of one instance on an interval. The UI calls it a workflow. _Avoid_: Workflow (outside UI copy), automation (for one rule).
 - **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
 - **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
+- **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
+- **Deletion selection**: The torrents that an Automation rule chooses to remove. _Avoid_: Shared-file group (when referring to selected torrents).
+- **Projected freed bytes**: The estimated space recovered by removing the selected files. Shared paths count once. _Avoid_: Actual freed space.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
 
 ## Disc reports
@@ -84,6 +87,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Preferences**: qBittorrent's own application preferences, which qui reads and writes through the qBittorrent WebAPI. _Avoid_: Settings (when qBittorrent stores the value).
 - **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
 - **Preference catalog**: The qui list of qBittorrent preferences that says, for each key, where qui shows it and whether a user can change it. _Avoid_: Preference schema, field registry.
+- **Network binding**: The network interface and the IP address that qBittorrent uses for peer connections. _Avoid_: Bind interface, outgoing interface.
 
 ## Allowed Hosts
 

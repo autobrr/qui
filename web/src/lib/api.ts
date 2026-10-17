@@ -10,6 +10,7 @@ import type {
   ApplicationInfo,
   AppPreferences,
   PreferenceField,
+  NetworkBindingInterface,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
@@ -2249,6 +2250,10 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(preferences),
     })
+  }
+
+  async getNetworkBinding(instanceId: number): Promise<NetworkBindingInterface[]> {
+    return this.request<NetworkBindingInterface[]>(`/instances/${instanceId}/network-binding`)
   }
 
   async sendTestEmail(instanceId: number): Promise<void> {

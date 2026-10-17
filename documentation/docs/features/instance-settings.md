@@ -215,7 +215,7 @@ The **qBittorrent** section has these preferences:
 
 - The resume data storage type, the save interval of the resume data and of the statistics, and the size limit of .torrent files in MiB.
 - The removal mode of torrent content: delete the files permanently, or move them to the trash.
-- The memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only.
+- The memory working set limit, the [network binding](#network-binding), the lookup of peer countries, and the reannounce to trackers when the IP address changes.
 - The recheck of torrents on completion, the embedded tracker with its port and port forwarding, Mark-of-the-Web or macOS quarantine for downloaded files, and the option to ignore SSL errors.
 - On qBittorrent 5.3 and later, the start of the BitTorrent session in paused state, and the session shutdown timeout. The paused start pauses every torrent when qBittorrent starts. It is not the [Start torrents paused](#start-torrents-paused) setting of the Downloads tab. An empty shutdown timeout means no limit.
 
@@ -242,3 +242,11 @@ qui shows a preference only where qBittorrent uses it:
 - qui does not show the memory working set limit on Linux or macOS. qui shows Mark-of-the-Web only on macOS and Windows. qBittorrent before 5.0 does not report its platform, so qui shows both there.
 
 The refresh interval, the application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+
+#### Network binding
+
+The network binding is the network interface and the IP address that qBittorrent uses for peer connections. The first list sets the interface, and the second list sets the address. **Any interface** makes qBittorrent use all interfaces. **All addresses**, **All IPv4 addresses**, and **All IPv6 addresses** use all the addresses of the selected interface. The other entries in the second list are the addresses of that interface. If you select a different interface, qui sets the address to **All addresses**.
+
+qBittorrent keeps a saved interface or address that is not available, for example a VPN interface that is down. qui shows that interface or address with the mark "not available" and keeps it selected. If you save other settings, qui does not change the network binding. On qBittorrent 4.6 and later, the mark is next to the readable name of the interface. On earlier versions, the mark is next to the system name, for example `tun0`.
+
+If qui cannot get the list of interfaces from qBittorrent, it shows the network binding as read-only text. You can still save the other settings.

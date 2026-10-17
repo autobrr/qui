@@ -6003,6 +6003,25 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
+// GetNetworkBinding returns the network interfaces and addresses that qBittorrent can bind to.
+func (sm *SyncManager) GetNetworkBinding(ctx context.Context, instanceID int) ([]prefcatalog.BindingInterface, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	binding, err := prefcatalog.NetworkBinding(ctx, client.Client, *prefs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network binding: %w", err)
+	}
+	return binding, nil
+}
+
 // SendTestEmail asks qBittorrent to send a test email with its saved email notification settings.
 // A nil error means only that qBittorrent queued the email.
 func (sm *SyncManager) SendTestEmail(ctx context.Context, instanceID int) error {

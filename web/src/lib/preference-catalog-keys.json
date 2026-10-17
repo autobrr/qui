@@ -32,6 +32,7 @@
   "checking_memory_use",
   "connection_speed",
   "current_interface_address",
+  "current_interface_name",
   "current_network_interface",
   "dht",
   "dht_bootstrap_nodes",

@@ -38,16 +38,10 @@ export const advancedLabels: TabLabels = {
       labelKey: "preferences.advancedNetwork.workingSetLimit",
       descriptionKey: "preferences.advancedNetwork.workingSetLimitDescription",
     },
-    current_network_interface: {
-      labelKey: "preferences.connectionSettings.networkInterface",
-      placeholderKey: "preferences.connectionSettings.autoDetect",
-      readOnlyNoteKey: "preferences.readOnlyNote",
-    },
-    current_interface_address: {
-      labelKey: "preferences.fields.interfaceAddress",
-      placeholderKey: "preferences.connectionSettings.autoDetect",
-      readOnlyNoteKey: "preferences.readOnlyNote",
-    },
+    current_network_interface: { labelKey: "preferences.connectionSettings.networkInterface" },
+    current_interface_address: { labelKey: "preferences.fields.interfaceAddress" },
+    // The network binding widget draws this key. Its read-only text names the saved interface.
+    current_interface_name: { labelKey: "preferences.connectionSettings.networkInterface" },
     save_resume_data_interval: { labelKey: "preferences.fields.saveResumeDataInterval" },
     save_statistics_interval: { labelKey: "preferences.fields.saveStatisticsInterval" },
     torrent_file_size_limit: { labelKey: "preferences.fields.torrentFileSizeLimit" },

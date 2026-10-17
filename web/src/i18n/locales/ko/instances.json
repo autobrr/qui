@@ -1682,7 +1682,13 @@
     "units": {
       "minutes": "분"
     },
-    "readOnlyNote": "qui에서는 아직 이 설정을 변경할 수 없습니다. qBittorrent에서 변경하세요.",
+    "networkBinding": {
+      "anyInterface": "모든 인터페이스",
+      "allAddresses": "모든 주소",
+      "allIPv4Addresses": "모든 IPv4 주소",
+      "allIPv6Addresses": "모든 IPv6 주소",
+      "notAvailable": "(사용할 수 없음)"
+    },
     "toast": {
       "saved": "환경 설정을 저장했습니다",
       "saveFailed": "환경 설정을 저장하지 못했습니다",

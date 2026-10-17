@@ -183,7 +183,7 @@ func TestSelectSeasonPackBaseDir_ValidatesSingleDirAgainstSources(t *testing.T) 
 		{series: 1, episode: 1}: {sourcePath: sourcePath},
 	}
 
-	selected, err := selectSeasonPackBaseDir(context.Background(), local.NewBackend(), baseDir, localFiles)
+	selected, _, err := selectSeasonPackBaseDir(context.Background(), local.NewBackend(), baseDir, localFiles)
 
 	require.ErrorIs(t, err, errLayoutMismatch)
 	require.Empty(t, selected)

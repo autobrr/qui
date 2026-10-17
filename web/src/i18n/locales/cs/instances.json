@@ -1746,7 +1746,13 @@
     "units": {
       "minutes": "minuty"
     },
-    "readOnlyNote": "qui zatím toto nastavení nemůže změnit. Změňte ho v qBittorrentu.",
+    "networkBinding": {
+      "anyInterface": "Libovolné rozhraní",
+      "allAddresses": "Všechny adresy",
+      "allIPv4Addresses": "Všechny adresy IPv4",
+      "allIPv6Addresses": "Všechny adresy IPv6",
+      "notAvailable": "(není k dispozici)"
+    },
     "toast": {
       "saved": "Předvolby uloženy",
       "saveFailed": "Předvolby se nepodařilo uložit",

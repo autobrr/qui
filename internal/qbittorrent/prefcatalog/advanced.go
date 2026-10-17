@@ -16,8 +16,10 @@ var advancedEntries = slices.Concat(
 		{Key: "torrent_content_remove_option", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions("Delete", "MoveToTrash")},
 		// The memory working set limit has an effect only on libtorrent 2, and not on Linux or macOS.
 		{Key: "memory_working_set_limit", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "MiB", DisplayUnit: "MiB", Gate: Gate{MinLibtorrent: "2", NotPlatforms: []string{"linux", "macos"}}},
-		{Key: "current_network_interface", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlText, Mode: ReadOnly, Reason: "pending network binding PR"},
-		{Key: "current_interface_address", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlText, Mode: ReadOnly, Reason: "pending network binding PR"},
+		{Key: "current_network_interface", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceNetworkInterfaces},
+		{Key: "current_interface_address", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlSelect, OptionSource: SourceInterfaceAddresses},
+		// qBittorrent 4.6 and later send the readable name of the saved interface.
+		{Key: "current_interface_name", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlText, Mode: ReadOnly, Reason: "qBittorrent sets it from the network interface"},
 		{Key: "save_resume_data_interval", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min"},
 		{Key: "save_statistics_interval", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "min", DisplayUnit: "min"},
 		{Key: "torrent_file_size_limit", Tab: TabAdvanced, Section: "qbittorrent", Control: ControlNumber, WireUnit: "B", DisplayUnit: "MiB"},
@@ -98,5 +100,4 @@ var advancedEntries = slices.Concat(
 	},
 	notShown(TabAdvanced, reasonWebUIOnly,
 		"refresh_interval", "app_instance_name", "confirm_torrent_recheck", "python_executable_path", "resolve_peer_host_names"),
-	notShown(TabAdvanced, "pending network binding PR", "current_interface_name"),
 )

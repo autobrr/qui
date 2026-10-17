@@ -3664,6 +3664,34 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			name: "exists on same instance - equals false does not match after a file read error",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+				SameInstanceCrossSeedUnknown: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - equals false does not match after a file read error",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{},
+				CrossInstanceUnknown: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
 		// SEEDING_ON_SAME_INSTANCE
 		{
 			name: "seeding on same instance - cross-seed seeding",
@@ -4067,11 +4095,11 @@ func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "self-only fallback with nil ctx",
+			name:     "nil ctx leaves the field unknown",
 			cond:     &RuleCondition{Field: FieldCrossSeedTags, Operator: OperatorEqual, Value: "noHL"},
 			torrent:  qbt.Torrent{Hash: "abc123", Tags: "cross-seed, noHL"},
 			ctx:      nil,
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "self-only fallback with empty ctx",

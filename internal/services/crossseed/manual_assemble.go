@@ -105,6 +105,8 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
+	// A cross-device retry may have moved the tree to another base dir.
+	resp.Destination = planned.build.plan.RootDir
 	result, err := s.addSeasonPack(ctx, prep, inst, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err

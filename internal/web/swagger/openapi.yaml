@@ -3304,6 +3304,33 @@ paths:
         '500':
           description: qBittorrent did not accept the request.
 
+  /api/instances/{instanceID}/network-binding:
+    get:
+      tags:
+        - Instances
+      summary: Get the network binding options
+      description: |
+        List the network interfaces that qBittorrent can bind to, each with its IP addresses.
+        "Any interface" comes first. When qBittorrent does not list the saved interface or the
+        saved address, the list holds it with `available` false. The saved address is in the
+        list of the saved interface. The values `""`, `0.0.0.0`, and `::` mean all addresses,
+        all IPv4 addresses, and all IPv6 addresses, and are not in the address lists.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Network interfaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NetworkBindingInterface'
+        '400':
+          description: Invalid instance ID.
+        '500':
+          description: qBittorrent did not list the interfaces or the addresses.
+
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
       tags:
@@ -7312,7 +7339,10 @@ components:
           description: The unit that qui shows, for example KiB/s.
         optionSource:
           type: string
-          enum: [fixed, pathAutocomplete]
+          enum: [fixed, pathAutocomplete, networkInterfaces, interfaceAddresses]
+          description: |
+            Where the options come from. A select with `networkInterfaces` or
+            `interfaceAddresses` gets its options from the network binding route.
         options:
           type: array
           description: The values of a select with a fixed option list that this build supports.
@@ -7326,6 +7356,44 @@ components:
         reason:
           type: string
           description: Why the preference is read-only.
+
+    NetworkBindingInterface:
+      type: object
+      description: |
+        One network interface that qBittorrent can bind to. The interface with the empty
+        value is "Any interface", and its addresses are the addresses of all interfaces.
+      required:
+        - name
+        - value
+        - available
+        - addresses
+      properties:
+        name:
+          type: string
+          description: |
+            The readable name of the interface. Empty for "Any interface". For a saved
+            interface that is not available, the name comes from `current_interface_name`
+            (qBittorrent 4.6 and later), else it is the value.
+        value:
+          type: string
+          description: The system name, the value of `current_network_interface`.
+        available:
+          type: boolean
+          description: False for a saved interface that qBittorrent does not list.
+        addresses:
+          type: array
+          items:
+            type: object
+            required:
+              - address
+              - available
+            properties:
+              address:
+                type: string
+                description: An IP address, the value of `current_interface_address`.
+              available:
+                type: boolean
+                description: False for a saved address that qBittorrent does not list for this interface.
 
     InstanceCapabilities:
       type: object

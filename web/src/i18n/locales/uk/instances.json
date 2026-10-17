@@ -1769,7 +1769,13 @@
     "units": {
       "minutes": "хвилини"
     },
-    "readOnlyNote": "qui поки не може змінити це налаштування. Змініть його в qBittorrent.",
+    "networkBinding": {
+      "anyInterface": "Будь-який інтерфейс",
+      "allAddresses": "Усі адреси",
+      "allIPv4Addresses": "Усі адреси IPv4",
+      "allIPv6Addresses": "Усі адреси IPv6",
+      "notAvailable": "(недоступно)"
+    },
     "toast": {
       "saved": "Налаштування збережено",
       "saveFailed": "Не вдалося зберегти налаштування",

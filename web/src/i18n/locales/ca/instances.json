@@ -1711,7 +1711,13 @@
     "units": {
       "minutes": "minuts"
     },
-    "readOnlyNote": "El qui encara no pot canviar aquest paràmetre. Canvieu-lo al qBittorrent.",
+    "networkBinding": {
+      "anyInterface": "Qualsevol interfície",
+      "allAddresses": "Totes les adreces",
+      "allIPv4Addresses": "Totes les adreces IPv4",
+      "allIPv6Addresses": "Totes les adreces IPv6",
+      "notAvailable": "(no disponible)"
+    },
     "toast": {
       "saved": "Preferències desades",
       "saveFailed": "No s'han pogut desar les preferències",
