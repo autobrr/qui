@@ -494,3 +494,22 @@ func TestUnreachableHostIsErrConnect(t *testing.T) {
 	_, err := dialerFor(nil).Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
 	require.ErrorIs(t, err, ErrConnect)
 }
+
+// A host whose session channels never answer still has a verifiable host
+// key: the pin succeeds and no tier is reported, and a test of the same host
+// reports no answer rather than a tier the probe did not learn.
+func TestProbeWithoutAnAnswerPinsButReportsNothing(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecStallOpen)
+	dialer := dialerFor(nil)
+	dialer.timeout = 300 * time.Millisecond
+
+	capabilities, err := dialer.Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal())
+	require.NoError(t, err, "the key was verified, so the pin may go ahead")
+	assert.Nil(t, capabilities, "no tier is reported from a probe that got no answer")
+
+	_, err = dialer.Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, ErrConnect)
+}

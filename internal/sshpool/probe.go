@@ -6,6 +6,7 @@ package sshpool
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,9 +36,11 @@ const HardlinkExtension = "hardlink@openssh.com"
 
 // probe reports what the server lets us do. A sub-probe the server refuses
 // leaves its flag false; a probe the connection did not survive (the request
-// was cancelled, or the deadline fired) is an error, never a partial report
-// that reads as "this host cannot".
-func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
+// was cancelled, or the deadline fired), or one a sub-probe did not answer
+// within timeout, is an error, never a partial report that reads as "this
+// host cannot": a tier written from a hung shell would drop a working exec
+// connection for nothing.
+func probe(ctx context.Context, client *ssh.Client, timeout time.Duration) (*Capabilities, error) {
 	capabilities := &Capabilities{}
 
 	// The sftp init and each command block inside x/crypto with no ctx of
@@ -58,15 +61,28 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 	// command, prints a refusal and exits non-zero. So "commands run at all"
 	// needs a command of its own before the userland question can be asked.
 	conn := oneShot(client)
-	_, err := conn.output(ctx, "true", execTimeout, outputLimit)
+	_, err := conn.output(ctx, "true", timeout, outputLimit)
+	if noAnswer(ctx, err) {
+		return nil, fmt.Errorf("%w: the exec probe got no answer: %w", ErrConnect, err)
+	}
 	capabilities.Exec = err == nil
 	if !capabilities.Exec {
 		return capabilities, checkAlive(client)
 	}
 
-	capabilities.POSIXShell, capabilities.GNUUserland, _ = shellAndTools(ctx, conn, execTimeout)
+	capabilities.POSIXShell, capabilities.GNUUserland, err = shellAndTools(ctx, conn, timeout)
+	if noAnswer(ctx, err) {
+		return nil, fmt.Errorf("%w: the exec probe got no answer: %w", ErrConnect, err)
+	}
 
 	return capabilities, checkAlive(client)
+}
+
+// noAnswer tells a sub-probe that ran out of its own time from one the host
+// refused: the first says nothing about the host, the second does. A ctx the
+// caller ended is reported as the caller's own reason by the probe's caller.
+func noAnswer(ctx context.Context, err error) bool {
+	return err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded)
 }
 
 // shellAndTools asks the login shell whether it quotes like POSIX and, only

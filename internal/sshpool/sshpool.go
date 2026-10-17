@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/models"
@@ -168,7 +169,7 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 		status = StatusPinned
 	}
 
-	capabilities, err := probe(ctx, client)
+	capabilities, err := probe(ctx, client, d.timeout)
 	if err != nil {
 		// The probe sees a closed socket either way; the caller's own reason
 		// is the one to report.
@@ -198,12 +199,16 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 	}
 	defer client.Close()
 
-	capabilities, err := probe(ctx, client)
+	capabilities, err := probe(ctx, client, d.timeout)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, err
+		// The handshake verified the key, which is what a pin records. A host
+		// whose session channels misbehave is still one the user may pin; the
+		// tier stays unknown until a connect probes it.
+		log.Debug().Err(err).Int("instanceID", inst.ID).Msg("sshpool: host key confirmed, exec probe got no answer")
+		return nil, nil
 	}
 	return capabilities, nil
 }

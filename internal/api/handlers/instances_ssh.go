@@ -263,7 +263,10 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		}
 		return
 	}
-	h.storeSSHTier(r.Context(), instance.ID, capabilities)
+	// A pin whose probe got no answer stores no tier; the next connect does.
+	if capabilities != nil {
+		h.storeSSHTier(r.Context(), instance.ID, capabilities)
+	}
 
 	// A refusal memoised against the old pin ends here; the next dial checks
 	// the host against the pin the user just confirmed.
