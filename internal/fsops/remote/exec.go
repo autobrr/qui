@@ -57,6 +57,9 @@ const (
 
 var errFindLimit = errors.New("find prints more entries than its limit")
 
+// errRelativePath answers a batch path without a leading "/".
+var errRelativePath = errors.New("path is not absolute")
+
 // execTier reports whether the stored tier says this instance runs commands.
 // The live connection decides again: an exec on a connection whose probe
 // found less answers fsops.ErrUnsupported.
@@ -155,14 +158,29 @@ func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow
 // The paths must be absolute: find reads an argument that starts with "-",
 // "!" or "(" as an expression.
 func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
-	found := make(map[string]findEntry, len(paths))
-	if b.execTier() {
-		b.lstatFind(ctx, paths, found)
-	}
-
 	infos := make([]*fsops.LstatInfo, len(paths))
 	errs := make([]error, len(paths))
+
+	// find reads a leading "-", "!" or "(" as the start of its expression,
+	// whatever comes before it, so a path that is not absolute is answered
+	// here and never sent.
+	absolute := make([]string, 0, len(paths))
 	for i, p := range paths {
+		if path.IsAbs(p) {
+			absolute = append(absolute, p)
+		} else {
+			errs[i] = &fs.PathError{Op: "lstat", Path: p, Err: errRelativePath}
+		}
+	}
+	found := make(map[string]findEntry, len(absolute))
+	if b.execTier() {
+		b.lstatFind(ctx, absolute, found)
+	}
+
+	for i, p := range paths {
+		if errs[i] != nil {
+			continue
+		}
 		e, ok := found[p]
 		if !ok {
 			infos[i], errs[i] = b.Lstat(ctx, p)

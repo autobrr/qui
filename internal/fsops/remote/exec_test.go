@@ -424,3 +424,25 @@ func TestSFTPLstatBatchIsLstat(t *testing.T) {
 	assertLstatBatchMatchesLstat(t, backend, paths)
 	assert.Zero(t, finds(server))
 }
+
+// find reads a leading "-", "!" or "(" as the start of its expression, so a
+// path that is not absolute never reaches it: the entry gets an error and
+// the batch answers the rest.
+func TestExecLstatBatchRefusesARelativePath(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newExecBackend(t)
+	paths := lstatBatchTree(t)[:2]
+	paths = append(paths, "-fprint")
+
+	before := len(server.Commands())
+	infos, errs := backend.LstatBatch(t.Context(), paths)
+	for _, cmd := range server.Commands()[before:] {
+		assert.NotContains(t, cmd, "-fprint", "a relative path never reaches find")
+	}
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
+	require.Error(t, errs[2])
+	assert.Nil(t, infos[2])
+	assert.Equal(t, paths[0], infos[0].Path)
+}
