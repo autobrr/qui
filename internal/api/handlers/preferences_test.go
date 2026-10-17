@@ -312,6 +312,75 @@ func TestPreferencesViewRSSFetchDelayAndEpisodeFilters(t *testing.T) {
 	assert.Equal(t, []map[string]any{{"rss_fetch_delay": float64(5), "rss_smart_episode_filters": `s(\d+)e(\d+)`}}, fake.recordedSets())
 }
 
+func TestPreferencesViewDownloadsOnQBittorrent53(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	sections := map[string]string{}
+	for key, field := range view {
+		if field.Tab == "downloads" {
+			assert.False(t, field.ReadOnly, key)
+			sections[key] = field.Section
+		}
+	}
+	assert.Equal(t, map[string]string{
+		"torrent_content_layout": "whenAdding", "add_to_top_of_queue": "whenAdding", "add_stopped_enabled": "whenAdding",
+		"torrent_stop_condition": "whenAdding", "auto_delete_mode": "whenAdding",
+		"merge_trackers":               "whenAddingDuplicate",
+		"torrent_files_backup_enabled": "torrentFileBackup", "torrent_files_backup_dir": "torrentFileBackup",
+		"torrent_files_finished_backup_dir_enabled": "torrentFileBackup", "torrent_files_finished_backup_dir": "torrentFileBackup",
+		"remove_torrent_file_backup": "torrentFileBackup",
+		"preallocate_all":            "files", "incomplete_files_ext": "files", "use_unwanted_folder": "files",
+		"auto_tmm_enabled": "savingManagement", "torrent_changed_tmm_enabled": "savingManagement",
+		"save_path_changed_tmm_enabled": "savingManagement", "category_changed_tmm_enabled": "savingManagement",
+		"use_category_paths_in_manual_mode": "savingManagement", "save_path": "savingManagement",
+		"temp_path_enabled": "savingManagement", "temp_path": "savingManagement", "scan_dirs": "savingManagement",
+		"excluded_file_names_enabled": "excludedFileNames", "excluded_file_names": "excludedFileNames",
+		"autorun_on_torrent_added_enabled": "runExternalProgram", "autorun_on_torrent_added_program": "runExternalProgram",
+		"autorun_enabled": "runExternalProgram", "autorun_program": "runExternalProgram",
+	}, sections)
+
+	assert.Equal(t, []any{"None", "MetadataReceived", "FilesChecked"}, view["torrent_stop_condition"].Options)
+	assert.Equal(t, []any{float64(0), float64(1), float64(2)}, view["auto_delete_mode"].Options)
+	backupDir := view["torrent_files_backup_dir"]
+	assert.Equal(t, "path", backupDir.Control)
+	assert.Equal(t, "torrent_files_backup_enabled", backupDir.DependsOn)
+	assert.Equal(t, "torrent_files_finished_backup_dir_enabled", view["torrent_files_finished_backup_dir"].DependsOn)
+	assert.Equal(t, "excluded_file_names_enabled", view["excluded_file_names"].DependsOn)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"torrent_stop_condition": "FilesChecked", "auto_delete_mode": 2, "torrent_files_backup_enabled": true, "torrent_files_backup_dir": "/backup", "excluded_file_names": "*.nfo"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"torrent_stop_condition": "FilesChecked", "auto_delete_mode": float64(2), "torrent_files_backup_enabled": true,
+		"torrent_files_backup_dir": "/backup", "excluded_file_names": "*.nfo",
+	}}, fake.recordedSets())
+}
+
+func TestPreferencesViewDownloadsOnQBittorrent4(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "4.3.9", "2.8.2", map[string]any{"libtorrent": "1.2.14.0"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	for _, key := range []string{
+		"add_to_top_of_queue", "torrent_stop_condition", "merge_trackers", "use_unwanted_folder",
+		"use_category_paths_in_manual_mode", "excluded_file_names", "torrent_files_backup_dir", "remove_torrent_file_backup",
+	} {
+		assert.NotContains(t, view, key)
+	}
+	for _, key := range []string{"auto_delete_mode", "preallocate_all", "incomplete_files_ext"} {
+		assert.Contains(t, view, key)
+	}
+	// Before qBittorrent 5.3, an empty folder turns the copy off.
+	for _, key := range []string{"export_dir", "export_dir_fin"} {
+		assert.Equal(t, "torrentFileBackup", view[key].Section, key)
+		assert.Equal(t, "path", view[key].Control, key)
+		assert.Empty(t, view[key].DependsOn, key)
+	}
+}
+
 func TestPreferencesPatchSendsOnlyThePatch(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
 	rig := newPreferencesRig(t, fake)

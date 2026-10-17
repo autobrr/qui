@@ -98,11 +98,19 @@ The other settings on the **Behavior** tab of the qBittorrent WebUI change only 
 
 ### Downloads
 
-The **When adding a torrent** section has the default content layout and **Start Torrents Paused**.
+The **When adding a torrent** section has the default content layout, **Add to top of queue**, **Start Torrents Paused**, and the torrent stop condition. The stop condition stops a new torrent when it receives its metadata or when qBittorrent checked its files. The section also sets when qBittorrent deletes the .torrent file that it added, for example from a watched folder. The choices are never, when the torrent is added, and always. "Always" also deletes the file when you cancel the add.
 
-The **Saving management** section has automatic torrent management and its relocation rules, subcategories, the default save path, the temporary download path, and the watch folders. qBittorrent 4.6 to 5.1 send the subcategories preference.
+The **When adding a duplicate torrent** section sets whether qBittorrent adds the trackers of the duplicate to the existing torrent.
 
-The **Excluded file names** section is read-only.
+The **Backup of .torrent files** section sets the folders where qBittorrent keeps a copy of each .torrent file. On qBittorrent 5.3 and later, a switch turns on each folder. You can move the copy to a second folder when the torrent finishes, and remove the copy when you remove the torrent. Before qBittorrent 5.3, an empty folder turns the copy off.
+
+The next section has the pre-allocation of disk space, the `.!qB` extension for incomplete files, and the `.unwanted` folder for files that you did not select. qBittorrent 5.0 and later send the `.unwanted` folder preference.
+
+The **Saving management** section has automatic torrent management and its relocation rules, the category paths in Manual Mode, subcategories, the default save path, the temporary download path, and the watch folders. qBittorrent 4.6 to 5.1 send the subcategories preference.
+
+The **Excluded file names** section has a list of file name patterns, one per line. qBittorrent does not download a file whose name matches a pattern. qBittorrent 4.5 and later send these preferences.
+
+On qBittorrent 5.0 and later, a path field suggests folders on the qBittorrent host while you type. On qBittorrent 4.x, a path field is a plain text box.
 
 The **Run External Program** section has the commands that qBittorrent runs when a torrent is added and when a torrent finishes. A list of placeholders follows them.
 

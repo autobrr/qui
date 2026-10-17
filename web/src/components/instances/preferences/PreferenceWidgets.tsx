@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useIncognitoMode } from "@/lib/incognito"
 import { BYTES_PER_UNIT, unitLabel, type ByteUnit } from "@/lib/unit-format"
+import { cn } from "@/lib/utils"
 import type { PreferenceField } from "@/types"
 import { useState, type ComponentType } from "react"
 import { useTranslation } from "react-i18next"
@@ -20,6 +23,7 @@ import type { FieldLabels } from "./labels"
 
 export interface WidgetProps {
   id: string
+  instanceId: number
   field: PreferenceField
   labels: FieldLabels
   value: unknown
@@ -129,6 +133,76 @@ function TextWidget({ id, labels, value, onChange, disabled }: WidgetProps) {
         onChange={(e) => onChange(e.target.value)}
         className={incognitoMode ? "blur-sm select-none" : undefined}
       />
+    </div>
+  )
+}
+
+// qBittorrent 5.0 and later can list folders, so a folder field suggests them as the user types.
+// A file field, such as the IP filter, has no option source and stays a text box.
+function PathWidget(props: WidgetProps) {
+  const { data: capabilities } = useInstanceCapabilities(props.instanceId)
+  const suggestsFolders = capabilities?.supportsPathAutocomplete && props.field.optionSource === "pathAutocomplete"
+  return suggestsFolders ? <PathAutocompleteWidget {...props} /> : <TextWidget {...props} />
+}
+
+function PathAutocompleteWidget({ id, instanceId, labels, value, onChange, disabled }: WidgetProps) {
+  const { t } = useTranslation("instances")
+  const [incognitoMode] = useIncognitoMode()
+  const {
+    suggestions,
+    handleInputChange,
+    handleSelect,
+    handleKeyDown,
+    handleBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef,
+    listRef,
+  } = usePathAutocomplete(onChange, instanceId)
+
+  return (
+    <div className="space-y-2">
+      <FieldLabel id={id} labels={labels} />
+      <Input
+        ref={inputRef}
+        id={id}
+        autoComplete="off"
+        spellCheck={false}
+        value={String(value ?? "")}
+        disabled={disabled}
+        placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}
+        onChange={(e) => {
+          onChange(e.target.value)
+          handleInputChange(e.target.value)
+        }}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        className={incognitoMode ? "blur-sm select-none" : undefined}
+      />
+      {showSuggestions && (
+        <div className="relative">
+          <div ref={listRef} className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md">
+            <div className="max-h-55 overflow-y-auto py-1">
+              {suggestions.map((entry, index) => (
+                <button
+                  key={entry}
+                  type="button"
+                  title={entry}
+                  className={cn(
+                    "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                    highlightedIndex === index ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
+                    incognitoMode && "blur-sm"
+                  )}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSelect(entry)}
+                >
+                  <span className="block truncate text-left">{entry}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -303,7 +377,7 @@ export const preferenceWidgets: Record<PreferenceField["control"], ComponentType
   switch: SwitchWidget,
   number: NumberWidget,
   text: TextWidget,
-  path: TextWidget,
+  path: PathWidget,
   select: SelectWidget,
   list: ListWidget,
   watchFolders: WatchFoldersWidget,
