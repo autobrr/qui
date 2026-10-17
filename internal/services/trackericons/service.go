@@ -39,6 +39,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/net/http/httpproxy"
+	"golang.org/x/net/idna"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
 
@@ -203,6 +204,12 @@ func newPublicOnlyTransport() http.RoundTripper {
 // checkPublicHost resolves host and refuses it if any of its addresses is not
 // public. A host that does not resolve is refused too.
 func checkPublicHost(ctx context.Context, host string) error {
+	// net/http sends the ASCII form of a Unicode host name, and the Go resolver
+	// refuses a Unicode name. Like net/http, keep the host as it is when the
+	// conversion fails, for example for an IPv6 literal.
+	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
+		host = ascii
+	}
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return err

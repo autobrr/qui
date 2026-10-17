@@ -364,4 +364,6 @@ func TestCheckPublicHost_ResolvesNames(t *testing.T) {
 	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), ssrf.ErrProhibitedIP)
 	// The resolver returns this literal as ::ffff:1.1.1.1.
 	require.NoError(t, checkPublicHost(t.Context(), "1.1.1.1"))
+	// The IDNA form of the full-width name is localhost.
+	require.ErrorIs(t, checkPublicHost(t.Context(), "ｌｏｃａｌｈｏｓｔ"), ssrf.ErrProhibitedIP)
 }
