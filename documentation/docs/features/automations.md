@@ -619,7 +619,7 @@ Move torrents to a different category. Select **Uncategorized** to remove their 
 
 Options:
 
-- **Include affected cross-seeds**: Also move cross-seeds (torrents with matching ContentPath AND SavePath).
+- **Include affected cross-seeds**: Also move the torrents that use any of the same files on disk.
 - **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include affected cross-seeds".
 - **Strict grouped matching**: If you set `groupId`, category expansion applies only when all group members satisfy the category rule checks.
 - **Skip if cross-seed exists in categories**: If another cross-seed is in a protected category, prevent the move.
@@ -1153,7 +1153,7 @@ The preview expands and shows cross-seeds only in `Remove with files (include cr
 
 **How preserve cross-seeds works:**
 
-- Torrents become candidates when they share the same Content Path. qui then compares their resolved file paths and sizes.
+- Two torrents are candidates when they have the same Content Path, or when one Content Path is inside the folder of the other torrent. They are also candidates when they have the same Save Path and one torrent has no subfolder. qui then compares their resolved file paths and sizes.
 - qui does not treat torrents in the same directory that use different files as cross-seeds. qui removes their files.
 - If torrents share files or the file comparison cannot complete, qui keeps the files.
 - Only torrents whose files qui removes contribute to the free-space projection.
