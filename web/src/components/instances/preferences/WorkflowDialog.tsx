@@ -707,6 +707,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
   const [movePathServerError, setMovePathServerError] = useState<string | null>(null)
+  const [movePathDryRunAttempted, setMovePathDryRunAttempted] = useState(false)
   const movePathInputRef = useRef<HTMLInputElement>(null)
   const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
   const [newGroupId, setNewGroupId] = useState("")
@@ -1301,6 +1302,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunStartedAt(null)
       setActivityRunDialog(null)
       setMovePathServerError(null)
+      setMovePathDryRunAttempted(false)
       return
     }
     if (!rule) {
@@ -1784,8 +1786,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }
 
   const movePathClientError = isVisiblyRelativeMovePath(formState.exprMovePath)? t("preferences.workflowDialog.move.errors.mustBeAbsolute"): null
-  // Only an enabled rule with a Move action is checked, matching the server.
-  const movePathError = formState.enabled && formState.moveEnabled ? movePathClientError ?? movePathServerError : null
+  const movePathCheckError = formState.moveEnabled ? movePathClientError ?? movePathServerError : null
+  // Saving checks only an enabled rule, like the server; a dry run always runs the rule, so its error shows either way.
+  const movePathError = formState.enabled || movePathDryRunAttempted ? movePathCheckError : null
+  const movePathBlocksSave = formState.enabled && Boolean(movePathCheckError)
 
   // Show the server's move path error under the field, not in a toast.
   const showMovePathServerError = (error: unknown): boolean => {
@@ -1842,6 +1846,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
       if (showMovePathServerError(error)) {
+        setMovePathDryRunAttempted(true)
         return
       }
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.dryRunFailed"))
@@ -1945,6 +1950,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     if (dryRunInput.moveEnabled && isVisiblyRelativeMovePath(dryRunInput.exprMovePath)) {
+      setMovePathDryRunAttempted(true)
       movePathInputRef.current?.focus()
       return
     }
@@ -2236,7 +2242,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
       return
     }
-    if (submitState.moveEnabled && isVisiblyRelativeMovePath(submitState.exprMovePath)) {
+    if (submitState.enabled && submitState.moveEnabled && isVisiblyRelativeMovePath(submitState.exprMovePath)) {
       movePathInputRef.current?.focus()
       return
     }
@@ -4254,7 +4260,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {t("preferences.workflowDialog.runDryRunNow")}
                 </Button>
-                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending || Boolean(movePathError)}>
+                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending || movePathBlocksSave}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {rule ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.create")}
                 </Button>

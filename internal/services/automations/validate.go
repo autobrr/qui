@@ -165,7 +165,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	return nil
 }
 
-// conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
 // validateMovePath rejects a move path that renders relative for a placeholder torrent.
 func validateMovePath(move *models.MoveAction) error {
 	if move == nil || !move.Enabled {
@@ -190,6 +189,7 @@ func validateMovePath(move *models.MoveAction) error {
 	return ruleError(msg)
 }
 
+// conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
 func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
 	return actionConditionsUseField(conditions, FieldFreeSpace)
 }

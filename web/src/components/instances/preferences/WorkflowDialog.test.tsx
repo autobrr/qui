@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Automation, FilesystemCapabilities } from "@/types"
 
 const mocks = vi.hoisted(() => {
@@ -172,6 +173,56 @@ describe("WorkflowDialog tracker pattern", () => {
     const payload = mocks.save.mock.calls[0][2]
     expect(payload.trackerPattern).toBe(trackerPattern)
     expect(payload).not.toHaveProperty("trackerDomains")
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog move path on a disabled rule", () => {
+  const renderRule = (path: string) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const moveRule: Automation = { ...rule, enabled: false, conditions: { schemaVersion: "1", move: { enabled: true, path } } }
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={moveRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+
+  it("saves a rule saved before the check existed, since the server skips disabled rules", async () => {
+    mocks.save.mockResolvedValue({})
+    const client = renderRule("data/archive")
+
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    client.clear()
+  })
+
+  it("shows the dialog's own move path error when a dry run is blocked", () => {
+    const client = renderRule("data/archive")
+    expect(screen.queryByText(key("move.errors.mustBeAbsolute"))).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(mocks.dryRun).not.toHaveBeenCalled()
+    expect(screen.getByText(key("move.errors.mustBeAbsolute"))).not.toBeNull()
+    // The error explains the dry run; saving the disabled rule stays allowed.
+    expect(screen.getByRole("button", { name: key("save") }).hasAttribute("disabled")).toBe(false)
+    client.clear()
+  })
+
+  it("shows the server's move path error when a dry run is rejected", async () => {
+    const message = "Move path must be absolute, for example /data/archive or D:\\Archive. For a sample torrent it renders \"sample/x\""
+    mocks.dryRun.mockRejectedValueOnce(new Error(message))
+    const client = renderRule("{{ .Category }}/x")
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(await screen.findByText(message)).not.toBeNull()
+    expect(mocks.error).not.toHaveBeenCalled()
     client.clear()
   })
 })
