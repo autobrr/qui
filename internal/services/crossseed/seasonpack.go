@@ -91,6 +91,9 @@ type seasonPackPlanBuild struct {
 	linkedBytes       int64
 	totalBytes        int64
 	totalFiles        int
+	// nextBaseDir plans the next ranked base dir on the sources' filesystem after
+	// a cross-device link error. It returns nil when none is left.
+	nextBaseDir func() (*seasonPackPlanBuild, error)
 }
 
 type seasonPackMatchOptions struct {
@@ -605,21 +608,38 @@ func (s *Service) planSeasonPack(
 		}
 	}
 
-	selectedBaseDir, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
+	selectedBaseDir, retryDirs, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	destDir := s.seasonPackDestDir(ctx, d, inst, selectedBaseDir, prep.torrentBytes, indexer)
-
-	planBuild, err := s.matcher().buildSeasonPackPlan(
-		d, prep.meta.Files, prep.packRelease, prep.meta.Name,
-		destDir, localFiles, prep.settings, prep.aliasTitles,
-	)
+	buildForDir := func(baseDir string) (*seasonPackPlanBuild, error) {
+		destDir := s.seasonPackDestDir(ctx, d, inst, baseDir, prep.torrentBytes, indexer)
+		build, err := s.matcher().buildSeasonPackPlan(
+			d, prep.meta.Files, prep.packRelease, prep.meta.Name,
+			destDir, localFiles, prep.settings, prep.aliasTitles,
+		)
+		if err != nil {
+			return nil, err
+		}
+		build.backend = backend
+		return build, nil
+	}
+	planBuild, err := buildForDir(selectedBaseDir)
 	if err != nil {
 		return nil, episodes, err
 	}
-	planBuild.backend = backend
+	sourcePaths := seasonPackSourcePaths(localFiles)
+	planBuild.nextBaseDir = func() (*seasonPackPlanBuild, error) {
+		for len(retryDirs) > 0 {
+			dir := retryDirs[0]
+			retryDirs = retryDirs[1:]
+			if ok, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths); err == nil && ok {
+				return buildForDir(dir)
+			}
+		}
+		return nil, nil
+	}
 	if !prep.manual && planBuild.hasPendingFiles() && prep.settings.SkipRecheck {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
@@ -633,6 +653,11 @@ func (s *Service) planSeasonPack(
 	return planBuild, episodes, nil
 }
 
+// createSeasonPackTree links the planned tree. After a cross-device error it rolls
+// the partial tree back and retries in the next ranked base dir, as
+// LinkIntoMatchingBaseDir does: SameFilesystem compares device IDs, and some hosts
+// (OrbStack VirtioFS) report one ID for several disks. A retry replaces
+// *planBuild with the plan for the dir that was used.
 func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
 	backend := planBuild.backend
 	createFn := s.seasonPackLinkCreator
@@ -642,16 +667,34 @@ func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPac
 			createFn = backend.ReflinkTree
 		}
 	}
-	created, err := createFn(ctx, planBuild.plan)
-	if err != nil {
+	for {
+		created, err := createFn(ctx, planBuild.plan)
+		if err == nil {
+			planBuild.created = created
+			return nil
+		}
 		if rollbackErr := rollbackSeasonPackTree(ctx, backend, created, planBuild.packDir); rollbackErr != nil {
 			return fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
 		}
-		return fmt.Errorf("link_failed: %w", err)
+		if !isCrossDeviceLinkError(err) || planBuild.nextBaseDir == nil {
+			return fmt.Errorf("link_failed: %w", err)
+		}
+		// A creator whose own rollback failed returns a nil handle, so the
+		// partial tree keeps the pack dir. A retry would report success over it.
+		if _, statErr := backend.Lstat(ctx, planBuild.packDir); statErr == nil {
+			return fmt.Errorf("link_failed: %w", err)
+		}
+		next, buildErr := planBuild.nextBaseDir()
+		if buildErr != nil {
+			return fmt.Errorf("link_failed: %w", errors.Join(err, buildErr))
+		}
+		if next == nil {
+			return fmt.Errorf("link_failed: %w", err)
+		}
+		log.Warn().Err(err).Str("rootDir", planBuild.plan.RootDir).Msg("cross-device season pack link, trying the next base dir")
+		next.nextBaseDir = planBuild.nextBaseDir
+		*planBuild = *next
 	}
-	planBuild.created = created
-
-	return nil
 }
 
 // seasonPackDestDir applies the instance's hardlink directory-organization preset
@@ -671,43 +714,39 @@ func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, in
 	}
 }
 
-func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
+// selectSeasonPackBaseDir returns the first base dir, in rankBaseDirs order as
+// LinkIntoMatchingBaseDir uses for single cross-seeds, on the same filesystem as
+// every episode source. It also returns the ranked dirs after it, unchecked, to
+// retry after a cross-device link error. The episodes of a pack share a disk, so
+// the first source path stands in for all of them when ranking.
+func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, []string, error) {
 	dirs := parseSeasonPackBaseDirs(configuredDirs)
 	if len(dirs) == 0 {
-		return "", fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
+		return "", nil, fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
 	}
 
 	sourcePaths := seasonPackSourcePaths(localFiles)
 	if len(sourcePaths) == 0 {
-		return "", fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
-	}
-	if len(dirs) == 1 {
-		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dirs[0], sourcePaths)
-		if err != nil {
-			return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, err)
-		}
-		if matchesAllSources {
-			return dirs[0], nil
-		}
-		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
+		return "", nil, fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
 	}
 
 	var lastErr error
-	for _, dir := range dirs {
+	ranked := rankBaseDirs(backend.Paths(), dirs, sourcePaths[0])
+	for i, dir := range ranked {
 		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		if matchesAllSources {
-			return dir, nil
+			return dir, ranked[i+1:], nil
 		}
 	}
 
 	if lastErr != nil {
-		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
+		return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
 	}
-	return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
+	return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
 }
 
 func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) []string {
