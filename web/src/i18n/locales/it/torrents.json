@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
+    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare.",
     "toast": {
       "savePathCopied": "Percorso di salvataggio copiato",
       "copyFailed": "Copia non riuscita"
@@ -1614,6 +1615,7 @@
   "stateLabels": {
     "downloading": "In download",
     "metaDL": "Recupero metadati",
+    "forcedMetaDL": "(F) Recupero metadati",
     "allocating": "Allocazione",
     "stalledDL": "In stallo",
     "queuedDL": "In coda",
@@ -1631,8 +1633,10 @@
     "error": "Errore",
     "missingFiles": "File mancanti",
     "checkingResumeData": "Verifica dei dati di ripresa",
-    "moving": "Spostamento"
+    "moving": "Spostamento",
+    "unknown": "Sconosciuto"
   },
+  "stateLabelFallback": "Non riconosciuto",
   "details": {
     "failedToUpdatePriorities": "Impossibile aggiornare le priorità dei file",
     "failedToRenameFile": "Impossibile rinominare il file",

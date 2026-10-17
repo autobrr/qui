@@ -1,0 +1,43 @@
+name: Match corpus
+
+# The match corpus in match_corpus_test.go only grows freely: new rows, new
+# known differences, and removed known differences pass. Any other edit can
+# hide a match bug, so it needs the corpus-change label and a reason in the PR
+# body. The label events rerun this check when the label changes.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - internal/services/crossseed/match_corpus_test.go
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'corpus-change') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check that the corpus only grows
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          file=internal/services/crossseed/match_corpus_test.go
+          changes=$(git diff -U0 "$BASE"...HEAD -- "$file" | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' || true)
+          # A removed line passes when it removes a known difference, a ticket, a
+          # reason constant, a comment, or the brackets around them.
+          removed=$(printf '%s\n' "$changes" | grep -E '^-' | grep -vE '^-[[:space:]]*($|//|[0-9]+,|reason[A-Za-z]+[[:space:]]*=|differences:.*\{$|\}\)?,?$|.*knownDifference\()' || true)
+          added=$(printf '%s\n' "$changes" | grep -E '^\+.*(allowedDifference\(|corpusSkip)' || true)
+          if [ -z "$removed$added" ]; then
+            echo "The corpus only grows."
+            exit 0
+          fi
+          printf '%s\n' "$removed" "$added"
+          echo "::error file=$file::these lines remove or relax a corpus check. Add the corpus-change label and give the reason in the PR body."
+          exit 1

@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
+    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden.",
     "toast": {
       "savePathCopied": "Speicherpfad kopiert",
       "copyFailed": "Kopieren fehlgeschlagen"
@@ -1614,6 +1615,7 @@
   "stateLabels": {
     "downloading": "Wird heruntergeladen",
     "metaDL": "Metadaten werden abgerufen",
+    "forcedMetaDL": "(F) Metadaten werden abgerufen",
     "allocating": "Wird zugewiesen",
     "stalledDL": "Stehengeblieben",
     "queuedDL": "In Warteschlange",
@@ -1631,8 +1633,10 @@
     "error": "Fehler",
     "missingFiles": "Fehlende Dateien",
     "checkingResumeData": "Resume-Daten werden geprüft",
-    "moving": "Wird verschoben"
+    "moving": "Wird verschoben",
+    "unknown": "Unbekannt"
   },
+  "stateLabelFallback": "Nicht erkannt",
   "details": {
     "failedToUpdatePriorities": "Dateiprioritäten konnten nicht aktualisiert werden",
     "failedToRenameFile": "Datei konnte nicht umbenannt werden",

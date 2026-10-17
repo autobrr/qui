@@ -1288,6 +1288,7 @@
       }
     },
     "noMatches": "未在其他實例上找到匹配的種子",
+    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。",
     "toast": {
       "savePathCopied": "儲存路徑已複製",
       "copyFailed": "複製失敗"
@@ -1526,6 +1527,7 @@
   "stateLabels": {
     "downloading": "下載中",
     "metaDL": "獲取中繼資料中",
+    "forcedMetaDL": "(強制) 獲取中繼資料中",
     "allocating": "分配空間中",
     "stalledDL": "停滯",
     "queuedDL": "排隊中",
@@ -1543,8 +1545,10 @@
     "error": "錯誤",
     "missingFiles": "檔案丟失",
     "checkingResumeData": "檢查恢復資料中",
-    "moving": "移動中"
+    "moving": "移動中",
+    "unknown": "未知"
   },
+  "stateLabelFallback": "無法識別",
   "sort": {
     "label": "排序",
     "ascending": "升序",

@@ -61,7 +61,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
@@ -69,6 +69,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
@@ -246,7 +247,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false, enabled: instanceId > 0 })
+  const instanceMaxRatio = useGlobalMaxRatio(instanceId)
+  const listenPort = useListenPort(instanceId)
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
@@ -569,9 +571,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     capabilitySupport: capabilities?.supportsTrackerHealth,
     responseSupport: trackerHealthSupported,
   })
-  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -697,7 +698,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     speedUnit,
     trackerIcons,
     formatTimestamp,
-    preferences,
+    instanceMaxRatio,
     supportsTrackerHealth,
     isUnifiedView,
     isCrossInstanceEndpoint,
@@ -890,7 +891,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const listenPort = metadata?.preferences?.listen_port
   const connectionStatusTooltip = hasConnectionStatus ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}` : t("statusBar.connectionUnknown")
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
@@ -1688,7 +1688,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
                         >
                           <ArrowUpDown className="h-3 w-3" />
-                          <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                          <span>{speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>

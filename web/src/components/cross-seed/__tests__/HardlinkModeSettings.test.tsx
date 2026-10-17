@@ -32,7 +32,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 
 function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: FilesystemCapabilities): Instance {
   return {
@@ -56,7 +56,7 @@ function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: Filesyste
 }
 
 const cases = [
-  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, write: true, content: true }), canWrite: true },
+  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, trustedIdentity: true, write: true, content: true }), canWrite: true },
   { name: "a remote instance", instance: makeInstance(false, { ...noCapabilities, read: true }), canWrite: false },
   // The setting is off here, so only the capability can offer the modes.
   { name: "a remote instance with the write capability", instance: makeInstance(false, { ...noCapabilities, read: true, write: true }), canWrite: true },

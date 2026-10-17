@@ -67,6 +67,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
   ActionConditions,
   Automation,
@@ -103,11 +104,15 @@ interface WorkflowDialogProps {
   onSuccess?: () => void
 }
 
-// Speed units for display - storage is always KiB/s
-const SPEED_LIMIT_UNITS = [
-  { value: 1, label: "KiB/s" },
-  { value: 1024, label: "MiB/s" },
-]
+// qBittorrent stores these limits in KiB/s, so each value is that unit's size relative to KiB.
+// The value is never localized; the label is, and is built on call to follow a language switch.
+const SPEED_LIMIT_LADDER = ["KiB", "MiB"] as const
+
+const getSpeedLimitUnits = () =>
+  SPEED_LIMIT_LADDER.map((unit) => ({
+    value: BYTES_PER_UNIT[unit] / BYTES_PER_UNIT.KiB,
+    label: unitLabel(unit, true),
+  }))
 
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "Original", labelKey: "preferences.workflowDialog.contentLayout.original" },
@@ -159,6 +164,10 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
+
+// Outside the map: an action of this name would otherwise claim its own fallback.
+// The fallback shows the raw action name so the user can tell which action this build does not know.
+const DRY_RUN_ACTION_FALLBACK_KEY = "preferences.workflowDialog.dryRun.actionFallback"
 
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
@@ -234,10 +243,10 @@ function formatDryRunEventSummary(
   }
 }
 
-function getDisabledFields(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
+function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
     .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t) }))
+    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
@@ -760,7 +769,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
-  const hasFileIdentity = ruleInstance?.capabilities.identity ?? false
+  const hasTrustedIdentity = ruleInstance?.capabilities.trustedIdentity ?? false
+  const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
   const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
   const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
@@ -769,9 +779,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     () => ({
       trackerHealth: supportsTrackerHealth,
       localFilesystemAccess: hasLocalFilesystemAccess,
-      fileIdentity: hasFileIdentity,
+      trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess, hasFileIdentity]
+    [supportsTrackerHealth, hasLocalFilesystemAccess, hasTrustedIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -2492,7 +2502,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 }
                               }}
                               categoryOptions={categoryOptions}
-                              disabledFields={getDisabledFields(fieldCapabilities, t)}
+                              disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                               disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                             />
                             <div className="flex items-center gap-2">
@@ -2574,7 +2584,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     }}
                     allowEmpty
                     categoryOptions={categoryOptions}
-                    disabledFields={getDisabledFields(fieldCapabilities, t)}
+                    disabledFields={getDisabledFields(fieldCapabilities, isRemoteInstance, t)}
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
@@ -2902,7 +2912,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -2976,7 +2986,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SPEED_LIMIT_UNITS.map((u) => (
+                                      {getSpeedLimitUnits().map((u) => (
                                         <SelectItem key={u.value} value={String(u.value)}>{u.label}</SelectItem>
                                       ))}
                                     </SelectContent>
@@ -3799,17 +3809,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       type="checkbox"
                                       checked={formState.exprIncludeHardlinks}
                                       onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
-                                      disabled={!hasFileIdentity}
+                                      // A checked box stays clickable, so a workflow whose instance lost the option can clear it.
+                                      disabled={!hasTrustedIdentity && !formState.exprIncludeHardlinks}
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
-                                    <span className={!hasFileIdentity ? "opacity-50" : ""}>
+                                    <span className={!hasTrustedIdentity ? "opacity-50" : ""}>
                                       {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
-                                  {hasFileIdentity ? (
+                                  {hasTrustedIdentity ? (
                                     <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
+                                  ) : isRemoteInstance ? (
+                                    <p>{t("preferences.workflowDialog.delete.remoteNotAvailable")}</p>
                                   ) : (
                                     <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
                                   )}
@@ -4082,7 +4095,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs font-medium truncate">{t(Object.hasOwn(DRY_RUN_ACTION_LABEL_KEYS, event.action) ? DRY_RUN_ACTION_LABEL_KEYS[event.action] : DRY_RUN_ACTION_FALLBACK_KEY, { action: event.action })}</p>
                             <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">

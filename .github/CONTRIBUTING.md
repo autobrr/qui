@@ -38,6 +38,7 @@ Make sure you have the following dependencies installed before setting up your d
   - There is no need for force pushing or rebasing. We squash commits on merge to keep the history clean and manageable.
 - **Pull Requests:** Open a pull request with a clear description of your changes. Reference any related issues.
   - Mark it as Draft if it's still in progress.
+  - Fill in the [PR template](pull_request_template.md). A CI check fails until the PR body has the Description, Breaking change, Behaviour change, Performance, and AI disclosure sections. Write "No breaking change." or "No behaviour change." when that applies. When you edit the PR body, the check runs again.
 - **Code Review:** Be open to feedback during the code review process.
 
 ## Development environment

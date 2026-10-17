@@ -1422,6 +1422,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
     "toast": {
       "savePathCopied": "Složka pro uložení zkopírována",
       "copyFailed": "Kopírování selhalo"
@@ -1680,6 +1681,7 @@
   "stateLabels": {
     "downloading": "Stahování",
     "metaDL": "Načítání metadat",
+    "forcedMetaDL": "(F) Načítání metadat",
     "allocating": "Přidělování",
     "stalledDL": "Pozastavené stahování",
     "queuedDL": "Ve frontě",
@@ -1697,8 +1699,10 @@
     "error": "Chyba",
     "missingFiles": "Chybějící soubory",
     "checkingResumeData": "Kontrola obnovovacích dat",
-    "moving": "Přesouvání"
+    "moving": "Přesouvání",
+    "unknown": "Neznámý"
   },
+  "stateLabelFallback": "Nerozpoznáno",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

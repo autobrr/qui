@@ -16,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -267,7 +268,7 @@ func partialPoolLocalPath(member *models.CrossSeedPartialPoolMember, file *model
 	if member == nil || file == nil {
 		return "", errors.New("partial pool member and file are required")
 	}
-	plan, err := hardlinktree.BuildSingleFilePlan(member.RootPath, file.RelativePath, member.RootPath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, member.RootPath, file.RelativePath, member.RootPath)
 	if err != nil {
 		return "", err
 	}

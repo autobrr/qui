@@ -1491,6 +1491,7 @@
       }
     },
     "noMatches": "В інших екземплярах відповідних торентів не знайдено",
+    "loadFailed": "Не вдалося перевірити збіги cross-seed. Перезавантажте сторінку, щоб спробувати ще раз.",
     "toast": {
       "savePathCopied": "Шлях збереження скопійовано",
       "copyFailed": "Не вдалося скопіювати"
@@ -1754,6 +1755,7 @@
   "stateLabels": {
     "downloading": "Завантаження",
     "metaDL": "Отримання метаданих",
+    "forcedMetaDL": "(F) Отримання метаданих",
     "allocating": "Виділення",
     "stalledDL": "Застопорилось",
     "queuedDL": "У черзі",
@@ -1771,8 +1773,10 @@
     "error": "Помилка",
     "missingFiles": "Відсутні файли",
     "checkingResumeData": "Перевірка даних відновлення",
-    "moving": "Переміщення"
+    "moving": "Переміщення",
+    "unknown": "Невідомо"
   },
+  "stateLabelFallback": "Нерозпізнано",
   "details": {
     "failedToUpdatePriorities": "Не вдалося оновити пріоритети файлів",
     "failedToRenameFile": "Не вдалося перейменувати файл",

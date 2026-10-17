@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,16 +27,35 @@ import (
 type ExecMode int
 
 const (
-	// ExecGNU answers --version with GNU findutils/coreutils banners.
+	// ExecGNU answers --version with GNU findutils/coreutils banners, and runs
+	// every other command through the local sh.
 	ExecGNU ExecMode = iota
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
+	// ExecNonPOSIX is a login shell that runs commands and has the GNU tools
+	// but does not quote like a POSIX shell: the printf probe fails the way
+	// fish fails on an unbalanced quote.
+	ExecNonPOSIX
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
 	// ExecHang accepts the command and never answers it, the way a wedged or
 	// tarpitting host does. Only the client's own deadline ends the session.
 	ExecHang
+	// ExecStallOpen accepts the first session channel of a connection, the
+	// one sftp opens, and never answers the open of any later one.
+	ExecStallOpen
+	// ExecOneSession runs commands like ExecGNU but refuses a session channel
+	// while another is open, the way sshd does with MaxSessions 1.
+	ExecOneSession
+	// ExecTwoSessions refuses a session channel while two are open, the way
+	// sshd does with MaxSessions 2: sftp and one command fill it. The refusal
+	// arrives late, as over a real network, so a session can end before it.
+	ExecTwoSessions
+	// ExecRefuseEveryOtherSession runs commands like ExecGNU but refuses every
+	// second session channel, the sftp one never, the way sshd refuses an open
+	// that arrives before it counts the close of the session before it.
+	ExecRefuseEveryOtherSession
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -99,6 +119,7 @@ type Server struct {
 	exec ExecMode
 
 	mu              sync.Mutex
+	latency         time.Duration
 	sftpMode        SFTPMode
 	dials           int
 	auths           int
@@ -106,6 +127,7 @@ type Server struct {
 	channels        int
 	stalledReadDirs int
 	heldMutations   int
+	commands        [][]string
 	live            map[*ssh.ServerConn]struct{}
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
@@ -132,12 +154,17 @@ func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 		},
 		// Counted here rather than in PublicKeyCallback: that callback must stay
 		// stateless (gosec G408), and the log hook sees every attempt anyway.
-		AuthLogCallback: func(_ ssh.ConnMetadata, method string, _ error) {
+		// A success also counts as an accept: x/crypto calls this hook before it
+		// answers, so the count is in place before the client's dial returns.
+		AuthLogCallback: func(_ ssh.ConnMetadata, method string, err error) {
 			if method != "publickey" {
 				return
 			}
 			server.mu.Lock()
 			server.auths++
+			if err == nil {
+				server.accepts++
+			}
 			server.mu.Unlock()
 		},
 	}
@@ -194,7 +221,7 @@ func (s *Server) Auths() int {
 	return s.auths
 }
 
-// Accepts returns the number of completed SSH handshakes.
+// Accepts returns the number of SSH handshakes that passed authentication.
 func (s *Server) Accepts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -236,7 +263,11 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 	s.mu.Lock()
 	s.dials++
+	latency := s.latency
 	s.mu.Unlock()
+	if latency > 0 {
+		conn = newLatencyConn(conn, latency, &s.wg)
+	}
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
@@ -245,7 +276,6 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = sshConn.Close() }()
 
 	s.mu.Lock()
-	s.accepts++
 	s.live[sshConn] = struct{}{}
 	s.mu.Unlock()
 	defer func() {
@@ -264,6 +294,8 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	stalled := make(chan struct{})
 	defer close(stalled)
 
+	opened := 0
+	var open atomic.Int32
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only session channels")
@@ -274,12 +306,31 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.channels++
 		s.mu.Unlock()
 
+		opened++
+		if opened > 1 && s.execMode() == ExecStallOpen {
+			continue
+		}
+		if open.Load() > 0 && s.execMode() == ExecOneSession {
+			_ = newChannel.Reject(ssh.Prohibited, "open failed")
+			continue
+		}
+		if opened%2 == 0 && s.execMode() == ExecRefuseEveryOtherSession {
+			_ = newChannel.Reject(ssh.Prohibited, "open failed")
+			continue
+		}
+		if open.Load() > 1 && s.execMode() == ExecTwoSessions {
+			time.AfterFunc(100*time.Millisecond, func() { _ = newChannel.Reject(ssh.Prohibited, "open failed") })
+			continue
+		}
+
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
 			return
 		}
 
+		open.Add(1)
 		sessions.Go(func() {
+			defer open.Add(-1)
 			s.handleSession(sshConn, channel, requests, stalled)
 		})
 	}
@@ -316,7 +367,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
-			if s.exec == ExecHang {
+			if s.execMode() == ExecHang {
 				<-stalled
 				return
 			}
@@ -405,23 +456,54 @@ func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 }
 
 func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
-	if s.exec == ExecSFTPOnly {
+	mode := s.execMode()
+	if mode == ExecSFTPOnly {
 		_, _ = io.WriteString(channel.Stderr(), "This service allows sftp connections only.\n")
 		return 1
 	}
 	// A real login writes shell and motd noise to stderr while the command
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
-	if strings.Contains(command, "--version") && s.exec == ExecGNU {
+	switch {
+	case strings.HasPrefix(command, "printf") && mode == ExecNonPOSIX:
+		_, _ = io.WriteString(channel.Stderr(), "fish: Unexpected end of string, quotes are not balanced\n")
+		return 127
+	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
-	} else if strings.Contains(command, "--version") {
+	case strings.Contains(command, "--version"):
 		_, _ = io.WriteString(channel, "find: unknown option --version\nstat: unknown option --version\n")
+	default:
+		return s.runShell(channel, command)
 	}
 	return 0
 }
 
+func (s *Server) execMode() ExecMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exec
+}
+
+// SetExec changes what the exec channel does for commands from now on, the
+// way an edit of authorized_keys changes what a key may run.
+func (s *Server) SetExec(mode ExecMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exec = mode
+}
+
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+}
+
+// SetLatency delays every byte the server sends on connections accepted from
+// now on by d, the way a distant host does. Delivery is deferred, not
+// serialised: requests the client pipelines still overlap, so a test can
+// show what concurrency buys against a round trip rather than a slow server.
+func (s *Server) SetLatency(d time.Duration) {
+	s.mu.Lock()
+	s.latency = d
+	s.mu.Unlock()
 }
 
 // SetSFTP sets what later sftp subsystem requests get.
@@ -560,6 +642,65 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 		// Every other mode lets the request through.
 	}
 	return n, err
+}
+
+// latencyConn defers each write by a fixed delay through an ordered queue, so
+// bytes arrive late but in order and later writes do not wait for earlier ones.
+type latencyConn struct {
+	net.Conn
+	delay time.Duration
+	queue chan delayed
+	done  chan struct{}
+	once  sync.Once
+}
+
+type delayed struct {
+	at   time.Time
+	data []byte
+}
+
+func newLatencyConn(conn net.Conn, delay time.Duration, wg *sync.WaitGroup) *latencyConn {
+	c := &latencyConn{Conn: conn, delay: delay, queue: make(chan delayed, 1024), done: make(chan struct{})}
+	wg.Go(c.forward)
+	return c
+}
+
+func (c *latencyConn) forward() {
+	for {
+		select {
+		case <-c.done:
+			return
+		case d := <-c.queue:
+			timer := time.NewTimer(time.Until(d.at))
+			select {
+			case <-timer.C:
+			case <-c.done:
+				timer.Stop()
+				return
+			}
+			if _, err := c.Conn.Write(d.data); err != nil {
+				// A dead peer must surface as a write error, not a queue that
+				// accepts 1024 more writes and then blocks.
+				c.once.Do(func() { close(c.done) })
+				return
+			}
+		}
+	}
+}
+
+func (c *latencyConn) Write(p []byte) (int, error) {
+	data := append([]byte(nil), p...)
+	select {
+	case c.queue <- delayed{at: time.Now().Add(c.delay), data: data}:
+		return len(p), nil
+	case <-c.done:
+		return 0, net.ErrClosed
+	}
+}
+
+func (c *latencyConn) Close() error {
+	c.once.Do(func() { close(c.done) })
+	return c.Conn.Close()
 }
 
 // holdMutation follows the request framing and blocks on the first byte of a

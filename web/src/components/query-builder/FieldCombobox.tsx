@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CONDITION_FIELDS, FIELD_GROUPS, getFieldLabel, getFieldGroupLabel, type DisabledField } from "./constants";
+import { FIELD_GROUPS, getFieldLabel, getFieldGroupLabel, getFieldType, type DisabledField } from "./constants";
 import { DisabledOption } from "./DisabledOption";
 
 interface FieldComboboxProps {
@@ -94,7 +94,7 @@ function FieldComboboxContent({
           return (
             <ResponsiveCommandGroup key={group.label} heading={groupLabel}>
               {group.fields.map((field) => {
-                const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];
+                const fieldType = getFieldType(field);
                 const fieldLabel = getFieldLabel(field, t);
                 const disabledReason = getDisabledReason(field);
                 const isDisabled = disabledReason !== null;
@@ -117,7 +117,7 @@ function FieldComboboxContent({
                           "ml-auto text-muted-foreground",
                           isMobile ? "text-xs" : "text-[10px]"
                         )}>
-                          {fieldDef?.type}
+                          {fieldType}
                         </span>
                       </ResponsiveCommandItem>
                     </DisabledOption>
@@ -148,7 +148,7 @@ function FieldComboboxContent({
                       isSelected ? "text-primary/70" : "text-muted-foreground",
                       isMobile ? "text-xs" : "text-[10px]"
                     )}>
-                      {fieldDef?.type}
+                      {fieldType}
                     </span>
                   </ResponsiveCommandItem>
                 );

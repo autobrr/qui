@@ -89,6 +89,7 @@ export function Automations() {
         instanceId={configureOrphanScanId!}
         instanceName={configureOrphanScanInstance?.name}
         isRemote={configureOrphanScanInstance?.filesystemMode === "remote"}
+        hasIdentity={configureOrphanScanInstance?.capabilities.identity}
       />
     </div>
   )

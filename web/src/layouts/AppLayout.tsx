@@ -60,7 +60,7 @@ function AppLayoutContent() {
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto transition-[padding] duration-300",
+          "flex-1 overflow-y-auto",
           isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
           "lg:pb-0"
         )}>
