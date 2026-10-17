@@ -14,6 +14,7 @@ export const bittorrentLabels: TabLabels = {
     queueing: { labelKey: "preferences.dialog.sections.queueManagement.title" },
     seedingLimits: { labelKey: "preferences.dialog.sections.seedingLimits.title" },
     autoAddTrackers: { labelKey: "preferences.sections.autoAddTrackers" },
+    autoAddTrackersFromUrl: { labelKey: "preferences.sections.autoAddTrackersFromUrl" },
   },
   fields: {
     dht: {
@@ -83,6 +84,7 @@ export const bittorrentLabels: TabLabels = {
       labelKey: "preferences.seedingLimits.maxShareRatio",
       descriptionKey: "preferences.seedingLimits.maxShareRatioDescription",
       unlimited: -1,
+      whenEnabled: 1,
     },
     max_seeding_time_enabled: {
       labelKey: "preferences.seedingLimits.enableSeedingTimeLimit",
@@ -92,8 +94,38 @@ export const bittorrentLabels: TabLabels = {
       labelKey: "preferences.fields.maxSeedingTime",
       descriptionKey: "preferences.seedingLimits.maxSeedingTimeDescription",
       unlimited: -1,
+      whenEnabled: 1440,
+    },
+    max_inactive_seeding_time_enabled: { labelKey: "preferences.fields.maxInactiveSeedingTimeEnabled" },
+    max_inactive_seeding_time: {
+      labelKey: "preferences.fields.maxInactiveSeedingTime",
+      descriptionKey: "preferences.fields.maxInactiveSeedingTimeDescription",
+      unlimited: -1,
+      whenEnabled: 1440,
+    },
+    share_limits_mode: {
+      labelKey: "preferences.workflowDialog.shareLimitsMode.label",
+      options: {
+        MatchAny: { labelKey: "preferences.workflowDialog.shareLimitsMode.matchAny" },
+        MatchAll: { labelKey: "preferences.workflowDialog.shareLimitsMode.matchAll" },
+      },
+    },
+    max_ratio_act: {
+      labelKey: "preferences.workflowDialog.shareLimitAction.label",
+      options: {
+        0: { labelKey: "preferences.workflowDialog.shareLimitAction.stop" },
+        1: { labelKey: "preferences.workflowDialog.shareLimitAction.remove" },
+        3: { labelKey: "preferences.workflowDialog.shareLimitAction.removeWithContent" },
+        2: { labelKey: "preferences.workflowDialog.shareLimitAction.enableSuperSeeding" },
+      },
     },
     add_trackers_enabled: { labelKey: "preferences.fields.addTrackersEnabled" },
     add_trackers: { labelKey: "preferences.fields.addTrackers" },
+    add_trackers_from_url_enabled: { labelKey: "preferences.fields.addTrackersFromUrlEnabled" },
+    add_trackers_url: { labelKey: "preferences.fields.addTrackersUrl" },
+    add_trackers_url_list: {
+      labelKey: "preferences.fields.addTrackersUrlList",
+      readOnlyNoteKey: "preferences.fields.addTrackersUrlListNote",
+    },
   },
 }

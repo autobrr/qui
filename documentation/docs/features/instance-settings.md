@@ -82,13 +82,19 @@ In the instance settings dialog, open the three-dot menu next to the dialog titl
 
 After the **Instance** tab, the settings dialog shows the tabs of the qBittorrent WebUI in the same order: **Behavior**, **Downloads**, **Connect**, **Speed**, **BitTorrent**, **RSS**, **WebUI**, and **Advanced**. qui sends these preferences to the qBittorrent API. They work the same as in the qBittorrent WebUI.
 
-qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences. The **Behavior** and **WebUI** tabs have no preferences in qui yet.
+qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences. The **WebUI** tab has no preferences in qui yet.
 
 Some preferences are read-only. qui shows the value, and you change it in qBittorrent.
 
 All tabs share one form. When you click **Save Changes** on any tab, qui sends only the preferences that you changed, on all tabs. If the save fails, qui shows an error and keeps your changes in the form.
 
 Other screens in qui read the preferences each time that you open them. An example is the default save path in the add torrent dialog. If you change a preference in the qBittorrent WebUI, qui shows the new value the next time that you open the screen. qui can take up to 30 seconds to get the change from qBittorrent.
+
+### Behavior
+
+The **Log file** section sets whether qBittorrent writes its log to a file, and the folder of that file. It also has the backup of the log file at a maximum size in KiB, and the deletion of backups that are older than a number of days, months, or years. qBittorrent 4.6 and later send these preferences.
+
+The other settings on the **Behavior** tab of the qBittorrent WebUI change only the qBittorrent WebUI or the desktop app. Examples are the language and the saved search tabs. qui does not show them.
 
 ### Downloads
 
@@ -142,17 +148,19 @@ The **Security & Privacy** section has DHT, PeX, local peer discovery, encryptio
 
 The **Queue Management** section has queueing, the limits for active torrents, and the thresholds for slow torrents.
 
-The **Seeding Limits** section has the share ratio limit and the seeding time limit.
+The **Seeding Limits** section has the share ratio limit, the seeding time limit, and the inactive seeding time limit. The times are in minutes. qBittorrent 4.6 and later send the inactive seeding time limit. The section also has the action at a limit. The action stops the torrent, removes it, removes it and its files, or enables super seeding. On qBittorrent 5.3 and later, you also select whether the action starts when the torrent reaches one limit or only when it reaches all limits.
 
-The **Automatically add trackers to new downloads** section is read-only.
+The **Automatically add trackers to new downloads** section has the list of trackers that qBittorrent adds to each new torrent.
+
+The **Automatically add trackers from a URL to new downloads** section has the URL of a tracker list. qBittorrent downloads the list from the URL and adds its trackers to each new torrent. The fetched trackers are read-only. qBittorrent 5.1 and later send these preferences.
 
 ### RSS
 
-The **RSS reader** section has RSS processing, the refresh interval, and the maximum number of articles for each feed.
+The **RSS reader** section has RSS processing, the refresh interval, the delay in seconds between two requests to the same host, and the maximum number of articles for each feed. qBittorrent 5.0 and later send the request delay.
 
 The **RSS torrent auto downloader** section has RSS auto-downloading.
 
-The **RSS smart episode filter** section sets whether qBittorrent downloads REPACK and PROPER episodes.
+The **RSS smart episode filter** section sets whether qBittorrent downloads REPACK and PROPER episodes. It also has the episode filters. These are regular expressions, one per line, that find the season and the episode number in an article title.
 
 ### Advanced
 

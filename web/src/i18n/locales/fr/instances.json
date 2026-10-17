@@ -1489,7 +1489,9 @@
       "rssAutoDownloader": "Téléchargeur automatique de torrents RSS",
       "rssSmartEpisodeFilter": "Filtre d'épisodes intelligent RSS",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Fichier journal",
+      "autoAddTrackersFromUrl": "Ajouter automatiquement les trackers d'une URL aux nouveaux téléchargements"
     },
     "fields": {
       "excludedFileNamesEnabled": "Exclure des noms de fichiers",
@@ -1517,6 +1519,27 @@
       "diskIoModeDisableOsCache": "Désactiver le cache du système",
       "diskIoModeEnableOsCache": "Activer le cache du système",
       "diskIoModeWriteThrough": "Écriture immédiate",
+      "fileLogEnabled": "Écrire le journal dans un fichier",
+      "fileLogPath": "Dossier du journal",
+      "fileLogBackupEnabled": "Sauvegarder le fichier journal quand il est plein",
+      "fileLogMaxSize": "Taille maximale du fichier journal",
+      "fileLogMaxSizeDescription": "Quand le fichier journal atteint cette taille, qBittorrent le déplace dans un fichier de sauvegarde et en commence un nouveau",
+      "fileLogDeleteOld": "Supprimer les anciennes sauvegardes du journal",
+      "fileLogAge": "Supprimer les sauvegardes plus anciennes que",
+      "fileLogAgeType": "Unité d'âge",
+      "fileLogAgeDays": "Jours",
+      "fileLogAgeMonths": "Mois",
+      "fileLogAgeYears": "Années",
+      "maxInactiveSeedingTimeEnabled": "Activer la limite de temps de partage inactif",
+      "maxInactiveSeedingTime": "Temps maximal de partage inactif",
+      "maxInactiveSeedingTimeDescription": "Agir sur un torrent qui n'a rien envoyé ni reçu depuis ce nombre de minutes",
+      "addTrackersFromUrlEnabled": "Ajouter les trackers d'une URL aux nouveaux téléchargements",
+      "addTrackersUrl": "URL de la liste des trackers",
+      "addTrackersUrlList": "Trackers récupérés",
+      "addTrackersUrlListNote": "qBittorrent récupère cette liste depuis l'URL.",
+      "rssFetchDelay": "Délai entre les requêtes au même hôte",
+      "rssSmartEpisodeFilters": "Filtres d'épisodes (un par ligne)",
+      "rssSmartEpisodeFiltersDescription": "Expressions régulières qui trouvent la saison et le numéro d'épisode dans le titre d'un article",
       "optionValue": "Valeur {{value}}"
     },
     "units": {

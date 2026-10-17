@@ -1489,7 +1489,9 @@
       "rssAutoDownloader": "RSS-Torrent-Auto-Downloader",
       "rssSmartEpisodeFilter": "RSS-Smart-Episodenfilter",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Logdatei",
+      "autoAddTrackersFromUrl": "Tracker von einer URL automatisch zu neuen Downloads hinzufügen"
     },
     "fields": {
       "excludedFileNamesEnabled": "Dateinamen ausschließen",
@@ -1517,6 +1519,27 @@
       "diskIoModeDisableOsCache": "OS-Cache deaktivieren",
       "diskIoModeEnableOsCache": "OS-Cache aktivieren",
       "diskIoModeWriteThrough": "Write-through",
+      "fileLogEnabled": "Log in eine Datei schreiben",
+      "fileLogPath": "Log-Ordner",
+      "fileLogBackupEnabled": "Logdatei sichern, wenn sie voll ist",
+      "fileLogMaxSize": "Maximale Größe der Logdatei",
+      "fileLogMaxSizeDescription": "Erreicht die Logdatei diese Größe, verschiebt qBittorrent sie in eine Sicherungsdatei und beginnt eine neue",
+      "fileLogDeleteOld": "Alte Sicherungen der Logdatei löschen",
+      "fileLogAge": "Sicherungen löschen, die älter sind als",
+      "fileLogAgeType": "Einheit des Alters",
+      "fileLogAgeDays": "Tage",
+      "fileLogAgeMonths": "Monate",
+      "fileLogAgeYears": "Jahre",
+      "maxInactiveSeedingTimeEnabled": "Limit für inaktive Seeding-Zeit aktivieren",
+      "maxInactiveSeedingTime": "Maximale inaktive Seeding-Zeit",
+      "maxInactiveSeedingTimeDescription": "Für einen Torrent handeln, der so viele Minuten weder hoch- noch heruntergeladen hat",
+      "addTrackersFromUrlEnabled": "Tracker von einer URL zu neuen Downloads hinzufügen",
+      "addTrackersUrl": "URL der Trackerliste",
+      "addTrackersUrlList": "Abgerufene Tracker",
+      "addTrackersUrlListNote": "qBittorrent ruft diese Liste von der URL ab.",
+      "rssFetchDelay": "Verzögerung für Anfragen an denselben Host",
+      "rssSmartEpisodeFilters": "Episodenfilter (einer pro Zeile)",
+      "rssSmartEpisodeFiltersDescription": "Reguläre Ausdrücke, die Staffel und Episodennummer im Titel eines Artikels finden",
       "optionValue": "Wert {{value}}"
     },
     "units": {

@@ -4,12 +4,16 @@
  */
 
 // The labels of one preference. unlimited is the value that means "no limit": the
-// number field shows it as an empty box.
+// number field shows it as an empty box. whenEnabled is the value that an unlimited field
+// gets when its switch turns on. readOnlyNoteKey replaces the general note of a read-only
+// field.
 export interface FieldLabels {
   labelKey: string
   descriptionKey?: string
   placeholderKey?: string
+  readOnlyNoteKey?: string
   unlimited?: number
+  whenEnabled?: number
   options?: Record<string, { labelKey: string }>
 }
 

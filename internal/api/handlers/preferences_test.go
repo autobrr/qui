@@ -130,6 +130,7 @@ type viewField struct {
 	Key         string          `json:"key"`
 	Value       json.RawMessage `json:"value"`
 	Tab         string          `json:"tab"`
+	Section     string          `json:"section"`
 	Control     string          `json:"control"`
 	WireUnit    string          `json:"wireUnit"`
 	DisplayUnit string          `json:"displayUnit"`
@@ -226,6 +227,91 @@ func TestPreferencesViewLibtorrent1(t *testing.T) {
 	assert.Equal(t, []any{float64(0), float64(1)}, view["disk_io_write_mode"].Options)
 }
 
+func TestPreferencesViewBehaviorShowsTheLogFile(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	// qBittorrent 5.3 adds the search keys to the Behavior tab.
+	fake.prefs["store_search_jobs"] = true
+	fake.prefs["store_search_job_results"] = false
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	var behavior []string
+	for key, field := range view {
+		if field.Tab == "behavior" {
+			assert.Equal(t, "logFile", field.Section, key)
+			behavior = append(behavior, key)
+		}
+	}
+	assert.ElementsMatch(t, []string{
+		"file_log_enabled", "file_log_path", "file_log_backup_enabled", "file_log_max_size",
+		"file_log_delete_old", "file_log_age", "file_log_age_type",
+	}, behavior)
+
+	assert.Equal(t, "path", view["file_log_path"].Control)
+	assert.Equal(t, "file_log_enabled", view["file_log_path"].DependsOn)
+	assert.Equal(t, "file_log_enabled", view["file_log_backup_enabled"].DependsOn)
+	assert.Equal(t, "file_log_enabled", view["file_log_delete_old"].DependsOn)
+	maxSize := view["file_log_max_size"]
+	assert.Equal(t, "file_log_backup_enabled", maxSize.DependsOn)
+	assert.Equal(t, "KiB", maxSize.WireUnit)
+	assert.Equal(t, "KiB", maxSize.DisplayUnit)
+	assert.Equal(t, "file_log_delete_old", view["file_log_age"].DependsOn)
+	ageType := view["file_log_age_type"]
+	assert.Equal(t, "select", ageType.Control)
+	assert.Equal(t, []any{float64(0), float64(1), float64(2)}, ageType.Options)
+	assert.Equal(t, "file_log_delete_old", ageType.DependsOn)
+}
+
+func TestPreferencesViewBitTorrentSeedingLimitsAndTrackers(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	// qBittorrent 5.3 adds share_limits_mode.
+	fake.prefs["share_limits_mode"] = "MatchAny"
+	fake.prefs["add_trackers_url_list"] = "udp://tracker.example.invalid:1337/announce"
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	inactive := view["max_inactive_seeding_time"]
+	assert.Equal(t, "seedingLimits", inactive.Section)
+	assert.Equal(t, "max_inactive_seeding_time_enabled", inactive.DependsOn)
+	assert.Equal(t, "min", inactive.WireUnit)
+	assert.Equal(t, "switch", view["max_inactive_seeding_time_enabled"].Control)
+	assert.Equal(t, []any{float64(0), float64(1), float64(3), float64(2)}, view["max_ratio_act"].Options)
+	assert.Equal(t, []any{"MatchAny", "MatchAll"}, view["share_limits_mode"].Options)
+
+	assert.False(t, view["add_trackers_enabled"].ReadOnly)
+	assert.False(t, view["add_trackers"].ReadOnly)
+	assert.Equal(t, "add_trackers_enabled", view["add_trackers"].DependsOn)
+	assert.Equal(t, "add_trackers_from_url_enabled", view["add_trackers_url"].DependsOn)
+	assert.Equal(t, "text", view["add_trackers_url"].Control)
+
+	fetched := view["add_trackers_url_list"]
+	assert.Equal(t, "list", fetched.Control)
+	assert.True(t, fetched.ReadOnly)
+	assert.JSONEq(t, `"udp://tracker.example.invalid:1337/announce"`, string(fetched.Value))
+}
+
+func TestPreferencesViewRSSFetchDelayAndEpisodeFilters(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	delay := view["rss_fetch_delay"]
+	assert.Equal(t, "reader", delay.Section)
+	assert.Equal(t, "number", delay.Control)
+	assert.Equal(t, "s", delay.DisplayUnit)
+	assert.Equal(t, "rss_processing_enabled", delay.DependsOn)
+	filters := view["rss_smart_episode_filters"]
+	assert.Equal(t, "smartEpisodeFilter", filters.Section)
+	assert.Equal(t, "list", filters.Control)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"rss_fetch_delay": 5, "rss_smart_episode_filters": "s(\\d+)e(\\d+)"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{"rss_fetch_delay": float64(5), "rss_smart_episode_filters": `s(\d+)e(\d+)`}}, fake.recordedSets())
+}
+
 func TestPreferencesPatchSendsOnlyThePatch(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
 	rig := newPreferencesRig(t, fake)
@@ -246,6 +332,7 @@ func TestPreferencesPatchRejections(t *testing.T) {
 	}{
 		{name: "unknown key", body: `{"dl_limit": 1, "no_such_key": true}`, cause: "no_such_key"},
 		{name: "read-only key", body: `{"current_network_interface": "eth0"}`, cause: "current_network_interface"},
+		{name: "fetched trackers", body: `{"add_trackers_url_list": "udp://a.invalid"}`, cause: `"add_trackers_url_list" is read-only`},
 		{name: "not shown connection key", body: `{"web_ui_port": 9090}`, cause: "web_ui_port"},
 		{name: "not shown key", body: `{"locale": "de"}`, cause: "locale"},
 		{name: "api key", body: `{"web_ui_api_key": "x"}`, cause: "web_ui_api_key"},

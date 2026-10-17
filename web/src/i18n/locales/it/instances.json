@@ -1489,7 +1489,9 @@
       "rssAutoDownloader": "Scaricatore automatico di torrent RSS",
       "rssSmartEpisodeFilter": "Filtro episodi intelligente RSS",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "File di log",
+      "autoAddTrackersFromUrl": "Aggiungi automaticamente i tracker da un URL ai nuovi download"
     },
     "fields": {
       "excludedFileNamesEnabled": "Escludi nomi di file",
@@ -1517,6 +1519,27 @@
       "diskIoModeDisableOsCache": "Disattiva la cache del sistema operativo",
       "diskIoModeEnableOsCache": "Attiva la cache del sistema operativo",
       "diskIoModeWriteThrough": "Write-through",
+      "fileLogEnabled": "Scrivi il log in un file",
+      "fileLogPath": "Cartella del log",
+      "fileLogBackupEnabled": "Esegui il backup del file di log quando è pieno",
+      "fileLogMaxSize": "Dimensione massima del file di log",
+      "fileLogMaxSizeDescription": "Quando il file di log raggiunge questa dimensione, qBittorrent lo sposta in un file di backup e ne inizia uno nuovo",
+      "fileLogDeleteOld": "Elimina i vecchi backup del log",
+      "fileLogAge": "Elimina i backup più vecchi di",
+      "fileLogAgeType": "Unità di età",
+      "fileLogAgeDays": "Giorni",
+      "fileLogAgeMonths": "Mesi",
+      "fileLogAgeYears": "Anni",
+      "maxInactiveSeedingTimeEnabled": "Abilita limite del tempo di seeding inattivo",
+      "maxInactiveSeedingTime": "Tempo massimo di seeding inattivo",
+      "maxInactiveSeedingTimeDescription": "Agisci su un torrent che non ha caricato né scaricato per questo numero di minuti",
+      "addTrackersFromUrlEnabled": "Aggiungi i tracker da un URL ai nuovi download",
+      "addTrackersUrl": "URL dell'elenco dei tracker",
+      "addTrackersUrlList": "Tracker recuperati",
+      "addTrackersUrlListNote": "qBittorrent recupera questo elenco dall'URL.",
+      "rssFetchDelay": "Ritardo tra le richieste allo stesso host",
+      "rssSmartEpisodeFilters": "Filtri degli episodi (uno per riga)",
+      "rssSmartEpisodeFiltersDescription": "Espressioni regolari che trovano la stagione e il numero dell'episodio nel titolo di un articolo",
       "optionValue": "Valore {{value}}"
     },
     "units": {

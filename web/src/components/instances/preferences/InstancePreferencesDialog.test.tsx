@@ -51,6 +51,10 @@ afterEach(() => {
 })
 
 const view: PreferenceField[] = [
+  { key: "file_log_enabled", value: true, tab: "behavior", section: "logFile", control: "switch" },
+  { key: "file_log_backup_enabled", value: false, tab: "behavior", section: "logFile", control: "switch", dependsOn: "file_log_enabled" },
+  { key: "file_log_max_size", value: 65, tab: "behavior", section: "logFile", control: "number", wireUnit: "KiB", displayUnit: "KiB", dependsOn: "file_log_backup_enabled" },
+  { key: "file_log_age_type", value: 1, tab: "behavior", section: "logFile", control: "select", optionSource: "fixed", options: [0, 1, 2] },
   { key: "save_path", value: "/data", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
   { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
   { key: "up_limit", value: 2048, tab: "speed", section: "globalRateLimits", control: "number", wireUnit: "B/s", displayUnit: "KiB/s" },
@@ -58,12 +62,18 @@ const view: PreferenceField[] = [
   { key: "dht", value: true, tab: "bittorrent", section: "privacy", control: "switch" },
   { key: "max_ratio_enabled", value: false, tab: "bittorrent", section: "seedingLimits", control: "switch" },
   { key: "max_ratio", value: 2, tab: "bittorrent", section: "seedingLimits", control: "number", dependsOn: "max_ratio_enabled" },
-  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true, reason: "pending BitTorrent PR" },
+  { key: "max_inactive_seeding_time_enabled", value: false, tab: "bittorrent", section: "seedingLimits", control: "switch" },
+  { key: "max_inactive_seeding_time", value: -1, tab: "bittorrent", section: "seedingLimits", control: "number", wireUnit: "min", displayUnit: "min", dependsOn: "max_inactive_seeding_time_enabled" },
+  { key: "max_ratio_act", value: 3, tab: "bittorrent", section: "seedingLimits", control: "select", optionSource: "fixed", options: [0, 1, 3, 2] },
+  { key: "add_trackers_url_list", value: "udp://tracker.example.invalid:1337/announce", tab: "bittorrent", section: "autoAddTrackersFromUrl", control: "list", readOnly: true, reason: "qBittorrent fetches the list from the URL" },
   { key: "rss_processing_enabled", value: true, tab: "rss", section: "reader", control: "switch" },
   { key: "rss_refresh_interval", value: 30, tab: "rss", section: "reader", control: "number", wireUnit: "min", displayUnit: "min", dependsOn: "rss_processing_enabled" },
+  { key: "rss_fetch_delay", value: 2, tab: "rss", section: "reader", control: "number", wireUnit: "s", displayUnit: "s", dependsOn: "rss_processing_enabled" },
   { key: "rss_max_articles_per_feed", value: 50, tab: "rss", section: "reader", control: "number", dependsOn: "rss_processing_enabled" },
   { key: "rss_auto_downloading_enabled", value: false, tab: "rss", section: "autoDownloader", control: "switch" },
   { key: "rss_download_repack_proper_episodes", value: true, tab: "rss", section: "smartEpisodeFilter", control: "switch" },
+  { key: "rss_smart_episode_filters", value: "s(\\d+)e(\\d+)\n(\\d+)x(\\d+)", tab: "rss", section: "smartEpisodeFilter", control: "list" },
+  { key: "current_network_interface", value: "", tab: "advanced", section: "qbittorrent", control: "text", readOnly: true, reason: "pending network binding PR" },
   { key: "disk_queue_size", value: 1048576, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
@@ -130,6 +140,7 @@ describe("InstancePreferencesDialog", () => {
     await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
     expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual([
       "preferences.dialog.tabs.instance",
+      "preferences.dialog.tabs.behavior",
       "preferences.dialog.tabs.downloads",
       "preferences.dialog.tabs.connection",
       "preferences.dialog.tabs.speed",
@@ -162,14 +173,101 @@ describe("InstancePreferencesDialog", () => {
     expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
   })
 
-  it("shows a read-only field disabled, with its note", async () => {
+  it("shows the fetched trackers read-only, with the note of the field", async () => {
     serveView()
 
     renderDialog("bittorrent")
 
-    const field = await fieldFor("preferences.fields.addTrackersEnabled")
-    expect(field.disabled).toBe(true)
+    const fetched = await fieldFor("preferences.fields.addTrackersUrlList")
+    expect(fetched.value).toBe("udp://tracker.example.invalid:1337/announce")
+    expect(fetched.disabled).toBe(true)
+    expect(screen.getAllByText("preferences.fields.addTrackersUrlListNote")).toHaveLength(1)
+    expect(screen.queryByText("preferences.readOnlyNote")).toBeNull()
+  })
+
+  it("shows the general note for a read-only field without a note of its own", async () => {
+    serveView()
+
+    renderDialog("advanced")
+
+    expect((await fieldFor("preferences.connectionSettings.networkInterface")).disabled).toBe(true)
     expect(screen.getAllByText("preferences.readOnlyNote")).toHaveLength(1)
+  })
+
+  it("shows the log file in the Behavior tab, with the size in KiB behind two switches", async () => {
+    serveView()
+
+    renderDialog("behavior")
+
+    const maxSize = await fieldFor("preferences.fields.fileLogMaxSize")
+    expect(maxSize.value).toBe("65")
+    expect(maxSize.nextElementSibling?.textContent).toBe("KiB")
+    expect(maxSize.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.fields.fileLogBackupEnabled"))
+    expect(maxSize.disabled).toBe(false)
+    fireEvent.click(await fieldFor("preferences.fields.fileLogEnabled"))
+    expect(maxSize.disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.fileLogAgeType")).textContent).toBe("preferences.fields.fileLogAgeMonths")
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual(["preferences.sections.logFile"])
+  })
+
+  it("shows the inactive seeding limit in minutes and the action at the limit", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    expect(inactive.disabled).toBe(true)
+    expect(inactive.nextElementSibling?.textContent).toBe("preferences.units.minutes")
+    expect((await fieldFor("preferences.workflowDialog.shareLimitAction.label")).textContent).toBe("preferences.workflowDialog.shareLimitAction.removeWithContent")
+    fireEvent.click(await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled"))
+    fireEvent.change(inactive, { target: { value: "1440" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440 }])
+  })
+
+  it("fills an empty seeding limit with a starting value when its switch turns on", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    expect(inactive.value).toBe("")
+    fireEvent.click(await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled"))
+    expect(inactive.value).toBe("1440")
+    fireEvent.click(await fieldFor("preferences.seedingLimits.enableShareRatioLimit"))
+    expect((await fieldFor("preferences.seedingLimits.maxShareRatio")).value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440, max_ratio_enabled: true }])
+  })
+
+  it("sends no seeding limit when its switch turns on and off again", async () => {
+    const bodies = recordSaves()
+    serveView(view.map(field => field.key === "max_ratio_enabled" ? { ...field, value: true } : field))
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    const enabled = await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled")
+    fireEvent.click(enabled)
+    fireEvent.change(inactive, { target: { value: "60" } })
+    fireEvent.blur(inactive)
+    fireEvent.click(enabled)
+    expect(inactive.value).toBe("")
+    // A saved limit comes back when its switch turns on again.
+    const ratio = await fieldFor("preferences.seedingLimits.maxShareRatio")
+    const ratioEnabled = await fieldFor("preferences.seedingLimits.enableShareRatioLimit")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
   })
 
   it("enables a dependent field only while its switch is on", async () => {
@@ -253,16 +351,31 @@ describe("InstancePreferencesDialog", () => {
     expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
   })
 
-  it("shows the five RSS settings in the RSS tab", async () => {
+  it("shows the latest fetched trackers when the view refreshes", async () => {
+    serveView()
+    const { queryClient } = renderDialog("bittorrent")
+
+    await fieldFor("preferences.fields.addTrackersUrlList")
+    serveView(view.map(field => field.key === "add_trackers_url_list" ? { ...field, value: "udp://other.example.invalid:6969/announce" } : field))
+    await queryClient.refetchQueries({ queryKey: ["instance-preference-view", 1] })
+
+    expect((await fieldFor("preferences.fields.addTrackersUrlList")).value).toBe("udp://other.example.invalid:6969/announce")
+  })
+
+  it("shows the seven RSS settings in the RSS tab", async () => {
     serveView()
 
     renderDialog("rss")
 
     expect((await fieldFor("rss:warnings.enableRss")).getAttribute("aria-checked")).toBe("true")
     expect((await fieldFor("rss:settingsPopover.refreshInterval")).value).toBe("30")
+    const fetchDelay = await fieldFor("preferences.fields.rssFetchDelay")
+    expect(fetchDelay.value).toBe("2")
+    expect(fetchDelay.nextElementSibling?.textContent).toBe("preferences.advancedNetwork.unitSeconds")
     expect((await fieldFor("rss:settingsPopover.maxArticles")).value).toBe("50")
     expect((await fieldFor("rss:settingsPopover.autoDownload")).getAttribute("aria-checked")).toBe("false")
     expect((await fieldFor("rss:settingsPopover.downloadRepack")).getAttribute("aria-checked")).toBe("true")
+    expect((await fieldFor("preferences.fields.rssSmartEpisodeFilters")).value).toBe("s(\\d+)e(\\d+)\n(\\d+)x(\\d+)")
     expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
       "preferences.sections.rssReader",
       "preferences.sections.rssAutoDownloader",

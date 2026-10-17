@@ -17,8 +17,13 @@ export const rssLabels: TabLabels = {
   fields: {
     rss_processing_enabled: { labelKey: "rss:warnings.enableRss" },
     rss_refresh_interval: { labelKey: "rss:settingsPopover.refreshInterval" },
+    rss_fetch_delay: { labelKey: "preferences.fields.rssFetchDelay" },
     rss_max_articles_per_feed: { labelKey: "rss:settingsPopover.maxArticles" },
     rss_auto_downloading_enabled: { labelKey: "rss:settingsPopover.autoDownload" },
     rss_download_repack_proper_episodes: { labelKey: "rss:settingsPopover.downloadRepack" },
+    rss_smart_episode_filters: {
+      labelKey: "preferences.fields.rssSmartEpisodeFilters",
+      descriptionKey: "preferences.fields.rssSmartEpisodeFiltersDescription",
+    },
   },
 }

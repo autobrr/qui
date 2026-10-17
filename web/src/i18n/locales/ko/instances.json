@@ -1460,7 +1460,9 @@
       "rssAutoDownloader": "RSS 토렌트 자동 다운로더",
       "rssSmartEpisodeFilter": "RSS 스마트 에피소드 필터",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "로그 파일",
+      "autoAddTrackersFromUrl": "URL의 트래커를 새 다운로드에 자동으로 추가"
     },
     "fields": {
       "excludedFileNamesEnabled": "파일 이름 제외",
@@ -1488,6 +1490,27 @@
       "diskIoModeDisableOsCache": "OS 캐시 비활성화",
       "diskIoModeEnableOsCache": "OS 캐시 활성화",
       "diskIoModeWriteThrough": "Write-through",
+      "fileLogEnabled": "로그를 파일에 기록",
+      "fileLogPath": "로그 폴더",
+      "fileLogBackupEnabled": "로그 파일이 가득 차면 백업",
+      "fileLogMaxSize": "최대 로그 파일 크기",
+      "fileLogMaxSizeDescription": "로그 파일이 이 크기에 도달하면 qBittorrent가 백업 파일로 옮기고 새 파일을 시작합니다",
+      "fileLogDeleteOld": "오래된 백업 로그 삭제",
+      "fileLogAge": "다음보다 오래된 백업 삭제",
+      "fileLogAgeType": "기간 단위",
+      "fileLogAgeDays": "일",
+      "fileLogAgeMonths": "개월",
+      "fileLogAgeYears": "년",
+      "maxInactiveSeedingTimeEnabled": "비활성 시딩 시간 제한 활성화",
+      "maxInactiveSeedingTime": "최대 비활성 시딩 시간",
+      "maxInactiveSeedingTimeDescription": "이 시간(분) 동안 업로드나 다운로드가 없는 토렌트에 동작을 적용합니다",
+      "addTrackersFromUrlEnabled": "URL의 트래커를 새 다운로드에 추가",
+      "addTrackersUrl": "트래커 목록 URL",
+      "addTrackersUrlList": "가져온 트래커",
+      "addTrackersUrlListNote": "qBittorrent가 이 목록을 URL에서 가져옵니다.",
+      "rssFetchDelay": "같은 호스트 요청 지연",
+      "rssSmartEpisodeFilters": "에피소드 필터 (한 줄에 하나씩)",
+      "rssSmartEpisodeFiltersDescription": "글 제목에서 시즌과 에피소드 번호를 찾는 정규식",
       "optionValue": "값 {{value}}"
     },
     "units": {

@@ -37,10 +37,26 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   const [saved, setSaved] = useState(() => valuesOf(fields))
   const [values, setValues] = useState(saved)
 
-  const setValue = useCallback((key: string, value: unknown) => setValues(previous => ({ ...previous, [key]: value })), [])
+  const setValue = useCallback((key: string, value: unknown) => setValues(previous => {
+    const next = { ...previous, [key]: value }
+    // qBittorrent turns a seeding limit on when it gets a limit without the switch. So a switch
+    // that turns off empties the box, and a switch that turns on fills an empty box with the
+    // saved limit or the starting value of the qBittorrent WebUI.
+    for (const field of fields) {
+      const labels = field.dependsOn === key ? labelsOf(field) : undefined
+      if (labels?.whenEnabled === undefined) continue
+      if (value === false) {
+        next[field.key] = labels.unlimited
+      } else if (next[field.key] === labels.unlimited) {
+        next[field.key] = saved[field.key] !== labels.unlimited ? saved[field.key] : labels.whenEnabled
+      }
+    }
+    return next
+  }), [fields, saved])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
-  const valueOf = (field: PreferenceField) => field.key in values ? values[field.key] : field.value
+  // A read-only field has no edits to keep, so it shows the latest view.
+  const valueOf = (field: PreferenceField) => !field.readOnly && field.key in values ? values[field.key] : field.value
   const isEnabled = (field: PreferenceField): boolean => {
     const parent = field.dependsOn ? byKey.get(field.dependsOn) : undefined
     return !parent || (valueOf(parent) === true && isEnabled(parent))
@@ -137,17 +153,18 @@ interface PreferenceRowProps {
 const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onChange }: PreferenceRowProps) {
   const { t } = useTranslation("instances")
   const Widget = preferenceWidgets[field.control]
+  const labels = labelsOf(field)!
   return (
     <div className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
       <Widget
         id={`preference-${field.key}`}
         field={field}
-        labels={labelsOf(field)!}
+        labels={labels}
         value={value}
         onChange={next => onChange(field.key, next)}
         disabled={disabled}
       />
-      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t("preferences.readOnlyNote")}</p>}
+      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey ?? "preferences.readOnlyNote")}</p>}
     </div>
   )
 })

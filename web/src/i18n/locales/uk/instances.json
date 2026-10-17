@@ -1547,7 +1547,9 @@
       "rssAutoDownloader": "Автозавантажувач торентів RSS",
       "rssSmartEpisodeFilter": "Розумний фільтр епізодів RSS",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Файл журналу",
+      "autoAddTrackersFromUrl": "Автоматично додавати трекери з URL до нових завантажень"
     },
     "fields": {
       "excludedFileNamesEnabled": "Виключати імена файлів",
@@ -1575,6 +1577,27 @@
       "diskIoModeDisableOsCache": "Вимкнути кеш ОС",
       "diskIoModeEnableOsCache": "Увімкнути кеш ОС",
       "diskIoModeWriteThrough": "Наскрізний запис",
+      "fileLogEnabled": "Записувати журнал у файл",
+      "fileLogPath": "Тека журналу",
+      "fileLogBackupEnabled": "Створювати резервну копію файлу журналу, коли він заповнений",
+      "fileLogMaxSize": "Максимальний розмір файлу журналу",
+      "fileLogMaxSizeDescription": "Коли файл журналу досягає цього розміру, qBittorrent переносить його в резервний файл і починає новий",
+      "fileLogDeleteOld": "Видаляти старі резервні копії журналу",
+      "fileLogAge": "Видаляти резервні копії, старші за",
+      "fileLogAgeType": "Одиниця віку",
+      "fileLogAgeDays": "Дні",
+      "fileLogAgeMonths": "Місяці",
+      "fileLogAgeYears": "Роки",
+      "maxInactiveSeedingTimeEnabled": "Увімкнути обмеження часу неактивної роздачі",
+      "maxInactiveSeedingTime": "Максимальний час неактивної роздачі",
+      "maxInactiveSeedingTimeDescription": "Застосувати дію до торрента, який стільки хвилин нічого не віддавав і не завантажував",
+      "addTrackersFromUrlEnabled": "Додавати трекери з URL до нових завантажень",
+      "addTrackersUrl": "URL списку трекерів",
+      "addTrackersUrlList": "Отримані трекери",
+      "addTrackersUrlListNote": "qBittorrent отримує цей список з URL.",
+      "rssFetchDelay": "Затримка запитів до того самого хоста",
+      "rssSmartEpisodeFilters": "Фільтри епізодів (по одному в рядку)",
+      "rssSmartEpisodeFiltersDescription": "Регулярні вирази, що знаходять сезон і номер епізоду в назві статті",
       "optionValue": "Значення {{value}}"
     },
     "units": {
