@@ -22,10 +22,14 @@ import (
 // version. It is a fixed string with nothing interpolated into it.
 const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
 
-// posixProbeCommand prints a single-quoted backslash. A POSIX shell prints
-// "a\"; fish reads the backslash as an escape and fails on the open quote.
-// shellQuote relies on that reading, so it is checked before any path is sent.
-const posixProbeCommand = `printf '%s' 'a\'`
+// posixProbeWord, quoted by shellQuote, comes back from printf unchanged only
+// under a shell that reads that quoting the POSIX way. fish fails on the
+// backslash before a closing quote, nushell on the quote shellQuote escapes,
+// and tcsh on the newline in quotes, whatever its history settings. The "!"
+// catches tcsh a second time while history expansion is on. A zsh told to
+// quote like csh fails too, and it already fails on a path that holds a
+// newline.
+const posixProbeWord = "a\\'!\nb"
 
 // outputLimit caps what a probe keeps from a remote command. The server is the
 // thing being probed, so its output is not trusted to be short.
@@ -95,8 +99,8 @@ func noAnswer(ctx context.Context, err error) bool {
 // that did not answer is an error; the caller decides whether the connection
 // is still alive.
 func shellAndTools(ctx context.Context, conn *Conn, timeout time.Duration) (posix, gnu bool, err error) {
-	out, err := conn.output(ctx, posixProbeCommand, timeout, outputLimit)
-	if err != nil || !bytes.Equal(out, []byte(`a\`)) {
+	out, err := conn.output(ctx, "printf '%s' "+shellQuote(posixProbeWord), timeout, outputLimit)
+	if err != nil || string(out) != posixProbeWord {
 		return false, false, err
 	}
 	out, err = conn.output(ctx, gnuProbeCommand, timeout, outputLimit)
