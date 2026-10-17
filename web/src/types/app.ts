@@ -54,7 +54,7 @@ export interface PreferenceField {
   value: unknown
   tab: "behavior" | "downloads" | "connection" | "speed" | "bittorrent" | "rss" | "webui" | "advanced"
   section: string
-  control: "switch" | "number" | "text" | "select" | "path" | "list" | "watchFolders"
+  control: "switch" | "number" | "text" | "password" | "select" | "path" | "list" | "watchFolders"
   wireUnit?: string
   displayUnit?: string
   optionSource?: "fixed" | "pathAutocomplete"

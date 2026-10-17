@@ -8,7 +8,7 @@
 // behind bulk actions. Built once from a fixed seed, so every visitor sees the
 // same library and a reload resets it.
 
-import type { AppPreferences, PreferenceField } from "@/types/app"
+import type { PreferenceField } from "@/types/app"
 import type { InstanceCapabilities, InstanceResponse } from "@/types/instances"
 import type {
   Category,
@@ -519,22 +519,7 @@ function computeStats(torrents: readonly Torrent[]): TorrentStats {
   return stats
 }
 
-export const PREFERENCES = {
-  save_path: "/data/torrents",
-  temp_path: "/data/incomplete",
-  temp_path_enabled: false,
-  use_subcategories: true,
-  queueing_enabled: true,
-  auto_tmm_enabled: true,
-  add_trackers_enabled: false,
-  add_trackers: "",
-  excluded_file_names_enabled: false,
-  excluded_file_names: "",
-  torrent_content_layout: "Original",
-  listen_port: 51413,
-}
-
-// The catalog view that GET /instances/{id}/preferences returns for PREFERENCES.
+// The catalog view that GET /instances/{id}/preferences returns.
 export const PREFERENCE_VIEW: PreferenceField[] = [
   { key: "torrent_content_layout", value: "Original", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["Original", "Subfolder", "NoSubfolder"] },
   { key: "auto_tmm_enabled", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
@@ -565,6 +550,7 @@ export const CAPABILITIES: InstanceCapabilities = {
   subcategoriesAlwaysEnabled: false,
   supportsTorrentTmpPath: true,
   supportsPathAutocomplete: false,
+  supportsTestEmail: false,
   supportsFreeSpacePathSource: false,
   supportsSetRSSFeedURL: false,
   supportsShareLimitsAction: true,
@@ -875,7 +861,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         categories: primary ? { ...primary.categories } : {},
         tags: primary ? [...primary.tags].sort() : [],
         serverState: primary ? { ...primary.serverState } : undefined,
-        preferences: PREFERENCES as AppPreferences,
         useSubcategories: true,
         trackerHealthSupported: true,
         cacheMetadata: { source: "fresh", age: 0, isStale: false },

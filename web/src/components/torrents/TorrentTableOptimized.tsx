@@ -247,9 +247,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
-  const preferenceOptions = { fetchIfMissing: false, enabled: instanceId > 0 }
-  const instanceMaxRatio = useGlobalMaxRatio(instanceId, preferenceOptions)
-  const listenPort = useListenPort(instanceId, preferenceOptions)
+  const instanceMaxRatio = useGlobalMaxRatio(instanceId)
+  const listenPort = useListenPort(instanceId)
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
@@ -572,7 +571,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     capabilitySupport: capabilities?.supportsTrackerHealth,
     responseSupport: trackerHealthSupported,
   })
-  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData, preferenceOptions)
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories

@@ -694,6 +694,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
+					r.Post("/preferences/test-email", preferencesHandler.SendTestEmail)
 
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)

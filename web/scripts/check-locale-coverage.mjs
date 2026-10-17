@@ -44,7 +44,7 @@ const passthroughTerms = new Set([
   "OpenID Connect", "OIDC", "OpenID",
   "DHT", "PEX", "UPnP", "NAT-PMP", "RSS", "SSE", "PWA",
   "TMM", "AutoTMM", "IPv4", "IPv6", "TCP", "UDP", "UTP",
-  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS5",
+  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS5", "SMTP", "SMTPS", "STARTTLS",
   "API", "JSON", "CSV", "URL", "IMDb", "TVDb",
   "Torznab", "Gazelle", "OPS", "RED",
   "FLAC", "MP3", "MKV", "REPACK", "PROPER",

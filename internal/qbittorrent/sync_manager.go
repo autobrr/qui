@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -260,9 +259,7 @@ type InstanceError struct {
 }
 
 // TorrentResponse contains a page of torrent rows plus sidebar, instance, and
-// qBittorrent metadata for the same view. Preferences use a tri-state JSON
-// contract: omitted means leave any existing frontend cache unchanged, a value
-// replaces the cache, and explicit null clears stale cached preferences.
+// qBittorrent metadata for the same view.
 type TorrentResponse struct {
 	Torrents              []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -283,36 +280,6 @@ type TorrentResponse struct {
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
-	// AppPreferences is pre-marshaled, so this type needs no MarshalJSON of its
-	// own. It must stay last: that is where the marshaler it replaced put the key.
-	AppPreferences json.RawMessage `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
-}
-
-// torrentResponseAppPreferences resolves the tri-state preferences field for a
-// torrent response, already rendered to JSON: a nil result omits it, "null"
-// clears the stale frontend cache, and a value replaces it. A fresh fetch
-// failure with no cached preferences becomes the explicit null; cache-only
-// responses omit the field when no cached value exists.
-func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (json.RawMessage, error) {
-	if client == nil {
-		return nil, nil
-	}
-
-	if skipFreshData {
-		return client.cachedAppPreferencesJSON()
-	}
-
-	if _, err := client.GetAppPreferences(ctx); err != nil {
-		// GetAppPreferences serves stale preferences on a failed refresh, so an
-		// error means nothing is cached at all.
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-		return json.RawMessage("null"), nil
-	}
-
-	return client.cachedAppPreferencesJSON()
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -1814,7 +1781,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
-	var preferencesJSON json.RawMessage
 
 	if syncManager != nil {
 		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
@@ -1833,18 +1799,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		} else {
 			appInfo = info
 		}
-
-		preferencesJSON, err = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
-		if err != nil {
-			// Preferences are cosmetic, so a marshal failure must not blank the
-			// torrent table and turn every stream frame into an error. Omit the
-			// field and keep the list, the same way the app info fetch above does.
-			log.Error().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to marshal qBittorrent app preferences for torrent stream")
-			preferencesJSON = nil
-		}
 	}
 
 	response := &TorrentResponse{
@@ -1857,7 +1811,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
 		AppInfo:                appInfo,     // Include application info for frontend consumers
-		AppPreferences:         preferencesJSON,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -6052,6 +6005,21 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")
+
+	return nil
+}
+
+// SendTestEmail asks qBittorrent to send a test email with its saved email notification settings.
+// A nil error means only that qBittorrent queued the email.
+func (sm *SyncManager) SendTestEmail(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SendTestEmailCtx(ctx); err != nil {
+		return fmt.Errorf("failed to send test email: %w", err)
+	}
 
 	return nil
 }

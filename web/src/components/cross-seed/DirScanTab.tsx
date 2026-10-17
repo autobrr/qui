@@ -851,7 +851,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   const metadataQueries = useQueries({
     queries: instanceIds.map((instanceId) => ({
-      // Not the shared instance-metadata key: an entry without preferences there would hide them from useInstancePreferences.
       queryKey: ["dir-scan-instance-metadata", instanceId],
       queryFn: async () => {
         const [categories, tags] = await Promise.all([

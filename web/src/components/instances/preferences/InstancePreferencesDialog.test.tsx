@@ -51,6 +51,10 @@ afterEach(() => {
 })
 
 const view: PreferenceField[] = [
+  { key: "file_log_enabled", value: true, tab: "behavior", section: "logFile", control: "switch" },
+  { key: "file_log_backup_enabled", value: false, tab: "behavior", section: "logFile", control: "switch", dependsOn: "file_log_enabled" },
+  { key: "file_log_max_size", value: 65, tab: "behavior", section: "logFile", control: "number", wireUnit: "KiB", displayUnit: "KiB", dependsOn: "file_log_backup_enabled" },
+  { key: "file_log_age_type", value: 1, tab: "behavior", section: "logFile", control: "select", optionSource: "fixed", options: [0, 1, 2] },
   { key: "save_path", value: "/data", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
   { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
   { key: "up_limit", value: 2048, tab: "speed", section: "globalRateLimits", control: "number", wireUnit: "B/s", displayUnit: "KiB/s" },
@@ -58,18 +62,59 @@ const view: PreferenceField[] = [
   { key: "dht", value: true, tab: "bittorrent", section: "privacy", control: "switch" },
   { key: "max_ratio_enabled", value: false, tab: "bittorrent", section: "seedingLimits", control: "switch" },
   { key: "max_ratio", value: 2, tab: "bittorrent", section: "seedingLimits", control: "number", dependsOn: "max_ratio_enabled" },
-  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true, reason: "pending BitTorrent PR" },
+  { key: "max_inactive_seeding_time_enabled", value: false, tab: "bittorrent", section: "seedingLimits", control: "switch" },
+  { key: "max_inactive_seeding_time", value: -1, tab: "bittorrent", section: "seedingLimits", control: "number", wireUnit: "min", displayUnit: "min", dependsOn: "max_inactive_seeding_time_enabled" },
+  { key: "max_ratio_act", value: 3, tab: "bittorrent", section: "seedingLimits", control: "select", optionSource: "fixed", options: [0, 1, 3, 2] },
+  { key: "add_trackers_url_list", value: "udp://tracker.example.invalid:1337/announce", tab: "bittorrent", section: "autoAddTrackersFromUrl", control: "list", readOnly: true, reason: "qBittorrent fetches the list from the URL" },
   { key: "rss_processing_enabled", value: true, tab: "rss", section: "reader", control: "switch" },
   { key: "rss_refresh_interval", value: 30, tab: "rss", section: "reader", control: "number", wireUnit: "min", displayUnit: "min", dependsOn: "rss_processing_enabled" },
+  { key: "rss_fetch_delay", value: 2, tab: "rss", section: "reader", control: "number", wireUnit: "s", displayUnit: "s", dependsOn: "rss_processing_enabled" },
   { key: "rss_max_articles_per_feed", value: 50, tab: "rss", section: "reader", control: "number", dependsOn: "rss_processing_enabled" },
   { key: "rss_auto_downloading_enabled", value: false, tab: "rss", section: "autoDownloader", control: "switch" },
   { key: "rss_download_repack_proper_episodes", value: true, tab: "rss", section: "smartEpisodeFilter", control: "switch" },
+  { key: "rss_smart_episode_filters", value: "s(\\d+)e(\\d+)\n(\\d+)x(\\d+)", tab: "rss", section: "smartEpisodeFilter", control: "list" },
+  { key: "current_network_interface", value: "", tab: "advanced", section: "qbittorrent", control: "text", readOnly: true, reason: "pending network binding PR" },
   { key: "disk_queue_size", value: 1048576, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
 
-function serveView(fields: PreferenceField[] = view) {
-  server.use(http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)))
+function serveView(fields: PreferenceField[] = view, { supportsPathAutocomplete = false, supportsTestEmail = false } = {}) {
+  server.use(
+    http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)),
+    http.get("*/api/instances/1/capabilities", () => HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete, supportsTestEmail }))
+  )
+}
+
+// The email notification section of qBittorrent 5.3, with email notification and authentication on.
+function emailView(enabled = true): PreferenceField[] {
+  return [
+    { key: "mail_notification_enabled", value: enabled, tab: "downloads", section: "emailNotification", control: "switch" },
+    { key: "mail_notification_smtp", value: "smtp.example.invalid:465", tab: "downloads", section: "emailNotification", control: "text", dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_encryption_type", value: "SMTPS", tab: "downloads", section: "emailNotification", control: "select", optionSource: "fixed", options: ["None", "STARTTLS", "SMTPS"], dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_auth_enabled", value: true, tab: "downloads", section: "emailNotification", control: "switch", dependsOn: "mail_notification_enabled" },
+    { key: "mail_notification_password", value: "secret", tab: "downloads", section: "emailNotification", control: "password", dependsOn: "mail_notification_auth_enabled" },
+  ]
+}
+
+// Counts the test email requests.
+function recordTestEmails() {
+  const sent = { count: 0 }
+  server.use(http.post("*/api/instances/1/preferences/test-email", () => {
+    sent.count++
+    return new HttpResponse(null, { status: 204 })
+  }))
+  return sent
+}
+
+// Answers each folder listing with the folders under /data, and records the folders that were listed.
+function serveFolders() {
+  const listed: string[] = []
+  server.use(http.get("*/api/instances/1/getDirectoryContent", ({ request }) => {
+    const dirPath = new URL(request.url).searchParams.get("dirPath") ?? ""
+    listed.push(dirPath)
+    return HttpResponse.json(dirPath === "/data/" ? ["/data/movies", "/data/music", "/data/tv"] : [])
+  }))
+  return listed
 }
 
 // Records the body of each save and answers with the view.
@@ -91,12 +136,12 @@ function save() {
   fireEvent.click(screen.getByRole("button", { name: "preferences.common.saveChanges" }))
 }
 
-function renderDialog(defaultTab?: string) {
+function renderDialog(defaultTab?: string, onOpenChange: (open: boolean) => void = () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const result = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <InstancePreferencesDialog open onOpenChange={() => {}} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
+        <InstancePreferencesDialog open onOpenChange={onOpenChange} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -130,6 +175,7 @@ describe("InstancePreferencesDialog", () => {
     await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
     expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual([
       "preferences.dialog.tabs.instance",
+      "preferences.dialog.tabs.behavior",
       "preferences.dialog.tabs.downloads",
       "preferences.dialog.tabs.connection",
       "preferences.dialog.tabs.speed",
@@ -162,14 +208,101 @@ describe("InstancePreferencesDialog", () => {
     expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
   })
 
-  it("shows a read-only field disabled, with its note", async () => {
+  it("shows the fetched trackers read-only, with the note of the field", async () => {
     serveView()
 
     renderDialog("bittorrent")
 
-    const field = await fieldFor("preferences.fields.addTrackersEnabled")
-    expect(field.disabled).toBe(true)
+    const fetched = await fieldFor("preferences.fields.addTrackersUrlList")
+    expect(fetched.value).toBe("udp://tracker.example.invalid:1337/announce")
+    expect(fetched.disabled).toBe(true)
+    expect(screen.getAllByText("preferences.fields.addTrackersUrlListNote")).toHaveLength(1)
+    expect(screen.queryByText("preferences.readOnlyNote")).toBeNull()
+  })
+
+  it("shows the general note for a read-only field without a note of its own", async () => {
+    serveView()
+
+    renderDialog("advanced")
+
+    expect((await fieldFor("preferences.connectionSettings.networkInterface")).disabled).toBe(true)
     expect(screen.getAllByText("preferences.readOnlyNote")).toHaveLength(1)
+  })
+
+  it("shows the log file in the Behavior tab, with the size in KiB behind two switches", async () => {
+    serveView()
+
+    renderDialog("behavior")
+
+    const maxSize = await fieldFor("preferences.fields.fileLogMaxSize")
+    expect(maxSize.value).toBe("65")
+    expect(maxSize.nextElementSibling?.textContent).toBe("KiB")
+    expect(maxSize.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.fields.fileLogBackupEnabled"))
+    expect(maxSize.disabled).toBe(false)
+    fireEvent.click(await fieldFor("preferences.fields.fileLogEnabled"))
+    expect(maxSize.disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.fileLogAgeType")).textContent).toBe("preferences.fields.fileLogAgeMonths")
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual(["preferences.sections.logFile"])
+  })
+
+  it("shows the inactive seeding limit in minutes and the action at the limit", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    expect(inactive.disabled).toBe(true)
+    expect(inactive.nextElementSibling?.textContent).toBe("preferences.units.minutes")
+    expect((await fieldFor("preferences.workflowDialog.shareLimitAction.label")).textContent).toBe("preferences.workflowDialog.shareLimitAction.removeWithContent")
+    fireEvent.click(await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled"))
+    fireEvent.change(inactive, { target: { value: "1440" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440 }])
+  })
+
+  it("fills an empty seeding limit with a starting value when its switch turns on", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    expect(inactive.value).toBe("")
+    fireEvent.click(await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled"))
+    expect(inactive.value).toBe("1440")
+    fireEvent.click(await fieldFor("preferences.seedingLimits.enableShareRatioLimit"))
+    expect((await fieldFor("preferences.seedingLimits.maxShareRatio")).value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440, max_ratio_enabled: true }])
+  })
+
+  it("sends no seeding limit when its switch turns on and off again", async () => {
+    const bodies = recordSaves()
+    serveView(view.map(field => field.key === "max_ratio_enabled" ? { ...field, value: true } : field))
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    const enabled = await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled")
+    fireEvent.click(enabled)
+    fireEvent.change(inactive, { target: { value: "60" } })
+    fireEvent.blur(inactive)
+    fireEvent.click(enabled)
+    expect(inactive.value).toBe("")
+    // A saved limit comes back when its switch turns on again.
+    const ratio = await fieldFor("preferences.seedingLimits.maxShareRatio")
+    const ratioEnabled = await fieldFor("preferences.seedingLimits.enableShareRatioLimit")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("")
+    fireEvent.click(ratioEnabled)
+    expect(ratio.value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([])
   })
 
   it("enables a dependent field only while its switch is on", async () => {
@@ -253,16 +386,31 @@ describe("InstancePreferencesDialog", () => {
     expect((await fieldFor("preferences.networkDiscovery.enableDht")).getAttribute("aria-checked")).toBe("true")
   })
 
-  it("shows the five RSS settings in the RSS tab", async () => {
+  it("shows the latest fetched trackers when the view refreshes", async () => {
+    serveView()
+    const { queryClient } = renderDialog("bittorrent")
+
+    await fieldFor("preferences.fields.addTrackersUrlList")
+    serveView(view.map(field => field.key === "add_trackers_url_list" ? { ...field, value: "udp://other.example.invalid:6969/announce" } : field))
+    await queryClient.refetchQueries({ queryKey: ["instance-preference-view", 1] })
+
+    expect((await fieldFor("preferences.fields.addTrackersUrlList")).value).toBe("udp://other.example.invalid:6969/announce")
+  })
+
+  it("shows the seven RSS settings in the RSS tab", async () => {
     serveView()
 
     renderDialog("rss")
 
     expect((await fieldFor("rss:warnings.enableRss")).getAttribute("aria-checked")).toBe("true")
     expect((await fieldFor("rss:settingsPopover.refreshInterval")).value).toBe("30")
+    const fetchDelay = await fieldFor("preferences.fields.rssFetchDelay")
+    expect(fetchDelay.value).toBe("2")
+    expect(fetchDelay.nextElementSibling?.textContent).toBe("preferences.advancedNetwork.unitSeconds")
     expect((await fieldFor("rss:settingsPopover.maxArticles")).value).toBe("50")
     expect((await fieldFor("rss:settingsPopover.autoDownload")).getAttribute("aria-checked")).toBe("false")
     expect((await fieldFor("rss:settingsPopover.downloadRepack")).getAttribute("aria-checked")).toBe("true")
+    expect((await fieldFor("preferences.fields.rssSmartEpisodeFilters")).value).toBe("s(\\d+)e(\\d+)\n(\\d+)x(\\d+)")
     expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
       "preferences.sections.rssReader",
       "preferences.sections.rssAutoDownloader",
@@ -303,6 +451,182 @@ describe("InstancePreferencesDialog", () => {
 
     await screen.findByRole("button", { name: "preferences.dialog.retry" })
     expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull()
+  })
+
+  it("suggests folders in a path field when qBittorrent can list them, and saves the chosen folder", async () => {
+    const bodies = recordSaves()
+    const listed = serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    renderDialog("downloads")
+
+    // The field becomes an autocomplete box when the capabilities arrive.
+    await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    const movies = await screen.findByRole("button", { name: "/data/movies" })
+    expect(screen.getByRole("button", { name: "/data/music" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "/data/tv" })).toBeNull()
+    fireEvent.click(movies)
+    expect(savePath.value).toBe("/data/movies/")
+    expect(listed).toContain("/data/")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_path: "/data/movies/" }])
+  })
+
+  it("closes only the folder suggestions on the first Escape, and the dialog on the second", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    const onOpenChange = vi.fn()
+    renderDialog("downloads", onOpenChange)
+
+    await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    await screen.findByRole("button", { name: "/data/movies" })
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("button", { name: "/data/movies" })).toBeNull())
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("keeps the same folder input when the capabilities arrive after the user starts typing", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    let answerCapabilities = () => {}
+    const capabilitiesSent = new Promise<void>(resolve => { answerCapabilities = resolve })
+    server.use(http.get("*/api/instances/1/capabilities", async () => {
+      await capabilitiesSent
+      return HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete: true })
+    }))
+    renderDialog("downloads")
+
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    savePath.focus()
+    fireEvent.change(savePath, { target: { value: "/data" } })
+    answerCapabilities()
+
+    await waitFor(() => expect(savePath.getAttribute("autocomplete")).toBe("off"))
+    expect(await fieldFor("preferences.fileManagement.defaultSavePath")).toBe(savePath)
+    expect(document.activeElement).toBe(savePath)
+  })
+
+  it("suggests no folders for a file path, also when qBittorrent can list folders", async () => {
+    const listed = serveFolders()
+    serveView([
+      { key: "ip_filter_enabled", value: true, tab: "connection", section: "ipFiltering", control: "switch" },
+      { key: "ip_filter_path", value: "", tab: "connection", section: "ipFiltering", control: "path", dependsOn: "ip_filter_enabled" },
+    ], { supportsPathAutocomplete: true })
+    const { queryClient } = renderDialog("connection")
+
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    const filterPath = await fieldFor("preferences.connectionSettings.ipFilterPath")
+    expect(filterPath.getAttribute("autocomplete")).toBeNull()
+    fireEvent.change(filterPath, { target: { value: "/data/m" } })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(listed).toEqual([])
+  })
+
+  it("shows a plain text box for a path when qBittorrent cannot list folders", async () => {
+    const bodies = recordSaves()
+    const listed = serveFolders()
+    serveView()
+    const { queryClient } = renderDialog("downloads")
+
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(listed).toEqual([])
+    expect(screen.queryByRole("button", { name: "/data/movies" })).toBeNull()
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_path: "/data/m" }])
+  })
+
+  it("shows the stop condition and the deletion of .torrent files, and the 5.3 backup folders", async () => {
+    const bodies = recordSaves()
+    serveView([
+      { key: "torrent_stop_condition", value: "None", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["None", "MetadataReceived", "FilesChecked"] },
+      { key: "auto_delete_mode", value: 2, tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: [0, 1, 2] },
+      { key: "merge_trackers", value: false, tab: "downloads", section: "whenAddingDuplicate", control: "switch" },
+      { key: "torrent_files_backup_enabled", value: false, tab: "downloads", section: "torrentFileBackup", control: "switch" },
+      { key: "torrent_files_backup_dir", value: "backup", tab: "downloads", section: "torrentFileBackup", control: "path", optionSource: "pathAutocomplete", dependsOn: "torrent_files_backup_enabled" },
+      { key: "preallocate_all", value: false, tab: "downloads", section: "files", control: "switch" },
+    ])
+    renderDialog("downloads")
+
+    expect((await fieldFor("preferences.fields.torrentStopCondition")).textContent).toBe("preferences.fields.torrentStopConditionNone")
+    expect((await fieldFor("preferences.fields.autoDeleteMode")).textContent).toBe("preferences.fields.autoDeleteModeAlways")
+    const backupDir = await fieldFor("preferences.fields.torrentFilesBackupDir")
+    expect(backupDir.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.fields.torrentFilesBackupEnabled"))
+    fireEvent.change(backupDir, { target: { value: "/backup" } })
+    fireEvent.click(await fieldFor("preferences.fields.preallocateAll"))
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
+      "preferences.sections.whenAdding",
+      "preferences.sections.whenAddingDuplicate",
+      "preferences.sections.torrentFileBackup",
+    ])
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ torrent_files_backup_enabled: true, torrent_files_backup_dir: "/backup", preallocate_all: true }])
+  })
+
+  it("shows the email settings with a password box, and sends a test email", async () => {
+    const bodies = recordSaves()
+    const sent = recordTestEmails()
+    serveView(emailView(), { supportsTestEmail: true })
+    renderDialog("downloads")
+
+    expect((await fieldFor("preferences.fields.mailNotificationEncryptionType")).textContent).toBe("preferences.fields.mailNotificationEncryptionSmtps")
+    const password = await fieldFor("preferences.fields.mailNotificationPassword")
+    expect(password.type).toBe("password")
+    expect(password.disabled).toBe(false)
+    fireEvent.change(password, { target: { value: "hunter2" } })
+
+    fireEvent.click(await screen.findByRole("button", { name: "preferences.fields.sendTestEmail" }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("preferences.toast.testEmailQueued", expect.anything()))
+    expect(sent.count).toBe(1)
+
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("preferences.toast.saved"))
+    expect(bodies).toEqual([{ mail_notification_password: "hunter2" }])
+  })
+
+  it("shows no test email button when qBittorrent cannot send one", async () => {
+    serveView(emailView(), { supportsTestEmail: false })
+    const { queryClient } = renderDialog("downloads")
+
+    await fieldFor("preferences.fields.mailNotificationPassword")
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    expect(screen.queryByRole("button", { name: "preferences.fields.sendTestEmail" })).toBeNull()
+  })
+
+  it("keeps the test email button off until email notification is saved on", async () => {
+    const bodies = recordSaves()
+    const sent = recordTestEmails()
+    serveView(emailView(false), { supportsTestEmail: true })
+    renderDialog("downloads")
+
+    const button = await screen.findByRole("button", { name: "preferences.fields.sendTestEmail" }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    // qBittorrent sends nothing until it has the switch on.
+    fireEvent.click(await fieldFor("preferences.fields.mailNotificationEnabled"))
+    expect(button.disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.mailNotificationPassword")).disabled).toBe(false)
+
+    save()
+    await waitFor(() => expect(button.disabled).toBe(false))
+    expect(bodies).toEqual([{ mail_notification_enabled: true }])
+    fireEvent.click(button)
+    await waitFor(() => expect(sent.count).toBe(1))
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {

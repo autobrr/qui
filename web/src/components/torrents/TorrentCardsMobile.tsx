@@ -1324,7 +1324,7 @@ export function TorrentCardsMobile({
     responseSupport: trackerHealthSupported,
   })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
-  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData, { fetchIfMissing: false })
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled

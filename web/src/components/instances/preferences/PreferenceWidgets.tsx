@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useIncognitoMode } from "@/lib/incognito"
 import { BYTES_PER_UNIT, unitLabel, type ByteUnit } from "@/lib/unit-format"
+import { cn } from "@/lib/utils"
 import type { PreferenceField } from "@/types"
 import { useState, type ComponentType } from "react"
 import { useTranslation } from "react-i18next"
@@ -20,6 +23,7 @@ import type { FieldLabels } from "./labels"
 
 export interface WidgetProps {
   id: string
+  instanceId: number
   field: PreferenceField
   labels: FieldLabels
   value: unknown
@@ -115,20 +119,91 @@ function NumberWidget({ id, field, labels, value, onChange, disabled }: WidgetPr
 }
 
 // Incognito mode blurs text, paths, and lists: they can hold paths, addresses, and commands.
-function TextWidget({ id, labels, value, onChange, disabled }: WidgetProps) {
+// A password box uses new-password, so that the browser does not fill in the password of qui.
+function TextWidget({ id, field, labels, value, onChange, disabled }: WidgetProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
+  const isPassword = field.control === "password"
   return (
     <div className="space-y-2">
       <FieldLabel id={id} labels={labels} />
       <Input
         id={id}
+        type={isPassword ? "password" : undefined}
+        autoComplete={isPassword ? "new-password" : undefined}
         value={String(value ?? "")}
         disabled={disabled}
         placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}
         onChange={(e) => onChange(e.target.value)}
         className={incognitoMode ? "blur-sm select-none" : undefined}
       />
+    </div>
+  )
+}
+
+// qBittorrent 5.0 and later can list folders, so a folder field suggests them as the user types.
+// A file field, such as the IP filter, has no option source and gets no suggestions. The same
+// input stays mounted when the capabilities arrive, so a user who types early keeps the focus.
+function PathWidget({ id, instanceId, field, labels, value, onChange, disabled }: WidgetProps) {
+  const { t } = useTranslation("instances")
+  const [incognitoMode] = useIncognitoMode()
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const suggestsFolders = capabilities?.supportsPathAutocomplete && field.optionSource === "pathAutocomplete"
+  const {
+    suggestions,
+    handleInputChange,
+    handleSelect,
+    handleKeyDown,
+    handleBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef,
+    listRef,
+  } = usePathAutocomplete(onChange, instanceId)
+
+  return (
+    <div className="space-y-2">
+      <FieldLabel id={id} labels={labels} />
+      <Input
+        ref={inputRef}
+        id={id}
+        autoComplete={suggestsFolders ? "off" : undefined}
+        spellCheck={false}
+        value={String(value ?? "")}
+        disabled={disabled}
+        placeholder={labels.placeholderKey ? t(labels.placeholderKey) : undefined}
+        onChange={(e) => {
+          onChange(e.target.value)
+          if (suggestsFolders) handleInputChange(e.target.value)
+        }}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        className={incognitoMode ? "blur-sm select-none" : undefined}
+      />
+      {showSuggestions && (
+        <div className="relative">
+          <div ref={listRef} className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md">
+            <div className="max-h-55 overflow-y-auto py-1">
+              {suggestions.map((entry, index) => (
+                <button
+                  key={entry}
+                  type="button"
+                  title={incognitoMode ? undefined : entry}
+                  className={cn(
+                    "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                    highlightedIndex === index ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
+                    incognitoMode && "blur-sm"
+                  )}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSelect(entry)}
+                >
+                  <span className="block truncate text-left">{entry}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -303,7 +378,8 @@ export const preferenceWidgets: Record<PreferenceField["control"], ComponentType
   switch: SwitchWidget,
   number: NumberWidget,
   text: TextWidget,
-  path: TextWidget,
+  password: TextWidget,
+  path: PathWidget,
   select: SelectWidget,
   list: ListWidget,
   watchFolders: WatchFoldersWidget,

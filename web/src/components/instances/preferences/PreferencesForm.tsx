@@ -5,7 +5,9 @@
 
 import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/ui/tabs"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstancePreferences, valuesOf } from "@/hooks/useInstancePreferences"
+import { api } from "@/lib/api"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import type { AppPreferences, PreferenceField } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
@@ -17,8 +19,6 @@ import { preferenceTabLabels } from "./labels"
 import { labelsOf, preferenceTabsOf, preferenceViewKey } from "./preferenceView"
 import { PreferencesFormShell } from "./PreferencesFormShell"
 import { preferenceWidgets } from "./PreferenceWidgets"
-
-const valuesOf = (fields: PreferenceField[]) => Object.fromEntries(fields.map(field => [field.key, field.value]))
 
 const WIDE_CONTROLS = new Set<PreferenceField["control"]>(["switch", "list", "watchFolders"])
 
@@ -32,16 +32,33 @@ interface PreferencesFormProps {
 export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
-  const { updatePreferences, isUpdating } = useInstancePreferences(instanceId, { fetchIfMissing: false })
+  // The dialog reads the view itself, so this hook only saves.
+  const { updatePreferences, isUpdating } = useInstancePreferences(instanceId, { enabled: false })
   // The values that qBittorrent has. They do not follow a refresh of the view, so that a
   // refresh does not reset open edits.
   const [saved, setSaved] = useState(() => valuesOf(fields))
   const [values, setValues] = useState(saved)
 
-  const setValue = useCallback((key: string, value: unknown) => setValues(previous => ({ ...previous, [key]: value })), [])
+  const setValue = useCallback((key: string, value: unknown) => setValues(previous => {
+    const next = { ...previous, [key]: value }
+    // qBittorrent turns a seeding limit on when it gets a limit without the switch. So a switch
+    // that turns off empties the box, and a switch that turns on fills an empty box with the
+    // saved limit or the starting value of the qBittorrent WebUI.
+    for (const field of fields) {
+      const labels = field.dependsOn === key ? labelsOf(field) : undefined
+      if (labels?.whenEnabled === undefined) continue
+      if (value === false) {
+        next[field.key] = labels.unlimited
+      } else if (next[field.key] === labels.unlimited) {
+        next[field.key] = saved[field.key] !== labels.unlimited ? saved[field.key] : labels.whenEnabled
+      }
+    }
+    return next
+  }), [fields, saved])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
-  const valueOf = (field: PreferenceField) => field.key in values ? values[field.key] : field.value
+  // A read-only field has no edits to keep, so it shows the latest view.
+  const valueOf = (field: PreferenceField) => !field.readOnly && field.key in values ? values[field.key] : field.value
   const isEnabled = (field: PreferenceField): boolean => {
     const parent = field.dependsOn ? byKey.get(field.dependsOn) : undefined
     return !parent || (valueOf(parent) === true && isEnabled(parent))
@@ -107,6 +124,7 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                     {sectionFields.map(field => (
                       <PreferenceRow
                         key={field.key}
+                        instanceId={instanceId}
                         field={field}
                         value={valueOf(field)}
                         disabled={field.readOnly === true || !isEnabled(field)}
@@ -114,6 +132,9 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                       />
                     ))}
                   </div>
+                  {section === "emailNotification" && (
+                    <SendTestEmailButton instanceId={instanceId} disabled={saved.mail_notification_enabled !== true} />
+                  )}
                   {section === "runExternalProgram" && (
                     <AutorunPlaceholders supportsTorrentAdded={byKey.has("autorun_on_torrent_added_enabled")} />
                   )}
@@ -128,6 +149,7 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
 }
 
 interface PreferenceRowProps {
+  instanceId: number
   field: PreferenceField
   value: unknown
   disabled: boolean
@@ -135,23 +157,54 @@ interface PreferenceRowProps {
 }
 
 // Memoized, so that a keystroke re-renders only the field that changed and the fields that depend on it.
-const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onChange }: PreferenceRowProps) {
+const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, disabled, onChange }: PreferenceRowProps) {
   const { t } = useTranslation("instances")
   const Widget = preferenceWidgets[field.control]
+  const labels = labelsOf(field)!
   return (
     <div className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
       <Widget
         id={`preference-${field.key}`}
+        instanceId={instanceId}
         field={field}
-        labels={labelsOf(field)!}
+        labels={labels}
         value={value}
         onChange={next => onChange(field.key, next)}
         disabled={disabled}
       />
-      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t("preferences.readOnlyNote")}</p>}
+      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey ?? "preferences.readOnlyNote")}</p>}
     </div>
   )
 })
+
+// qBittorrent sends the test email with its saved settings, and sends nothing while email
+// notification is off. So the button follows the saved switch, not the switch in the form.
+function SendTestEmailButton({ instanceId, disabled }: { instanceId: number; disabled: boolean }) {
+  const { t } = useTranslation("instances")
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const [isSending, setIsSending] = useState(false)
+  if (!capabilities?.supportsTestEmail) return null
+
+  const send = async () => {
+    setIsSending(true)
+    try {
+      await api.sendTestEmail(instanceId)
+      toast.success(t("preferences.toast.testEmailQueued"), { description: t("preferences.toast.testEmailQueuedDescription") })
+    } catch (error) {
+      toast.error(t("preferences.toast.testEmailFailed"), {
+        description: error instanceof Error ? formatErrorMessage(error.message) : undefined,
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" disabled={disabled || isSending} onClick={send}>
+      {t("preferences.fields.sendTestEmail")}
+    </Button>
+  )
+}
 
 const LEGACY_AUTORUN_PLACEHOLDERS = [
   { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },

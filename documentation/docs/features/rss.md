@@ -104,8 +104,10 @@ The gear button next to the instance selector opens the settings dialog of the i
 |---------|---------|-------------|
 | RSS reader | Enable RSS | Turns RSS feed fetching on or off |
 | RSS reader | Refresh interval | Minutes between automatic feed refreshes |
+| RSS reader | Same host request delay | Seconds between two requests to the same host |
 | RSS reader | Max articles per feed | Number of articles that qBittorrent keeps for each feed |
 | RSS torrent auto downloader | Auto-Download | Turns the auto-download rules on or off |
 | RSS smart episode filter | Download REPACK/PROPER | Also downloads the REPACK and PROPER versions of matched episodes |
+| RSS smart episode filter | Episode filters | Regular expressions, one per line, that find the season and the episode number in an article title |
 
-You can change the refresh interval and the article limit only while RSS is on. These values are qBittorrent preferences. A change applies to the whole instance. [Instance settings](./instance-settings.md#rss) describes the other tabs of the dialog.
+You can change the refresh interval, the request delay, and the article limit only while RSS is on. These values are qBittorrent preferences. A change applies to the whole instance. [Instance settings](./instance-settings.md#rss) describes the other tabs of the dialog.
