@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"code.dny.dev/ssrf"
 	"github.com/stretchr/testify/require"
 )
 
@@ -254,21 +255,17 @@ func TestService_GetIcon_CachedIconIssuesNoRequest(t *testing.T) {
 	require.Equal(t, int32(0), transport.calls.Load())
 }
 
-func TestRejectNonPublic(t *testing.T) {
+func TestPublicOnly(t *testing.T) {
 	t.Parallel()
 
-	blocked := []string{
-		"127.0.0.1", "10.0.0.5", "172.16.0.1", "192.168.1.1", "169.254.169.254",
-		"100.64.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1",
-		"::1", "fe80::1", "fc00::1", "::ffff:10.0.0.1", "::ffff:127.0.0.1",
+	for _, addr := range []string{"10.0.0.5:443", "169.254.169.254:80", "100.64.0.1:443", "198.18.0.10:443"} {
+		require.ErrorIs(t, publicOnly.Safe("tcp4", addr, nil), ssrf.ErrProhibitedIP, addr)
 	}
-	for _, ip := range blocked {
-		require.ErrorIs(t, rejectNonPublic("tcp", net.JoinHostPort(ip, "443"), nil), errNonPublicAddress, ip)
-	}
+	require.ErrorIs(t, publicOnly.Safe("tcp6", "[::1]:443", nil), ssrf.ErrProhibitedIP)
 
-	for _, ip := range []string{"1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"} {
-		require.NoError(t, rejectNonPublic("tcp", net.JoinHostPort(ip, "443"), nil), ip)
-	}
+	// qui allows any port and NAT64.
+	require.NoError(t, publicOnly.Safe("tcp4", "1.1.1.1:8443", nil))
+	require.NoError(t, publicOnly.Safe("tcp6", "[64:ff9b::101:101]:443", nil))
 }
 
 func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
@@ -283,7 +280,7 @@ func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = svc.fetchIconBytes(t.Context(), srv.URL+"/favicon.ico")
-	require.ErrorIs(t, err, errNonPublicAddress)
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
 	require.Zero(t, hits.Load())
 }
 
@@ -305,12 +302,11 @@ func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
 	svc, err := NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
-	// 192.0.2.0/24 is a documentation range that counts as public. The proxy
-	// answers, so qui never dials it.
-	data, _, err := svc.fetchIconBytes(t.Context(), "http://192.0.2.10/favicon.ico")
+	// The proxy answers, so qui never dials 1.1.1.1.
+	data, _, err := svc.fetchIconBytes(t.Context(), "http://1.1.1.1:8080/favicon.ico")
 	require.NoError(t, err)
 	require.Equal(t, icon, data)
-	require.Equal(t, "192.0.2.10", *proxiedHost.Load())
+	require.Equal(t, "1.1.1.1:8080", *proxiedHost.Load())
 }
 
 func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
@@ -329,7 +325,7 @@ func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
 	// Go sends a loopback target direct, so this request does not go through
 	// the proxy. It must not reach the proxy as an ordinary request either.
 	_, _, err = svc.fetchIconBytes(t.Context(), proxy.URL+"/admin")
-	require.ErrorIs(t, err, errNonPublicAddress)
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
 	require.Zero(t, hits.Load())
 }
 
@@ -347,7 +343,7 @@ func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = svc.fetchIconBytes(t.Context(), "http://169.254.169.254/latest/meta-data/")
-	require.ErrorIs(t, err, errNonPublicAddress)
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
 	require.Zero(t, hits.Load())
 }
 
@@ -355,6 +351,7 @@ func TestCheckPublicHost_ResolvesNames(t *testing.T) {
 	t.Parallel()
 
 	// localhost resolves from the hosts file, so this sends no DNS query.
-	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), errNonPublicAddress)
-	require.NoError(t, checkPublicHost(t.Context(), "192.0.2.10"))
+	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), ssrf.ErrProhibitedIP)
+	// The resolver returns this literal as ::ffff:1.1.1.1.
+	require.NoError(t, checkPublicHost(t.Context(), "1.1.1.1"))
 }

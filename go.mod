@@ -3,6 +3,7 @@ module github.com/autobrr/qui
 go 1.27.0
 
 require (
+	code.dny.dev/ssrf v0.3.0
 	fyne.io/systray v1.12.2
 	github.com/CAFxX/httpcompression v0.0.9
 	github.com/Masterminds/semver/v3 v3.5.0

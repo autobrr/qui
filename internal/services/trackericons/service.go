@@ -21,17 +21,15 @@ import (
 	"maps"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
+	"code.dny.dev/ssrf"
 	// Same again for .ico, which browsers still serve as a favicon.
 	_ "github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
@@ -151,124 +149,69 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	return svc, nil
 }
 
-// errNonPublicAddress is returned when an icon fetch would connect to an
-// address that is not on the public internet.
-var errNonPublicAddress = errors.New("tracker icon fetch blocked: address is not public")
+// publicOnly refuses the addresses that IANA reserves for special use. Trackers
+// serve their sites on any port, so it allows every port. It allows NAT64, so
+// IPv6-only hosts with DNS64 can still reach IPv4 trackers.
+var publicOnly = ssrf.New(
+	ssrf.WithAnyPort(),
+	ssrf.WithAllowedV6Prefixes(ssrf.IPv6NAT64Prefix),
+)
 
-// sharedAddressSpace is 100.64.0.0/10 (carrier-grade NAT and Tailscale).
-// netip does not count it as private, but it is not on the public internet.
-var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // newPublicOnlyTransport returns a transport that connects only to public
 // addresses. The torrent author chooses the tracker host, and the tracker page
 // chooses the icon URLs and redirects, so without this check a torrent could
 // make qui send requests into the local network.
 //
-// The proxy from HTTP_PROXY or HTTPS_PROXY is the one exception: the operator
-// configured it, and it is often on the local network. The proxy connects to
-// the target, so before qui sends a request through it, qui resolves the
-// target host and refuses a private address. A DNS server that gives qui and
-// the proxy different answers can still get past this check.
-func newPublicOnlyTransport() *http.Transport {
-	proxyConfig := httpproxy.FromEnvironment()
-	proxyFunc := proxyConfig.ProxyFunc()
-	proxyAddrs := proxyDialAddrs(proxyConfig.HTTPProxy, proxyConfig.HTTPSProxy)
+// A request that goes through HTTP_PROXY or HTTPS_PROXY uses a transport that
+// dials only the proxy, which the operator configured and which is often on
+// the local network. The proxy connects to the target, so qui first resolves
+// the target host and refuses a private address. A DNS server that gives qui
+// and the proxy different answers can still get past this check. Every other
+// request uses the checked dialer, also when it targets the proxy address.
+func newPublicOnlyTransport() http.RoundTripper {
+	proxyFunc := httpproxy.FromEnvironment().ProxyFunc()
 
-	direct := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	checked := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: rejectNonPublic}
+	direct := http.DefaultTransport.(*http.Transport).Clone()
+	direct.Proxy = nil
+	direct.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: publicOnly.Safe}).DialContext
 
-	isProxyAddr := func(addr string) bool {
-		return slices.ContainsFunc(proxyAddrs, func(p string) bool { return strings.EqualFold(p, addr) })
-	}
+	proxied := http.DefaultTransport.(*http.Transport).Clone()
+	proxied.Proxy = func(r *http.Request) (*url.URL, error) { return proxyFunc(r.URL) }
 
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.Proxy = func(r *http.Request) (*url.URL, error) {
+	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		proxyURL, err := proxyFunc(r.URL)
 		if err != nil {
 			return nil, err
 		}
 		if proxyURL == nil {
-			// A direct request dials the target itself. DialContext does not
-			// check a proxy address, so a direct request must not target one.
-			// Go sends a loopback target direct, also when a proxy is set.
-			if target := proxyDialAddrs(r.URL.String()); len(target) == 1 && isProxyAddr(target[0]) {
-				return nil, fmt.Errorf("%w: %s", errNonPublicAddress, target[0])
-			}
-			return nil, nil
+			return direct.RoundTrip(r)
 		}
 		if err := checkPublicHost(r.Context(), r.URL.Hostname()); err != nil {
 			return nil, err
 		}
-		return proxyURL, nil
-	}
-	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if isProxyAddr(addr) {
-			return direct.DialContext(ctx, network, addr)
-		}
-		return checked.DialContext(ctx, network, addr)
-	}
-	return t
-}
-
-// rejectNonPublic runs after DNS resolution, so address is always an IP. This
-// also stops a public host name that resolves to a private IP.
-func rejectNonPublic(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	return checkPublicHost(context.Background(), host)
+		return proxied.RoundTrip(r)
+	})
 }
 
 // checkPublicHost resolves host and refuses it if any of its addresses is not
 // public. A host that does not resolve is refused too.
 func checkPublicHost(ctx context.Context, host string) error {
-	if ip, err := netip.ParseAddr(host); err == nil {
-		return checkPublicIP(ip)
-	}
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return err
 	}
 	for _, ip := range ips {
-		if err := checkPublicIP(ip); err != nil {
+		// LookupNetIP returns an IPv4 literal or hosts-file entry as
+		// ::ffff:a.b.c.d, and the guard refuses every IPv4-mapped address.
+		if err := publicOnly.SafeAddr(ip.Unmap()); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func checkPublicIP(ip netip.Addr) error {
-	ip = ip.Unmap()
-	if !ip.IsGlobalUnicast() || ip.IsPrivate() || sharedAddressSpace.Contains(ip) {
-		return fmt.Errorf("%w: %s", errNonPublicAddress, ip)
-	}
-	return nil
-}
-
-// proxyDialAddrs returns the host:port that the transport dials for each proxy
-// URL. A proxy value without a scheme is an http proxy, as in net/http.
-func proxyDialAddrs(proxies ...string) []string {
-	defaultPorts := map[string]string{"http": "80", "https": "443", "socks5": "1080", "socks5h": "1080"}
-	var addrs []string
-	for _, raw := range proxies {
-		if raw == "" {
-			continue
-		}
-		if !strings.Contains(raw, "://") {
-			raw = "http://" + raw
-		}
-		u, err := url.Parse(raw)
-		if err != nil || u.Hostname() == "" {
-			continue
-		}
-		port := u.Port()
-		if port == "" {
-			port = defaultPorts[u.Scheme]
-		}
-		addrs = append(addrs, net.JoinHostPort(u.Hostname(), port))
-	}
-	return addrs
 }
 
 // SetActivityPublisher wires the qui server-event hub so newly cached tracker
