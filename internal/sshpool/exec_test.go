@@ -150,6 +150,7 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 		{"an existing instance moves up", sshtest.ExecGNU, models.SSHTierSFTP, models.SSHTierExec},
 		{"a key that lost its shell moves down", sshtest.ExecSFTPOnly, models.SSHTierExec, models.SSHTierSFTP},
 		{"a bsd userland moves down", sshtest.ExecBSD, models.SSHTierExec, models.SSHTierSFTP},
+		{"a non-posix login shell moves down", sshtest.ExecNonPOSIX, models.SSHTierExec, models.SSHTierSFTP},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -245,11 +245,15 @@ func TestExecCapabilities(t *testing.T) {
 		name        string
 		mode        sshtest.ExecMode
 		exec        bool
+		posixShell  bool
 		gnuUserland bool
 	}{
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
-		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, gnuUserland: true},
-		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true},
+		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
+		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
+		// The GNU tools are there, but the login shell reads '\'' as an
+		// escape, so a quoted path could break out: no exec tier.
+		{name: "non-posix login shell", mode: sshtest.ExecNonPOSIX, exec: true},
 	}
 
 	for _, tt := range tests {
@@ -265,9 +269,10 @@ func TestExecCapabilities(t *testing.T) {
 			assert.True(t, report.Capabilities.Statvfs)
 			assert.True(t, report.Capabilities.Hardlink)
 			assert.Equal(t, tt.exec, report.Capabilities.Exec)
+			assert.Equal(t, tt.posixShell, report.Capabilities.POSIXShell)
 			assert.Equal(t, tt.gnuUserland, report.Capabilities.GNUUserland)
 			wantTier := models.SSHTierSFTP
-			if tt.gnuUserland {
+			if tt.posixShell && tt.gnuUserland {
 				wantTier = models.SSHTierExec
 			}
 			assert.Equal(t, wantTier, report.Capabilities.Tier())

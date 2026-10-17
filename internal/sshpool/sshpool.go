@@ -74,11 +74,16 @@ type Report struct {
 
 // Capabilities is what the server lets us do, probed read-only.
 type Capabilities struct {
-	SFTP        bool
-	Statvfs     bool
-	Hardlink    bool
-	Limits      bool
-	Exec        bool
+	SFTP     bool
+	Statvfs  bool
+	Hardlink bool
+	Limits   bool
+	Exec     bool
+	// POSIXShell is a login shell that reads a single-quoted word the POSIX
+	// way. Every remote command is quoted for that shell, so a shell that
+	// treats a quote differently (fish reads '\'' as an escape) could run a
+	// path as a command, and gets no exec tier.
+	POSIXShell  bool
 	GNUUserland bool
 }
 

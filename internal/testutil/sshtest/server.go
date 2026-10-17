@@ -31,6 +31,10 @@ const (
 	ExecGNU ExecMode = iota
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
+	// ExecNonPOSIX is a login shell that runs commands and has the GNU tools
+	// but does not quote like a POSIX shell: the printf probe fails the way
+	// fish fails on an unbalanced quote.
+	ExecNonPOSIX
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
@@ -434,11 +438,14 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
 	switch {
+	case strings.HasPrefix(command, "printf") && mode == ExecNonPOSIX:
+		_, _ = io.WriteString(channel.Stderr(), "fish: Unexpected end of string, quotes are not balanced\n")
+		return 127
 	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
 	case strings.Contains(command, "--version"):
 		_, _ = io.WriteString(channel, "find: unknown option --version\nstat: unknown option --version\n")
-	case mode != ExecBSD:
+	default:
 		return s.runShell(channel, command)
 	}
 	return 0

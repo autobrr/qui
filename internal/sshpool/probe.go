@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/pkg/sftp"
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,11 @@ import (
 // gnuProbeCommand asks the tools the remote file operations lean on for their
 // version. It is a fixed string with nothing interpolated into it.
 const gnuProbeCommand = "LC_ALL=C find --version && LC_ALL=C stat --version"
+
+// posixProbeCommand prints a single-quoted backslash. A POSIX shell prints
+// "a\"; fish reads the backslash as an escape and fails on the open quote.
+// shellQuote relies on that reading, so it is checked before any path is sent.
+const posixProbeCommand = `printf '%s' 'a\'`
 
 // outputLimit caps what a probe keeps from a remote command. The server is the
 // thing being probed, so its output is not trusted to be short.
@@ -58,17 +64,30 @@ func probe(ctx context.Context, client *ssh.Client) (*Capabilities, error) {
 		return capabilities, checkAlive(client)
 	}
 
-	out, err := conn.output(ctx, gnuProbeCommand, execTimeout, outputLimit)
-	capabilities.GNUUserland = err == nil && isGNU(out)
+	capabilities.POSIXShell, capabilities.GNUUserland, _ = shellAndTools(ctx, conn, execTimeout)
 
 	return capabilities, checkAlive(client)
 }
 
-// Tier is the tier these capabilities give: exec needs sftp and a shell with
-// the GNU tools, and every other host gets sftp. Every pooled connection opens
+// shellAndTools asks the login shell whether it quotes like POSIX and, only
+// then, whether it has the GNU tools. Both probe sites call it, so the Test
+// route and the pool cannot disagree on what earns the exec tier. A command
+// that did not answer is an error; the caller decides whether the connection
+// is still alive.
+func shellAndTools(ctx context.Context, conn *Conn, timeout time.Duration) (posix, gnu bool, err error) {
+	out, err := conn.output(ctx, posixProbeCommand, timeout, outputLimit)
+	if err != nil || !bytes.Equal(out, []byte(`a\`)) {
+		return false, false, err
+	}
+	out, err = conn.output(ctx, gnuProbeCommand, timeout, outputLimit)
+	return true, err == nil && isGNU(out), err
+}
+
+// Tier is the tier these capabilities give: exec needs sftp and a POSIX shell
+// with the GNU tools, and every other host gets sftp. Every pooled connection opens
 // sftp first, so exec without sftp serves nothing.
 func (c *Capabilities) Tier() models.SSHTier {
-	if c.SFTP && c.Exec && c.GNUUserland {
+	if c.SFTP && c.Exec && c.POSIXShell && c.GNUUserland {
 		return models.SSHTierExec
 	}
 	return models.SSHTierSFTP
@@ -103,10 +122,9 @@ func (p *Pool) probeTier(ctx context.Context, row *models.Instance, client *ssh.
 
 	answer := make(chan models.SSHTier, 1)
 	go func() {
-		conn := oneShot(client)
-		out, err := conn.output(ctx, gnuProbeCommand, p.dialer.timeout, outputLimit)
+		posix, gnu, err := shellAndTools(ctx, oneShot(client), p.dialer.timeout)
 		switch {
-		case err == nil && isGNU(out):
+		case err == nil && posix && gnu:
 			answer <- models.SSHTierExec
 		case err != nil && (ctx.Err() != nil || checkAlive(client) != nil):
 			answer <- ""

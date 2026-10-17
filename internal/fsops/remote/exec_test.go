@@ -388,6 +388,9 @@ func TestExecLstatBatchMatchesLstat(t *testing.T) {
 
 	backend, server := newExecBackend(t)
 	paths := lstatBatchTree(t)
+	// Connect first: the connect probe runs its own commands through the shell.
+	_, err := backend.exec(t.Context())
+	require.NoError(t, err)
 
 	before := len(server.Commands())
 	infos, errs := backend.LstatBatch(t.Context(), paths)

@@ -51,7 +51,11 @@ surfaced in the UI, not silent.
 `stat`. Identity comes from `find`/`stat`, and `SameFilesystem` is
 exact. Only the tier is stored, not each probe flag, because no other flag
 changes a capability yet. Reflink is not probed, and reflinks are off on
-every remote tier. A host without the GNU tools gets tier `sftp`.
+every remote tier. A host without the GNU tools gets tier `sftp`, and so
+does a login shell that does not quote like POSIX: every command is
+single-quoted for that shell, and fish reads `\'` inside single quotes as
+an escape, so the probe runs `printf '%s' 'a\'` and expects `a\` before it
+asks for the tools.
 
 `SameFilesystem` with unusable fsids (servers that report zeroes, no exec
 fallback): returns an explicit error, never a guess in either direction.
