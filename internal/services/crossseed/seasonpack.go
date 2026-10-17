@@ -676,14 +676,10 @@ func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPac
 		if rollbackErr := rollbackSeasonPackTree(ctx, backend, created, planBuild.packDir); rollbackErr != nil {
 			return fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
 		}
-		if !isCrossDeviceLinkError(err) || planBuild.nextBaseDir == nil {
+		// A retry over a partial tree that the creator could not remove would
+		// report success while that tree stays on disk.
+		if !isCrossDeviceLinkError(err) || errors.Is(err, hardlinktree.ErrRollbackFailed) || planBuild.nextBaseDir == nil {
 			return fmt.Errorf("link_failed: %w", err)
-		}
-		// A creator whose own rollback failed returns a nil handle, so the
-		// partial tree keeps the pack dir. A retry would report success over it.
-		// Any stat error other than not-exist may hide that tree too.
-		if _, statErr := backend.Lstat(ctx, planBuild.packDir); !errors.Is(statErr, fs.ErrNotExist) {
-			return fmt.Errorf("link_failed: %w", errors.Join(err, statErr))
 		}
 		next, buildErr := planBuild.nextBaseDir()
 		if buildErr != nil {

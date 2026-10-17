@@ -28,14 +28,13 @@ import (
 // embedded Backend makes any call the test does not fake panic.
 type slashBackend struct {
 	fsops.Backend
-	files     map[string]hardlink.FileID
-	dirs      map[string]struct{}
-	devices   []string // SameFilesystem is true for two paths under one of these
-	stats     []string
-	plans     []hardlinktree.TreePlan
-	removed   int              // RemoveTree calls
-	size      int64            // file size Lstat reports, 5 when unset
-	lstatErrs map[string]error // Lstat of these paths fails with the error
+	files   map[string]hardlink.FileID
+	dirs    map[string]struct{}
+	devices []string // SameFilesystem is true for two paths under one of these
+	stats   []string
+	plans   []hardlinktree.TreePlan
+	removed int   // RemoveTree calls
+	size    int64 // file size Lstat reports, 5 when unset
 }
 
 func newSlashBackend(devices []string, files ...string) *slashBackend {
@@ -61,9 +60,6 @@ func (b *slashBackend) Paths() fsops.PathDialect { return fsops.SlashPaths }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	b.stats = append(b.stats, p)
-	if err := b.lstatErrs[p]; err != nil {
-		return nil, err
-	}
 	if _, ok := b.dirs[p]; ok {
 		return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir, Nlinks: 1}, nil
 	}
@@ -305,16 +301,15 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 		name        string
 		firstErr    error
 		manual      bool
-		leaveTree   bool
-		statErr     error // Lstat of the first pack dir fails with it
-		allFail     bool  // every base dir fails with firstErr
+		oldPackDir  bool // the first pack dir already holds files
+		allFail     bool // every base dir fails with firstErr
 		wantApplied bool
 		wantRoots   []string
 	}{
 		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
-		{name: "cross-device with failed creator rollback", firstErr: fmt.Errorf("%w (rollback also failed: %w)", &os.LinkError{Op: "link", Err: syscall.EXDEV}, fs.ErrPermission), leaveTree: true, wantRoots: []string{"/data/tv/hl"}},
-		{name: "cross-device with unreadable pack dir", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, statErr: syscall.EIO, wantRoots: []string{"/data/tv/hl"}},
+		{name: "cross-device with failed creator rollback", firstErr: fmt.Errorf("%w (%w: %w)", &os.LinkError{Op: "link", Err: syscall.EXDEV}, hardlinktree.ErrRollbackFailed, fs.ErrPermission), wantRoots: []string{"/data/tv/hl"}},
+		{name: "cross-device with files already in the pack dir", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, oldPackDir: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "every base dir cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, allFail: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 	}
@@ -353,17 +348,10 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 					roots = append(roots, plan.RootDir)
 					if len(roots) == 1 || tt.allFail {
 						failed++
-						if tt.leaveTree {
-							// The files the creator could not remove keep the pack dir.
+						if tt.oldPackDir {
+							// Files from before this run keep the pack dir after the rollback.
 							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
 								backend.dirs[dir] = struct{}{}
-							}
-							return nil, tt.firstErr
-						}
-						if tt.statErr != nil {
-							backend.lstatErrs = map[string]error{}
-							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
-								backend.lstatErrs[dir] = tt.statErr
 							}
 						}
 						return &fsops.TreeCreateResult{Created: 1}, tt.firstErr
