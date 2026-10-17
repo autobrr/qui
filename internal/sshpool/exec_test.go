@@ -278,7 +278,8 @@ func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
 
 // A host at its MaxSessions refuses an open while other sessions run. The
 // refused command waits for a free session, and the connection runs no more
-// sessions than the host allows from then on.
+// sessions than the host allows from then on, until the connection is
+// forgotten.
 func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	t.Parallel()
 	requireShell(t)
@@ -303,6 +304,10 @@ func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	}
 	assert.Equal(t, int32(execSessions-1), conn.parked.Load(), "sftp and one command fill the host")
 	assert.Len(t, conn.slots, execSessions-1, "only the parked slots stay taken, so the idle close can run")
+
+	pool.Invalidate(inst.ID)
+	assert.Zero(t, conn.parked.Load(), "the next connection can reach a host with another limit")
+	assert.Empty(t, conn.slots)
 }
 
 // A caller that runs commands back to back can open a session while the host

@@ -351,6 +351,11 @@ func (e *entry) forget() {
 	e.err = nil
 	e.retryAt = time.Time{}
 	e.backoff = 0
+	// The next connection can reach another host, with a session limit of its
+	// own, so the slots parked at this host's limit go back.
+	for range e.parked.Swap(0) {
+		<-e.slots
+	}
 }
 
 // watch clears the entry once this client is gone, so the next caller redials.
