@@ -1605,13 +1605,17 @@ func sameRootIdentity(first, second *fsops.LstatInfo, instance *models.Instance)
 
 func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string, backend fsops.Backend, instance *models.Instance) []string {
 	d := backend.Paths()
+	// Taking a metadata-less torrent's save path out of the ignore list widens
+	// what a scan may delete, so identity a peer host reported never does it:
+	// only the same spelling, or an identity the kernel attested, counts.
+	trusted := instance == nil || models.FilesystemCapabilitiesOf(instance).TrustedIdentity
 	ignored := make([]string, 0, len(metadataRoots))
 	for _, metadataRoot := range metadataRoots {
 		normalizedMetadataRoot := normalizePath(d, metadataRoot)
 		nested := false
 		for _, scanRoot := range scanRoots {
 			normalizedScanRoot := normalizePath(d, scanRoot)
-			if isSameRoot(ctx, metadataRoot, scanRoot, backend, instance) {
+			if d.Clean(metadataRoot) == d.Clean(scanRoot) || (trusted && isSameRoot(ctx, metadataRoot, scanRoot, backend, instance)) {
 				nested = false
 				break
 			}

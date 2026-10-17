@@ -234,6 +234,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "ssh_username", Type: "TEXT"},
 		{Name: "ssh_key_encrypted", Type: "TEXT"},
 		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_tier", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},

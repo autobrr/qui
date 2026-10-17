@@ -696,7 +696,8 @@
       "description": "扫描下载目录并识别孤立文件以进行清理。",
       "noLocalAccess": "无本地访问权限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
-      "remoteLimits": "删除和自动清理暂时无法在远程实例上运行。qui 也无法判断两个路径是否指向同一文件，因此可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。",
+      "remoteLimits": "删除和自动清理暂时无法在远程实例上运行。",
+      "remoteNoIdentity": "qui 也无法判断两个路径是否指向同一文件，因此可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。",
       "on": "开",
       "off": "关",
       "summaryGrace": "宽限期 {{grace}} 分钟",
@@ -1208,7 +1209,8 @@
         "withFilesIncludeCrossSeeds": "移除并清除文件（包含辅种）",
         "includeHardlinkedCopies": "包含硬链接副本",
         "includeHardlinkedCopiesDescription": "同时删除通过硬链接共享相同底层文件的种子。仅包含完全在 qBittorrent 内部的硬链接；绝不跟踪外部硬链接。",
-        "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。"
+        "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。",
+        "remoteNotAvailable": "远程实例不可用"
       },
       "move": {
         "newSavePath": "新保存路径",

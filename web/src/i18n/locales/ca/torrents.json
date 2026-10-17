@@ -748,6 +748,7 @@
       }
     },
     "noMatches": "No s'ha trobat cap torrent coincident a les altres instàncies",
+    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou.",
     "toast": {
       "savePathCopied": "S'ha copiat el camí de desada",
       "copyFailed": "No s'ha pogut copiar"

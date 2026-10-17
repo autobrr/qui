@@ -102,3 +102,25 @@ type Backend interface {
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
 }
+
+// BatchStater is a Backend that answers many paths in one request, so a
+// remote host costs a few round trips per batch and not a few per path.
+type BatchStater interface {
+	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
+	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
+
+// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Lstat per
+// path.
+func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.LstatBatch(ctx, paths)
+	}
+	infos = make([]*LstatInfo, len(paths))
+	errs = make([]error, len(paths))
+	for i, p := range paths {
+		infos[i], errs[i] = b.Lstat(ctx, p)
+	}
+	return infos, errs
+}

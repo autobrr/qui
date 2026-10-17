@@ -21,8 +21,9 @@ describe("getCapabilityReason", () => {
 
     expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
     expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
-    // Until #2726 gives a remote instance file identity, it shares the local access reason.
-    expect(getCapabilityReason("fileIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    // Trusted identity needs local access, so a remote instance can never get it.
+    expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
   })
 })
 
@@ -33,8 +34,8 @@ describe("FIELD_REQUIREMENTS", () => {
       TRACKER_STATUS: "trackerHealth",
       TRACKER_MESSAGE: "trackerHealth",
       HAS_MISSING_FILES: "localFilesystemAccess",
-      HARDLINK_SCOPE: "fileIdentity",
-      HARDLINK_SCOPE_CROSS: "fileIdentity",
+      HARDLINK_SCOPE: "trustedIdentity",
+      HARDLINK_SCOPE_CROSS: "trustedIdentity",
     })
   })
 })
@@ -56,8 +57,10 @@ describe("query-builder translation keys", () => {
     for (const group of constants.FIELD_GROUPS) {
       constants.getFieldGroupLabel(group.label, recordingT)
     }
-    for (const capability of Object.keys(constants.CAPABILITY_REASONS) as (keyof typeof constants.CAPABILITY_REASONS)[]) {
+    const capabilities = new Set([...Object.values(constants.FIELD_REQUIREMENTS), ...Object.values(constants.STATE_VALUE_REQUIREMENTS)])
+    for (const capability of capabilities) {
       constants.getCapabilityReason(capability, recordingT)
+      constants.getCapabilityReason(capability, recordingT, true)
     }
 
     const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>

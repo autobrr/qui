@@ -905,7 +905,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 
 	// The cached index provides scope detection AND hardlink grouping in a single build.
 	var hardlinkIndex *HardlinkIndex
-	if evalCtx.InstanceHasFileIdentity && (needs.HardlinkScope || needs.HardlinkCrossScope || needs.HardlinkSignature) {
+	if evalCtx.InstanceHasTrustedIdentity && (needs.HardlinkScope || needs.HardlinkCrossScope || needs.HardlinkSignature) {
 		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash

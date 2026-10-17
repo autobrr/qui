@@ -212,7 +212,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Потребує qBittorrent 5.1+",
-      "localFilesystemAccess": "Потребує локального доступу до файлової системи"
+      "localFilesystemAccess": "Потребує локального доступу до файлової системи",
+      "remoteInstance": "Недоступно на віддалених екземплярах"
     },
     "selectTrackerStatus": "Вибрати статус",
     "selectContentType": "Вибрати тип вмісту",

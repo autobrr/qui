@@ -696,7 +696,8 @@
       "description": "掃描下載目錄並識別孤立檔案以進行清理。",
       "noLocalAccess": "無本機存取權限",
       "noLocalAccessTooltip": "qui 和 qBittorrent 必須執行在同一臺機器上。在實例設定中啟用\"本機檔案系統存取\"以使用孤立項目掃描。",
-      "remoteLimits": "刪除和自動清理暫時無法在遠端實例上執行。qui 也無法判斷兩個路徑是否指向同一檔案，因此可透過第二個路徑存取的檔案（例如透過 bind mount）即使正被種子使用，也可能出現在清單中。",
+      "remoteLimits": "刪除和自動清理暫時無法在遠端實例上執行。",
+      "remoteNoIdentity": "qui 也無法判斷兩個路徑是否指向同一檔案，因此可透過第二個路徑存取的檔案（例如透過 bind mount）即使正被種子使用，也可能出現在清單中。",
       "on": "開",
       "off": "關",
       "summaryGrace": "寬限期 {{grace}} 分鐘",
@@ -1208,7 +1209,8 @@
         "withFilesIncludeCrossSeeds": "移除並清除檔案（包含輔種）",
         "includeHardlinkedCopies": "包含硬連結副本",
         "includeHardlinkedCopiesDescription": "同時刪除透過硬連結共享相同底層檔案的種子。僅包含完全在 qBittorrent 內部的硬連結；絕不追蹤外部硬連結。",
-        "localAccessRequired": "需要在實例設定中啟用\"本機檔案系統存取\"。"
+        "localAccessRequired": "需要在實例設定中啟用\"本機檔案系統存取\"。",
+        "remoteNotAvailable": "遠端實例不可用"
       },
       "move": {
         "newSavePath": "新儲存路徑",
