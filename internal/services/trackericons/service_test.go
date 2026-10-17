@@ -294,6 +294,31 @@ func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
 	require.Zero(t, hits.Load())
 }
 
+func TestService_FetchIconBytes_BlocksRedirectToLocalServer(t *testing.T) {
+	var hits atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer destination.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL+"/favicon.ico", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	// The proxy answers the first request with a redirect, so qui sends the
+	// second request to the local server without a proxy.
+	t.Setenv("HTTP_PROXY", redirector.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), "http://1.1.1.1:8080/favicon.ico")
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
+	require.Zero(t, hits.Load())
+}
+
 func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
 	icon := testPNG(t)
 	var proxiedHost atomic.Pointer[string]
