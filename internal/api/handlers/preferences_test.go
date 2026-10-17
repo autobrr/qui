@@ -552,6 +552,59 @@ func TestPreferencesViewProxyTrafficByVersion(t *testing.T) {
 	})
 }
 
+func TestPreferencesViewWebUI(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	fake.prefs["web_ui_api_key"] = "secret-api-key"
+	rig := newPreferencesRig(t, fake)
+
+	view, body := rig.view(t)
+
+	assert.NotContains(t, body, "secret-api-key")
+	sections := map[string]string{}
+	readOnly := map[string]bool{}
+	for key, field := range view {
+		if field.Tab == "webui" {
+			sections[key] = field.Section
+			readOnly[key] = field.ReadOnly
+		}
+	}
+	assert.Equal(t, map[string]string{
+		"web_ui_address": "webUI", "web_ui_port": "webUI", "web_ui_upnp": "webUI",
+		"use_https": "https", "web_ui_https_cert_path": "https", "web_ui_https_key_path": "https",
+		"web_ui_username": "authentication", "bypass_local_auth": "authentication",
+		"bypass_auth_subnet_whitelist_enabled": "authentication", "bypass_auth_subnet_whitelist": "authentication",
+		"web_ui_max_auth_fail_count": "authentication", "web_ui_ban_duration": "authentication",
+		"web_ui_session_timeout": "authentication", "web_ui_sessions_count_limit": "authentication",
+		"web_ui_clickjacking_protection_enabled": "security", "web_ui_csrf_protection_enabled": "security",
+		"web_ui_secure_cookie_enabled": "security", "web_ui_host_header_validation_enabled": "security",
+		"web_ui_domain_list":           "security",
+		"web_ui_reverse_proxy_enabled": "reverseProxy", "web_ui_reverse_proxies_list": "reverseProxy",
+	}, sections)
+	// qui connects to qBittorrent with these settings, so a user cannot change them in qui.
+	for _, key := range []string{
+		"web_ui_address", "web_ui_port", "use_https", "web_ui_https_cert_path", "web_ui_https_key_path",
+		"web_ui_username", "bypass_local_auth", "bypass_auth_subnet_whitelist_enabled", "bypass_auth_subnet_whitelist",
+		"web_ui_host_header_validation_enabled", "web_ui_domain_list",
+	} {
+		assert.True(t, readOnly[key], key)
+		delete(readOnly, key)
+	}
+	for key, isReadOnly := range readOnly {
+		assert.False(t, isReadOnly, key)
+	}
+	assert.Equal(t, "s", view["web_ui_session_timeout"].DisplayUnit)
+	assert.Equal(t, "web_ui_host_header_validation_enabled", view["web_ui_domain_list"].DependsOn)
+	assert.Equal(t, "web_ui_reverse_proxy_enabled", view["web_ui_reverse_proxies_list"].DependsOn)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"web_ui_session_timeout": 7200, "web_ui_reverse_proxy_enabled": true, "web_ui_reverse_proxies_list": "10.0.0.0/8"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"web_ui_session_timeout": float64(7200), "web_ui_reverse_proxy_enabled": true, "web_ui_reverse_proxies_list": "10.0.0.0/8",
+	}}, fake.recordedSets())
+	view = decodeView(t, recorder.Body.Bytes())
+	assert.JSONEq(t, "7200", string(view["web_ui_session_timeout"].Value))
+}
+
 func TestPreferencesTestEmail(t *testing.T) {
 	tests := []struct {
 		webAPI            string
@@ -604,7 +657,10 @@ func TestPreferencesPatchRejections(t *testing.T) {
 		{name: "unknown key", body: `{"dl_limit": 1, "no_such_key": true}`, cause: "no_such_key"},
 		{name: "read-only key", body: `{"current_network_interface": "eth0"}`, cause: "current_network_interface"},
 		{name: "fetched trackers", body: `{"add_trackers_url_list": "udp://a.invalid"}`, cause: `"add_trackers_url_list" is read-only`},
-		{name: "not shown connection key", body: `{"web_ui_port": 9090}`, cause: "web_ui_port"},
+		{name: "WebUI connection key", body: `{"web_ui_port": 9090}`, cause: `"web_ui_port" is read-only`},
+		{name: "WebUI username", body: `{"dl_limit": 1, "web_ui_username": "other"}`, cause: `"web_ui_username" is read-only`},
+		{name: "WebUI server domains", body: `{"web_ui_domain_list": "qbit.example.invalid"}`, cause: `"web_ui_domain_list" is read-only`},
+		{name: "not shown WebUI key", body: `{"alternative_webui_enabled": true}`, cause: "alternative_webui_enabled"},
 		{name: "not shown key", body: `{"locale": "de"}`, cause: "locale"},
 		{name: "api key", body: `{"web_ui_api_key": "x"}`, cause: "web_ui_api_key"},
 		{name: "string for number", body: `{"dl_limit": "fast"}`, cause: "dl_limit"},
