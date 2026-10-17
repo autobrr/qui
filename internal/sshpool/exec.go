@@ -117,9 +117,34 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 		c.used()
 	}()
 
-	session, err := c.client.NewSession()
-	if err != nil {
-		return fmt.Errorf("%w: open exec session: %w", ErrConnect, err)
+	// NewSession blocks inside x/crypto with no ctx. A host that never
+	// answers the open would hold this slot for the life of the connection,
+	// so the open runs aside and the ctx ends the wait; an open that answers
+	// later is closed by the goroutine, and one that never answers ends with
+	// the connection.
+	type opened struct {
+		session *ssh.Session
+		err     error
+	}
+	openDone := make(chan opened, 1)
+	go func() {
+		session, err := c.client.NewSession()
+		openDone <- opened{session, err}
+	}()
+	var session *ssh.Session
+	select {
+	case o := <-openDone:
+		if o.err != nil {
+			return fmt.Errorf("%w: open exec session: %w", ErrConnect, o.err)
+		}
+		session = o.session
+	case <-ctx.Done():
+		go func() {
+			if o := <-openDone; o.err == nil {
+				_ = o.session.Close()
+			}
+		}()
+		return ctx.Err()
 	}
 	defer session.Close()
 
@@ -130,7 +155,7 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
 	defer stop()
 
-	err = session.Run(command)
+	err := session.Run(command)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

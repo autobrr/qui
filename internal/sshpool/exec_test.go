@@ -248,3 +248,28 @@ func TestPoolKeepsTheTierWhenTheProbeHangs(t *testing.T) {
 	_, err = pool.Exec(t.Context(), inst)
 	require.ErrorIs(t, err, ErrNoExec)
 }
+
+// A session open that stalls ends with the ctx, and gives its slot back, so
+// a tarpitting host cannot pin the connection's exec slots or keep the idle
+// close from running.
+func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	conn, err := pool.Exec(t.Context(), inst)
+	require.NoError(t, err)
+	server.SetExec(sshtest.ExecStallOpen)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = conn.Output(ctx, Command{Name: "true"})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 3*time.Second)
+	assert.Empty(t, conn.slots, "the abandoned open must not hold a slot")
+}
