@@ -156,11 +156,11 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 	}
 	if report.Capabilities != nil {
 		h.storeSSHTier(r.Context(), instance.ID, report.Capabilities)
-		// A pooled connection keeps the tier its own probe found, so a new
-		// tier only reaches the backend through a new connection.
-		if report.Capabilities.Tier() != instance.SSHTier {
-			h.sshPool.Invalidate(instance.ID)
-		}
+		// A pooled connection keeps the tier its own probe found, and that
+		// probe may have got no answer while the row kept exec, so a fresh
+		// probe that matches the row says nothing about the connection. A
+		// test is the user asking for a recheck: the next operation dials.
+		h.sshPool.Invalidate(instance.ID)
 		response.Capabilities = &SSHCapabilities{
 			SFTP:        report.Capabilities.SFTP,
 			Statvfs:     report.Capabilities.Statvfs,
