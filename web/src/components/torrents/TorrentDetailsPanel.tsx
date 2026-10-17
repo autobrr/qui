@@ -1724,6 +1724,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
+                loadFailed={!!matchesError}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
