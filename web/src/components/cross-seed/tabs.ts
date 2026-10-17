@@ -5,6 +5,8 @@
 
 import { z } from "zod"
 
+// i18n-namespace: crossseed
+
 /** Nav sections in display order. A group without a label renders its tabs without a heading. */
 export const CROSS_SEED_NAV_GROUPS = [
   { labelKey: "nav.sources", tabs: ["rss", "webhook", "completion", "library", "directories"] },

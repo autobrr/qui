@@ -9,11 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"syscall"
 
 	"github.com/autobrr/qui/pkg/fsutil"
 )
+
+// ErrRollbackFailed marks a failed tree create whose rollback also failed, so
+// part of the tree may still be on disk.
+var ErrRollbackFailed = errors.New("rollback also failed")
 
 // Created records the files and directories a single Create call actually
 // made on disk. Rollback removes exactly those and nothing else: destinations
@@ -92,7 +95,7 @@ func Create(plan *TreePlan) (*Created, error) {
 	rollbackOnError := func(err error) error {
 		rollbackErr := rollback(createdFiles, createdDirs)
 		if rollbackErr != nil {
-			return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return fmt.Errorf("%w (%w: %w)", err, ErrRollbackFailed, rollbackErr)
 		}
 		return err
 	}
@@ -172,17 +175,8 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// isDirNotEmpty checks if an error indicates a non-empty directory.
+// isDirNotEmpty reports whether os.Remove failed because the folder still has
+// entries. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY.
 func isDirNotEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, syscall.ENOTEMPTY) {
-		return true
-	}
-	// Different OS have different error messages
-	errStr := err.Error()
-	return strings.Contains(errStr, "not empty") ||
-		strings.Contains(errStr, "directory not empty") ||
-		strings.Contains(errStr, "The directory is not empty")
+	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
 }

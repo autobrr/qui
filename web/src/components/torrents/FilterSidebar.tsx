@@ -33,7 +33,7 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
@@ -218,14 +218,13 @@ const FilterSidebarComponent = ({
   )
   const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
   const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
-  const supportsSubcategories = isConcreteInstanceScope? (capabilities?.supportsSubcategories ?? false): Boolean(useSubcategories)
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const { preferences } = useInstancePreferences(
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(
     instanceId,
-    { fetchIfMissing: false, enabled: isConcreteInstanceScope && isInstanceActive }
+    capabilities,
+    useSubcategories,
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
-  const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)
+  const subcategoriesEnabled = isConcreteInstanceScope? instanceSubcategoriesEnabled: Boolean(useSubcategories)
 
   // Match the preference to the layout this sidebar controls.
   const { viewMode, cycleViewMode } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")

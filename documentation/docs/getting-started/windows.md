@@ -134,9 +134,13 @@ A task that you created with the steps above needs no change.
 
 ## Updating
 
+:::note
+An update replaces `qui-tray.exe` only when the file is already in the folder with `qui.exe`. An update from 1.30.0 or older does not add the file, because those versions have no Tray. After that update, copy `qui-tray.exe` from the Windows zip on [GitHub Releases](https://github.com/autobrr/qui/releases/latest) into the folder with `qui.exe`. Later updates replace both files.
+:::
+
 ### Update from the web UI
 
-Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
+Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` (see the note above) and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
 
 ### Update an MSI install
 
@@ -146,7 +150,7 @@ You can also install a newer MSI. Quit the Tray, or end the scheduled task, befo
 
 ### Update from the shell
 
-qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe`. Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
+qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe` (see the note above). Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
 2. Run the updater:
@@ -170,6 +174,8 @@ The update keeps the previous version as `qui-v<old version>.bak.exe` next to `q
 3. Right-click the **qui** task and click **Run**.
 
 If you use the Tray, click **Quit** in the Tray menu before step 2, and start `qui-tray.exe` again after it.
+
+If the backup is from 1.30.0 or older, skip the second `move` command and do not start `qui-tray.exe`, because it is still the new version. Start `qui.exe` as you did before the update.
 
 :::warning
 If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.

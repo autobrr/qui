@@ -493,6 +493,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+			r.Delete("/themes/settings", themesHandler.DeleteThemeSettings)
 
 			// Persisted frontend user settings (opaque key-value map)
 			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)
@@ -693,6 +694,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
+					r.Post("/preferences/test-email", preferencesHandler.SendTestEmail)
+					r.Get("/network-binding", preferencesHandler.GetNetworkBinding)
 
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)

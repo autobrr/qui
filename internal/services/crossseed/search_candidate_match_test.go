@@ -1463,6 +1463,18 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			name:          "source year with missing candidate year",
 			sourceYear:    2024,
 			candidateYear: 0,
+			accepted:      true,
+		},
+		{
+			name:          "candidate year with missing source year",
+			sourceYear:    0,
+			candidateYear: 2024,
+			accepted:      true,
+		},
+		{
+			name:          "different years",
+			sourceYear:    2023,
+			candidateYear: 2024,
 			reason:        "year mismatch",
 		},
 		{

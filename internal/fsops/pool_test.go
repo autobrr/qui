@@ -37,6 +37,7 @@ func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
 	return &LstatInfo{}, nil
 }
 func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
+func (f fakeBackend) Paths() PathDialect                                { return HostPaths }
 func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
 	return nil, nil
 }

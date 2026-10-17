@@ -23,14 +23,27 @@ type Inputs struct {
 
 // Availability reports which of Self-update and Restart qui offers.
 type Availability struct {
-	SelfUpdate bool
-	Restart    bool
+	SelfUpdate                  bool
+	SelfUpdateUnavailableReason string
+	Restart                     bool
 }
 
 func Decide(in Inputs) Availability {
+	var reason string
+	switch {
+	case in.AppContainer:
+		reason = "container"
+	case in.DisableSelfUpdate:
+		reason = "disabled"
+	case !in.ReleaseVersion:
+		reason = "development"
+	case !in.DirWritable:
+		reason = "directory"
+	}
 	return Availability{
-		SelfUpdate: !in.AppContainer && !in.DisableSelfUpdate && in.ReleaseVersion && in.DirWritable,
-		Restart:    !in.AppContainer,
+		SelfUpdate:                  reason == "",
+		SelfUpdateUnavailableReason: reason,
+		Restart:                     !in.AppContainer,
 	}
 }
 

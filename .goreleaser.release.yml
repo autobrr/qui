@@ -89,6 +89,10 @@ msi:
 
 release:
   prerelease: auto
+  # The Release job adds the Highlights and then publishes the draft.
+  draft: true
+  # A re-run of a failed tag build replaces the draft that it left.
+  replace_existing_draft: true
   extra_files:
     - glob: web-dist.tar.gz
   footer: |
@@ -125,6 +129,7 @@ signs:
 changelog:
   sort: asc
   use: github
+  format: "{{ .Message }} ({{ with .Author.Username }}@{{ . }}{{ else }}{{ .Author.Name }}{{ end }})"
   filters:
     exclude:
       - Merge pull request
@@ -132,12 +137,15 @@ changelog:
       - Merge branch
       - go mod tidy
   groups:
+    - title: "Breaking Changes"
+      regexp: "^\\w+(\\([^)]*\\))?!:.*$"
+      order: 0
     - title: "New Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
-      order: 0
+      order: 10
     - title: "Bug Fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
-      order: 10
+      order: 20
     - title: "Other Changes"
       regexp: "^.*(chore|docs|style|refactor|test|perf|security|build|ci)[(\\w)]*:+.*$"
-      order: 20
+      order: 30

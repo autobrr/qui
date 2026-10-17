@@ -17,7 +17,8 @@ vi.mock("react-i18next", async (importOriginal) => {
     useTranslation: () => ({
       t: (key: string, opts?: Record<string, unknown>) => {
         const value = opts?.total ?? opts?.count ?? opts?.deleted
-        return value === undefined ? key : `${key}:${String(value)}`
+        const size = opts?.size === undefined ? "" : `:${String(opts.size)}`
+        return value === undefined ? key : `${key}:${String(value)}${size}`
       },
     }),
   }
@@ -39,6 +40,7 @@ function makeRun(overrides: Partial<OrphanScanRun> = {}): OrphanScanRun {
     truncated: false,
     startedAt: "2026-01-01T00:00:00Z",
     completedAt: "2026-01-01T00:00:00Z",
+    filesystemMode: "local",
     ...overrides,
   }
 }
@@ -55,6 +57,12 @@ describe("OrphanScanRunItem", () => {
 
     expect(container.textContent).toContain("preferences.orphanScanOverview.scannedPaths:2")
     expect(container.textContent).toContain(paths.join("\n"))
+  })
+
+  it("keeps the reclaimed size's number and unit together", () => {
+    const { container } = render(<OrphanScanRunItem run={makeRun({ filesFound: 7, filesDeleted: 7, bytesReclaimed: 9.2 * 1024 ** 3 })} />)
+
+    expect(container.textContent).toMatch(/9\.2\u00a0GiB/)
   })
 
   it("renders a run with no error and no scan paths as a plain row", () => {

@@ -167,7 +167,7 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			episode := parseSeasonPackTestRelease(t, tt.episode)
 
 			if tt.checkSeasonPack {
-				match, _ := matcher.seasonPackReleasesMatchWithReason(pack, episode, tt.strict, tt.settings, nil)
+				match, _ := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", tt.strict, tt.settings, nil)
 				require.Equal(t, tt.wantSeasonPack, match)
 			}
 			if tt.checkGeneric {
@@ -225,11 +225,11 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 			pack := parseSeasonPackTestRelease(t, tc.pack)
 			episode := parseSeasonPackTestRelease(t, tc.episode)
 
-			ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+			ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, nil)
 			require.False(t, ok, "expected no match without aliases")
 			require.Equal(t, "title mismatch", reason)
 
-			ok, reason = matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, tc.aliases)
+			ok, reason = matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, tc.aliases)
 			require.True(t, ok, "expected match with aliases, got reason %q", reason)
 			require.Empty(t, reason)
 		})
@@ -249,7 +249,7 @@ func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *tes
 	// before matching; mirror that here.
 	episode.Series = pack.Series
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, nil)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
 }
@@ -268,7 +268,7 @@ func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
 		"Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou",
 	}
 
-	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, aliases)
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, "", "", true, nil, aliases)
 	require.True(t, ok, "expected match, got reason %q", reason)
 	require.Empty(t, reason)
 }

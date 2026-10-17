@@ -179,8 +179,8 @@ func trackedFileForScannedFile(f *ScannedFile, trackedFiles *trackedFilesIndex) 
 	if tracked := trackedFiles.byPath[f.Path]; tracked != nil {
 		return tracked
 	}
-	if !f.FileID.IsZero() {
-		if tracked := trackedFiles.byFileID[string(f.FileID.Bytes())]; tracked != nil {
+	if key, ok := trackedFiles.keyOf(f.FileID); ok {
+		if tracked := trackedFiles.byFileID[key]; tracked != nil {
 			return tracked
 		}
 	}

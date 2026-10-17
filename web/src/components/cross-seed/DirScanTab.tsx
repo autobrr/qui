@@ -851,14 +851,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   const metadataQueries = useQueries({
     queries: instanceIds.map((instanceId) => ({
-      queryKey: ["instance-metadata", instanceId],
+      queryKey: ["dir-scan-instance-metadata", instanceId],
       queryFn: async () => {
-        const [categories, tags, preferences] = await Promise.all([
+        const [categories, tags] = await Promise.all([
           api.getCategories(instanceId),
           api.getTags(instanceId),
-          api.getInstancePreferences(instanceId),
         ])
-        return { categories, tags, preferences }
+        return { categories, tags }
       },
       staleTime: 60_000,
       gcTime: 1_800_000,

@@ -317,7 +317,7 @@ export function IndexerTable({
                   </Button>
                 </TableHead>
                 <TableHead className="hidden sm:table-cell text-center">{t("indexers.table.timeout")}</TableHead>
-                <TableHead className="text-center">{t("indexers.table.actions")}</TableHead>
+                <TableHead pinEnd className="text-center">{t("indexers.table.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -456,7 +456,7 @@ export function IndexerTable({
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-center">{indexer.priority}</TableCell>
                     <TableCell className="hidden sm:table-cell text-center">{indexer.timeout_seconds}s</TableCell>
-                    <TableCell className="text-center">
+                    <TableCell pinEnd className="text-center">
                       <div className="flex justify-center gap-1">
                         <Button
                           variant="ghost"

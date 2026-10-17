@@ -8,6 +8,7 @@ import { useBlocker } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 
 import { api, clearQuiServiceWorker, setSSORecoveryPaused } from "@/lib/api"
+import { getAppVersion } from "@/lib/build-info"
 import { withBasePath } from "@/lib/base-url"
 import type { SelfUpdateResult } from "@/types"
 
@@ -135,7 +136,11 @@ export function useSelfUpdate() {
   return {
     restartAvailable: versionQuery.data?.restart === true,
     selfUpdateAvailable: versionQuery.data?.selfUpdate === true,
-    currentVersion: versionQuery.data?.version,
+    currentVersion: withoutV(versionQuery.data?.version ?? getAppVersion()),
+    selfUpdateUnavailableReason: versionQuery.data?.selfUpdateUnavailableReason,
+    supportChecking: versionQuery.isPending || versionQuery.isFetching,
+    supportCheckFailed: versionQuery.isError && !versionQuery.isFetching,
+    retrySupportCheck: () => void versionQuery.refetch(),
     confirmOpen,
     setConfirmOpen: (open: boolean) => {
       // Escape still closes the dialog while Cancel is disabled, and focus

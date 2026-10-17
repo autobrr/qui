@@ -25,7 +25,17 @@ func (e *RuleError) Error() string { return e.Message }
 
 func ruleError(msg string) error { return &RuleError{Message: msg} }
 
-const errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+const (
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+	errMsgPathSourceAccessRequired      = "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+)
+
+// windowsLocalPathSource reports whether a path source would read a Windows
+// host's own disks. The local backend could stat them, but the path check
+// accepts only a leading "/" and the local refusal from #1915 still holds.
+func windowsLocalPathSource(instance *models.Instance) bool {
+	return runtime.GOOS == "windows" && instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
+}
 
 // ValidateRule checks a rule against itself and its instance. It normalizes
 // rule.Conditions. A nil instance has no filesystem access. Checks that look up
@@ -35,8 +45,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		return ruleError("Name is required")
 	}
 
-	// Require either "*" (all trackers) or at least one tracker domain/pattern
-	if len(rule.TrackerDomains) == 0 && strings.TrimSpace(rule.TrackerPattern) == "" {
+	if strings.TrimSpace(rule.TrackerPattern) == "" {
 		return ruleError("Select at least one tracker or enable 'Apply to all'")
 	}
 
@@ -93,10 +102,16 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	hasIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).Identity
+	hasTrustedIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).TrustedIdentity
 	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
+	// A remote instance cannot turn on local access without becoming a local
+	// one, so it gets the answer the UI gives, not that advice.
+	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
 	for field, data := range conditionFieldData {
-		if (data.fileIdentity && !hasIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+		if (data.trustedIdentity && !hasTrustedIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+			if isRemote {
+				return ruleError("This file condition is not available on remote instances.")
+			}
 			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		}
 	}
@@ -113,7 +128,6 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 
 	for _, validate := range []func(*models.ActionConditions) (string, error){
 		validateTagDeleteFromClientConfig,
-		validateConditionGroupingConfig,
 		validateRlsYearConditions,
 	} {
 		if msg, err := validate(conditions); err != nil {
@@ -126,14 +140,17 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
-		if !hasIdentity {
+		if !hasTrustedIdentity {
+			if isRemote {
+				return ruleError("includeHardlinks is not available on remote instances.")
+			}
 			return ruleError("includeHardlinks requires Local Filesystem Access to be enabled on this instance")
 		}
 	}
 
 	if source := rule.FreeSpaceSource; source != nil {
-		// Path-based free space is not supported on Windows (enforce regardless of whether FREE_SPACE is used)
-		if runtime.GOOS == "windows" && source.Type == models.FreeSpaceSourcePath {
+		// Enforce regardless of whether FREE_SPACE is used.
+		if source.Type == models.FreeSpaceSourcePath && windowsLocalPathSource(instance) {
 			return ruleError(errMsgWindowsPathSourceNotSupported)
 		}
 		if msg, err := validateFreeSpaceSource(source, instance, conditionsUseFreeSpace(conditions)); err != nil {
@@ -227,39 +244,57 @@ func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (str
 	return "", nil
 }
 
-func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
+// groupIDKnown reports whether an id names a custom group in grouping or a built-in group.
+// It uses the lookup of a rule run, so an id that passes also resolves to a group when the rule runs.
+func groupIDKnown(grouping *models.GroupingConfig) func(string) bool {
+	return func(id string) bool { return groupDefinition(grouping, id) != nil }
+}
+
+// ConditionGroupIDsError returns a RuleError for the first group ID in grouping.defaultGroupId, an enabled
+// delete, category or move action, or an action condition that names no group. ValidateRule does not call it,
+// because an update skips the check when the conditions did not change.
+func ConditionGroupIDsError(conditions *models.ActionConditions) error {
 	if conditions == nil {
-		return "", nil
+		return nil
 	}
+	known := groupIDKnown(conditions.Grouping)
 
-	knownGroupIDs := map[string]struct{}{
-		strings.ToLower(GroupCrossSeedContentPath):     {},
-		strings.ToLower(GroupCrossSeedContentSavePath): {},
-		strings.ToLower(GroupReleaseItem):              {},
-		strings.ToLower(GroupTrackerReleaseItem):       {},
-		strings.ToLower(GroupHardlinkSignature):        {},
-	}
-
+	type groupRef struct{ key, id string }
+	var refs []groupRef
 	if conditions.Grouping != nil {
-		for _, group := range conditions.Grouping.Groups {
-			groupID := strings.ToLower(strings.TrimSpace(group.ID))
-			if groupID == "" {
-				continue
-			}
-			knownGroupIDs[groupID] = struct{}{}
+		refs = append(refs, groupRef{"grouping.defaultGroupId", conditions.Grouping.DefaultGroupID})
+	}
+	if del := conditions.Delete; del != nil && del.Enabled {
+		refs = append(refs, groupRef{"delete.groupId", del.GroupID})
+	}
+	if category := conditions.Category; category != nil && category.Enabled {
+		refs = append(refs, groupRef{"category.groupId", category.GroupID})
+	}
+	if move := conditions.Move; move != nil && move.Enabled {
+		refs = append(refs, groupRef{"move.groupId", move.GroupID})
+	}
+	for _, ref := range refs {
+		if id := strings.TrimSpace(ref.id); id != "" && !known(id) {
+			return ruleError(fmt.Sprintf("Unknown grouping ID '%s' in %s", id, ref.key))
 		}
 	}
 
-	for _, cond := range conditionTreesForValidation(conditions) {
-		if cond == nil {
-			continue
-		}
-		if msg, err := validateConditionTreeGroupIDs(cond, knownGroupIDs); err != nil {
-			return msg, err
+	return conditionTreesGroupIDsError(conditionTreesForValidation(conditions), known)
+}
+
+// ScoreRuleGroupIDsError returns a RuleError for the first group ID in a score condition of sorting that names
+// no group. grouping holds the custom groups of the rule. An update skips the check when the sorting did not change.
+func ScoreRuleGroupIDsError(grouping *models.GroupingConfig, sorting *models.SortingConfig) error {
+	return conditionTreesGroupIDsError(sortingConfigConditionTrees(sorting), groupIDKnown(grouping))
+}
+
+func conditionTreesGroupIDsError(trees []*models.RuleCondition, known func(string) bool) error {
+	for _, cond := range trees {
+		if msg, err := validateConditionTreeGroupIDs(cond, known); err != nil {
+			return ruleError(msg)
 		}
 	}
-
-	return "", nil
+	return nil
 }
 
 func conditionTreesForValidation(conditions *models.ActionConditions) []*models.RuleCondition {
@@ -272,7 +307,7 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	return trees
 }
 
-func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map[string]struct{}) (string, error) {
+func validateConditionTreeGroupIDs(cond *models.RuleCondition, known func(string) bool) (string, error) {
 	if cond == nil {
 		return "", nil
 	}
@@ -280,14 +315,14 @@ func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map
 	if cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped {
 		groupID := strings.TrimSpace(cond.GroupID)
 		if groupID != "" {
-			if _, ok := knownGroupIDs[strings.ToLower(groupID)]; !ok {
+			if !known(groupID) {
 				return fmt.Sprintf("Unknown grouping ID '%s' in grouped condition", groupID), errors.New("unknown grouped condition groupId")
 			}
 		}
 	}
 
 	for _, child := range cond.Conditions {
-		if msg, err := validateConditionTreeGroupIDs(child, knownGroupIDs); err != nil {
+		if msg, err := validateConditionTreeGroupIDs(child, known); err != nil {
 			return msg, err
 		}
 	}
@@ -384,16 +419,14 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 
 // validateFreeSpacePathSource validates path-based free space source configuration.
 func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (msg string, err error) {
-	// Path-based free space is not supported on Windows.
-	// This is also enforced in ValidateRule, but keep it here since
+	// Also enforced in ValidateRule, but kept here since
 	// validateFreeSpaceSource is unit-tested directly.
-	if runtime.GOOS == "windows" {
-		return errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows")
+	if windowsLocalPathSource(instance) {
+		return errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows with local access")
 	}
 
-	// Path type requires local filesystem access
-	if instance == nil || !instance.HasLocalFilesystemAccess {
-		return "Free space path source requires Local Filesystem Access. Enable it in instance settings first.", errors.New("local access required for path source")
+	if instance == nil || !models.FilesystemCapabilitiesOf(instance).Read {
+		return errMsgPathSourceAccessRequired, errors.New("filesystem access required for path source")
 	}
 
 	// Path must be non-empty

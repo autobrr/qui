@@ -1,6 +1,6 @@
 # Remote Filesystem Backend Design (SSH/SFTP-native)
 
-Status: draft for maintainer review. Supersedes the remote-helper design
+Status: largely built; kept as the design reference. Supersedes the remote-helper design
 (PR #1913, closed but kept as reference — it documents the deployable-agent
 tier and its NDJSON wire protocol, which remain the fallback if this design
 hits a performance wall).
@@ -19,7 +19,8 @@ uses native SSH primitives on a single connection:
 - exec sessions (additional channels on the same connection) for what it
   cannot, when the key permits exec,
 - a capability probe at connect time that decides which tier the instance
-  gets. Nothing is persisted; capabilities are re-probed on every connect.
+  gets. Only the tier is stored, in `instances.ssh_tier`, and every connect
+  probes the host again and writes it.
 
 Rationale: no binaries to build per arch or keep in lockstep with qui;
 shared seedboxes essentially always offer SFTP but do not always allow exec;
@@ -46,11 +47,15 @@ existing target is always a conflict and fails the create — never a
 silent skip (raised by Audionut on #1914). The degraded mode must be
 surfaced in the UI, not silent.
 
-**SFTP+exec**: identity arrives via `find`/`stat` sweeps, reflink support is
-probed and used, `SameFilesystem` is exact. "Full functionality" means
-every operation has either a supported SFTP extension or an exec
-fallback — the probe verifies that per operation, it is not implied by
-the tier label.
+**SFTP+exec** (tier `exec`): the key runs a shell with GNU `find` and
+`stat`. Identity comes from `find`/`stat`, and `SameFilesystem` is
+exact. Only the tier is stored, not each probe flag, because no other flag
+changes a capability yet. Reflink is not probed, and reflinks are off on
+every remote tier. A host without the GNU tools gets tier `sftp`, and so
+does a login shell that does not quote like POSIX: every command is
+single-quoted for that shell, and fish reads `\'` inside single quotes as
+an escape, so the probe runs `printf '%s' 'a\'` and expects `a\` before it
+asks for the tools.
 
 `SameFilesystem` with unusable fsids (servers that report zeroes, no exec
 fallback): returns an explicit error, never a guess in either direction.
@@ -62,35 +67,41 @@ non-link strategies, which is the safe degradation.
 
 | fsops.Backend | SFTP-only | with exec |
 |---|---|---|
-| `Stat` / `Lstat` | `SSH_FXP_STAT` / `LSTAT` (identity → `FileIDErr`) | + `stat` for identity |
+| `Stat` / `Lstat` | `SSH_FXP_STAT` / `LSTAT` (identity → `FileIDErr`) | + `stat -L` / `stat` for identity, never following a link for `Lstat` |
 | `ReadDir` | `SSH_FXP_READDIR` (attrs included, no per-entry stat) | same |
-| `WalkDir` | recursive readdir | `find -printf` streams a tree's paths+identity in one round trip |
-| `Statfs` | `statvfs@openssh.com` | same (fallback `df -P`) |
+| `WalkDir` | recursive readdir | `find -printf` streams a tree's paths+identity in one round trip; qui reads all of it and sorts it in Go |
+| `Statfs` | `statvfs@openssh.com` | same |
 | `SameFilesystem` | fsid compare from statvfs, if the server reports real fsids (probe; some return zero) | `stat -c %d` compare |
 | `MkdirAll` | `SSH_FXP_MKDIR` walk-up | same |
-| `Remove` | `REMOVE`/`RMDIR`; recursive = readdir-driven bottom-up | recursive = `rm -rf --` |
+| `Remove` | `REMOVE`/`RMDIR`; recursive = readdir-driven bottom-up | same |
 | `HardlinkTree` | `hardlink@openssh.com` per file | same |
-| `ReflinkTree` | unsupported | `cp --reflink=always` |
+| `ReflinkTree` | unsupported | unsupported |
 | `RemoveTree` | `REMOVE` over the recorded handle | same |
-| `SupportsReflink` | false | probed once per fs root |
+| `SupportsReflink` | false | false |
 
-`StatBatch`/`LstatBatch` were dropped from `fsops.Backend` pending a
-consumer; this backend is that consumer. pkg/sftp pipelines concurrent
-requests over the one session, and the exec path fills a batch with a single
-`xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. They come back with
-the exec tier (3e, #2726), which is the first thing that can fill them.
+Batch stat is the optional `fsops.BatchStater`. It is not on
+`fsops.Backend`. A caller that knows all its paths calls `fsops.LstatAll`,
+which uses `LstatBatch` when the backend has it and one `Lstat` per path
+when it does not. The remote backend has `LstatBatch` since #2726. On the exec tier, one `find -maxdepth 0 -printf` reads up to
+1,000 paths with their identity in two round trips. `Lstat` answers each
+path that `find` did not print, such as a missing one, so the errors are
+the same. On the sftp tier, `Lstat` answers each path. Cross-seed hardlink
+matching uses it: a 20-file pack takes about 200 ms at 100 ms of delay, not
+about 6 s. `StatBatch` and `fsops.StatAll`, which follow links, pipelined
+sftp requests, and the hardlink index and missing-files callers come in
+#2971. The exec tier uses `find` and not `xargs -0 stat`, because `find`
+prints the same record as the walk, so one parser reads both.
 
 ## File Identity Over the Wire — DECIDED
 
-Remote identity is (device, inode) parsed from GNU `find`/`stat` output. But
-`hardlink.FileID` is platform-compiled: unix builds carry `Dev`/`Ino`,
-Windows builds carry a volume serial plus a 16-byte identifier. A qui host
-on Windows cannot represent a Linux seedbox's identity in today's struct.
+Remote identity is (device, inode) parsed from GNU `find`/`stat` output. Before
+#2970, `hardlink.FileID` was platform-compiled: unix builds carried `Dev`/`Ino`,
+Windows builds a volume serial plus a 16-byte identifier, so a qui host on
+Windows could not represent a Linux seedbox's identity.
 
 **Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
-fixed-size form, implemented in the remote-backend PR** (raised by com6056
-on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
+fixed-size form, landed in #2970 before the remote backend uses it**
+(raised by com6056 on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
 Windows identity is up to 24, so no packing into the other platform's
 struct is lossless in either direction, and the type is already shared
 across develop's consumers, so the ripple is the same size now or later.
@@ -103,26 +114,34 @@ well-defined, and `IsZero()` then means "no identity" rather than "a
 backend wrote zeros" (load-bearing: the hardlink index trusts any FileID
 returned without error, so zeroes-as-identity would collapse torrents
 into one delete-safe group). `Bytes()` returns the tagged form: dirscan
-keys its FileID index on `string(FileID.Bytes())` and persists it as
-`dir_scan_files.file_id` under a partial index on
+persists it as `dir_scan_files.file_id` under a partial index on
 `(directory_id, file_id)` matched by rename detection, so the encoding
-change ships with a migration (or a read path accepting the legacy
-widths) whenever it lands. Consumer churn is otherwise unchanged: `==`,
-map keys, and `IsZero()` all survive; the churn is per-platform
+change ships with a migration that sets `dir_scan_files.file_id` to
+NULL; there is no legacy read path, the next scan fills the column
+again. `IsZero()` survives unchanged; `==` and bare map keys give way
+to the helper below, and the rest of the churn is per-platform
 constructors and test literals.
 
 Guard regardless of representation: FileID comparisons are only valid
 within one backend/host, and `==` still compiles cross-host, so
-comparisons go through a helper that takes the backend scope (or the
-scope rides in the value). Remote-sourced identity is always kind 3, even
+comparisons go through `fsops.SameFile`, which takes the two instances
+the IDs came from, and indexes key on `fsops.FileKey`, the ID bound to
+its instance. IDs of different kinds never match; two kind 3 IDs match
+only when both instances have the same SSH host and port, and a kind 3 ID
+with no instance or no SSH host matches nothing. The bytes a
+unix ID stores are still the device and inode, under the tag.
+Remote-sourced identity is always kind 3, even
 when the remote is unix and the bytes are a `dev`/`ino`: it is parsed
 from command output on a host qui does not control, and the tag keeps
 peer-asserted identity type-distinct from kernel-attested identity. Peer
 identity is advisory. It may suppress work (dedup accounting,
-already-seeding skips) but never expands a destructive action:
-automations' delete-expansion groups torrents by a FileID signature and
-deletes the group with files, so on a remote backend that expansion
-degrades to the no-identity behavior. A hostile remote can never reach a
+already-seeding skips) but never expands a destructive action. The guard
+is the capability `TrustedIdentity`, which only a local instance has.
+The include-hardlinks delete option, the `HARDLINK_SCOPE` and
+`HARDLINK_SCOPE_CROSS` conditions and hardlink grouping in automations gate
+on it, not on Identity. A remote host that reports `nlink=1` for a file
+linked into a library would otherwise make that torrent read as scope
+`none`, and a "Remove Upgraded Torrents" rule would delete it. A hostile remote can never reach a
 worse outcome than the SFTP-only tier already produces with no identity
 at all.
 
@@ -131,9 +150,11 @@ at all.
 - `LC_ALL=C` and NUL separators everywhere; torrent filenames can contain
   nearly anything except NUL and `/`.
 - Probe GNU vs BSD userland at connect (`find -printf` and `stat -c` are
-  GNU-only); degrade the affected ops per-tool on BSD remotes.
-- Every exec carries a timeout and honors ctx cancellation; output is
-  size-capped.
+  GNU-only). A host without GNU `find` and `stat` gets tier `sftp`.
+- Every exec honors ctx cancellation. One command has a 30 s timeout and
+  keeps at most 1 MiB of output. `find` has no total output cap: it has a
+  cap for each record, a cap of 500,000 entries, and ctx.
+- One connection runs at most four exec sessions at a time.
 
 ## Path Domains
 
@@ -144,13 +165,44 @@ host `filepath` are correct by construction. The remote backend speaks
 slash-delimited POSIX paths regardless of the qui host's OS, which means
 host `filepath` must never touch a remote path: on a Windows host,
 `filepath.IsAbs("/data")` is false and `Join` inserts backslashes
-(raised by Audionut on #1914). The remote-backend PR introduces a path
-dialect for backend-owned path manipulation (Join/Dir/Base/IsAbs/Rel);
-the local backend's dialect is the host `filepath`, so existing callsites
-keep their exact behavior, and a Windows-hosted qui operating a unix
-remote becomes correct by construction rather than by luck. Paths from
-qBittorrent's API arrive slash-delimited and stay inside their instance's
-backend domain end to end.
+(raised by Audionut on #1914). Slice 3c (#2724) gives every backend a
+path dialect, `Backend.Paths() fsops.PathDialect` (`Join`, `Dir`, `Base`,
+`Clean`, `IsAbs`, `Rel`, `FromSlash`, `ToSlash`, `Separator`): the local
+and noop backends answer `fsops.HostPaths`, which is the host `filepath`,
+so local callsites keep their exact behavior; the remote backend answers
+`fsops.SlashPaths`, which is `path` with `FromSlash`/`ToSlash` as the
+identity and a slash-only `Rel` (`path` has none, and `filepath.Rel`
+answers with backslashes on a Windows host), so a Windows-hosted qui
+operating a unix remote is correct by construction rather than by luck.
+Like `Backend`, `PathDialect` exceeds the five-method guideline on
+purpose: it mirrors `filepath`'s grammar, and a smaller split would leave
+callers reaching for the host package again. A path that goes to or comes from a
+backend is manipulated with that backend's dialect; host-only paths (the
+data dir, backups) keep `filepath`. Paths from qBittorrent's API arrive
+slash-delimited and stay inside their instance's backend domain end to
+end. 3c moved the free-space path source, missing-files, the hardlink
+index, the dirscan scanner and the fileid index onto the dialect. Orphan
+scan moved in #2930: its comparison keys keep the dialect's own separators
+(a canonical slash key would merge a Windows UNC path with a rooted one),
+peers' roots and file maps are built in the scanning backend's dialect, and
+ignore paths are validated at save time in the dialect of the instance's
+backend, which is the one the scan reads them in. Cross-seed moved in #2943:
+link mode, season packs, the Manual match preview and local-match evidence
+take the dialect from the backend each function holds, and a season pack
+plans and creates its tree on one backend read. `hardlinktree`'s plan
+builders take the dialect as a leading parameter, through a four-method
+`hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
+imports `hardlinktree`, so the dependency cannot point the other way), and
+they check torrent paths in slash grammar on every host. When the
+destination dialect is Windows they also reject any component Windows
+cannot store as a file name: a colon, which NTFS reads as an alternate data
+stream of another file (found natively by Audionut on #3140), the other
+reserved characters, control characters, a trailing dot or space, and the
+reserved device names. The partial pool,
+`hardlinktree.Create`, reflink creation and the shared-allocation check are
+host code and run only for local instances. Managed-delete cleanup (#2947),
+the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
+`filepath`.
 
 ## Path and Command Safety
 
@@ -162,13 +214,14 @@ backend domain end to end.
   file names always join beneath one.
 - Exec command lines never interpolate raw paths into a shell string:
   arguments are strictly quoted, and options are terminated with `--`
-  before any path for `find`, `stat`, `xargs`, `rm`, and `cp`.
+  before any path for `find` and `stat`.
 - Symlink policy for destructive ops: recursion never follows a link, on
   any tier. A symlinked directory is never descended; the link itself is
-  removed, never the target's contents. `rm -rf --` and the local
-  backend's `os.RemoveAll` both traverse `openat`-style, so they refuse
-  links and are immune to a mid-walk swap. SFTP v3 gets only the first
-  half: no `openat`, no `O_NOFOLLOW`, every path re-resolved server-side,
+  removed, never the target's contents. The local backend's
+  `os.RemoveAll` traverses `openat`-style, so it refuses links and is
+  immune to a mid-walk swap. SFTP v3 gets only the first half, and an
+  exec-tier remote removes over SFTP too: no `openat`, no `O_NOFOLLOW`,
+  every path re-resolved server-side,
   so a swapped ancestor directory can redirect an unlink between the walk
   and the remove. That race is unfixable over v3; bound it by
   re-`lstat`ing immediately before each unlink. `RemoveTree` is a path
@@ -252,9 +305,10 @@ backend domain end to end.
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
   qui, so the user makes that call, never the code. On a background
-  reconnect nobody is there to prompt, so a mismatch parks the instance
-  in a needs-reconfirmation state and fails every fsop until a human
-  clears it.
+  reconnect nobody is there to prompt, so a mismatch fails every fsop on
+  the instance. The refusal lives only in memory (see Connection Pool):
+  confirming or replacing the pin clears it, and so does a restart, after
+  which the next dial is refused again while the key is still wrong.
 - The pin belongs to the host, not the credential: deleting SSH
   credentials keeps the pin, `ssh-test` against a pinned instance routes
   into the mismatch flow rather than first contact, and editing host or
@@ -307,9 +361,15 @@ including a row with credentials and no confirmed pin, is refused before
 it connects and is not memoised.
 A connection nobody has used for ten minutes is closed.
 
-Exec sessions will share the same connection. Concurrency comes from sftp
-request pipelining plus bounded parallel exec sessions — no helper-process
-lifecycle to manage.
+Exec sessions share the same connection, at most four at a time.
+Concurrency comes from sftp request pipelining plus these exec sessions,
+with no helper process to manage. A running exec counts as use, so the idle
+close does not cut a long `find`. Every connect runs the GNU probe and
+writes the tier to the row when it changed, so an existing instance moves to
+`exec` on its first connect, and a key that lost its shell moves back to
+`sftp`. A probe that gets no answer writes nothing, and that connection
+runs no exec. An exec that a caller started on the stored `exec` tier, on a
+connection whose probe found `sftp`, fails with `fsops.ErrUnsupported`.
 
 ## Schema
 
@@ -319,8 +379,9 @@ field), and the pinned host key stored as the marshaled public key plus
 its algorithm under the same AEAD (AAD: instance id + field + host +
 port). Not a fingerprint column: the `HostKeyAlgorithms` preference and
 the mismatch flow both need the full key, and fingerprints are
-display-only (see Security). No helper-deploy columns, no persisted
-capabilities. `FilesystemAccessMode` resolves to local | remote | none.
+display-only (see Security). No helper-deploy columns. Of the probe
+results, only the tier is stored (`ssh_tier`, `sftp` or `exec`): the SSH
+test route, the pin routes and every pool connect write it again. `FilesystemAccessMode` resolves to local | remote | none.
 This is the slimmed scope for #1917, which also carries the credential
 store that owns these columns: the AEAD write and read path, and a pin
 the store sets once, drops when the host or port changes, and keeps when
@@ -352,7 +413,9 @@ need insert-then-update in one transaction.
 ## Frontend
 
 SSH configuration on the instance form; the test flow confirms the host-key
-fingerprint and shows the probed tier. Instances on the SFTP-only tier show
+fingerprint and shows the probed tier. The UI draws the capabilities of an
+instance from the stored tier, so it needs no connection to do so.
+Reflinks are off on every remote tier. Instances on the SFTP-only tier show
 a degraded-mode indicator naming what's off (hardlink dedup, reflinks).
 
 ## Windows Remotes
@@ -370,7 +433,9 @@ exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
 `Get-ChildItem` sweeps) is possible later if demand appears; the opaque
 FileID form keeps that door open. Remote Windows paths surface in
 SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
-every other remote path.
+every other remote path. Because such a remote uses `SlashPaths`, the Windows
+name check above does not apply, so a POSIX name containing `:` is still
+accepted and would land as an NTFS alternate data stream, a known gap.
 
 ## Field Validation
 
@@ -399,8 +464,8 @@ scratch directories and a temporarily added, uniquely tagged
   holds on the real filesystem.
 - Reflink is unsupported (XFS without reflink). Providers mostly do not
   enable it on shared hosts, and where it exists it is a dedicated-host
-  option on request, so the design expectation is: probe it, assume off,
-  hardlink mode is the real path there.
+  option on request. qui does not probe it: reflinks are off on every
+  remote tier, and hardlink mode is the real path there.
 - Latency is the load-bearing number: about 740 ms per sftp readdir round
   trip from a home connection, and 2.1 to 3.5 s per cold connect, auth and
   exec.
@@ -411,7 +476,7 @@ scratch directories and a temporarily added, uniquely tagged
 
 ## Rollout
 
-1. Foundation (open): #1914 backend interface, #1915 callsite migration.
+1. Foundation (merged): #1914 backend interface, #1915 callsite migration.
    #1916 (missing-files) was closed as superseded — #1915 carries that
    migration along with every other callsite.
 2. #1917: the schema above plus its credential store.
@@ -422,31 +487,42 @@ scratch directories and a temporarily added, uniquely tagged
      read methods. Writes refuse with `fsops.ErrUnsupported`.
    - 3c (#2724): path dialect on the backend and the callsite sweep.
    - 3d (#2725): SFTP write operations.
-   - 3e (#2726): exec tier and batch methods; extends the pool to hand out
-     the ssh client for exec sessions.
-4. Frontend.
-5. Feature rollout per service, degraded-mode UX. Most consumers still
-   admit an instance on `HasLocalFilesystemAccess` rather than on its
-   filesystem mode: orphan scan (handler and service filters), automations
-   (missing-files condition, hardlink index; rule save and dry-run
+   - 3e (#2726): the exec tier and remote file identity. The pool hands out
+     the ssh client for bounded exec sessions, and batch lstat for
+     cross-seed matching. The rest of batch stat is #2971.
+4. Frontend. Lands last. It is the only UI path that sets up SSH access,
+   so it gates the rollout for users. Until #2917 ships, no UI text names
+   SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
+   locales. Text that only a remote instance renders says "remote
+   instance" and stays. Text a local user also sees keeps its develop
+   wording, and the slice adds it to the reverse list in #2917's body.
+   (#2916 Decisions)
+5. Feature rollout per service, degraded-mode UX. Consumers admit an
+   instance on a filesystem capability (`Pool.Require`,
+   `models.FilesystemCapabilitiesOf`): automations
+   (missing-files condition; the hardlink index, which gates on Identity
+   and which 3e opens to exec-tier remotes, while the automations fields
+   that read it gate on `TrustedIdentity`; rule save and dry-run
    validation), dirscan, cross-seed (link mode, manual assemble,
    mediainfo, season pack, partial pool, local-match detection), the sync
-   manager's hardlink base dir, the disc-scan route (which checks for
-   local mode, not the flag), and two routes that read file content, which
+   manager's hardlink base dir, the disc-scan route (which requires
+   `CapabilityContent`), and two routes that read file content, which
    no `Backend` method covers yet: the torrents handler's local-access
-   routes and the proxy mediainfo route. The exception is the free-space
-   path source: its preview and scheduled-run paths resolve the backend
-   and call `Statfs` with no mode check, so a remote-mode instance already
-   reports remote free space, and that is the intended figure. A gate
+   routes and the proxy mediainfo route. The free-space
+   path source: its preview and scheduled-run paths call `Statfs` only
+   after `Pool.Require` grants the Read capability, and rule save
+   validation also checks Read. A remote-mode instance has Read, so it
+   already reports remote free space, and that is the intended figure. A gate
    reads the instance before the work starts, so the reads after it
    resolve backend and mode from one later read and refuse every mode but
-   local. The hardlink index, dirscan and the sync manager's cleanup do
-   that through `Pool.LocalBackend`, and missing files through
+   local. Dirscan does that through
+   `Pool.LocalBackend`, and missing files through
    `Pool.Resolve`. An instance whose local access was turned off after the
    gate is then refused rather than read over SSH at a local path. Orphan
-   scan still resolves with `GetBackend` until remote orphan scan replaces
-   its gate. Each remaining gate lifts in its own slice, with the
-   degraded-mode handling that service needs, and the API-driven checks
+   scan admits an instance on Read, walks the backend `Pool.Require`
+   returns for Read, and refuses to delete from a run scanned over SSH.
+   Each remaining gate lifts in its own slice, with the degraded-mode
+   handling that service needs, and the API-driven checks
    (missing files, orphan scan) become the field test of that slice. Every
    remote read that loses its connection, or that the pool will not dial,
    fails with `fsops.ErrConnectionLost`. When the pool refused on purpose
@@ -461,5 +537,5 @@ performance wall, #1913 has the protocol design ready.
 
 ## Open Questions
 
-1. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
-   supported floor there?
+1. BSD/macOS remotes get tier `sftp`, like every non-GNU host. Is a BSD
+   exec dialect worth adding?
