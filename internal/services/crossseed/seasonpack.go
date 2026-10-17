@@ -28,7 +28,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // videoExtensions lists playable video file extensions used to identify
@@ -92,6 +91,9 @@ type seasonPackPlanBuild struct {
 	linkedBytes       int64
 	totalBytes        int64
 	totalFiles        int
+	// nextBaseDir plans the next ranked base dir on the sources' filesystem after
+	// a cross-device link error. It returns nil when none is left.
+	nextBaseDir func() (*seasonPackPlanBuild, error)
 }
 
 type seasonPackMatchOptions struct {
@@ -182,7 +184,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 		return nil, "invalid_torrent", "failed to parse torrent metadata", nil
 	}
 
-	packEpisodes := extractPackEpisodes(meta.Files, packRelease)
+	packEpisodes := s.matcher().extractPackEpisodes(meta.Files, packRelease)
 	if len(packEpisodes) == 0 {
 		return nil, "invalid_torrent", "no playable episode files found in torrent", nil
 	}
@@ -606,21 +608,38 @@ func (s *Service) planSeasonPack(
 		}
 	}
 
-	selectedBaseDir, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
+	selectedBaseDir, retryDirs, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	destDir := s.seasonPackDestDir(ctx, d, inst, selectedBaseDir, prep.torrentBytes, indexer)
-
-	planBuild, err := buildSeasonPackPlan(
-		d, prep.meta.Files, prep.packRelease, prep.meta.Name,
-		destDir, localFiles, normalizerForService(s), prep.settings, prep.aliasTitles,
-	)
+	buildForDir := func(baseDir string) (*seasonPackPlanBuild, error) {
+		destDir := s.seasonPackDestDir(ctx, d, inst, baseDir, prep.torrentBytes, indexer)
+		build, err := s.matcher().buildSeasonPackPlan(
+			d, prep.meta.Files, prep.packRelease, prep.meta.Name,
+			destDir, localFiles, prep.settings, prep.aliasTitles,
+		)
+		if err != nil {
+			return nil, err
+		}
+		build.backend = backend
+		return build, nil
+	}
+	planBuild, err := buildForDir(selectedBaseDir)
 	if err != nil {
 		return nil, episodes, err
 	}
-	planBuild.backend = backend
+	sourcePaths := seasonPackSourcePaths(localFiles)
+	planBuild.nextBaseDir = func() (*seasonPackPlanBuild, error) {
+		for len(retryDirs) > 0 {
+			dir := retryDirs[0]
+			retryDirs = retryDirs[1:]
+			if ok, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths); err == nil && ok {
+				return buildForDir(dir)
+			}
+		}
+		return nil, nil
+	}
 	if !prep.manual && planBuild.hasPendingFiles() && prep.settings.SkipRecheck {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
@@ -634,6 +653,11 @@ func (s *Service) planSeasonPack(
 	return planBuild, episodes, nil
 }
 
+// createSeasonPackTree links the planned tree. After a cross-device error it rolls
+// the partial tree back and retries in the next ranked base dir, as
+// LinkIntoMatchingBaseDir does: SameFilesystem compares device IDs, and some hosts
+// (OrbStack VirtioFS) report one ID for several disks. A retry replaces
+// *planBuild with the plan for the dir that was used.
 func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
 	backend := planBuild.backend
 	createFn := s.seasonPackLinkCreator
@@ -643,16 +667,31 @@ func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPac
 			createFn = backend.ReflinkTree
 		}
 	}
-	created, err := createFn(ctx, planBuild.plan)
-	if err != nil {
+	for {
+		created, err := createFn(ctx, planBuild.plan)
+		if err == nil {
+			planBuild.created = created
+			return nil
+		}
 		if rollbackErr := rollbackSeasonPackTree(ctx, backend, created, planBuild.packDir); rollbackErr != nil {
 			return fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
 		}
-		return fmt.Errorf("link_failed: %w", err)
+		// A retry over a partial tree that the creator could not remove would
+		// report success while that tree stays on disk.
+		if !isCrossDeviceLinkError(err) || errors.Is(err, hardlinktree.ErrRollbackFailed) || planBuild.nextBaseDir == nil {
+			return fmt.Errorf("link_failed: %w", err)
+		}
+		next, buildErr := planBuild.nextBaseDir()
+		if buildErr != nil {
+			return fmt.Errorf("link_failed: %w", errors.Join(err, buildErr))
+		}
+		if next == nil {
+			return fmt.Errorf("link_failed: %w", err)
+		}
+		log.Warn().Err(err).Str("rootDir", planBuild.plan.RootDir).Msg("cross-device season pack link, trying the next base dir")
+		next.nextBaseDir = planBuild.nextBaseDir
+		*planBuild = *next
 	}
-	planBuild.created = created
-
-	return nil
 }
 
 // seasonPackDestDir applies the instance's hardlink directory-organization preset
@@ -672,43 +711,39 @@ func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, in
 	}
 }
 
-func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
+// selectSeasonPackBaseDir returns the first base dir, in rankBaseDirs order as
+// LinkIntoMatchingBaseDir uses for single cross-seeds, on the same filesystem as
+// every episode source. It also returns the ranked dirs after it, unchecked, to
+// retry after a cross-device link error. The episodes of a pack share a disk, so
+// the first source path stands in for all of them when ranking.
+func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, []string, error) {
 	dirs := parseSeasonPackBaseDirs(configuredDirs)
 	if len(dirs) == 0 {
-		return "", fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
+		return "", nil, fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
 	}
 
 	sourcePaths := seasonPackSourcePaths(localFiles)
 	if len(sourcePaths) == 0 {
-		return "", fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
-	}
-	if len(dirs) == 1 {
-		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dirs[0], sourcePaths)
-		if err != nil {
-			return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, err)
-		}
-		if matchesAllSources {
-			return dirs[0], nil
-		}
-		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
+		return "", nil, fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
 	}
 
 	var lastErr error
-	for _, dir := range dirs {
+	ranked := rankBaseDirs(backend.Paths(), dirs, sourcePaths[0])
+	for i, dir := range ranked {
 		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		if matchesAllSources {
-			return dir, nil
+			return dir, ranked[i+1:], nil
 		}
 	}
 
 	if lastErr != nil {
-		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
+		return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
 	}
-	return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
+	return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
 }
 
 func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) []string {
@@ -836,26 +871,36 @@ func findInstance(instances []*models.Instance, id int) *models.Instance {
 // enriched from the torrent-level release. seasonlessOrigin reports whether the file
 // name itself carried no season (Series 0 before enrichment), i.e. it was
 // absolute-numbered. Torrent file names are slash-delimited, so path.Base is used.
-func parseSeasonPackEpisodePayload(
+// A multi-episode file such as "S01E01E02" is read as its first episode.
+func (m matcher) parseSeasonPackEpisodePayload(
 	fileName string,
 	torrentRelease *rls.Release,
-	normalizer *stringutils.Normalizer[string, string],
 ) (release *rls.Release, seasonlessOrigin, ok bool) {
 	ext := strings.ToLower(path.Ext(fileName))
 	if _, known := videoExtensions[ext]; !known {
 		return nil, false, false
 	}
-	if shouldIgnoreFile(fileName, normalizer) {
+	if shouldIgnoreFile(fileName, m.normalizer()) {
 		return nil, false, false
 	}
 
-	parsed := rls.ParseString(path.Base(fileName))
-	if !isTVEpisode(&parsed) {
+	parsed := m.parseFileRelease(path.Base(fileName))
+	if releases.IsEpisodeRange(parsed) {
+		// The parser reads "S01E01E02" as a pack. Read it as its first episode, the
+		// identity matchEpisodeCandidatesDetailed gives a seeded range torrent, so
+		// the seeded file links instead of downloading again. Copy first: the
+		// parsed release is shared from the cache.
+		first := *parsed
+		eps := parsed.SeriesEpisodes()
+		first.Type, first.Series, first.Episode = rls.Episode, eps[0][0], eps[0][1]
+		parsed = &first
+	}
+	if !isTVEpisode(parsed) {
 		return nil, false, false
 	}
 	seasonlessOrigin = parsed.Series == 0
 
-	enriched := enrichReleaseFromTorrent(&parsed, torrentRelease)
+	enriched := enrichReleaseFromTorrent(parsed, torrentRelease)
 	if torrentRelease != nil && torrentRelease.Series > 0 && enriched.Series != torrentRelease.Series {
 		return nil, false, false
 	}
@@ -895,13 +940,12 @@ type packEpisodeOrigin struct {
 // (absolute episode 1 exists only in season 1), so those files are really S<N>E<ep>
 // and tagging them absolute would let another season's absolute-numbered locals
 // satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
-func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
+func (m matcher) extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
-	normalizer := normalizerForService(nil)
 
 	minSeasonlessEpisode := -1
 	for _, f := range files {
-		parsed, seasonlessOrigin, ok := parseSeasonPackEpisodePayload(f.Name, packRelease, normalizer)
+		parsed, seasonlessOrigin, ok := m.parseSeasonPackEpisodePayload(f.Name, packRelease)
 		if !ok {
 			continue
 		}
@@ -1345,8 +1389,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 	}
 
 	m := s.matcher()
-	normalizer := m.normalizer()
-	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
+	expected := m.seasonPackExpectedFiles(packFiles, packRelease)
 	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
 	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
 	ids := sortedEpisodeCandidateIDs(candidates)
@@ -1371,7 +1414,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				continue
 			}
 
-			localFile, err := resolveSeasonPackLocalFileCandidate(d, id, candidate, files, normalizer)
+			localFile, err := m.resolveSeasonPackLocalFileCandidate(d, id, candidate, files)
 			if err != nil {
 				reject(candidate, "episode_file_invalid")
 				lastErr = err
@@ -1414,14 +1457,13 @@ type seasonPackExpectedFile struct {
 	release *rls.Release
 }
 
-func seasonPackExpectedFiles(
+func (m matcher) seasonPackExpectedFiles(
 	packFiles qbt.TorrentFiles,
 	packRelease *rls.Release,
-	normalizer *stringutils.Normalizer[string, string],
 ) map[episodeIdentity]seasonPackExpectedFile {
 	expected := make(map[episodeIdentity]seasonPackExpectedFile)
 	for _, file := range packFiles {
-		release, _, ok := parseSeasonPackEpisodePayload(file.Name, packRelease, normalizer)
+		release, _, ok := m.parseSeasonPackEpisodePayload(file.Name, packRelease)
 		if !ok {
 			continue
 		}
@@ -1447,12 +1489,11 @@ func sortedEpisodeCandidateIDs(candidates map[episodeIdentity][]episodeMatch) []
 	return ids
 }
 
-func resolveSeasonPackLocalFileCandidate(
+func (m matcher) resolveSeasonPackLocalFileCandidate(
 	d fsops.PathDialect,
 	id episodeIdentity,
 	episode episodeMatch,
 	files qbt.TorrentFiles,
-	normalizer *stringutils.Normalizer[string, string],
 ) (seasonPackLocalFile, error) {
 	var matchedFileSize int64
 	var matchedRelease *rls.Release
@@ -1462,10 +1503,10 @@ func resolveSeasonPackLocalFileCandidate(
 
 	for i := range files {
 		file := &files[i]
-		if _, playable := videoExtensions[strings.ToLower(path.Ext(file.Name))]; playable && !shouldIgnoreFile(file.Name, normalizer) {
+		if _, playable := videoExtensions[strings.ToLower(path.Ext(file.Name))]; playable && !shouldIgnoreFile(file.Name, m.normalizer()) {
 			playableCount++
 		}
-		parsed, _, ok := parseSeasonPackEpisodePayload(file.Name, episode.release, normalizer)
+		parsed, _, ok := m.parseSeasonPackEpisodePayload(file.Name, episode.release)
 		if !ok {
 			continue
 		}
@@ -1545,14 +1586,13 @@ func firstMatchedEpisodeCategory(episodes map[episodeIdentity]episodeMatch) stri
 
 // buildSeasonPackPlan builds a TreePlan that assembles episode files from multiple
 // local torrents into the layout expected by the season pack torrent.
-func buildSeasonPackPlan(
+func (m matcher) buildSeasonPackPlan(
 	d fsops.PathDialect,
 	packFiles qbt.TorrentFiles,
 	packRelease *rls.Release,
 	packName string,
 	destDir string,
 	localFiles map[episodeIdentity]seasonPackLocalFile,
-	normalizer *stringutils.Normalizer[string, string],
 	settings *models.CrossSeedAutomationSettings,
 	aliasTitles []string,
 ) (*seasonPackPlanBuild, error) {
@@ -1569,7 +1609,6 @@ func buildSeasonPackPlan(
 		RootDir: destDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
-	m := matcher{stringNormalizer: normalizer}
 	build := &seasonPackPlanBuild{
 		plan:              plan,
 		packDir:           packDir,
@@ -1580,7 +1619,7 @@ func buildSeasonPackPlan(
 	for _, pf := range packFiles {
 		build.totalBytes += pf.Size
 
-		packFileRelease, _, ok := parseSeasonPackEpisodePayload(pf.Name, packRelease, normalizer)
+		packFileRelease, _, ok := m.parseSeasonPackEpisodePayload(pf.Name, packRelease)
 		if !ok {
 			continue
 		}

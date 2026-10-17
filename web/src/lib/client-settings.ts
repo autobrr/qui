@@ -59,7 +59,6 @@ const SYNCED_KEYS = new Set<string>([
   "qui-log-levels",
 ])
 const SYNCED_PREFIXES = [
-  "qui-start-paused-instance-",
   "qui-cross-seed-blocklist-",
   // "qui-filters-" covers "qui-filters-global" and the per-instance keys.
   "qui-column-visibility:",

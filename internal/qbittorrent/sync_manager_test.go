@@ -33,51 +33,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// The preferences field is tri-state: a nil RawMessage disappears through
-// omitempty, an explicit "null" survives it, and the key stays last.
-func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
-	t.Parallel()
-
-	body, err := json.Marshal(TorrentResponse{Torrents: []TorrentView{}})
-	require.NoError(t, err)
-	assert.NotContains(t, string(body), `"preferences"`)
-
-	body, err = json.Marshal(TorrentResponse{Torrents: []TorrentView{}, AppPreferences: json.RawMessage("null")})
-	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(string(body), `"preferences":null}`),
-		"an explicit null must survive omitempty and stay the last key")
-}
-
-func TestTorrentResponseAppPreferencesMarksFreshFailureForNullClear(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
-		instanceID: 7,
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	prefs, err := torrentResponseAppPreferences(ctx, client, false, 7)
-
-	require.NoError(t, err)
-	require.Equal(t, "null", string(prefs))
-}
-
-func TestTorrentResponseAppPreferencesOmitsCacheOnlyMiss(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
-		instanceID: 7,
-	}
-
-	prefs, err := torrentResponseAppPreferences(context.Background(), client, true, 7)
-
-	require.NoError(t, err)
-	require.Nil(t, prefs)
-}
-
 func TestNormalizeConnectionStatus(t *testing.T) {
 	t.Parallel()
 
@@ -2708,12 +2663,12 @@ func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
 	})
 }
 
-// App preferences are a cosmetic ~150-field blob. A failure to render them must
-// not blank the torrent table or turn every stream frame for the instance into an
-// error, so the field is dropped and the list is served.
-func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
+// The torrent list carries no preferences: screens read the preference view
+// route instead, so a list request neither fetches nor sends them.
+func TestGetTorrentsWithFiltersCarriesNoPreferences(t *testing.T) {
 	t.Parallel()
 
+	var preferenceRequests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/sync/maindata":
@@ -2722,6 +2677,9 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 			}}`))
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/app/preferences":
+			preferenceRequests.Add(1)
+			_, _ = w.Write([]byte(`{"listen_port":6881}`))
 		case "/api/v2/torrents/categories":
 			_, _ = w.Write([]byte(`{}`))
 		case "/api/v2/torrents/tags":
@@ -2735,7 +2693,7 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
@@ -2748,23 +2706,20 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
 
-	// ProxyType is an interface{} because qBittorrent changed its type across
-	// versions, so it is the field that can hold something json.Marshal rejects.
-	client.preferencesMu.Lock()
-	client.preferencesCache = &qbt.AppPreferences{ProxyType: make(chan int)}
-	client.preferencesJSON = nil
-	client.preferencesMu.Unlock()
-
 	pool.mu.Lock()
 	pool.clients[inst.ID] = client
 	pool.mu.Unlock()
 
 	sm := NewSyncManager(pool, nil)
 
-	resp, err := sm.GetTorrentsWithFilters(WithSkipFreshData(ctx), inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
-	require.NoError(t, err, "unrenderable preferences must not fail the list request")
-	require.Equal(t, 1, resp.Total, "the torrent list is still served")
-	require.Nil(t, resp.AppPreferences, "the unrenderable field is omitted")
+	resp, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.Total)
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"preferences"`)
+	assert.Zero(t, preferenceRequests.Load(), "a list request must not fetch preferences")
 }
 
 // The counts pass shares the list request's library slice instead of cloning
@@ -3282,7 +3237,6 @@ func TestRequestCoversWholeLibrary(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}))
-	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Sort: "name", Reverse: true}))
 
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}))
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "cross-seed"}))

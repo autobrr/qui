@@ -74,13 +74,14 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 			}
 			candidate := hardlinkTestCandidate(candidateDir)
 			candidate.Name = tt.candidateName
-			initial := service.determineLocalMatchType(
+			initial, ok := service.localMatchPrefilter(
+				true,
 				source,
 				service.releaseCache.Parse(source.Name),
 				candidate,
 				normalizePathForComparison(source.ContentPath),
-				hardlinkTestMatchCtx(service, sourceDir),
 			)
+			require.True(t, ok)
 			require.Equal(t, tt.wantInitial, initial)
 
 			matches := service.matchTorrentsInInstance(
@@ -126,7 +127,7 @@ func TestLocalLinkedMatchType_HardlinkPrecedesReflink(t *testing.T) {
 	require.Zero(t, queries)
 }
 
-func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.T) {
+func TestMatchTorrentsInInstance_MetadataLessIsNotACrossSeed(t *testing.T) {
 	tests := []struct {
 		name                 string
 		sourceHasContentPath bool
@@ -171,6 +172,7 @@ func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.
 				candidate.ContentPath = ""
 			}
 			matchCtx := hardlinkTestMatchCtx(service, sourceDir)
+			matchCtx.sourceContentPath = source.ContentPath
 
 			matches := service.matchTorrentsInInstance(
 				context.Background(),
@@ -185,8 +187,8 @@ func TestMatchTorrentsInInstance_MetadataLessSkipsLinkedVerification(t *testing.
 				matchCtx,
 			)
 
-			require.Len(t, matches, 1)
-			require.Equal(t, matchTypeName, matches[0].MatchType)
+			// A torrent without metadata holds no data, so it is not a cross-seed.
+			require.Empty(t, matches)
 			require.Zero(t, queries)
 			require.NoError(t, matchCtx.sourceFilesErr)
 			require.NoError(t, matchCtx.candidateFilesErr)
