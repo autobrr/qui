@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -100,6 +101,16 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 		files[tor.hash] = fmt.Sprintf(`[{"index":0,"name":"%s.mkv","size":1000,"progress":1,"priority":1}]`, tor.name)
 	}
 	stub := &writeStub{torrents: "{" + strings.Join(entries, ",") + "}", files: files, hashes: make(map[string][]string)}
+
+	// Cross-seed expansion pairs torrents through the cross matcher; here a shared name means shared files.
+	sharing := make(map[string][]string)
+	for _, a := range torrents {
+		for _, b := range torrents {
+			if a.hash != b.hash && a.name == b.name {
+				sharing[a.hash] = append(sharing[a.hash], b.hash)
+			}
+		}
+	}
 	server := httptest.NewServer(stub)
 	t.Cleanup(server.Close)
 
@@ -114,8 +125,15 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, sharedFilesMatcher{sharing}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, instance.ID, stub
+}
+
+// sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
+type sharedFilesMatcher struct{ sharing map[string][]string }
+
+func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
+	return &CrossMatchResult{SameInstanceContentByHash: m.sharing}
 }
 
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.

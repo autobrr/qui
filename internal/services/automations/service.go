@@ -3400,7 +3400,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 		}
 
-		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds) {
+		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
 			expandedHashes = append(expandedHashes, added.hash)
 			if _, exists := categoryRuleByHash[added.hash]; !exists {
 				if ref, ok := categoryRuleByHash[added.trigger]; ok {
@@ -4537,9 +4537,9 @@ type categoryExpansion struct {
 // categoryCrossSeedExpansion returns the torrents that a category change takes
 // along for the triggers in batch whose winning rule includes cross-seeds: the
 // other members of each trigger's cross-seed group. A torrent already in the
-// category or in the batch, or one whose own rule chose another category, stays
-// out.
-func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups) []categoryExpansion {
+// category or in the batch, one whose own rule chose another category, or one
+// the run deletes stays out.
+func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups, deleting map[string]pendingDeletion) []categoryExpansion {
 	taken := make(map[string]struct{}, len(batch))
 	for _, hash := range batch {
 		taken[hash] = struct{}{}
@@ -4552,6 +4552,9 @@ func categoryCrossSeedExpansion(category string, batch []string, states map[stri
 		}
 		for _, member := range crossSeeds[hash] {
 			if _, ok := taken[member.Hash]; ok || member.Category == category {
+				continue
+			}
+			if _, ok := deleting[member.Hash]; ok {
 				continue
 			}
 			if own := states[member.Hash]; own != nil && own.category != nil && *own.category != category {
@@ -5513,7 +5516,7 @@ func (s *Service) recordDryRunActivities(
 				}
 			}
 
-			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds) {
+			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
 				expandedHashes = append(expandedHashes, added.hash)
 			}
 
