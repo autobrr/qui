@@ -155,6 +155,7 @@ const (
 	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
+	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 )
 
@@ -298,6 +299,9 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
 		want:           corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
 	},
 	{
 		name:           "slash title",
@@ -322,10 +326,9 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
+			pathPrefilter:  knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
+			pathCrossMatch: knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
+			pathDedup:      knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
 		},
 	},
 	{
