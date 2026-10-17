@@ -278,6 +278,11 @@ func (b *Backend) sameFilesystemExec(ctx context.Context, p1, p2 string) (bool, 
 // Sorting per directory as the output streams is the upgrade if that
 // ceiling is ever hit.
 func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root string, opts fsops.WalkOptions) bool {
+	// find reads a root that starts with "-", "!" or "(" as an expression, so
+	// only an absolute root goes to it; the sftp walk takes any other.
+	if !path.IsAbs(root) {
+		return false
+	}
 	conn, err := b.exec(ctx)
 	if err != nil {
 		log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: walking over sftp")

@@ -254,6 +254,7 @@ func TestPoolKeepsTheTierWhenTheProbeHangs(t *testing.T) {
 // close from running.
 func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
 	t.Parallel()
+	requireShell(t)
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
