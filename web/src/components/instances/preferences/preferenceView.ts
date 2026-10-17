@@ -12,6 +12,7 @@ import { preferenceTabLabels } from "./labels"
 type PreferenceTab = PreferenceField["tab"]
 
 export const preferenceViewKey = (instanceId: number) => ["instance-preference-view", instanceId] as const
+export const networkBindingKey = (instanceId: number) => ["instance-network-binding", instanceId] as const
 
 export function usePreferenceView(instanceId: number) {
   return useQuery({

@@ -29,6 +29,8 @@ import (
 
 // fakePreferencesQbit is a qBittorrent WebUI that serves a captured
 // app/preferences response and records each setPreferences body and test email.
+// It also lists the network interfaces and the addresses of each interface value,
+// where the value "" holds the addresses of all interfaces.
 type fakePreferencesQbit struct {
 	mu          sync.Mutex
 	webAPI      string
@@ -38,6 +40,8 @@ type fakePreferencesQbit struct {
 	prefsGets   int
 	failSetting bool
 	testEmails  int
+	interfaces  []map[string]string
+	addresses   map[string][]string
 }
 
 func newFakePreferencesQbit(t *testing.T, capture, webAPI string, buildInfo map[string]any) *fakePreferencesQbit {
@@ -77,6 +81,15 @@ func (f *fakePreferencesQbit) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		maps.Copy(f.prefs, patch)
 	case "app/sendTestEmail":
 		f.testEmails++
+	case "app/networkInterfaceList":
+		_ = json.NewEncoder(w).Encode(f.interfaces)
+	case "app/networkInterfaceAddressList":
+		// qBittorrent lists no address for an interface that does not exist.
+		addresses := f.addresses[r.FormValue("iface")]
+		if addresses == nil {
+			addresses = []string{}
+		}
+		_ = json.NewEncoder(w).Encode(addresses)
 	default:
 		_, _ = io.WriteString(w, "{}")
 	}
@@ -117,6 +130,7 @@ func newPreferencesRig(t *testing.T, fake *fakePreferencesQbit) *preferencesRig 
 	router.Get("/api/instances/{instanceID}/preferences", preferences.GetPreferences)
 	router.Patch("/api/instances/{instanceID}/preferences", preferences.UpdatePreferences)
 	router.Post("/api/instances/{instanceID}/preferences/test-email", preferences.SendTestEmail)
+	router.Get("/api/instances/{instanceID}/network-binding", preferences.GetNetworkBinding)
 	router.Post("/api/instances/{instanceID}/rss/reprocess", rss.ReprocessRules)
 	return &preferencesRig{router: router, instanceID: instance.ID}
 }
@@ -202,9 +216,9 @@ func TestPreferencesViewQBittorrent5Linux(t *testing.T) {
 	// A key that the dialog does not show yet is not in the view.
 	assert.NotContains(t, view, "locale")
 
-	network := view["current_network_interface"]
-	assert.True(t, network.ReadOnly)
-	assert.NotEmpty(t, network.Reason)
+	interfaceName := view["current_interface_name"]
+	assert.True(t, interfaceName.ReadOnly)
+	assert.NotEmpty(t, interfaceName.Reason)
 	assert.Equal(t, "scheduler_enabled", view["schedule_from_hour"].DependsOn)
 }
 
@@ -615,7 +629,7 @@ func TestPreferencesViewAdvanced(t *testing.T) {
 	sections := map[string]string{}
 	for key, field := range view {
 		if field.Tab == "advanced" {
-			assert.False(t, field.ReadOnly && field.Reason != "pending network binding PR", key)
+			assert.False(t, field.ReadOnly && key != "current_interface_name", key)
 			sections[key] = field.Section
 		}
 	}
@@ -815,7 +829,7 @@ func TestPreferencesPatchRejections(t *testing.T) {
 		cause string
 	}{
 		{name: "unknown key", body: `{"dl_limit": 1, "no_such_key": true}`, cause: "no_such_key"},
-		{name: "read-only key", body: `{"current_network_interface": "eth0"}`, cause: "current_network_interface"},
+		{name: "read-only key", body: `{"current_interface_name": "eth0"}`, cause: `"current_interface_name" is read-only`},
 		{name: "fetched trackers", body: `{"add_trackers_url_list": "udp://a.invalid"}`, cause: `"add_trackers_url_list" is read-only`},
 		{name: "WebUI connection key", body: `{"web_ui_port": 9090}`, cause: `"web_ui_port" is read-only`},
 		{name: "WebUI username", body: `{"dl_limit": 1, "web_ui_username": "other"}`, cause: `"web_ui_username" is read-only`},
@@ -876,4 +890,130 @@ func TestRSSReprocessWritesThroughTheCatalogAndClearsTheCache(t *testing.T) {
 
 	view, _ = rig.view(t)
 	assert.JSONEq(t, "true", string(view["rss_auto_downloading_enabled"].Value))
+}
+
+// The network binding of a host with a LAN interface and a VPN interface.
+func newNetworkBindingFake(t *testing.T, capture, webAPI string) *fakePreferencesQbit {
+	t.Helper()
+	fake := newFakePreferencesQbit(t, capture, webAPI, map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	fake.interfaces = []map[string]string{{"name": "Ethernet", "value": "eth0"}, {"name": "WireGuard", "value": "wg0"}}
+	fake.addresses = map[string][]string{
+		"":     {"192.168.1.10", "fe80::1", "10.8.0.2"},
+		"eth0": {"192.168.1.10", "fe80::1"},
+		"wg0":  {"10.8.0.2"},
+	}
+	return fake
+}
+
+type bindingAddress struct {
+	Address   string `json:"address"`
+	Available bool   `json:"available"`
+}
+
+type bindingInterface struct {
+	Name      string           `json:"name"`
+	Value     string           `json:"value"`
+	Available bool             `json:"available"`
+	Addresses []bindingAddress `json:"addresses"`
+}
+
+func available(addresses ...string) []bindingAddress {
+	result := make([]bindingAddress, len(addresses))
+	for i, address := range addresses {
+		result[i] = bindingAddress{Address: address, Available: true}
+	}
+	return result
+}
+
+func TestNetworkBinding(t *testing.T) {
+	anyInterface := bindingInterface{Value: "", Available: true, Addresses: available("192.168.1.10", "fe80::1", "10.8.0.2")}
+	ethernet := bindingInterface{Name: "Ethernet", Value: "eth0", Available: true, Addresses: available("192.168.1.10", "fe80::1")}
+	wireGuard := bindingInterface{Name: "WireGuard", Value: "wg0", Available: true, Addresses: available("10.8.0.2")}
+
+	tests := []struct {
+		name    string
+		capture string
+		saved   map[string]any
+		want    []bindingInterface
+	}{
+		{
+			name:    "saved binding available",
+			capture: "5.2.4",
+			saved:   map[string]any{"current_network_interface": "wg0", "current_interface_address": "10.8.0.2", "current_interface_name": "WireGuard"},
+			want:    []bindingInterface{anyInterface, ethernet, wireGuard},
+		},
+		{
+			name:    "missing saved interface",
+			capture: "5.2.4",
+			saved:   map[string]any{"current_network_interface": "tun0", "current_interface_address": "10.9.0.2", "current_interface_name": "OpenVPN"},
+			want: []bindingInterface{anyInterface, ethernet, wireGuard, {
+				Name: "OpenVPN", Value: "tun0", Available: false, Addresses: []bindingAddress{{Address: "10.9.0.2"}},
+			}},
+		},
+		{
+			// qBittorrent before 4.6 does not send current_interface_name.
+			name:    "missing saved interface before 4.6",
+			capture: "4.5.5",
+			saved:   map[string]any{"current_network_interface": "tun0", "current_interface_address": ""},
+			want: []bindingInterface{anyInterface, ethernet, wireGuard, {
+				Name: "tun0", Value: "tun0", Available: false, Addresses: []bindingAddress{},
+			}},
+		},
+		{
+			name:    "missing saved address",
+			capture: "5.2.4",
+			saved:   map[string]any{"current_network_interface": "eth0", "current_interface_address": "192.168.1.99", "current_interface_name": "Ethernet"},
+			want: []bindingInterface{anyInterface, {
+				Name: "Ethernet", Value: "eth0", Available: true,
+				Addresses: []bindingAddress{{Address: "192.168.1.10", Available: true}, {Address: "fe80::1", Available: true}, {Address: "192.168.1.99"}},
+			}, wireGuard},
+		},
+		{
+			name:    "missing saved address on any interface",
+			capture: "5.2.4",
+			saved:   map[string]any{"current_network_interface": "", "current_interface_address": "10.9.0.2", "current_interface_name": ""},
+			want: []bindingInterface{{
+				Value: "", Available: true,
+				Addresses: append(available("192.168.1.10", "fe80::1", "10.8.0.2"), bindingAddress{Address: "10.9.0.2"}),
+			}, ethernet, wireGuard},
+		},
+		{
+			// "All IPv4 addresses" and "All IPv6 addresses" are not addresses of an interface.
+			name:    "all IPv6 addresses",
+			capture: "5.2.4",
+			saved:   map[string]any{"current_network_interface": "eth0", "current_interface_address": "::", "current_interface_name": "Ethernet"},
+			want:    []bindingInterface{anyInterface, ethernet, wireGuard},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newNetworkBindingFake(t, tt.capture, "2.15.1")
+			maps.Copy(fake.prefs, tt.saved)
+			rig := newPreferencesRig(t, fake)
+
+			recorder := rig.do(t, http.MethodGet, "/network-binding", "")
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			var got []bindingInterface
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &got))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPreferencesViewNetworkBinding(t *testing.T) {
+	fake := newNetworkBindingFake(t, "5.2.4", "2.15.1")
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	assert.Equal(t, "select", view["current_network_interface"].Control)
+	assert.False(t, view["current_network_interface"].ReadOnly)
+	assert.Equal(t, "select", view["current_interface_address"].Control)
+	assert.False(t, view["current_interface_address"].ReadOnly)
+	assert.True(t, view["current_interface_name"].ReadOnly)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"current_network_interface": "wg0", "current_interface_address": ""}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{"current_network_interface": "wg0", "current_interface_address": ""}}, fake.recordedSets())
 }

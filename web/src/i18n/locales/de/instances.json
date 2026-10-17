@@ -1709,7 +1709,13 @@
     "units": {
       "minutes": "Minuten"
     },
-    "readOnlyNote": "qui kann diese Einstellung noch nicht ändern. Ändere sie in qBittorrent.",
+    "networkBinding": {
+      "anyInterface": "Beliebige Schnittstelle",
+      "allAddresses": "Alle Adressen",
+      "allIPv4Addresses": "Alle IPv4-Adressen",
+      "allIPv6Addresses": "Alle IPv6-Adressen",
+      "notAvailable": "(nicht verfügbar)"
+    },
     "toast": {
       "saved": "Einstellungen gespeichert",
       "saveFailed": "Die Einstellungen konnten nicht gespeichert werden",
