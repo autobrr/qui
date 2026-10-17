@@ -87,6 +87,8 @@ interface ClientMeta {
   totalSelected?: number
   actionTargets?: Array<{ instanceId: number; hash: string }>
   excludeTargets?: Array<{ instanceId: number; hash: string }>
+  // Cross-seeds to delete in a follow-up request; a select-all request cannot list hashes.
+  crossSeedTargets?: Array<{ instanceId: number; hash: string }>
 }
 
 type TagBulkActionResult = {
@@ -547,6 +549,20 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientHashes,
       clientCount,
     })
+    // A select-all request cannot carry hashes, so the chosen cross-seeds go in a second request.
+    const crossSeedTargets = isAllSelected ? clientMeta?.crossSeedTargets : undefined
+    if (crossSeedTargets?.length) {
+      const crossSeedHashes = crossSeedTargets.map(target => target.hash)
+      await mutation.mutateAsync({
+        action: "delete",
+        instanceIds,
+        targets: crossSeedTargets,
+        deleteFiles,
+        hashes: crossSeedHashes,
+        clientHashes: crossSeedHashes,
+        clientCount: crossSeedHashes.length,
+      })
+    }
     setShowDeleteDialog(false)
     setDeleteCrossSeeds(false)
     setContextHashes([])
