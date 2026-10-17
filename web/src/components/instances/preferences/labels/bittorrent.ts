@@ -84,6 +84,7 @@ export const bittorrentLabels: TabLabels = {
       labelKey: "preferences.seedingLimits.maxShareRatio",
       descriptionKey: "preferences.seedingLimits.maxShareRatioDescription",
       unlimited: -1,
+      whenEnabled: 1,
     },
     max_seeding_time_enabled: {
       labelKey: "preferences.seedingLimits.enableSeedingTimeLimit",
@@ -93,12 +94,14 @@ export const bittorrentLabels: TabLabels = {
       labelKey: "preferences.fields.maxSeedingTime",
       descriptionKey: "preferences.seedingLimits.maxSeedingTimeDescription",
       unlimited: -1,
+      whenEnabled: 1440,
     },
     max_inactive_seeding_time_enabled: { labelKey: "preferences.fields.maxInactiveSeedingTimeEnabled" },
     max_inactive_seeding_time: {
       labelKey: "preferences.fields.maxInactiveSeedingTime",
       descriptionKey: "preferences.fields.maxInactiveSeedingTimeDescription",
       unlimited: -1,
+      whenEnabled: 1440,
     },
     share_limits_mode: {
       labelKey: "preferences.workflowDialog.shareLimitsMode.label",

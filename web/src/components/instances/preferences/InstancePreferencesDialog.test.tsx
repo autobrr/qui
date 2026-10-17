@@ -228,6 +228,23 @@ describe("InstancePreferencesDialog", () => {
     expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440 }])
   })
 
+  it("fills an empty seeding limit with a starting value when its switch turns on", async () => {
+    const bodies = recordSaves()
+    serveView()
+    renderDialog("bittorrent")
+
+    const inactive = await fieldFor("preferences.fields.maxInactiveSeedingTime")
+    expect(inactive.value).toBe("")
+    fireEvent.click(await fieldFor("preferences.fields.maxInactiveSeedingTimeEnabled"))
+    expect(inactive.value).toBe("1440")
+    fireEvent.click(await fieldFor("preferences.seedingLimits.enableShareRatioLimit"))
+    expect((await fieldFor("preferences.seedingLimits.maxShareRatio")).value).toBe("2")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ max_inactive_seeding_time_enabled: true, max_inactive_seeding_time: 1440, max_ratio_enabled: true }])
+  })
+
   it("enables a dependent field only while its switch is on", async () => {
     serveView()
 
