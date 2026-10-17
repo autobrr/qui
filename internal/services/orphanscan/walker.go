@@ -508,8 +508,13 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, t
 // isPathUnderNormalized checks if child is strictly under parent.
 // Both paths must be clean in d. Callers choose whether to fold case.
 func isPathUnderNormalized(d fsops.PathDialect, child, parent string) bool {
-	return len(child) > len(parent) && strings.HasPrefix(child, parent) &&
-		strings.HasPrefix(child[len(parent):], d.Separator())
+	if len(child) <= len(parent) || !strings.HasPrefix(child, parent) {
+		return false
+	}
+	// "/" and "D:\" already end in the separator. A UNC share root may not
+	// ("\\server\share"), so the next character of the child still has to be one.
+	sep := d.Separator()
+	return strings.HasSuffix(parent, sep) || strings.HasPrefix(child[len(parent):], sep)
 }
 
 var discRootAllowedFiles = map[string]struct{}{
