@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -101,51 +102,23 @@ func (c *Conn) output(ctx context.Context, command string, timeout time.Duration
 type Conn struct {
 	client *ssh.Client
 	slots  chan struct{}
+	// parked counts the slots that stay taken because the host refused a
+	// session on them. They are shared with every Conn of the connection.
+	parked *atomic.Int32
 	used   func()
 }
 
 // run takes a session slot, runs command and waits for it. A ctx that ends
 // closes the session, not the connection, which other callers share.
 func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error {
-	select {
-	case c.slots <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
+	session, err := c.open(ctx)
+	if err != nil {
+		return err
 	}
 	defer func() {
 		<-c.slots
 		c.used()
 	}()
-
-	// NewSession blocks inside x/crypto with no ctx. A host that never
-	// answers the open would hold this slot for the life of the connection,
-	// so the open runs aside and the ctx ends the wait; an open that answers
-	// later is closed by the goroutine, and one that never answers ends with
-	// the connection.
-	type opened struct {
-		session *ssh.Session
-		err     error
-	}
-	openDone := make(chan opened, 1)
-	go func() {
-		session, err := c.client.NewSession()
-		openDone <- opened{session, err}
-	}()
-	var session *ssh.Session
-	select {
-	case o := <-openDone:
-		if o.err != nil {
-			return fmt.Errorf("%w: open exec session: %w", ErrConnect, o.err)
-		}
-		session = o.session
-	case <-ctx.Done():
-		go func() {
-			if o := <-openDone; o.err == nil {
-				_ = o.session.Close()
-			}
-		}()
-		return ctx.Err()
-	}
 	defer session.Close()
 
 	// stderr only goes into an error message, so the probe limit is enough.
@@ -155,7 +128,7 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
 	defer stop()
 
-	err := session.Run(command)
+	err = session.Run(command)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -167,6 +140,80 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 		return fmt.Errorf("%w: exec: %w", ErrConnect, err)
 	}
 	return nil
+}
+
+// open takes a slot and opens a session on it. The caller gives the slot back.
+//
+// sshd refuses a session past its MaxSessions, which counts the sftp channel
+// too, so a host with a low limit refuses an open while other commands run.
+// That slot then stays taken and the open waits for another one, so the
+// connection runs no more sessions than the host allows.
+// ponytail: a parked slot stays parked for the life of the pool, so a host
+// that raises its MaxSessions gets the extra sessions after a qui restart.
+func (c *Conn) open(ctx context.Context) (*ssh.Session, error) {
+	for {
+		select {
+		case c.slots <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		session, err := c.newSession(ctx)
+		if err == nil {
+			return session, nil
+		}
+		if _, refused := errors.AsType[*ssh.OpenChannelError](err); refused && c.park() {
+			continue
+		}
+		<-c.slots
+		c.used()
+		return nil, err
+	}
+}
+
+// park keeps the caller's slot taken when another session holds a slot, and
+// never parks the last slot. With no other session open, a refusal is not
+// about the limit.
+func (c *Conn) park() bool {
+	for {
+		parked := c.parked.Load()
+		if len(c.slots)-int(parked) < 2 || int(parked)+1 >= cap(c.slots) {
+			return false
+		}
+		if c.parked.CompareAndSwap(parked, parked+1) {
+			return true
+		}
+	}
+}
+
+// newSession opens a session. NewSession blocks inside x/crypto with no ctx.
+// A host that never answers the open would hold the slot for the life of the
+// connection, so the open runs aside and the ctx ends the wait; an open that
+// answers later is closed by the goroutine, and one that never answers ends
+// with the connection.
+func (c *Conn) newSession(ctx context.Context) (*ssh.Session, error) {
+	type opened struct {
+		session *ssh.Session
+		err     error
+	}
+	openDone := make(chan opened, 1)
+	go func() {
+		session, err := c.client.NewSession()
+		openDone <- opened{session, err}
+	}()
+	select {
+	case o := <-openDone:
+		if o.err != nil {
+			return nil, fmt.Errorf("%w: open exec session: %w", ErrConnect, o.err)
+		}
+		return o.session, nil
+	case <-ctx.Done():
+		go func() {
+			if o := <-openDone; o.err == nil {
+				_ = o.session.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	}
 }
 
 // limitBuffer keeps the first limit bytes and notes that more arrived. It

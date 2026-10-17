@@ -71,6 +71,7 @@ type entry struct {
 	// slots bounds the exec sessions on client. It outlives a reconnect,
 	// which is harmless: a session on a dead client fails and frees its slot.
 	slots   chan struct{}
+	parked  atomic.Int32  // slots kept taken at the host's session limit; see Conn.open
 	err     error         // memoised failure; nil when connected
 	retryAt time.Time     // when a dial may be attempted again; unused for a refusal
 	backoff time.Duration // delay for the next failure, doubling to backoffMax
@@ -105,7 +106,7 @@ func (p *Pool) Exec(ctx context.Context, inst *models.Instance) (*Conn, error) {
 	if live.tier != models.SSHTierExec {
 		return nil, fmt.Errorf("instance %d: %w", inst.ID, ErrNoExec)
 	}
-	return &Conn{client: live.client, slots: entry.slots, used: entry.touch}, nil
+	return &Conn{client: live.client, slots: entry.slots, parked: &entry.parked, used: entry.touch}, nil
 }
 
 // live is one connection and what its probe found.
@@ -385,7 +386,7 @@ func (e *entry) keepalive(instanceID int, client *ssh.Client, done <-chan struct
 
 		// A command still running is use: a find over a large tree can take
 		// longer than the idle limit.
-		if len(e.slots) == 0 && time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
+		if len(e.slots) == int(e.parked.Load()) && time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
 			log.Debug().Int("instanceID", instanceID).Msg("sshpool: closing idle connection")
 			_ = client.Close()
 			return

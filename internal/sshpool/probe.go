@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -184,5 +185,5 @@ func checkAlive(client *ssh.Client) error {
 
 // oneShot is a Conn for a probe, with a session slot of its own.
 func oneShot(client *ssh.Client) *Conn {
-	return &Conn{client: client, slots: make(chan struct{}, 1), used: func() {}}
+	return &Conn{client: client, slots: make(chan struct{}, 1), parked: new(atomic.Int32), used: func() {}}
 }

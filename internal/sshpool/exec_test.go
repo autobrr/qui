@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os/exec"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -273,4 +274,33 @@ func TestExecEndsAStalledSessionOpenWithTheContext(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), 3*time.Second)
 	assert.Empty(t, conn.slots, "the abandoned open must not hold a slot")
+}
+
+// A host at its MaxSessions refuses an open while other sessions run. The
+// refused command waits for a free session, and the connection runs no more
+// sessions than the host allows from then on.
+func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
+	t.Parallel()
+	requireShell(t)
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecTwoSessions)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	conn, err := pool.Exec(t.Context(), inst)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errs := make([]error, execSessions)
+	for i := range errs {
+		wg.Go(func() { _, errs[i] = conn.Output(t.Context(), Command{Name: "sleep", Paths: []string{"0.2"}}) })
+	}
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int32(execSessions-1), conn.parked.Load(), "sftp and one command fill the host")
+	assert.Len(t, conn.slots, execSessions-1, "only the parked slots stay taken, so the idle close can run")
 }

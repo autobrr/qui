@@ -48,6 +48,9 @@ const (
 	// ExecOneSession runs commands like ExecGNU but refuses a session channel
 	// while another is open, the way sshd does with MaxSessions 1.
 	ExecOneSession
+	// ExecTwoSessions refuses a session channel while two are open, the way
+	// sshd does with MaxSessions 2: sftp and one command fill it.
+	ExecTwoSessions
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -302,7 +305,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		if opened > 1 && s.execMode() == ExecStallOpen {
 			continue
 		}
-		if open.Load() > 0 && s.execMode() == ExecOneSession {
+		if mode := s.execMode(); (mode == ExecOneSession && open.Load() > 0) || (mode == ExecTwoSessions && open.Load() > 1) {
 			_ = newChannel.Reject(ssh.Prohibited, "open failed")
 			continue
 		}
