@@ -139,7 +139,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
-  const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities, undefined, { fetchIfMissing: false })
+  const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities)
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()

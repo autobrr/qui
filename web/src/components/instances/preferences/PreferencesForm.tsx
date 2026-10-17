@@ -5,7 +5,7 @@
 
 import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/ui/tabs"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useInstancePreferences, valuesOf } from "@/hooks/useInstancePreferences"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import type { AppPreferences, PreferenceField } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
@@ -17,8 +17,6 @@ import { preferenceTabLabels } from "./labels"
 import { labelsOf, preferenceTabsOf, preferenceViewKey } from "./preferenceView"
 import { PreferencesFormShell } from "./PreferencesFormShell"
 import { preferenceWidgets } from "./PreferenceWidgets"
-
-const valuesOf = (fields: PreferenceField[]) => Object.fromEntries(fields.map(field => [field.key, field.value]))
 
 const WIDE_CONTROLS = new Set<PreferenceField["control"]>(["switch", "list", "watchFolders"])
 
@@ -32,7 +30,8 @@ interface PreferencesFormProps {
 export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
-  const { updatePreferences, isUpdating } = useInstancePreferences(instanceId, { fetchIfMissing: false })
+  // The dialog reads the view itself, so this hook only saves.
+  const { updatePreferences, isUpdating } = useInstancePreferences(instanceId, { enabled: false })
   // The values that qBittorrent has. They do not follow a refresh of the view, so that a
   // refresh does not reset open edits.
   const [saved, setSaved] = useState(() => valuesOf(fields))

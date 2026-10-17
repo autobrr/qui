@@ -7,138 +7,71 @@ import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
-import type { AppPreferences } from "@/types"
+import type { AppPreferences, PreferenceField } from "@/types"
 
 interface UseInstancePreferencesOptions {
-  fetchIfMissing?: boolean
   enabled?: boolean
 }
 
+export const valuesOf = (fields: PreferenceField[]) => Object.fromEntries(fields.map(field => [field.key, field.value]))
+
+// The view holds only the keys that the catalog shows. usePreferenceValues.test.tsx fails when a
+// screen reads a key outside the view.
+const preferencesOf = (fields: PreferenceField[]) => valuesOf(fields) as unknown as AppPreferences
+
+// Reads the preference values from the preferences view. The view is fetched when a screen opens
+// and set again from the view that a save returns.
 export function useInstancePreferences(
   instanceId: number | undefined,
   options: UseInstancePreferencesOptions = {}
 ) {
-  const { fetchIfMissing = true, enabled: externalEnabled = true } = options
+  const { enabled = true } = options
   const queryClient = useQueryClient()
-  const metadataQueryKey = useMemo(
-    () => ["instance-metadata", instanceId] as const,
-    [instanceId]
-  )
-  const preferencesQueryKey = useMemo(
+  const queryKey = useMemo(
     () => ["instance-preferences", instanceId] as const,
     [instanceId]
   )
 
-  const cachedMetadata = queryClient.getQueryData<InstanceMetadata | undefined>(metadataQueryKey)
-  const cachedPreferences =
-    queryClient.getQueryData<AppPreferences | undefined>(preferencesQueryKey) ??
-    cachedMetadata?.preferences
-
-  const queryEnabled =
-    Boolean(externalEnabled) && fetchIfMissing && typeof instanceId === "number" && !cachedPreferences
-
-  const { data: preferences, isLoading, error } = useQuery<AppPreferences | undefined>({
-    queryKey: preferencesQueryKey,
-    queryFn: async () => {
-      if (instanceId === undefined) {
-        return undefined
-      }
-
-      if (cachedMetadata?.preferences) {
-        return cachedMetadata.preferences
-      }
-
-      const fresh = await api.getInstancePreferences(instanceId)
-      // Only enrich an existing metadata entry with the fetched preferences. Creating
-      // one here would seed empty categories/tags, which makes useInstanceMetadata
-      // treat metadata as complete and skip its categories/tags fallback, leaving
-      // those selectors permanently empty. The preferences themselves live in the
-      // instance-preferences cache (this query's own key).
-      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous =>
-        previous ? { ...previous, preferences: fresh } : previous
-      )
-
-      return fresh
-    },
-    enabled: queryEnabled,
-    staleTime: cachedPreferences ? Infinity : 60000,
+  const { data: preferences } = useQuery({
+    queryKey,
+    queryFn: async () => preferencesOf(await api.getInstancePreferenceView(instanceId!)),
+    // Instance 0 is the all-instances view, which has no preferences.
+    enabled: enabled && instanceId !== undefined && instanceId > 0,
     gcTime: 1800000,
-    refetchInterval: false,
-    initialData: () => cachedPreferences,
   })
-
-  const resolvedPreferences = preferences ?? cachedPreferences
 
   const updateMutation = useMutation<
     AppPreferences,
     Error,
     Partial<AppPreferences>,
-    { previousPreferences?: AppPreferences; previousMetadata?: InstanceMetadata }
+    { previousPreferences?: AppPreferences }
   >({
-    mutationFn: (partialPreferences: Partial<AppPreferences>) => {
+    mutationFn: async (partialPreferences: Partial<AppPreferences>) => {
       if (instanceId === undefined) throw new Error("No instance ID")
-      return api.updateInstancePreferences(instanceId, partialPreferences)
+      return preferencesOf(await api.updateInstancePreferences(instanceId, partialPreferences))
     },
     onMutate: async (newPreferences) => {
-      if (instanceId === undefined) {
-        return { previousPreferences: undefined, previousMetadata: undefined }
+      await queryClient.cancelQueries({ queryKey })
+
+      const previousPreferences = queryClient.getQueryData<AppPreferences>(queryKey)
+      if (previousPreferences) {
+        queryClient.setQueryData(queryKey, { ...previousPreferences, ...newPreferences })
       }
 
-      await queryClient.cancelQueries({
-        queryKey: preferencesQueryKey,
-      })
-
-      const previousPreferences = queryClient.getQueryData<AppPreferences | undefined>(
-        preferencesQueryKey
-      )
-      const previousMetadata = queryClient.getQueryData<InstanceMetadata | undefined>(
-        metadataQueryKey
-      )
-
-      const basePreferences =
-        previousPreferences ?? previousMetadata?.preferences
-
-      if (basePreferences) {
-        const optimistic = { ...basePreferences, ...newPreferences }
-        queryClient.setQueryData(preferencesQueryKey, optimistic)
-
-        if (previousMetadata) {
-          queryClient.setQueryData<InstanceMetadata | undefined>(
-            metadataQueryKey,
-            previous => (previous ? { ...previous, preferences: optimistic } : previous)
-          )
-        }
-      }
-
-      return { previousPreferences, previousMetadata }
+      return { previousPreferences }
     },
     onError: (_err, _newPreferences, context) => {
-      const rollbackPreferences =
-        context?.previousPreferences ?? context?.previousMetadata?.preferences
-
-      if (rollbackPreferences) {
-        queryClient.setQueryData(preferencesQueryKey, rollbackPreferences)
-      }
-
-      if (context?.previousMetadata) {
-        queryClient.setQueryData(metadataQueryKey, context.previousMetadata)
+      if (context?.previousPreferences) {
+        queryClient.setQueryData(queryKey, context.previousPreferences)
       }
     },
     onSuccess: (updatedPreferences) => {
-      queryClient.setQueryData(preferencesQueryKey, updatedPreferences)
-      // Same rule as the fetch path: only merge into an existing metadata entry, never
-      // fabricate one with empty categories/tags.
-      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous =>
-        previous ? { ...previous, preferences: updatedPreferences } : previous
-      )
+      queryClient.setQueryData(queryKey, updatedPreferences)
     },
   })
 
   return {
-    preferences: resolvedPreferences,
-    isLoading: fetchIfMissing && externalEnabled ? (isLoading && !resolvedPreferences) : false,
-    error,
+    preferences,
     updatePreferences: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
   }

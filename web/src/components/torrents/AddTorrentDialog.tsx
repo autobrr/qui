@@ -184,7 +184,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const availableTags = metadata?.tags
   // The dialog seeds the preference defaults twice: once as form defaults, and again
   // when the preferences arrive after a cold mount.
-  const addTorrentPreferences = useAddTorrentPreferences(instanceId, { fetchIfMissing: false })
+  // Fetched again on each open, so that a default changed outside qui shows.
+  const addTorrentPreferences = useAddTorrentPreferences(instanceId, { enabled: open })
   const preferenceDefaults = addTorrentPreferences.defaults
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -622,12 +623,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   })
 
   // The dialog can mount before instance metadata resolves (magnet handler route),
-  // where defaultValues fall back to the hardcoded values. Seed the preference-derived
-  // fields again when preferences land, skipping anything the user already changed.
-  const seededInstanceRef = useRef<number | null>(null)
+  // where defaultValues fall back to the hardcoded values, and each open fetches the
+  // preferences again. Seed the preference-derived fields each time preferences land,
+  // skipping anything the user already changed.
   useEffect(() => {
-    if (!addTorrentPreferences.loaded || seededInstanceRef.current === instanceId) return
-    seededInstanceRef.current = instanceId
+    if (!addTorrentPreferences.loaded) return
 
     // Seeding is not a user edit, so leave the field meta pristine.
     const pristine = (field: keyof typeof preferenceDefaults) => !form.getFieldMeta(field)?.isDirty
@@ -639,7 +639,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (pristine("tempPathEnabled")) form.setFieldValue("tempPathEnabled", preferenceDefaults.tempPathEnabled, opts)
     if (pristine("tempPath")) form.setFieldValue("tempPath", preferenceDefaults.tempPath, opts)
     if (pristine("startPaused")) form.setFieldValue("startPaused", preferenceDefaults.startPaused, opts)
-  }, [form, instanceId, addTorrentPreferences.loaded, preferenceDefaults])
+  }, [form, addTorrentPreferences.loaded, preferenceDefaults])
 
   const setSavePath = useCallback((path: string) => {
     form.setFieldValue("savePath", path)

@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"math"
@@ -113,7 +112,6 @@ type Client struct {
 	appInfoGroup         singleflight.Group
 	peerSyncGroup        singleflight.Group
 	preferencesCache     *qbt.AppPreferences
-	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
 	preferencesMu        sync.RWMutex
 	syncEventSink        SyncEventSink
