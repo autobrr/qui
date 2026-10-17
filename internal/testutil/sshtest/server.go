@@ -26,16 +26,24 @@ import (
 type ExecMode int
 
 const (
-	// ExecGNU answers --version with GNU findutils/coreutils banners.
+	// ExecGNU answers --version with GNU findutils/coreutils banners, and runs
+	// every other command through the local sh.
 	ExecGNU ExecMode = iota
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
+	// ExecNonPOSIX is a login shell that runs commands and has the GNU tools
+	// but does not quote like a POSIX shell: the printf probe fails the way
+	// fish fails on an unbalanced quote.
+	ExecNonPOSIX
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
 	// ExecHang accepts the command and never answers it, the way a wedged or
 	// tarpitting host does. Only the client's own deadline ends the session.
 	ExecHang
+	// ExecStallOpen accepts the first session channel of a connection, the
+	// one sftp opens, and never answers the open of any later one.
+	ExecStallOpen
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -107,6 +115,7 @@ type Server struct {
 	channels        int
 	stalledReadDirs int
 	heldMutations   int
+	commands        [][]string
 	live            map[*ssh.ServerConn]struct{}
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
@@ -273,6 +282,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	stalled := make(chan struct{})
 	defer close(stalled)
 
+	opened := 0
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
 			_ = newChannel.Reject(ssh.UnknownChannelType, "only session channels")
@@ -282,6 +292,11 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.mu.Lock()
 		s.channels++
 		s.mu.Unlock()
+
+		opened++
+		if opened > 1 && s.execMode() == ExecStallOpen {
+			continue
+		}
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
@@ -325,7 +340,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
-			if s.exec == ExecHang {
+			if s.execMode() == ExecHang {
 				<-stalled
 				return
 			}
@@ -414,19 +429,40 @@ func (l inMemLister) ListAt([]os.FileInfo, int64) (int, error) {
 }
 
 func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
-	if s.exec == ExecSFTPOnly {
+	mode := s.execMode()
+	if mode == ExecSFTPOnly {
 		_, _ = io.WriteString(channel.Stderr(), "This service allows sftp connections only.\n")
 		return 1
 	}
 	// A real login writes shell and motd noise to stderr while the command
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
-	if strings.Contains(command, "--version") && s.exec == ExecGNU {
+	switch {
+	case strings.HasPrefix(command, "printf") && mode == ExecNonPOSIX:
+		_, _ = io.WriteString(channel.Stderr(), "fish: Unexpected end of string, quotes are not balanced\n")
+		return 127
+	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
-	} else if strings.Contains(command, "--version") {
+	case strings.Contains(command, "--version"):
 		_, _ = io.WriteString(channel, "find: unknown option --version\nstat: unknown option --version\n")
+	default:
+		return s.runShell(channel, command)
 	}
 	return 0
+}
+
+func (s *Server) execMode() ExecMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exec
+}
+
+// SetExec changes what the exec channel does for commands from now on, the
+// way an edit of authorized_keys changes what a key may run.
+func (s *Server) SetExec(mode ExecMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exec = mode
 }
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {

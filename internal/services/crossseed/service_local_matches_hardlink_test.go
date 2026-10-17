@@ -423,3 +423,34 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	}))
 	require.Zero(t, visited)
 }
+
+// A delete dialog can add linked matches to the delete, so it counts only
+// identity that qui's own kernel reports. Browsing still reads a remote
+// instance's identity. The remote backend here is the local one, so the
+// files really are hardlinks.
+func TestLocalLinkedMatchType_DeleteDialogNeedsTrustedIdentity(t *testing.T) {
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+	torrentFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    torrentFiles,
+		normalizeHash(hlCandidateHash): torrentFiles,
+	})
+	remoteExec := &models.Instance{ID: 2, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
+	svc.SetBackendPool(fsops.NewPoolWithRemote(&mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {ID: 1, HasLocalFilesystemAccess: true},
+			2: remoteExec,
+		},
+	}, local.NewBackend(), func(*models.Instance) fsops.Backend { return local.NewBackend() }))
+	candidate := hardlinkTestCandidate(candidateDir)
+	candidate.InstanceID = 2
+
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	require.Equal(t, matchTypeHardlink, svc.localLinkedMatchType(matchCtx, remoteExec, candidate), "browsing reads remote identity")
+
+	matchCtx = hardlinkTestMatchCtx(svc, sourceDir)
+	matchCtx.trustedIdentityOnly = true
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, remoteExec, candidate), "a delete dialog never trusts remote identity")
+}

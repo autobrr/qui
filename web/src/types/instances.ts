@@ -34,6 +34,7 @@ export interface Instance {
 export interface FilesystemCapabilities {
   read: boolean
   identity: boolean
+  trustedIdentity: boolean
   write: boolean
   content: boolean
 }

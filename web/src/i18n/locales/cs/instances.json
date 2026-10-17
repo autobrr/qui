@@ -732,7 +732,8 @@
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
       "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
       "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
-      "remoteLimits": "Mazání a automatické vyčištění na vzdálených instancích zatím neběží. qui také nepozná, že dvě cesty vedou ke stejnému souboru, takže soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent.",
+      "remoteLimits": "Mazání a automatické vyčištění na vzdálených instancích zatím neběží.",
+      "remoteNoIdentity": "qui také nepozná, že dvě cesty vedou ke stejnému souboru, takže soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent.",
       "on": "Zapnuto",
       "off": "Vypnuto",
       "summaryGrace": "Lhůta {{grace}}min",
@@ -1272,7 +1273,8 @@
         "withFilesIncludeCrossSeeds": "Odebrat se soubory (zahrnout křížová sdílení)",
         "includeHardlinkedCopies": "Zahrnout hardlinkové kopie",
         "includeHardlinkedCopiesDescription": "Také smazat torrenty, které sdílí stejné podkladové soubory přes hardlinky. Zahrnuje pouze hardlinky plně uvnitř qBittorrentu; nikdy neřídí hardlinky mimo.",
-        "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance."
+        "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance.",
+        "remoteNotAvailable": "Není dostupné pro vzdálené instance"
       },
       "move": {
         "newSavePath": "Nová cesta uložení",

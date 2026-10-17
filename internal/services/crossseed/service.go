@@ -882,15 +882,16 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Create match context with lazy file loading. Files are fetched only when
 	// content-path overlap or linked-copy verification needs them.
 	matchCtx := &localMatchContext{
-		ctx:                   ctx,
-		svc:                   s,
-		sourceInstanceID:      sourceInstanceID,
-		sourceInstance:        instanceByID(instances, sourceInstanceID),
-		sourceHash:            sourceTorrent.Hash,
-		sourceSavePath:        sourceTorrent.SavePath,
-		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
-		sourceLocal:           instanceIsLocal(instances, sourceInstanceID),
+		ctx:                 ctx,
+		svc:                 s,
+		sourceInstanceID:    sourceInstanceID,
+		sourceInstance:      instanceByID(instances, sourceInstanceID),
+		sourceHash:          sourceTorrent.Hash,
+		sourceSavePath:      sourceTorrent.SavePath,
+		sourceLocal:         instanceIsLocal(instances, sourceInstanceID),
+		trustedIdentityOnly: strict,
 	}
+	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 
@@ -1034,6 +1035,11 @@ type localMatchContext struct {
 	sourceSavePath        string
 	sourceHasFileIdentity bool
 	sourceLocal           bool
+	// trustedIdentityOnly limits linked matches to instances with
+	// TrustedIdentity. A delete dialog can add linked matches to the delete,
+	// and identity that a remote host reports never expands a destructive
+	// action.
+	trustedIdentityOnly bool
 
 	// Lazy-loaded source file data
 	fetched          bool
@@ -1164,14 +1170,25 @@ func candidateSharesSourceFileID(
 	return false, err
 }
 
+// identity is the capability an instance needs for its file identity to
+// count in this match.
+func (m *localMatchContext) identity() models.FilesystemCapability {
+	if m.trustedIdentityOnly {
+		return models.CapabilityTrustedIdentity
+	}
+	return models.CapabilityIdentity
+}
+
 func (s *Service) localLinkedMatchType(
 	matchCtx *localMatchContext,
 	candidateInstance *models.Instance,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 ) string {
 	if matchCtx == nil || !matchCtx.sourceHasFileIdentity ||
-		candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
-		candidate == nil || candidate.ContentPath == "" {
+		candidateInstance == nil || candidate == nil || candidate.ContentPath == "" {
+		return ""
+	}
+	if !models.FilesystemCapabilitiesOf(candidateInstance).Has(matchCtx.identity()) {
 		return ""
 	}
 
@@ -1439,16 +1456,48 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
-	var firstErr error
+	// Resolve every name first, so a backend with a batch lstats them in one
+	// round trip. A backend without one lstats inside the loop, so a callback
+	// that stops early costs one lstat, not one per file.
+	type resolved struct {
+		file     qbt.TorrentFile
+		fullPath string // empty when the name does not resolve under base
+	}
+	entries := make([]resolved, 0, len(files))
+	paths := make([]string, 0, len(files))
 	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(d, base, file.Name)
 		if !ok {
+			entries = append(entries, resolved{file: file})
+			continue
+		}
+		entries = append(entries, resolved{file: file, fullPath: fullPath})
+		paths = append(paths, fullPath)
+	}
+	batch, batched := backend.(fsops.BatchStater)
+	var infos []*fsops.LstatInfo
+	var errs []error
+	if batched {
+		infos, errs = batch.LstatBatch(ctx, paths)
+	}
+
+	var firstErr error
+	next := 0
+	for _, entry := range entries {
+		if entry.fullPath == "" {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
+				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", entry.file.Name)
 			}
 			continue
 		}
-		info, err := backend.Lstat(ctx, fullPath)
+		var info *fsops.LstatInfo
+		var err error
+		if batched {
+			info, err = infos[next], errs[next]
+		} else {
+			info, err = backend.Lstat(ctx, entry.fullPath)
+		}
+		next++
 		if err != nil {
 			// ENOTDIR: a parent of the path is a file, so this file is missing too.
 			if firstErr == nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
@@ -1459,7 +1508,7 @@ func forEachLocalTorrentFile(
 		if !info.Mode.IsRegular() {
 			continue
 		}
-		if !fn(file, fullPath, info) {
+		if !fn(entry.file, entry.fullPath, info) {
 			return firstErr
 		}
 	}
@@ -1495,11 +1544,10 @@ func hasWindowsDrivePrefix(name string) bool {
 		name[1] == ':'
 }
 
-// instanceHasFileIdentity reports whether qui trusts the file identity of the
-// instance with the given ID.
-func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool {
+// instanceHas reports whether the instance with the given ID has capability.
+func instanceHas(instances []*models.Instance, instanceID int, capability models.FilesystemCapability) bool {
 	if instance := instanceByID(instances, instanceID); instance != nil {
-		return models.FilesystemCapabilitiesOf(instance).Identity
+		return models.FilesystemCapabilitiesOf(instance).Has(capability)
 	}
 	return false
 }

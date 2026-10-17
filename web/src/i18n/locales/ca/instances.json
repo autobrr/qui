@@ -890,7 +890,8 @@
         "withFilesIncludeCrossSeeds": "Suprimeix amb els fitxers (inclou els cross-seed)",
         "includeHardlinkedCopies": "Inclou-hi les còpies amb hardlink",
         "includeHardlinkedCopiesDescription": "Elimina també els torrents que comparteixen els mateixos fitxers subjacents mitjançant hardlinks. Només inclou els hardlinks que són del tot dins de qBittorrent; mai no segueix els hardlinks de fora.",
-        "localAccessRequired": "Cal tenir activat l'«Accés al sistema de fitxers local» a la configuració de la instància."
+        "localAccessRequired": "Cal tenir activat l'«Accés al sistema de fitxers local» a la configuració de la instància.",
+        "remoteNotAvailable": "No disponible en instàncies remotes"
       },
       "move": {
         "newSavePath": "Camí de desada nou",
@@ -1334,7 +1335,8 @@
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
       "noLocalAccess": "Sense accés local",
       "noLocalAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
-      "remoteLimits": "La supressió i la neteja automàtica encara no funcionen en instàncies remotes. A més, qui no pot saber quan dos camins són el mateix fitxer, de manera que un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi.",
+      "remoteLimits": "La supressió i la neteja automàtica encara no funcionen en instàncies remotes.",
+      "remoteNoIdentity": "A més, qui no pot saber quan dos camins són el mateix fitxer, de manera que un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi.",
       "on": "Activada",
       "off": "Desactivada",
       "summaryGrace": "Marge {{grace}} min",

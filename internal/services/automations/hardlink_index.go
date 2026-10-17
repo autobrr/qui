@@ -1097,6 +1097,7 @@ func (idx *HardlinkIndex) finalizeCrossScope(instanceID int, reason string) {
 }
 
 // listCrossScopeInstances returns IDs of other active instances with trusted file identity.
+// A remote identity never matches a local file key, so a remote instance is left out.
 func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) ([]int, error) {
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
@@ -1104,7 +1105,7 @@ func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) (
 	}
 	var result []int
 	for _, inst := range instances {
-		if inst.ID != instanceID && inst.IsActive && models.FilesystemCapabilitiesOf(inst).Identity {
+		if inst.ID != instanceID && inst.IsActive && models.FilesystemCapabilitiesOf(inst).TrustedIdentity {
 			result = append(result, inst.ID)
 		}
 	}
@@ -1142,7 +1143,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
-		backend, otherInstance, backendErr := s.backendPool.Require(ctx, otherID, models.CapabilityIdentity)
+		backend, otherInstance, backendErr := s.backendPool.Require(ctx, otherID, models.CapabilityTrustedIdentity)
 		if backendErr != nil {
 			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get backend for cross-scope scan, skipping instance")

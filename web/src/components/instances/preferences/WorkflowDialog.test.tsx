@@ -112,7 +112,7 @@ describe("WorkflowDialog category validation", () => {
   })
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 
 describe("WorkflowDialog include hardlinks", () => {
   const deleteRule: Automation = {
@@ -121,12 +121,14 @@ describe("WorkflowDialog include hardlinks", () => {
   }
 
   it.each([
-    { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, write: true, content: true }, hasIdentity: true },
-    { name: "a remote instance", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true }, hasIdentity: false },
+    { name: "a local instance", hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, enabled: true },
+    { name: "a remote instance", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true }, enabled: false },
+    // Identity a remote host reports never adds torrents to a delete.
+    { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true, identity: true }, enabled: false },
     // The setting is off here, so only the capability can offer the option.
-    { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true, identity: true }, hasIdentity: true },
-  ])("follows the identity capability for $name", ({ hasLocalFilesystemAccess, capabilities, hasIdentity }) => {
-    mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, capabilities }]
+    { name: "an instance with the trusted identity capability", hasLocalFilesystemAccess: false, filesystemMode: "local", capabilities: { ...noCapabilities, read: true, identity: true, trustedIdentity: true }, enabled: true },
+  ])("follows the trusted identity capability for $name", ({ hasLocalFilesystemAccess, filesystemMode, capabilities, enabled }) => {
+    mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, filesystemMode, capabilities }]
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
@@ -135,7 +137,7 @@ describe("WorkflowDialog include hardlinks", () => {
     )
 
     const checkbox = screen.getByRole("checkbox", { name: key("delete.includeHardlinkedCopies") })
-    expect(checkbox.hasAttribute("disabled")).toBe(!hasIdentity)
+    expect(checkbox.hasAttribute("disabled")).toBe(!enabled)
     client.clear()
   })
 })

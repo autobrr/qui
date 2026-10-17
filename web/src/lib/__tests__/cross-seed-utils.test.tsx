@@ -262,7 +262,7 @@ describe("useLocalCrossSeedMatches", () => {
     })
 
     expect(mockedApi.getInstances).toHaveBeenCalled()
-    expect(mockedApi.getLocalCrossSeedMatches).toHaveBeenCalledWith(2, "torrenthash")
+    expect(mockedApi.getLocalCrossSeedMatches).toHaveBeenCalledWith(2, "torrenthash", true)
     expect(result.current.matchingTorrents[0]).toEqual(toCompatibleMatch(makeMatch()))
     // Verify the hook->mapping wiring independently of the transform implementation.
     expect(result.current.matchingTorrents[0].save_path).toBe("/data/movies")

@@ -708,7 +708,8 @@
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
       "noLocalAccess": "Pas d'accès local",
       "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
-      "remoteLimits": "La suppression et le nettoyage automatique ne fonctionnent pas encore sur les instances distantes. L'application ne sait pas non plus reconnaître deux chemins menant au même fichier : un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise.",
+      "remoteLimits": "La suppression et le nettoyage automatique ne fonctionnent pas encore sur les instances distantes.",
+      "remoteNoIdentity": "L'application ne sait pas non plus reconnaître deux chemins menant au même fichier : un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolérance {{grace}}min",
@@ -1231,7 +1232,8 @@
         "withFilesIncludeCrossSeeds": "Supprimer avec les fichiers (inclure les cross-seeds)",
         "includeHardlinkedCopies": "Inclure les copies hardlinkées",
         "includeHardlinkedCopiesDescription": "Supprime également les torrents partageant les mêmes fichiers par des liens physiques.",
-        "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local."
+        "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local.",
+        "remoteNotAvailable": "Non disponible sur les instances distantes"
       },
       "move": {
         "newSavePath": "Nouveau chemin de sauvegarde",
