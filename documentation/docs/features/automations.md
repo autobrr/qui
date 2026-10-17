@@ -681,7 +681,7 @@ qBittorrent replaces the characters `:?"*<>|` in a category name with a space wh
 
 Neither variable ends with a separator, so write `{{.CategorySavePath}}/done`. Some qBittorrent versions report save paths with a trailing `/`, and qui drops it. A bare root such as `/` stays as it is.
 
-If the torrent's category no longer exists in qBittorrent, qui skips the move or export for that torrent.
+If the torrent's category no longer exists in qBittorrent, a template that uses `.CategorySavePath` can't resolve, and qui skips the move or export for that torrent. `.DefaultSavePath` doesn't depend on the category, so a template that uses only `.DefaultSavePath` still resolves.
 
 ### Auto management
 
