@@ -313,13 +313,18 @@ func TestFindStopsAtItsLimit(t *testing.T) {
 	require.NoError(t, err)
 	cmd := sshpool.Command{Name: "find", Paths: []string{dir}, Expression: []string{"-mindepth", "1", "-printf", findFormat}}
 
-	entries, err := find(t.Context(), conn, cmd, 2)
+	entries, err := find(t.Context(), conn, cmd, 2, findByteLimit)
 	require.ErrorIs(t, err, errFindLimit)
 	assert.Empty(t, entries)
 
-	entries, err = find(t.Context(), conn, cmd, 3)
+	entries, err = find(t.Context(), conn, cmd, 3, findByteLimit)
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
+
+	// The byte cap bounds memory when a host prints long records.
+	entries, err = find(t.Context(), conn, cmd, 3, 8)
+	require.ErrorIs(t, err, errFindLimit)
+	assert.Empty(t, entries)
 }
 
 func TestComparePaths(t *testing.T) {

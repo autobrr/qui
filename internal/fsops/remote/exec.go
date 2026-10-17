@@ -30,9 +30,13 @@ const (
 	// findRecordLimit caps one find record: the fields and one path. Linux
 	// paths stop at 4096 bytes, so a longer record is not a path.
 	findRecordLimit = 64 << 10
-	// findEntryLimit is the walk limit. A tree with more entries fails the
-	// walk rather than grow the sort past it.
+	// findEntryLimit and findByteLimit bound the walk's sort: a tree that
+	// prints more entries or bytes than this is handed to the sftp walk,
+	// which streams, rather than grow the sort past it. A hostile remote can
+	// print records of findRecordLimit each, so the entry cap alone is not a
+	// bound on memory.
 	findEntryLimit = 500_000
+	findByteLimit  = 64 << 20
 )
 
 // findFormat prints, for each entry below the root, its type, device, inode,
@@ -228,7 +232,7 @@ func (b *Backend) lstatFind(ctx context.Context, paths []string, found map[strin
 			Options:    []string{"-P"},
 			Paths:      paths[:n],
 			Expression: []string{"-maxdepth", "0", "-printf", lstatFormat},
-		}, n)
+		}, n, findByteLimit)
 		cancel()
 		for _, e := range entries {
 			found[e.rel] = e
@@ -265,7 +269,7 @@ func (b *Backend) sameFilesystemExec(ctx context.Context, p1, p2 string) (bool, 
 // walkExec walks root with one find and reports whether it answered the
 // walk. False means find could not, and the sftp walk takes over: find exits
 // non-zero for an unreadable directory, and only the sftp walk can name
-// which one.
+// which one; and a tree past the find limits is one the sftp walk streams.
 //
 // ponytail: find prints in disk order, so the whole tree is read and sorted
 // in memory before the first entry goes out, up to findEntryLimit entries.
@@ -284,13 +288,14 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		Options:    []string{"-P"},
 		Paths:      []string{root},
 		Expression: []string{"-mindepth", "1", "-printf", findFormat},
-	}, findEntryLimit)
+	}, findEntryLimit, findByteLimit)
 	switch {
 	case ctx.Err() != nil:
 		return true
 	case errors.Is(err, errFindLimit):
-		send(ctx, ch, fsops.WalkEntry{Path: root, IsDir: true, RelPath: ".", Err: pathError("walk", root, err)})
-		return true
+		// Nothing has been sent yet, so the sftp walk takes the whole tree.
+		log.Debug().Int("instanceID", b.inst.ID).Str("root", root).Err(err).Msg("remote: find output over its limit, walking over sftp")
+		return false
 	case err != nil:
 		log.Debug().Int("instanceID", b.inst.ID).Str("root", root).Err(err).Msg("remote: find failed, walking over sftp")
 		return false
@@ -344,7 +349,7 @@ type findEntry struct {
 // find runs cmd, streams its output and parses it record by record, at most
 // limit records. When the command exits non-zero after clean output, the
 // entries it printed come back with the error.
-func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, limit int) ([]findEntry, error) {
+func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntries, maxBytes int) ([]findEntry, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -367,6 +372,7 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, limit in
 
 	reader := bufio.NewReaderSize(pr, findRecordLimit)
 	var entries []findEntry
+	read := 0
 	for {
 		record, err := reader.ReadSlice(0)
 		switch {
@@ -379,8 +385,11 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, limit in
 		case err != nil:
 			return stop(err)
 		}
-		if len(entries) == limit {
-			return stop(fmt.Errorf("%w of %d", errFindLimit, limit))
+		if len(entries) == maxEntries {
+			return stop(fmt.Errorf("%w of %d entries", errFindLimit, maxEntries))
+		}
+		if read += len(record); read > maxBytes {
+			return stop(fmt.Errorf("%w of %d bytes", errFindLimit, maxBytes))
 		}
 		entry, err := parseFindRecord(record[:len(record)-1])
 		if err != nil {
