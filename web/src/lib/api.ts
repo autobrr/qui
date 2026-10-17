@@ -9,6 +9,8 @@ import type {
   AddTorrentResponse,
   ApplicationInfo,
   AppPreferences,
+  PreferenceField,
+  NetworkBindingInterface,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
@@ -126,6 +128,8 @@ import type {
   BuiltinTheme,
   SelfUpdateResult,
   ThemeSettings,
+  ThemeSlot,
+  ThemeSlots,
   User,
   VersionInfo,
   WarningResponse,
@@ -2212,15 +2216,19 @@ class ApiClient {
   }
 
   // Theme settings (theme selection stored in the database; writes premium-gated server-side)
-  async getThemeSettings(): Promise<ThemeSettings | null> {
-    return this.request<ThemeSettings | null>("/themes/settings")
+  async getThemeSettings(): Promise<ThemeSlots> {
+    return this.request<ThemeSlots>("/themes/settings")
   }
 
-  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
-    return this.request<ThemeSettings>("/themes/settings", {
+  async updateThemeSettings(data: ThemeSettings, slot: ThemeSlot = "default"): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>(`/themes/settings?slot=${slot}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  async deleteMobileThemeSettings(): Promise<void> {
+    return this.request("/themes/settings?slot=mobile", { method: "DELETE" })
   }
 
   // Client settings (frontend user settings stored in the database as opaque key-value pairs;
@@ -2229,19 +2237,27 @@ class ApiClient {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints
-  async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  // Preferences endpoints. Both return the catalog view of the preferences.
+  async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
   }
 
   async updateInstancePreferences(
     instanceId: number,
     preferences: Partial<AppPreferences>
-  ): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+  ): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`, {
       method: "PATCH",
       body: JSON.stringify(preferences),
     })
+  }
+
+  async getNetworkBinding(instanceId: number): Promise<NetworkBindingInterface[]> {
+    return this.request<NetworkBindingInterface[]>(`/instances/${instanceId}/network-binding`)
+  }
+
+  async sendTestEmail(instanceId: number): Promise<void> {
+    await this.request<void>(`/instances/${instanceId}/preferences/test-email`, { method: "POST" })
   }
 
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {

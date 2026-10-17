@@ -724,7 +724,9 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			// live indexers degrades to a partial response instead of failing the
 			// whole multi-indexer search.
 			if cachedPortion != nil {
-				log.Warn().
+				// Trace: rate-limited indexers hit this on every search, and search
+				// history already records each failed indexer task.
+				log.Trace().
 					Err(err).
 					Int("indexers_requested", len(indexersToSearch)).
 					Int("cached_results", len(cachedResults)).
@@ -1806,7 +1808,16 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
-	return timeouts.AdaptiveSearchTimeout(len(indexers))
+	timeout := timeouts.AdaptiveSearchTimeout(len(indexers))
+	// The execution deadline must allow each client's configured HTTP timeout.
+	for _, indexer := range indexers {
+		seconds := indexer.TimeoutSeconds
+		if seconds <= 0 {
+			seconds = defaultIndexerTimeoutSeconds
+		}
+		timeout = max(timeout, time.Duration(seconds)*time.Second)
+	}
+	return timeout
 }
 
 func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
@@ -2103,7 +2114,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				earliestRateLimit = rateLimitErr
 			}
 			localResumeAt := resumeAt.In(time.Local)
-			log.Warn().
+			log.Trace().
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
 				Time("resume_at", localResumeAt).
@@ -4357,11 +4368,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 
 		// Create Prowlarr client for this instance
-		timeout := indexers[0].TimeoutSeconds
-		if timeout <= 0 {
-			timeout = 30
-		}
-		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, indexers[0].TimeoutSeconds)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

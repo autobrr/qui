@@ -29,8 +29,8 @@ type RuleNeeds struct {
 // fieldData is the prepared data one condition field reads. A field without a
 // row reads only the torrent and is always known.
 type fieldData struct {
-	fileIdentity bool // needs models.FilesystemCapabilitiesOf(instance).Identity
-	localAccess  bool // needs instance.HasLocalFilesystemAccess
+	trustedIdentity bool // needs models.FilesystemCapabilitiesOf(instance).TrustedIdentity
+	localAccess     bool // needs instance.HasLocalFilesystemAccess
 	// need marks the data in RuleNeeds.
 	need func(n *RuleNeeds)
 	// known reports whether ctx holds the field's data for the torrent. A row
@@ -40,16 +40,16 @@ type fieldData struct {
 
 var conditionFieldData = map[ConditionField]fieldData{
 	FieldHardlinkScope: {
-		fileIdentity: true,
-		need:         func(n *RuleNeeds) { n.HardlinkScope = true },
+		trustedIdentity: true,
+		need:            func(n *RuleNeeds) { n.HardlinkScope = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HardlinkScopeByHash[hash]
 			return ok
 		},
 	},
 	FieldHardlinkScopeCross: {
-		fileIdentity: true,
-		need:         func(n *RuleNeeds) { n.HardlinkCrossScope = true },
+		trustedIdentity: true,
+		need:            func(n *RuleNeeds) { n.HardlinkCrossScope = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HardlinkCrossScopeByHash[hash]
 			return ok
@@ -72,11 +72,11 @@ var conditionFieldData = map[ConditionField]fieldData{
 		need:  func(n *RuleNeeds) { n.SeasonPackAnyInstance = true },
 		known: func(ctx *EvalContext, _ string) bool { return ctx.SeasonPackSetAnyInstance != nil },
 	},
-	FieldExistsOnSameInstance:   {need: func(n *RuleNeeds) { n.CrossMatch.SameExists = true }},
-	FieldSeedingOnSameInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.SameSeeding = true }},
-	FieldCrossSeedTags:          {need: func(n *RuleNeeds) { n.CrossMatch.SameTags = true }},
-	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }},
-	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }},
+	FieldExistsOnSameInstance:   {need: func(n *RuleNeeds) { n.CrossMatch.SameExists = true }, known: sameInstanceCrossSeedKnown},
+	FieldSeedingOnSameInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.SameSeeding = true }, known: sameInstanceCrossSeedKnown},
+	FieldCrossSeedTags:          {need: func(n *RuleNeeds) { n.CrossMatch.SameTags = true }, known: sameInstanceCrossSeedKnown},
+	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }, known: otherInstanceCrossSeedKnown},
+	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }, known: otherInstanceCrossSeedKnown},
 	FieldFreeSpace:              {need: func(n *RuleNeeds) { n.FreeSpace = true }},
 	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
 	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
@@ -84,12 +84,24 @@ var conditionFieldData = map[ConditionField]fieldData{
 	FieldTrackerMessage:         {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 }
 
+func sameInstanceCrossSeedKnown(ctx *EvalContext, hash string) bool {
+	_, unknown := ctx.SameInstanceCrossSeedUnknown[hash]
+	return !unknown
+}
+
+func otherInstanceCrossSeedKnown(ctx *EvalContext, hash string) bool {
+	_, unknown := ctx.CrossInstanceUnknown[hash]
+	return !unknown
+}
+
 func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
 	// The switch skips the map lookup for the common field that reads only the
 	// torrent; this runs for every leaf on every torrent.
 	switch field {
 	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles,
-		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance:
+		FieldSeasonPackStatus, FieldSeasonPackStatusAnyInstance,
+		FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldCrossSeedTags,
+		FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance:
 	default:
 		return true
 	}
@@ -98,11 +110,27 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 		return true
 	}
 	if ctx == nil ||
-		data.fileIdentity && !ctx.InstanceHasFileIdentity ||
+		data.trustedIdentity && !ctx.InstanceHasTrustedIdentity ||
 		data.localAccess && !ctx.InstanceHasLocalAccess {
 		return false
 	}
-	return data.known(ctx, hash)
+	if data.known(ctx, hash) {
+		return true
+	}
+	// An unread extra candidate cannot undo a confirmed positive match.
+	var confirmed map[string]struct{}
+	switch field {
+	case FieldExistsOnSameInstance:
+		confirmed = ctx.SameInstanceCrossSeedHashSet
+	case FieldSeedingOnSameInstance:
+		confirmed = ctx.SameInstanceCrossSeedSeedingHashSet
+	case FieldExistsOnOtherInstance:
+		confirmed = ctx.CrossInstanceHashSet
+	case FieldSeedingOnOtherInstance:
+		confirmed = ctx.CrossInstanceSeedingHashSet
+	}
+	_, matched := confirmed[hash]
+	return matched
 }
 
 // NeedsFor reports the data that the enabled rules read: through the conditions
@@ -135,9 +163,34 @@ func NeedsFor(rules []*models.Automation) RuleNeeds {
 			if ruleTemplatesUseSavePaths(ac) {
 				needs.SavePaths = true
 			}
+			if actionsGroupCrossSeeds(ac) {
+				needs.CrossMatch.SameContent = true
+			}
 		}
 	}
 	return needs
+}
+
+// actionsGroupCrossSeeds reports whether an enabled action reads the cross-seed
+// groups: a delete that keeps, expands to, or counts once the torrents that share
+// files, any move (it takes the torrents that share files along), and a category
+// change that blocks on or includes cross-seeds.
+func actionsGroupCrossSeeds(ac *models.ActionConditions) bool {
+	if del := ac.Delete; del != nil && del.Enabled {
+		switch del.Mode {
+		case DeleteModeWithFilesIncludeCrossSeeds, DeleteModeWithFilesPreserveCrossSeeds:
+			return true
+		case DeleteModeWithFiles:
+			if ConditionUsesField(del.Condition, FieldFreeSpace) {
+				return true
+			}
+		}
+	}
+	if move := ac.Move; move != nil && move.Enabled {
+		return true
+	}
+	cat := ac.Category
+	return cat != nil && cat.Enabled && (cat.IncludeCrossSeeds || len(cat.BlockIfCrossSeedInCategories) > 0)
 }
 
 // previewNeeds is NeedsFor of one rule as if it were enabled: the preview shows

@@ -43,7 +43,10 @@ type Backend interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
-	// The channel is closed when the walk completes, is cancelled via ctx, or
+	// Entries within one directory arrive in lexical order and a directory's
+	// own entry precedes everything beneath it; nothing more is promised about
+	// order, as a backend may list sibling directories concurrently. The
+	// channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
@@ -98,4 +101,26 @@ type Backend interface {
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
+}
+
+// BatchStater is a Backend that answers many paths in one request, so a
+// remote host costs a few round trips per batch and not a few per path.
+type BatchStater interface {
+	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
+	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
+
+// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Lstat per
+// path.
+func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.LstatBatch(ctx, paths)
+	}
+	infos = make([]*LstatInfo, len(paths))
+	errs = make([]error, len(paths))
+	for i, p := range paths {
+		infos[i], errs[i] = b.Lstat(ctx, p)
+	}
+	return infos, errs
 }

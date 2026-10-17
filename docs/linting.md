@@ -15,21 +15,9 @@ Frontend lint covers `web/src`, the config files at the web root except `web/vit
 
 ## Linter Intent
 
-The project uses golangci-lint v2 with strict settings intended to catch common maintainability issues in generated or hand-written code.
-
-| Linter | Purpose | Threshold |
-| --- | --- | --- |
-| `dupl` | Catch code duplication | 100 tokens |
-| `gocognit` | Cognitive complexity | 15 |
-| `funlen` | Function length | 80 lines |
-| `interfacebloat` | Interface size | 5 methods |
-| `errcheck` | Unchecked errors | All, including type assertions |
-| `gocritic` | Non-idiomatic patterns | diagnostic + style + performance |
+The project uses golangci-lint v2. `.golangci.yml` lists the enabled linters and their settings.
 
 ## Policy
 
 - Prefer `make precommit` during implementation for fast feedback.
-- If lint/check output reveals a real issue, fix the smallest relevant scope.
 - If a lint finding is outside task scope or appears to be existing unrelated debt, report it instead of broadening the change.
-- Avoid repo-wide `pnpm format` or `eslint --fix` sweeps unless explicitly requested.
-- Do not weaken/delete/skip tests or lint rules to hide failures.

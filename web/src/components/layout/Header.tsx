@@ -41,16 +41,15 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
-import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import {
@@ -60,7 +59,7 @@ import {
 } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { cn } from "@/lib/utils"
-import type { InstanceCapabilities, TorrentStreamPayload } from "@/types"
+import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -286,67 +285,7 @@ export function Header({
   )
   const { theme } = useTheme()
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    setStreamActiveTaskCount(null)
-  }, [selectedInstanceId])
-
-  const activeTaskStreamParams = useMemo(() => {
-    // The torrent stream is keyed to a single concrete instance; the all-instances
-    // scope (selectedInstanceId <= 0) must not open a stream or the backend rejects
-    // the whole multiplexed batch and the shared EventSource reconnects forever.
-    if (!shouldShowInstanceControls || selectedInstanceId === null || selectedInstanceId <= 0) {
-      return null
-    }
-
-    return {
-      instanceId: selectedInstanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-    }
-  }, [selectedInstanceId, shouldShowInstanceControls])
-
-  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
-    const value = payload.data?.activeTaskCount
-    if (typeof value === "number") {
-      setStreamActiveTaskCount(value)
-    }
-  }, [])
-
-  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: Boolean(activeTaskStreamParams),
-    onMessage: handleActiveTaskStreamMessage,
-  })
-
-  // Drop the streamed value when the stream is not live so the count reflects the
-  // fresh REST fallback instead of a stale snapshot from before the disconnect.
-  useEffect(() => {
-    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
-      setStreamActiveTaskCount(null)
-    }
-  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
-
-  const shouldUseActiveTaskFallback =
-    canManageSelectedInstance &&
-    selectedInstanceId !== null &&
-    (
-      !activeTaskStreamState.connected ||
-      !!activeTaskStreamState.error ||
-      streamActiveTaskCount === null
-    )
-
-  // Active task count is streamed via SSE; REST polling only runs as fallback.
-  const { data: polledActiveTaskCount = 0 } = useQuery({
-    queryKey: ["active-task-count", selectedInstanceId],
-    queryFn: () => canManageSelectedInstance && selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: shouldUseActiveTaskFallback,
-    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check) when stream is unavailable
-    refetchIntervalInBackground: true,
-  })
-  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
+  const activeTaskCount = useActiveTaskCount(selectedInstanceId, canManageSelectedInstance && shouldShowInstanceControls)
 
   // Query for available updates
   const { data: updateInfo } = useQuery({
@@ -356,7 +295,6 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
-  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
   const updateItemLabel = updateInfo && (
     <>
@@ -796,11 +734,7 @@ export function Header({
                 <>
                   <DropdownMenuItem asChild>
                     {/* Settings holds the Install update button. */}
-                    {selfUpdateAvailable ? (
-                      <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
-                    ) : (
-                      <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
-                    )}
+                    <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

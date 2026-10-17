@@ -538,3 +538,28 @@ func flipLastByte(t *testing.T, stored string) string {
 	raw[len(raw)-1] ^= 0xFF
 	return credentialCipherPrefix + base64.StdEncoding.EncodeToString(raw)
 }
+
+// A new host or key, or no key at all, is a host whose tier is unknown: the
+// tier goes back to sftp with the credentials so the capabilities stay
+// honest until a connect probes again.
+func TestSSHCredentialChangesResetTheTier(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	for name, change := range map[string]func() error{
+		"new credentials": func() error {
+			return store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, "other", testSSHKey)
+		},
+		"cleared credentials": func() error { return store.ClearSSHCredentials(ctx, instance.ID) },
+		"replaced host key": func() error {
+			return store.ReplaceHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey())
+		},
+	} {
+		require.NoError(t, store.SetSSHTier(ctx, instance.ID, SSHTierExec))
+		require.NoError(t, change(), name)
+		got, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, SSHTierSFTP, got.SSHTier, name)
+	}
+}

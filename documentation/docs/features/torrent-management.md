@@ -2,12 +2,12 @@
 sidebar_position: 14
 title: Manage torrents in qui
 sidebar_label: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
+description: Tags, categories, tracker URLs, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management
 
-qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+qui provides tools to manage torrent lists: tags, categories, tracker URLs, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
 
 ## Tags and categories
 
@@ -41,6 +41,24 @@ Open the arrow menu beside the button for these actions:
 - **Clear filters and search** removes both filter groups and search text.
 
 Each action keeps the current sort order. The table toolbar's clear button removes column filters only.
+
+## Change a tracker URL
+
+Use this when a tracker resets your passkey or changes its announce address.
+
+1. In the **Trackers** section of the filter sidebar, open the context menu on the tracker.
+2. Click **Edit tracker URL**. If the entry groups more than one domain, select the domain.
+3. Check **Current Full Tracker URL**. On qBittorrent 5.1 or newer, qui fills it in from your torrents. If your torrents use more than one URL for this tracker, select the one to replace. On older versions, enter the complete current URL yourself.
+4. Enter the complete new URL, with the new passkey, in **New Full Tracker URL**.
+5. Click **Update Tracker**.
+
+qui replaces the URL on every torrent of the instance that has exactly the current URL. To change the URL of one torrent only, open the **Trackers** tab in its details panel and open the context menu on the tracker. On qBittorrent 5.1 or newer, if the tracker has `http://` URLs, the dialog also shows **Convert all HTTP to HTTPS**, which changes them to `https://`.
+
+The menu entry is gray when the instance is read-only or qBittorrent is older than 4.1.5.
+
+:::warning
+If an automation removes unregistered torrents, disable it before you change the URL. Until the tracker accepts the new passkey, qBittorrent can report every torrent of that tracker as unregistered, and the automation then removes all of them. Enable the automation again when the torrents show a working tracker status.
+:::
 
 ## Saved filter views
 
