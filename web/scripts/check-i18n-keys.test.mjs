@@ -103,7 +103,7 @@ function collectKeyPropertyErrors(source) {
   })
 }
 
-for (const property of ["labelKey", "titleKey", "placeholderKey", "descriptionKey"]) {
+for (const property of ["labelKey", "titleKey", "placeholderKey", "descriptionKey", "readOnlyNoteKey"]) {
   test(`reports a misspelled ${property} in the useTranslation namespace`, () => {
     const source = `
       const items = [

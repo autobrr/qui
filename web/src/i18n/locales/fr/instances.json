@@ -144,45 +144,24 @@
       "tabs": {
         "instance": "Instance",
         "speed": "Vitesse",
-        "queue": "File d'attente",
-        "files": "Fichiers",
-        "seeding": "Partage",
         "connection": "Connexion",
-        "discovery": "Découverte",
-        "advanced": "Avancé"
+        "advanced": "Avancé",
+        "behavior": "Comportement",
+        "downloads": "Téléchargements",
+        "bittorrent": "BitTorrent",
+        "rss": "RSS",
+        "webui": "WebUI"
       },
       "sections": {
         "instanceConfig": {
           "title": "Configuration de l'instance",
           "description": "Configurer les paramètres de connexion, l'authentification et les accès"
         },
-        "speedLimits": {
-          "title": "Limites de vitesse",
-          "description": "Configurer les limites de vitesse de téléchargement et d'envoi"
-        },
         "queueManagement": {
-          "title": "Gestion de la file d'attente",
-          "description": "Configurer les paramètres de la file d'attente et les limites de torrents actifs"
-        },
-        "fileManagement": {
-          "title": "Gestion des fichiers",
-          "description": "Configurer les chemins de fichiers et la gestion des torrents"
+          "title": "Gestion de la file d'attente"
         },
         "seedingLimits": {
-          "title": "Limites de partage",
-          "description": "Configurer les limites de ratio de partage et de temps de seed"
-        },
-        "connectionSettings": {
-          "title": "Paramètres de connexion",
-          "description": "Configurer le port d'écoute, les protocoles et les limites de connexion"
-        },
-        "networkDiscovery": {
-          "title": "Découverte réseau",
-          "description": "Configurer les protocoles de découverte de pairs et les paramètres de tracker"
-        },
-        "advancedSettings": {
-          "title": "Paramètres avancés",
-          "description": "Optimisation des performances, E/S disque, gestion des pairs et sécurité"
+          "title": "Limites de partage"
         }
       }
     },
@@ -227,15 +206,11 @@
       "saving": "Enregistrement..."
     },
     "speedLimits": {
-      "loading": "Chargement des limites de vitesse...",
-      "loadFailed": "Échec du chargement des préférences",
       "downloadLimit": "Limite de téléchargement",
       "uploadLimit": "Limite d'envoi",
       "altDownloadLimit": "Limite de téléchargement alternative",
       "altUploadLimit": "Limite d'envoi alternative",
       "scheduleAltLimits": "Planifier l'utilisation de limites alternatives",
-      "from": "De :",
-      "to": "To:",
       "when": "Quand :",
       "everyDay": "Tous les jours",
       "everyWeekday": "En semaine",
@@ -246,28 +221,9 @@
       "thursday": "Jeudi",
       "friday": "Vendredi",
       "saturday": "Samedi",
-      "sunday": "Dimanche",
-      "start": "Début",
-      "end": "End",
-      "timeLabel": "Heure {{label}}",
-      "hourLabel": "Heure {{label}} (0-23)",
-      "minuteLabel": "Minute {{label}} (0-59)",
-      "unlimitedPlaceholder": "0 (Illimité)",
-      "rateUnit": "Mio/s",
-      "validation": {
-        "downloadLimit": "La limite globale de téléchargement doit être supérieure à 0 ou désactivée",
-        "uploadLimit": "La limite globale d'envoi doit être supérieure à 0 ou désactivée",
-        "altDownloadLimit": "La limite alternative de téléchargement doit être > 0 ou désactivée",
-        "altUploadLimit": "La limite alternative d'envoi doit être > 0 ou désactivée"
-      },
-      "toast": {
-        "success": "Limites de vitesse mises à jour",
-        "error": "Échec de la mise à jour des limites de vitesse"
-      }
+      "sunday": "Dimanche"
     },
     "queueManagement": {
-      "loading": "Chargement des paramètres de la file d'attente...",
-      "loadFailed": "Échec du chargement des préférences",
       "enableQueueing": "Activer la file d'attente",
       "enableQueueingDescription": "Limiter le nombre de torrents actifs",
       "maxActiveDownloads": "Téléchargements Actifs Max",
@@ -280,25 +236,9 @@
       "maxCheckingTorrentsDescription": "Nombre maximal de torrents en vérification simultanée",
       "dontCountSlowTorrents": "Ne Pas Compter les Torrents Lents",
       "dontCountSlowTorrentsDescription": "Les torrents lents ne comptent pas dans les limites actives ci-dessus",
-      "slowTorrentDlRateThreshold": "Seuil de Débit de Téléchargement (KiB/s)",
-      "slowTorrentUlRateThreshold": "Seuil de Débit d'Envoi (KiB/s)",
-      "slowTorrentInactiveTimer": "Minuteur d'Inactivité du Torrent (secondes)",
-      "slowTorrentInactiveTimerDescription": "Durée pendant laquelle les deux débits doivent rester sous les seuils avant que le torrent soit considéré comme lent",
-      "validation": {
-        "maxActiveDownloads": "Le max de téléchargements actifs doit être supérieur à -1",
-        "maxActiveUploads": "Le max d'envois actifs doit être supérieur à -1",
-        "maxActiveTorrents": "Le max de torrents actifs doit être supérieur à -1"
-      },
-      "toast": {
-        "success": "Paramètres de file d'attente mis à jour",
-        "error": "Échec de la mise à jour de la file d'attente"
-      }
+      "slowTorrentInactiveTimerDescription": "Durée pendant laquelle les deux débits doivent rester sous les seuils avant que le torrent soit considéré comme lent"
     },
     "fileManagement": {
-      "loading": "Chargement des paramètres de fichiers...",
-      "loadFailed": "Échec du chargement des préférences",
-      "saving": "Enregistrement...",
-      "saveChanges": "Sauvegarder les modifications",
       "autoTorrentManagement": "Gestion Automatique des Torrents",
       "autoTorrentManagementDescription": "Utiliser des chemins basés sur la catégorie pour les téléchargements",
       "relocateOnCategoryChange": "Déplacer lors du changement de catégorie",
@@ -331,9 +271,7 @@
       "runOnTorrentFinished": "Exécuter à la fin du torrent",
       "runOnTorrentFinishedDescription": "Déclenché lorsqu'un torrent est terminé",
       "command": "Commande",
-      "selectContentLayout": "Sélectionner l'organisation du contenu",
       "autorunProgramTip": "Astuce: mettez les variables entre guillemets, ex: \"%N\", pour conserver les espaces.",
-      "autorunUnsupported": "Requiert qBittorrent 4.5.0+ (API Web {{minimum}}+). Cette instance signale {{version}}.",
       "supportedPlaceholders": "Variables supportées (sensible à la casse)",
       "placeholderLabels": {
         "torrentName": "Nom du torrent",
@@ -365,39 +303,22 @@
         "customSavePathLabel": "Chemin de sauvegarde personnalisé",
         "customSavePathPlaceholder": "nomdudossier",
         "remove": "Retirer"
-      },
-      "toast": {
-        "success": "Paramètres de fichiers mis à jour avec succès",
-        "error": "Échec de la mise à jour des paramètres de fichiers"
       }
     },
     "seedingLimits": {
-      "loading": "Chargement des limites de partage...",
-      "loadFailed": "Échec du chargement des préférences",
       "enableShareRatioLimit": "Activer la limite de ratio de partage",
       "enableShareRatioLimitDescription": "Arrêter le partage lorsque le ratio est atteint",
       "maxShareRatio": "Ratio de partage maximum",
       "maxShareRatioDescription": "Arrêter le partage à ce ratio d'envoi/téléchargement",
       "enableSeedingTimeLimit": "Activer la limite de temps de partage",
       "enableSeedingTimeLimitDescription": "Arrêter le partage après le temps spécifié",
-      "maxSeedingTime": "Temps de partage maximum (minutes)",
-      "maxSeedingTimeDescription": "Arrêter le partage après ce nombre de minutes",
-      "toast": {
-        "success": "Limites de partage mises à jour avec succès",
-        "error": "Échec de la mise à jour des limites de partage"
-      }
+      "maxSeedingTimeDescription": "Arrêter le partage après ce nombre de minutes"
     },
     "connectionSettings": {
-      "loading": "Chargement des paramètres de connexion...",
-      "versionWarningTitle": "Détails de version limités",
-      "versionWarningDescription": "Nous n'avons pas pu confirmer les détails de la version de qBittorrent de cette instance. Toutes les options de connexion sont visibles.",
       "listeningPort": "Port d'écoute",
       "portForIncoming": "Port pour les connexions entrantes",
       "portDescription": "Port utilisé pour les connexions BitTorrent entrantes",
       "upnpLeaseDuration": "Durée du bail UPnP (0 = permanent)",
-      "upnpLeaseDurationDescription": "Durée en minutes pour le bail UPnP (0 pour permanent, libtorrent 2.x uniquement)",
-      "useRandomPort": "Utiliser un port aléatoire à chaque démarrage",
-      "useRandomPortDescription": "Sélectionner aléatoirement un port au démarrage de qBittorrent",
       "enableUpnp": "Activer la redirection de port UPnP/NAT-PMP",
       "enableUpnpDescription": "Rediriger automatiquement le port via votre routeur",
       "protocolSettings": "Paramètres du protocole",
@@ -407,15 +328,10 @@
       "protocolTcp": "TCP",
       "protocolUtp": "μTP",
       "utpTcpMixedMode": "Mode Mixte μTP-TCP",
-      "selectMode": "Sélectionner le mode",
       "utpTcpMixedModeDescription": "Comment gérer les connexions mixtes μTP/TCP",
       "preferTcp": "Préférer TCP",
       "peerProportional": "Proportionnel aux pairs",
       "networkInterface": "Interface Réseau",
-      "networkInterfaceReadOnly": "Interface Réseau (Lecture Seule)",
-      "networkInterfaceDescription": "Interface réseau actuellement active. La configuration requiert des points de terminaison API manquants.",
-      "interfaceIpAddress": "Adresse IP de l'Interface (Lecture Seule)",
-      "interfaceIpAddressDescription": "Adresse IP de l'interface actuelle. La configuration requiert des points de terminaison API manquants.",
       "autoDetect": "Détection automatique",
       "reannounceOnIpChange": "Réannoncer aux trackers lorsque l'adresse IP change",
       "reannounceOnIpChangeDescription": "Réannoncer automatiquement lorsque votre adresse IP change",
@@ -430,7 +346,6 @@
       "maxUploadSlotsPerTorrentDescription": "Emplacements d'envoi maximum par torrent individuel",
       "allowMultiConnections": "Autoriser plusieurs connexions de la même adresse IP",
       "allowMultiConnectionsDescription": "Activer les connexions de plusieurs pairs derrière le même NAT",
-      "outgoingPorts": "Ports de sortie",
       "outgoingPortsMin": "Ports de sortie (Min)",
       "outgoingPortsMinDescription": "Port minimum pour les connexions sortantes (0 = pas de limite)",
       "outgoingPortsMax": "Ports de sortie (Max)",
@@ -445,31 +360,15 @@
       "applyIpFilterToTrackersDescription": "Filtrer également les connexions tracker basées sur le filtre IP",
       "bannedIps": "Adresses IP bannies manuellement",
       "bannedIpsPlaceholder": "Entrez les adresses IP à bannir (une par ligne) :\n192.168.1.100\n10.0.0.50\n2001:db8::1",
-      "bannedIpsDescription": "Ajouter des adresses IP à bannir de manière permanente (une par ligne)",
-      "validation": {
-        "listenPort": "Le port utilisé pour les connexions entrantes doit être entre 0 et 65535",
-        "maxConnections": "La limite maximale de connexions doit être supérieure à 0 ou désactivée",
-        "maxConnectionsPerTorrent": "La limite de connexions par torrent doit être supérieure à 0 ou désactivée",
-        "maxUploadSlots": "La limite globale d'emplacements d'envoi doit être > 0 ou désactivée",
-        "maxUploadSlotsPerTorrent": "La limite d'emplacements d'envoi par torrent doit être > 0 ou désactivée",
-        "outgoingPortsMin": "Le port minimum de sortie doit être entre 0 et 65535",
-        "outgoingPortsMax": "Le port maximum de sortie doit être entre 0 et 65535"
-      },
-      "toast": {
-        "success": "Paramètres de connexion mis à jour avec succès",
-        "error": "Échec de la mise à jour des paramètres de connexion"
-      }
+      "bannedIpsDescription": "Ajouter des adresses IP à bannir de manière permanente (une par ligne)"
     },
     "networkDiscovery": {
-      "loading": "Chargement des paramètres de découverte réseau...",
-      "peerDiscovery": "Découverte de pairs",
       "enableDht": "Activer DHT (réseau décentralisé)",
       "enableDhtDescription": "Table de hachage distribuée pour trouver des pairs sans tracker",
       "enablePex": "Activer PeX (Échange de pairs)",
       "enablePexDescription": "Échanger des listes de pairs avec d'autres pairs",
       "enableLsd": "Activer LSD (Découverte de service local)",
       "enableLsdDescription": "Trouver des pairs sur votre réseau local",
-      "trackerSettings": "Paramètres de Tracker",
       "announceToAllTiers": "Toujours annoncer à tous les niveaux",
       "announceToAllTiersDescription": "Annoncer à tous les niveaux de trackers simultanément",
       "announceToAllTrackers": "Toujours annoncer à tous les trackers d'un niveau",
@@ -483,25 +382,14 @@
       "enableAnonymousMode": "Activer le mode anonyme",
       "enableAnonymousModeDescription": "Cacher l'identification et la version de votre client",
       "resolvePeerCountries": "Résoudre les pays des pairs",
-      "resolvePeerCountriesDescription": "Afficher les drapeaux de pays pour les pairs (nécessite de la bande passante supplémentaire)",
-      "toast": {
-        "success": "Paramètres de découverte réseau mis à jour avec succès",
-        "error": "Échec de la mise à jour des paramètres de découverte réseau"
-      }
+      "resolvePeerCountriesDescription": "Afficher les drapeaux de pays pour les pairs (nécessite de la bande passante supplémentaire)"
     },
     "advancedNetwork": {
-      "loading": "Chargement des paramètres réseau avancés...",
-      "versionWarningTitle": "Affichage de toutes les options avancées",
-      "versionWarningDescription": "Nous n'avons pas pu déterminer la version qBittorrent, donc tous les paramètres avancés sont affichés. Certains peuvent ne pas s'appliquer.",
-      "trackerSettings": "Paramètres de Tracker",
       "announceIp": "Adresse IP signalée aux trackers (nécessite un redémarrage)",
       "announceIpDescription": "Adresse IP à annoncer aux trackers (laisser vide pour auto-détection)",
-      "performanceOptimization": "Optimisation des performances",
       "limitUtpProtocol": "Appliquer la limite de taux au protocole μTP",
-      "limitUtpProtocolDescription": "Limiter les connexions μTP pour éviter de submerger les pairs LAN",
       "limitTcpOverhead": "Appliquer la limite de taux à l'overhead de transport",
       "limitTcpOverheadDescription": "Inclure l'overhead du protocole dans les calculs de limite de taux",
-      "limitUtpConnections": "Appliquer la limite de taux aux connexions μTP",
       "limitUtpConnectionsDescription": "Appliquer les limites d'envoi/téléchargement aux connexions μTP",
       "peerTosByte": "Octet ToS des pairs",
       "peerTosDescription": "Octet Type of Service pour les connexions aux pairs",
@@ -519,7 +407,6 @@
       "sendBufferLowWatermarkDescription": "Seuil inférieur pour le buffer d'envoi du socket",
       "watermarkFactor": "Facteur de seuil",
       "watermarkFactorDescription": "Pourcentage du facteur de seuil du buffer d'envoi",
-      "diskIoMemory": "E/S Disque & Mémoire",
       "coalesceReadsWrites": "Fusionner les lectures et écritures",
       "coalesceReadsWritesDescription": "Combiner les lectures/écritures adjacentes pour de meilleures performances",
       "asyncIoThreads": "Threads d'E/S asynchrones",
@@ -538,26 +425,14 @@
       "diskCacheTtlDescription": "Durée de conservation des données en cache dans la mémoire",
       "workingSetLimit": "Limite de l'ensemble de travail",
       "workingSetLimitDescription": "Limite de l'ensemble de travail en mémoire physique",
-      "peerManagement": "Gestion des pairs",
       "peerTurnover": "Renouvellement des pairs",
       "peerTurnoverDescription": "Pourcentage de pairs à déconnecter/reconnecter",
       "turnoverCutoff": "Seuil de renouvellement",
       "turnoverCutoffDescription": "Pourcentage de seuil pour le renouvellement des pairs",
       "turnoverInterval": "Intervalle de renouvellement",
       "turnoverIntervalDescription": "Fréquence d'exécution du renouvellement des pairs",
-      "securityIpFiltering": "Sécurité et Filtrage IP",
       "blockPrivilegedPorts": "Bloquer les pairs sur des ports privilégiés",
       "blockPrivilegedPortsDescription": "Bloquer les connexions des pairs utilisant des ports < 1024",
-      "validation": {
-        "checkingMemoryUse": "La mémoire allouée à la vérification doit être entre 0 et 1024",
-        "peerTurnover": "Le renouvellement des pairs doit être entre 0 et 100",
-        "peerTurnoverCutoff": "Le seuil de renouvellement doit être entre 0 et 100",
-        "peerTurnoverInterval": "L'intervalle de renouvellement doit être entre 0 et 3600"
-      },
-      "toast": {
-        "success": "Paramètres réseau avancés mis à jour avec succès",
-        "error": "Échec de la mise à jour des paramètres réseau avancés"
-      },
       "unitSeconds": "secondes"
     },
     "reannounce": {
@@ -1601,6 +1476,159 @@
       "saveChanges": "Enregistrer les modifications",
       "collapse": "Réduire",
       "expand": "Développer"
+    },
+    "sections": {
+      "whenAdding": "À l'ajout d'un torrent",
+      "savingManagement": "Gestion de l'enregistrement",
+      "excludedFileNames": "Noms de fichiers exclus",
+      "globalRateLimits": "Limites de vitesse globales",
+      "alternativeRateLimits": "Limites de vitesse alternatives",
+      "rateLimitsSettings": "Paramètres des limites de vitesse",
+      "autoAddTrackers": "Ajouter automatiquement ces trackers aux nouveaux téléchargements",
+      "rssReader": "Lecteur RSS",
+      "rssAutoDownloader": "Téléchargeur automatique de torrents RSS",
+      "rssSmartEpisodeFilter": "Filtre d'épisodes intelligent RSS",
+      "qbittorrent": "qBittorrent",
+      "libtorrent": "libtorrent",
+      "logFile": "Fichier journal",
+      "autoAddTrackersFromUrl": "Ajouter automatiquement les trackers d'une URL aux nouveaux téléchargements",
+      "whenAddingDuplicate": "À l'ajout d'un torrent en double",
+      "torrentFileBackup": "Sauvegarde des fichiers .torrent",
+      "emailNotification": "Notification par e-mail à la fin d'un téléchargement",
+      "i2p": "I2P (expérimental)",
+      "proxy": "Serveur proxy"
+    },
+    "fields": {
+      "excludedFileNamesEnabled": "Exclure des noms de fichiers",
+      "excludedFileNames": "Noms de fichiers à exclure (un par ligne)",
+      "scheduleFromHour": "Heure de début",
+      "scheduleFromMinute": "Minute de début",
+      "scheduleToHour": "Heure de fin",
+      "scheduleToMinute": "Minute de fin",
+      "limitLanPeers": "Appliquer la limite de vitesse aux pairs du réseau local",
+      "slowTorrentDownloadRate": "Seuil de vitesse de téléchargement",
+      "slowTorrentUploadRate": "Seuil de vitesse d'envoi",
+      "slowTorrentInactiveTimer": "Minuteur d'inactivité des torrents",
+      "maxSeedingTime": "Durée maximale de partage",
+      "addTrackersEnabled": "Ajouter des trackers aux nouveaux téléchargements",
+      "addTrackers": "Trackers (un par ligne)",
+      "interfaceAddress": "Adresse IP de l'interface",
+      "diskIoType": "Type d'E/S disque",
+      "diskIoTypeDefault": "Par défaut",
+      "diskIoTypeMmap": "Fichiers mappés en mémoire",
+      "diskIoTypePosix": "Conforme POSIX",
+      "diskIoTypeSimplePreadPwrite": "pread/pwrite simple",
+      "diskIoTypePreadPwrite": "Pread/pwrite",
+      "diskIoReadMode": "Mode de lecture des E/S disque",
+      "diskIoWriteMode": "Mode d'écriture des E/S disque",
+      "diskIoModeDisableOsCache": "Désactiver le cache du système",
+      "diskIoModeEnableOsCache": "Activer le cache du système",
+      "diskIoModeWriteThrough": "Écriture immédiate",
+      "fileLogEnabled": "Écrire le journal dans un fichier",
+      "fileLogPath": "Dossier du journal",
+      "fileLogBackupEnabled": "Sauvegarder le fichier journal quand il est plein",
+      "fileLogMaxSize": "Taille maximale du fichier journal",
+      "fileLogMaxSizeDescription": "Quand le fichier journal atteint cette taille, qBittorrent le déplace dans un fichier de sauvegarde et en commence un nouveau",
+      "fileLogDeleteOld": "Supprimer les anciennes sauvegardes du journal",
+      "fileLogAge": "Supprimer les sauvegardes plus anciennes que",
+      "fileLogAgeType": "Unité d'âge",
+      "fileLogAgeDays": "Jours",
+      "fileLogAgeMonths": "Mois",
+      "fileLogAgeYears": "Années",
+      "maxInactiveSeedingTimeEnabled": "Activer la limite de temps de partage inactif",
+      "maxInactiveSeedingTime": "Temps maximal de partage inactif",
+      "maxInactiveSeedingTimeDescription": "Agir sur un torrent qui n'a rien envoyé ni reçu depuis ce nombre de minutes",
+      "addTrackersFromUrlEnabled": "Ajouter les trackers d'une URL aux nouveaux téléchargements",
+      "addTrackersUrl": "URL de la liste des trackers",
+      "addTrackersUrlList": "Trackers récupérés",
+      "addTrackersUrlListNote": "qBittorrent récupère cette liste depuis l'URL.",
+      "rssFetchDelay": "Délai entre les requêtes au même hôte",
+      "rssSmartEpisodeFilters": "Filtres d'épisodes (un par ligne)",
+      "rssSmartEpisodeFiltersDescription": "Expressions régulières qui trouvent la saison et le numéro d'épisode dans le titre d'un article",
+      "addToTopOfQueue": "Ajouter en haut de la file d'attente",
+      "torrentStopCondition": "Condition d'arrêt du torrent",
+      "torrentStopConditionDescription": "qBittorrent arrête un nouveau torrent quand il atteint ce point",
+      "torrentStopConditionNone": "Aucune",
+      "torrentStopConditionMetadataReceived": "Métadonnées reçues",
+      "torrentStopConditionFilesChecked": "Fichiers vérifiés",
+      "autoDeleteMode": "Supprimer les fichiers .torrent ensuite",
+      "autoDeleteModeDescription": "Supprime le fichier .torrent que qBittorrent a ajouté, par exemple depuis un dossier surveillé",
+      "autoDeleteModeNever": "Jamais",
+      "autoDeleteModeIfAdded": "Quand le torrent est ajouté",
+      "autoDeleteModeAlways": "Toujours, aussi quand l'ajout est annulé",
+      "mergeTrackers": "Fusionner les trackers avec le torrent existant",
+      "torrentFilesBackupEnabled": "Enregistrer une sauvegarde de chaque fichier .torrent",
+      "torrentFilesBackupDir": "Dossier de sauvegarde",
+      "torrentFilesFinishedBackupDirEnabled": "Déplacer la sauvegarde quand le torrent est terminé",
+      "torrentFilesFinishedBackupDir": "Dossier de sauvegarde des torrents terminés",
+      "removeTorrentFileBackup": "Supprimer la sauvegarde quand le torrent est supprimé",
+      "exportDir": "Copier les fichiers .torrent vers",
+      "exportDirFin": "Copier les fichiers .torrent des téléchargements terminés vers",
+      "exportDirDescription": "Laisser vide pour ne garder aucune copie",
+      "preallocateAll": "Pré-allouer l'espace disque pour tous les fichiers",
+      "incompleteFilesExt": "Ajouter l'extension .!qB aux fichiers incomplets",
+      "useUnwantedFolder": "Garder les fichiers non sélectionnés dans le dossier \".unwanted\"",
+      "useCategoryPathsInManualMode": "Utiliser les chemins de catégorie en mode manuel",
+      "useCategoryPathsInManualModeDescription": "Résoudre un chemin de sauvegarde relatif par rapport au chemin de la catégorie au lieu du chemin par défaut",
+      "excludedFileNamesDescription": "qBittorrent ne télécharge pas un fichier dont le nom correspond à un motif. Les jokers * et ? fonctionnent",
+      "mailNotificationEnabled": "Envoyer un e-mail à la fin d'un téléchargement",
+      "mailNotificationSender": "De",
+      "mailNotificationEmail": "À",
+      "mailNotificationEmailDescription": "Séparez les e-mails par un point-virgule. Séparez les adresses d'un même e-mail par une virgule",
+      "mailNotificationSmtp": "Serveur SMTP",
+      "mailNotificationSmtpDescription": "Un nom d'hôte ou une adresse IP. Pour un port autre que le port par défaut, ajoutez deux-points et le port",
+      "mailNotificationSmtpPlaceholder": "smtp.example.com:465",
+      "mailNotificationSslEnabled": "Ce serveur exige une connexion sécurisée (SSL)",
+      "mailNotificationEncryptionType": "Chiffrement SMTP",
+      "mailNotificationEncryptionTypeDescription": "Le port par défaut est 25 pour Aucun, 587 pour STARTTLS et 465 pour SMTPS",
+      "mailNotificationEncryptionNone": "Aucun",
+      "mailNotificationEncryptionStartTls": "STARTTLS",
+      "mailNotificationEncryptionSmtps": "SMTPS",
+      "mailNotificationAuthEnabled": "Authentification",
+      "mailNotificationUsername": "Nom d'utilisateur",
+      "mailNotificationPassword": "Mot de passe",
+      "sendTestEmail": "Envoyer un e-mail de test",
+      "sslEnabled": "Écouter les torrents SSL",
+      "sslEnabledDescription": "Les torrents SSL sont une fonction de libtorrent qui utilise des certificats. Seuls les clients libtorrent les prennent en charge, et les torrents normaux n'utilisent pas ce port",
+      "sslListenPort": "Port pour les torrents SSL",
+      "i2pEnabled": "Activer I2P",
+      "i2pAddress": "Hôte I2P",
+      "i2pPort": "Port I2P",
+      "i2pMixedMode": "Mode mixte",
+      "i2pMixedModeDescription": "Les torrents I2P peuvent aussi obtenir des pairs d'autres sources et se connecter à des adresses IP normales. Ces connexions ne sont pas anonymes",
+      "i2pPexEnabled": "Trouver plus de pairs I2P par l'échange de pairs (I2P PeX)",
+      "i2pPexEnabledDescription": "qBittorrent applique ce changement après un redémarrage",
+      "proxyType": "Type de proxy",
+      "proxyTypeNone": "Aucun",
+      "proxyTypeSocks4": "SOCKS4",
+      "proxyTypeSocks5": "SOCKS5",
+      "proxyTypeHttp": "HTTP",
+      "proxyTypeSocks5Auth": "SOCKS5 avec authentification",
+      "proxyTypeHttpAuth": "HTTP avec authentification",
+      "proxyIp": "Hôte",
+      "proxyPort": "Port",
+      "proxyHostnameLookup": "Résoudre les noms d'hôte par le proxy",
+      "proxyAuthEnabled": "Authentification du proxy",
+      "proxyUsername": "Nom d'utilisateur",
+      "proxyPassword": "Mot de passe",
+      "proxyPasswordDescription": "qBittorrent enregistre le mot de passe sans chiffrement",
+      "proxyBittorrent": "Utiliser le proxy pour BitTorrent",
+      "proxyPeerConnections": "Utiliser le proxy pour les connexions aux pairs",
+      "proxyTorrentsOnly": "Utiliser le proxy uniquement pour les torrents",
+      "proxyRss": "Utiliser le proxy pour le RSS",
+      "proxyMisc": "Utiliser le proxy pour le reste du trafic",
+      "optionValue": "Valeur {{value}}"
+    },
+    "units": {
+      "minutes": "minutes"
+    },
+    "readOnlyNote": "qui ne peut pas encore modifier ce paramètre. Modifiez-le dans qBittorrent.",
+    "toast": {
+      "saved": "Préférences enregistrées",
+      "saveFailed": "Échec de l'enregistrement des préférences",
+      "testEmailQueued": "qBittorrent a mis l'e-mail de test en file d'attente",
+      "testEmailQueuedDescription": "qBittorrent utilise les paramètres enregistrés. Vérifiez votre boîte de réception et le journal de qBittorrent pour les erreurs.",
+      "testEmailFailed": "Échec de l'envoi de l'e-mail de test"
     }
   },
   "backups": {

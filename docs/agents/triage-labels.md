@@ -7,7 +7,7 @@ The skills use six triage roles. In this repo, each label name is the same as it
 | `needs-triage` | `needs-triage` | A maintainer must evaluate the report. |
 | `needs-info` | `needs-info` | The reporter must give more information. |
 | `ready-for-agent` | `ready-for-agent` | The report is a full specification that an agent can work on without help. |
-| `ready-for-human` | `ready-for-human` | A human must do the implementation. |
+| `ready-for-human` | `ready-for-human` | A human must make a decision or do the implementation. |
 | `wontfix` | `wontfix` | Nobody will do the work. |
 | `needs-grilling` | `needs-grilling` | An idea that the maintainer parked. It waits for `/grill-with-docs` and `/to-spec`. |
 

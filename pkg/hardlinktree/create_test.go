@@ -4,8 +4,11 @@
 package hardlinktree
 
 import (
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -346,5 +349,45 @@ func TestRollback_EmptyHandle(t *testing.T) {
 	// Should not panic or error
 	if err := (&Created{}).Rollback(); err != nil {
 		t.Errorf("empty handle Rollback should not error, got: %v", err)
+	}
+}
+
+// A directory another attempt linked into is left in place, and that is not a
+// rollback failure (discussion #2282).
+func TestRollback_KeepsDirWithForeignContent(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sibling.mkv"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (&Created{Dirs: []string{dir}}).Rollback(); err != nil {
+		t.Fatalf("Rollback should ignore a non-empty dir, got: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("non-empty dir should be kept: %v", err)
+	}
+}
+
+func TestIsDirNotEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "ENOTEMPTY", err: fmt.Errorf("rollback: %w", &fs.PathError{Op: "remove", Path: "/data/x", Err: syscall.ENOTEMPTY}), want: true},
+		{name: "permission denied", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrPermission}, want: false},
+		{name: "not exist", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrNotExist}, want: false},
+		{name: "permission denied on a path with not empty", err: &fs.PathError{Op: "remove", Path: "/data/not empty", Err: fs.ErrPermission}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDirNotEmpty(tt.err); got != tt.want {
+				t.Errorf("isDirNotEmpty(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

@@ -405,6 +405,22 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		name:           "bracket batch with a Ma10 tag against a season pack with a year",
+		source:         "[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]",
+		candidate:      "Kaiju Squad 2003 AKA Kaiju Kyoutai S01 720p BluRay Dual-Audio FLAC 2.0 x265-KAIJU",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+		},
+	},
+	{
 		name:          "two-sided CRC that differs",
 		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234].mkv",
 		candidate:     "[KaijuSubs] Kaiju Squad - 81 (1080p) [EF567890].mkv",

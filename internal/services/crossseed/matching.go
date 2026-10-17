@@ -144,7 +144,7 @@ func makeReleaseKey(r *rls.Release) releaseKey {
 // parseReleaseName is the matcher's only parser. A matcher with no release cache
 // falls back to the process-wide default parser, as normalizer does (ADR 0008).
 func (m matcher) parseReleaseName(name string) *rls.Release {
-	return cmp.Or(m.releaseCache, releases.DefaultParser).Parse(name)
+	return cmp.Or(m.releaseCache, releases.DefaultParser).Parse(name) //nolint:forbidigo // the one fallback to the default parser (ADR 0008)
 }
 
 // parseFileRelease removes RAR volume suffixes so .s01 does not become season 1.
