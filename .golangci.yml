@@ -16,6 +16,7 @@ formatters:
 linters:
   enable:
     - copyloopvar
+    - depguard
     - errname
     - errorlint
     - exhaustive
@@ -38,12 +39,25 @@ linters:
     - whitespace
 
   settings:
+    depguard:
+      rules:
+        gatherer-never-parses:
+          files: ["**/internal/services/crossseed/search_gather.go"]
+          deny:
+            - pkg: github.com/autobrr/rls
+              desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007)
+            - pkg: github.com/autobrr/qui/pkg/releases
+              desc: the search gatherer asks the usable predicate and never parses a title (ADR 0007)
+
     forbidigo:
       analyze-types: true
       forbid:
         - pattern: ^qbittorrent\.Client\.(SetPreferences\w*|SetMonitoredFolders(Ctx)?|SetRSS(AutoDownloading|Processing)Enabled(Ctx)?)$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
           msg: send qBittorrent preference writes through the preference catalog in internal/qbittorrent/prefcatalog
+        - pattern: ^(releases\.(DefaultParser|NewDefaultParser|NewParser)|rls\.(ParseString|Parse|NewDefaultParser))$
+          pkg: ^github\.com/autobrr/(qui/pkg/releases|rls)$
+          msg: cross-seed code parses release names through the release cache or matcher.parseReleaseName (ADR 0008)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -81,6 +95,30 @@ linters:
         linters:
           - forbidigo
         text: preference catalog
+
+      # The one-parser rule binds only the cross-seed production code.
+      - path-except: ^internal/services/crossseed/
+        linters:
+          - forbidigo
+        text: ADR 0008
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: ADR 0008
+
+      # The default-parser fallback in parseReleaseName is the one allowed use.
+      # Scoped to that statement so a second use in this file is still reported.
+      - path: internal/services/crossseed/matching\.go
+        linters:
+          - forbidigo
+        source: 'cmp\.Or\(m\.releaseCache, releases\.DefaultParser\)'
+
+      # NewReleaseCache builds the release cache, so it is the one allowed
+      # constructor call.
+      - path: internal/services/crossseed/release_cache\.go
+        linters:
+          - forbidigo
+        source: 'return releases\.NewDefaultParser\(\)'
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.
