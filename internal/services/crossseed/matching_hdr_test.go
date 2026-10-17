@@ -138,6 +138,53 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			wantMatch:   false,
 			description: "HDR10 and HDR10+ remain distinct encodes",
 		},
+		{
+			name:          "DoVi HDR10 matches a tracker listing that writes DV HDR",
+			sourceName:    "Movie.2024.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GROUP",
+			candidateName: "Movie 2024 2160p WEB-DL DDP5.1 DV HDR H.265-GROUP",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GROUP.mkv", Size: 20 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GROUP.mkv", Size: 20 << 30},
+			},
+			wantMatch:   true,
+			description: "DV HDR reads as DV HDR10",
+		},
+		{
+			name:          "HDR matches HDR10",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.HDR10-GROUP",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR-GROUP.mkv", Size: 40 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR10-GROUP.mkv", Size: 40 << 30},
+			},
+			wantMatch:   true,
+			description: "a generic HDR tag reads as HDR10",
+		},
+		{
+			name:          "HDR should not match HDR10 plus",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP",
+			wantMatch:     false,
+			description:   "a generic HDR tag stays distinct from HDR10+",
+		},
+		{
+			name:          "HDR should not match HLG",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.HLG-GROUP",
+			wantMatch:     false,
+			description:   "a generic HDR tag stays distinct from HLG",
+		},
+		{
+			name:          "HDR should not match DV HDR10",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.DV.HDR10-GROUP",
+			wantMatch:     false,
+			description:   "a DV tag on one side only stays a mismatch",
+		},
 		// Collection/streaming service tests
 		{
 			name:          "service-tagged name matches an untagged name of the same release",

@@ -401,6 +401,17 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		// The NFO keeps the total sizes apart, so the exact-size fallback cannot
+		// rescue the pair, and the HDR rule alone decides.
+		name:          "DoVi HDR10 against a generic DV HDR",
+		source:        "Kaiju.Squad.S02E05.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GRP",
+		candidate:     "Kaiju Squad S02E05 2160p WEB-DL DDP5.1 DV HDR H.265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Kaiju.Squad.S02E05.2160p.WEB-DL.DDP5.1.DoVi.HDR10.H.265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
 		name:           "web source relabel",
 		source:         "Kaiju.Squad.S02.1080p.AMZN.WEBRip.DD2.0.x264-GRP",
 		candidate:      "Kaiju.Squad.S02.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP",
