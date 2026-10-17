@@ -37,9 +37,9 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 
 // contentFiles removes the files that search ignores. A file with an ignored
 // extension (nfo, srt) is always a sidecar. An ignored path keyword (proof,
-// extras) can be part of the title, as for a movie named Proof, so when every
-// remaining file has one, those files stay. A torrent of sidecars only keeps
-// all its files.
+// extras) that every file has is part of the title, as for a movie named
+// Proof, so only the other keywords mark a sidecar. When every remaining file
+// has one, those files stay. A torrent of sidecars only keeps all its files.
 func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) qbt.TorrentFiles {
 	var noSidecars, content qbt.TorrentFiles
 	for _, file := range files {
@@ -55,10 +55,30 @@ func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[str
 	switch {
 	case len(content) > 0:
 		return content
-	case len(noSidecars) > 0:
-		return noSidecars
+	case len(noSidecars) == 0:
+		return files
 	}
-	return files
+
+	// Every file has a keyword. Drop the keywords that every file has.
+	names := make([]string, len(noSidecars))
+	for i, file := range noSidecars {
+		names[i] = normalizer.Normalize(file.Name)
+	}
+	var keywords []string
+	for _, keyword := range DefaultIgnoredPathKeywords {
+		if slices.ContainsFunc(names, func(name string) bool { return !strings.Contains(name, keyword) }) {
+			keywords = append(keywords, keyword)
+		}
+	}
+	for i, file := range noSidecars {
+		if !slices.ContainsFunc(keywords, func(keyword string) bool { return strings.Contains(names[i], keyword) }) {
+			content = append(content, file)
+		}
+	}
+	if len(content) > 0 {
+		return content
+	}
+	return noSidecars
 }
 
 func (d sameDataFiles) sharesPath(other sameDataFiles) bool {

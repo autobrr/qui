@@ -1451,7 +1451,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule, scoreByHash), nil
 }
 
-// setupHardlinkSignatureContext sets up hardlink signature tracking for FREE_SPACE projection.
+// setupHardlinkSignatureContext gives the FREE_SPACE projection the hardlink index.
 func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIndex *HardlinkIndex, cond *RuleCondition, eligibleMode, includeHardlinks bool) {
 	if !includeHardlinks || hardlinkIndex == nil || eligibleMode {
 		return
@@ -1460,8 +1460,6 @@ func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIn
 		return
 	}
 	evalCtx.hardlinkIndex = hardlinkIndex
-	evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
-	evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 }
 
 // torrentMatchesDeleteRule checks if a torrent matches the tracker pattern and delete condition.
@@ -2049,21 +2047,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			ruleKey := GetFreeSpaceRuleKey(r)
 			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
 			state := &FreeSpaceSourceState{
-				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
-				SpaceToClear:              0,
-				FilesToClear:              make(map[string]int64),
-				HardlinkSignaturesToClear: make(map[string]struct{}),
+				FreeSpace:    freeSpaceBySourceKey[sourceKey],
+				SpaceToClear: 0,
+				FilesToClear: make(map[string]int64),
 			}
 			if ruleUsesIncludeCrossSeedsFreeSpace(r) {
 				state.CrossSeedHashesToClear = make(map[string]struct{})
 			}
 			evalCtx.FreeSpaceStates[ruleKey] = state
-		}
-
-		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
-		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
-		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
-			evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 		}
 	}
 
@@ -3496,6 +3487,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 							members = m
 						}
 					}
+					if !groupHoldsSharedFiles(members, crossSeeds) {
+						continue
+					}
 
 					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
 					def := (*models.GroupDefinition)(nil)
@@ -4616,15 +4610,13 @@ func fileOverlapPercent(triggerFiles fileOverlapIndex, candidate qbt.Torrent, ca
 	return 0
 }
 
-// crossSeedGroupMembers returns the members of a shared-ContentPath group that share files
+// crossSeedGroupMembers returns the members of a shared-file group that share files
 // with the trigger, directly or through another such member, and are therefore safe to
 // delete with it.
 //
-// A shared ContentPath only proves the torrents write into the same directory: unrelated
-// packs whose payload folder carries the same name (a bare "Season 2" root) all report the
-// same path. Members that share no file are dropped, the trigger is still deleted. Partial
-// overlap or unreadable files abort the group, because the delete would break data another
-// torrent needs.
+// Members that share no file are dropped, the trigger is still deleted. Partial overlap or
+// unreadable files abort the group, because the delete would break data another torrent
+// needs.
 func crossSeedGroupMembers(
 	trigger qbt.Torrent,
 	group []qbt.Torrent,
@@ -4801,6 +4793,24 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
 		if err != nil || !hasOverlap {
 			return false
+		}
+	}
+	return true
+}
+
+// groupHoldsSharedFiles reports whether every torrent that shares a file with
+// a member is also a member. Moving a member moves the files that the other
+// torrent still needs.
+func groupHoldsSharedFiles(members []string, crossSeeds crossSeedGroups) bool {
+	inGroup := make(map[string]struct{}, len(members))
+	for _, hash := range members {
+		inGroup[hash] = struct{}{}
+	}
+	for _, hash := range members {
+		for _, peer := range crossSeeds[hash] {
+			if _, ok := inGroup[peer.Hash]; !ok {
+				return false
+			}
 		}
 	}
 	return true
@@ -5559,6 +5569,9 @@ func (s *Service) recordDryRunActivities(
 							if m := idx.MembersForHash(hash); len(m) > 0 {
 								members = m
 							}
+						}
+						if !groupHoldsSharedFiles(members, crossSeeds) {
+							continue
 						}
 
 						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.

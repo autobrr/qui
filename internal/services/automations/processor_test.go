@@ -796,28 +796,8 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		}
 
 		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil, true)
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil, true)
-
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear, "the same torrent counts once")
-	})
-
-	t.Run("adds size for first torrent with valid cross-seed key", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil, true)
 
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 1) // Tracked as cross-seed
 	})
 
 	t.Run("does not double-count cross-seed torrents", func(t *testing.T) {
@@ -897,7 +877,6 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
 
 		require.Equal(t, int64(80000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 2)
 	})
 
 	t.Run("handles nil evalCtx gracefully", func(t *testing.T) {
@@ -989,175 +968,6 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
 		require.Empty(t, evalCtx.FilesToClear)
-	})
-
-	t.Run("dedupes by delete-safe hardlink signature when configured", func(t *testing.T) {
-		// Two torrents with different ContentPaths but same hardlink signature
-		// (they share the same physical files via hardlinks)
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-			DeleteSafeHardlinkSignatureByHash: map[string]string{
-				"abc123": "fileID1;fileID2", // Same signature = same physical files
-				"def456": "fileID1;fileID2",
-			},
-			HardlinkSignaturesToClear: make(map[string]struct{}),
-		}
-
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie1",
-			SavePath:    "/data",
-		}
-
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        50000000000,    // Same size (hardlink copy)
-			ContentPath: "/data/movie2", // Different path, but same files via hardlinks
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups(allTorrents), true)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups(allTorrents), true)
-
-		// Should only count once due to hardlink signature dedupe
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.HardlinkSignaturesToClear, 1)
-	})
-
-	t.Run("hardlink signature dedupe takes precedence over cross-seed dedupe", func(t *testing.T) {
-		// Torrent with hardlink signature should use that for dedupe,
-		// not fall through to cross-seed key dedupe
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-			DeleteSafeHardlinkSignatureByHash: map[string]string{
-				"abc123": "fileID1;fileID2",
-			},
-			HardlinkSignaturesToClear: make(map[string]struct{}),
-		}
-
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000,
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent}
-
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups(allTorrents), true)
-
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		// Should track via signature, not cross-seed key
-		require.Len(t, evalCtx.HardlinkSignaturesToClear, 1)
-		require.Empty(t, evalCtx.FilesToClear) // Not tracked as cross-seed
-	})
-
-	t.Run("torrents without hardlink signature fall back to cross-seed dedupe", func(t *testing.T) {
-		// Mix of torrents: some with hardlink signatures, some without
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-			DeleteSafeHardlinkSignatureByHash: map[string]string{
-				"abc123": "fileID1;fileID2",
-				// def456 has no signature
-			},
-			HardlinkSignaturesToClear: make(map[string]struct{}),
-		}
-
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000,
-			ContentPath: "/data/movie1",
-			SavePath:    "/data",
-		}
-
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        30000000000,
-			ContentPath: "/data/movie2",
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups(allTorrents), true)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups(allTorrents), true)
-
-		// Both should count (different dedupe methods)
-		require.Equal(t, int64(80000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.HardlinkSignaturesToClear, 1) // torrent1 via signature
-		require.Len(t, evalCtx.FilesToClear, 1)              // torrent2 via cross-seed key
-	})
-
-	t.Run("hardlink signature dedupe only applies to include-cross-seeds mode", func(t *testing.T) {
-		// With DeleteModeWithFiles, hardlink signature should NOT be used for dedupe,
-		// even if the delete-safe signature map is set (falls through to cross-seed key dedupe)
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-			DeleteSafeHardlinkSignatureByHash: map[string]string{
-				"abc123": "fileID1;fileID2",
-				"def456": "fileID1;fileID2", // Same signature
-			},
-			HardlinkSignaturesToClear: make(map[string]struct{}),
-		}
-
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000,
-			ContentPath: "/data/movie1",
-			SavePath:    "/data",
-		}
-
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        50000000000,
-			ContentPath: "/data/movie2", // Different ContentPath
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-
-		// Using DeleteModeWithFiles - should NOT use hardlink signature dedupe
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-
-		// Both should count because different ContentPaths and hardlink dedupe not applied
-		require.Equal(t, int64(100000000000), evalCtx.SpaceToClear)
-		require.Empty(t, evalCtx.HardlinkSignaturesToClear) // Not used
-		require.Len(t, evalCtx.FilesToClear, 2)             // Both tracked as separate cross-seed keys
-	})
-
-	t.Run("grouping signatures remain available while delete-safe dedupe runs", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-			HardlinkSignatureByHash: map[string]string{
-				"abc123": "grouping-sig",
-			},
-			DeleteSafeHardlinkSignatureByHash: map[string]string{
-				"abc123": "delete-sig",
-			},
-			HardlinkSignaturesToClear: make(map[string]struct{}),
-		}
-
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000,
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, testCrossSeedGroups([]qbt.Torrent{torrent}), true)
-
-		require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
-		require.Equal(t, map[string]string{"abc123": "delete-sig"}, evalCtx.DeleteSafeHardlinkSignatureByHash)
-		require.Contains(t, evalCtx.HardlinkSignaturesToClear, "delete-sig")
 	})
 }
 

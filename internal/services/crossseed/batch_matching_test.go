@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -229,6 +230,16 @@ func TestBuildCrossMatchSets_SameInstance(t *testing.T) {
 		require.Contains(t, result.SameInstanceExists, "aaa")
 		require.Contains(t, result.SameInstanceExists, "bbb")
 		require.Empty(t, result.SameInstanceContentByHash, "separate copies share no file")
+	})
+
+	t.Run("a copy with an ignored word in its title leaves its sample out", func(t *testing.T) {
+		result := buildCrossMatch(t, sameNeeds,
+			crossMatchTorrent(1, "aaa", proof, "/data/movies", "/data/movies/"+proof+".mkv", cmFile(proof+".mkv", 1000)),
+			crossMatchTorrent(1, "bbb", proof, "/data/copy", "/data/copy/"+proof,
+				qbt.TorrentFiles{{Name: proof + "/" + proof + ".mkv", Size: 1000}, {Name: proof + "/Sample/grp-proof-sample.mkv", Size: 10}}),
+		)
+		require.Contains(t, result.SameInstanceExists, "aaa")
+		require.Contains(t, result.SameInstanceExists, "bbb")
 	})
 
 	t.Run("an unreadable candidate counts as sharing files for grouping only", func(t *testing.T) {
@@ -459,6 +470,51 @@ func TestBuildCrossMatchSets_InstanceListFailureIsUnknown(t *testing.T) {
 			require.Contains(t, result.SameInstanceContentByHash["aaa"], "ccc", "delete safety must retain known shared paths")
 		}
 	}
+}
+
+// failingPeerSyncManager fails the torrent snapshot of one instance.
+type failingPeerSyncManager struct {
+	*tierSyncManager
+	failInstanceID int
+}
+
+func (m *failingPeerSyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	if instanceID == m.failInstanceID {
+		return nil, errors.New("instance unreachable")
+	}
+	return m.tierSyncManager.GetCachedInstanceTorrents(ctx, instanceID)
+}
+
+func TestBuildCrossMatchSets_PeerSnapshotFailureIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	const other = "Quiet.Coast.2020.720p.BluRay.x264-OTHER"
+	sm := &tierSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			"aaa": cmFile(cmEpisodeFile, 4),
+			"bbb": cmFile(other+".mkv", 8),
+			"ccc": cmFile(other+".mkv", 8),
+		},
+		candidates: map[int][]qbittorrent.CrossInstanceTorrentView{
+			1: {
+				crossMatchTorrent(1, "aaa", cmEpisode, "/data/a", "/data/a/"+cmEpisodeFile, nil).view,
+				crossMatchTorrent(1, "bbb", other, "/data/b", "/data/b/"+other+".mkv", nil).view,
+			},
+			3: {crossMatchTorrent(3, "ccc", other, "/data/c", "/data/c/"+other+".mkv", nil).view},
+		},
+	}
+	svc := newTestService()
+	svc.syncManager = &failingPeerSyncManager{tierSyncManager: sm, failInstanceID: 2}
+	svc.instanceStore = newOrderedInstanceStore(
+		&models.Instance{ID: 1, Name: "one", IsActive: true},
+		&models.Instance{ID: 2, Name: "two", IsActive: true},
+		&models.Instance{ID: 3, Name: "three", IsActive: true},
+	)
+
+	result := svc.BuildCrossMatchSets(t.Context(), 1, CrossMatchNeeds{OtherExists: true, OtherSeeding: true})
+	require.Contains(t, result.OtherInstanceUnknown, "aaa", "the unreachable instance can hold its only copy")
+	require.NotContains(t, result.OtherInstanceExists, "aaa")
+	require.Contains(t, result.OtherInstanceExists, "bbb", "a copy on a reachable instance stays confirmed")
 }
 
 func TestBuildCrossMatchSets_CurrentSnapshotFailure(t *testing.T) {

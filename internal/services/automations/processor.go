@@ -905,8 +905,7 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
 // Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
-// When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
-// double-counting torrents that share the same physical files via hardlinks.
+// A file shared inside a group, through a path or a hardlink, counts once.
 func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, crossSeeds crossSeedGroups, includeHardlinks bool) bool {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return true
@@ -919,12 +918,6 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
 		return updateCrossSeedFreeSpaceCleared(torrent, evalCtx, crossSeeds, includeHardlinks)
-	}
-	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
-		// File verification above established that this torrent has no shared files.
-		// Do not deduplicate unrelated torrents that merely use the same directory.
-		evalCtx.SpaceToClear += torrent.Size
-		return true
 	}
 	if deleteMode == DeleteModeWithFiles && len(crossSeeds[torrent.Hash]) > 0 {
 		files := evalCtx.CrossSeedFilesByHash[torrent.Hash]
@@ -944,32 +937,9 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		return true
 	}
 
-	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
-	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
-	// whole hardlink group via expansion; this avoids affecting other delete modes.
-	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
-		includeHardlinks && evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if sig, ok := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
-			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
-				// Already counted this hardlink group
-				return true
-			}
-			// Mark signature as counted and add size
-			evalCtx.HardlinkSignaturesToClear[sig] = struct{}{}
-			evalCtx.SpaceToClear += torrent.Size
-			return true
-		}
-	}
-
-	// Fall back to cross-seed group dedupe
-	key := crossSeeds.key(torrent)
-
-	// Members of a group can hold different files, for example an episode and
-	// the season pack that holds it. Count the largest member once.
-	if counted := evalCtx.FilesToClear[key]; torrent.Size > counted {
-		evalCtx.SpaceToClear += torrent.Size - counted
-		evalCtx.FilesToClear[key] = torrent.Size
-	}
+	// The torrent shares no file: preserve mode verified that above, and a
+	// file delete outside a group has nothing to share.
+	evalCtx.SpaceToClear += torrent.Size
 	return true
 }
 

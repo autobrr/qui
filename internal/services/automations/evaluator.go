@@ -41,14 +41,12 @@ type FreeSpaceSourceState struct {
 	FreeSpace int64
 	// SpaceToClear is the cumulative disk space that will be freed by deletions.
 	SpaceToClear int64
-	// FilesToClear holds the largest size counted for each cross-seed group key, to avoid double-counting.
+	// FilesToClear is non-nil while the rule projects freed space.
 	FilesToClear map[string]int64
 	// FileBytesToClear counts selected files by resolved path for ordinary file deletes.
 	FileBytesToClear map[string]int64
 	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
 	CrossSeedHashesToClear map[string]struct{}
-	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
-	HardlinkSignaturesToClear map[string]struct{}
 }
 
 // EvalContext provides additional context for condition evaluation.
@@ -81,7 +79,7 @@ type EvalContext struct {
 	FreeSpace int64
 	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
 	SpaceToClear int64
-	// FilesToClear holds the largest size counted for each cross-seed group key by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
+	// FilesToClear is non-nil while the active rule projects freed space for the "free space" condition.
 	FilesToClear map[string]int64
 	// FileBytesToClear holds the active rule's selected file sizes by resolved path.
 	FileBytesToClear map[string]int64
@@ -92,12 +90,6 @@ type EvalContext struct {
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
 	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
-	// DeleteSafeHardlinkSignatureByHash maps torrent hash to its hardlink signature for torrents whose
-	// hardlinks stay fully inside qBittorrent. Used only by delete/include-hardlinks FREE_SPACE dedupe.
-	DeleteSafeHardlinkSignatureByHash map[string]string
-	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
-	// Torrents with the same signature share physical files and should only be counted once.
-	HardlinkSignaturesToClear map[string]struct{}
 	// FreeSpaceStates maps rule keys to their projection state.
 	// Rule keys are "sourceKey|rule:<id>" where sourceKey is "qbt" or "path:/some/path".
 	// Each rule gets its own state to prevent interference between rules with different thresholds.
@@ -1318,7 +1310,6 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 		ctx.FilesToClear = nil
 		ctx.FileBytesToClear = nil
 		ctx.CrossSeedHashesToClear = nil
-		ctx.HardlinkSignaturesToClear = nil
 		ctx.ActiveFreeSpaceSource = ""
 		return
 	}
@@ -1328,7 +1319,6 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 	ctx.FilesToClear = state.FilesToClear
 	ctx.FileBytesToClear = state.FileBytesToClear
 	ctx.CrossSeedHashesToClear = state.CrossSeedHashesToClear
-	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
 	ctx.ActiveFreeSpaceSource = sourceKey
 }
 
@@ -1348,5 +1338,4 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 	state.FilesToClear = ctx.FilesToClear
 	state.FileBytesToClear = ctx.FileBytesToClear
 	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
-	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

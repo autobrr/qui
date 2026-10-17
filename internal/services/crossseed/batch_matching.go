@@ -39,11 +39,12 @@ type CrossMatchResult struct {
 	// its same-instance cross-seed matches (self excluded). A hash is present only
 	// when at least one match carries a non-empty tag string.
 	SameInstanceTagsByHash map[string][]string
-	// SameInstanceContentByHash maps a source hash to the hashes of the torrents
-	// on the same instance that share at least one file on disk with it (the
-	// Content tier, self excluded). A candidate whose files could not be read is
-	// also listed, so that a delete or move fails closed. A hash is present only
-	// when it has such a torrent.
+	// SameInstanceContentByHash links torrents on the same instance that share
+	// at least one file on disk (the Content tier, self excluded). It keeps only
+	// enough links to connect each shared-file group, so read a group by
+	// following the links, not from one entry. A candidate whose files could not
+	// be read is also linked, so that a delete or move fails closed. A hash is
+	// present only when it has a link.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceUnknown and OtherInstanceUnknown hold the torrents whose
 	// file list, candidate's file list, or instance list could not be read.
@@ -132,6 +133,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 	// need are read in one batch per instance.
 	var samePicks, otherPicks [][]*candidatePick
 	var pathGroups [][]int
+	var peerReadFailed bool
 	if needsSame {
 		if sameIdx := s.buildIndexFromViews(currentTorrents, needs.SameSeeding); sameIdx != nil {
 			samePicks = s.selectAllCandidates(ctx, currentTorrents, sameIdx, true)
@@ -139,7 +141,9 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		}
 	}
 	if needsOther && listErr == nil {
-		if otherIdx := s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding); otherIdx != nil {
+		var otherIdx *matchIndex
+		otherIdx, peerReadFailed = s.buildOtherInstanceIndex(ctx, instances, currentInstanceID, needs.OtherSeeding)
+		if otherIdx != nil {
 			otherPicks = s.selectAllCandidates(ctx, currentTorrents, otherIdx, false)
 		}
 	}
@@ -207,18 +211,21 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 		}
 	}
 
-	if listErr != nil {
-		if needsSame {
-			result.SameInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
-		}
-		if needsOther {
-			result.OtherInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
-		}
+	// A peer whose torrents could not be read can hold the only copy.
+	sameUnknown := needsSame && listErr != nil
+	otherUnknown := needsOther && (listErr != nil || peerReadFailed)
+	if sameUnknown {
+		result.SameInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
+	}
+	if otherUnknown {
+		result.OtherInstanceUnknown = make(map[string]struct{}, len(currentTorrents))
+	}
+	if sameUnknown || otherUnknown {
 		for _, torrent := range currentTorrents {
-			if needsSame {
+			if sameUnknown {
 				result.SameInstanceUnknown[torrent.Hash] = struct{}{}
 			}
-			if needsOther {
+			if otherUnknown {
 				result.OtherInstanceUnknown[torrent.Hash] = struct{}{}
 			}
 		}
@@ -570,8 +577,9 @@ func newMatchIndex() *matchIndex {
 }
 
 // buildOtherInstanceIndex builds a matchIndex from all torrents on other instances.
-func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool) *matchIndex {
-	idx := newMatchIndex()
+// readFailed is set when the torrents of an instance could not be read.
+func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*models.Instance, currentInstanceID int, needsSeeding bool) (idx *matchIndex, readFailed bool) {
+	idx = newMatchIndex()
 	hasEntries := false
 
 	for _, inst := range instances {
@@ -585,6 +593,7 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
 			log.Debug().Err(err).Int("instanceID", inst.ID).Msg("crossseed: skipping instance for cross-instance matching")
+			readFailed = true
 			continue
 		}
 
@@ -595,9 +604,9 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 	}
 
 	if !hasEntries {
-		return nil
+		return nil, readFailed
 	}
-	return idx
+	return idx, readFailed
 }
 
 // indexView adds a single torrent view to all indexes.

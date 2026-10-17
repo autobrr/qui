@@ -1772,7 +1772,7 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	}
 }
 
-func TestSetupHardlinkSignatureContext_UsesDeleteSafeSignatures(t *testing.T) {
+func TestSetupHardlinkSignatureContext_KeepsGroupingSignatures(t *testing.T) {
 	svc := &Service{}
 	evalCtx := &EvalContext{
 		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
@@ -1786,8 +1786,7 @@ func TestSetupHardlinkSignatureContext_UsesDeleteSafeSignatures(t *testing.T) {
 	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
 
 	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
-	require.Equal(t, map[string]string{"abc123": "delete-sig"}, evalCtx.DeleteSafeHardlinkSignatureByHash)
-	require.NotNil(t, evalCtx.HardlinkSignaturesToClear)
+	require.Same(t, hardlinkIndex, evalCtx.hardlinkIndex)
 }
 
 // -----------------------------------------------------------------------------
@@ -2474,6 +2473,53 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *testing.T) {
+	const movie = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
+	for _, tc := range []struct {
+		name            string
+		peerContentPath string
+		wantMove        bool
+	}{
+		{name: "peer in the group", peerContentPath: "/data/movies/" + movie + ".mkv", wantMove: true},
+		{name: "folder peer outside the group", peerContentPath: "/data/movies/" + movie, wantMove: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockDB := &mockQuerier{activities: make([]*models.AutomationActivity, 0)}
+			s := &Service{
+				activityStore: models.NewAutomationActivityStore(mockDB),
+				activityRuns:  newActivityRunStore(24*time.Hour, 10),
+				syncManager:   qbittorrent.NewSyncManager(nil, nil),
+			}
+			torrents := []qbt.Torrent{
+				{Hash: "a", Name: movie, SavePath: "/data/movies", ContentPath: "/data/movies/" + movie + ".mkv"},
+				{Hash: "b", Name: movie, SavePath: "/data/movies", ContentPath: tc.peerContentPath},
+			}
+			states := map[string]*torrentDesiredState{
+				"a": {shouldMove: true, movePath: "/data/moved", moveGroupID: GroupCrossSeedContentPath, moveRuleID: 77},
+			}
+			ruleByID := map[int]*models.Automation{77: {
+				ID:         77,
+				Name:       "Grouped move",
+				Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, GroupID: GroupCrossSeedContentPath}},
+			}}
+			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
+
+			_ = s.recordDryRunActivities(t.Context(), 1,
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+				map[string][]string{"/data/moved": {"a"}}, nil, nil, nil,
+				map[string]qbt.Torrent{"a": torrents[0], "b": torrents[1]}, torrents, states, ruleByID, evalCtx, true)
+
+			require.Len(t, mockDB.activities, 1)
+			if tc.wantMove {
+				require.NotEqual(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+			} else {
+				require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action,
+					"moving the bare mkv would take the file from the folder torrent")
+			}
+		})
+	}
 }
 
 func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testing.T) {

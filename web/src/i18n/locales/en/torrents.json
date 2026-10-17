@@ -1339,7 +1339,7 @@
     "matchTypes": {
       "contentPath": {
         "label": "Content",
-        "description": "Same content location on disk"
+        "description": "Shares a file on disk with this torrent"
       },
       "name": {
         "label": "Name",
