@@ -102,6 +102,11 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
 	for field, data := range conditionFieldData {
 		if (data.trustedIdentity && !hasTrustedIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+			// A remote instance cannot turn on local access without becoming a
+			// local one, so it gets the answer the UI gives, not that advice.
+			if instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
+				return ruleError("This file condition is not available on remote instances.")
+			}
 			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		}
 	}
