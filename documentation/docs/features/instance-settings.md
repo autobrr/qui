@@ -142,9 +142,17 @@ qBittorrent watches folders and adds any torrent file that appears in them. Conf
 
 The **Protocol Settings** section has the BitTorrent protocol: TCP, μTP, or both.
 
-The **Listening Port** section has the port for incoming connections and UPnP/NAT-PMP port forwarding.
+The **Listening Port** section has the port for incoming connections and UPnP/NAT-PMP port forwarding. On qBittorrent 5.2 and later, it also has the port for SSL torrents. An SSL torrent is a libtorrent torrent that uses certificates. Only libtorrent clients support SSL torrents, and normal torrents do not use this port. The qBittorrent WebUI does not show this preference.
 
 The **Connection Limits** section has the global and per-torrent maximum connections and upload slots.
+
+The **I2P (experimental)** section connects qBittorrent to an I2P router. I2P is an anonymous network. The section has the host and the port of the router, and the mixed mode. In mixed mode, I2P torrents also connect to normal IP addresses, and these connections are not anonymous. qui shows this section only on qBittorrent 4.6 and later with libtorrent 2. On libtorrent 2.1 and later, the section also has I2P peer exchange. qBittorrent applies a change to peer exchange after a restart.
+
+The **Proxy server** section has the proxy type, the host, the port, the hostname lookup through the proxy, and the user name and password. qBittorrent saves the password unencrypted. The other switches set which traffic uses the proxy:
+
+- On qBittorrent 4.6 and later, you select BitTorrent, the peer connections, RSS, and other traffic.
+- Before qBittorrent 4.6, you select the peer connections, and you can use the proxy only for torrents.
+- Before qBittorrent 4.6, the proxy type also sets the authentication. To use the user name and password, select **SOCKS5 with authentication** or **HTTP with authentication**.
 
 The **IP Filtering** section has the IP filter file, the filter for trackers, and the manually banned IP addresses.
 
