@@ -24,10 +24,10 @@ import (
 )
 
 // remoteRowStore answers every instance read with a row in remote mode.
-type remoteRowStore struct{}
+type remoteRowStore struct{ baseDir string }
 
-func (remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
-	return &models.Instance{ID: id, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
+func (s remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	return &models.Instance{ID: id, HardlinkBaseDir: s.baseDir, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
 }
 
 // statSpy stands in for the SSH host and counts the stats that reached it.
@@ -44,7 +44,9 @@ func (s *statSpy) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 // The ClientPool's instance store still reads the row as local, the backend
 // pool's store reads it as remote. The cleanup must decide from the backend
 // pool's row alone and skip, rather than stat and later remove the local
-// hardlink base dir's paths on the SSH host.
+// hardlink base dir's paths on the SSH host. A remote instance has Write
+// (#2942), so the gate is local mode, not Write; see
+// buildManagedDeleteCleanupTargets.
 func TestManagedDeleteCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	const hash = "cccccccccccccccccccccccccccccccccccccccc"
 	baseDir := filepath.Join(t.TempDir(), "links")
@@ -81,7 +83,7 @@ func TestManagedDeleteCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 
 	sm := NewSyncManager(&ClientPool{instanceStore: instanceStore, clients: map[int]*Client{instance.ID: client}}, nil)
 	spy := &statSpy{}
-	sm.SetBackendPool(fsops.NewPoolWithRemote(remoteRowStore{}, local.NewBackend(),
+	sm.SetBackendPool(fsops.NewPoolWithRemote(remoteRowStore{baseDir: baseDir}, local.NewBackend(),
 		func(*models.Instance) fsops.Backend { return spy }))
 
 	targets, backend := sm.buildManagedDeleteCleanupTargets(t.Context(), instance.ID, client.GetSyncManager(), []string{hash})

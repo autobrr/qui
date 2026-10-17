@@ -1165,7 +1165,9 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// ConfirmDeletion admitted this run on the instance's mode and
 	// capabilities, but the instance can change before this goroutine runs.
-	deleteBackend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityWrite)
+	// Both capabilities go to Require so a remote instance with Write but no
+	// Identity is refused before any backend is built.
+	deleteBackend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityWrite, models.CapabilityIdentity)
 	if errors.Is(err, fsops.ErrNotCapable) {
 		log.Info().Err(err).Int64("run", runID).Msg("orphanscan: refusing deletion, filesystem access changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
@@ -1181,7 +1183,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
 	}
-	// Require(Write) alone is not enough while a backend can gain Write before Identity.
 	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
 		s.failRun(ctx, runID, instanceID, "Deleting orphan files needs write access and file identity, and this instance's filesystem access lacks one of them.")
 		return

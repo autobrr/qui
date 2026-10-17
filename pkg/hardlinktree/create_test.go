@@ -4,6 +4,7 @@
 package hardlinktree
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -389,5 +390,24 @@ func TestIsDirNotEmpty(t *testing.T) {
 				t.Errorf("isDirNotEmpty(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src", "a.mkv")
+	target := filepath.Join(dir, "links", "a.mkv")
+	for p, body := range map[string]string{src: "a", target: "stranger"} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := Create(&TreePlan{RootDir: filepath.Join(dir, "links"), Files: []FilePlan{{SourcePath: src, TargetPath: target}}})
+	if !errors.Is(err, ErrTargetExists) {
+		t.Fatalf("got %v, want ErrTargetExists", err)
 	}
 }

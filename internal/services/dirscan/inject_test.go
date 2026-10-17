@@ -1315,8 +1315,8 @@ func TestInjector_PartialReflinkResumeSkipsLinkedFileCheck(t *testing.T) {
 	})
 }
 
-// A remote instance has Read only, so link-tree injection refuses it even with
-// a link mode and a base dir configured.
+// Link-tree injection is host code until #2919, so it refuses a remote
+// instance even with Write (#2942), a link mode and a base dir configured.
 func TestValidateLinkTreeInstanceRefusesRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		UseHardlinks: true, HardlinkBaseDir: "/links",

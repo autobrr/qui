@@ -526,7 +526,7 @@ func TestInstanceResponsesCarryCapabilities(t *testing.T) {
 
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
-	assert.Equal(t, models.FilesystemCapabilities{Read: true}, f.listInstance().Capabilities, "remote")
+	assert.Equal(t, models.FilesystemCapabilities{Read: true, Write: true}, f.listInstance().Capabilities, "remote")
 
 	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","hasLocalFilesystemAccess":true}`)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
@@ -553,4 +553,36 @@ func (f *sshFixture) listInstance() InstanceResponse {
 	require.NoError(f.t, json.Unmarshal([]byte(f.listBody()), &listed))
 	require.Len(f.t, listed, 1)
 	return listed[0]
+}
+
+// A remote instance has Write (#2942) but no reflink: the remote backend
+// cannot clone files, so the reflink save must still refuse where hardlink
+// mode is accepted.
+func TestUpdateInstanceRefusesReflinkOnRemote(t *testing.T) {
+	f := newSSHFixture(t, "reflink-remote")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useReflinks":true,"hardlinkBaseDir":"/links"}`)
+	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"useReflinks":false,"hardlinkBaseDir":"/links"}`)
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+}
+
+// Turning off local access with a link mode on is refused by UpdateInstance;
+// removing the SSH credentials of a remote instance takes its Write away the
+// same way (#2942), so it is refused until the link mode is off.
+func TestDeleteSSHCredentialsRefusesWhileALinkModeIsOn(t *testing.T) {
+	f := newSSHFixture(t, "delete-credentials-link-mode")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":false,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 }
