@@ -220,7 +220,7 @@ describe("InstancePreferencesDialog", () => {
     expect(screen.queryByText("preferences.readOnlyNote")).toBeNull()
   })
 
-  it("shows the general note for a read-only field without a note of its own", async () => {
+  it("shows the general note for a read-only network field", async () => {
     serveView()
 
     renderDialog("advanced")
@@ -665,6 +665,30 @@ describe("InstancePreferencesDialog", () => {
 
     expect((await fieldFor("preferences.fields.proxyType")).textContent).toBe("preferences.fields.proxyTypeSocks5Auth")
     expect(await fieldFor("preferences.fields.proxyTorrentsOnly")).not.toBeNull()
+  })
+
+  it("shows the connection settings of the WebUI read-only, with one note on the username", async () => {
+    const bodies = recordSaves()
+    serveView([
+      { key: "web_ui_port", value: 8080, tab: "webui", section: "webUI", control: "number", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "web_ui_username", value: "admin", tab: "webui", section: "authentication", control: "text", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "bypass_local_auth", value: false, tab: "webui", section: "authentication", control: "switch", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "web_ui_session_timeout", value: 3600, tab: "webui", section: "authentication", control: "number", wireUnit: "s", displayUnit: "s" },
+      { key: "web_ui_sessions_count_limit", value: 0, tab: "webui", section: "authentication", control: "number" },
+    ])
+    renderDialog("webui")
+
+    expect((await fieldFor("preferences.fields.webUIPort")).disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.webUIUsername")).disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.bypassLocalAuth")).disabled).toBe(true)
+    expect(screen.getAllByText("preferences.fields.webUIConnectionNote")).toHaveLength(1)
+    expect(screen.queryByText("preferences.readOnlyNote")).toBeNull()
+    expect((await fieldFor("preferences.fields.webUISessionsCountLimit")).value).toBe("")
+    fireEvent.change(await fieldFor("preferences.fields.webUISessionTimeout"), { target: { value: "7200" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ web_ui_session_timeout: 7200 }])
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {
