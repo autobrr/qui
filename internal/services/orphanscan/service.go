@@ -289,12 +289,12 @@ func scanRootsOverlap(d fsops.PathDialect, a, b []string) bool {
 	}
 
 	for _, ra := range a {
-		na := normalizePath(d, ra)
+		na := fsops.NormalizePath(d, ra)
 		if na == "" {
 			continue
 		}
 		for _, rb := range b {
-			nb := normalizePath(d, rb)
+			nb := fsops.NormalizePath(d, rb)
 			if nb == "" {
 				continue
 			}
@@ -1041,7 +1041,7 @@ func dedupeOrphans(d fsops.PathDialect, allOrphans []OrphanFile) []OrphanFile {
 
 	byPath := make(map[string]OrphanFile, len(allOrphans))
 	for _, o := range allOrphans {
-		key := normalizePath(d, o.Path)
+		key := fsops.NormalizePath(d, o.Path)
 		existing, ok := byPath[key]
 		if !ok {
 			byPath[key] = o
@@ -1331,7 +1331,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		// the preview saw them: a category created or repointed since then makes
 		// an already-listed directory a live destination again. A scan root is a
 		// configured destination, so it stays even when empty.
-		normDir := normalizePath(d, dir.FilePath)
+		normDir := fsops.NormalizePath(d, dir.FilePath)
 		if slices.Contains(normScanRoots, normDir) {
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a scan root")
 			continue
@@ -1560,8 +1560,8 @@ func mergeRootLists(d fsops.PathDialect, rootLists ...[]string) []string {
 }
 
 func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
-	nPath := normalizePath(d, path)
-	nBase := normalizePath(d, base)
+	nPath := fsops.NormalizePath(d, path)
+	nBase := fsops.NormalizePath(d, base)
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
 }
 
@@ -1589,7 +1589,7 @@ func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend
 	if first == second {
 		return true
 	}
-	if normalizePath(d, first) != normalizePath(d, second) {
+	if fsops.NormalizePath(d, first) != fsops.NormalizePath(d, second) {
 		return false
 	}
 	firstInfo, firstErr := backend.Lstat(ctx, first)
@@ -1607,10 +1607,10 @@ func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string,
 	d := backend.Paths()
 	ignored := make([]string, 0, len(metadataRoots))
 	for _, metadataRoot := range metadataRoots {
-		normalizedMetadataRoot := normalizePath(d, metadataRoot)
+		normalizedMetadataRoot := fsops.NormalizePath(d, metadataRoot)
 		nested := false
 		for _, scanRoot := range scanRoots {
-			normalizedScanRoot := normalizePath(d, scanRoot)
+			normalizedScanRoot := fsops.NormalizePath(d, scanRoot)
 			if isSameRoot(ctx, metadataRoot, scanRoot, backend, instance) {
 				nested = false
 				break
@@ -1651,7 +1651,7 @@ func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.B
 	kept := make([]string, 0, len(roots))
 	seen := make(map[string]*fsops.LstatInfo, len(roots))
 	for _, root := range roots {
-		norm := normalizePath(d, root)
+		norm := fsops.NormalizePath(d, root)
 		info, _ := backend.Lstat(ctx, root) // nil info on error
 
 		if prev, ok := seen[norm]; ok && prev != nil && info != nil && sameRootIdentity(prev, info, instance) {
@@ -1789,7 +1789,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 
 		scanRoots[savePath] = struct{}{}
 		for _, f := range files {
-			tfm.Add(normalizePath(d, d.Join(savePath, d.FromSlash(f.Name))))
+			tfm.Add(fsops.NormalizePath(d, d.Join(savePath, d.FromSlash(f.Name))))
 		}
 
 		// Auto TMM can update save_path to the category root without moving the
@@ -1798,7 +1798,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 		if actualSavePath != "" && actualSavePath != savePath {
 			scanRoots[actualSavePath] = struct{}{}
 			for _, f := range files {
-				tfm.Add(normalizePath(d, d.Join(actualSavePath, d.FromSlash(f.Name))))
+				tfm.Add(fsops.NormalizePath(d, d.Join(actualSavePath, d.FromSlash(f.Name))))
 			}
 		}
 	}
@@ -2014,11 +2014,11 @@ func torrentHashes(torrents []qbt.Torrent) []string {
 
 // findScanRoot finds the scan root that contains the given path.
 func findScanRoot(d fsops.PathDialect, path string, scanRoots []string) string {
-	nPath := normalizePath(d, path)
+	nPath := fsops.NormalizePath(d, path)
 
 	longest := ""
 	for _, root := range scanRoots {
-		nRoot := normalizePath(d, root)
+		nRoot := fsops.NormalizePath(d, root)
 		if nPath != nRoot && !isPathUnderNormalized(d, nPath, nRoot) {
 			continue
 		}

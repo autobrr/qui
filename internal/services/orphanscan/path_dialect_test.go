@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // slashBackend is a remote as orphan scan sees it on any host: the slash dialect
@@ -156,7 +157,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 		"movies": "/media/movies",
 		"music":  "/data/music",
 	} {
-		require.Equal(t, want, resolveCategoryPath(fsops.SlashPaths, name, categories, "/data", true), name)
+		require.Equal(t, want, qbittorrent.CategorySavePath(fsops.SlashPaths, name, categories, "/data", true), name)
 	}
 
 	files := qbt.TorrentFiles{{Name: "Show/e1.mkv"}, {Name: "Show/e2.mkv"}}

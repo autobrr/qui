@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
@@ -1671,18 +1670,11 @@ func rollbackSeasonPackTree(ctx context.Context, backend fsops.Backend, created 
 	if packDir != "" {
 		if err := backend.Remove(ctx, packDir, fsops.RemoveOptions{}); err != nil &&
 			!errors.Is(err, fs.ErrNotExist) &&
-			!seasonPackDirNotEmpty(err) {
+			!fsops.IsDirNotEmpty(err) {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
-}
-
-func seasonPackDirNotEmpty(err error) bool {
-	return errors.Is(err, syscall.ENOTEMPTY) ||
-		strings.Contains(err.Error(), "not empty") ||
-		strings.Contains(err.Error(), "directory not empty") ||
-		strings.Contains(err.Error(), "The directory is not empty")
 }
 
 // selectWinner picks the best instance from the coverage matches using
