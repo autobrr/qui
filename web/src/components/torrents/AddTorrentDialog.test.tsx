@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { AppPreferences } from "@/types"
+import type { AppPreferences, PreferenceField } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
@@ -116,4 +116,29 @@ it("keeps a change made before preferences resolve", async () => {
   fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }))
   await waitFor(() => expect(api.addTorrent).toHaveBeenCalled())
   expect(vi.mocked(api.addTorrent).mock.calls[0][1]).toMatchObject({ autoTMM: false })
+})
+
+it("applies the defaults that the fetch on open returns, after a dropped magnet", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  let resolveView: (fields: PreferenceField[]) => void = () => {}
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(resolve => { resolveView = resolve }) as never)
+
+  // Another screen filled the cache before a default changed in qBittorrent.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const dialog = (open: boolean, dropPayload: AddTorrentDropPayload | null) => (
+    <QueryClientProvider client={client}>
+      <AddTorrentDialog instanceId={1} open={open} onOpenChange={() => {}} dropPayload={dropPayload} />
+    </QueryClientProvider>
+  )
+
+  const ui = render(dialog(false, null))
+  // The dropped magnet touches the form before the fetch answers.
+  ui.rerender(dialog(true, { type: "url", urls: [magnet] }))
+  await waitFor(() => expect(api.getInstancePreferenceView).toHaveBeenCalled())
+  resolveView([{ key: "auto_tmm_enabled", value: false }, { key: "save_path", value: "/data/changed" }] as PreferenceField[])
+  ui.rerender(dialog(true, null))
+  fireEvent.mouseDown(ui.getByRole("tab", { name: "addTorrentDialog.tabs.advanced" }))
+
+  await waitFor(() => expect((ui.getByLabelText("addTorrentDialog.options.savePath") as HTMLInputElement).value).toBe("/data/changed"))
 })
