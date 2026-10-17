@@ -681,8 +681,9 @@ func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPac
 		}
 		// A creator whose own rollback failed returns a nil handle, so the
 		// partial tree keeps the pack dir. A retry would report success over it.
-		if _, statErr := backend.Lstat(ctx, planBuild.packDir); statErr == nil {
-			return fmt.Errorf("link_failed: %w", err)
+		// Any stat error other than not-exist may hide that tree too.
+		if _, statErr := backend.Lstat(ctx, planBuild.packDir); !errors.Is(statErr, fs.ErrNotExist) {
+			return fmt.Errorf("link_failed: %w", errors.Join(err, statErr))
 		}
 		next, buildErr := planBuild.nextBaseDir()
 		if buildErr != nil {

@@ -28,13 +28,14 @@ import (
 // embedded Backend makes any call the test does not fake panic.
 type slashBackend struct {
 	fsops.Backend
-	files   map[string]hardlink.FileID
-	dirs    map[string]struct{}
-	devices []string // SameFilesystem is true for two paths under one of these
-	stats   []string
-	plans   []hardlinktree.TreePlan
-	removed int   // RemoveTree calls
-	size    int64 // file size Lstat reports, 5 when unset
+	files     map[string]hardlink.FileID
+	dirs      map[string]struct{}
+	devices   []string // SameFilesystem is true for two paths under one of these
+	stats     []string
+	plans     []hardlinktree.TreePlan
+	removed   int              // RemoveTree calls
+	size      int64            // file size Lstat reports, 5 when unset
+	lstatErrs map[string]error // Lstat of these paths fails with the error
 }
 
 func newSlashBackend(devices []string, files ...string) *slashBackend {
@@ -60,6 +61,9 @@ func (b *slashBackend) Paths() fsops.PathDialect { return fsops.SlashPaths }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
 	b.stats = append(b.stats, p)
+	if err := b.lstatErrs[p]; err != nil {
+		return nil, err
+	}
 	if _, ok := b.dirs[p]; ok {
 		return &fsops.LstatInfo{Path: p, IsDir: true, Mode: fs.ModeDir, Nlinks: 1}, nil
 	}
@@ -302,12 +306,16 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 		firstErr    error
 		manual      bool
 		leaveTree   bool
+		statErr     error // Lstat of the first pack dir fails with it
+		allFail     bool  // every base dir fails with firstErr
 		wantApplied bool
 		wantRoots   []string
 	}{
 		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
 		{name: "cross-device with failed creator rollback", firstErr: fmt.Errorf("%w (rollback also failed: %w)", &os.LinkError{Op: "link", Err: syscall.EXDEV}, fs.ErrPermission), leaveTree: true, wantRoots: []string{"/data/tv/hl"}},
+		{name: "cross-device with unreadable pack dir", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, statErr: syscall.EIO, wantRoots: []string{"/data/tv/hl"}},
+		{name: "every base dir cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, allFail: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 	}
 	for _, tt := range tests {
@@ -335,6 +343,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
 			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 			var roots []string
+			var failed int
 			s := &Service{
 				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
 				syncManager:              sm,
@@ -342,13 +351,20 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				automationSettingsLoader: defaultSettings(true, 0.75),
 				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					roots = append(roots, plan.RootDir)
-					if len(roots) == 1 {
+					if len(roots) == 1 || tt.allFail {
+						failed++
 						if tt.leaveTree {
 							// The files the creator could not remove keep the pack dir.
 							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
 								backend.dirs[dir] = struct{}{}
 							}
 							return nil, tt.firstErr
+						}
+						if tt.statErr != nil {
+							backend.lstatErrs = map[string]error{}
+							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
+								backend.lstatErrs[dir] = tt.statErr
+							}
 						}
 						return &fsops.TreeCreateResult{Created: 1}, tt.firstErr
 					}
@@ -378,7 +394,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			require.NoError(t, err)
 			require.Equal(t, tt.wantApplied, resp.Applied, "%+v", resp)
 			require.Equal(t, tt.wantRoots, roots)
-			require.Equal(t, 1, backend.removed, "the first partial tree is rolled back")
+			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
 			if tt.wantApplied {
 				require.Equal(t, "/data/hl2", sm.addCalls[0].options["savepath"])
 			} else {
