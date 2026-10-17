@@ -745,7 +745,8 @@ func joinNormalizedSlice(slice []string) string {
 func joinNormalizedHDRSlice(slice []string) string {
 	tags := make([]string, len(slice))
 	for i, tag := range slice {
-		if releases.CanonicalHDRTag(tag) == "HDR" {
+		// The parser stores canonical tags, so an exact compare is enough.
+		if tag == "HDR" {
 			tag = "HDR10"
 		}
 		tags[i] = tag
