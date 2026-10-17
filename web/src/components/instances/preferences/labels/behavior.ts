@@ -9,6 +9,26 @@ import type { TabLabels } from "./types"
 
 export const behaviorLabels: TabLabels = {
   labelKey: "preferences.dialog.tabs.behavior",
-  sections: {},
-  fields: {},
+  sections: {
+    logFile: { labelKey: "preferences.sections.logFile" },
+  },
+  fields: {
+    file_log_enabled: { labelKey: "preferences.fields.fileLogEnabled" },
+    file_log_path: { labelKey: "preferences.fields.fileLogPath" },
+    file_log_backup_enabled: { labelKey: "preferences.fields.fileLogBackupEnabled" },
+    file_log_max_size: {
+      labelKey: "preferences.fields.fileLogMaxSize",
+      descriptionKey: "preferences.fields.fileLogMaxSizeDescription",
+    },
+    file_log_delete_old: { labelKey: "preferences.fields.fileLogDeleteOld" },
+    file_log_age: { labelKey: "preferences.fields.fileLogAge" },
+    file_log_age_type: {
+      labelKey: "preferences.fields.fileLogAgeType",
+      options: {
+        0: { labelKey: "preferences.fields.fileLogAgeDays" },
+        1: { labelKey: "preferences.fields.fileLogAgeMonths" },
+        2: { labelKey: "preferences.fields.fileLogAgeYears" },
+      },
+    },
+  },
 }

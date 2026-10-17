@@ -137,17 +137,18 @@ interface PreferenceRowProps {
 const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onChange }: PreferenceRowProps) {
   const { t } = useTranslation("instances")
   const Widget = preferenceWidgets[field.control]
+  const labels = labelsOf(field)!
   return (
     <div className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
       <Widget
         id={`preference-${field.key}`}
         field={field}
-        labels={labelsOf(field)!}
+        labels={labels}
         value={value}
         onChange={next => onChange(field.key, next)}
         disabled={disabled}
       />
-      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t("preferences.readOnlyNote")}</p>}
+      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey ?? "preferences.readOnlyNote")}</p>}
     </div>
   )
 })

@@ -1524,7 +1524,9 @@
       "rssAutoDownloader": "Automatické stahování torrentů z RSS",
       "rssSmartEpisodeFilter": "Chytrý filtr epizod RSS",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Soubor protokolu",
+      "autoAddTrackersFromUrl": "Automaticky přidat trackery z URL k novým stahováním"
     },
     "fields": {
       "excludedFileNamesEnabled": "Vyloučit názvy souborů",
@@ -1552,6 +1554,27 @@
       "diskIoModeDisableOsCache": "Vypnout mezipaměť systému",
       "diskIoModeEnableOsCache": "Zapnout mezipaměť systému",
       "diskIoModeWriteThrough": "Přímý zápis",
+      "fileLogEnabled": "Zapisovat protokol do souboru",
+      "fileLogPath": "Složka protokolu",
+      "fileLogBackupEnabled": "Zálohovat soubor protokolu, když je plný",
+      "fileLogMaxSize": "Maximální velikost souboru protokolu",
+      "fileLogMaxSizeDescription": "Když soubor protokolu dosáhne této velikosti, qBittorrent ho přesune do záložního souboru a začne nový",
+      "fileLogDeleteOld": "Mazat staré zálohy protokolu",
+      "fileLogAge": "Mazat zálohy starší než",
+      "fileLogAgeType": "Jednotka stáří",
+      "fileLogAgeDays": "Dny",
+      "fileLogAgeMonths": "Měsíce",
+      "fileLogAgeYears": "Roky",
+      "maxInactiveSeedingTimeEnabled": "Povolit limit doby neaktivního sdílení",
+      "maxInactiveSeedingTime": "Maximální doba neaktivního sdílení",
+      "maxInactiveSeedingTimeDescription": "Provést akci s torrentem, který tolik minut nic neodeslal ani nestáhl",
+      "addTrackersFromUrlEnabled": "Přidat trackery z URL k novým stahováním",
+      "addTrackersUrl": "URL seznamu trackerů",
+      "addTrackersUrlList": "Stažené trackery",
+      "addTrackersUrlListNote": "qBittorrent stahuje tento seznam z URL.",
+      "rssFetchDelay": "Prodleva mezi požadavky na stejný server",
+      "rssSmartEpisodeFilters": "Filtry epizod (jeden na řádek)",
+      "rssSmartEpisodeFiltersDescription": "Regulární výrazy, které najdou řadu a číslo epizody v názvu článku",
       "optionValue": "Hodnota {{value}}"
     },
     "units": {

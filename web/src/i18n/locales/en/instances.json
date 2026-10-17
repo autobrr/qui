@@ -1489,7 +1489,9 @@
       "rssAutoDownloader": "RSS torrent auto downloader",
       "rssSmartEpisodeFilter": "RSS smart episode filter",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Log file",
+      "autoAddTrackersFromUrl": "Automatically add trackers from a URL to new downloads"
     },
     "fields": {
       "excludedFileNamesEnabled": "Exclude file names",
@@ -1517,6 +1519,27 @@
       "diskIoModeDisableOsCache": "Disable OS cache",
       "diskIoModeEnableOsCache": "Enable OS cache",
       "diskIoModeWriteThrough": "Write-through",
+      "fileLogEnabled": "Write the log to a file",
+      "fileLogPath": "Log folder",
+      "fileLogBackupEnabled": "Back up the log file when it is full",
+      "fileLogMaxSize": "Maximum log file size",
+      "fileLogMaxSizeDescription": "When the log file reaches this size, qBittorrent moves it to a backup file and starts a new one",
+      "fileLogDeleteOld": "Delete old backup log files",
+      "fileLogAge": "Delete backups older than",
+      "fileLogAgeType": "Age unit",
+      "fileLogAgeDays": "Days",
+      "fileLogAgeMonths": "Months",
+      "fileLogAgeYears": "Years",
+      "maxInactiveSeedingTimeEnabled": "Enable inactive seeding time limit",
+      "maxInactiveSeedingTime": "Maximum inactive seeding time",
+      "maxInactiveSeedingTimeDescription": "Act on a torrent that has not uploaded or downloaded for this many minutes",
+      "addTrackersFromUrlEnabled": "Add trackers from a URL to new downloads",
+      "addTrackersUrl": "Tracker list URL",
+      "addTrackersUrlList": "Fetched trackers",
+      "addTrackersUrlListNote": "qBittorrent fetches this list from the URL.",
+      "rssFetchDelay": "Same host request delay",
+      "rssSmartEpisodeFilters": "Episode filters (one per line)",
+      "rssSmartEpisodeFiltersDescription": "Regular expressions that find the season and episode number in an article title",
       "optionValue": "Value {{value}}"
     },
     "units": {

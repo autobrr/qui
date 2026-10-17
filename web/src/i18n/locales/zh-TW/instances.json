@@ -1460,7 +1460,9 @@
       "rssAutoDownloader": "RSS 種子自動下載器",
       "rssSmartEpisodeFilter": "RSS 智慧劇集過濾器",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "日誌檔案",
+      "autoAddTrackersFromUrl": "自動將 URL 中的 Tracker 新增至新下載"
     },
     "fields": {
       "excludedFileNamesEnabled": "排除檔案名稱",
@@ -1488,6 +1490,27 @@
       "diskIoModeDisableOsCache": "停用系統快取",
       "diskIoModeEnableOsCache": "啟用系統快取",
       "diskIoModeWriteThrough": "直寫",
+      "fileLogEnabled": "將日誌寫入檔案",
+      "fileLogPath": "日誌資料夾",
+      "fileLogBackupEnabled": "日誌檔案寫滿時備份",
+      "fileLogMaxSize": "日誌檔案大小上限",
+      "fileLogMaxSizeDescription": "日誌檔案達到此大小時，qBittorrent 會將其移至備份檔案並開始新檔案",
+      "fileLogDeleteOld": "刪除舊的備份日誌",
+      "fileLogAge": "刪除早於以下時間的備份",
+      "fileLogAgeType": "時間單位",
+      "fileLogAgeDays": "天",
+      "fileLogAgeMonths": "月",
+      "fileLogAgeYears": "年",
+      "maxInactiveSeedingTimeEnabled": "啟用非活動做種時間限制",
+      "maxInactiveSeedingTime": "最長非活動做種時間",
+      "maxInactiveSeedingTimeDescription": "對在這麼多分鐘內沒有上傳或下載的種子執行動作",
+      "addTrackersFromUrlEnabled": "將 URL 中的 Tracker 新增至新下載",
+      "addTrackersUrl": "Tracker 清單 URL",
+      "addTrackersUrlList": "已取得的 Tracker",
+      "addTrackersUrlListNote": "qBittorrent 從該 URL 取得此清單。",
+      "rssFetchDelay": "同一主機請求間隔",
+      "rssSmartEpisodeFilters": "劇集過濾器（每行一個）",
+      "rssSmartEpisodeFiltersDescription": "在文章標題中尋找季與集數的正規表示式",
       "optionValue": "值 {{value}}"
     },
     "units": {

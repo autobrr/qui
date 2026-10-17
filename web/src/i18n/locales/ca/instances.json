@@ -1489,7 +1489,9 @@
       "rssAutoDownloader": "Baixador automàtic de torrents RSS",
       "rssSmartEpisodeFilter": "Filtre d'episodis intel·ligent RSS",
       "qbittorrent": "qBittorrent",
-      "libtorrent": "libtorrent"
+      "libtorrent": "libtorrent",
+      "logFile": "Fitxer de registre",
+      "autoAddTrackersFromUrl": "Afegeix automàticament els rastrejadors d'un URL a les baixades noves"
     },
     "fields": {
       "excludedFileNamesEnabled": "Exclou noms de fitxer",
@@ -1517,6 +1519,27 @@
       "diskIoModeDisableOsCache": "Desactiva la memòria cau del sistema",
       "diskIoModeEnableOsCache": "Activa la memòria cau del sistema",
       "diskIoModeWriteThrough": "Escriptura directa",
+      "fileLogEnabled": "Escriu el registre en un fitxer",
+      "fileLogPath": "Carpeta del registre",
+      "fileLogBackupEnabled": "Fes una còpia del fitxer de registre quan sigui ple",
+      "fileLogMaxSize": "Mida màxima del fitxer de registre",
+      "fileLogMaxSizeDescription": "Quan el fitxer de registre arriba a aquesta mida, el qBittorrent el mou a un fitxer de còpia i en comença un de nou",
+      "fileLogDeleteOld": "Suprimeix les còpies antigues del registre",
+      "fileLogAge": "Suprimeix les còpies més antigues de",
+      "fileLogAgeType": "Unitat d'antiguitat",
+      "fileLogAgeDays": "Dies",
+      "fileLogAgeMonths": "Mesos",
+      "fileLogAgeYears": "Anys",
+      "maxInactiveSeedingTimeEnabled": "Activa el límit de temps de compartició inactiva",
+      "maxInactiveSeedingTime": "Temps màxim de compartició inactiva",
+      "maxInactiveSeedingTimeDescription": "Actua sobre un torrent que no ha pujat ni baixat res durant aquests minuts",
+      "addTrackersFromUrlEnabled": "Afegeix els rastrejadors d'un URL a les baixades noves",
+      "addTrackersUrl": "URL de la llista de rastrejadors",
+      "addTrackersUrlList": "Rastrejadors obtinguts",
+      "addTrackersUrlListNote": "El qBittorrent obté aquesta llista de l'URL.",
+      "rssFetchDelay": "Retard entre peticions al mateix servidor",
+      "rssSmartEpisodeFilters": "Filtres d'episodis (un per línia)",
+      "rssSmartEpisodeFiltersDescription": "Expressions regulars que troben la temporada i el número d'episodi al títol d'un article",
       "optionValue": "Valor {{value}}"
     },
     "units": {
