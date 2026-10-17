@@ -1456,7 +1456,9 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
-	// Resolve every name first, so a remote backend lstats them in one batch.
+	// Resolve every name first, so a backend with a batch lstats them in one
+	// round trip. A backend without one lstats inside the loop, so a callback
+	// that stops early costs one lstat, not one per file.
 	type resolved struct {
 		file     qbt.TorrentFile
 		fullPath string // empty when the name does not resolve under base
@@ -1472,7 +1474,12 @@ func forEachLocalTorrentFile(
 		entries = append(entries, resolved{file: file, fullPath: fullPath})
 		paths = append(paths, fullPath)
 	}
-	infos, errs := fsops.LstatAll(ctx, backend, paths)
+	batch, batched := backend.(fsops.BatchStater)
+	var infos []*fsops.LstatInfo
+	var errs []error
+	if batched {
+		infos, errs = batch.LstatBatch(ctx, paths)
+	}
 
 	var firstErr error
 	next := 0
@@ -1483,7 +1490,13 @@ func forEachLocalTorrentFile(
 			}
 			continue
 		}
-		info, err := infos[next], errs[next]
+		var info *fsops.LstatInfo
+		var err error
+		if batched {
+			info, err = infos[next], errs[next]
+		} else {
+			info, err = backend.Lstat(ctx, entry.fullPath)
+		}
 		next++
 		if err != nil {
 			// ENOTDIR: a parent of the path is a file, so this file is missing too.
