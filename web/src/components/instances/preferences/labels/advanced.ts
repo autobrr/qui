@@ -26,10 +26,12 @@ export const advancedLabels: TabLabels = {
     current_network_interface: {
       labelKey: "preferences.connectionSettings.networkInterface",
       placeholderKey: "preferences.connectionSettings.autoDetect",
+      readOnlyNoteKey: "preferences.readOnlyNote",
     },
     current_interface_address: {
       labelKey: "preferences.fields.interfaceAddress",
       placeholderKey: "preferences.connectionSettings.autoDetect",
+      readOnlyNoteKey: "preferences.readOnlyNote",
     },
     resolve_peer_countries: {
       labelKey: "preferences.networkDiscovery.resolvePeerCountries",

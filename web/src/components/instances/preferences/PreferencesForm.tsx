@@ -172,7 +172,7 @@ const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, di
         onChange={next => onChange(field.key, next)}
         disabled={disabled}
       />
-      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey ?? "preferences.readOnlyNote")}</p>}
+      {field.readOnly && labels.readOnlyNoteKey && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey)}</p>}
     </div>
   )
 })

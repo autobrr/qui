@@ -82,7 +82,7 @@ In the instance settings dialog, open the three-dot menu next to the dialog titl
 
 After the **Instance** tab, the settings dialog shows the tabs of the qBittorrent WebUI in the same order: **Behavior**, **Downloads**, **Connect**, **Speed**, **BitTorrent**, **RSS**, **WebUI**, and **Advanced**. qui sends these preferences to the qBittorrent API. They work the same as in the qBittorrent WebUI.
 
-qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences. The **WebUI** tab has no preferences in qui yet.
+qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences.
 
 Some preferences are read-only. qui shows the value, and you change it in qBittorrent.
 
@@ -142,9 +142,17 @@ qBittorrent watches folders and adds any torrent file that appears in them. Conf
 
 The **Protocol Settings** section has the BitTorrent protocol: TCP, μTP, or both.
 
-The **Listening Port** section has the port for incoming connections and UPnP/NAT-PMP port forwarding.
+The **Listening Port** section has the port for incoming connections and UPnP/NAT-PMP port forwarding. On qBittorrent 5.2 and later, it also has the port for SSL torrents. An SSL torrent is a libtorrent torrent that uses certificates. Only libtorrent clients support SSL torrents, and normal torrents do not use this port. The qBittorrent WebUI does not show this preference.
 
 The **Connection Limits** section has the global and per-torrent maximum connections and upload slots.
+
+The **I2P (experimental)** section connects qBittorrent to an I2P router. I2P is an anonymous network. The section has the host and the port of the router, and the mixed mode. In mixed mode, I2P torrents also connect to normal IP addresses, and these connections are not anonymous. qui shows this section only on qBittorrent 4.6 and later with libtorrent 2. On libtorrent 2.1 and later, the section also has I2P peer exchange. qBittorrent applies a change to peer exchange after a restart.
+
+The **Proxy server** section has the proxy type, the host, the port, the hostname lookup through the proxy, and the user name and password. qBittorrent saves the password unencrypted. The other switches set which traffic uses the proxy:
+
+- On qBittorrent 4.6 and later, you select BitTorrent, the peer connections, RSS, and other traffic.
+- Before qBittorrent 4.6, you select the peer connections, and you can use the proxy only for torrents.
+- Before qBittorrent 4.6, the proxy type also sets the authentication. To use the user name and password, select **SOCKS5 with authentication** or **HTTP with authentication**.
 
 The **IP Filtering** section has the IP filter file, the filter for trackers, and the manually banned IP addresses.
 
@@ -173,6 +181,33 @@ The **RSS reader** section has RSS processing, the refresh interval, the delay i
 The **RSS torrent auto downloader** section has RSS auto-downloading.
 
 The **RSS smart episode filter** section sets whether qBittorrent downloads REPACK and PROPER episodes. It also has the episode filters. These are regular expressions, one per line, that find the season and the episode number in an article title.
+
+### WebUI
+
+These settings control the WebUI server of qBittorrent. qui connects to qBittorrent through this server.
+
+The **Web User Interface (remote control)** section has the IP address and the port of the WebUI, and UPnP/NAT-PMP port forwarding for the WebUI port.
+
+The **HTTPS** section sets whether the WebUI uses HTTPS, and the files of the certificate and the key.
+
+The **Authentication** section has the username, the authentication bypass for clients on localhost and for clients in whitelisted IP subnets, and these settings:
+
+- The ban of a client after a number of failed logins, and the duration of the ban in seconds. A value of 0 failed logins turns off the ban.
+- The session timeout in seconds. With 0, a session does not expire.
+- The maximum number of sessions. qBittorrent 5.3 and later send this preference. An empty box means no limit.
+
+The **Security** section has the clickjacking protection, the CSRF protection, the Secure flag of the cookie, and the Host header validation with the list of server domains.
+
+The **Reverse proxy** section has reverse proxy support and the list of trusted proxies. With reverse proxy support, qBittorrent uses the client address from the `X-Forwarded-For` header of a trusted proxy.
+
+The address, the port, HTTPS, the certificate, the key, the username, and the authentication bypass are read-only in qui. qui uses these settings to connect to qBittorrent. A change to one of them can stop the connection. The Host header validation and the server domains are also read-only. If the server domains do not include the host name in the instance URL, qBittorrent rejects every request from qui. To change one of these settings:
+
+1. Change the setting in qBittorrent.
+2. In qui, [edit the instance](#edit-an-instance) and update its URL or its credentials to match.
+
+qui does not show the WebUI password, because qBittorrent never sends it. qui does not show the API key and does not send it to the browser.
+
+The alternative WebUI, the custom HTTP headers, and the dynamic domain name change only the qBittorrent WebUI. qui does not show them.
 
 ### Advanced
 

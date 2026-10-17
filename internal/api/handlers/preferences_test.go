@@ -434,6 +434,177 @@ func TestPreferencesViewEmailNotification(t *testing.T) {
 	}}, fake.recordedSets())
 }
 
+func TestPreferencesViewConnectionProxyAndI2P(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	sections := map[string]string{}
+	for key, field := range view {
+		if field.Tab == "connection" {
+			assert.False(t, field.ReadOnly, key)
+			sections[key] = field.Section
+		}
+	}
+	assert.Equal(t, map[string]string{
+		"bittorrent_protocol": "protocol",
+		"listen_port":         "listeningPort", "upnp": "listeningPort", "ssl_enabled": "listeningPort", "ssl_listen_port": "listeningPort",
+		"max_connec": "connectionLimits", "max_connec_per_torrent": "connectionLimits",
+		"max_uploads": "connectionLimits", "max_uploads_per_torrent": "connectionLimits",
+		"i2p_enabled": "i2p", "i2p_address": "i2p", "i2p_port": "i2p", "i2p_mixed_mode": "i2p",
+		"proxy_type": "proxy", "proxy_ip": "proxy", "proxy_port": "proxy", "proxy_hostname_lookup": "proxy",
+		"proxy_auth_enabled": "proxy", "proxy_username": "proxy", "proxy_password": "proxy",
+		"proxy_bittorrent": "proxy", "proxy_peer_connections": "proxy", "proxy_rss": "proxy", "proxy_misc": "proxy",
+		"ip_filter_enabled": "ipFiltering", "ip_filter_path": "ipFiltering", "ip_filter_trackers": "ipFiltering", "banned_IPs": "ipFiltering",
+	}, sections)
+
+	assert.Equal(t, []any{"None", "SOCKS4", "SOCKS5", "HTTP"}, view["proxy_type"].Options)
+	password := view["proxy_password"]
+	assert.Equal(t, "password", password.Control)
+	assert.Equal(t, "proxy_auth_enabled", password.DependsOn)
+	assert.Equal(t, "proxy_auth_enabled", view["proxy_username"].DependsOn)
+	assert.Equal(t, "proxy_bittorrent", view["proxy_peer_connections"].DependsOn)
+	for _, key := range []string{"i2p_address", "i2p_port", "i2p_mixed_mode"} {
+		assert.Equal(t, "i2p_enabled", view[key].DependsOn, key)
+	}
+	assert.Equal(t, "ssl_enabled", view["ssl_listen_port"].DependsOn)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"proxy_type": "SOCKS5", "proxy_ip": "127.0.0.1", "proxy_port": 1080, "proxy_auth_enabled": true, "proxy_username": "user", "proxy_password": "hunter2", "i2p_enabled": true}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"proxy_type": "SOCKS5", "proxy_ip": "127.0.0.1", "proxy_port": float64(1080), "proxy_auth_enabled": true,
+		"proxy_username": "user", "proxy_password": "hunter2", "i2p_enabled": true,
+	}}, fake.recordedSets())
+	view = decodeView(t, recorder.Body.Bytes())
+	assert.JSONEq(t, `"SOCKS5"`, string(view["proxy_type"].Value))
+	assert.JSONEq(t, `"127.0.0.1"`, string(view["proxy_ip"].Value))
+}
+
+func TestPreferencesViewI2PNeedsLibtorrent2(t *testing.T) {
+	tests := []struct {
+		libtorrent string
+		wantI2P    bool
+		wantPeX    bool
+	}{
+		{libtorrent: "1.2.19.0"},
+		{libtorrent: "2.0.11.0", wantI2P: true},
+		// qBittorrent shows I2P peer exchange only on libtorrent 2.1 or later.
+		{libtorrent: "2.1.0.0", wantI2P: true, wantPeX: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.libtorrent, func(t *testing.T) {
+			fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": tt.libtorrent, "platform": "linux"})
+			rig := newPreferencesRig(t, fake)
+
+			view, _ := rig.view(t)
+
+			for _, key := range []string{"i2p_enabled", "i2p_address", "i2p_port", "i2p_mixed_mode"} {
+				_, shown := view[key]
+				assert.Equal(t, tt.wantI2P, shown, key)
+			}
+			pex, shown := view["i2p_pex_enabled"]
+			assert.Equal(t, tt.wantPeX, shown)
+			if shown {
+				assert.Equal(t, "i2p", pex.Section)
+				assert.Equal(t, "i2p_enabled", pex.DependsOn)
+			}
+		})
+	}
+}
+
+func TestPreferencesViewProxyTrafficByVersion(t *testing.T) {
+	t.Run("4.5.5", func(t *testing.T) {
+		fake := newFakePreferencesQbit(t, "4.5.5", "2.8.19", map[string]any{"libtorrent": "1.2.18.0"})
+		rig := newPreferencesRig(t, fake)
+
+		view, _ := rig.view(t)
+
+		assert.Equal(t, "proxy", view["proxy_torrents_only"].Section)
+		assert.Equal(t, "proxy", view["proxy_peer_connections"].Section)
+		for _, key := range []string{"proxy_bittorrent", "proxy_rss", "proxy_misc"} {
+			assert.NotContains(t, view, key)
+		}
+		// Before 4.6, the proxy type is a number that also says whether the proxy uses
+		// authentication, and qBittorrent ignores a write of proxy_auth_enabled.
+		assert.Equal(t, []any{float64(0), float64(5), float64(2), float64(4), float64(1), float64(3)}, view["proxy_type"].Options)
+		assert.NotContains(t, view, "proxy_auth_enabled")
+		assert.Contains(t, view, "proxy_username")
+		assert.Contains(t, view, "proxy_password")
+
+		recorder := rig.do(t, http.MethodPatch, "/preferences", `{"proxy_type": 4, "proxy_ip": "127.0.0.1", "proxy_username": "user"}`)
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		assert.Equal(t, []map[string]any{{"proxy_type": float64(4), "proxy_ip": "127.0.0.1", "proxy_username": "user"}}, fake.recordedSets())
+	})
+
+	t.Run("4.6.7", func(t *testing.T) {
+		fake := newFakePreferencesQbit(t, "4.6.7", "2.9.3", map[string]any{"libtorrent": "2.0.9.0"})
+		rig := newPreferencesRig(t, fake)
+
+		view, _ := rig.view(t)
+
+		for _, key := range []string{"proxy_bittorrent", "proxy_peer_connections", "proxy_rss", "proxy_misc"} {
+			assert.Equal(t, "proxy", view[key].Section, key)
+		}
+		assert.NotContains(t, view, "proxy_torrents_only")
+		assert.Contains(t, view, "proxy_auth_enabled")
+		assert.Equal(t, []any{"None", "SOCKS4", "SOCKS5", "HTTP"}, view["proxy_type"].Options)
+	})
+}
+
+func TestPreferencesViewWebUI(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
+	fake.prefs["web_ui_api_key"] = "secret-api-key"
+	rig := newPreferencesRig(t, fake)
+
+	view, body := rig.view(t)
+
+	assert.NotContains(t, body, "secret-api-key")
+	sections := map[string]string{}
+	readOnly := map[string]bool{}
+	for key, field := range view {
+		if field.Tab == "webui" {
+			sections[key] = field.Section
+			readOnly[key] = field.ReadOnly
+		}
+	}
+	assert.Equal(t, map[string]string{
+		"web_ui_address": "webUI", "web_ui_port": "webUI", "web_ui_upnp": "webUI",
+		"use_https": "https", "web_ui_https_cert_path": "https", "web_ui_https_key_path": "https",
+		"web_ui_username": "authentication", "bypass_local_auth": "authentication",
+		"bypass_auth_subnet_whitelist_enabled": "authentication", "bypass_auth_subnet_whitelist": "authentication",
+		"web_ui_max_auth_fail_count": "authentication", "web_ui_ban_duration": "authentication",
+		"web_ui_session_timeout": "authentication", "web_ui_sessions_count_limit": "authentication",
+		"web_ui_clickjacking_protection_enabled": "security", "web_ui_csrf_protection_enabled": "security",
+		"web_ui_secure_cookie_enabled": "security", "web_ui_host_header_validation_enabled": "security",
+		"web_ui_domain_list":           "security",
+		"web_ui_reverse_proxy_enabled": "reverseProxy", "web_ui_reverse_proxies_list": "reverseProxy",
+	}, sections)
+	// qui connects to qBittorrent with these settings, so a user cannot change them in qui.
+	for _, key := range []string{
+		"web_ui_address", "web_ui_port", "use_https", "web_ui_https_cert_path", "web_ui_https_key_path",
+		"web_ui_username", "bypass_local_auth", "bypass_auth_subnet_whitelist_enabled", "bypass_auth_subnet_whitelist",
+		"web_ui_host_header_validation_enabled", "web_ui_domain_list",
+	} {
+		assert.True(t, readOnly[key], key)
+		delete(readOnly, key)
+	}
+	for key, isReadOnly := range readOnly {
+		assert.False(t, isReadOnly, key)
+	}
+	assert.Equal(t, "s", view["web_ui_session_timeout"].DisplayUnit)
+	assert.Equal(t, "web_ui_host_header_validation_enabled", view["web_ui_domain_list"].DependsOn)
+	assert.Equal(t, "web_ui_reverse_proxy_enabled", view["web_ui_reverse_proxies_list"].DependsOn)
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"web_ui_session_timeout": 7200, "web_ui_reverse_proxy_enabled": true, "web_ui_reverse_proxies_list": "10.0.0.0/8"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"web_ui_session_timeout": float64(7200), "web_ui_reverse_proxy_enabled": true, "web_ui_reverse_proxies_list": "10.0.0.0/8",
+	}}, fake.recordedSets())
+	view = decodeView(t, recorder.Body.Bytes())
+	assert.JSONEq(t, "7200", string(view["web_ui_session_timeout"].Value))
+}
+
 func TestPreferencesTestEmail(t *testing.T) {
 	tests := []struct {
 		webAPI            string
@@ -486,7 +657,10 @@ func TestPreferencesPatchRejections(t *testing.T) {
 		{name: "unknown key", body: `{"dl_limit": 1, "no_such_key": true}`, cause: "no_such_key"},
 		{name: "read-only key", body: `{"current_network_interface": "eth0"}`, cause: "current_network_interface"},
 		{name: "fetched trackers", body: `{"add_trackers_url_list": "udp://a.invalid"}`, cause: `"add_trackers_url_list" is read-only`},
-		{name: "not shown connection key", body: `{"web_ui_port": 9090}`, cause: "web_ui_port"},
+		{name: "WebUI connection key", body: `{"web_ui_port": 9090}`, cause: `"web_ui_port" is read-only`},
+		{name: "WebUI username", body: `{"dl_limit": 1, "web_ui_username": "other"}`, cause: `"web_ui_username" is read-only`},
+		{name: "WebUI server domains", body: `{"web_ui_domain_list": "qbit.example.invalid"}`, cause: `"web_ui_domain_list" is read-only`},
+		{name: "not shown WebUI key", body: `{"alternative_webui_enabled": true}`, cause: "alternative_webui_enabled"},
 		{name: "not shown key", body: `{"locale": "de"}`, cause: "locale"},
 		{name: "api key", body: `{"web_ui_api_key": "x"}`, cause: "web_ui_api_key"},
 		{name: "string for number", body: `{"dl_limit": "fast"}`, cause: "dl_limit"},
