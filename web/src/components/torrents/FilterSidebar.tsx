@@ -222,7 +222,7 @@ const FilterSidebarComponent = ({
     instanceId,
     capabilities,
     useSubcategories,
-    { fetchIfMissing: false, enabled: isConcreteInstanceScope && isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const subcategoriesEnabled = isConcreteInstanceScope? instanceSubcategoriesEnabled: Boolean(useSubcategories)
 

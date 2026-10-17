@@ -11,12 +11,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 
 const { metadataResult } = vi.hoisted(() => ({
-  metadataResult: { data: undefined as { categories: Record<string, never>; tags: string[]; preferences?: AppPreferences } | undefined },
+  metadataResult: { data: undefined as { categories: Record<string, never>; tags: string[] } | undefined },
 }))
 
 vi.mock("@/lib/api", () => ({ api: {
   addTorrent: vi.fn(),
   checkTorrentDuplicates: vi.fn(),
+  getInstancePreferenceView: vi.fn(),
 } }))
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => ({ data: { supportsTorrentTmpPath: true, supportsPathAutocomplete: false } }) }))
@@ -53,6 +54,8 @@ const magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
 function renderColdDialog() {
   vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
   vi.mocked(api.addTorrent).mockResolvedValue({ added: 1, failed: 0, message: "" })
+  // The test resolves the preferences itself.
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   const dialog = (dropPayload: AddTorrentDropPayload | null) => (
@@ -65,9 +68,7 @@ function renderColdDialog() {
   return {
     ...ui,
     resolvePreferences(resolved: AppPreferences) {
-      // The metadata fallback fetch writes the preferences into the metadata cache.
-      metadataResult.data = { categories: {}, tags: [], preferences: resolved }
-      client.setQueryData(["instance-metadata", 1], metadataResult.data)
+      client.setQueryData(["instance-preferences", 1], resolved)
       ui.rerender(dialog(null))
     },
     openAdvancedTab() {

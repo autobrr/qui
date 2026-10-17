@@ -88,6 +88,8 @@ Some preferences are read-only. qui shows the value, and you change it in qBitto
 
 All tabs share one form. When you click **Save Changes** on any tab, qui sends only the preferences that you changed, on all tabs. If the save fails, qui shows an error and keeps your changes in the form.
 
+Other screens in qui read the preferences each time that you open them. An example is the default save path in the add torrent dialog. If you change a preference in the qBittorrent WebUI, qui shows the new value the next time that you open the screen. qui can take up to 30 seconds to get the change from qBittorrent.
+
 ### Downloads
 
 The **When adding a torrent** section has the default content layout and **Start Torrents Paused**.

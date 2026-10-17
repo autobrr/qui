@@ -184,7 +184,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const availableTags = metadata?.tags
   // The dialog seeds the preference defaults twice: once as form defaults, and again
   // when the preferences arrive after a cold mount.
-  const addTorrentPreferences = useAddTorrentPreferences(instanceId, { fetchIfMissing: false })
+  // Fetched again on each open, so that a default changed outside qui shows.
+  const addTorrentPreferences = useAddTorrentPreferences(instanceId, { enabled: open })
   const preferenceDefaults = addTorrentPreferences.defaults
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)

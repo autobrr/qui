@@ -1642,8 +1642,7 @@ paths:
         are in `data.torrents` or `data.cross_instance_torrents`, respectively.
         The other `data` fields follow the torrent list response.
 
-        In a delta, omitted `counts` and `preferences` retain their previous
-        values. Explicit `preferences: null` clears preferences. Omitted
+        In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
 
         `stream-error` contains an `error` message and optional retry metadata.
@@ -1753,10 +1752,6 @@ paths:
                     type: integer
                   limit:
                     type: integer
-                  preferences:
-                    type: object
-                    nullable: true
-                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
