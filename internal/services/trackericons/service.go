@@ -21,12 +21,14 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"code.dny.dev/ssrf"
@@ -151,7 +153,8 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 
 // publicOnly refuses the addresses that IANA reserves for special use. Trackers
 // serve their sites on any port, so it allows every port. It allows NAT64, so
-// IPv6-only hosts with DNS64 can still reach IPv4 trackers.
+// IPv6-only hosts with DNS64 can still reach IPv4 trackers, and checkNAT64
+// checks the IPv4 address inside a NAT64 address.
 var publicOnly = ssrf.New(
 	ssrf.WithAnyPort(),
 	ssrf.WithAllowedV6Prefixes(ssrf.IPv6NAT64Prefix),
@@ -177,7 +180,7 @@ func newPublicOnlyTransport() http.RoundTripper {
 
 	direct := http.DefaultTransport.(*http.Transport).Clone()
 	direct.Proxy = nil
-	direct.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: publicOnly.Safe}).DialContext
+	direct.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: safeDial}).DialContext
 
 	proxied := http.DefaultTransport.(*http.Transport).Clone()
 	proxied.Proxy = func(r *http.Request) (*url.URL, error) { return proxyFunc(r.URL) }
@@ -207,11 +210,34 @@ func checkPublicHost(ctx context.Context, host string) error {
 	for _, ip := range ips {
 		// LookupNetIP returns an IPv4 literal or hosts-file entry as
 		// ::ffff:a.b.c.d, and the guard refuses every IPv4-mapped address.
-		if err := publicOnly.SafeAddr(ip.Unmap()); err != nil {
+		ip = ip.Unmap()
+		if err := publicOnly.SafeAddr(ip); err != nil {
+			return err
+		}
+		if err := checkNAT64(ip); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// safeDial is the dialer Control function for direct requests.
+func safeDial(network, address string, c syscall.RawConn) error {
+	if err := publicOnly.Safe(network, address, c); err != nil {
+		return err
+	}
+	return checkNAT64(netip.MustParseAddrPort(address).Addr())
+}
+
+// checkNAT64 refuses a NAT64 address that carries an IPv4 address that is not
+// public. The NAT64 gateway connects to that IPv4 address, and not every
+// gateway refuses a private one.
+func checkNAT64(ip netip.Addr) error {
+	if !ssrf.IPv6NAT64Prefix.Contains(ip) {
+		return nil
+	}
+	b := ip.As16()
+	return publicOnly.SafeAddr(netip.AddrFrom4([4]byte(b[12:])))
 }
 
 // SetActivityPublisher wires the qui server-event hub so newly cached tracker

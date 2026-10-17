@@ -265,7 +265,17 @@ func TestPublicOnly(t *testing.T) {
 
 	// qui allows any port and NAT64.
 	require.NoError(t, publicOnly.Safe("tcp4", "1.1.1.1:8443", nil))
-	require.NoError(t, publicOnly.Safe("tcp6", "[64:ff9b::101:101]:443", nil))
+	require.NoError(t, safeDial("tcp6", "[64:ff9b::101:101]:443", nil))
+}
+
+func TestSafeDial_RefusesNAT64ToPrivateIPv4(t *testing.T) {
+	t.Parallel()
+
+	// 64:ff9b::a9fe:a9fe carries 169.254.169.254, and 64:ff9b::a00:5 carries 10.0.0.5.
+	for _, addr := range []string{"[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::a00:5]:443"} {
+		require.ErrorIs(t, safeDial("tcp6", addr, nil), ssrf.ErrProhibitedIP, addr)
+	}
+	require.ErrorIs(t, checkPublicHost(t.Context(), "64:ff9b::a9fe:a9fe"), ssrf.ErrProhibitedIP)
 }
 
 func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
