@@ -982,7 +982,7 @@ func TestValidateRule(t *testing.T) {
 		{name: "include hardlinks without local access", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}),
 			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
 		{name: "include hardlinks on a remote exec instance", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize), IncludeHardlinks: true, Mode: models.DeleteModeWithFilesIncludeCrossSeeds}}), instance: remoteExec,
-			wantMsg: "includeHardlinks requires Local Filesystem Access to be enabled on this instance"},
+			wantMsg: "includeHardlinks is not available on remote instances."},
 		{name: "external program without program", edit: withConditions(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true}}),
 			wantMsg: "External program action requires a valid program selection"},
 		{name: "invalid sorting config", edit: func(r *models.Automation) { r.SortingConfig = &models.SortingConfig{SchemaVersion: "2"} },
