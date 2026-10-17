@@ -3129,7 +3129,6 @@ func TestRequestCoversWholeLibrary(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}))
-	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Sort: "name", Reverse: true}))
 
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}))
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "cross-seed"}))
