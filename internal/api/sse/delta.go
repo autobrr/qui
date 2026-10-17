@@ -4,9 +4,7 @@
 package sse
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"hash/fnv"
 	"maps"
 	"math"
@@ -63,24 +61,16 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 
 	// Nil edge-triggered fields mean "no update", not "clear". Reconstruct the
 	// complete snapshot represented by this frame before retaining it for joiners.
-	// Explicit JSON null remains non-nil and therefore still clears preferences.
 	snapshot := *resp
 	detachSnapshotRows(&snapshot)
-	if g.baselineSnapshot != nil {
-		if snapshot.AppPreferences == nil {
-			snapshot.AppPreferences = g.baselineSnapshot.AppPreferences
-		}
-		if snapshot.Counts == nil {
-			snapshot.Counts = g.baselineSnapshot.Counts
-		}
+	if g.baselineSnapshot != nil && snapshot.Counts == nil {
+		snapshot.Counts = g.baselineSnapshot.Counts
 	}
 
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
-	var prevPrefs json.RawMessage
 	var prevCounts *qbittorrent.TorrentCounts
 	if g.baselineSnapshot != nil {
-		prevPrefs = g.baselineSnapshot.AppPreferences
 		prevCounts = g.baselineSnapshot.Counts
 	}
 	g.baselineFP = newFP
@@ -101,13 +91,6 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// replaces the row slice with just the added/changed rows. Aggregate pointers are
 	// shared read-only.
 	deltaResp := *resp
-
-	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
-	if bytes.Equal(snapshot.AppPreferences, prevPrefs) {
-		deltaResp.AppPreferences = nil
-	} else {
-		deltaResp.AppPreferences = snapshot.AppPreferences
-	}
 
 	// Several KB per tick on an instance with many categories, tags and trackers,
 	// and unchanged whenever the library is; the client keeps its cached copy.

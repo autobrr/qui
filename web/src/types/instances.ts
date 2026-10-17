@@ -171,6 +171,7 @@ export interface InstanceCapabilities {
   subcategoriesAlwaysEnabled: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsTestEmail: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
   supportsShareLimitsAction: boolean

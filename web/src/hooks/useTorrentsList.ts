@@ -15,7 +15,6 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type {
-  AppPreferences,
   CrossInstanceTorrent,
   QBittorrentAppInfo,
   Torrent,
@@ -71,7 +70,7 @@ function dedupeRows<T>(rows: T[], keyOf: (row: T) => string): T[] {
 // Combine the per-page responses of a loaded window (pages 0..N of one view) into a
 // single response shaped like one oversized page. The last page is the base so hasMore
 // reflects whether rows remain past the window; list metadata (counts, categories,
-// tags, serverState, preferences) is computed from the full filtered set on the
+// tags, serverState) is computed from the full filtered set on the
 // backend regardless of offset, so the base carries it for the whole window.
 // windowPageCount marks the response as window-shaped so the processing effect knows
 // it may replace the whole list with it.
@@ -110,8 +109,7 @@ interface UseTorrentsListOptions {
 /**
  * Loads a paginated torrent list and keeps page 0 current with SSE when possible.
  * The hook updates shared instance metadata from stream/REST responses, preserves
- * cached preferences and sidebar counts when stream frames omit them, clears
- * preferences on explicit null responses, and falls back to REST polling when
+ * sidebar counts when stream frames omit them, and falls back to REST polling when
  * streaming is disabled or disconnected. Stream frames are scoped to the last
  * committed view identity so frames from a previous filter/search/sort cannot
  * repopulate rows after a reset, while abandoned renders cannot suppress the
@@ -183,53 +181,19 @@ export function useTorrentsList(
 
   const updateMetadataCache = useCallback(
     (source?: TorrentResponse | null) => {
-      if (!source) {
+      // A cross-instance response has no categories or tags of one instance.
+      if (!source || source.isCrossInstance === true) {
         return
       }
 
-      const hasPreferences = Object.prototype.hasOwnProperty.call(source, "preferences")
-      const isCrossInstanceSource = source.isCrossInstance === true
-
-      if (isCrossInstanceSource && !hasPreferences) {
-        return
-      }
-
-      queryClient.setQueryData<InstanceMetadata | undefined>(
-        metadataQueryKey,
-        previous => {
-          // Treat omitted tags/categories as empty for regular instance responses:
-          // backend omitempty drops empty collections, and those should clear stale
-          // sidebar values. Omitted preferences are different because stale stream
-          // frames may not carry them; only an explicit preferences property updates
-          // or clears preference caches.
-          const nextCategories = isCrossInstanceSource? (previous?.categories ?? {}): (source.categories ?? {})
-          const nextTags = isCrossInstanceSource? (previous?.tags ?? []): (source.tags ?? [])
-          const nextPreferences =
-            hasPreferences? ((source.preferences as AppPreferences | null | undefined) ?? undefined): previous?.preferences
-
-          const next: InstanceMetadata = {
-            categories: nextCategories,
-            tags: nextTags,
-            preferences: nextPreferences,
-          }
-
-          return next
-        }
-      )
-
-      if (hasPreferences) {
-        const nextPreferences = (source.preferences as AppPreferences | null | undefined) ?? undefined
-        if (nextPreferences !== undefined) {
-          queryClient.setQueryData<AppPreferences | undefined>(
-            ["instance-preferences", instanceId],
-            nextPreferences
-          )
-        } else if (!isCrossInstanceSource) {
-          queryClient.removeQueries({ queryKey: ["instance-preferences", instanceId], exact: true })
-        }
-      }
+      // Treat omitted tags/categories as empty: backend omitempty drops empty
+      // collections, and those should clear stale sidebar values.
+      queryClient.setQueryData<InstanceMetadata>(metadataQueryKey, {
+        categories: source.categories ?? {},
+        tags: source.tags ?? [],
+      })
     },
-    [instanceId, metadataQueryKey, queryClient]
+    [metadataQueryKey, queryClient]
   )
 
   const updateAppInfoCache = useCallback(

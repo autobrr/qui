@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"syscall"
 
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -172,17 +171,8 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// isDirNotEmpty checks if an error indicates a non-empty directory.
+// isDirNotEmpty reports whether os.Remove failed because the folder still has
+// entries. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY.
 func isDirNotEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, syscall.ENOTEMPTY) {
-		return true
-	}
-	// Different OS have different error messages
-	errStr := err.Error()
-	return strings.Contains(errStr, "not empty") ||
-		strings.Contains(errStr, "directory not empty") ||
-		strings.Contains(errStr, "The directory is not empty")
+	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
 }

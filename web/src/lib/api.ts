@@ -9,6 +9,7 @@ import type {
   AddTorrentResponse,
   ApplicationInfo,
   AppPreferences,
+  PreferenceField,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
@@ -2235,19 +2236,23 @@ class ApiClient {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints
-  async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  // Preferences endpoints. Both return the catalog view of the preferences.
+  async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
   }
 
   async updateInstancePreferences(
     instanceId: number,
     preferences: Partial<AppPreferences>
-  ): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+  ): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`, {
       method: "PATCH",
       body: JSON.stringify(preferences),
     })
+  }
+
+  async sendTestEmail(instanceId: number): Promise<void> {
+    await this.request<void>(`/instances/${instanceId}/preferences/test-email`, { method: "POST" })
   }
 
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {

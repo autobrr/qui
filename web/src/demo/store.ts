@@ -8,7 +8,7 @@
 // behind bulk actions. Built once from a fixed seed, so every visitor sees the
 // same library and a reload resets it.
 
-import type { AppPreferences } from "@/types/app"
+import type { PreferenceField } from "@/types/app"
 import type { InstanceCapabilities, InstanceResponse } from "@/types/instances"
 import type {
   Category,
@@ -519,20 +519,21 @@ function computeStats(torrents: readonly Torrent[]): TorrentStats {
   return stats
 }
 
-export const PREFERENCES = {
-  save_path: "/data/torrents",
-  temp_path: "/data/incomplete",
-  temp_path_enabled: false,
-  use_subcategories: true,
-  queueing_enabled: true,
-  auto_tmm_enabled: true,
-  add_trackers_enabled: false,
-  add_trackers: "",
-  excluded_file_names_enabled: false,
-  excluded_file_names: "",
-  torrent_content_layout: "Original",
-  listen_port: 51413,
-}
+// The catalog view that GET /instances/{id}/preferences returns.
+export const PREFERENCE_VIEW: PreferenceField[] = [
+  { key: "torrent_content_layout", value: "Original", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["Original", "Subfolder", "NoSubfolder"] },
+  { key: "auto_tmm_enabled", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "use_subcategories", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "save_path", value: "/data/torrents", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
+  { key: "temp_path_enabled", value: false, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "temp_path", value: "/data/incomplete", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete", dependsOn: "temp_path_enabled" },
+  { key: "excluded_file_names_enabled", value: false, tab: "downloads", section: "excludedFileNames", control: "switch", readOnly: true },
+  { key: "excluded_file_names", value: "", tab: "downloads", section: "excludedFileNames", control: "list", dependsOn: "excluded_file_names_enabled", readOnly: true },
+  { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
+  { key: "queueing_enabled", value: true, tab: "bittorrent", section: "queueing", control: "switch" },
+  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true },
+  { key: "add_trackers", value: "", tab: "bittorrent", section: "autoAddTrackers", control: "list", dependsOn: "add_trackers_enabled", readOnly: true },
+]
 
 export const CAPABILITIES: InstanceCapabilities = {
   supportsTorrentCreation: false,
@@ -549,6 +550,7 @@ export const CAPABILITIES: InstanceCapabilities = {
   subcategoriesAlwaysEnabled: false,
   supportsTorrentTmpPath: true,
   supportsPathAutocomplete: false,
+  supportsTestEmail: false,
   supportsFreeSpacePathSource: false,
   supportsSetRSSFeedURL: false,
   supportsShareLimitsAction: true,
@@ -859,7 +861,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         categories: primary ? { ...primary.categories } : {},
         tags: primary ? [...primary.tags].sort() : [],
         serverState: primary ? { ...primary.serverState } : undefined,
-        preferences: PREFERENCES as AppPreferences,
         useSubcategories: true,
         trackerHealthSupported: true,
         cacheMetadata: { source: "fresh", age: 0, isStale: false },

@@ -17,10 +17,10 @@
 #   ./.github/scripts/discussion-write.sh remove-label <name> [<name>...]
 #   ./.github/scripts/discussion-write.sh comment       <body>
 #   ./.github/scripts/discussion-write.sh close         <RESOLVED|OUTDATED|DUPLICATE>
-#   ./.github/scripts/discussion-write.sh create-issue  <title> <body>
+#   ./.github/scripts/discussion-write.sh create-issue  <ready-for-agent|ready-for-human> <title> <body>
 #
-# `create-issue` opens a repository issue labelled `ready-for-agent` and appends
-# a `From discussion #N` line to the body, where N is the bound discussion.
+# `create-issue` opens a repository issue labelled with the given state and
+# appends a `From discussion #N` line to the body, where N is the bound discussion.
 #
 # The calling workflow restricts which of those operations are permitted via
 # DISCUSSION_WRITE_ALLOWED_OPS (comma-separated). It defaults to label
@@ -137,18 +137,24 @@ case "$cmd" in
     ;;
   create-issue)
     op_allowed create-issue || die "create-issue is not permitted here (allowed: $ALLOWED_OPS)"
-    [[ $# -eq 2 ]] || die "create-issue requires a title and a body argument"
+    [[ $# -eq 3 ]] || die "create-issue requires a state, a title, and a body argument"
+    state=$1; shift
+    [[ "$state" == ready-for-agent || "$state" == ready-for-human ]] || die "create-issue state must be ready-for-agent or ready-for-human"
     [[ -n "$1" && -n "$2" ]] || die "create-issue title and body must not be empty"
     # A re-run on an already promoted discussion reuses its issue.
     # ponytail: issue search is eventually consistent, so this is a backstop; the
     # playbook's closed/label check is the real guard.
     existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
     if [[ -n "$existing" ]]; then
+      # A retry can choose the other state, so the issue takes the state of this run.
+      other=ready-for-human
+      [[ "$state" == ready-for-human ]] && other=ready-for-agent
+      gh issue edit "$existing" --add-label "$state" --remove-label "$other" >&2
       echo "Issue already exists for discussion #$NUMBER: $existing" >&2
       echo "$existing"
       exit 0
     fi
-    gh issue create --title "$1" --label ready-for-agent \
+    gh issue create --title "$1" --label "$state" \
       --body "$2"$'\n\n'"From discussion #$NUMBER"
     ;;
   *)

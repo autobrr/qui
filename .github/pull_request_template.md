@@ -6,11 +6,11 @@ Fixes # (issue)
 
 ## Breaking change
 
-<!--- Delete this section unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Say what they must do. --->
+<!--- Write "No breaking change." unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Otherwise say what they must do, and a maintainer adds the BREAKING CHANGE label. --->
 
 ## Behaviour change
 
-<!--- Optional notes on changes that existing users notice after they update but need no action for, for example a new sort order or label. Delete this section if there is none. --->
+<!--- Changes that existing users notice after they update but need no action for, for example a new sort order or label. Write "No behaviour change." if there is none. --->
 
 ## How has this been tested?
 

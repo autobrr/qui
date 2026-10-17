@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"math"
@@ -41,6 +40,7 @@ var (
 	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
+	testEmailMinVersion                  = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
@@ -92,6 +92,7 @@ type Client struct {
 	nestsCategorySavePaths     bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
+	supportsTestEmail          bool
 	trackerIncludeSupported    bool
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
@@ -113,7 +114,6 @@ type Client struct {
 	appInfoGroup         singleflight.Group
 	peerSyncGroup        singleflight.Group
 	preferencesCache     *qbt.AppPreferences
-	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
 	preferencesMu        sync.RWMutex
 	syncEventSink        SyncEventSink
@@ -473,6 +473,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
+	c.supportsTestEmail = !v.LessThan(testEmailMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
@@ -565,6 +566,12 @@ func (c *Client) SupportsPathAutocomplete() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsPathAutocomplete
+}
+
+func (c *Client) SupportsTestEmail() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTestEmail
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

@@ -1642,8 +1642,7 @@ paths:
         are in `data.torrents` or `data.cross_instance_torrents`, respectively.
         The other `data` fields follow the torrent list response.
 
-        In a delta, omitted `counts` and `preferences` retain their previous
-        values. Explicit `preferences: null` clears preferences. Omitted
+        In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
 
         `stream-error` contains an `error` message and optional retry metadata.
@@ -1753,10 +1752,6 @@ paths:
                     type: integer
                   limit:
                     type: integer
-                  preferences:
-                    type: object
-                    nullable: true
-                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -3237,22 +3232,33 @@ paths:
       tags:
         - Instances
       summary: Get instance preferences
-      description: Get qBittorrent instance preferences/settings
+      description: |
+        Get the preference catalog view of the qBittorrent preferences. The list holds
+        each preference that this qBittorrent sent and that qui shows, in display order.
+        A preference is left out when its libtorrent or platform gate does not match the
+        qBittorrent build. The view never holds the qBittorrent API key.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
-          description: Instance preferences
+          description: Preference fields
           content:
             application/json:
               schema:
-                type: object
-                description: qBittorrent preferences object with various settings
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
     patch:
       tags:
         - Instances
       summary: Update instance preferences
-      description: Update qBittorrent instance preferences/settings
+      description: |
+        Write only the changed preferences. The server rejects the whole patch, and sends
+        nothing to qBittorrent, when a key is unknown, read-only, or not shown, or when a
+        value has the wrong type. It does not check ranges. The server accepts a key that the
+        GET view leaves out because qBittorrent did not send it, or because its libtorrent
+        or platform gate does not match. qBittorrent ignores or stores that value, and the
+        value has no effect.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -3261,10 +3267,42 @@ paths:
           application/json:
             schema:
               type: object
-              description: Partial preferences object with settings to update
+              description: The changed preferences, keyed by the qBittorrent preference key.
+              additionalProperties: true
       responses:
         '200':
-          description: Preferences updated successfully
+          description: Preferences saved. The body is the new view.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
+        '400':
+          description: The patch has a rejected key or value. The body names the key and the reason.
+        '500':
+          description: The save failed in qBittorrent.
+
+  /api/instances/{instanceID}/preferences/test-email:
+    post:
+      tags:
+        - Instances
+      summary: Send a test email
+      description: |
+        Ask qBittorrent to send a test email with its saved email notification settings.
+        qBittorrent sends nothing when email notification is off. A success means only that
+        qBittorrent queued the email, not that the email went out. qBittorrent writes SMTP
+        errors to its log. Requires qBittorrent 5.0 or later (WebAPI 2.11.2); see
+        `supportsTestEmail` in the instance capabilities.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '204':
+          description: qBittorrent queued the test email.
+        '400':
+          description: Invalid instance ID, or the qBittorrent version is older than 5.0.
+        '500':
+          description: qBittorrent did not accept the request.
 
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
@@ -7242,6 +7280,53 @@ components:
           type: string
           description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
+    PreferenceField:
+      type: object
+      description: One qBittorrent preference in the preference catalog view.
+      required:
+        - key
+        - value
+        - tab
+        - section
+        - control
+      properties:
+        key:
+          type: string
+          description: The qBittorrent preference key.
+        value:
+          description: The value that qBittorrent sent, in the wire unit.
+        tab:
+          type: string
+          enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]
+        section:
+          type: string
+          description: The section of the tab.
+        control:
+          type: string
+          enum: [switch, number, text, password, select, path, list, watchFolders]
+        wireUnit:
+          type: string
+          description: The unit of the value, for example B/s.
+        displayUnit:
+          type: string
+          description: The unit that qui shows, for example KiB/s.
+        optionSource:
+          type: string
+          enum: [fixed, pathAutocomplete]
+        options:
+          type: array
+          description: The values of a select with a fixed option list that this build supports.
+          items: {}
+        dependsOn:
+          type: string
+          description: The switch preference that enables this field.
+        readOnly:
+          type: boolean
+          description: True when a user cannot change the preference in qui.
+        reason:
+          type: string
+          description: Why the preference is read-only.
+
     InstanceCapabilities:
       type: object
       properties:
@@ -7281,6 +7366,21 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsTorrentTmpPath:
+          type: boolean
+          description: Whether the instance accepts a temporary download path when a torrent is added (WebAPI 2.8.4+).
+        supportsPathAutocomplete:
+          type: boolean
+          description: Whether the instance can list folders for path autocomplete (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsTestEmail:
+          type: boolean
+          description: Whether the instance can send a test email (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsFreeSpacePathSource:
+          type: boolean
+          description: Whether qui can read the free space of a path on its own host. False when qui runs on Windows.
+        supportsSetRSSFeedURL:
+          type: boolean
+          description: Whether the instance can change the URL of an RSS feed (WebAPI 2.9.1+).
         supportsShareLimitsAction:
           type: boolean
           description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).
