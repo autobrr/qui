@@ -305,6 +305,26 @@ func TestExecWaitsWhenTheHostIsAtItsSessionLimit(t *testing.T) {
 	assert.Len(t, conn.slots, execSessions-1, "only the parked slots stay taken, so the idle close can run")
 }
 
+// A caller that runs commands back to back can open a session while the host
+// still counts the last one, with no other session to wait behind. The open
+// is retried, so the probe keeps the exec tier and the command runs.
+func TestExecRetriesARefusalWithNothingToWaitBehind(t *testing.T) {
+	t.Parallel()
+	requireShell(t)
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecRefuseEveryOtherSession)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	conn, err := pool.Exec(t.Context(), inst)
+	require.NoError(t, err, "the probe gets the exec tier")
+	_, err = conn.Output(t.Context(), Command{Name: "true"})
+	require.NoError(t, err)
+	assert.Zero(t, conn.parked.Load())
+}
+
 // A command can end while the host's refusal of the next open is on its way.
 // The host was full when it refused, so the open still waits and runs.
 func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {

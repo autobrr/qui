@@ -26,6 +26,10 @@ const (
 	// execSessions is how many exec channels one connection runs at a time.
 	// sshd allows ten sessions per connection by default, and sftp holds one.
 	execSessions = 4
+	// refusalRetries and refusalRetryDelay bound the retries of a refused
+	// session open when no other session holds a slot; see Conn.open.
+	refusalRetries    = 3
+	refusalRetryDelay = 50 * time.Millisecond
 )
 
 // ErrNoExec answers an exec on a connection whose probe did not find the exec
@@ -147,10 +151,15 @@ func (c *Conn) run(ctx context.Context, command string, stdout io.Writer) error 
 // sshd refuses a session past its MaxSessions, which counts the sftp channel
 // too, so a host with a low limit refuses an open while other commands run.
 // That slot then stays taken and the open waits for another one, so the
-// connection runs no more sessions than the host allows.
-// ponytail: a parked slot stays parked for the life of the pool, so a host
-// that raises its MaxSessions gets the extra sessions after a qui restart.
+// connection runs no more sessions than the host allows. A caller that runs
+// commands back to back can open while the host still counts its last
+// session, with no other session to wait behind, so that refusal is retried
+// a few times.
+// ponytail: a parked slot stays parked until the connection is forgotten, so
+// a host that raises its MaxSessions gets the extra sessions on the next
+// connection.
 func (c *Conn) open(ctx context.Context) (*ssh.Session, error) {
+	retries := 0
 	for {
 		select {
 		case c.slots <- struct{}{}:
@@ -164,18 +173,27 @@ func (c *Conn) open(ctx context.Context) (*ssh.Session, error) {
 		if err == nil {
 			return session, nil
 		}
-		if _, refused := errors.AsType[*ssh.OpenChannelError](err); refused && c.park(busy) {
+		_, refused := errors.AsType[*ssh.OpenChannelError](err)
+		if refused && c.park(busy) {
 			continue
 		}
 		<-c.slots
 		c.used()
-		return nil, err
+		if !refused || retries == refusalRetries {
+			return nil, err
+		}
+		retries++
+		select {
+		case <-time.After(refusalRetryDelay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
 
 // park keeps the caller's slot taken when another session held a slot at the
 // open or holds one now, and never parks the last slot. With no other session
-// open, a refusal is not about the limit.
+// open, there is nothing to wait behind.
 func (c *Conn) park(busy bool) bool {
 	for {
 		parked := c.parked.Load()

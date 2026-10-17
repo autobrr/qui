@@ -52,6 +52,10 @@ const (
 	// sshd does with MaxSessions 2: sftp and one command fill it. The refusal
 	// arrives late, as over a real network, so a session can end before it.
 	ExecTwoSessions
+	// ExecRefuseEveryOtherSession runs commands like ExecGNU but refuses every
+	// second session channel, the sftp one never, the way sshd refuses an open
+	// that arrives before it counts the close of the session before it.
+	ExecRefuseEveryOtherSession
 )
 
 // SFTPMode selects what the test server does with an sftp subsystem request.
@@ -307,6 +311,10 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 			continue
 		}
 		if open.Load() > 0 && s.execMode() == ExecOneSession {
+			_ = newChannel.Reject(ssh.Prohibited, "open failed")
+			continue
+		}
+		if opened%2 == 0 && s.execMode() == ExecRefuseEveryOtherSession {
 			_ = newChannel.Reject(ssh.Prohibited, "open failed")
 			continue
 		}
