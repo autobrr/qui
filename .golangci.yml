@@ -16,6 +16,7 @@ formatters:
 linters:
   enable:
     - copyloopvar
+    - depguard
     - errname
     - errorlint
     - exhaustive
@@ -38,6 +39,38 @@ linters:
     - whitespace
 
   settings:
+    depguard:
+      rules:
+        models-is-a-leaf:
+          files: ["**/internal/models/**"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "models never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "models never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "models never imports api, services, or qbittorrent" }
+        services-never-import-api:
+          files: ["**/internal/services/**"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: services never import api }
+        database-is-a-leaf:
+          files: ["**/internal/database/**", "!$test"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: "database never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: "database never imports api, services, or qbittorrent" }
+            - { pkg: github.com/autobrr/qui/internal/qbittorrent, desc: "database never imports api, services, or qbittorrent" }
+        qbittorrent-never-imports-up:
+          list-mode: lax
+          files: ["**/internal/qbittorrent/**"]
+          allow:
+            # The sync manager queues tracker icon fetches. Removing this edge is a separate change.
+            - github.com/autobrr/qui/internal/services/trackericons
+          deny:
+            - { pkg: github.com/autobrr/qui/internal/api, desc: qbittorrent never imports api or services }
+            - { pkg: github.com/autobrr/qui/internal/services, desc: qbittorrent never imports api or services }
+        pkg-never-imports-internal:
+          files: ["**/pkg/**", "!$test"]
+          deny:
+            - { pkg: github.com/autobrr/qui/internal, desc: pkg packages stand alone and never import internal }
+
     forbidigo:
       analyze-types: true
       forbid:
