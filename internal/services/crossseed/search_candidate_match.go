@@ -172,11 +172,9 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	ignoreSizeCheck := input.FindIndividualEpisodes &&
 		isTVSeasonPack(input.Source.release) && isTVEpisode(input.Candidate.release)
 
-	strictMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-		input.Source.release,
-		input.Candidate.release,
-		input.Source.rawName,
-		input.Candidate.rawName,
+	strictMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+		input.Source,
+		input.Candidate,
 		input.SourceTitles,
 		input.CandidateTitles,
 		input.FindIndividualEpisodes,
@@ -222,8 +220,8 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		mismatchReason == titleMismatchReason &&
 		decision.SizeEvidence.matches():
 		if ok, reason := m.releasesMatchExceptTitleWithReason(
-			input.Source.release,
-			input.Candidate.release,
+			input.Source,
+			input.Candidate,
 			input.FindIndividualEpisodes,
 		); ok {
 			class = searchCandidateClassTitleRescue
@@ -391,11 +389,9 @@ func (m matcher) oneSidedChecksumIsOnlyStrictDifference(input searchCandidateInp
 	if !ok {
 		return false
 	}
-	matches, _ := m.releasesMatchWithReasonAndNamesAndTitles(
-		replayInput.Source.release,
-		replayInput.Candidate.release,
-		replayInput.Source.rawName,
-		replayInput.Candidate.rawName,
+	matches, _ := m.namedReleasesMatchWithReasonAndTitles(
+		replayInput.Source,
+		replayInput.Candidate,
 		replayInput.SourceTitles,
 		replayInput.CandidateTitles,
 		replayInput.FindIndividualEpisodes,
@@ -470,6 +466,12 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 
 	sourceIdentity := m.normalizedGroupSiteIdentity(source)
 	candidateIdentity := m.normalizedGroupSiteIdentity(candidate)
+	switch {
+	case m.dashSuffixGroupSpellsSite(input.Source, input.Candidate):
+		candidateIdentity = normalizer.Normalize(source.Site)
+	case m.dashSuffixGroupSpellsSite(input.Candidate, input.Source):
+		sourceIdentity = normalizer.Normalize(candidate.Site)
+	}
 	if sourceIdentity == "" || candidateIdentity == "" ||
 		(sourceIdentity != candidateIdentity &&
 			!m.crossFieldGroupSiteFallback(input.Source, input.Candidate)) {
@@ -534,11 +536,9 @@ func (m matcher) replayRelaxedDifferences(input searchCandidateInput, mismatchRe
 		if !ok {
 			return nil, false, "invalid recorded release difference"
 		}
-		matches, reason := m.releasesMatchWithReasonAndNamesAndTitles(
-			replayInput.Source.release,
-			replayInput.Candidate.release,
-			replayInput.Source.rawName,
-			replayInput.Candidate.rawName,
+		matches, reason := m.namedReleasesMatchWithReasonAndTitles(
+			replayInput.Source,
+			replayInput.Candidate,
 			replayInput.SourceTitles,
 			replayInput.CandidateTitles,
 			replayInput.FindIndividualEpisodes,
@@ -609,11 +609,9 @@ func (m matcher) searchCandidateMetadataConsistent(
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
 	input, _ = applyEpisodeMap(input)
-	matches, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-		input.Source.release,
-		input.Candidate.release,
-		input.Source.rawName,
-		input.Candidate.rawName,
+	matches, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+		input.Source,
+		input.Candidate,
 		input.SourceTitles,
 		input.CandidateTitles,
 		findIndividualEpisodes,
@@ -974,6 +972,84 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 		add(m.parseReleaseName(side.rawName))
 	}
 	return provenance
+}
+
+// dashSuffixGroupSpellsSite reports whether grouped, which carries a Group and
+// no Site, names the fansub in the Site of sited. rls keeps a bracket name such
+// as "[Moe-Fansub]" whole in Site, but splits the suffix "x265-Moe-Fansub" at
+// the last dash into a text tag "Moe" and Group "Fansub". Only the full run of
+// text tags before the group rebuilds the name, so "x265-Fansub" and
+// "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
+// origins as groupTagProvenance, because a view built from the files can carry
+// the Group of the torrent name without the tags of that name. Every origin
+// with a group tag must carry the Group and rebuild the Site, so a selected
+// file that names "Big-Moe-Fansub" or "Other" vetoes a torrent name that says
+// "Moe-Fansub". An origin without a group tag has no say.
+func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
+	if sited.release == nil || grouped.release == nil {
+		return false
+	}
+	normalizer := m.normalizer()
+	site := normalizer.Normalize(sited.release.Site)
+	group := normalizer.Normalize(grouped.release.Group)
+	if site == "" || group == "" || normalizer.Normalize(grouped.release.Site) != "" {
+		return false
+	}
+
+	var rawRelease *rls.Release
+	if grouped.rawName != "" {
+		rawRelease = m.parseReleaseName(grouped.rawName)
+	}
+	spelled := false
+	for _, origin := range [...]*rls.Release{grouped.release, grouped.tagOrigin, rawRelease} {
+		if origin == nil {
+			continue
+		}
+		groupTag, name := dashSuffixGroupName(origin)
+		switch normalizer.Normalize(groupTag) {
+		case "":
+			continue
+		case group:
+			if normalizer.Normalize(name) != site {
+				return false
+			}
+		default:
+			return false
+		}
+		spelled = true
+	}
+	return spelled
+}
+
+// dashSuffixGroupName returns the group tag and that tag joined with the text
+// tags directly before it. Any other tag, such as a codec or HDR tag, ends the
+// run.
+func dashSuffixGroupName(release *rls.Release) (groupTag, name string) {
+	tags := release.Tags()
+	groupIndex := -1
+	for i, tag := range slices.Backward(tags) {
+		if tag.Is(rls.TagTypeGroup) {
+			groupIndex = i
+			break
+		}
+	}
+	if groupIndex < 0 {
+		return "", ""
+	}
+
+	groupTag = tags[groupIndex].Text()
+	parts := []string{groupTag}
+	for i := groupIndex - 1; i >= 0; i-- {
+		if tags[i].Is(rls.TagTypeDelim, rls.TagTypeWhitespace) {
+			continue
+		}
+		if !tags[i].Is(rls.TagTypeText) {
+			break
+		}
+		parts = append(parts, tags[i].Text())
+	}
+	slices.Reverse(parts)
+	return groupTag, strings.Join(parts, "-")
 }
 
 func (m matcher) explicitGroupsAgree(left, right namedRelease) bool {

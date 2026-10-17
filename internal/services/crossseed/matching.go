@@ -174,11 +174,24 @@ func (m matcher) releasesMatchWithReasonAndNames(source, candidate *rls.Release,
 }
 
 func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	return m.namedReleasesMatchWithReasonAndTitles(
+		namedRelease{release: source, rawName: sourceName},
+		namedRelease{release: candidate, rawName: candidateName},
+		sourceTitles, candidateTitles, findIndividualEpisodes,
+	)
+}
+
+// namedReleasesMatchWithReasonAndTitles is the strict match on full identity
+// views, so the group check can read the selected-file tags too.
+func (m matcher) namedReleasesMatchWithReasonAndTitles(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
+	sourceName, candidateName := sourceSide.rawName, candidateSide.rawName
 	if source == candidate {
 		return true, ""
 	}
 	// rls reads a bare "Title III" as a movie, so only the other side can say that its numeral is a season.
 	source, candidate = withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source)
+	sourceSide.release, candidateSide.release = source, candidate
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
@@ -187,7 +200,7 @@ func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, false); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, false); !ok {
 		return false, reason
 	}
 	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
@@ -301,7 +314,8 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 // paused-add full recheck as the final authority; callers that only report
 // existing pairings (local match detection) do not, so their false positives
 // must stay confined to display.
-func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateArtistAndDates(source, candidate, isTV); !ok {
 		return false, reason
@@ -309,7 +323,7 @@ func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Relea
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, true); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, true); !ok {
 		return false, reason
 	}
 	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
@@ -500,7 +514,8 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	return true, ""
 }
 
-func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
+func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRelease, tolerateMissingCandidateTags bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
 	normalizer := m.normalizer()
@@ -508,6 +523,15 @@ func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, to
 	candidateGroup := normalizer.Normalize((candidate.Group))
 	sourceSite := normalizer.Normalize(source.Site)
 	candidateSite := normalizer.Normalize(candidate.Site)
+
+	// A hyphenated fansub name reads as Site in its bracket form and as a split
+	// Group in its dash-suffix form. Compare the rebuilt suffix name instead.
+	switch {
+	case sourceSite != "" && candidateSite == "" && m.dashSuffixGroupSpellsSite(sourceSide, candidateSide):
+		candidateGroup = sourceSite
+	case candidateSite != "" && sourceSite == "" && m.dashSuffixGroupSpellsSite(candidateSide, sourceSide):
+		sourceGroup = candidateSite
+	}
 
 	// Only enforce group matching if the source has a group tag
 	if sourceGroup != "" {

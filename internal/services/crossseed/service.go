@@ -1616,7 +1616,11 @@ func (s *Service) determineLocalMatchType(
 	// positive exact reported total size and every release field but the title.
 	if mismatchReason == titleMismatchReason &&
 		classifySearchSizeEvidence(searchSourceSize(source), searchSourceSize(candidate.Torrent)).matches() {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
+		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(
+			namedRelease{release: sourceRelease, rawName: source.Name},
+			namedRelease{release: candidateRelease, rawName: candidate.Name},
+			false,
+		); ok {
 			return matchTypeRelease
 		}
 	}
@@ -4907,11 +4911,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-				fallbackInput.Source.release,
-				fallbackInput.Candidate.release,
-				fallbackInput.Source.rawName,
-				fallbackInput.Candidate.rawName,
+			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+				fallbackInput.Source,
+				fallbackInput.Candidate,
 				fallbackInput.SourceTitles,
 				fallbackInput.CandidateTitles,
 				req.FindIndividualEpisodes,
@@ -4947,7 +4949,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
-					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
+					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide, targetSide, req.FindIndividualEpisodes); !ok {
 						continue
 					}
 					titleRescueHash = hashKey
