@@ -536,7 +536,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
-	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
 			Msg("automations: failed to get backend to re-read delete candidates, holding the deletions")
@@ -681,7 +681,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 		return nil, false
 	}
 
-	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
 			Msg("automations: failed to get backend for hardlink index update, falling back to a full build")
@@ -735,10 +735,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	// The caller admitted the instance from a snapshot. sftp reports no inode
-	// numbers, so a build over it would only cost a stat per file and cache an
-	// index with every scope unknown.
-	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	// The caller admitted the instance from a snapshot. Delete rules act on this
+	// index, so if the instance left local mode since, a remote host's link
+	// counts must not build it.
+	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
 		index.builtAt = time.Now()

@@ -50,9 +50,11 @@ func (r *switchableRow) set(row *models.Instance) {
 	r.mu.Unlock()
 }
 
+// remoteRow is on the exec tier, so it has Identity. The reads need
+// TrustedIdentity, which a remote host never has.
 var (
 	localRow  = &models.Instance{HasLocalFilesystemAccess: true, IsActive: true}
-	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", IsActive: true}
+	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec, IsActive: true}
 )
 
 // remoteSpy stands in for the SSH host and counts the reads that reached it.
