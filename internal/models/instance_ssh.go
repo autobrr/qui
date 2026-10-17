@@ -68,10 +68,13 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 	query := `
 		UPDATE instances
 		SET ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_key_encrypted = ?,
-		    ssh_host_key_encrypted = CASE WHEN ssh_host = ? AND ssh_port = ? THEN ssh_host_key_encrypted ELSE '' END
+		    ssh_host_key_encrypted = CASE WHEN ssh_host = ? AND ssh_port = ? THEN ssh_host_key_encrypted ELSE '' END,
+		    ssh_tier = ?
 		WHERE id = ?
 	`
-	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, instanceID)
+	// A new key may run a different shell: the tier is unknown until a
+	// connect probes it, so the row says sftp and fails closed meanwhile.
+	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, string(SSHTierSFTP), instanceID)
 }
 
 // validateSSHCredentials returns the stored form of the endpoint, or the reason
@@ -133,10 +136,10 @@ func normalizeSSHHost(host string) (string, error) {
 func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int) error {
 	query := `
 		UPDATE instances
-		SET ssh_username = '', ssh_key_encrypted = ''
+		SET ssh_username = '', ssh_key_encrypted = '', ssh_tier = ?
 		WHERE id = ?
 	`
-	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, instanceID)
+	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, string(SSHTierSFTP), instanceID)
 }
 
 // SetHostKeyPin pins the marshaled host public key the caller confirmed for
