@@ -20,6 +20,7 @@ The cross-seed matching rules are methods on a `matcher` value in `internal/serv
 - Production code no longer builds a throwaway `Service` to call a matching rule. The season pack code calls `s.matcher()`, and `buildSeasonPackPlan`, which has no `Service`, builds a `matcher` from the normalizer it is given.
 - A matcher test builds a `matcher{}` with the three inputs the rules read and nothing else.
 - `normalizerForService` stays for the callers outside the matcher files. It guards a nil `Service` and returns `s.matcher().normalizer()`, so the default-normalizer fallback has one body.
+- A `forbidigo` rule in `.golangci.yml` reports each parser entry point of `rls` and `pkg/releases`, for example `releases.DefaultParser`, `rls.ParseString`, and the parser constructors, in the non-test code under `internal/services/crossseed/`. The only exceptions are the fallback in `parseReleaseName` and the constructor call in `NewReleaseCache`. The linter does not report a call to the release cache. Issue #3229.
 
 ## Amendment 2026-10-09: one parser
 
