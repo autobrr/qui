@@ -208,6 +208,33 @@ describe("InstancePreferencesDialog", () => {
     expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
   })
 
+  it("shows the socket buffers in KiB and the .torrent size limit in MiB, and saves them in bytes", async () => {
+    const bodies = recordSaves()
+    serveView([
+      ...view,
+      { key: "torrent_file_size_limit", value: 104857600, tab: "advanced", section: "qbittorrent", control: "number", wireUnit: "B", displayUnit: "MiB" },
+      { key: "socket_send_buffer_size", value: 0, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
+      { key: "socket_receive_buffer_size", value: 131072, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
+    ])
+    renderDialog("advanced")
+
+    const sizeLimit = await fieldFor("preferences.fields.torrentFileSizeLimit")
+    const send = await fieldFor("preferences.fields.socketSendBufferSize")
+    const receive = await fieldFor("preferences.fields.socketReceiveBufferSize")
+    expect(sizeLimit.value).toBe("100")
+    expect(sizeLimit.nextElementSibling?.textContent).toBe("MiB")
+    expect(send.value).toBe("0")
+    expect(receive.value).toBe("128")
+    expect(receive.nextElementSibling?.textContent).toBe("KiB")
+
+    fireEvent.change(sizeLimit, { target: { value: "50" } })
+    fireEvent.change(send, { target: { value: "256" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ torrent_file_size_limit: 52428800, socket_send_buffer_size: 262144 }])
+  })
+
   it("shows the fetched trackers read-only, with the note of the field", async () => {
     serveView()
 
