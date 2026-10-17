@@ -211,15 +211,34 @@ The alternative WebUI, the custom HTTP headers, and the dynamic domain name chan
 
 ### Advanced
 
-The **qBittorrent** section has the memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only. qui shows the memory working set limit only on libtorrent 2, and not on Linux or macOS.
+The **qBittorrent** section has these preferences:
+
+- The resume data storage type, the save interval of the resume data and of the statistics, and the size limit of .torrent files in MiB.
+- The removal mode of torrent content: delete the files permanently, or move them to the trash.
+- The memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only.
+- The recheck of torrents on completion, the embedded tracker with its port and port forwarding, Mark-of-the-Web or macOS quarantine for downloaded files, and the option to ignore SSL errors.
+- On qBittorrent 5.3 and later, the start of the BitTorrent session in paused state, and the session shutdown timeout. The paused start pauses every torrent when qBittorrent starts. It is not the [Start torrents paused](#start-torrents-paused) setting of the Downloads tab. An empty shutdown timeout means no limit.
 
 The **libtorrent** section has these preferences:
 
+- The bdecode depth limit and token limit.
 - The asynchronous I/O threads, the hashing threads, the file pool size, the memory for torrent checks, the disk cache, and the disk queue size.
-- The disk I/O type, the read mode, and the write mode, and the coalescing of reads and writes.
-- The send buffer watermarks, the socket backlog size, the outgoing ports, and the UPnP lease duration.
-- The peer ToS byte, the μTP-TCP mixed mode, multiple connections from one IP address, and the block of peers on privileged ports.
-- The announce to all trackers and to all tiers, the IP address that qBittorrent reports to trackers, the maximum concurrent HTTP announces, and the stop tracker timeout.
-- The peer turnover and the request queue size.
+- The disk I/O type, the read mode, the write mode, and the OS cache on qBittorrent 4.3 and 4.4.
+- The coalescing of reads and writes, the piece extent affinity, and the upload piece suggestions.
+- The send buffer watermarks, the outgoing connections per second, and the outgoing connections while seeding.
+- The socket send and receive buffer sizes in KiB, the socket backlog size, the outgoing ports, and the UPnP lease duration. A socket buffer size of 0 uses the system default.
+- The peer ToS byte, the μTP-TCP mixed mode, the hostname resolver cache, and support for internationalized domain names.
+- Multiple connections from one IP address or one peer ID, the validation of HTTPS tracker certificates, the SSRF mitigation, and the block of peers on privileged ports.
+- The upload slots behavior and the upload choking algorithm.
+- The announce to all trackers and to all tiers, the IP address and the port that qBittorrent reports to trackers, the maximum concurrent HTTP announces, and the stop tracker timeout.
+- The peer turnover, the request queue size, the maximum outstanding block requests from a peer, the DHT bootstrap nodes, and the STUN server for WebTorrent.
+- The I2P tunnel quantity, length, and length variance, inbound and outbound.
 
-qui shows the disk cache and the coalescing of reads and writes only on libtorrent 1. qui shows the hashing threads and the disk I/O type only on libtorrent 2.
+qui shows a preference only where qBittorrent uses it:
+
+- On libtorrent 1, qui shows the disk cache and the coalescing of reads and writes.
+- On libtorrent 2, qui shows the memory working set limit, the hashing threads, the disk I/O type, and the I2P tunnel settings.
+- The write-through disk I/O write mode needs libtorrent 2.0.6 or later. The I2P length variance needs libtorrent 2.0.12 or later. Multiple connections from one peer ID need libtorrent 2.0.13 or later. The STUN server for WebTorrent needs libtorrent 2.1 or later.
+- qui does not show the memory working set limit on Linux or macOS. qui shows Mark-of-the-Web only on macOS and Windows. qBittorrent before 5.0 does not report its platform, so qui shows both there.
+
+The refresh interval, the application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
