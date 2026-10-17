@@ -12,14 +12,17 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
 import { BYTES_PER_UNIT, unitLabel, type ByteUnit } from "@/lib/unit-format"
 import { cn } from "@/lib/utils"
 import type { PreferenceField } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { useState, type ComponentType } from "react"
 import { useTranslation } from "react-i18next"
 
 import type { FieldLabels } from "./labels"
+import { networkBindingKey } from "./preferenceView"
 
 export interface WidgetProps {
   id: string
@@ -374,6 +377,118 @@ function WatchFoldersWidget({ labels, value, onChange, disabled }: WidgetProps) 
   )
 }
 
+// The address values that are not addresses of one interface.
+const ALL_ADDRESSES = [
+  { value: "", labelKey: "preferences.networkBinding.allAddresses" },
+  { value: "0.0.0.0", labelKey: "preferences.networkBinding.allIPv4Addresses" },
+  { value: "::", labelKey: "preferences.networkBinding.allIPv6Addresses" },
+]
+
+// Radix Select rejects an item with the value "", which is "Any interface" and "All addresses".
+// So each item value gets a prefix.
+const itemValue = (value: string) => `=${value}`
+
+interface NetworkBindingProps {
+  instanceId: number
+  interfaceLabels: FieldLabels
+  addressLabels: FieldLabels
+  iface: string
+  address: string
+  // The readable name of the saved interface. qBittorrent before 4.6 does not send it.
+  interfaceName: string
+  onChange: (key: string, value: unknown) => void
+}
+
+// The network interface and its address. Until the network binding route answers, and when it
+// fails, the widget shows the values as read-only text.
+export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabels, iface, address, interfaceName, onChange }: NetworkBindingProps) {
+  const { t } = useTranslation("instances")
+  const [incognitoMode] = useIncognitoMode()
+  const { data: interfaces } = useQuery({
+    queryKey: networkBindingKey(instanceId),
+    queryFn: () => api.getNetworkBinding(instanceId),
+    gcTime: 0,
+  })
+  const blur = incognitoMode ? "blur-sm select-none" : undefined
+  const allAddresses = ALL_ADDRESSES.find(option => option.value === address)
+
+  if (!interfaces) {
+    return (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <FieldLabel id="preference-current_network_interface" labels={interfaceLabels} />
+          <Input
+            id="preference-current_network_interface"
+            value={iface === "" ? t("preferences.networkBinding.anyInterface") : interfaceName || iface}
+            disabled
+            className={blur}
+          />
+        </div>
+        <div className="space-y-2">
+          <FieldLabel id="preference-current_interface_address" labels={addressLabels} />
+          <Input
+            id="preference-current_interface_address"
+            value={allAddresses ? t(allAddresses.labelKey) : address}
+            disabled
+            className={blur}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const notAvailable = <span className="text-muted-foreground"> {t("preferences.networkBinding.notAvailable")}</span>
+  const addresses = interfaces.find(option => option.value === iface)?.addresses ?? []
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="space-y-2">
+        <FieldLabel id="preference-current_network_interface" labels={interfaceLabels} />
+        <Select
+          value={itemValue(iface)}
+          onValueChange={(next) => {
+            onChange("current_network_interface", next.slice(1))
+            // An address of the old interface does not exist on the new one.
+            onChange("current_interface_address", "")
+          }}
+        >
+          <SelectTrigger id="preference-current_network_interface" className={cn("w-full", blur)}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {interfaces.map(option => (
+              <SelectItem key={option.value} value={itemValue(option.value)} className={blur}>
+                {option.value === "" ? t("preferences.networkBinding.anyInterface") : option.name}
+                {!option.available && notAvailable}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <FieldLabel id="preference-current_interface_address" labels={addressLabels} />
+        <Select value={itemValue(address)} onValueChange={(next) => onChange("current_interface_address", next.slice(1))}>
+          <SelectTrigger id="preference-current_interface_address" className={cn("w-full", blur)}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ALL_ADDRESSES.map(option => (
+              <SelectItem key={option.value} value={itemValue(option.value)}>{t(option.labelKey)}</SelectItem>
+            ))}
+            {addresses.map(option => (
+              <SelectItem key={option.address} value={itemValue(option.address)} className={blur}>
+                {option.address}
+                {!option.available && notAvailable}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 export const preferenceWidgets: Record<PreferenceField["control"], ComponentType<WidgetProps>> = {
   switch: SwitchWidget,
   number: NumberWidget,

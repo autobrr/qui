@@ -54,6 +54,9 @@ type OptionSource string
 const (
 	SourceFixed            OptionSource = "fixed"
 	SourcePathAutocomplete OptionSource = "pathAutocomplete"
+	// The network binding route lists the interfaces and the addresses of each interface.
+	SourceNetworkInterfaces  OptionSource = "networkInterfaces"
+	SourceInterfaceAddresses OptionSource = "interfaceAddresses"
 )
 
 // Mode says whether qui shows a key and whether a user can change it.

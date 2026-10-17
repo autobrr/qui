@@ -1709,7 +1709,13 @@
     "units": {
       "minutes": "minuti"
     },
-    "readOnlyNote": "qui non può ancora modificare questa impostazione. Modificala in qBittorrent.",
+    "networkBinding": {
+      "anyInterface": "Qualsiasi interfaccia",
+      "allAddresses": "Tutti gli indirizzi",
+      "allIPv4Addresses": "Tutti gli indirizzi IPv4",
+      "allIPv6Addresses": "Tutti gli indirizzi IPv6",
+      "notAvailable": "(non disponibile)"
+    },
     "toast": {
       "saved": "Preferenze salvate",
       "saveFailed": "Impossibile salvare le preferenze",

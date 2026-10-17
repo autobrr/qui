@@ -1680,7 +1680,13 @@
     "units": {
       "minutes": "分鐘"
     },
-    "readOnlyNote": "qui 目前無法變更此設定。請在 qBittorrent 中變更。",
+    "networkBinding": {
+      "anyInterface": "任意網路介面",
+      "allAddresses": "所有位址",
+      "allIPv4Addresses": "所有 IPv4 位址",
+      "allIPv6Addresses": "所有 IPv6 位址",
+      "notAvailable": "（無法使用）"
+    },
     "toast": {
       "saved": "偏好設定已儲存",
       "saveFailed": "無法儲存偏好設定",
