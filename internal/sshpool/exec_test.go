@@ -152,11 +152,13 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 		{"a key that lost its shell moves down", sshtest.ExecSFTPOnly, models.SSHTierExec, models.SSHTierSFTP},
 		{"a bsd userland moves down", sshtest.ExecBSD, models.SSHTierExec, models.SSHTierSFTP},
 		{"a non-posix login shell moves down", sshtest.ExecNonPOSIX, models.SSHTierExec, models.SSHTierSFTP},
+		{"a split-quote login shell moves down", sshtest.ExecSplitQuote, models.SSHTierExec, models.SSHTierSFTP},
+		{"a csh login shell moves down", sshtest.ExecCsh, models.SSHTierExec, models.SSHTierSFTP},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.mode == sshtest.ExecGNU {
+			if tt.mode != sshtest.ExecSFTPOnly {
 				requireShell(t)
 			}
 

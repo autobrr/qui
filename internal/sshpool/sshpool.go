@@ -82,8 +82,10 @@ type Capabilities struct {
 	Exec     bool
 	// POSIXShell is a login shell that reads a single-quoted word the POSIX
 	// way. Every remote command is quoted for that shell, so a shell that
-	// treats a quote differently (fish reads '\'' as an escape) could run a
-	// path as a command, and gets no exec tier.
+	// treats a quote differently (fish escapes a closing quote with the
+	// backslash before it, tcsh rejects a newline inside a quote and reads the
+	// next line as a new command) could run a path as a command, and gets no
+	// exec tier.
 	POSIXShell  bool
 	GNUUserland bool
 }
