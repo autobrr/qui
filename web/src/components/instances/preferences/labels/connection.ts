@@ -69,7 +69,7 @@ export const connectionLabels: TabLabels = {
     },
     i2p_pex_enabled: {
       labelKey: "preferences.fields.i2pPexEnabled",
-      descriptionKey: "preferences.fields.i2pPexEnabledDescription",
+      descriptionKey: "preferences.fields.requiresRestart",
     },
     proxy_type: {
       labelKey: "preferences.fields.proxyType",

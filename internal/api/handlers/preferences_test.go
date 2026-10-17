@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -603,6 +604,165 @@ func TestPreferencesViewWebUI(t *testing.T) {
 	}}, fake.recordedSets())
 	view = decodeView(t, recorder.Body.Bytes())
 	assert.JSONEq(t, "7200", string(view["web_ui_session_timeout"].Value))
+}
+
+func TestPreferencesViewAdvanced(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": "2.1.0.0", "platform": "windows"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	sections := map[string]string{}
+	for key, field := range view {
+		if field.Tab == "advanced" {
+			assert.False(t, field.ReadOnly && field.Reason != "pending network binding PR", key)
+			sections[key] = field.Section
+		}
+	}
+	for _, key := range []string{
+		"resume_data_storage_type", "torrent_content_remove_option", "save_resume_data_interval", "save_statistics_interval",
+		"torrent_file_size_limit", "recheck_completed_torrents", "enable_embedded_tracker", "embedded_tracker_port",
+		"embedded_tracker_port_forwarding", "mark_of_the_web", "ignore_ssl_errors", "start_paused", "shutdown_timeout",
+	} {
+		assert.Equal(t, "qbittorrent", sections[key], key)
+	}
+	for _, key := range []string{
+		"bdecode_depth_limit", "bdecode_token_limit", "enable_piece_extent_affinity", "enable_upload_suggestions",
+		"connection_speed", "seeding_outgoing_connections", "socket_send_buffer_size", "socket_receive_buffer_size",
+		"hostname_cache_ttl", "idn_support_enabled", "enable_multi_connections_from_same_peer_id",
+		"validate_https_tracker_certificate", "ssrf_mitigation", "upload_slots_behavior", "upload_choking_algorithm",
+		"announce_port", "max_outstanding_block_requests", "dht_bootstrap_nodes", "webtorrent_stun_server",
+		"i2p_inbound_quantity", "i2p_outbound_quantity", "i2p_inbound_length", "i2p_outbound_length",
+		"i2p_inbound_length_variance", "i2p_outbound_length_variance",
+	} {
+		assert.Equal(t, "libtorrent", sections[key], key)
+	}
+	for _, key := range []string{"refresh_interval", "app_instance_name", "confirm_torrent_recheck", "python_executable_path", "resolve_peer_host_names"} {
+		assert.NotContains(t, view, key)
+	}
+
+	assert.Equal(t, []any{"Legacy", "SQLite"}, view["resume_data_storage_type"].Options)
+	assert.Equal(t, []any{"Delete", "MoveToTrash"}, view["torrent_content_remove_option"].Options)
+	assert.Equal(t, []any{float64(0), float64(1)}, view["upload_slots_behavior"].Options)
+	assert.Equal(t, []any{float64(0), float64(1), float64(2)}, view["upload_choking_algorithm"].Options)
+	for key, want := range map[string][2]string{
+		"save_resume_data_interval":  {"min", "min"},
+		"save_statistics_interval":   {"min", "min"},
+		"torrent_file_size_limit":    {"B", "MiB"},
+		"socket_send_buffer_size":    {"B", "KiB"},
+		"socket_receive_buffer_size": {"B", "KiB"},
+		"hostname_cache_ttl":         {"s", "s"},
+		"shutdown_timeout":           {"s", "s"},
+	} {
+		assert.Equal(t, want, [2]string{view[key].WireUnit, view[key].DisplayUnit}, key)
+	}
+
+	recorder := rig.do(t, http.MethodPatch, "/preferences", `{"socket_send_buffer_size": 262144, "enable_embedded_tracker": true, "embedded_tracker_port": 9001}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Equal(t, []map[string]any{{
+		"socket_send_buffer_size": float64(262144), "enable_embedded_tracker": true, "embedded_tracker_port": float64(9001),
+	}}, fake.recordedSets())
+	view = decodeView(t, recorder.Body.Bytes())
+	assert.JSONEq(t, "262144", string(view["socket_send_buffer_size"].Value))
+	assert.JSONEq(t, "true", string(view["enable_embedded_tracker"].Value))
+}
+
+func TestPreferencesViewAdvancedLibtorrentGates(t *testing.T) {
+	libtorrent1 := []string{"disk_cache", "disk_cache_ttl", "enable_coalesce_read_write"}
+	libtorrent2 := []string{
+		"memory_working_set_limit", "hashing_threads", "disk_io_type",
+		"i2p_inbound_quantity", "i2p_outbound_quantity", "i2p_inbound_length", "i2p_outbound_length",
+	}
+	tests := []struct {
+		libtorrent     string
+		want           []string
+		hidden         []string
+		writeModes     []any
+		wantVariance   bool // libtorrent 2.0.12 or later
+		wantSamePeerID bool // libtorrent 2.0.13 or later
+		wantSTUN       bool // libtorrent 2.1 or later
+	}{
+		{libtorrent: "1.2.19.0", want: libtorrent1, hidden: libtorrent2, writeModes: []any{float64(0), float64(1)}},
+		{libtorrent: "2.0.5.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1)}},
+		{libtorrent: "2.0.6.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1), float64(2)}},
+		{libtorrent: "2.0.12.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1), float64(2)}, wantVariance: true},
+		{libtorrent: "2.0.13.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1), float64(2)}, wantVariance: true, wantSamePeerID: true},
+		{libtorrent: "2.1.0.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1), float64(2)}, wantVariance: true, wantSamePeerID: true, wantSTUN: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.libtorrent, func(t *testing.T) {
+			// The 5.3 capture lacks the libtorrent 1 keys, and the Windows platform passes the memory working set limit.
+			fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": tt.libtorrent, "platform": "windows"})
+			fake.prefs["disk_cache"] = -1
+			fake.prefs["disk_cache_ttl"] = 60
+			fake.prefs["enable_coalesce_read_write"] = false
+			rig := newPreferencesRig(t, fake)
+
+			view, _ := rig.view(t)
+
+			for _, key := range tt.want {
+				assert.Contains(t, view, key)
+			}
+			for _, key := range tt.hidden {
+				assert.NotContains(t, view, key)
+			}
+			assert.Equal(t, tt.writeModes, view["disk_io_write_mode"].Options)
+			for key, want := range map[string]bool{
+				"i2p_inbound_length_variance":                tt.wantVariance,
+				"i2p_outbound_length_variance":               tt.wantVariance,
+				"enable_multi_connections_from_same_peer_id": tt.wantSamePeerID,
+				"webtorrent_stun_server":                     tt.wantSTUN,
+			} {
+				_, shown := view[key]
+				assert.Equal(t, want, shown, key)
+			}
+		})
+	}
+}
+
+func TestPreferencesViewAdvancedPlatformGates(t *testing.T) {
+	tests := []struct {
+		platform         string
+		wantWorkingSet   bool
+		wantMarkOfTheWeb bool
+	}{
+		{platform: "windows", wantWorkingSet: true, wantMarkOfTheWeb: true},
+		{platform: "macos", wantMarkOfTheWeb: true},
+		{platform: "linux"},
+		// qBittorrent reports "unknown" on a platform that is not Linux, macOS, or Windows.
+		{platform: "unknown", wantWorkingSet: true},
+		// qBittorrent before 5.0 does not report its platform, so the platform gates pass.
+		{platform: "", wantWorkingSet: true, wantMarkOfTheWeb: true},
+	}
+	for _, tt := range tests {
+		t.Run(cmp.Or(tt.platform, "unreported"), func(t *testing.T) {
+			buildInfo := map[string]any{"libtorrent": "2.0.11.0"}
+			if tt.platform != "" {
+				buildInfo["platform"] = tt.platform
+			}
+			fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", buildInfo)
+			rig := newPreferencesRig(t, fake)
+
+			view, _ := rig.view(t)
+
+			_, workingSet := view["memory_working_set_limit"]
+			assert.Equal(t, tt.wantWorkingSet, workingSet)
+			_, markOfTheWeb := view["mark_of_the_web"]
+			assert.Equal(t, tt.wantMarkOfTheWeb, markOfTheWeb)
+		})
+	}
+}
+
+func TestPreferencesViewAdvancedOnQBittorrent4(t *testing.T) {
+	fake := newFakePreferencesQbit(t, "4.3.9", "2.8.2", map[string]any{"libtorrent": "1.2.14.0"})
+	rig := newPreferencesRig(t, fake)
+
+	view, _ := rig.view(t)
+
+	osCache := view["enable_os_cache"]
+	assert.Equal(t, "libtorrent", osCache.Section)
+	assert.Equal(t, "switch", osCache.Control)
+	assert.False(t, osCache.ReadOnly)
 }
 
 func TestPreferencesTestEmail(t *testing.T) {
