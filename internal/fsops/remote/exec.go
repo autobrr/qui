@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -45,18 +46,25 @@ const (
 // because NUL is the one byte a path cannot hold.
 const findFormat = `%y %D %i %n %s %T@ %m %P\0`
 
-// lstatFormat is findFormat with the path as given, for find on a list of
+// batchFormat is findFormat with the path as given, for find on a list of
 // paths at depth 0.
-const lstatFormat = `%y %D %i %n %s %T@ %m %p\0`
+const batchFormat = `%y %D %i %n %s %T@ %m %p\0`
 
 const (
-	// lstatBatchPaths and lstatBatchBytes size one find of LstatBatch. The
-	// command goes to the shell as one argument, and Linux caps one argument
-	// at 128 KiB.
-	lstatBatchPaths = 1000
-	lstatBatchBytes = 64 << 10
-	// lstatBatchTimeout bounds one find of LstatBatch.
-	lstatBatchTimeout = 30 * time.Second
+	// batchPaths and batchBytes size one find of a batch stat. The command
+	// goes to the shell as one argument, and Linux caps one argument at
+	// 128 KiB.
+	batchPaths = 1000
+	batchBytes = 64 << 10
+	// batchTimeout bounds one find of a batch stat.
+	batchTimeout = 30 * time.Second
+	// batchWidth is how many single stats of a batch are in flight at once.
+	// They share the one sftp client, so they overlap their round trips.
+	//
+	// ponytail: a fixed width, so n single stats cost about n/32 round
+	// trips: a torrent of 1,000 moved files is about 32. A per-host setting
+	// is the upgrade if a host with a long delay needs a wider pipeline.
+	batchWidth = 32
 )
 
 var errFindLimit = errors.New("find prints more entries than its limit")
@@ -154,14 +162,29 @@ func (b *Backend) setIdentity(ctx context.Context, info *fsops.LstatInfo, follow
 	info.FileID, info.Nlinks, info.FileIDErr = b.identity(ctx, info.Path, follow)
 }
 
+// StatBatch answers fsops.BatchStater. It is LstatBatch, but it follows
+// symlinks, as Stat does.
+func (b *Backend) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	return b.statBatch(ctx, paths, true)
+}
+
 // LstatBatch answers fsops.BatchStater. On the exec tier, one find lstats a
 // batch of paths, with identity, in two round trips. Lstat answers each path
 // that find did not print, such as a missing one, so the error is the one
-// Lstat gives. On the sftp tier, Lstat answers every path.
+// Lstat gives. On the sftp tier, Lstat answers every path. The single Lstat
+// calls run batchWidth at a time.
 //
 // The paths must be absolute: find reads an argument that starts with "-",
 // "!" or "(" as an expression.
 func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	return b.statBatch(ctx, paths, false)
+}
+
+func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([]*fsops.LstatInfo, []error) {
+	op, statOne := "lstat", b.Lstat
+	if follow {
+		op, statOne = "stat", b.Stat
+	}
 	infos := make([]*fsops.LstatInfo, len(paths))
 	errs := make([]error, len(paths))
 
@@ -173,21 +196,24 @@ func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.Lsta
 		if path.IsAbs(p) {
 			absolute = append(absolute, p)
 		} else {
-			errs[i] = &fs.PathError{Op: "lstat", Path: p, Err: errRelativePath}
+			errs[i] = &fs.PathError{Op: op, Path: p, Err: errRelativePath}
 		}
 	}
 	found := make(map[string]findEntry, len(absolute))
 	if b.execTier() {
-		b.lstatFind(ctx, absolute, found)
+		b.statFind(ctx, absolute, follow, found)
 	}
 
+	var single []int
 	for i, p := range paths {
 		if errs[i] != nil {
 			continue
 		}
 		e, ok := found[p]
-		if !ok {
-			infos[i], errs[i] = b.Lstat(ctx, p)
+		// find -L prints a link it cannot follow as the link itself, but
+		// Stat of a broken link is an error.
+		if !ok || follow && e.mode&fs.ModeSymlink != 0 {
+			single = append(single, i)
 			continue
 		}
 		info := &fsops.LstatInfo{
@@ -204,44 +230,60 @@ func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.Lsta
 		}
 		infos[i] = info
 	}
+
+	// After a lost connection each call fails fast, since the pool
+	// remembers the failed dial, so every path gets its own error.
+	var g errgroup.Group
+	g.SetLimit(batchWidth)
+	for _, i := range single {
+		g.Go(func() error {
+			infos[i], errs[i] = statOne(ctx, paths[i])
+			return nil
+		})
+	}
+	_ = g.Wait() // each error stays with its path
 	return infos, errs
 }
 
-// lstatFind puts the find record of each path it can read into found, by
-// path, one batch at a time.
+// statFind puts the find record of each path it can read into found, by
+// path, one batch at a time. With follow, find reads the target of a link.
 //
 // ponytail: the batches run one after the other. Running them on the exec
 // sessions of the connection at once is the upgrade if a torrent with many
 // thousand files is ever slow.
-func (b *Backend) lstatFind(ctx context.Context, paths []string, found map[string]findEntry) {
+func (b *Backend) statFind(ctx context.Context, paths []string, follow bool, found map[string]findEntry) {
 	conn, err := b.exec(ctx)
 	if err != nil {
 		return
 	}
+	option := "-P"
+	if follow {
+		option = "-L"
+	}
 	for len(paths) > 0 {
 		n, size := 0, 0
-		for n < len(paths) && n < lstatBatchPaths && (n == 0 || size+len(paths[n]) <= lstatBatchBytes) {
+		for n < len(paths) && n < batchPaths && (n == 0 || size+len(paths[n]) <= batchBytes) {
 			size += len(paths[n])
 			n++
 		}
-		batchCtx, cancel := context.WithTimeout(ctx, lstatBatchTimeout)
+		batchCtx, cancel := context.WithTimeout(ctx, batchTimeout)
 		// find prints at most one record for each path at depth 0, so a
 		// host that prints more is not find.
 		entries, err := find(batchCtx, conn, sshpool.Command{
 			Name:       "find",
-			Options:    []string{"-P"},
+			Options:    []string{option},
 			Paths:      paths[:n],
-			Expression: []string{"-maxdepth", "0", "-printf", lstatFormat},
+			Expression: []string{"-maxdepth", "0", "-printf", batchFormat},
 		}, n, findByteLimit)
 		cancel()
 		for _, e := range entries {
 			found[e.rel] = e
 		}
 		// find exits non-zero for a missing path and still prints the rest.
-		// A lost connection or an end of ctx stops the batches, and Lstat
-		// then answers the paths that are left.
+		// A lost connection or an end of ctx stops the batches, and the
+		// single calls then answer the paths that are left.
 		if err != nil && (ctx.Err() != nil || errors.Is(err, sshpool.ErrConnect)) {
-			log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: batch lstat stopped")
+			log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: batch stat stopped")
 			return
 		}
 		paths = paths[n:]

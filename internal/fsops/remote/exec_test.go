@@ -345,9 +345,9 @@ func lstatBatchTree(t *testing.T) []string {
 	require.NoError(t, os.Link(file, filepath.Join(dir, "hardlink.mkv")))
 	require.NoError(t, os.Symlink(file, filepath.Join(dir, "symlink.mkv")))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o700))
-	paths := make([]string, 0, 5+lstatBatchPaths)
+	paths := make([]string, 0, 5+batchPaths)
 	paths = append(paths, file, filepath.Join(dir, "hardlink.mkv"), filepath.Join(dir, "symlink.mkv"), filepath.Join(dir, "sub"), filepath.Join(dir, "missing"))
-	for i := range lstatBatchPaths {
+	for i := range batchPaths {
 		p := filepath.Join(dir, "sub", "f"+strconv.Itoa(i))
 		require.NoError(t, os.WriteFile(p, nil, 0o600))
 		paths = append(paths, p)
@@ -365,15 +365,17 @@ func finds(server *sshtest.Server) int {
 	return n
 }
 
-// assertLstatBatchMatchesLstat compares each LstatBatch answer with Lstat. sftp
-// attrs carry whole seconds, so the mtimes compare at that precision.
-func assertLstatBatchMatchesLstat(t *testing.T, backend *Backend, paths []string) {
+type batchFunc func(context.Context, []string) ([]*fsops.LstatInfo, []error)
+
+// assertBatchMatches compares each answer of batch with single. sftp attrs
+// carry whole seconds, so the mtimes compare at that precision.
+func assertBatchMatches(t *testing.T, batch batchFunc, single func(context.Context, string) (*fsops.LstatInfo, error), paths []string) {
 	t.Helper()
-	infos, errs := backend.LstatBatch(t.Context(), paths)
+	infos, errs := batch(t.Context(), paths)
 	require.Len(t, infos, len(paths))
 	require.Len(t, errs, len(paths))
 	for i, p := range paths {
-		want, wantErr := backend.Lstat(t.Context(), p)
+		want, wantErr := single(t.Context(), p)
 		if wantErr != nil {
 			require.ErrorIs(t, errs[i], fs.ErrNotExist, p)
 			require.ErrorIs(t, wantErr, fs.ErrNotExist, p)
@@ -401,8 +403,12 @@ func TestExecLstatBatchMatchesLstat(t *testing.T) {
 	infos, errs := backend.LstatBatch(t.Context(), paths)
 	ran := server.Commands()[before:]
 	require.Len(t, ran, 2, "one find per batch, and no stat per path")
-	assert.Equal(t, "find", ran[0][1])
-	assert.Equal(t, "find", ran[1][1])
+	for _, words := range ran {
+		require.Greater(t, len(words), 8)
+		assert.Equal(t, []string{"LC_ALL=C", "find", "-P", "--"}, words[:4])
+		assert.Equal(t, []string{"-maxdepth", "0", "-printf", batchFormat}, words[len(words)-4:])
+	}
+	assert.Equal(t, paths, slices.Concat(ran[0][4:len(ran[0])-4], ran[1][4:len(ran[1])-4]), "each path goes to find once, in order")
 	for i := range paths {
 		if i == 4 {
 			require.ErrorIs(t, errs[i], fs.ErrNotExist)
@@ -417,7 +423,7 @@ func TestExecLstatBatchMatchesLstat(t *testing.T) {
 
 	// Lstat runs a stat per path, so the field by field check reads the
 	// special paths and one file from each batch.
-	assertLstatBatchMatchesLstat(t, backend, append(paths[:6:6], paths[len(paths)-1]))
+	assertBatchMatches(t, backend.LstatBatch, backend.Lstat, append(paths[:6:6], paths[len(paths)-1]))
 }
 
 func TestSFTPLstatBatchIsLstat(t *testing.T) {
@@ -426,7 +432,7 @@ func TestSFTPLstatBatchIsLstat(t *testing.T) {
 	backend, server := newBackend(t)
 	paths := lstatBatchTree(t)[:5]
 
-	assertLstatBatchMatchesLstat(t, backend, paths)
+	assertBatchMatches(t, backend.LstatBatch, backend.Lstat, paths)
 	assert.Zero(t, finds(server))
 }
 
@@ -450,4 +456,119 @@ func TestExecLstatBatchRefusesARelativePath(t *testing.T) {
 	require.Error(t, errs[2])
 	assert.Nil(t, infos[2])
 	assert.Equal(t, paths[0], infos[0].Path)
+}
+
+func TestExecStatBatchFollowsLinks(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newExecBackend(t)
+	tree := lstatBatchTree(t)
+	file, hardlink, symlink, sub, missing := tree[0], tree[1], tree[2], tree[3], tree[4]
+	broken := filepath.Join(filepath.Dir(file), "broken.mkv")
+	require.NoError(t, os.Symlink(missing, broken))
+	paths := []string{file, missing, symlink, broken, sub, hardlink}
+	_, err := backend.exec(t.Context())
+	require.NoError(t, err)
+
+	before := len(server.Commands())
+	infos, errs := backend.StatBatch(t.Context(), paths)
+	ran := server.Commands()[before:]
+	assert.Equal(t, [][]string{slices.Concat([]string{"LC_ALL=C", "find", "-L", "--"}, paths, []string{"-maxdepth", "0", "-printf", batchFormat})}, ran,
+		"one find for the batch, and no stat per path")
+	require.ErrorIs(t, errs[1], fs.ErrNotExist)
+	require.ErrorIs(t, errs[3], fs.ErrNotExist, "a broken link has no target to stat")
+	require.NoError(t, errs[2])
+	assert.False(t, infos[2].IsSymlink)
+	assert.True(t, infos[2].Mode.IsRegular())
+	assert.Equal(t, infos[0].FileID, infos[2].FileID, "StatBatch reads the target of a symlink")
+
+	assertBatchMatches(t, backend.StatBatch, backend.Stat, paths)
+}
+
+// Each single stat is a round trip, so answering n paths one after the other
+// cannot beat n round trips. On the sftp tier every path is a single stat,
+// and on the exec tier every path that find does not print is one, such as
+// the files of a torrent that were moved away.
+func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	const paths, latency = 64, 25 * time.Millisecond
+	tests := []struct {
+		name    string
+		backend func(t *testing.T) (*Backend, *sshtest.Server)
+		missing bool
+	}{
+		{name: "sftp tier", backend: newBackend},
+		{name: "exec tier, missing paths", backend: newExecBackend, missing: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend, server := tt.backend(t)
+			dir := t.TempDir()
+			batch := make([]string, paths)
+			for i := range batch {
+				batch[i] = filepath.Join(dir, "f"+strconv.Itoa(i))
+				if !tt.missing {
+					require.NoError(t, os.WriteFile(batch[i], nil, 0o600))
+				}
+			}
+			server.SetLatency(latency)
+			// Connect first: the dial and the connect probe are round trips too.
+			_, err := backend.client(t.Context())
+			require.NoError(t, err)
+
+			start := time.Now()
+			_, errs := backend.LstatBatch(t.Context(), batch)
+			elapsed := time.Since(start)
+			serialFloor := time.Duration(paths) * latency
+			t.Logf("%d paths at %v latency: %v (serial floor %v)", paths, latency, elapsed.Round(time.Millisecond), serialFloor)
+
+			for i, err := range errs {
+				if tt.missing {
+					require.ErrorIs(t, err, fs.ErrNotExist, batch[i])
+				} else {
+					require.NoError(t, err, batch[i])
+				}
+			}
+			assert.Less(t, elapsed, serialFloor/2, "the single stats must overlap")
+		})
+	}
+}
+
+// The exec tier reads find, the sftp tier reads sftp attrs, and both answer
+// a batch the same way. Only identity differs, since sftp has none.
+func TestBatchTiersAgree(t *testing.T) {
+	t.Parallel()
+
+	execBackend, _ := newExecBackend(t)
+	sftpBackend, _ := newBackend(t)
+	tree := lstatBatchTree(t)
+	broken := filepath.Join(filepath.Dir(tree[0]), "broken.mkv")
+	require.NoError(t, os.Symlink(tree[4], broken))
+	paths := slices.Concat(tree[:5], []string{broken, tree[len(tree)-1]})
+
+	withoutIdentity := func(infos []*fsops.LstatInfo) []*fsops.FileInfo {
+		out := make([]*fsops.FileInfo, len(infos))
+		for i, info := range infos {
+			if info != nil {
+				fi := info.FileInfo
+				fi.ModTime = fi.ModTime.Truncate(time.Second)
+				out[i] = &fi
+			}
+		}
+		return out
+	}
+	for name, batch := range map[string]func(*Backend) batchFunc{
+		"lstat": func(b *Backend) batchFunc { return b.LstatBatch },
+		"stat":  func(b *Backend) batchFunc { return b.StatBatch },
+	} {
+		viaExec, execErrs := batch(execBackend)(t.Context(), paths)
+		viaSFTP, sftpErrs := batch(sftpBackend)(t.Context(), paths)
+		assert.Equal(t, withoutIdentity(viaSFTP), withoutIdentity(viaExec), name)
+		for i, p := range paths {
+			assert.Equal(t, sftpErrs[i] == nil, execErrs[i] == nil, "%s %s: sftp %v, exec %v", name, p, sftpErrs[i], execErrs[i])
+		}
+	}
 }
