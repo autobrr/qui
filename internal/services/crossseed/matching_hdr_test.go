@@ -31,6 +31,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 		sourceFiles    qbt.TorrentFiles
 		candidateFiles qbt.TorrentFiles
 		wantMatch      bool
+		wantReason     string
 		description    string
 	}{
 		// HDR vs SDR tests
@@ -169,6 +170,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
 			candidateName: "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP",
 			wantMatch:     false,
+			wantReason:    "hdr mismatch",
 			description:   "a generic HDR tag stays distinct from HDR10+",
 		},
 		{
@@ -176,6 +178,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
 			candidateName: "Movie.2024.2160p.BluRay.x265.HLG-GROUP",
 			wantMatch:     false,
+			wantReason:    "hdr mismatch",
 			description:   "a generic HDR tag stays distinct from HLG",
 		},
 		{
@@ -183,7 +186,21 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR-GROUP",
 			candidateName: "Movie.2024.2160p.BluRay.x265.DV.HDR10-GROUP",
 			wantMatch:     false,
+			wantReason:    "hdr mismatch",
 			description:   "a DV tag on one side only stays a mismatch",
+		},
+		{
+			name:          "HDR with HDR10 plus matches HDR10 plus",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR.HDR10+-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR.HDR10+-GROUP.mkv", Size: 40 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP.mkv", Size: 40 << 30},
+			},
+			wantMatch:   true,
+			description: "a generic HDR tag beside HDR10+ reads as HDR10+",
 		},
 		// Collection/streaming service tests
 		{
@@ -262,7 +279,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			candidateRelease := svc.releaseCache.Parse(tt.candidateName)
 
 			// First check releasesMatch (metadata comparison)
-			metadataMatch := svc.releasesMatch(sourceRelease, candidateRelease, false)
+			metadataMatch, reason := svc.releasesMatchWithReason(sourceRelease, candidateRelease, false)
 
 			if tt.wantMatch {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)
@@ -272,6 +289,9 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 				require.NotEmpty(t, matchType, "%s: should produce a match type", tt.description)
 			} else {
 				require.False(t, metadataMatch, "%s: metadata should NOT match", tt.description)
+				if tt.wantReason != "" {
+					require.Equal(t, tt.wantReason, reason, tt.description)
+				}
 			}
 		})
 	}
