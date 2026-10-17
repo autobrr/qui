@@ -313,6 +313,26 @@ func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
 	require.Equal(t, "192.0.2.10", *proxiedHost.Load())
 }
 
+func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
+	var hits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	// Go sends a loopback target direct, so this request does not go through
+	// the proxy. It must not reach the proxy as an ordinary request either.
+	_, _, err = svc.fetchIconBytes(t.Context(), proxy.URL+"/admin")
+	require.ErrorIs(t, err, errNonPublicAddress)
+	require.Zero(t, hits.Load())
+}
+
 func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
 	var hits atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))

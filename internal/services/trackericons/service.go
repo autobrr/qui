@@ -177,11 +177,24 @@ func newPublicOnlyTransport() *http.Transport {
 	direct := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	checked := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: rejectNonPublic}
 
+	isProxyAddr := func(addr string) bool {
+		return slices.ContainsFunc(proxyAddrs, func(p string) bool { return strings.EqualFold(p, addr) })
+	}
+
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.Proxy = func(r *http.Request) (*url.URL, error) {
 		proxyURL, err := proxyFunc(r.URL)
-		if proxyURL == nil || err != nil {
-			return proxyURL, err
+		if err != nil {
+			return nil, err
+		}
+		if proxyURL == nil {
+			// A direct request dials the target itself. DialContext does not
+			// check a proxy address, so a direct request must not target one.
+			// Go sends a loopback target direct, also when a proxy is set.
+			if target := proxyDialAddrs(r.URL.String()); len(target) == 1 && isProxyAddr(target[0]) {
+				return nil, fmt.Errorf("%w: %s", errNonPublicAddress, target[0])
+			}
+			return nil, nil
 		}
 		if err := checkPublicHost(r.Context(), r.URL.Hostname()); err != nil {
 			return nil, err
@@ -189,7 +202,7 @@ func newPublicOnlyTransport() *http.Transport {
 		return proxyURL, nil
 	}
 	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if slices.ContainsFunc(proxyAddrs, func(p string) bool { return strings.EqualFold(p, addr) }) {
+		if isProxyAddr(addr) {
 			return direct.DialContext(ctx, network, addr)
 		}
 		return checked.DialContext(ctx, network, addr)
