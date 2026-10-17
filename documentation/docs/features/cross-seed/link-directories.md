@@ -15,6 +15,7 @@ This applies to:
 - Cross-seed searches (RSS, completion, manual, scan)
 - Directory scan (dirscan) injections
 - Season pack webhook injections (see [Season Packs](./season-packs.md))
+- Manual season pack assembly from several episodes (see [Manual Match](./overview.md#manual-match))
 
 ## Settings
 

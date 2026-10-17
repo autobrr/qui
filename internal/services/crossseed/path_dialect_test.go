@@ -303,6 +303,8 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 		manual      bool
 		oldPackDir  bool // the first pack dir already holds files
 		allFail     bool // every base dir fails with firstErr
+		fails       int  // base dirs that fail with firstErr before one succeeds; 0 means 1
+		baseDirs    string
 		wantApplied bool
 		wantRoots   []string
 	}{
@@ -312,13 +314,18 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 		{name: "cross-device with files already in the pack dir", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, oldPackDir: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "every base dir cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, allFail: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
 		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
+		{name: "cross-device twice", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, fails: 2, baseDirs: "/data/tv/hl, /data/usb/hl, /data/hl2, /data/hl3", wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2", "/data/hl3"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fix := newSeasonPackFixture(t)
+			baseDirs := tt.baseDirs
+			if baseDirs == "" {
+				baseDirs = "/data/tv/hl, /data/usb/hl, /data/hl2"
+			}
 			inst := &models.Instance{
 				ID: 1, Name: "SlashInst", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true,
-				HardlinkBaseDir: "/data/tv/hl, /data/usb/hl, /data/hl2",
+				HardlinkBaseDir: baseDirs,
 			}
 			hashes := []string{"e01", "e02", "e03", "e04"}
 			sources := make([]string, 0, len(fix.packFiles))
@@ -333,6 +340,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			backend.dirs["/data/tv/hl"] = struct{}{}
 			backend.dirs["/data/usb/hl"] = struct{}{}
 			backend.dirs["/data/hl2"] = struct{}{}
+			backend.dirs["/data/hl3"] = struct{}{}
 
 			baseSM := newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: torrents}, map[int]*models.Instance{inst.ID: inst})
 			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
@@ -346,7 +354,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				automationSettingsLoader: defaultSettings(true, 0.75),
 				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					roots = append(roots, plan.RootDir)
-					if len(roots) == 1 || tt.allFail {
+					if len(roots) <= max(tt.fails, 1) || tt.allFail {
 						failed++
 						if tt.oldPackDir {
 							// Files from before this run keep the pack dir after the rollback.
@@ -370,7 +378,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				require.NoError(t, err)
 				require.True(t, resp.Applied, "%+v", resp)
 				require.Equal(t, tt.wantRoots, roots)
-				require.Equal(t, "/data/hl2", resp.Destination, "the response names the dir that was used")
+				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], resp.Destination, "the response names the dir that was used")
 				return
 			}
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
@@ -384,7 +392,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			require.Equal(t, tt.wantRoots, roots)
 			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
 			if tt.wantApplied {
-				require.Equal(t, "/data/hl2", sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], sm.addCalls[0].options["savepath"])
 			} else {
 				require.Equal(t, "link_failed", resp.Reason)
 				require.Empty(t, sm.addCalls)
