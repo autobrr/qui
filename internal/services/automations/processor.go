@@ -64,9 +64,11 @@ type torrentDesiredState struct {
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags  map[string]struct{}
-	tagActions   map[string]string // tag -> "add" | "remove"
-	tagRuleByTag map[string]ruleRef
+	currentTags    map[string]struct{}
+	tagActions     map[string]string // tag -> "add" | "remove"
+	tagRuleByTag   map[string]ruleRef
+	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
+	tagResetTags   map[string]struct{}        // tags re-added after a managed reset: a real change even when already present
 
 	// Category (last rule wins)
 	category                  *string
@@ -110,6 +112,16 @@ type torrentDesiredState struct {
 type ruleRef struct {
 	id   int
 	name string
+}
+
+// tagExpandIntent is a pending cross-seed expansion of a tag decision: the rule
+// that requested it, the decision to propagate ("add" or "remove"), and whether
+// the action runs in managed-reset mode (the tag is wholesale-deleted in the
+// client before matches are re-added).
+type tagExpandIntent struct {
+	rule            ruleRef
+	action          string
+	resetFromClient bool
 }
 
 type ruleRunStats struct {
@@ -761,6 +773,8 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		}
 	}
 	resetFromClient := shouldResetTagActionInClient(tagAction)
+	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
+	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
@@ -778,37 +792,77 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
+		// action is the local change; assert is the steady-state decision a
+		// matching copy that already looks right still pushes across its
+		// cross-seed siblings (any-match-wins, and siblings added after the
+		// first run). Full-mode removals happen on non-matches and stay local.
+		action, assert := "", ""
 		switch tagMode {
 		case models.TagModeAdd:
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
 		case models.TagModeRemove:
-			if hasTag && matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case hasTag && matchesCondition:
+				action = "remove"
+			case !hasTag && matchesCondition:
+				assert = "remove"
 			}
 		default: // full (incl. unknown/empty)
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
-			} else if hasTag && !matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && !matchesCondition:
+				action = "remove"
+			case hasTag && matchesCondition:
+				assert = "add"
 			}
+		}
+		if action != "" {
+			state.tagActions[managedTag] = action
+			if rule != nil {
+				state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			markTagReset(state, managedTag, resetFromClient && action == "add")
+			if matchesCondition {
+				assert = action
+			}
+		}
+		// A later rule's decision without expansion clears earlier intent (last rule wins).
+		if assert == "" || !expandCrossSeeds || rule == nil {
+			if action != "" {
+				delete(state.tagExpandByTag, managedTag)
+			}
+			continue
+		}
+		if state.tagExpandByTag == nil {
+			state.tagExpandByTag = make(map[string]tagExpandIntent)
+		}
+		state.tagExpandByTag[managedTag] = tagExpandIntent{
+			rule:            ruleRef{id: rule.ID, name: rule.Name},
+			action:          assert,
+			resetFromClient: resetFromClient,
 		}
 	}
 
 	return matchesCondition
+}
+
+// markTagReset records or clears a managed-reset re-add for tag, so the preview
+// counts it as the live path does (the tag is wholesale-deleted first).
+func markTagReset(state *torrentDesiredState, tag string, reset bool) {
+	if !reset {
+		delete(state.tagResetTags, tag)
+		return
+	}
+	if state.tagResetTags == nil {
+		state.tagResetTags = make(map[string]struct{})
+	}
+	state.tagResetTags[tag] = struct{}{}
 }
 
 // hasActions returns true if the state has any actions to execute.
@@ -823,6 +877,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldReannounce ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
+		len(state.tagExpandByTag) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
 		state.shouldMove ||
