@@ -112,7 +112,10 @@ export const useLocalCrossSeedMatches = (
   // Call the backend API to get local matches
   const { data: matches, isLoading: isLoadingMatches } = useQuery({
     queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
-    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
+    // Strict, like the delete dialogs: the tab offers a select-all delete
+    // with files, and a match whose file overlap could not be checked must
+    // not land in it.
+    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash, true),
     enabled: enabled && !!torrent && instanceId > 0,
     staleTime: 60000,
     gcTime: 5 * 60 * 1000,
