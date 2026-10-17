@@ -122,6 +122,7 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                     {sectionFields.map(field => (
                       <PreferenceRow
                         key={field.key}
+                        instanceId={instanceId}
                         field={field}
                         value={valueOf(field)}
                         disabled={field.readOnly === true || !isEnabled(field)}
@@ -143,6 +144,7 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
 }
 
 interface PreferenceRowProps {
+  instanceId: number
   field: PreferenceField
   value: unknown
   disabled: boolean
@@ -150,7 +152,7 @@ interface PreferenceRowProps {
 }
 
 // Memoized, so that a keystroke re-renders only the field that changed and the fields that depend on it.
-const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onChange }: PreferenceRowProps) {
+const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, disabled, onChange }: PreferenceRowProps) {
   const { t } = useTranslation("instances")
   const Widget = preferenceWidgets[field.control]
   const labels = labelsOf(field)!
@@ -158,6 +160,7 @@ const PreferenceRow = memo(function PreferenceRow({ field, value, disabled, onCh
     <div className={WIDE_CONTROLS.has(field.control) ? "md:col-span-2" : undefined}>
       <Widget
         id={`preference-${field.key}`}
+        instanceId={instanceId}
         field={field}
         labels={labels}
         value={value}

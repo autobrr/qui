@@ -78,8 +78,22 @@ const view: PreferenceField[] = [
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
 
-function serveView(fields: PreferenceField[] = view) {
-  server.use(http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)))
+function serveView(fields: PreferenceField[] = view, { supportsPathAutocomplete = false } = {}) {
+  server.use(
+    http.get("*/api/instances/1/preferences", () => HttpResponse.json(fields)),
+    http.get("*/api/instances/1/capabilities", () => HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete }))
+  )
+}
+
+// Answers each folder listing with the folders under /data, and records the folders that were listed.
+function serveFolders() {
+  const listed: string[] = []
+  server.use(http.get("*/api/instances/1/getDirectoryContent", ({ request }) => {
+    const dirPath = new URL(request.url).searchParams.get("dirPath") ?? ""
+    listed.push(dirPath)
+    return HttpResponse.json(dirPath === "/data/" ? ["/data/movies", "/data/music", "/data/tv"] : [])
+  }))
+  return listed
 }
 
 // Records the body of each save and answers with the view.
@@ -101,12 +115,12 @@ function save() {
   fireEvent.click(screen.getByRole("button", { name: "preferences.common.saveChanges" }))
 }
 
-function renderDialog(defaultTab?: string) {
+function renderDialog(defaultTab?: string, onOpenChange: (open: boolean) => void = () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const result = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <InstancePreferencesDialog open onOpenChange={() => {}} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
+        <InstancePreferencesDialog open onOpenChange={onOpenChange} instanceId={1} instanceName="qbit" defaultTab={defaultTab} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -416,6 +430,132 @@ describe("InstancePreferencesDialog", () => {
 
     await screen.findByRole("button", { name: "preferences.dialog.retry" })
     expect(screen.queryByRole("tab", { name: "preferences.dialog.tabs.downloads" })).toBeNull()
+  })
+
+  it("suggests folders in a path field when qBittorrent can list them, and saves the chosen folder", async () => {
+    const bodies = recordSaves()
+    const listed = serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    renderDialog("downloads")
+
+    // The field becomes an autocomplete box when the capabilities arrive.
+    await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    const movies = await screen.findByRole("button", { name: "/data/movies" })
+    expect(screen.getByRole("button", { name: "/data/music" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "/data/tv" })).toBeNull()
+    fireEvent.click(movies)
+    expect(savePath.value).toBe("/data/movies/")
+    expect(listed).toContain("/data/")
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_path: "/data/movies/" }])
+  })
+
+  it("closes only the folder suggestions on the first Escape, and the dialog on the second", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    const onOpenChange = vi.fn()
+    renderDialog("downloads", onOpenChange)
+
+    await waitFor(async () => expect((await fieldFor("preferences.fileManagement.defaultSavePath")).getAttribute("autocomplete")).toBe("off"))
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    await screen.findByRole("button", { name: "/data/movies" })
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("button", { name: "/data/movies" })).toBeNull())
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(savePath, { key: "Escape" })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("keeps the same folder input when the capabilities arrive after the user starts typing", async () => {
+    serveFolders()
+    serveView(view, { supportsPathAutocomplete: true })
+    let answerCapabilities = () => {}
+    const capabilitiesSent = new Promise<void>(resolve => { answerCapabilities = resolve })
+    server.use(http.get("*/api/instances/1/capabilities", async () => {
+      await capabilitiesSent
+      return HttpResponse.json({ webAPIVersion: "2.15.1", supportsPathAutocomplete: true })
+    }))
+    renderDialog("downloads")
+
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    savePath.focus()
+    fireEvent.change(savePath, { target: { value: "/data" } })
+    answerCapabilities()
+
+    await waitFor(() => expect(savePath.getAttribute("autocomplete")).toBe("off"))
+    expect(await fieldFor("preferences.fileManagement.defaultSavePath")).toBe(savePath)
+    expect(document.activeElement).toBe(savePath)
+  })
+
+  it("suggests no folders for a file path, also when qBittorrent can list folders", async () => {
+    const listed = serveFolders()
+    serveView([
+      { key: "ip_filter_enabled", value: true, tab: "connection", section: "ipFiltering", control: "switch" },
+      { key: "ip_filter_path", value: "", tab: "connection", section: "ipFiltering", control: "path", dependsOn: "ip_filter_enabled" },
+    ], { supportsPathAutocomplete: true })
+    const { queryClient } = renderDialog("connection")
+
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    const filterPath = await fieldFor("preferences.connectionSettings.ipFilterPath")
+    expect(filterPath.getAttribute("autocomplete")).toBeNull()
+    fireEvent.change(filterPath, { target: { value: "/data/m" } })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(listed).toEqual([])
+  })
+
+  it("shows a plain text box for a path when qBittorrent cannot list folders", async () => {
+    const bodies = recordSaves()
+    const listed = serveFolders()
+    serveView()
+    const { queryClient } = renderDialog("downloads")
+
+    const savePath = await fieldFor("preferences.fileManagement.defaultSavePath")
+    await waitFor(() => expect(queryClient.getQueryData(["instance-capabilities", 1])).toBeDefined())
+    fireEvent.change(savePath, { target: { value: "/data/m" } })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(listed).toEqual([])
+    expect(screen.queryByRole("button", { name: "/data/movies" })).toBeNull()
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_path: "/data/m" }])
+  })
+
+  it("shows the stop condition and the deletion of .torrent files, and the 5.3 backup folders", async () => {
+    const bodies = recordSaves()
+    serveView([
+      { key: "torrent_stop_condition", value: "None", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["None", "MetadataReceived", "FilesChecked"] },
+      { key: "auto_delete_mode", value: 2, tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: [0, 1, 2] },
+      { key: "merge_trackers", value: false, tab: "downloads", section: "whenAddingDuplicate", control: "switch" },
+      { key: "torrent_files_backup_enabled", value: false, tab: "downloads", section: "torrentFileBackup", control: "switch" },
+      { key: "torrent_files_backup_dir", value: "backup", tab: "downloads", section: "torrentFileBackup", control: "path", optionSource: "pathAutocomplete", dependsOn: "torrent_files_backup_enabled" },
+      { key: "preallocate_all", value: false, tab: "downloads", section: "files", control: "switch" },
+    ])
+    renderDialog("downloads")
+
+    expect((await fieldFor("preferences.fields.torrentStopCondition")).textContent).toBe("preferences.fields.torrentStopConditionNone")
+    expect((await fieldFor("preferences.fields.autoDeleteMode")).textContent).toBe("preferences.fields.autoDeleteModeAlways")
+    const backupDir = await fieldFor("preferences.fields.torrentFilesBackupDir")
+    expect(backupDir.disabled).toBe(true)
+    fireEvent.click(await fieldFor("preferences.fields.torrentFilesBackupEnabled"))
+    fireEvent.change(backupDir, { target: { value: "/backup" } })
+    fireEvent.click(await fieldFor("preferences.fields.preallocateAll"))
+    expect(screen.getAllByRole("heading", { level: 3 }).map(heading => heading.textContent)).toEqual([
+      "preferences.sections.whenAdding",
+      "preferences.sections.whenAddingDuplicate",
+      "preferences.sections.torrentFileBackup",
+    ])
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ torrent_files_backup_enabled: true, torrent_files_backup_dir: "/backup", preallocate_all: true }])
   })
 
   it("sends scan_dirs when one watch folder changes", async () => {
