@@ -51,10 +51,10 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/sqlite3store"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/tray"
 	"github.com/autobrr/qui/internal/update"
-	"github.com/autobrr/qui/pkg/sqlite3store"
 )
 
 func main() {
