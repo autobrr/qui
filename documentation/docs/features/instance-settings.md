@@ -80,14 +80,91 @@ In the instance settings dialog, open the three-dot menu next to the dialog titl
 
 ## qBittorrent Preferences
 
-The settings dialog has tabs for qBittorrent application preferences: **Speed**, **Queue**, **Files**, **Seeding**, **Connect**, **Discovery**, and **Advanced**. qui sends these values to qBittorrent's API. They behave the same as the native WebUI settings.
+After the **Instance** tab, the settings dialog shows the tabs of the qBittorrent WebUI in the same order: **Behavior**, **Downloads**, **Connect**, **Speed**, **BitTorrent**, **RSS**, **WebUI**, and **Advanced**. qui sends these preferences to the qBittorrent API. They work the same as in the qBittorrent WebUI.
 
-### Monitored folders
+qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences. The **Behavior** and **WebUI** tabs have no preferences in qui yet.
+
+Some preferences are read-only. qui shows the value, and you change it in qBittorrent.
+
+All tabs share one form. When you click **Save Changes** on any tab, qui sends only the preferences that you changed, on all tabs. If the save fails, qui shows an error and keeps your changes in the form.
+
+Other screens in qui read the preferences each time that you open them. An example is the default save path in the add torrent dialog. If you change a preference in the qBittorrent WebUI, qui shows the new value the next time that you open the screen. qui can take up to 30 seconds to get the change from qBittorrent.
+
+### Downloads
+
+The **When adding a torrent** section has the default content layout and **Start Torrents Paused**.
+
+The **Saving management** section has automatic torrent management and its relocation rules, subcategories, the default save path, the temporary download path, and the watch folders. qBittorrent 4.6 to 5.1 send the subcategories preference.
+
+The **Excluded file names** section is read-only.
+
+The **Run External Program** section has the commands that qBittorrent runs when a torrent is added and when a torrent finishes. A list of placeholders follows them.
+
+#### Start torrents paused
+
+The **Start Torrents Paused** switch on the **Downloads** tab changes the qBittorrent preference "Do not start the download automatically". Torrents that other tools add to qBittorrent also start paused.
+
+The add torrent dialog uses this preference as the default for its **Start paused** option. The choice in the dialog always applies to the torrents that you add.
+
+:::note
+Earlier versions of qui kept this setting in qui and did not send it to qBittorrent. After you update qui, open the **Downloads** tab and set **Start Torrents Paused** again.
+:::
+
+#### Monitored folders
 
 qBittorrent watches folders and adds any torrent file that appears in them. Configure this in qui:
 
-1. Open the instance settings dialog and select the **Files** tab.
+1. Open the instance settings dialog and select the **Downloads** tab.
 2. Under **Watch Folders**, click **Add Folder**.
 3. Enter the path of the folder to monitor.
 4. Select the **Torrent Destination** for discovered torrents: **Monitored folder**, **Default save location**, or **Other** with a custom save path.
 5. Click **Save Changes**.
+
+### Connect
+
+The **Protocol Settings** section has the BitTorrent protocol: TCP, μTP, or both.
+
+The **Listening Port** section has the port for incoming connections and UPnP/NAT-PMP port forwarding.
+
+The **Connection Limits** section has the global and per-torrent maximum connections and upload slots.
+
+The **IP Filtering** section has the IP filter file, the filter for trackers, and the manually banned IP addresses.
+
+### Speed
+
+The **Global rate limits** and **Alternative rate limits** sections show the limits in KiB/s. An empty limit means no limit. The alternative rate limits section also has the schedule: the start time, the end time, and the days.
+
+The **Rate limits settings** section sets whether the limits apply to μTP, to transport overhead, and to peers on the LAN.
+
+### BitTorrent
+
+The **Security & Privacy** section has DHT, PeX, local peer discovery, encryption, and anonymous mode.
+
+The **Queue Management** section has queueing, the limits for active torrents, and the thresholds for slow torrents.
+
+The **Seeding Limits** section has the share ratio limit and the seeding time limit.
+
+The **Automatically add trackers to new downloads** section is read-only.
+
+### RSS
+
+The **RSS reader** section has RSS processing, the refresh interval, and the maximum number of articles for each feed.
+
+The **RSS torrent auto downloader** section has RSS auto-downloading.
+
+The **RSS smart episode filter** section sets whether qBittorrent downloads REPACK and PROPER episodes.
+
+### Advanced
+
+The **qBittorrent** section has the memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only. qui shows the memory working set limit only on libtorrent 2, and not on Linux or macOS.
+
+The **libtorrent** section has these preferences:
+
+- The asynchronous I/O threads, the hashing threads, the file pool size, the memory for torrent checks, the disk cache, and the disk queue size.
+- The disk I/O type, the read mode, and the write mode, and the coalescing of reads and writes.
+- The send buffer watermarks, the socket backlog size, the outgoing ports, and the UPnP lease duration.
+- The peer ToS byte, the μTP-TCP mixed mode, multiple connections from one IP address, and the block of peers on privileged ports.
+- The announce to all trackers and to all tiers, the IP address that qBittorrent reports to trackers, the maximum concurrent HTTP announces, and the stop tracker timeout.
+- The peer turnover and the request queue size.
+
+qui shows the disk cache and the coalescing of reads and writes only on libtorrent 1. qui shows the hashing threads and the disk I/O type only on libtorrent 2.

@@ -233,12 +233,11 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	}
 
 	response := &TorrentResponse{
-		Torrents:       views,
-		Total:          len(torrents),
-		Counts:         counts,
-		Stats:          sm.calculateStats(torrents),
-		HasMore:        true,
-		AppPreferences: json.RawMessage(`{"announce_ip":"203.0.113.7"}`),
+		Torrents: views,
+		Total:    len(torrents),
+		Counts:   counts,
+		Stats:    sm.calculateStats(torrents),
+		HasMore:  true,
 	}
 
 	b.ResetTimer()

@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -259,9 +259,7 @@ type InstanceError struct {
 }
 
 // TorrentResponse contains a page of torrent rows plus sidebar, instance, and
-// qBittorrent metadata for the same view. Preferences use a tri-state JSON
-// contract: omitted means leave any existing frontend cache unchanged, a value
-// replaces the cache, and explicit null clears stale cached preferences.
+// qBittorrent metadata for the same view.
 type TorrentResponse struct {
 	Torrents              []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -282,36 +280,6 @@ type TorrentResponse struct {
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
-	// AppPreferences is pre-marshaled, so this type needs no MarshalJSON of its
-	// own. It must stay last: that is where the marshaler it replaced put the key.
-	AppPreferences json.RawMessage `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
-}
-
-// torrentResponseAppPreferences resolves the tri-state preferences field for a
-// torrent response, already rendered to JSON: a nil result omits it, "null"
-// clears the stale frontend cache, and a value replaces it. A fresh fetch
-// failure with no cached preferences becomes the explicit null; cache-only
-// responses omit the field when no cached value exists.
-func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (json.RawMessage, error) {
-	if client == nil {
-		return nil, nil
-	}
-
-	if skipFreshData {
-		return client.cachedAppPreferencesJSON()
-	}
-
-	if _, err := client.GetAppPreferences(ctx); err != nil {
-		// GetAppPreferences serves stale preferences on a failed refresh, so an
-		// error means nothing is cached at all.
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-		return json.RawMessage("null"), nil
-	}
-
-	return client.cachedAppPreferencesJSON()
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -1813,7 +1781,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
-	var preferencesJSON json.RawMessage
 
 	if syncManager != nil {
 		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
@@ -1832,18 +1799,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		} else {
 			appInfo = info
 		}
-
-		preferencesJSON, err = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
-		if err != nil {
-			// Preferences are cosmetic, so a marshal failure must not blank the
-			// torrent table and turn every stream frame into an error. Omit the
-			// field and keep the list, the same way the app info fetch above does.
-			log.Error().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to marshal qBittorrent app preferences for torrent stream")
-			preferencesJSON = nil
-		}
 	}
 
 	response := &TorrentResponse{
@@ -1856,7 +1811,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
 		AppInfo:                appInfo,     // Include application info for frontend consumers
-		AppPreferences:         preferencesJSON,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -6006,14 +5960,38 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 	return *prefs, nil
 }
 
-// SetAppPreferences updates app preferences
+// GetPreferenceView returns the preference catalog view of the instance preferences.
+func (sm *SyncManager) GetPreferenceView(ctx context.Context, instanceID int) ([]prefcatalog.Field, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	// Without build info, the libtorrent and platform gates pass.
+	var libtorrentVersion, platform string
+	if info, err := client.GetAppInfo(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Preference view without qBittorrent build info")
+	} else if info.BuildInfo != nil {
+		libtorrentVersion = info.BuildInfo.Libtorrent
+		platform = info.BuildInfo.Platform
+	}
+
+	return prefcatalog.View(*prefs, libtorrentVersion, platform)
+}
+
+// SetAppPreferences writes the changed preferences through the preference catalog.
 func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]any) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
+	if err := prefcatalog.Apply(ctx, client.Client, prefs); err != nil {
 		return fmt.Errorf("failed to set preferences: %w", err)
 	}
 
@@ -6022,28 +6000,6 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")
 
-	return nil
-}
-
-// NormalizeScanDirsPreference validates and normalizes the scan_dirs preference
-// using go-qbittorrent's typed monitored folder support.
-func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
-	rawScanDirs, ok := prefs["scan_dirs"]
-	if !ok {
-		return nil
-	}
-
-	encoded, err := json.Marshal(rawScanDirs)
-	if err != nil {
-		return err
-	}
-
-	var scanDirs qbt.MonitoredFolders
-	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
-		return err
-	}
-
-	prefs["scan_dirs"] = scanDirs
 	return nil
 }
 
@@ -6984,29 +6940,33 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (r
 		return fmt.Errorf("failed to get app preferences: %w", err)
 	}
 	originalEnabled := prefs.RssAutoDownloadingEnabled
+	setAutoDownloading := func(enabled bool) error {
+		return prefcatalog.Apply(ctx, client.Client, map[string]any{"rss_auto_downloading_enabled": enabled})
+	}
+	defer client.InvalidateAppPreferencesCache()
 
 	defer func() {
 		if retErr == nil {
 			return
 		}
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, originalEnabled); err != nil {
+		if err := setAutoDownloading(originalEnabled); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Bool("originalEnabled", originalEnabled).Msg("failed to restore RSS auto-downloading state after reprocess error")
 		}
 	}()
 
 	// Ensure it's disabled first (may already be disabled)
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+	if err := setAutoDownloading(false); err != nil {
 		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
 	}
 
 	// Enable to trigger startProcessing() which processes all unread articles
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, true); err != nil {
+	if err := setAutoDownloading(true); err != nil {
 		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
 	}
 
 	// Restore original state if it was disabled
 	if !originalEnabled {
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+		if err := setAutoDownloading(false); err != nil {
 			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
 		}
 	}
