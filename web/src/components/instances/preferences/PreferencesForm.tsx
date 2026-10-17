@@ -134,7 +134,10 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                           addressLabels={preferenceTabLabels.advanced.fields.current_interface_address}
                           iface={String(values.current_network_interface ?? "")}
                           address={String(values.current_interface_address ?? "")}
-                          interfaceName={String(byKey.get("current_interface_name")?.value ?? "")}
+                          // The name belongs to the saved interface, not to an interface selected in the form.
+                          interfaceName={values.current_network_interface === byKey.get("current_network_interface")?.value
+                            ? String(byKey.get("current_interface_name")?.value ?? "")
+                            : ""}
                           onChange={setValue}
                         />
                       </div>

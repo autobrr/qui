@@ -845,4 +845,40 @@ describe("InstancePreferencesDialog network binding", () => {
     // The fetch failed, so the read-only boxes stay.
     expect((await fieldFor(interfaceLabel)).disabled).toBe(true)
   })
+
+  it("shows the interface selected in the form when the list loads again and fails", async () => {
+    serveView(bindingView("eth0", "192.168.1.10", "Ethernet"))
+    serveBinding([anyInterface, ethernet, wireGuard])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
+    await openSelect(await fieldFor(interfaceLabel))
+    fireEvent.click(screen.getByRole("option", { name: "WireGuard" }))
+
+    // Another tab unmounts the widget, so the list loads again on the way back.
+    serveBinding(null)
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.instance" }), { button: 0 })
+    await waitFor(() => expect(screen.queryByText(interfaceLabel)).toBeNull())
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.advanced" }), { button: 0 })
+    const iface = await fieldFor(interfaceLabel)
+    await waitFor(() => expect(iface.disabled).toBe(true))
+    // "Ethernet" is the name of the saved interface, so it does not apply to wg0.
+    expect(iface.value).toBe("wg0")
+  })
+
+  it("shows the binding read-only when the list fails to load again after a save", async () => {
+    recordSaves()
+    serveView(bindingView("eth0", "192.168.1.10", "Ethernet"))
+    serveBinding([anyInterface, ethernet, wireGuard])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
+    const failed = serveBinding(null)
+    fireEvent.change(await fieldFor("preferences.fields.saveStatisticsInterval"), { target: { value: "30" } })
+    save()
+
+    await waitFor(() => expect(failed.count).toBe(1))
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).disabled).toBe(true))
+    expect((await fieldFor(interfaceLabel)).value).toBe("Ethernet")
+  })
 })

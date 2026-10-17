@@ -404,7 +404,7 @@ interface NetworkBindingProps {
 export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabels, iface, address, interfaceName, onChange }: NetworkBindingProps) {
   const { t } = useTranslation("instances")
   const [incognitoMode] = useIncognitoMode()
-  const { data: interfaces } = useQuery({
+  const { data: interfaces, isError } = useQuery({
     queryKey: networkBindingKey(instanceId),
     queryFn: () => api.getNetworkBinding(instanceId),
     gcTime: 0,
@@ -412,7 +412,8 @@ export function NetworkBindingWidget({ instanceId, interfaceLabels, addressLabel
   const blur = incognitoMode ? "blur-sm select-none" : undefined
   const allAddresses = ALL_ADDRESSES.find(option => option.value === address)
 
-  if (!interfaces) {
+  // A failed load after a save keeps the old list, so the error counts too.
+  if (!interfaces || isError) {
     return (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2">
