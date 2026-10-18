@@ -29,7 +29,7 @@ type RuleNeeds struct {
 // row reads only the torrent and is always known.
 type fieldData struct {
 	trustedIdentity bool // needs models.FilesystemCapabilitiesOf(instance).TrustedIdentity
-	localAccess     bool // needs instance.HasLocalFilesystemAccess
+	read            bool // needs models.FilesystemCapabilitiesOf(instance).Read
 	// need marks the data in RuleNeeds.
 	need func(n *RuleNeeds)
 	// known reports whether ctx holds the field's data for the torrent. A row
@@ -55,8 +55,8 @@ var conditionFieldData = map[ConditionField]fieldData{
 		},
 	},
 	FieldHasMissingFiles: {
-		localAccess: true,
-		need:        func(n *RuleNeeds) { n.MissingFiles = true },
+		read: true,
+		need: func(n *RuleNeeds) { n.MissingFiles = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HasMissingFilesByHash[hash]
 			return ok
@@ -110,7 +110,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	}
 	if ctx == nil ||
 		data.trustedIdentity && !ctx.InstanceHasTrustedIdentity ||
-		data.localAccess && !ctx.InstanceHasLocalAccess {
+		data.read && !ctx.InstanceCanRead {
 		return false
 	}
 	if data.known(ctx, hash) {

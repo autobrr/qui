@@ -70,8 +70,8 @@ type EvalContext struct {
 	HasMissingFilesByHash map[string]bool
 	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
 	HasSkippedFilesByHash map[string]bool
-	// InstanceHasLocalAccess gates the missing-files field. #2933 lifts it to Read.
-	InstanceHasLocalAccess bool
+	// InstanceCanRead gates the missing-files field.
+	InstanceCanRead bool
 	// InstanceHasTrustedIdentity gates the hardlink fields, hardlink grouping
 	// and includeHardlinks. Each of them can add torrents to a delete, so a
 	// remote instance, whose identity only its host asserts, never reads them
@@ -401,8 +401,9 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 }
 
 func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
-	ctx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
-	ctx.InstanceHasTrustedIdentity = models.FilesystemCapabilitiesOf(instance).TrustedIdentity
+	capabilities := models.FilesystemCapabilitiesOf(instance)
+	ctx.InstanceCanRead = capabilities.Read
+	ctx.InstanceHasTrustedIdentity = capabilities.TrustedIdentity
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.

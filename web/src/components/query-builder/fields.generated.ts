@@ -39,7 +39,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE: { type: "enum", operators: ["EQUAL", "NOT_EQUAL"], values: ["none", "torrents_only", "inside_qbittorrent", "outside_qbittorrent", "both"], requires: "local filesystem access" },
   HARDLINK_SCOPE_CROSS: { type: "enum", operators: ["EQUAL", "NOT_EQUAL"], values: ["none", "torrents_only", "inside_qbittorrent", "outside_qbittorrent", "both"], requires: "local filesystem access" },
   HASH: { type: "string", operators: ["EQUAL", "NOT_EQUAL", "CONTAINS", "NOT_CONTAINS", "STARTS_WITH", "ENDS_WITH", "MATCHES"] },
-  HAS_MISSING_FILES: { type: "boolean", operators: ["EQUAL", "NOT_EQUAL"], values: ["true", "false"], requires: "local filesystem access" },
+  HAS_MISSING_FILES: { type: "boolean", operators: ["EQUAL", "NOT_EQUAL"], values: ["true", "false"], requires: "filesystem access" },
   HAS_SKIPPED_FILES: { type: "boolean", operators: ["EQUAL", "NOT_EQUAL"], values: ["true", "false"] },
   INACTIVE_SEEDING_TIME_LIMIT: { type: "integer", unit: "seconds", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"] },
   INFOHASH_V1: { type: "string", operators: ["EQUAL", "NOT_EQUAL", "CONTAINS", "NOT_CONTAINS", "STARTS_WITH", "ENDS_WITH", "MATCHES"] },
