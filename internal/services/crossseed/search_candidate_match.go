@@ -981,10 +981,10 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 // text tags before the group rebuilds the name, so "x265-Fansub" and
 // "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
 // origins as groupTagProvenance, because a view built from the files can carry
-// the Group of the torrent name without the tags of that name. Every origin
-// with a group tag must carry the Group and rebuild the Site, so a selected
-// file that names "Big-Moe-Fansub" or "Other" vetoes a torrent name that says
-// "Moe-Fansub". An origin without a group tag has no say.
+// the Group of the torrent name without the tags of that name. Every origin on
+// either side with a group tag must carry the Group and rebuild the Site, so a
+// selected file that names "Big-Moe-Fansub" or "Other" vetoes a torrent name
+// that says "Moe-Fansub". An origin without a group tag has no say.
 func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 	if sited.release == nil || grouped.release == nil {
 		return false
@@ -996,29 +996,37 @@ func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 		return false
 	}
 
-	var rawRelease *rls.Release
-	if grouped.rawName != "" {
-		rawRelease = m.parseReleaseName(grouped.rawName)
-	}
-	spelled := false
-	for _, origin := range [...]*rls.Release{grouped.release, grouped.tagOrigin, rawRelease} {
-		if origin == nil {
-			continue
+	// spells reports whether no origin of side contradicts the rebuild, and
+	// whether at least one origin spells it.
+	spells := func(side namedRelease) (agrees, spelled bool) {
+		var rawRelease *rls.Release
+		if side.rawName != "" {
+			rawRelease = m.parseReleaseName(side.rawName)
 		}
-		groupTag, name := dashSuffixGroupName(origin)
-		switch normalizer.Normalize(groupTag) {
-		case "":
-			continue
-		case group:
-			if normalizer.Normalize(name) != site {
-				return false
+		for _, origin := range [...]*rls.Release{side.release, side.tagOrigin, rawRelease} {
+			if origin == nil {
+				continue
 			}
-		default:
-			return false
+			groupTag, name := dashSuffixGroupName(origin)
+			switch normalizer.Normalize(groupTag) {
+			case "":
+				continue
+			case group:
+				if normalizer.Normalize(name) != site {
+					return false, false
+				}
+			default:
+				return false, false
+			}
+			spelled = true
 		}
-		spelled = true
+		return true, spelled
 	}
-	return spelled
+	if agrees, spelled := spells(grouped); !agrees || !spelled {
+		return false
+	}
+	agrees, _ := spells(sited)
+	return agrees
 }
 
 // dashSuffixGroupName returns the group tag and that tag joined with the text

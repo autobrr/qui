@@ -1276,4 +1276,18 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	conflicting.tagOrigin = nil
 	ok, reason = strict(conflicting)
 	require.True(t, ok, "torrent-name spelling: %s", reason)
+
+	// The selected file of the bracket side has the same say, in both
+	// directions.
+	grouped := conflicting
+	sited.tagOrigin = svc.releaseCache.Parse(otherFile)
+	ok, reason = strict(grouped)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	ok, reason = m.namedReleasesMatchWithReasonAndTitles(sited, grouped, nil, nil, false)
+	require.False(t, ok)
+	require.Equal(t, "site mismatch", reason)
+	sited.tagOrigin = svc.releaseCache.Parse(suffix + ".mkv")
+	ok, reason = strict(grouped)
+	require.True(t, ok, "bracket side file spelling: %s", reason)
 }
