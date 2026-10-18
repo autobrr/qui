@@ -18,7 +18,8 @@ Hardlink mode is an opt-in cross-seeding strategy. qui creates a hardlinked copy
 
 ## Requirements
 
-- The target qBittorrent instance must have **Local filesystem access** enabled, or be a remote instance. On a remote instance, a link target that already exists stops the add instead of falling back to a regular add, because qui cannot tell its own earlier link from another file there.
+- The target qBittorrent instance must have **Local filesystem access** enabled, or be a remote instance.
+- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. A target that is already qui's own link to the same file is reused.
 - The hardlink base directory must reside on the **same filesystem/volume** as the instance download paths. Hardlinks cannot cross filesystems.
 - qui must have permission to read the instance content paths and write to the hardlink base directory.
 
@@ -35,7 +36,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - Hardlink mode is a **per-instance setting**, not a per-request setting. Each qBittorrent instance has its own hardlink configuration.
 - Torrents added in hardlink or reflink mode always use an explicit `savepath` (the link-tree root), which turns **AutoTMM off**. If you enable AutoTMM after the add, qBittorrent can move files out of the link tree.
 - If qui cannot create a hardlink (due to missing local access, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
-- If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. Filesystem fallback uses a full recheck, except for a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
+- If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. A link target that already holds a different file is the exception: it fails the cross-seed even with fallback on. Filesystem fallback uses a full recheck, except for a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
 - If qBittorrent returns an unsafe file path, qui rejects the cross-seed without regular-mode fallback. This applies to hardlink and reflink modes.
 - When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is off (the default).
 - qui categorizes hardlinked torrents with your existing cross-seed category rules (category affix, indexer name, or custom category). The hardlink preset only affects the on-disk folder layout.
@@ -44,7 +45,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 
 Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then expand the instance:
 
-- **Base directories**: paths on the qui host where qui creates link trees. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
+- **Base directories**: paths where qui creates link trees, on the host that holds the instance's files. For an instance with local filesystem access that is the qui host; for a remote instance it is the remote host, so enter the paths as that host sees them. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory organization** preset:
   - `flat`: `base/TorrentName--shortHash/...`
   - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
