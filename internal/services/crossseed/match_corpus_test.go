@@ -392,6 +392,16 @@ var corpusRows = []corpusRow{
 		want: corpusMatch,
 	},
 	{
+		name:           "bracket fansub pack with a hyphen against its dash suffix pack",
+		source:         "[Moe-Fansub] Kaiju Squad S02 [BD HEVC 1080p FLAC]",
+		candidate:      "Kaiju Squad S02 1080p BluRay FLAC 2.0 x265-Moe-Fansub",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[Moe-Fansub] Kaiju Squad S02 [BD HEVC 1080p FLAC]", "[Moe-Fansub] Kaiju Squad S02E%02d [BD HEVC 1080p FLAC]"),
+		candidateFiles: corpusPackFiles("Kaiju Squad S02 1080p BluRay FLAC 2.0 x265-Moe-Fansub", "Kaiju Squad S02E%02d 1080p BluRay FLAC 2.0 x265-Moe-Fansub"),
+		want:           corpusMatch,
+	},
+	{
 		name:          "bracket fansub without a hyphen against its dash suffix",
 		source:        "[MoeFansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
 		candidate:     "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-MoeFansub",
