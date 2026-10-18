@@ -14,6 +14,10 @@ import (
 	"github.com/autobrr/qui/pkg/fsutil"
 )
 
+// ErrRollbackFailed marks a failed tree create whose rollback also failed, so
+// part of the tree may still be on disk.
+var ErrRollbackFailed = errors.New("rollback also failed")
+
 // Created records the files and directories a single Create call actually
 // made on disk. Rollback removes exactly those and nothing else: destinations
 // can be shared between torrents, and a plan-wide cleanup would delete links
@@ -95,7 +99,7 @@ func Create(plan *TreePlan) (*Created, error) {
 	rollbackOnError := func(err error) error {
 		rollbackErr := rollback(createdFiles, createdDirs)
 		if rollbackErr != nil {
-			return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return fmt.Errorf("%w (%w: %w)", err, ErrRollbackFailed, rollbackErr)
 		}
 		return err
 	}

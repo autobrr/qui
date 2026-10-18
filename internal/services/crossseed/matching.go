@@ -741,9 +741,17 @@ func joinNormalizedSlice(slice []string) string {
 	return strings.Join(normalized, " ")
 }
 
+// joinNormalizedHDRSlice reads a generic HDR tag as HDR10 (see Generic HDR tag in GLOSSARY.md).
 func joinNormalizedHDRSlice(slice []string) string {
-	normalized := releases.NormalizeHDRTags(slice)
-	return strings.Join(normalized, " ")
+	tags := make([]string, len(slice))
+	for i, tag := range slice {
+		// The parser stores canonical tags, so an exact compare is enough.
+		if tag == "HDR" {
+			tag = "HDR10"
+		}
+		tags[i] = tag
+	}
+	return strings.Join(releases.NormalizeHDRTags(tags), " ")
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.

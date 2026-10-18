@@ -16,11 +16,14 @@ import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { preferenceTabLabels } from "./labels"
-import { labelsOf, preferenceTabsOf, preferenceViewKey } from "./preferenceView"
+import { labelsOf, networkBindingKey, preferenceTabsOf, preferenceViewKey } from "./preferenceView"
 import { PreferencesFormShell } from "./PreferencesFormShell"
-import { preferenceWidgets } from "./PreferenceWidgets"
+import { NetworkBindingWidget, preferenceWidgets } from "./PreferenceWidgets"
 
 const WIDE_CONTROLS = new Set<PreferenceField["control"]>(["switch", "list", "watchFolders"])
+
+// The network binding widget draws these keys together with current_network_interface.
+const NETWORK_BINDING_PARTS = new Set(["current_interface_address", "current_interface_name"])
 
 interface PreferencesFormProps {
   instanceId: number
@@ -82,6 +85,8 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
       }
       setSaved(previous => ({ ...previous, ...changed }))
       void queryClient.invalidateQueries({ queryKey: preferenceViewKey(instanceId) })
+      // The saved binding decides which interface and address are "not available".
+      void queryClient.invalidateQueries({ queryKey: networkBindingKey(instanceId) })
     }
     toast.success(t("preferences.toast.saved"))
   }
@@ -90,7 +95,7 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
     const tabLabels = preferenceTabLabels[tab]
     const sections = new Map<string, PreferenceField[]>()
     for (const field of fields) {
-      if (field.tab === tab && labelsOf(field)) {
+      if (field.tab === tab && labelsOf(field) && !NETWORK_BINDING_PARTS.has(field.key)) {
         sections.set(field.section, [...sections.get(field.section) ?? [], field])
       }
     }
@@ -121,7 +126,22 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {sectionFields.map(field => (
+                    {sectionFields.map(field => field.optionSource === "networkInterfaces" ? (
+                      <div key={field.key} className="md:col-span-2">
+                        <NetworkBindingWidget
+                          instanceId={instanceId}
+                          interfaceLabels={labelsOf(field)!}
+                          addressLabels={preferenceTabLabels.advanced.fields.current_interface_address}
+                          iface={String(values.current_network_interface ?? "")}
+                          address={String(values.current_interface_address ?? "")}
+                          // The name belongs to the saved interface, not to an interface selected in the form.
+                          interfaceName={values.current_network_interface === byKey.get("current_network_interface")?.value
+                            ? String(byKey.get("current_interface_name")?.value ?? "")
+                            : ""}
+                          onChange={setValue}
+                        />
+                      </div>
+                    ) : (
                       <PreferenceRow
                         key={field.key}
                         instanceId={instanceId}
@@ -172,7 +192,7 @@ const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, di
         onChange={next => onChange(field.key, next)}
         disabled={disabled}
       />
-      {field.readOnly && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey ?? "preferences.readOnlyNote")}</p>}
+      {field.readOnly && labels.readOnlyNoteKey && <p className="mt-1 text-xs text-muted-foreground">{t(labels.readOnlyNoteKey)}</p>}
     </div>
   )
 })

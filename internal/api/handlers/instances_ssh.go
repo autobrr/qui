@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -172,6 +173,12 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		response.PinnedKeyType = report.PinnedKey.Type()
 	}
 	if report.Capabilities != nil {
+		h.storeSSHTier(r.Context(), instance.ID, report.Capabilities)
+		// A pooled connection keeps the tier its own probe found, and that
+		// probe may have got no answer while the row kept exec, so a fresh
+		// probe that matches the row says nothing about the connection. A
+		// test is the user asking for a recheck: the next operation dials.
+		h.sshPool.Invalidate(instance.ID)
 		response.Capabilities = &SSHCapabilities{
 			SFTP:        report.Capabilities.SFTP,
 			Statvfs:     report.Capabilities.Statvfs,
@@ -232,7 +239,8 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 	// Re-dial rather than trust the echoed key: pinning what the host presents
 	// right now is the trust-on-first-use the confirmation step exists to
 	// replace, and it is also what makes the flow stateless between requests.
-	if err := h.sshDialer.Confirm(r.Context(), instance, hostKey); err != nil {
+	capabilities, err := h.sshDialer.Confirm(r.Context(), instance, hostKey)
+	if err != nil {
 		_, mismatch := errors.AsType[*sshpool.MismatchError](err)
 		switch {
 		case errors.Is(err, models.ErrSSHKeyNotConfigured):
@@ -273,11 +281,25 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		}
 		return
 	}
+	// The pin wrote sftp. A probe that got no answer leaves it there, and the
+	// next connect probes again.
+	if capabilities != nil {
+		h.storeSSHTier(r.Context(), instance.ID, capabilities)
+	}
 
 	// A refusal memoised against the old pin ends here; the next dial checks
 	// the host against the pin the user just confirmed.
 	h.sshPool.Invalidate(instance.ID)
 	RespondJSON(w, http.StatusNoContent, nil)
+}
+
+// storeSSHTier writes the tier a probe found. The probe is the answer the user
+// is shown, so a failed write is logged, not returned: the next connect
+// writes the tier again.
+func (h *InstancesHandler) storeSSHTier(ctx context.Context, instanceID int, capabilities *sshpool.Capabilities) {
+	if err := h.instanceStore.SetSSHTier(ctx, instanceID, capabilities.Tier()); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to store the SSH tier")
+	}
 }
 
 // loadSSHInstance loads the instance for a dialing endpoint, answering the

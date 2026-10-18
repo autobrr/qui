@@ -125,7 +125,7 @@ export const FIELD_GROUPS = [
 ];
 
 // Capability types for disabling fields/states in query builder
-export type CapabilityKey = "trackerHealth" | "localFilesystemAccess" | "fileIdentity"
+export type CapabilityKey = "trackerHealth" | "localFilesystemAccess" | "trustedIdentity"
 
 export type Capabilities = Record<CapabilityKey, boolean>
 
@@ -139,25 +139,19 @@ export interface DisabledStateValue {
   reason: string
 }
 
-// Capability requirements for disabling fields/states in query builder
-export const CAPABILITY_REASONS = {
-  trackerHealth: "Requires qBittorrent 5.1+",
-  localFilesystemAccess: "Requires Local Filesystem Access",
-} as const;
-
 const REQUIREMENT_CAPABILITIES = {
   "qBittorrent 5.1+": "trackerHealth",
   "local filesystem access": "localFilesystemAccess",
 } as const satisfies Record<FieldSpec extends { requires: infer R } ? R : never, CapabilityKey>;
 
-// The backend gates the hardlink fields on file identity. Until #2726 only a local instance has it,
+// The backend gates the hardlink fields on trusted identity, which only a local instance has,
 // so the Go table names local filesystem access for them.
-const FILE_IDENTITY_FIELDS: ReadonlySet<string> = new Set<ConditionField>(["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS"]);
+const TRUSTED_IDENTITY_FIELDS: ReadonlySet<string> = new Set<ConditionField>(["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS"]);
 
 // The capability that each field needs before it has data.
 export const FIELD_REQUIREMENTS: Partial<Record<ConditionField, CapabilityKey>> = Object.fromEntries(
   Object.entries(CONDITION_FIELDS).flatMap(([field, spec]) =>
-    "requires" in spec ? [[field, FILE_IDENTITY_FIELDS.has(field) ? "fileIdentity" : REQUIREMENT_CAPABILITIES[spec.requires]]] : []
+    "requires" in spec ? [[field, TRUSTED_IDENTITY_FIELDS.has(field) ? "trustedIdentity" : REQUIREMENT_CAPABILITIES[spec.requires]]] : []
   )
 );
 
@@ -177,10 +171,10 @@ export function getFieldLabel(field: string, t: TFunction): string {
 }
 
 /** Get translated reason a field or state value is unavailable on this instance */
-export function getCapabilityReason(capability: CapabilityKey, t: TFunction): string {
-  // Only a local instance has file identity until #2726, so it shares that reason.
-  const reason = capability === "fileIdentity" ? "localFilesystemAccess" : capability;
-  return t(`queryBuilder.capabilityReasons.${reason}`, { ns: "automations", defaultValue: CAPABILITY_REASONS[reason] });
+export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isRemote = false): string {
+  // Trusted identity needs local access, which a remote instance can never have.
+  const reason = capability !== "trustedIdentity" ? capability : isRemote ? "remoteInstance" : "localFilesystemAccess";
+  return t(`queryBuilder.capabilityReasons.${reason}`, { ns: "automations" });
 }
 
 /** Get translated label for a field group */

@@ -32,7 +32,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 
 function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: FilesystemCapabilities): Instance {
   return {
@@ -59,7 +59,7 @@ const remote = makeInstance(false, { ...noCapabilities, read: true, write: true 
 remote.filesystemMode = "remote"
 
 const cases = [
-  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, write: true, content: true }), canWrite: true, canReflink: true },
+  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, trustedIdentity: true, write: true, content: true }), canWrite: true, canReflink: true },
   { name: "an instance without filesystem access", instance: makeInstance(false, noCapabilities), canWrite: false, canReflink: false },
   // A remote instance has Write (#2942) but nothing clones files over sftp, so
   // hardlink mode is offered and reflink mode is not.
