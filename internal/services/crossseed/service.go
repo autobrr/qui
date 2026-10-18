@@ -13350,20 +13350,9 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 	}
 
 	// qBittorrent returns the full file path for single-file torrents.
+	// Keep the trailing slash so normalizePath keeps C:/ and //server/share roots.
 	if len(candidateFiles) == 1 {
-		dir := path.Dir(contentPath)
-		if strings.HasPrefix(contentPath, "//") {
-			dir = "/" + dir
-		}
-		dir = normalizePath(dir)
-		if dir == "." {
-			return ""
-		}
-		// path.Dir("C:/file.mkv") returns "C:" - convert bare drive to proper root
-		if len(dir) == 2 && dir[1] == ':' {
-			dir += "/"
-		}
-		return dir
+		return normalizePath(contentPath[:strings.LastIndex(contentPath, "/")+1])
 	}
 
 	// Multi-file torrents use the storage directory as content path.
