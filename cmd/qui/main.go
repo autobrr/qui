@@ -761,7 +761,6 @@ func (app *Application) runServer() {
 		return remotebackend.New(sshPool, inst)
 	})
 	crossSeedService.SetBackendPool(backendPool)
-	syncManager.SetBackendPool(backendPool)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
@@ -769,6 +768,10 @@ func (app *Application) runServer() {
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
+
+	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
+	syncManager.SetFolderCleanup(folderCleanup)
+	folderCleanup.Start(context.Background())
 
 	discScanStore := models.NewDiscScanStore(db)
 	discScanService := discscan.NewService(discScanStore)
@@ -1018,6 +1021,9 @@ func (app *Application) runServer() {
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
 		}
 
+		// Deferred so it also runs when Shutdown returns an error. Stop
+		// ignores snapshots a request still hands in.
+		defer folderCleanup.Stop()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
 		}

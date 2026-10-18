@@ -197,7 +197,7 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 			p := filepath.Join(root, filepath.FromSlash(f.rel))
 			writeOldFile(t, p)
 			if f.inUse {
-				tfm.Add(normalizePath(fsops.HostPaths, p))
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, p))
 			}
 		}
 	}
