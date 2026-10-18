@@ -95,7 +95,11 @@ var trackerDownStatuses = []string{
 }
 
 // TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.
+// libtorrent reports an HTTP status without a reason phrase as
+// "<code> (unknown HTTP error)". That text would match "unknown", but the
+// tracker did not answer, so it is removed before matching.
 func TrackerMessageMatchesUnregistered(message string) bool {
+	message = strings.ReplaceAll(message, "(unknown HTTP error)", "")
 	return trackerMessageMatches(message, defaultUnregisteredStatuses)
 }
 
