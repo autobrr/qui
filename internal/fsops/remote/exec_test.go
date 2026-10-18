@@ -6,6 +6,7 @@ package remote
 import (
 	"context"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -533,7 +534,37 @@ func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 				}
 			}
 			assert.Less(t, elapsed, serialFloor/2, "the single stats must overlap")
+			// At most batchWidth single stats are in flight, so the batch
+			// cannot beat one round trip for each batchWidth paths.
+			assert.GreaterOrEqual(t, elapsed, time.Duration(paths/batchWidth)*latency, "at most batchWidth single stats in flight")
 		})
+	}
+}
+
+// A connection lost before a batch is not an answer about the paths. The
+// pool remembers the failed dial, so each path gets its own
+// fsops.ErrConnectionLost at once, and no path reads as missing.
+func TestExecBatchAfterALostConnectionReportsEachPathAsLost(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newExecBackend(t)
+	tree := lstatBatchTree(t)
+	_, err := backend.exec(t.Context())
+	require.NoError(t, err)
+
+	_, portText, err := net.SplitHostPort(sshtest.DeadAddr(t))
+	require.NoError(t, err)
+	backend.inst.SSHPort, err = strconv.Atoi(portText)
+	require.NoError(t, err)
+	server.DropConnections()
+
+	for name, batch := range map[string]batchFunc{"lstat": backend.LstatBatch, "stat": backend.StatBatch} {
+		infos, errs := batch(t.Context(), tree)
+		for i, p := range tree {
+			assert.Nil(t, infos[i], "%s %s", name, p)
+			require.ErrorIs(t, errs[i], fsops.ErrConnectionLost, "%s %s", name, p)
+			require.NotErrorIs(t, errs[i], fs.ErrNotExist, "%s %s", name, p)
+		}
 	}
 }
 

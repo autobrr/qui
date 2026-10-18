@@ -231,8 +231,9 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 		infos[i] = info
 	}
 
-	// After a lost connection each call fails fast, since the pool
-	// remembers the failed dial, so every path gets its own error.
+	// After a lost connection, at most one call dials the host again. If
+	// the host is back, each path gets a real answer. If not, the pool
+	// remembers the failed dial, and each path gets its own error at once.
 	var g errgroup.Group
 	g.SetLimit(batchWidth)
 	for _, i := range single {

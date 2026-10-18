@@ -96,8 +96,10 @@ The single calls of a batch run 32 at a time on the one sftp client, so they
 share round trips. In the tests, 64 paths at 25 ms of delay take about 50 ms,
 not 1.6 s. The same pipeline answers the files of a completed torrent after the user moved
 them away. On the exec tier, that torrent costs one `find`, plus about one
-round trip for each 32 missing files. After a lost connection, the batches stop, and each path that
-is left gets its own `fsops.ErrConnectionLost`.
+round trip for each 32 missing files. After a lost connection, the batches
+stop, and at most one single call dials the host again. If the host is back,
+the single calls answer. If not, each path that is left gets its own
+`fsops.ErrConnectionLost` at once, because the pool remembers the failed dial.
 
 The exec tier uses `find` and not `xargs -0 stat`, because `find` prints the
 same record as the walk, so one parser reads both. Cross-seed hardlink
