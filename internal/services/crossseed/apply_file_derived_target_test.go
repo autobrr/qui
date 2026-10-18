@@ -488,14 +488,13 @@ func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
 		torrentName string
 		files       qbt.TorrentFiles
 		wantSeries  int
-		wantNumeral bool
+		wantNumeral int
 	}{
 		{
-			name:        "numeral is the season of a pack with no other season",
+			name:        "numeral infers the season of a pack with no other season",
 			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
 			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
-			wantSeries:  2,
-			wantNumeral: true,
+			wantNumeral: 2,
 		},
 		{
 			name:        "file season wins over the numeral",
@@ -523,7 +522,7 @@ func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
 
 			view := service.applyTargetReleaseViewFromFiles(tt.torrentName, parsed, tt.files, true)
 			require.Equal(t, tt.wantSeries, view.release.Series)
-			require.Equal(t, tt.wantNumeral, view.numeralSeason)
+			require.Equal(t, tt.wantNumeral, view.seasonNumeral)
 		})
 	}
 }

@@ -833,9 +833,10 @@ type namedRelease struct {
 	release   *rls.Release
 	rawName   string
 	tagOrigin *rls.Release
-	// numeralSeason marks a Series read from the title numeral, which the
-	// main search query leaves out.
-	numeralSeason bool
+	// seasonNumeral is the season inferred from the Season numeral of a
+	// seasonless pack. release.Series stays 0, so the main search query and a
+	// listing that names another season still read the pack as seasonless.
+	seasonNumeral int
 }
 
 // groupIdentityViews exposes both the selected-file-derived public view and the

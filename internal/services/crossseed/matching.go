@@ -391,31 +391,59 @@ func releaseTitle(release *rls.Release) string {
 }
 
 // titleWithoutSeasonNumeral drops a last-word Roman numeral that equals the
-// season, so "Kaiju Squad 100 III" with S03 files also reads as the
-// "Kaiju Squad 100" a tracker lists as S03. Returns "" when no numeral drops.
+// season marker, so "Kaiju Squad 100 III S03" also reads as the
+// "Kaiju Squad 100" a tracker lists as S03. Any value counts, because the
+// numeral and the marker agree. Returns "" when no numeral drops.
 func titleWithoutSeasonNumeral(release *rls.Release) string {
-	if release == nil || release.Series <= 0 {
+	if release == nil || release.Series <= 0 || isYearBearingMovieRelease(release) {
 		return ""
 	}
-	title, last, ok := strings.CutLast(release.Title, " ")
-	// Runs per library torrent per search, so reject a word with a non-numeral letter before romanNumeral allocates.
-	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" || !strings.EqualFold(last, romanNumeral(release.Series)) {
-		return ""
+	if season, title := readTitleNumeral(release.Title); season == release.Series {
+		return title
 	}
-	return strings.TrimSpace(title)
+	return ""
 }
 
-func romanNumeral(n int) string {
-	var b strings.Builder
+// readTitleNumeral reads the last word of a title as a Roman numeral. It
+// returns the numeral's value and the title without it, or 0 when the last
+// word is no numeral.
+func readTitleNumeral(title string) (int, string) {
+	rest, last, ok := strings.CutLast(title, " ")
+	// Runs per library torrent per search, so reject a word with a non-numeral letter before the numeral is parsed.
+	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" {
+		return 0, ""
+	}
+	value := 0
+	for i := range len(last) {
+		digit := romanDigitValue(last[i])
+		if i+1 < len(last) && digit < romanDigitValue(last[i+1]) {
+			value -= digit
+		} else {
+			value += digit
+		}
+	}
+	// Only the canonical spelling counts, so "IIII" or "IC" stays part of the title.
+	var canonical [16]byte
+	if !strings.EqualFold(last, string(appendRomanNumeral(canonical[:0], value))) {
+		return 0, ""
+	}
+	return value, strings.TrimSpace(rest)
+}
+
+func romanDigitValue(symbol byte) int {
+	return [...]int{1, 5, 10, 50, 100, 500, 1000}[strings.IndexByte("ivxlcdm", symbol|0x20)]
+}
+
+func appendRomanNumeral(dst []byte, n int) []byte {
 	for _, r := range []struct {
 		value  int
 		symbol string
 	}{{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}} {
 		for ; n >= r.value; n -= r.value {
-			b.WriteString(r.symbol)
+			dst = append(dst, r.symbol...)
 		}
 	}
-	return b.String()
+	return dst
 }
 
 func releaseAlt(release *rls.Release) string {

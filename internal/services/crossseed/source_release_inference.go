@@ -5,8 +5,6 @@ package crossseed
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -145,12 +143,7 @@ func (s *Service) buildReleaseView(
 	if !policy.useDerivedTV || !isTVRelease(derived) {
 		return view
 	}
-	if season := seasonFromTitleNumeral(derived); season > 0 {
-		numeralSeason := *derived
-		numeralSeason.Series = season
-		derived = &numeralSeason
-		view.numeralSeason = true
-	}
+	view.seasonNumeral = inferredSeasonNumeral(derived)
 	if policy.preserveExplicitRawGroup && releaseHasExplicitGroupTag(parsed) {
 		preservedIdentity := *derived
 		preservedIdentity.Group = parsed.Group
@@ -162,34 +155,27 @@ func (s *Service) buildReleaseView(
 	return view
 }
 
-// seasonFromTitleNumeral reads a last-word II to X as the season of a pack
-// that has no season anywhere else: "Kaiju Squad 100 II - 07" files carry only
-// the numeral, and trackers list the pack as S02. A larger numeral is more
-// often part of the real title than a season.
-func seasonFromTitleNumeral(release *rls.Release) int {
-	if release.Series > 0 || release.Episode > 0 {
+// inferredSeasonNumeral reads a last-word II to X as the season of a pack
+// that has no season anywhere else: "Kaiju Squad 100 II" files carry only the
+// numeral, and trackers list the pack as S02. A larger numeral, or a lone I, is
+// more often part of the real title than a season. An episode keeps its
+// absolute number, so qui never invents an S02E03 from "II - 03". A movie with
+// a year, such as "Rocky III 1982", is a sequel and not a season.
+func inferredSeasonNumeral(release *rls.Release) int {
+	if release == nil || release.Series > 0 || release.Episode > 0 || isYearBearingMovieRelease(release) {
 		return 0
 	}
-	_, last, ok := strings.CutLast(release.Title, " ")
-	if !ok {
-		return 0
+	if season, _ := readTitleNumeral(release.Title); season >= 2 && season <= 10 {
+		return season
 	}
-	season := slices.IndexFunc([]string{"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}, func(numeral string) bool {
-		return strings.EqualFold(numeral, last)
-	})
-	if season < 2 {
-		return 0
-	}
-	return season
+	return 0
 }
 
 // withTitleNumeralSeason gives a release with only a title numeral the season
-// of the other release, when the numeral names that season.
+// of the other release, when the numeral names that season. The copy lives for
+// one pair: a numeral that names another season leaves the release seasonless.
 func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
-	// A numeral season is 2 or more, so a lower season skips the copy when both sides have no season.
-	// A movie with a year, such as "Rocky III 1982", is a sequel and not a season.
-	if release == nil || other == nil || other.Series < 2 || isYearBearingMovieRelease(release) ||
-		seasonFromTitleNumeral(release) != other.Series {
+	if other == nil || other.Series == 0 || inferredSeasonNumeral(release) != other.Series {
 		return release
 	}
 	withSeason := *release
