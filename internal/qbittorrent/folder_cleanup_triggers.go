@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -394,6 +395,16 @@ func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []str
 
 func (sm *SyncManager) hintRefresh(instanceID int) {
 	sm.HintMainDataRefresh(instanceID, "folder_cleanup")
+}
+
+// lastSync is the last successful sync, with or without changes. A failed
+// sync does not count, so it cannot pass for a fresh one.
+func (sm *SyncManager) lastSync(ctx context.Context, instanceID int) (time.Time, error) {
+	client, _, err := sm.syncedMainData(ctx, instanceID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return client.GetLastSyncUpdate(), nil
 }
 
 // categoryNesting is the version half of CategorySavePathsNest, which

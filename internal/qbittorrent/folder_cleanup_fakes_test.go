@@ -62,7 +62,19 @@ type fakeView struct {
 	inputReads atomic.Int32
 	// versionReads counts the capability refreshes, each a request.
 	versionReads atomic.Int32
+	// synced is when the last hinted sync landed, fakeSyncDelay after the
+	// hint, as the sync manager's debounce does.
+	synced time.Time
+	// onSync, when set, is what qBittorrent holds but the cache does not
+	// show yet: a hinted sync replaces torrents with it.
+	onSync []qbt.Torrent
+	// syncFails makes a hinted sync fail, so synced does not move.
+	syncFails bool
+	// lastSyncErr fails lastSync alone.
+	lastSyncErr error
 }
+
+const fakeSyncDelay = 200 * time.Millisecond
 
 func (v *fakeView) liveTorrents(context.Context, int) ([]qbt.Torrent, error) {
 	v.mu.Lock()
@@ -110,7 +122,37 @@ func (v *fakeView) setUseSubcategories(on bool) {
 	v.inputs.UseSubcategories = on
 }
 
-func (v *fakeView) hintRefresh(int) { v.refreshes.Add(1) }
+func (v *fakeView) hintRefresh(int) {
+	v.refreshes.Add(1)
+	time.AfterFunc(fakeSyncDelay, func() {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		if v.syncFails {
+			return
+		}
+		if v.onSync != nil {
+			v.torrents, v.onSync = v.onSync, nil
+		}
+		v.synced = time.Now()
+	})
+}
+
+func (v *fakeView) lastSync(context.Context, int) (time.Time, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.lastSyncErr != nil {
+		return time.Time{}, v.lastSyncErr
+	}
+	return v.synced, v.liveErr
+}
+
+// setTorrentsOnSync changes qBittorrent's torrents without the cache seeing
+// it until the next hinted sync.
+func (v *fakeView) setTorrentsOnSync(torrents ...qbt.Torrent) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.onSync = torrents
+}
 
 func (v *fakeView) setTorrents(torrents ...qbt.Torrent) {
 	v.mu.Lock()

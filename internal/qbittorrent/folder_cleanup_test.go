@@ -861,18 +861,231 @@ func TestFolderCleanupWaitsForSlowDeletes(t *testing.T) {
 		})
 	})
 
-	t.Run("files never removed are dropped at the deadline", func(t *testing.T) {
+	t.Run("files never removed are judged once at the deadline", func(t *testing.T) {
 		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 			logs := captureLogs(t, zerolog.DebugLevel)
 			e.tree("torrents/tv/Rel-GRP/a.mkv")
 			e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
 			time.Sleep(e.fc.deadline)
 			synctest.Wait()
-			require.Contains(t, logs(), "folder cleanup: torrent still in its folder at the deadline, dropped")
+			require.Contains(t, logs(), "folder cleanup: content still there at the deadline, removing only empty folders")
+			e.requireTree([]string{"torrents/tv/Rel-GRP/a.mkv"}, nil)
 
 			e.rm("torrents/tv/Rel-GRP/a.mkv")
 			e.tick(2)
 			e.requireTree([]string{"torrents/tv/Rel-GRP"}, nil)
+		})
+	})
+}
+
+// A file the user added in one of the torrent's folders stays for good, and
+// holdsFiles finds it at any depth, so the item waits to the deadline. Then
+// it is judged anyway: the clean removes the torrent's folders that are empty
+// and keeps the rest. qBittorrent before 5.2.2 leaves those folders after a
+// delete, and every version after a move.
+func TestFolderCleanupCleansAtTheDeadline(t *testing.T) {
+	files := []string{"Extras/a.mkv", "Sub/a.srt"}
+	userFile := "torrents/tv/Rel-GRP/Sub/user.nfo"
+	for _, move := range []bool{false, true} {
+		name := "delete"
+		if move {
+			name = "move"
+		}
+
+		t.Run(name+": empty folders go, a folder with a user file stays", func(t *testing.T) {
+			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+				e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile)
+				snap := e.noRoot("torrents/tv/Rel-GRP", files...)
+				snap.Move = move
+				if move {
+					e.view.setTorrents(qbt.Torrent{Hash: snap.Hash, SavePath: e.p("torrents/movies/Rel-GRP"), ContentPath: e.p("torrents/movies/Rel-GRP")})
+				}
+				e.run(snap)
+				e.tick(2)
+				e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", userFile}, nil)
+
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree([]string{userFile}, []string{"torrents/tv/Rel-GRP/Extras"})
+			})
+		})
+
+		t.Run(name+": content still in place stays", func(t *testing.T) {
+			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+				layout := []string{"torrents/tv/Rel-GRP/Extras/a.mkv", "torrents/tv/Rel-GRP/Sub/a.srt", userFile}
+				e.tree(layout...)
+				snap := e.noRoot("torrents/tv/Rel-GRP", files...)
+				snap.Move = move
+				if move {
+					e.view.setTorrents(qbt.Torrent{Hash: snap.Hash, SavePath: e.p("torrents/movies/Rel-GRP"), ContentPath: e.p("torrents/movies/Rel-GRP")})
+				}
+				e.run(snap)
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree(layout, nil)
+			})
+		})
+
+		// A torrent qBittorrent did not delete or move keeps its row where
+		// the snapshot left it, which protects even an empty folder.
+		t.Run(name+": a row still in place keeps every folder", func(t *testing.T) {
+			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+				logs := captureLogs(t, zerolog.DebugLevel)
+				e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile)
+				snap := e.noRoot("torrents/tv/Rel-GRP", files...)
+				snap.Move = move
+				e.view.setTorrents(row(snap))
+				e.run(snap)
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", userFile}, nil)
+				require.Contains(t, logs(), "folder cleanup: torrent still in its folder at the deadline, dropped")
+			})
+		})
+	}
+
+	// Nothing reads the item's row while its content is there, so the cache
+	// can be minutes old at the deadline. A torrent added at these folders
+	// meanwhile shows only after a sync, which the item asks for one tick
+	// ahead of its deadline, and the clean then keeps its folders and junk.
+	for _, readded := range []string{"the same torrent", "another torrent"} {
+		t.Run(readded+" added since keeps the folders", func(t *testing.T) {
+			eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+				layout := []string{"torrents/tv/Rel-GRP/Extras/Thumbs.db", "torrents/tv/Rel-GRP/Sub/", userFile}
+				e.tree(layout...)
+				snap := e.noRoot("torrents/tv/Rel-GRP", files...)
+				e.run(snap)
+				hash := snap.Hash
+				if readded == "another torrent" {
+					hash = e.nextHash()
+				}
+				// The add comes late, so a sync asked for early cannot see it.
+				time.Sleep(e.fc.deadline / 2)
+				synctest.Wait()
+				e.view.setTorrentsOnSync(qbt.Torrent{Hash: hash, SavePath: e.p("torrents/tv/Rel-GRP"), ContentPath: e.p("torrents/tv/Rel-GRP")})
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree(layout, nil)
+			})
+		})
+	}
+
+	// A sync that fails leaves the cache as old as it was, so the item is
+	// dropped without a clean.
+	t.Run("no fresh sync, no clean", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			layout := []string{"torrents/tv/Rel-GRP/Extras/Thumbs.db", "torrents/tv/Rel-GRP/Sub/", userFile}
+			e.tree(layout...)
+			e.view.mu.Lock()
+			e.view.synced = time.Now() // the last sync before the delete
+			e.view.syncFails = true
+			e.view.mu.Unlock()
+			snap := e.noRoot("torrents/tv/Rel-GRP", files...)
+			e.run(snap)
+			e.view.setTorrentsOnSync(row(snap))
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree(layout, nil)
+			require.Positive(t, e.view.refreshes.Load(), "the item asks for a sync ahead of its deadline")
+		})
+	})
+
+	// The request goes out as soon as the items are sorted, not after the
+	// rest of the check. Here another torrent's clean, on the same tick,
+	// spends most of a tick in a slow read, which a hint sent at the end
+	// would wait out, so its sync would land after the deadline tick.
+	t.Run("the sync request does not wait for other cleans", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile, "torrents/tv/Slow-GRP/")
+			slow := e.p("torrents/tv/Slow-GRP")
+			e.fs.(*memTree).readErr = func(p string) error {
+				if p == slow {
+					time.Sleep(e.fc.tick - 100*time.Millisecond)
+				}
+				return nil
+			}
+			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", files...)}, 0)
+			// Slow-GRP is ready on Rel-GRP's last tick before its deadline.
+			time.Sleep(e.fc.deadline - e.fc.tick - e.fc.tick/2)
+			synctest.Wait()
+			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Slow-GRP", "a.mkv")}, 0)
+			time.Sleep(3 * e.fc.tick)
+			synctest.Wait()
+			e.requireTree([]string{userFile}, []string{"torrents/tv/Slow-GRP", "torrents/tv/Rel-GRP/Extras"})
+		})
+	})
+
+	// The request ahead of the deadline can land before the reads that find
+	// another torrent's row still in place, so that row still asks for its
+	// own sync on the same tick.
+	t.Run("a row still in place asks after the request", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile, "torrents/tv/Held-GRP/")
+			e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", files...)}, 0)
+			// Held-GRP is first checked on Rel-GRP's last tick before its
+			// deadline.
+			time.Sleep(e.fc.deadline - e.fc.tick - e.fc.tick/2)
+			synctest.Wait()
+			held := e.rootFolder("torrents/tv", "Held-GRP")
+			e.view.setTorrents(row(held))
+			e.rm("torrents/tv/Held-GRP")
+			e.fc.enqueue([]folderSnapshot{held}, 0)
+			require.Zero(t, e.view.refreshes.Load())
+			time.Sleep(e.fc.tick)
+			synctest.Wait()
+			require.EqualValues(t, 2, e.view.refreshes.Load(), "the request ahead of the deadline and the held row")
+		})
+	})
+
+	// A sync time that cannot be read leaves the folders unjudged, and the
+	// deadline says so.
+	t.Run("an unreadable sync time warns at the deadline", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			warnings := captureLogs(t, zerolog.WarnLevel)
+			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile)
+			e.view.mu.Lock()
+			e.view.lastSyncErr = errors.New("instance 1 has not synced yet")
+			e.view.mu.Unlock()
+			e.run(e.noRoot("torrents/tv/Rel-GRP", files...))
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", userFile}, nil)
+			require.Equal(t, []string{"folder cleanup: could not judge folders before the deadline, leaving these torrents' folders to orphan scan"}, warnings())
+		})
+	})
+
+	// The deadline judges against the same scope, so another torrent's path
+	// keeps an empty folder.
+	t.Run("a live torrent's save path stays", func(t *testing.T) {
+		eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/", userFile)
+			e.view.setTorrents(qbt.Torrent{Hash: "live", SavePath: e.p("torrents/tv/Rel-GRP/Extras"), ContentPath: e.p("torrents/tv/Rel-GRP/Extras/Other-GRP")})
+			e.run(e.noRoot("torrents/tv/Rel-GRP", files...))
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", userFile}, nil)
+		})
+	})
+
+	// A path that could not be read keeps waiting, and the deadline warns
+	// about it rather than cleaning around it.
+	t.Run("an unreadable entry is not cleaned around", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			e.tree("torrents/tv/Rel-GRP/Extras/", "torrents/tv/Rel-GRP/Sub/a.srt")
+			sub := e.p("torrents/tv/Rel-GRP/Sub")
+			e.fs.(*memTree).readErr = func(p string) error {
+				if p == sub {
+					return fs.ErrPermission
+				}
+				return nil
+			}
+			e.run(e.noRoot("torrents/tv/Rel-GRP", files...))
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree([]string{"torrents/tv/Rel-GRP/Extras"}, nil)
 		})
 	})
 }
@@ -1066,7 +1279,7 @@ func TestFolderCleanupCheckReplacesAnEarlierFailure(t *testing.T) {
 	fc := NewFolderCleanup(&fakeRequirer{err: unavailable}, &fakeView{}, &fakeIgnores{})
 	item := &pendingFolder{judgeErr: errors.New("ignore paths unreadable")}
 
-	require.Equal(t, []*pendingFolder{item}, fc.checkInstance(t.Context(), 1, []*pendingFolder{item}))
+	require.Equal(t, []*pendingFolder{item}, fc.checkInstance(t.Context(), 1, []*pendingFolder{item}, time.Now()))
 	require.ErrorIs(t, item.judgeErr, unavailable)
 }
 

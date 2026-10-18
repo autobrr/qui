@@ -89,8 +89,11 @@ type folderView interface {
 	// so the worker keeps its answer for folderCleanupVersionTTL.
 	categoryNesting(ctx context.Context, instanceID int) (nestingSupport, error)
 	// hintRefresh asks for one sync, for a torrent the cache still shows
-	// where the snapshot left it.
+	// where the snapshot left it, or for an item about to reach its
+	// deadline.
 	hintRefresh(instanceID int)
+	// lastSync is when the cache last took a successful sync.
+	lastSync(ctx context.Context, instanceID int) (time.Time, error)
 }
 
 type ignoreMatcher interface {
@@ -176,7 +179,13 @@ type pendingFolder struct {
 	// unreadable is the path the last content check could not read, which
 	// keeps the item waiting.
 	unreadable *fs.PathError
-	expires    time.Time
+	// atDeadline marks an item judged at the deadline with content still
+	// in place.
+	atDeadline bool
+	// syncAsked is when the item, with content still in place, asked for a
+	// sync one tick ahead of its deadline.
+	syncAsked time.Time
+	expires   time.Time
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
@@ -394,15 +403,17 @@ func (c *FolderCleanup) runTick(ctx context.Context) {
 		byInstance[id] = append(byInstance[id], item)
 	}
 
+	// One instant decides both whether an item cleans at the deadline and
+	// whether it is dropped, so no item passes the deadline between the two.
+	now := time.Now()
 	var retry []*pendingFolder
 	for _, id := range order {
 		if ctx.Err() != nil {
 			return
 		}
-		retry = append(retry, c.checkInstance(ctx, id, byInstance[id])...)
+		retry = append(retry, c.checkInstance(ctx, id, byInstance[id], now)...)
 	}
 
-	now := time.Now()
 	unjudged := make(map[int]int)
 	judgeErr := make(map[int]error)
 	unreadable := make(map[int][]*fs.PathError)
@@ -465,9 +476,10 @@ func markUnjudged(instanceID int, err error, items []*pendingFolder) []*pendingF
 	return items
 }
 
-// checkInstance cleans the items whose content is gone and returns the ones to
-// check again.
-func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items []*pendingFolder) []*pendingFolder {
+// checkInstance cleans the items whose content is gone, and at the deadline
+// those whose content could be read once a fresh sync has landed, and returns
+// the ones to check again.
+func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items []*pendingFolder, now time.Time) []*pendingFolder {
 	for _, item := range items {
 		item.judgeErr = nil
 	}
@@ -484,12 +496,70 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 
 	var ready, retry []*pendingFolder
+	// hint asks for a sync at the end of the check, and asked records an
+	// item's request for one ahead of its deadline, which goes out before
+	// the check removes anything on this instance, so the sync lands
+	// before the next tick.
+	hint, asked := false, false
+	// synced is read once, and only for an item at its deadline.
+	var synced *time.Time
+	var syncErr error
+	var unjudged []*pendingFolder
 	for _, item := range items {
-		if contentLeft(ctx, backend, item) {
-			retry = append(retry, item)
-		} else {
+		item.atDeadline = false
+		if !contentLeft(ctx, backend, item) {
 			ready = append(ready, item)
+			continue
 		}
+		// Content can stay for good, such as a file the user added in one
+		// of the torrent's folders, which holdsFiles finds at any depth. At
+		// the deadline the item is judged anyway, so its row and the scope
+		// still protect, and the clean removes only the folders that are
+		// empty. A path the check could not read keeps the item waiting, and
+		// the deadline warns about it.
+		if item.unreadable != nil {
+			retry = append(retry, item)
+			continue
+		}
+		// While content is there nothing reads the item's row, so nothing
+		// asks for a sync, and the cache may predate a torrent added at
+		// these folders since. One tick ahead of the deadline the item asks
+		// for one, and the deadline judges only against a sync that landed
+		// after that. Without one the item is dropped as before, which is
+		// also what happens when an overrunning tick makes the ticker skip
+		// that last tick before the deadline.
+		if now.Before(item.expires) {
+			if item.syncAsked.IsZero() && !now.Add(c.tick).Before(item.expires) {
+				item.syncAsked = now
+				asked = true
+			}
+			retry = append(retry, item)
+			continue
+		}
+		if synced == nil {
+			var t time.Time
+			t, syncErr = c.view.lastSync(ctx, instanceID)
+			synced = &t
+		}
+		if syncErr != nil {
+			unjudged = append(unjudged, item)
+			continue
+		}
+		if item.syncAsked.IsZero() || !synced.After(item.syncAsked) {
+			log.Debug().Int("instanceID", instanceID).Str("hash", item.snap.Hash).
+				Msg("folder cleanup: no sync since the deadline approached, not cleaning")
+			retry = append(retry, item)
+			continue
+		}
+		item.atDeadline = true
+		ready = append(ready, item)
+	}
+	if len(unjudged) > 0 {
+		// The deadline drop then warns that the folders went unjudged.
+		retry = append(retry, markUnjudged(instanceID, syncErr, unjudged)...)
+	}
+	if asked {
+		c.view.hintRefresh(instanceID)
 	}
 	if len(ready) == 0 {
 		return retry
@@ -507,7 +577,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		return append(retry, markUnjudged(instanceID, err, ready)...)
 	}
 	d := backend.Paths()
-	hint := false
 	judge := make([]*pendingFolder, 0, len(ready))
 	for _, item := range ready {
 		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, &t) {
@@ -529,10 +598,17 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 					retry = append(retry, item)
 					continue
 				}
+				if item.atDeadline {
+					log.Debug().Int("instanceID", instanceID).Str("hash", item.snap.Hash).Str("contentPath", item.snap.ContentPath).
+						Msg("folder cleanup: content still there at the deadline, removing only empty folders")
+				}
 				scope.clean(ctx, item)
 			}
 		}
 	}
+	// A row still in place asks for a sync even after the request above,
+	// which may have landed before the reads that found the row. A second
+	// hint only restarts the debounce if the first sync has not started.
 	if hint {
 		c.view.hintRefresh(instanceID)
 	}
