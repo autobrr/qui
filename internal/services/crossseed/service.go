@@ -4896,7 +4896,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
 			candidateRelease := withTitleNumeralSeason(s.releaseCache.Parse(torrent.Name), seasonedTarget)
-			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, seasonedTarget, candidateRelease, candidateFiles)
+			matchType := m.getMatchTypeFromTitle(seasonedTarget, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}

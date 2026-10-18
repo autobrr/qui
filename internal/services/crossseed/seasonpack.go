@@ -165,7 +165,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 		return nil, "invalid_payload", "torrentName and torrentData are required", nil
 	}
 
-	packRelease := s.releaseCache.Parse(torrentName)
+	packRelease := s.matcher().parseSeasonPackName(torrentName)
 	if !isTVSeasonPack(packRelease) {
 		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
 	}
@@ -238,7 +238,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 		return nil, "invalid_payload", "torrentName is required", nil
 	}
 
-	packRelease := s.releaseCache.Parse(torrentName)
+	packRelease := s.matcher().parseSeasonPackName(torrentName)
 	if !isTVSeasonPack(packRelease) {
 		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
 	}
@@ -930,15 +930,34 @@ type packEpisodeOrigin struct {
 	seasoned bool
 }
 
+// seasonlessFilesPerSeason is the one rule for the numbering scheme of the pack
+// files whose own names have no season. Absolute episode 1 exists only in
+// season 1, so in a pack of season 2 or later, seasonless files whose lowest
+// episode is 1 or less are per-season episodes: S02 files 01..12 are S02E01 to
+// S02E12, not the season-1 episodes "Show - 01..12". Otherwise they are
+// absolute episodes. The pack season includes the Season numeral.
+func seasonlessFilesPerSeason(pack *rls.Release, lowestEpisode int) bool {
+	return pack != nil && cmp.Or(pack.Series, inferredSeasonNumeral(pack)) >= 2 && lowestEpisode <= 1
+}
+
+// parseSeasonPackName parses the name of a season pack. A pack named only with
+// a Season numeral, such as "Kaiju Squad 100 II [Batch]", parses as a movie, so
+// it takes the season that the numeral names.
+func (m matcher) parseSeasonPackName(name string) *rls.Release {
+	release := m.parseReleaseName(name)
+	season := inferredSeasonNumeral(release)
+	if season == 0 {
+		return release
+	}
+	pack := *release
+	pack.Type, pack.Series = rls.Series, season
+	return &pack
+}
+
 // extractPackEpisodes returns the unique episode identities from the torrent's file
 // list (playable video files only), each tagged with the numbering scheme(s) it was
 // derived from so local candidates can be required to use the same scheme.
-//
-// A seasonless file name usually means absolute numbering, but not always: a season-N
-// pack (N >= 2) whose seasonless files include episode 1 must be numbered per-season
-// (absolute episode 1 exists only in season 1), so those files are really S<N>E<ep>
-// and tagging them absolute would let another season's absolute-numbered locals
-// satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
+// seasonlessFilesPerSeason decides the scheme of the seasonless files.
 func (m matcher) extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
 
@@ -962,7 +981,7 @@ func (m matcher) extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Re
 		episodes[id] = origin
 	}
 
-	if packRelease != nil && packRelease.Series >= 2 && minSeasonlessEpisode >= 0 && minSeasonlessEpisode <= 1 {
+	if minSeasonlessEpisode >= 0 && seasonlessFilesPerSeason(packRelease, minSeasonlessEpisode) {
 		for id, origin := range episodes {
 			if origin.absolute {
 				episodes[id] = packEpisodeOrigin{seasoned: true}

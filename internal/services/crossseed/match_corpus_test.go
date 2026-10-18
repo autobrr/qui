@@ -69,7 +69,6 @@ type corpusDifference struct {
 var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
-	3062, // one absolute-episode reader and one seasonless-file rule
 }
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
@@ -157,7 +156,6 @@ const (
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
-	reasonNumeralOnlyPack   = "The season pack check reads the pack season from the name only, and a pack named only with a Season numeral reads as a movie."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 )
 
@@ -174,6 +172,15 @@ var corpusRows = []corpusRow{
 		name:          "P2P episode in spaced and dotted style",
 		source:        "Kaiju Squad S02E05 1080p AMZN WEB-DL DDP5.1 H.264-GRP",
 		candidate:     "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// The episode file has no season, so it gives apply no file key, and apply compares the absolute episodes.
+		name:          "anime absolute episode with and without a leading zero",
+		source:        "[KaijuSubs] Kaiju Squad - 5 (1080p)",
+		candidate:     "[KaijuSubs] Kaiju Squad - 05 (1080p)",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
 		want:          corpusMatch,
@@ -730,9 +737,7 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusPackSize,
 		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
 		want:           corpusMatch,
-		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathSeasonPack: knownDifference(corpusNoMatch, 3062, reasonNumeralOnlyPack),
-		}),
+		differences:    packFromEpisodes(nil),
 	},
 	{
 		name:           "announced season pack with a season numeral",
@@ -922,14 +927,15 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusNoMatch
 }
 
-// seasonPackCorpusVerdict runs the light season pack check (no torrent data) of
-// an announced pack against the local episode. The check reads only local
-// episodes, so it skips a row whose source is not an episode, and a row whose
-// candidate is an episode.
+// seasonPackCorpusVerdict runs the season pack check of an announced pack
+// against the local episode. A row with candidate files sends them as the
+// torrent data, and the other rows run the light check. The check reads only
+// local episodes, so it skips a row whose source is not an episode, and a row
+// whose candidate is an episode.
 func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(false)
-	pack := svc.releaseCache.Parse(row.candidate)
+	pack := svc.matcher().parseSeasonPackName(row.candidate)
 	if !isTVEpisode(svc.releaseCache.Parse(row.source)) || isTVEpisode(pack) {
 		return corpusSkip
 	}
@@ -937,10 +943,15 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 		// CheckSeasonPackWebhook answers not_season_pack.
 		return corpusNoMatch
 	}
+	var packEpisodes map[episodeIdentity]packEpisodeOrigin
+	if row.candidateFiles != nil {
+		packEpisodes = svc.matcher().extractPackEpisodes(row.candidateFiles, pack)
+		require.NotEmpty(t, packEpisodes, "the candidate files hold no episode")
+	}
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
-	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, nil, settings, row.titles)) > 0)
+	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
 }
 
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {

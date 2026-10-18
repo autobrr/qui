@@ -63,6 +63,15 @@ func isTVEpisode(r *rls.Release) bool {
 	return isTVRelease(r) && r.Episode > 0
 }
 
+// absoluteEpisode is the episode of a name with no season, such as "Show - 81".
+// It is 0 when the name has a season or no episode.
+func absoluteEpisode(r *rls.Release) int {
+	if r.Series != 0 {
+		return 0
+	}
+	return r.Episode
+}
+
 // isTVSeasonPack returns true if the release is a TV season pack, including
 // seasonless anime packs where file inspection marked the release as TV.
 func isTVSeasonPack(r *rls.Release) bool {
@@ -966,7 +975,7 @@ func joinNormalizedCodecSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
+func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	seasonlessEpisodes := false
@@ -1041,50 +1050,28 @@ func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetR
 		return "release-match"
 	}
 
-	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
-	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
-	// rls fails to parse " - 1150 " as an episode).
+	// Fallback: the files give no release keys, as a seasonless anime episode
+	// ("Show - 1150") does, but the titles match. Accept the same absolute episode.
 	if len(candidateReleases) == 0 {
 		targetTitle := stringutils.NormalizeForMatching(targetRelease.Title)
 		candidateTitle := stringutils.NormalizeForMatching(candidateRelease.Title)
 		if targetTitle != "" && targetTitle == candidateTitle {
-			// Extract simple episode number from torrent names of the form "... - 1150 (...)".
-			extractEpisode := func(name string) string {
-				nameLower := strings.ToLower(name)
-				// Look for " - <digits> " pattern.
-				for i := 0; i+4 < len(nameLower); i++ {
-					if nameLower[i] == ' ' && nameLower[i+1] == '-' && nameLower[i+2] == ' ' {
-						j := i + 3
-						start := j
-						for j < len(nameLower) && nameLower[j] >= '0' && nameLower[j] <= '9' {
-							j++
-						}
-						if j > start && j < len(nameLower) && nameLower[j] == ' ' {
-							return nameLower[start:j]
-						}
-						break
-					}
-				}
-				return ""
-			}
+			targetEp := absoluteEpisode(targetRelease)
+			candidateEp := absoluteEpisode(candidateRelease)
 
-			targetEp := extractEpisode(targetName)
-			candidateEp := extractEpisode(candidateName)
-
-			// If episode numbers match (anime fallback), accept the match
-			if targetEp != "" && candidateEp != "" && targetEp == candidateEp {
+			if targetEp > 0 && targetEp == candidateEp {
 				log.Debug().
 					Str("title", targetRelease.Title).
-					Str("episode", targetEp).
+					Int("episode", targetEp).
 					Msg("Falling back to title+episode candidate match")
 				return "partial-in-pack"
 			}
 
 			// For content without usable file-level metadata (games, apps, scene releases
 			// with RAR files), trust the torrent-level releasesMatch check that got us here
-			// when no episode pattern exists in the names.
+			// when neither name has an episode.
 			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) && targetEp == "" && candidateEp == "" {
+			if targetKey == (releaseKey{}) && targetEp == 0 && candidateEp == 0 {
 				return "release-match"
 			}
 		}
