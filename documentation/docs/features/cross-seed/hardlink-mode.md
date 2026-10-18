@@ -63,7 +63,7 @@ For the `flat` preset, qui always uses an isolation folder to keep each torrent'
 
 ## How to enable
 
-1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+1. For a qBittorrent instance on the same machine as qui, enable "Local filesystem access" in Instance Settings. For a remote instance, leave it off: turning it on makes qui treat the instance as local and link against paths on the qui host instead of the remote one.
 2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand the instance you want to configure.
 3. Set the **Cross-seed mode** to **Hardlink**.
 4. Set **Base directories**:
