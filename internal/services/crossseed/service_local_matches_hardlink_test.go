@@ -84,6 +84,7 @@ func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 		sourceInstanceID:      1,
 		sourceHash:            hlSourceHash,
 		sourceSavePath:        sourceDir,
+		sourceContentPath:     sourceDir,
 		sourceHasFileIdentity: true,
 		sourceLocal:           true,
 	}
@@ -134,6 +135,23 @@ func TestLocalLinkedMatchType_SeparateCopy_NoUpgrade(t *testing.T) {
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+}
+
+func TestLocalLinkedMatchType_LinkedSubtitleOnly_NoUpgrade(t *testing.T) {
+	// The videos differ. Only the subtitle is a hardlink, and subtitles do not count.
+	sourceDir, candidateDir := writeHardlinkFixture(t, "Movie.2023.1080p.WEB.srt", true)
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "Movie.2023.1080p.WEB.mkv"), []byte("data"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(candidateDir, "Movie.2023.1080p.WEB.mkv"), []byte("other!"), 0o600))
+
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    {{Name: "Movie.2023.1080p.WEB.mkv", Size: 4}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+		normalizeHash(hlCandidateHash): {{Name: "Movie.2023.1080p.WEB.mkv", Size: 6}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+	})
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.NoError(t, matchCtx.verificationErr)
 }
 
 func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
@@ -196,9 +214,9 @@ func TestLocalLinkedMatchType_EmptyCandidateFileList_RecordedForStrictMode(t *te
 }
 
 func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
-	// A metadata-less magnet source (empty content path, empty file list) matching a
-	// candidate by name must not attempt the hardlink check: it has no files on disk,
-	// and stamping its empty file list as sourceFilesErr would fail strict delete dialogs.
+	// A metadata-less magnet source (empty content path, empty file list) holds no
+	// data, so it has no cross-seeds. Its empty file list must not be fetched and
+	// stamped as sourceFilesErr, which would fail strict delete dialogs.
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
@@ -213,6 +231,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 	}
 	instance := &models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true}
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	matchCtx.sourceContentPath = ""
 
 	matches := svc.matchTorrentsInInstance(
 		context.Background(), nil, instance,
@@ -222,8 +241,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 		"", matchCtx,
 	)
 
-	require.Len(t, matches, 1)
-	require.Equal(t, matchTypeName, matches[0].MatchType)
+	require.Empty(t, matches)
 	require.NoError(t, matchCtx.sourceFilesErr)
 	require.NoError(t, matchCtx.candidateFilesErr)
 }

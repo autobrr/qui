@@ -622,7 +622,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	// half made because the job was cancelled is still ours to take back.
 	fail := func(err error) (*fsops.TreeCreateResult, error) {
 		if rollbackErr := b.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
-			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return nil, fmt.Errorf("%w (%w: %w)", err, hardlinktree.ErrRollbackFailed, rollbackErr)
 		}
 		return nil, err
 	}

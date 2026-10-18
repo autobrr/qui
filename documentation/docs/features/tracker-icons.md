@@ -11,6 +11,8 @@ qui shows the icon next to the tracker domain, or next to its [display name](./t
 
 qui downloads a favicon the first time it sees a tracker host and caches it for future sessions. If a download fails, qui waits 30 minutes before it tries that host again. Each failure after that doubles the wait, up to 24 hours. qui records these failures in `tracker-icons/fetch-failures.json`, so a restart does not probe every failed host again. If the host name does not resolve, qui does not try the parent domains or the `www.` alias for that host.
 
+qui downloads icons only from addresses on the public internet. It does not connect to private, loopback, link-local, or carrier-grade NAT addresses (`100.64.0.0/10`, which Tailscale also uses). It also does not connect to the other address ranges that IANA reserves for special use, for example `198.18.0.0/15`. This stops a torrent from making qui send requests into your network. If a tracker runs on your local network, qui cannot download its icon, so [add that icon manually](#add-icons-manually). If you set `HTTP_PROXY` or `HTTPS_PROXY`, qui connects to that proxy even when it is on your local network. The proxy connects to the icon address, so qui looks up that address first and refuses a private one. A DNS server that gives qui and the proxy different answers can get past this check.
+
 If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`).
 
 ## Add icons manually

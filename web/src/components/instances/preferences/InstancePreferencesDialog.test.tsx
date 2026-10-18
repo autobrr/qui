@@ -6,12 +6,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { server } from "@/test/msw/server"
-import type { PreferenceField } from "@/types"
+import type { NetworkBindingInterface, PreferenceField } from "@/types"
 
 import { InstancePreferencesDialog } from "./InstancePreferencesDialog"
 
@@ -73,7 +73,6 @@ const view: PreferenceField[] = [
   { key: "rss_auto_downloading_enabled", value: false, tab: "rss", section: "autoDownloader", control: "switch" },
   { key: "rss_download_repack_proper_episodes", value: true, tab: "rss", section: "smartEpisodeFilter", control: "switch" },
   { key: "rss_smart_episode_filters", value: "s(\\d+)e(\\d+)\n(\\d+)x(\\d+)", tab: "rss", section: "smartEpisodeFilter", control: "list" },
-  { key: "current_network_interface", value: "", tab: "advanced", section: "qbittorrent", control: "text", readOnly: true, reason: "pending network binding PR" },
   { key: "disk_queue_size", value: 1048576, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
   { key: "scan_dirs", value: { "/watch/a": 0, "/watch/b": 1 }, tab: "downloads", section: "savingManagement", control: "watchFolders" },
 ]
@@ -208,6 +207,33 @@ describe("InstancePreferencesDialog", () => {
     expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
   })
 
+  it("shows the socket buffers in KiB and the .torrent size limit in MiB, and saves them in bytes", async () => {
+    const bodies = recordSaves()
+    serveView([
+      ...view,
+      { key: "torrent_file_size_limit", value: 104857600, tab: "advanced", section: "qbittorrent", control: "number", wireUnit: "B", displayUnit: "MiB" },
+      { key: "socket_send_buffer_size", value: 0, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
+      { key: "socket_receive_buffer_size", value: 131072, tab: "advanced", section: "libtorrent", control: "number", wireUnit: "B", displayUnit: "KiB" },
+    ])
+    renderDialog("advanced")
+
+    const sizeLimit = await fieldFor("preferences.fields.torrentFileSizeLimit")
+    const send = await fieldFor("preferences.fields.socketSendBufferSize")
+    const receive = await fieldFor("preferences.fields.socketReceiveBufferSize")
+    expect(sizeLimit.value).toBe("100")
+    expect(sizeLimit.nextElementSibling?.textContent).toBe("MiB")
+    expect(send.value).toBe("0")
+    expect(receive.value).toBe("128")
+    expect(receive.nextElementSibling?.textContent).toBe("KiB")
+
+    fireEvent.change(sizeLimit, { target: { value: "50" } })
+    fireEvent.change(send, { target: { value: "256" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ torrent_file_size_limit: 52428800, socket_send_buffer_size: 262144 }])
+  })
+
   it("shows the fetched trackers read-only, with the note of the field", async () => {
     serveView()
 
@@ -217,16 +243,6 @@ describe("InstancePreferencesDialog", () => {
     expect(fetched.value).toBe("udp://tracker.example.invalid:1337/announce")
     expect(fetched.disabled).toBe(true)
     expect(screen.getAllByText("preferences.fields.addTrackersUrlListNote")).toHaveLength(1)
-    expect(screen.queryByText("preferences.readOnlyNote")).toBeNull()
-  })
-
-  it("shows the general note for a read-only field without a note of its own", async () => {
-    serveView()
-
-    renderDialog("advanced")
-
-    expect((await fieldFor("preferences.connectionSettings.networkInterface")).disabled).toBe(true)
-    expect(screen.getAllByText("preferences.readOnlyNote")).toHaveLength(1)
   })
 
   it("shows the log file in the Behavior tab, with the size in KiB behind two switches", async () => {
@@ -667,6 +683,29 @@ describe("InstancePreferencesDialog", () => {
     expect(await fieldFor("preferences.fields.proxyTorrentsOnly")).not.toBeNull()
   })
 
+  it("shows the connection settings of the WebUI read-only, with one note on the username", async () => {
+    const bodies = recordSaves()
+    serveView([
+      { key: "web_ui_port", value: 8080, tab: "webui", section: "webUI", control: "number", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "web_ui_username", value: "admin", tab: "webui", section: "authentication", control: "text", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "bypass_local_auth", value: false, tab: "webui", section: "authentication", control: "switch", readOnly: true, reason: "qui connects to qBittorrent with this setting" },
+      { key: "web_ui_session_timeout", value: 3600, tab: "webui", section: "authentication", control: "number", wireUnit: "s", displayUnit: "s" },
+      { key: "web_ui_sessions_count_limit", value: 0, tab: "webui", section: "authentication", control: "number" },
+    ])
+    renderDialog("webui")
+
+    expect((await fieldFor("preferences.fields.webUIPort")).disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.webUIUsername")).disabled).toBe(true)
+    expect((await fieldFor("preferences.fields.bypassLocalAuth")).disabled).toBe(true)
+    expect(screen.getAllByText("preferences.fields.webUIConnectionNote")).toHaveLength(1)
+    expect((await fieldFor("preferences.fields.webUISessionsCountLimit")).value).toBe("")
+    fireEvent.change(await fieldFor("preferences.fields.webUISessionTimeout"), { target: { value: "7200" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ web_ui_session_timeout: 7200 }])
+  })
+
   it("sends scan_dirs when one watch folder changes", async () => {
     const bodies = recordSaves()
     serveView()
@@ -687,5 +726,159 @@ describe("InstancePreferencesDialog", () => {
     fireEvent.click((await screen.findByText("preferences.fileManagement.watchFolders.title")).closest("label")!)
 
     expect(screen.getAllByPlaceholderText("preferences.fileManagement.watchFolders.monitoredFolderPlaceholder")).toHaveLength(2)
+  })
+})
+
+// The network binding fields of qBittorrent 4.6 and later, with the saved values.
+function bindingView(iface: string, address: string, name = ""): PreferenceField[] {
+  return [
+    { key: "current_network_interface", value: iface, tab: "advanced", section: "qbittorrent", control: "select", optionSource: "networkInterfaces" },
+    { key: "current_interface_address", value: address, tab: "advanced", section: "qbittorrent", control: "select", optionSource: "interfaceAddresses" },
+    { key: "current_interface_name", value: name, tab: "advanced", section: "qbittorrent", control: "text", readOnly: true, reason: "qBittorrent sets it from the network interface" },
+    { key: "save_statistics_interval", value: 15, tab: "advanced", section: "qbittorrent", control: "number", wireUnit: "min", displayUnit: "min" },
+  ]
+}
+
+const anyInterface: NetworkBindingInterface = {
+  name: "", value: "", available: true,
+  addresses: [{ address: "192.168.1.10", available: true }, { address: "10.8.0.2", available: true }],
+}
+const ethernet: NetworkBindingInterface = { name: "Ethernet", value: "eth0", available: true, addresses: [{ address: "192.168.1.10", available: true }] }
+const wireGuard: NetworkBindingInterface = { name: "WireGuard", value: "wg0", available: true, addresses: [{ address: "10.8.0.2", available: true }] }
+
+// Serves the interfaces, or a failure for null, and counts the requests.
+function serveBinding(interfaces: NetworkBindingInterface[] | null) {
+  const fetched = { count: 0 }
+  server.use(http.get("*/api/instances/1/network-binding", () => {
+    fetched.count++
+    return interfaces ? HttpResponse.json(interfaces) : HttpResponse.text("qBittorrent is down", { status: 500 })
+  }))
+  return fetched
+}
+
+// Opens a select and returns the text of its options.
+async function openSelect(trigger: HTMLElement) {
+  fireEvent.keyDown(trigger, { key: "ArrowDown" })
+  return (await screen.findAllByRole("option")).map(option => option.textContent)
+}
+
+const interfaceLabel = "preferences.connectionSettings.networkInterface"
+const addressLabel = "preferences.fields.interfaceAddress"
+
+describe("InstancePreferencesDialog network binding", () => {
+  const scrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView")
+  beforeEach(() => {
+    // Radix scrolls focused select options; jsdom has no layout.
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+  })
+  afterEach(() => {
+    if (scrollIntoView) Object.defineProperty(Element.prototype, "scrollIntoView", scrollIntoView)
+    else Reflect.deleteProperty(Element.prototype, "scrollIntoView")
+  })
+
+  it("lists the addresses of the selected interface, and resets the address when the interface changes", async () => {
+    const bodies = recordSaves()
+    serveView(bindingView("eth0", "192.168.1.10", "Ethernet"))
+    const fetched = serveBinding([anyInterface, ethernet, wireGuard])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
+    expect((await fieldFor(addressLabel)).textContent).toBe("192.168.1.10")
+    // current_interface_name shares the label of the interface, and has no row of its own.
+    expect(screen.getAllByText(interfaceLabel)).toHaveLength(1)
+
+    expect(await openSelect(await fieldFor(interfaceLabel))).toEqual(["preferences.networkBinding.anyInterface", "Ethernet", "WireGuard"])
+    fireEvent.click(screen.getByRole("option", { name: "WireGuard" }))
+
+    expect((await fieldFor(addressLabel)).textContent).toBe("preferences.networkBinding.allAddresses")
+    expect(await openSelect(await fieldFor(addressLabel))).toEqual([
+      "preferences.networkBinding.allAddresses",
+      "preferences.networkBinding.allIPv4Addresses",
+      "preferences.networkBinding.allIPv6Addresses",
+      "10.8.0.2",
+    ])
+    fireEvent.click(screen.getByRole("option", { name: "10.8.0.2" }))
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ current_network_interface: "wg0", current_interface_address: "10.8.0.2" }])
+    // The saved binding decides which entries are "not available", so the list loads again.
+    await waitFor(() => expect(fetched.count).toBe(2))
+  })
+
+  it("keeps a saved interface and address that are not available, marked, when another setting saves", async () => {
+    const bodies = recordSaves()
+    serveView(bindingView("tun0", "10.9.0.2", "OpenVPN"))
+    serveBinding([anyInterface, ethernet, wireGuard, {
+      name: "OpenVPN", value: "tun0", available: false, addresses: [{ address: "10.9.0.2", available: false }],
+    }])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("OpenVPN preferences.networkBinding.notAvailable"))
+    expect((await fieldFor(addressLabel)).textContent).toBe("10.9.0.2 preferences.networkBinding.notAvailable")
+
+    fireEvent.change(await fieldFor("preferences.fields.saveStatisticsInterval"), { target: { value: "30" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_statistics_interval: 30 }])
+  })
+
+  it("shows the binding read-only when qui cannot list the interfaces, and still saves the other settings", async () => {
+    const bodies = recordSaves()
+    serveView(bindingView("tun0", "0.0.0.0", "OpenVPN"))
+    serveBinding(null)
+    renderDialog("advanced")
+
+    const iface = await fieldFor(interfaceLabel)
+    expect(iface.disabled).toBe(true)
+    expect(iface.value).toBe("OpenVPN")
+    const address = await fieldFor(addressLabel)
+    expect(address.disabled).toBe(true)
+    expect(address.value).toBe("preferences.networkBinding.allIPv4Addresses")
+
+    fireEvent.change(await fieldFor("preferences.fields.saveStatisticsInterval"), { target: { value: "30" } })
+    save()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(bodies).toEqual([{ save_statistics_interval: 30 }])
+    // The fetch failed, so the read-only boxes stay.
+    expect((await fieldFor(interfaceLabel)).disabled).toBe(true)
+  })
+
+  it("shows the interface selected in the form when the list loads again and fails", async () => {
+    serveView(bindingView("eth0", "192.168.1.10", "Ethernet"))
+    serveBinding([anyInterface, ethernet, wireGuard])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
+    await openSelect(await fieldFor(interfaceLabel))
+    fireEvent.click(screen.getByRole("option", { name: "WireGuard" }))
+
+    // Another tab unmounts the widget, so the list loads again on the way back.
+    serveBinding(null)
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.instance" }), { button: 0 })
+    await waitFor(() => expect(screen.queryByText(interfaceLabel)).toBeNull())
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "preferences.dialog.tabs.advanced" }), { button: 0 })
+    const iface = await fieldFor(interfaceLabel)
+    await waitFor(() => expect(iface.disabled).toBe(true))
+    // "Ethernet" is the name of the saved interface, so it does not apply to wg0.
+    expect(iface.value).toBe("wg0")
+  })
+
+  it("shows the binding read-only when the list fails to load again after a save", async () => {
+    recordSaves()
+    serveView(bindingView("eth0", "192.168.1.10", "Ethernet"))
+    serveBinding([anyInterface, ethernet, wireGuard])
+    renderDialog("advanced")
+
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).textContent).toBe("Ethernet"))
+    const failed = serveBinding(null)
+    fireEvent.change(await fieldFor("preferences.fields.saveStatisticsInterval"), { target: { value: "30" } })
+    save()
+
+    await waitFor(() => expect(failed.count).toBe(1))
+    await waitFor(async () => expect((await fieldFor(interfaceLabel)).disabled).toBe(true))
+    expect((await fieldFor(interfaceLabel)).value).toBe("Ethernet")
   })
 })

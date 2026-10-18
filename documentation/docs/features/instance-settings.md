@@ -82,7 +82,7 @@ In the instance settings dialog, open the three-dot menu next to the dialog titl
 
 After the **Instance** tab, the settings dialog shows the tabs of the qBittorrent WebUI in the same order: **Behavior**, **Downloads**, **Connect**, **Speed**, **BitTorrent**, **RSS**, **WebUI**, and **Advanced**. qui sends these preferences to the qBittorrent API. They work the same as in the qBittorrent WebUI.
 
-qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences. The **WebUI** tab has no preferences in qui yet.
+qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences.
 
 Some preferences are read-only. qui shows the value, and you change it in qBittorrent.
 
@@ -182,17 +182,71 @@ The **RSS torrent auto downloader** section has RSS auto-downloading.
 
 The **RSS smart episode filter** section sets whether qBittorrent downloads REPACK and PROPER episodes. It also has the episode filters. These are regular expressions, one per line, that find the season and the episode number in an article title.
 
+### WebUI
+
+These settings control the WebUI server of qBittorrent. qui connects to qBittorrent through this server.
+
+The **Web User Interface (remote control)** section has the IP address and the port of the WebUI, and UPnP/NAT-PMP port forwarding for the WebUI port.
+
+The **HTTPS** section sets whether the WebUI uses HTTPS, and the files of the certificate and the key.
+
+The **Authentication** section has the username, the authentication bypass for clients on localhost and for clients in whitelisted IP subnets, and these settings:
+
+- The ban of a client after a number of failed logins, and the duration of the ban in seconds. A value of 0 failed logins turns off the ban.
+- The session timeout in seconds. With 0, a session does not expire.
+- The maximum number of sessions. qBittorrent 5.3 and later send this preference. An empty box means no limit.
+
+The **Security** section has the clickjacking protection, the CSRF protection, the Secure flag of the cookie, and the Host header validation with the list of server domains.
+
+The **Reverse proxy** section has reverse proxy support and the list of trusted proxies. With reverse proxy support, qBittorrent uses the client address from the `X-Forwarded-For` header of a trusted proxy.
+
+The address, the port, HTTPS, the certificate, the key, the username, and the authentication bypass are read-only in qui. qui uses these settings to connect to qBittorrent. A change to one of them can stop the connection. The Host header validation and the server domains are also read-only. If the server domains do not include the host name in the instance URL, qBittorrent rejects every request from qui. To change one of these settings:
+
+1. Change the setting in qBittorrent.
+2. In qui, [edit the instance](#edit-an-instance) and update its URL or its credentials to match.
+
+qui does not show the WebUI password, because qBittorrent never sends it. qui does not show the API key and does not send it to the browser.
+
+The alternative WebUI, the custom HTTP headers, and the dynamic domain name change only the qBittorrent WebUI. qui does not show them.
+
 ### Advanced
 
-The **qBittorrent** section has the memory working set limit, the network interface and its IP address, the lookup of peer countries, and the reannounce to trackers when the IP address changes. The network interface and its IP address are read-only. qui shows the memory working set limit only on libtorrent 2, and not on Linux or macOS.
+The **qBittorrent** section has these preferences:
+
+- The resume data storage type, the save interval of the resume data and of the statistics, and the size limit of .torrent files in MiB.
+- The removal mode of torrent content: delete the files permanently, or move them to the trash.
+- The memory working set limit, the [network binding](#network-binding), the lookup of peer countries, and the reannounce to trackers when the IP address changes.
+- The recheck of torrents on completion, the embedded tracker with its port and port forwarding, Mark-of-the-Web or macOS quarantine for downloaded files, and the option to ignore SSL errors.
+- On qBittorrent 5.3 and later, the start of the BitTorrent session in paused state, and the session shutdown timeout. The paused start pauses every torrent when qBittorrent starts. It is not the [Start torrents paused](#start-torrents-paused) setting of the Downloads tab. An empty shutdown timeout means no limit.
 
 The **libtorrent** section has these preferences:
 
+- The bdecode depth limit and token limit.
 - The asynchronous I/O threads, the hashing threads, the file pool size, the memory for torrent checks, the disk cache, and the disk queue size.
-- The disk I/O type, the read mode, and the write mode, and the coalescing of reads and writes.
-- The send buffer watermarks, the socket backlog size, the outgoing ports, and the UPnP lease duration.
-- The peer ToS byte, the μTP-TCP mixed mode, multiple connections from one IP address, and the block of peers on privileged ports.
-- The announce to all trackers and to all tiers, the IP address that qBittorrent reports to trackers, the maximum concurrent HTTP announces, and the stop tracker timeout.
-- The peer turnover and the request queue size.
+- The disk I/O type, the read mode, the write mode, and the OS cache on qBittorrent 4.3 and 4.4.
+- The coalescing of reads and writes, the piece extent affinity, and the upload piece suggestions.
+- The send buffer watermarks, the outgoing connections per second, and the outgoing connections while seeding.
+- The socket send and receive buffer sizes in KiB, the socket backlog size, the outgoing ports, and the UPnP lease duration. A socket buffer size of 0 uses the system default.
+- The peer ToS byte, the μTP-TCP mixed mode, the hostname resolver cache, and support for internationalized domain names.
+- Multiple connections from one IP address or one peer ID, the validation of HTTPS tracker certificates, the SSRF mitigation, and the block of peers on privileged ports.
+- The upload slots behavior and the upload choking algorithm.
+- The announce to all trackers and to all tiers, the IP address and the port that qBittorrent reports to trackers, the maximum concurrent HTTP announces, and the stop tracker timeout.
+- The peer turnover, the request queue size, the maximum outstanding block requests from a peer, the DHT bootstrap nodes, and the STUN server for WebTorrent.
+- The I2P tunnel quantity, length, and length variance, inbound and outbound.
 
-qui shows the disk cache and the coalescing of reads and writes only on libtorrent 1. qui shows the hashing threads and the disk I/O type only on libtorrent 2.
+qui shows a preference only where qBittorrent uses it:
+
+- On libtorrent 1, qui shows the disk cache and the coalescing of reads and writes.
+- On libtorrent 2, qui shows the memory working set limit, the hashing threads, the disk I/O type, and the I2P tunnel settings.
+- The write-through disk I/O write mode needs libtorrent 2.0.6 or later. The I2P length variance needs libtorrent 2.0.12 or later. Multiple connections from one peer ID need libtorrent 2.0.13 or later. The STUN server for WebTorrent needs libtorrent 2.1 or later.
+- qui does not show the memory working set limit on Linux or macOS. qui shows Mark-of-the-Web only on macOS and Windows. qBittorrent before 5.0 does not report its platform, so qui shows both there.
+
+The refresh interval, the application instance name, the confirmation of a torrent recheck, the Python executable path, and the lookup of peer host names change only the qBittorrent WebUI or desktop app. qui does not show them.
+
+#### Network binding
+
+The network binding is the network interface and the IP address that qBittorrent uses for peer connections. The first list sets the interface, and the second list sets the address. **Any interface** makes qBittorrent use all interfaces. **All addresses**, **All IPv4 addresses**, and **All IPv6 addresses** use all the addresses of the selected interface. The other entries in the second list are the addresses of that interface. If you select a different interface, qui sets the address to **All addresses**.
+
+qBittorrent keeps a saved interface or address that is not available, for example a VPN interface that is down. qui shows that interface or address with the mark "not available" and keeps it selected. If you save other settings, qui does not change the network binding. On qBittorrent 4.6 and later, the mark is next to the readable name of the interface. On earlier versions, the mark is next to the system name, for example `tun0`.
+
+If qui cannot get the list of interfaces from qBittorrent, it shows the network binding as read-only text. You can still save the other settings.
