@@ -196,6 +196,9 @@ func (c sftpCreds) Get(ctx context.Context, id int) (*models.Instance, error) {
 func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
+// SetSSHTier keeps the fixture on the sftp tier, which these tests cover.
+func (sftpCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+
 // sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
 func sftpPath(p string) string {
 	if runtime.GOOS == "windows" {

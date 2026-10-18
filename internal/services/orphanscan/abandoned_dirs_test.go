@@ -57,7 +57,7 @@ func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
 			backdate(t, dir)
 
 			backend := &directoryReadCounter{Backend: newTestBackend()}
-			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(fsops.HostPaths), nil, time.Hour, backend)
+			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(fsops.HostPaths), nil, time.Hour, backend, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +97,7 @@ func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePat
 	t.Helper()
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), ignorePaths, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), ignorePaths, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestAbandonedDirs_EmptyTreeIsRemovedDeepestFirst(t *testing.T) {
 	// before the one that contains it, so each is empty when its turn comes.
 	for i, dir := range got {
 		for _, earlier := range got[:i] {
-			if isPathUnderNormalized(fsops.HostPaths, normalizePath(fsops.HostPaths, dir), normalizePath(fsops.HostPaths, earlier)) {
+			if isPathUnderNormalized(fsops.HostPaths, fsops.NormalizePath(fsops.HostPaths, dir), fsops.NormalizePath(fsops.HostPaths, earlier)) {
 				t.Fatalf("%q is listed after its own parent %q", dir, earlier)
 			}
 		}
@@ -175,9 +175,9 @@ func TestAbandonedDirs_DirectoryHoldingAKeptFileIsKept(t *testing.T) {
 
 	backend := newTestBackend()
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, owned))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, owned))
 
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
@@ -224,11 +224,11 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 
 			tfm := NewTorrentFileMap(fsops.HostPaths)
 			if tt.owned != "" {
-				tfm.Add(normalizePath(fsops.HostPaths, filepath.Join(bdmv, tt.owned)))
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, filepath.Join(bdmv, tt.owned)))
 			}
 
 			backend := newTestBackend()
-			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend, nil)
 			if err != nil {
 				t.Fatalf("walk: %v", err)
 			}
@@ -242,7 +242,7 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 			}
 			if tt.owned == "" {
 				for _, c := range got {
-					if c == filepath.Join(root, "Feature") || isPathUnderNormalized(fsops.HostPaths, normalizePath(fsops.HostPaths, c), normalizePath(fsops.HostPaths, filepath.Join(root, "Feature"))) {
+					if c == filepath.Join(root, "Feature") || isPathUnderNormalized(fsops.HostPaths, fsops.NormalizePath(fsops.HostPaths, c), fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "Feature"))) {
 						t.Fatalf("%q is inside the deleted unit and must not be listed separately: %v", c, got)
 					}
 				}
@@ -262,7 +262,7 @@ func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
 	writeFile(t, filepath.Join(nested, "stale.mkv"))
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks(t *testing.T) {
 	}
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	root := mkdirs(t, t.TempDir(), "fresh")
 	backend := newTestBackend()
 
-	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend)
+	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}

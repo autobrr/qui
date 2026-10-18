@@ -437,6 +437,10 @@ func TestLostConnection(t *testing.T) {
 	assert.True(t, lostConnection(sftp.ErrSSHFxConnectionLost))
 	assert.True(t, lostConnection(fmt.Errorf("wrapped: %w", net.ErrClosed)))
 	assert.False(t, lostConnection(io.EOF), "io.EOF can be a server's answer")
+	assert.True(t, lostConnection(fmt.Errorf("failed to send packet: %w", io.EOF)),
+		"pkg/sftp could not send the request on a channel that had closed")
+	assert.True(t, lostConnection(fmt.Errorf("failed to send packet: %w", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET})),
+		"the socket failed under the send")
 	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
 	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
 

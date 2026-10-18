@@ -8,7 +8,7 @@ Repo rules for AI agents working on qui.
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval.
 - Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
-- A review suggestion that changes a branch lands only after you show the input that branch guarded, in a test or a trace. A simplification that reads cleaner can still drop a case the old guard handled.
+- Before you post or apply a review suggestion that changes or removes a code branch, show in a test or a trace the input that the branch guards. A simplification that reads cleaner can still drop a case that the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 - No backward compatibility shims unless requested.
 
@@ -89,7 +89,12 @@ Frontend-specific rules live in `web/AGENTS.md`. Before you edit, spec, or revie
   - Naming a work in prose, or building a name from a real title and group tag, is allowed. The rule is about strings copied from someone's client, not about which words you use.
   - Scrub reports from Discord or DMs the same way before you quote them. Keep the real string in notes outside the repo so the repro stays runnable; tracked files under `docs/` count as published.
   - New test fixtures and code comments use names built by the rule above. Do not sweep the existing ones.
-  - Screenshots: capture from an instance you fill with synthetic torrents. If the bug shows only on a real library, blur the name, tracker, and save path columns.
+  - A screenshot or a recording that you attach on GitHub, in a PR body or a comment, is public. Before you capture it, turn on incognito mode (the eye icon in the status bar of the torrent list). It replaces torrent names, trackers, categories, tags, and save paths with fake values. brrbin is private: only the maintainers can open an Evidence, so captures for brrbin can show the real values. In every capture, mask passkeys, announce URLs, and API keys.
+- To show screenshots or recordings in a pull request:
+  1. If brrbin is on `PATH`, run `brrbin publish --help` and follow it. If it exits with code 4, stop and ask the user to run `brrbin login`. If it exits with code 6, do step 3.
+  2. If brrbin is not installed, run `gh api "orgs/autobrr/teams/brrbin/memberships/$(gh api user --jq .login)" --jq .state`. If it prints `active`, set `GOPRIVATE=github.com/autobrr/brrbin` in the environment and run `go install github.com/autobrr/brrbin@latest`, then do step 1. If Go is not installed, tell the user that brrbin needs Go, and do step 3. If the install cannot read the repo, run `gh auth setup-git` and try again. If brrbin is still not on `PATH`, tell the user to add the folder that `go env GOBIN` prints. If it prints nothing, the folder is `bin` in the first entry of `go env GOPATH`.
+  3. Otherwise, save the screenshots in a folder and tell the user: "Sign in with GitHub at https://bin.getqui.com, create a Paste with the pull request URL as the issue link, and add the screenshots from `<folder>`. Only qui maintainers can read a Paste." Put the Paste link in the Screenshots section of the pull request. A Paste holds only images, so attach recordings to the pull request. If `gh api "orgs/autobrr/members/$(gh api user --jq .login)" --silent` succeeds, also tell the user: "You can publish private screenshots with brrbin if you are in the autobrr/brrbin team. Ask an org admin to add you."
+- To read a `bin.getqui.com` link in a pull request, a Paste (`/p/`) or an Evidence (`/e/`), run `brrbin fetch <link>`. `docs/agents/issue-tracker.md` describes the sign-in and the files that the command writes.
 
 ## Field Test
 

@@ -191,8 +191,7 @@
     "trigger": "자세한 정보"
   },
   "numberInput": {
-    "unlimited": "무제한",
-    "useUnlimited": " (무제한은 -1 사용)"
+    "unlimited": "무제한"
   },
   "dateTime": {
     "na": "N/A",

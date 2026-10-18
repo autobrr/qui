@@ -18,8 +18,6 @@ import (
 	"slices"
 	"strings"
 
-	qbt "github.com/autobrr/go-qbittorrent"
-
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -51,15 +49,15 @@ var keyValues = map[string][]string{
 	"GroupingConfig.defaultGroupId":        automations.BuiltinGroupIDs,
 	"GroupDefinition.keys":                 automations.GroupKeys,
 	"GroupDefinition.ambiguousPolicy":      automations.GroupAmbiguousPolicies,
-	"DeleteAction.mode":                    {models.DeleteModeKeepFiles, models.DeleteModeWithFiles, models.DeleteModeWithFilesPreserveCrossSeeds, models.DeleteModeWithFilesIncludeCrossSeeds},
+	"DeleteAction.mode":                    automations.DeleteModes,
 	"DeleteAction.groupId":                 automations.BuiltinGroupIDs,
 	"DeleteAction.atomic":                  {"all"},
-	"TagAction.mode":                       {models.TagModeFull, models.TagModeAdd, models.TagModeRemove},
+	"TagAction.mode":                       automations.TagModes,
 	"CategoryAction.groupId":               automations.BuiltinGroupIDs,
 	"MoveAction.groupId":                   automations.BuiltinGroupIDs,
 	"MoveAction.atomic":                    {"all"},
-	"ShareLimitsAction.shareLimitAction":   {qbt.ShareLimitActionStop, qbt.ShareLimitActionRemove, qbt.ShareLimitActionRemoveWithContent, qbt.ShareLimitActionEnableSuperSeeding},
-	"ShareLimitsAction.shareLimitsMode":    {qbt.ShareLimitsModeMatchAny, qbt.ShareLimitsModeMatchAll},
+	"ShareLimitsAction.shareLimitAction":   automations.ShareLimitActions,
+	"ShareLimitsAction.shareLimitsMode":    automations.ShareLimitsModes,
 	"ExportToInstanceAction.contentLayout": automations.ContentLayouts,
 	"SortingConfig.field":                  conditionFieldNames(func(f models.ConditionField) bool { return f.IsNumeric() || f.IsString() }),
 	"FieldMultiplierScoreRule.field":       conditionFieldNames(models.ConditionField.IsNumeric),

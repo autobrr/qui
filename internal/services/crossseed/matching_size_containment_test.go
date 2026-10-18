@@ -192,13 +192,13 @@ func TestGetMatchTypeFromTitle_RenamedPackFallback(t *testing.T) {
 
 	svc := newMatcherService().matcher()
 
-	got := svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S01.Pack", &episode, &pack, renamedFiles)
+	got := svc.getMatchTypeFromTitle(&episode, &pack, renamedFiles)
 	require.Equal(t, "release-match", got, "renamed same-season pack must pass discovery for the file-level matcher")
 
-	got = svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S01.Pack", &episode, &pack, wellNamedFiles)
+	got = svc.getMatchTypeFromTitle(&episode, &pack, wellNamedFiles)
 	require.Empty(t, got, "well-named pack without the target episode must still reject at discovery")
 
-	got = svc.getMatchTypeFromTitle("Show.S01E02.mkv", "Show.S03.Pack", &episode, &otherSeasonPack, renamedFiles)
+	got = svc.getMatchTypeFromTitle(&episode, &otherSeasonPack, renamedFiles)
 	require.Empty(t, got, "renamed pack from another season must not pass")
 }
 

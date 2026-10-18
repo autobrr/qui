@@ -61,6 +61,15 @@ func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 	return f.pin, nil
 }
 
+// SetSSHTier writes the row Get answers with, as the store writes the column.
+func (f fakeCreds) SetSSHTier(_ context.Context, id int, tier models.SSHTier) error {
+	if f.inst == nil || f.inst.ID != id {
+		return models.ErrInstanceNotFound
+	}
+	f.inst.SSHTier = tier
+	return nil
+}
+
 func instanceAt(t *testing.T, addr string) *models.Instance {
 	t.Helper()
 
@@ -200,7 +209,9 @@ func TestConfirmAcceptsPresentedKey(t *testing.T) {
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 
-	require.NoError(t, dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal()))
+	capabilities, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal())
+	require.NoError(t, err)
+	assert.Equal(t, models.SSHTierExec, capabilities.Tier())
 }
 
 func TestConfirmRejectsOtherKey(t *testing.T) {
@@ -209,7 +220,7 @@ func TestConfirmRejectsOtherKey(t *testing.T) {
 	other := sshtest.NewSigner().PublicKey()
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
 
-	err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), other.Marshal())
+	_, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), other.Marshal())
 	mismatch, ok := errors.AsType[*MismatchError](err)
 	require.True(t, ok, "expected a mismatch error, got %v", err)
 	assert.Equal(t, server.HostKey.Marshal(), mismatch.Presented.Marshal())
@@ -222,7 +233,7 @@ func TestConfirmRejectsMalformedKeyWithoutDialing(t *testing.T) {
 
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
 
-	err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), []byte("ssh-ed25519 AAAAC3Nz"))
+	_, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), []byte("ssh-ed25519 AAAAC3Nz"))
 	require.Error(t, err)
 	assert.Zero(t, server.Accepts())
 }
@@ -234,11 +245,20 @@ func TestExecCapabilities(t *testing.T) {
 		name        string
 		mode        sshtest.ExecMode
 		exec        bool
+		posixShell  bool
 		gnuUserland bool
 	}{
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
-		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, gnuUserland: true},
-		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true},
+		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
+		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
+		// The GNU tools are there, but the login shell quotes like fish,
+		// nushell or tcsh, so a quoted path could break out: no exec tier.
+		{name: "non-posix login shell", mode: sshtest.ExecNonPOSIX, exec: true},
+		{name: "split-quote login shell", mode: sshtest.ExecSplitQuote, exec: true},
+		{name: "csh login shell", mode: sshtest.ExecCsh, exec: true},
+		// A pooled connection keeps sftp open, so a host with MaxSessions 1
+		// has no channel left for a command.
+		{name: "one session at a time", mode: sshtest.ExecOneSession},
 	}
 
 	for _, tt := range tests {
@@ -254,9 +274,32 @@ func TestExecCapabilities(t *testing.T) {
 			assert.True(t, report.Capabilities.Statvfs)
 			assert.True(t, report.Capabilities.Hardlink)
 			assert.Equal(t, tt.exec, report.Capabilities.Exec)
+			assert.Equal(t, tt.posixShell, report.Capabilities.POSIXShell)
 			assert.Equal(t, tt.gnuUserland, report.Capabilities.GNUUserland)
+			wantTier := models.SSHTierSFTP
+			if tt.posixShell && tt.gnuUserland {
+				wantTier = models.SSHTierExec
+			}
+			assert.Equal(t, wantTier, report.Capabilities.Tier())
 		})
 	}
+}
+
+// A host that runs the GNU tools but refuses sftp serves no pooled connection,
+// so it must not read as the exec tier.
+func TestExecTierNeedsSFTP(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	server.SetSFTP(sshtest.SFTPRefuse)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	require.NotNil(t, report.Capabilities)
+	assert.False(t, report.Capabilities.SFTP)
+	assert.True(t, report.Capabilities.GNUUserland)
+	assert.Equal(t, models.SSHTierSFTP, report.Capabilities.Tier())
 }
 
 // Not parallel: SetSFTPExtensions mutates a package global in pkg/sftp, and the
@@ -454,5 +497,24 @@ func TestUnreachableHostIsErrConnect(t *testing.T) {
 	t.Parallel()
 
 	_, err := dialerFor(nil).Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.ErrorIs(t, err, ErrConnect)
+}
+
+// A host whose session channels never answer still has a verifiable host
+// key: the pin succeeds and no tier is reported, and a test of the same host
+// reports no answer rather than a tier the probe did not learn.
+func TestProbeWithoutAnAnswerPinsButReportsNothing(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecStallOpen)
+	dialer := dialerFor(nil)
+	dialer.timeout = 300 * time.Millisecond
+
+	capabilities, err := dialer.Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal())
+	require.NoError(t, err, "the key was verified, so the pin may go ahead")
+	assert.Nil(t, capabilities, "no tier is reported from a probe that got no answer")
+
+	_, err = dialer.Test(t.Context(), instanceAt(t, server.Addr))
 	require.ErrorIs(t, err, ErrConnect)
 }

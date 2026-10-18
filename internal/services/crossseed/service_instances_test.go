@@ -17,6 +17,7 @@ import (
 type orderedInstanceStore struct {
 	ordered []*models.Instance
 	byID    map[int]*models.Instance
+	listErr error
 }
 
 func newOrderedInstanceStore(instances ...*models.Instance) *orderedInstanceStore {
@@ -39,6 +40,9 @@ func (s *orderedInstanceStore) Get(_ context.Context, id int) (*models.Instance,
 }
 
 func (s *orderedInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
 	instances := make([]*models.Instance, len(s.ordered))
 	copy(instances, s.ordered)
 	return instances, nil

@@ -19,7 +19,7 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Title, year, and release group
 - Resolution (1080p, 2160p)
 - Source (WEB-DL, BluRay) and collection (AMZN, NF)
-- Codec (x264, x265) and HDR format
+- Codec (x264, x265) and HDR format. A bare `HDR` counts as `HDR10`.
 - Audio format and channels
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
@@ -166,7 +166,7 @@ A fansub name also splits its release-group identity across two parsed fields. E
 
 Title, season, episode, and split release-group differences require verification. qui adds these torrents paused and resumes them only after a 100% recheck.
 
-Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, keep the normal fast path after all safety checks.
+Soft differences, such as codec, source, HDR, edition, a year that only one name has, or one-sided checksum data, keep the normal fast path after all safety checks.
 
 If you enable **Skip recheck**, qui skips only decisions that require verification. RSS and autobrr reject these decisions before their planned download.
 
