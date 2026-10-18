@@ -519,7 +519,7 @@ func (b *batchFiles) linkedTier(ctx context.Context, source *qbt.Torrent, source
 	// Check the cheap gates here, so that a source without file identity
 	// never builds a context.
 	if candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
-		!instanceHasFileIdentity(b.instances, sourceInstanceID) {
+		!instanceHas(b.instances, sourceInstanceID, models.CapabilityIdentity) {
 		return localLinkResult{}
 	}
 	key := cacheKeyForTorrentFiles(sourceInstanceID, source.Hash)

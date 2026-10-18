@@ -30,7 +30,7 @@ const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => 
     isActive: true,
     hasLocalFilesystemAccess: true,
     filesystemMode: "local",
-    capabilities: { read: true, identity: true, write: true, content: true },
+    capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true },
   }
   const settings = {
     instanceId: 1,

@@ -119,3 +119,26 @@ describe("TorrentDetailsPanel fallback", () => {
     client.clear()
   })
 })
+
+describe("TorrentDetailsPanel cross-seed tab", () => {
+  it("shows a failed refetch instead of the matches it kept", async () => {
+    const kept = mocks.matches
+    mocks.matches = {
+      matchingTorrents: [makeTorrent({ hash: "b", name: "Kept.Match.2024.1080p.WEB-GRP" })],
+      matchesError: new Error("overlap check failed"),
+      isLoadingMatches: false,
+      allInstances: [],
+    } as unknown as typeof mocks.matches
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { findByText, queryByText } = render(
+      <QueryClientProvider client={client}>
+        <TorrentDetailsPanel instanceId={1} torrent={makeTorrent({ hash: "a" })} initialTab="crossseed" onClose={vi.fn()} />
+      </QueryClientProvider>
+    )
+
+    expect(await findByText(/crossSeedTable\.loadFailed|Could not check for cross-seed matches/)).toBeTruthy()
+    expect(queryByText("Kept.Match.2024.1080p.WEB-GRP")).toBeNull()
+    mocks.matches = kept
+    client.clear()
+  })
+})

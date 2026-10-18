@@ -28,8 +28,8 @@ type RuleNeeds struct {
 // fieldData is the prepared data one condition field reads. A field without a
 // row reads only the torrent and is always known.
 type fieldData struct {
-	fileIdentity bool // needs models.FilesystemCapabilitiesOf(instance).Identity
-	localAccess  bool // needs instance.HasLocalFilesystemAccess
+	trustedIdentity bool // needs models.FilesystemCapabilitiesOf(instance).TrustedIdentity
+	localAccess     bool // needs instance.HasLocalFilesystemAccess
 	// need marks the data in RuleNeeds.
 	need func(n *RuleNeeds)
 	// known reports whether ctx holds the field's data for the torrent. A row
@@ -39,16 +39,16 @@ type fieldData struct {
 
 var conditionFieldData = map[ConditionField]fieldData{
 	FieldHardlinkScope: {
-		fileIdentity: true,
-		need:         func(n *RuleNeeds) { n.HardlinkScope = true },
+		trustedIdentity: true,
+		need:            func(n *RuleNeeds) { n.HardlinkScope = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HardlinkScopeByHash[hash]
 			return ok
 		},
 	},
 	FieldHardlinkScopeCross: {
-		fileIdentity: true,
-		need:         func(n *RuleNeeds) { n.HardlinkCrossScope = true },
+		trustedIdentity: true,
+		need:            func(n *RuleNeeds) { n.HardlinkCrossScope = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HardlinkCrossScopeByHash[hash]
 			return ok
@@ -109,7 +109,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 		return true
 	}
 	if ctx == nil ||
-		data.fileIdentity && !ctx.InstanceHasFileIdentity ||
+		data.trustedIdentity && !ctx.InstanceHasTrustedIdentity ||
 		data.localAccess && !ctx.InstanceHasLocalAccess {
 		return false
 	}

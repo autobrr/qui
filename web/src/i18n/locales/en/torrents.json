@@ -1359,6 +1359,7 @@
       }
     },
     "noMatches": "No matching torrents found on other instances",
+    "loadFailed": "Could not check for cross-seed matches. Reload to try again.",
     "toast": {
       "savePathCopied": "Save path copied",
       "copyFailed": "Failed to copy"

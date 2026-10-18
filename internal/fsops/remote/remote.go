@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package remote implements fsops.Backend over SFTP, on the pooled SSH
-// connection the instance's stored credentials open. Reflinks and file
-// identity have no sftp operation and answer fsops.ErrUnsupported; hardlinks
-// need the server to advertise hardlink@openssh.com. Remote paths are
+// connection the instance's stored credentials open. Reflinks have no sftp
+// operation and answer fsops.ErrUnsupported, and hardlinks need the server to
+// advertise hardlink@openssh.com. File identity needs the exec tier, where
+// GNU stat and find run as remote commands. Remote paths are
 // slash-delimited, so this package uses path and never path/filepath: the
 // separator belongs to the remote host, not to ours.
 package remote
@@ -43,7 +44,10 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 	return &Backend{pool: pool, inst: inst}
 }
 
-var _ fsops.Backend = (*Backend)(nil)
+var (
+	_ fsops.Backend     = (*Backend)(nil)
+	_ fsops.BatchStater = (*Backend)(nil)
+)
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
 // number, so hardlink identity degrades to zero FileID plus this error, which
@@ -79,7 +83,9 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, true)
+	return info, nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -91,7 +97,9 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, false)
+	return info, nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, error) {
@@ -133,7 +141,14 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		if opts.Skip(path.Base(root), root, fi.IsDir(), true) {
 			return
 		}
-		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
+		entry := walkEntry(fi, root, ".", opts.WantFileID)
+		if opts.WantFileID && fi.Mode().IsRegular() {
+			b.setIdentity(ctx, &entry.LstatInfo, false)
+		}
+		if !send(ctx, ch, entry) || !fi.IsDir() {
+			return
+		}
+		if b.execTier() && b.walkExec(ctx, ch, root, opts) {
 			return
 		}
 		b.walk(ctx, ch, root, opts)
@@ -391,6 +406,9 @@ func statfsResult(stat *sftp.StatVFS) *fsops.StatfsResult {
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
+	if b.execTier() {
+		return b.sameFilesystemExec(ctx, p1, p2)
+	}
 	client, err := b.client(ctx)
 	if err != nil {
 		return false, err
@@ -510,7 +528,7 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 //
 // ponytail: serial, one extra round trip per entry on top of the listing;
 // nothing reachable in this release removes a large tree, and rm -rf -- over
-// exec (#2726) is the upgrade when one does.
+// exec is the upgrade when one does.
 func removeDir(ctx context.Context, client *sftp.Client, dir string) error {
 	entries, err := readDir(ctx, client, dir)
 	if err != nil {
@@ -766,14 +784,6 @@ func fileInfo(fi os.FileInfo, p string) fsops.FileInfo {
 		IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
 		Mode:      fi.Mode(),
 	}
-}
-
-func lstatInfo(fi os.FileInfo, p string) *fsops.LstatInfo {
-	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
-	if fi.Mode().IsRegular() || fi.IsDir() {
-		info.FileIDErr = errNoIdentity
-	}
-	return info
 }
 
 func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {

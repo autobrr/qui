@@ -714,7 +714,8 @@
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
       "noLocalAccess": "Acesso Local Ausente",
       "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
-      "remoteLimits": "A exclusão e a auto-limpeza ainda não funcionam em instâncias remotas. O qui também não consegue saber quando dois caminhos são o mesmo arquivo, então um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize.",
+      "remoteLimits": "A exclusão e a auto-limpeza ainda não funcionam em instâncias remotas.",
+      "remoteNoIdentity": "O qui também não consegue saber quando dois caminhos são o mesmo arquivo, então um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize.",
       "on": "Ligado",
       "off": "Desligado",
       "summaryGrace": "Tolerância {{grace}}m",
@@ -1237,7 +1238,8 @@
         "withFilesIncludeCrossSeeds": "Remover com arquivos (incluir cross-seeds)",
         "includeHardlinkedCopies": "Incluir cópias com hardlink",
         "includeHardlinkedCopiesDescription": "Também exclui torrents que compartilham os mesmos arquivos via hardlinks. Considera apenas hardlinks totalmente dentro do qBittorrent; nunca segue hardlinks externos.",
-        "localAccessRequired": "Requer que \"Acesso ao Sistema de Arquivos Local\" esteja ativado nas configurações da instância."
+        "localAccessRequired": "Requer que \"Acesso ao Sistema de Arquivos Local\" esteja ativado nas configurações da instância.",
+        "remoteNotAvailable": "Indisponível em instâncias remotas"
       },
       "move": {
         "newSavePath": "Aonde salvar o arquivo agora?",

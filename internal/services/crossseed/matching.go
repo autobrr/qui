@@ -523,6 +523,7 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	candidateGroup := normalizer.Normalize((candidate.Group))
 	sourceSite := normalizer.Normalize(source.Site)
 	candidateSite := normalizer.Normalize(candidate.Site)
+	spaceJoined := m.spaceJoinedGroupSite(source, candidate)
 
 	// A hyphenated fansub name reads as Site in its bracket form and as a split
 	// Group in its dash-suffix form. Compare the rebuilt suffix name instead.
@@ -534,7 +535,7 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	}
 
 	// Only enforce group matching if the source has a group tag
-	if sourceGroup != "" {
+	if sourceGroup != "" && !spaceJoined {
 		candidateGroupIdentity := candidateGroup
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
@@ -555,7 +556,7 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
 	// non-empty site tags as incompatible, but don't reject candidates that simply
 	// lack this metadata.
-	if sourceSite != "" {
+	if sourceSite != "" && !spaceJoined {
 		candidateSiteIdentity := candidateSite
 		if candidateSiteIdentity == "" {
 			candidateSiteIdentity = candidateGroup
@@ -581,6 +582,24 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	}
 
 	return true, ""
+}
+
+// spaceJoinedGroupSite reports whether one name writes the group and the
+// collective as "- Kyo Mura)" and the other as "- Kyo) [Mura]". rls reads the
+// first as one group with a space, so only the other name shows the split.
+func (m matcher) spaceJoinedGroupSite(source, candidate *rls.Release) bool {
+	normalizer := m.normalizer()
+	joined := func(split, whole *rls.Release) bool {
+		// Most names carry no Site, so skip the normalizer lookups on this hot path.
+		if split.Site == "" || whole.Site != "" {
+			return false
+		}
+		group := normalizer.Normalize(split.Group)
+		site := normalizer.Normalize(split.Site)
+		return group != "" && group != site &&
+			normalizer.Normalize(whole.Group) == group+" "+site
+	}
+	return joined(source, candidate) || joined(candidate, source)
 }
 
 // sourceMismatchReason is the rejection reason emitted when two releases differ

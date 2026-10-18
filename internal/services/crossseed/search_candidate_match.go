@@ -474,6 +474,7 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	}
 	if sourceIdentity == "" || candidateIdentity == "" ||
 		(sourceIdentity != candidateIdentity &&
+			!m.spaceJoinedGroupSite(source, candidate) &&
 			!m.crossFieldGroupSiteFallback(input.Source, input.Candidate)) {
 		return false, "group/site mismatch"
 	}
