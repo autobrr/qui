@@ -584,7 +584,10 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 		return ErrFilesystemModeChanged
 	}
 	// Refused before the lock and without touching the run, so the preview stays reviewable.
-	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
+	// A remote run is refused by its recorded mode, not only by capabilities: with
+	// Write (#2942) and the exec tier's Identity both present, the capability gate
+	// alone would admit it. Remote deletes land with #3236.
+	if run.FilesystemMode == models.FilesystemModeRemote || !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
 		return fmt.Errorf("orphan scan deletion in %s mode: %w", run.FilesystemMode, fsops.ErrNotCapable)
 	}
 
