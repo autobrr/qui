@@ -86,11 +86,12 @@ func probe(ctx context.Context, client *ssh.Client, timeout time.Duration) (*Cap
 	return capabilities, checkAlive(client)
 }
 
-// noAnswer tells a sub-probe that ran out of its own time from one the host
-// refused: the first says nothing about the host, the second does. A ctx the
-// caller ended is reported as the caller's own reason by the probe's caller.
+// noAnswer tells a sub-probe that was cut short, by its own time or by the
+// caller, from one the host refused: the first says nothing about the host,
+// the second does. A ctx the caller ended is reported as the caller's own
+// reason by the probe's caller.
 func noAnswer(ctx context.Context, err error) bool {
-	return err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded)
+	return err != nil && (ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded))
 }
 
 // shellAndTools asks the login shell whether it quotes like POSIX and, only
