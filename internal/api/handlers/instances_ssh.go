@@ -99,9 +99,8 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Without the credentials a remote instance loses Write, the way turning
-	// off local access does, and UpdateInstance refuses that while a link mode
-	// is on. Same rule here (#2942).
+	// Clearing the credentials costs a remote instance its Write, and
+	// UpdateInstance refuses to leave a link mode on without it (#2942).
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
@@ -112,7 +111,11 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
 		return
 	}
-	if (instance.UseHardlinks || instance.UseReflinks) && !instance.HasLocalFilesystemAccess {
+	withoutCredentials := *instance
+	withoutCredentials.SSHHost = ""
+	withoutCredentials.SSHKeyEncrypted = ""
+	withoutCredentials.SSHHostKeyEncrypted = ""
+	if (instance.UseHardlinks || instance.UseReflinks) && !models.FilesystemCapabilitiesOf(&withoutCredentials).Write {
 		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before removing its SSH credentials")
 		return
 	}

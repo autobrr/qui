@@ -23,6 +23,12 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 /** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
+// Nothing clones files over sftp, so reflink mode stays local-only even though
+// a remote instance has Write (#2942).
+function reflinkAllowed(instance: Instance): boolean {
+  return instance.capabilities.write && instance.filesystemMode === "local"
+}
+
 export function HardlinkModeSettings({
   pooledPartialCompletionEnabled,
   onPooledPartialCompletionEnabledChange,
@@ -103,8 +109,7 @@ export function HardlinkModeSettings({
     const form = getForm(instance)
 
     // Validate before saving
-    const canReflink = instance.capabilities.write && instance.filesystemMode === "local"
-    if ((form.useHardlinks && !instance.capabilities.write) || (form.useReflinks && !canReflink)) {
+    if ((form.useHardlinks && !instance.capabilities.write) || (form.useReflinks && !reflinkAllowed(instance))) {
       const mode = form.useReflinks ? "reflink" : "hardlink"
       toast.error(t("toast.cannotEnableMode", { mode }), {
         description: t("toast.noLocalFilesystemAccess", { name: instance.name }),
@@ -195,8 +200,7 @@ export function HardlinkModeSettings({
               const form = getForm(instance)
               const isDirty = dirtyMap[instance.id] ?? false
               const canEnableModes = instance.capabilities.write
-              // Nothing clones files over sftp, so reflink mode is local-only.
-              const canEnableReflink = canEnableModes && instance.filesystemMode === "local"
+              const canEnableReflink = reflinkAllowed(instance)
 
               return (
                 <AccordionItem
