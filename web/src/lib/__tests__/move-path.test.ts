@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import { isMovePathServerError, isVisiblyRelativeMovePath } from "./move-path"
+import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 
 describe("isVisiblyRelativeMovePath", () => {
   it.each([
