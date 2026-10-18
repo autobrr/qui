@@ -106,8 +106,20 @@ type Backend interface {
 // BatchStater is a Backend that answers many paths in one request, so a
 // remote host costs a few round trips per batch and not a few per path.
 type BatchStater interface {
+	// StatBatch is Stat for each path: infos[i] and errs[i] answer paths[i].
+	StatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
 	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
 	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
+
+// StatAll is Stat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Stat per
+// path.
+func StatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.StatBatch(ctx, paths)
+	}
+	return statEach(ctx, paths, b.Stat)
 }
 
 // LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
@@ -117,10 +129,14 @@ func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInf
 	if batch, ok := b.(BatchStater); ok {
 		return batch.LstatBatch(ctx, paths)
 	}
-	infos = make([]*LstatInfo, len(paths))
-	errs = make([]error, len(paths))
+	return statEach(ctx, paths, b.Lstat)
+}
+
+func statEach(ctx context.Context, paths []string, stat func(context.Context, string) (*LstatInfo, error)) ([]*LstatInfo, []error) {
+	infos := make([]*LstatInfo, len(paths))
+	errs := make([]error, len(paths))
 	for i, p := range paths {
-		infos[i], errs[i] = b.Lstat(ctx, p)
+		infos[i], errs[i] = stat(ctx, p)
 	}
 	return infos, errs
 }
