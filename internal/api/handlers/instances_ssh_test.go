@@ -643,3 +643,26 @@ func TestDeleteSSHCredentialsRefusesWhileALinkModeIsOn(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
 }
+
+func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T) {
+	f := newSSHFixture(t, "update-credentials-link-mode")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	host, port := splitAddr(t, f.server.Addr)
+	elsewhere, err := json.Marshal(SSHCredentialsRequest{Host: "moved.example.invalid", Port: port, Username: "qui", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code,
+		"a new endpoint drops the pin, so a link mode would have no filesystem access")
+
+	// The same endpoint keeps the pin, so rotating the key stays allowed.
+	sameEndpoint, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "qui2", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(sameEndpoint)).Code)
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":false,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code)
+}

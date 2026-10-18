@@ -75,10 +75,15 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 	return false
 }
 
-// FilesystemCapabilitiesOf is the one place that maps an instance's
-// filesystem mode to what qui may do with its files. A remote instance has
-// Read and Write (#2725, #2942), and Identity when its key reaches the exec
-// tier (#2726).
+// FilesystemCapabilitiesOf maps an instance's filesystem mode to what qui may
+// do with its files. A remote instance has Read and Write (#2725, #2942), and
+// Identity when its key reaches the exec tier (#2726).
+//
+// Three callers narrow Write by reading the mode themselves, because no
+// capability names what they need: reflink mode needs a cloning filesystem
+// (UpdateInstance, and reflinkAllowed in the settings panel), and dirscan's
+// link trees and the orphan-scan confirm still apply host filepath to backend
+// paths, so both stay on a local instance until that is fixed.
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:

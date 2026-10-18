@@ -2121,6 +2121,7 @@ func TestProcessHardlinkMode_ExistingTargetRefusesInsteadOfFallingBack(t *testin
 	)
 
 	require.False(t, result.Success, "result: %+v", result)
+	assert.Equal(t, "hardlink_error", result.Result.Status, "the refusal is reported as a hardlink error")
 	assert.False(t, result.FallbackToRegular, "an existing target must not become a regular add")
 	assert.False(t, result.RequiresFullRecheck)
 	assert.Empty(t, sync.addedOptions, "nothing is added")

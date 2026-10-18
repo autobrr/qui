@@ -22,13 +22,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-/** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
 // Nothing clones files over sftp, so reflink mode stays local-only even though
 // a remote instance has Write (#2942).
 function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
 }
 
+/** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
 export function HardlinkModeSettings({
   pooledPartialCompletionEnabled,
   onPooledPartialCompletionEnabledChange,

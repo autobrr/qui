@@ -71,6 +71,31 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// A new endpoint has never been confirmed, so SetSSHCredentials drops the
+	// pin and the instance has no filesystem access until the user confirms
+	// the new host key. A link mode would keep failing every cross-seed in the
+	// meantime, so refuse the change the way removing the credentials is
+	// refused (#2942). Rotating the key or the username on the same endpoint
+	// keeps the pin and stays allowed.
+	instance, err := h.instanceStore.Get(r.Context(), instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to fetch instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
+		return
+	}
+	if instance.UseHardlinks || instance.UseReflinks {
+		withoutPin := *instance
+		withoutPin.SSHHostKeyEncrypted = ""
+		if models.SSHEndpointChanged(instance, req.Host, req.Port) && !models.FilesystemCapabilitiesOf(&withoutPin).Write {
+			RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before changing its SSH host or port")
+			return
+		}
+	}
+
 	if err := h.instanceStore.SetSSHCredentials(r.Context(), instanceID, req.Host, req.Port, req.Username, req.PrivateKey); err != nil {
 		switch {
 		case errors.Is(err, models.ErrInstanceNotFound):
@@ -111,10 +136,12 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
 		return
 	}
+	// Mirror ClearSSHCredentials: the username, the key and the tier go, and
+	// the host and the pin stay.
 	withoutCredentials := *instance
-	withoutCredentials.SSHHost = ""
+	withoutCredentials.SSHUsername = ""
 	withoutCredentials.SSHKeyEncrypted = ""
-	withoutCredentials.SSHHostKeyEncrypted = ""
+	withoutCredentials.SSHTier = models.SSHTierSFTP
 	if (instance.UseHardlinks || instance.UseReflinks) && !models.FilesystemCapabilitiesOf(&withoutCredentials).Write {
 		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before removing its SSH credentials")
 		return
