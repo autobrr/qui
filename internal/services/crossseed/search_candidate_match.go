@@ -967,12 +967,20 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 		}
 	}
 
-	add(side.release)
-	add(side.tagOrigin)
-	if side.rawName != "" {
-		add(m.parseReleaseName(side.rawName))
+	for _, origin := range m.tagOrigins(side) {
+		add(origin)
 	}
 	return provenance
+}
+
+// tagOrigins returns the release, its selected file, and its parsed raw
+// torrent/search name. An origin the side does not record is nil.
+func (m matcher) tagOrigins(side namedRelease) [3]*rls.Release {
+	var rawRelease *rls.Release
+	if side.rawName != "" {
+		rawRelease = m.parseReleaseName(side.rawName)
+	}
+	return [3]*rls.Release{side.release, side.tagOrigin, rawRelease}
 }
 
 // dashSuffixGroupSpellsSite reports whether grouped, which carries a Group and
@@ -980,8 +988,8 @@ func (m matcher) groupTagProvenance(side namedRelease) groupTagProvenance {
 // as "[Moe-Fansub]" whole in Site, but splits the suffix "x265-Moe-Fansub" at
 // the last dash into a text tag "Moe" and Group "Fansub". Only the full run of
 // text tags before the group rebuilds the name, so "x265-Fansub" and
-// "x265-Big-Moe-Fansub" stay different groups. The rebuild reads the same
-// origins as groupTagProvenance, because a view built from the files can carry
+// "x265-Big-Moe-Fansub" stay different groups. The rebuild reads every origin
+// in tagOrigins, because a view built from the files can carry
 // the Group of the torrent name without the tags of that name. Every origin on
 // either side with a group tag must carry the Group and rebuild the Site, so a
 // selected file that names "Big-Moe-Fansub" or "Other" vetoes a torrent name
@@ -1000,11 +1008,7 @@ func (m matcher) dashSuffixGroupSpellsSite(sited, grouped namedRelease) bool {
 	// spells reports whether no origin of side contradicts the rebuild, and
 	// whether at least one origin spells it.
 	spells := func(side namedRelease) (agrees, spelled bool) {
-		var rawRelease *rls.Release
-		if side.rawName != "" {
-			rawRelease = m.parseReleaseName(side.rawName)
-		}
-		for _, origin := range [...]*rls.Release{side.release, side.tagOrigin, rawRelease} {
+		for _, origin := range m.tagOrigins(side) {
 			if origin == nil {
 				continue
 			}
