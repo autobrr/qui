@@ -212,9 +212,8 @@ func cachedTemplate(dir string, migrations fs.FS, build func(dbPath string) erro
 	if err := build(tmpPath); err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmpPath, final); err != nil {
-		// Windows refuses to replace a file another builder renamed into
-		// place while a process reads it; that file is just as good.
+	if err := publishTemplate(tmpPath, final); err != nil {
+		// Another builder's completed template is just as good.
 		if _, statErr := os.Stat(final); statErr == nil {
 			return final, nil
 		}

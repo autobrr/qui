@@ -4,17 +4,21 @@
 package dirscan
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -86,10 +90,11 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			searchee := &Searchee{Name: name, Path: sourceFile, Files: []*ScannedFile{{Path: sourceFile, RelPath: name, Size: 4}}}
 
 			adder := &failingTorrentAdder{err: errors.New("add stopped by test")}
+			cacheDB := &cacheTouchDB{DB: db, done: make(chan struct{})}
 			svc := &Service{
 				store:          models.NewDirScanStore(db),
 				blocklistStore: blocklist,
-				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(cache)),
+				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
 				injector:       NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
 			}
 
@@ -97,6 +102,12 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			dir := &models.DirScanDirectory{ID: 1, TargetInstanceID: instance.ID}
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 			match := svc.tryMatchAndInject(ctx, dir, searchee, nil, result, "movie", settings, NewMatcher(MatchModeStrict, 0), 0, &l)
+			// Fetch starts a detached cache touch; join it before SQLite and TempDir cleanup.
+			select {
+			case <-cacheDB.done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("torrent cache touch did not finish")
+			}
 
 			require.Equal(t, !blocked, adder.called, "AddTorrent must run only for an infohash that is not blocklisted")
 			if blocked {
@@ -104,4 +115,14 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			}
 		})
 	}
+}
+
+type cacheTouchDB struct {
+	*database.DB
+	done chan struct{}
+}
+
+func (db *cacheTouchDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	defer close(db.done)
+	return db.DB.ExecContext(ctx, query, args...)
 }

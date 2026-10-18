@@ -117,7 +117,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 func (s *Scanner) processRootEntry(ctx context.Context, entry fsops.DirEntry, entryPath string, result *ScanResult) {
 	if entry.IsDir {
 		s.processDirEntry(ctx, entryPath, entry.Name, result)
-	} else if isMediaFile(entry.Name) {
+	} else if (entry.Mode.IsRegular() || entry.IsSymlink) && isMediaFile(entry.Name) {
 		s.processFileEntry(ctx, entryPath, result)
 	}
 }
@@ -193,13 +193,8 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 			return nil, fmt.Errorf("walk entry %s: %w", entry.Path, entry.Err)
 		}
 
-		// Skip symlinks
-		if entry.IsSymlink {
-			continue
-		}
-
-		// Skip directories (WalkDir yields them for traversal, we only want files)
-		if entry.IsDir {
+		// Links, junctions and other special entries are not media files.
+		if !entry.Mode.IsRegular() {
 			continue
 		}
 
@@ -237,6 +232,9 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 	info, err := s.backend.Stat(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
+	}
+	if !info.Mode.IsRegular() {
+		return nil, nil
 	}
 
 	base := filepath.Base(filePath)
