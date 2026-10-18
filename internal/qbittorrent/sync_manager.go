@@ -38,7 +38,7 @@ import (
 
 // backendPoolGetter provides filesystem backends per instance.
 type backendPoolGetter interface {
-	Require(ctx context.Context, instanceID int, capabilities ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
+	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, more ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
 // FilesManager interface for caching torrent files.

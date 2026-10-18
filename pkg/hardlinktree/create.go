@@ -4,6 +4,7 @@
 package hardlinktree
 
 import (
+	"io/fs"
 	"errors"
 	"fmt"
 	"os"
@@ -139,6 +140,11 @@ func Create(plan *TreePlan) (*Created, error) {
 
 		// Create hardlink
 		if err := os.Link(fp.SourcePath, fp.TargetPath); err != nil {
+			// A target that appeared between the Lstat above and this Link is the
+			// same collision, so link mode refuses it rather than falling back.
+			if errors.Is(err, fs.ErrExist) {
+				return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath))
+			}
 			return nil, rollbackOnError(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
 		}
 		createdFiles = append(createdFiles, fp.TargetPath)
