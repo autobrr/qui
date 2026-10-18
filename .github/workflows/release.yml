@@ -69,7 +69,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -101,13 +101,7 @@ jobs:
 
       - name: Type check and build frontend
         working-directory: web
-        run: |
-          pnpm tsc --noEmit &
-          TSC_PID=$!
-          CI= pnpm run build &
-          BUILD_PID=$!
-          wait $TSC_PID || exit 1
-          wait $BUILD_PID || exit 1
+        run: CI= pnpm run build
 
       - name: Upload web production build
         uses: actions/upload-artifact@v7

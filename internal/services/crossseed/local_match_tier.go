@@ -141,7 +141,11 @@ func (s *Service) localMatchPrefilter(
 	// A retitled upload of the same data keeps its own name, so it fails the
 	// release match on the title alone.
 	if mismatchReason == titleMismatchReason {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
+		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(
+			namedRelease{release: sourceRelease, rawName: source.Name},
+			namedRelease{release: candidateRelease, rawName: candidate.Name},
+			false,
+		); ok {
 			return matchTypeRelease, true
 		}
 	}

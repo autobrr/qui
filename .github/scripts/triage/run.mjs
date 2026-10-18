@@ -63,21 +63,11 @@ try {
         "Bash(gh discussion list:*)",
         "Bash(gh discussion view:*)",
         "Bash(./.github/scripts/discussion-write.sh:*)",
-        "mcp__github__get_discussion",
-        "mcp__github__get_discussion_comments",
-        "mcp__github__list_discussions",
       ],
       // A prompt injection could make Claude post a credential in a comment.
       // Hide the GitHub OIDC token and the Anthropic token that Claude Code
       // caches after the exchange. Read rules also apply to Grep and Glob.
       disallowedTools: [`Read(/${identityDir}/**)`, `Read(/${join(homedir(), ".config/anthropic")}/**)`],
-      mcpServers: {
-        github: {
-          command: "docker",
-          args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server:v0.26.3"],
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: env.GH_TOKEN },
-        },
-      },
       // The subscription has its own limits. Only Console usage costs money.
       maxBudgetUsd: oauth ? undefined : 5,
       env,

@@ -104,7 +104,10 @@ func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
 	writeFile(t, remotePath(sub, "f"), "x")
 
 	// Callers classify on ENOTEMPTY, which SSH_FX_FAILURE alone does not carry.
-	require.ErrorIs(t, b.Remove(t.Context(), sub, fsops.RemoveOptions{}), syscall.ENOTEMPTY)
+	// fsops.IsDirNotEmpty reads only the code, so this is all it can match.
+	removeErr := b.Remove(t.Context(), sub, fsops.RemoveOptions{})
+	require.ErrorIs(t, removeErr, syscall.ENOTEMPTY)
+	require.True(t, fsops.IsDirNotEmpty(removeErr))
 	_, err := os.Stat(sub)
 	require.NoError(t, err)
 

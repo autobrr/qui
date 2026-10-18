@@ -12,34 +12,54 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lstatOnly answers Lstat for the paths it holds. The nil embedded Backend
-// makes any other call panic.
-type lstatOnly struct {
+// perPath answers Stat and Lstat for the paths it holds, and records each
+// call. The nil embedded Backend makes any other call panic.
+type perPath struct {
 	Backend
 	files map[string]bool
 	calls []string
 }
 
-func (b *lstatOnly) Lstat(_ context.Context, p string) (*LstatInfo, error) {
-	b.calls = append(b.calls, p)
+func (b *perPath) Lstat(_ context.Context, p string) (*LstatInfo, error) {
+	return b.answer("lstat", p)
+}
+
+func (b *perPath) Stat(_ context.Context, p string) (*LstatInfo, error) {
+	return b.answer("stat", p)
+}
+
+func (b *perPath) answer(op, p string) (*LstatInfo, error) {
+	b.calls = append(b.calls, op+" "+p)
 	if !b.files[p] {
-		return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: op, Path: p, Err: fs.ErrNotExist}
 	}
 	return &LstatInfo{Path: p}, nil
 }
 
-func TestLstatAllWithoutBatchesLstatsEachPath(t *testing.T) {
+func TestAllWithoutBatchesAsksEachPath(t *testing.T) {
 	t.Parallel()
 
-	b := &lstatOnly{files: map[string]bool{"/a": true, "/c": true}}
-	paths := []string{"/a", "/b", "/c"}
-	infos, errs := LstatAll(t.Context(), b, paths)
+	tests := []struct {
+		op  string
+		all func(context.Context, Backend, []string) ([]*LstatInfo, []error)
+	}{
+		{op: "lstat", all: LstatAll},
+		{op: "stat", all: StatAll},
+	}
+	for _, tt := range tests {
+		t.Run(tt.op, func(t *testing.T) {
+			t.Parallel()
 
-	assert.Equal(t, paths, b.calls)
-	require.NoError(t, errs[0])
-	require.ErrorIs(t, errs[1], fs.ErrNotExist)
-	require.NoError(t, errs[2])
-	assert.Equal(t, "/a", infos[0].Path)
-	assert.Nil(t, infos[1])
-	assert.Equal(t, "/c", infos[2].Path)
+			b := &perPath{files: map[string]bool{"/a": true, "/c": true}}
+			infos, errs := tt.all(t.Context(), b, []string{"/a", "/b", "/c"})
+
+			assert.Equal(t, []string{tt.op + " /a", tt.op + " /b", tt.op + " /c"}, b.calls)
+			require.NoError(t, errs[0])
+			require.ErrorIs(t, errs[1], fs.ErrNotExist)
+			require.NoError(t, errs[2])
+			assert.Equal(t, "/a", infos[0].Path)
+			assert.Nil(t, infos[1])
+			assert.Equal(t, "/c", infos[2].Path)
+		})
+	}
 }

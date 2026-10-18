@@ -74,18 +74,43 @@ func newCandidateEntry(view *qbittorrent.CrossInstanceTorrentView, needsSeeding 
 	}
 }
 
-// releaseCandidate extends candidateEntry with parsed release metadata for rls matching.
+// releaseCandidate extends candidateEntry with the Read release for rls matching.
 type releaseCandidate struct {
 	candidateEntry
-	name    string
-	release *rls.Release
+	read namedRelease
 }
 
 // matchIndex holds pre-built indexes that select the Name and Release
 // candidates of a source torrent before their file lists are fetched.
 type matchIndex struct {
-	byName       map[string][]candidateEntry       // key: normalizeLowerTrim(name)
-	byReleaseKey map[releaseKey][]releaseCandidate // for release metadata matching
+	byName map[string][]candidateEntry // key: normalizeLowerTrim(name)
+	// byTitleKey holds each torrent under every Title key. A grouping key can
+	// be looser than the matcher, never stricter: the matcher still decides
+	// each pair.
+	byTitleKey map[titleEpisodeKey][]*releaseCandidate
+}
+
+// titleEpisodeKey adds the episode and the air date to a Title key, so that
+// the episodes of a long-running show or a daily show do not all meet each
+// other. The matcher, with individual episodes off, accepts only a pair with
+// equal episodes, and rejects two full dates that differ. A name without a
+// full date can match any date, so it meets the dated torrents through
+// anyDate. Thus the key stays looser than the matcher.
+type titleEpisodeKey struct {
+	title   string
+	episode int
+	date    int // yyyymmdd, 0 without a full date, or anyDate
+}
+
+// anyDate holds every dated torrent of a Title key and episode, for a source
+// without a full date.
+const anyDate = -1
+
+func releaseDate(r *rls.Release) int {
+	if r.Year > 0 && r.Month > 0 && r.Day > 0 {
+		return r.Year*10000 + r.Month*100 + r.Day
+	}
+	return 0
 }
 
 // BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
@@ -571,8 +596,8 @@ func (s *Service) buildIndexFromViews(views []qbittorrent.CrossInstanceTorrentVi
 
 func newMatchIndex() *matchIndex {
 	return &matchIndex{
-		byName:       make(map[string][]candidateEntry),
-		byReleaseKey: make(map[releaseKey][]releaseCandidate),
+		byName:     make(map[string][]candidateEntry),
+		byTitleKey: make(map[titleEpisodeKey][]*releaseCandidate),
 	}
 }
 
@@ -619,16 +644,16 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 		idx.byName[name] = append(idx.byName[name], entry)
 	}
 
-	// Index by release key for rls matching
-	release := s.matcher().parseReleaseName(view.Name)
-	title := normalizeLowerTrim(release.Title)
-	if title != "" {
-		key := makeReleaseKey(release)
-		idx.byReleaseKey[key] = append(idx.byReleaseKey[key], releaseCandidate{
-			candidateEntry: entry,
-			name:           view.Name,
-			release:        release,
-		})
+	read := s.matcher().readName(view.Name)
+	candidate := &releaseCandidate{candidateEntry: entry, read: read}
+	date := releaseDate(read.release)
+	for _, title := range s.matcher().titleKeys(read) {
+		key := titleEpisodeKey{title: title, episode: read.release.Episode, date: date}
+		idx.byTitleKey[key] = append(idx.byTitleKey[key], candidate)
+		if date != 0 {
+			key.date = anyDate
+			idx.byTitleKey[key] = append(idx.byTitleKey[key], candidate)
+		}
 	}
 }
 
@@ -681,25 +706,37 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 		}
 	}
 
-	sourceRelease := s.matcher().parseReleaseName(source.Name)
-	if normalizeLowerTrim(sourceRelease.Title) != "" {
-		for _, c := range idx.byReleaseKey[makeReleaseKey(sourceRelease)] {
-			if sameInstance && c.hash == sourceHash {
-				continue
-			}
-			match, reason := s.matcher().releasesMatchWithReason(sourceRelease, c.release, false)
-			logReleaseMatchDecision(
-				source.Name,
-				c.name,
-				false,
-				sourceRelease,
-				c.release,
-				match,
-				reason,
-				"crossseed: release metadata candidate evaluated",
-			)
-			if match {
-				add(c.candidateEntry, matchTypeRelease)
+	sourceRead := s.matcher().readName(source.Name)
+	// A dated source meets the torrents of its date and the undated torrents.
+	// An undated source meets the undated torrents and every dated torrent.
+	sourceDate := releaseDate(sourceRead.release)
+	otherDate := 0
+	if sourceDate == 0 {
+		otherDate = anyDate
+	}
+	// A candidate under two shared Title keys meets the matcher once.
+	evaluated := make(map[*releaseCandidate]struct{})
+	for _, title := range s.matcher().titleKeys(sourceRead) {
+		for _, date := range [2]int{sourceDate, otherDate} {
+			for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, episode: sourceRead.release.Episode, date: date}] {
+				if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
+					continue
+				}
+				evaluated[c] = struct{}{}
+				match, reason := s.matcher().releasesMatchWithReasonAndNames(sourceRead.release, c.read.release, source.Name, c.read.rawName, false)
+				logReleaseMatchDecision(
+					source.Name,
+					c.read.rawName,
+					false,
+					sourceRead.release,
+					c.read.release,
+					match,
+					reason,
+					"crossseed: release metadata candidate evaluated",
+				)
+				if match {
+					add(c.candidateEntry, matchTypeRelease)
+				}
 			}
 		}
 	}

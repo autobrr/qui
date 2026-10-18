@@ -6,6 +6,7 @@ package crossseed
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -366,6 +367,52 @@ func TestBuildCrossMatchSets_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	require.Contains(t, logOutput, `"level":"trace"`)
 	require.Contains(t, logOutput, `"message":"crossseed: release metadata candidate evaluated"`)
 	require.Contains(t, logOutput, `"reason":"group mismatch"`)
+}
+
+// The episodes of a daily show share a Title key and episode 0. Only a pair
+// with the same date, or a pair where one side has no full date, meets the
+// matcher, so a large daily archive does not compare every date.
+func TestBuildCrossMatchSets_DailyShowMeetsOnlyItsDate(t *testing.T) {
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+	var buf bytes.Buffer
+	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = previousLogger
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	const (
+		jan15     = "Harbor.Watch.2024.01.15.1080p.WEB.h264-GRP"
+		jan15Copy = "Harbor Watch 2024 01 15 1080p WEB h264-GRP"
+		jan16     = "Harbor.Watch.2024.01.16.1080p.WEB.h264-GRP"
+		undated   = "Harbor.Watch.1080p.WEB.h264-GRP"
+	)
+	result := buildCrossMatch(t, CrossMatchNeeds{SameExists: true},
+		crossMatchTorrent(1, "aaa", jan15, "/data/a", "/data/a/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "bbb", jan15Copy, "/data/b", "/data/b/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "ccc", jan16, "/data/c", "/data/c/ep.mkv", cmFile("ep.mkv", 1000)),
+		crossMatchTorrent(1, "ddd", undated, "/data/d", "/data/d/ep.mkv", cmFile("ep.mkv", 1000)),
+	)
+	require.Contains(t, result.SameInstanceExists, "aaa")
+	require.Contains(t, result.SameInstanceExists, "bbb")
+	require.NotContains(t, result.SameInstanceExists, "ccc")
+
+	met := make(map[[2]string]bool)
+	for line := range bytes.Lines(buf.Bytes()) {
+		var entry struct {
+			SourceTitle    string `json:"sourceTitle"`
+			CandidateTitle string `json:"candidateTitle"`
+		}
+		if json.Unmarshal(line, &entry) == nil && entry.SourceTitle != "" {
+			met[[2]string{entry.SourceTitle, entry.CandidateTitle}] = true
+		}
+	}
+	require.True(t, met[[2]string{jan15, jan15Copy}], "the same date meets the matcher")
+	require.False(t, met[[2]string{jan15, jan16}], "another date does not meet the matcher")
+	require.True(t, met[[2]string{jan15, undated}], "a dated source meets an undated candidate")
+	require.True(t, met[[2]string{undated, jan16}], "an undated source meets every dated candidate")
 }
 
 // A hardlinked cross-seed with an extra file that search does not ignore fails

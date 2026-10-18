@@ -127,7 +127,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid torrent: %w", ErrInvalidRequest, err)
 	}
-	packRelease := s.releaseCache.Parse(meta.Name)
+	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	if !isTVSeasonPack(packRelease) {
 		return nil, fmt.Errorf("%w: upload is not a season pack", ErrInvalidRequest)
 	}

@@ -78,7 +78,7 @@ func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 	require.True(t, decision.Accepted)
 	require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
 
-	view := svc.applyTargetReleaseViewFromFiles(split, rawSplit, qbt.TorrentFiles{
+	view := svc.readApplyTarget(split, qbt.TorrentFiles{
 		{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000},
 	}, true)
 	require.Empty(t, view.release.Site, "the selected-file view does not carry the raw Site field")
@@ -94,7 +94,7 @@ func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
 	svc := newGroupFallbackService()
 	files := qbt.TorrentFiles{{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000}}
 	torrent := &qbt.Torrent{Name: split}
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), torrent, svc.releaseCache.Parse(split), files)
+	view, _ := svc.readSearchSource(context.Background(), torrent, files)
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        view,
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
@@ -288,7 +288,7 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	))
 
 	// Strict matching tolerates the missing candidate tag exactly as before.
-	ok, reason := svc.matcher().validateGroupSiteAndChecksum(siteOnly, bare, false)
+	ok, reason := svc.matcher().validateGroupSiteAndChecksum(namedRelease{release: siteOnly}, namedRelease{release: bare}, false)
 	require.True(t, ok, "unexpected rejection: %s", reason)
 
 	// An empty identity still cannot buy exact-size permission.
@@ -300,6 +300,40 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	})
 	require.False(t, ok)
 	require.Equal(t, "group/site mismatch", reason)
+}
+
+// The tracker name also differs in source and HDR, so strict matching fails on
+// the source and only the exact-size identity check can pair the two names.
+func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bracket     = "Azure Compass (2020) (1080p AMZN Webrip x265 10bit EAC3 5.1 - Kyo) [Mura]"
+		spaceJoined = "Azure Compass (2020) (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Kyo Mura)"
+	)
+	svc := newGroupFallbackService()
+	bracketRelease := svc.releaseCache.Parse(bracket)
+	spaceJoinedRelease := svc.releaseCache.Parse(spaceJoined)
+	require.Equal(t, "Kyo", bracketRelease.Group, "fixture must split group and collective")
+	require.Equal(t, "Mura", bracketRelease.Site)
+	require.Equal(t, "Kyo Mura", spaceJoinedRelease.Group, "fixture must join group and collective")
+	require.Empty(t, spaceJoinedRelease.Site)
+
+	ok, reason := svc.matcher().releasesMatchWithReasonAndNames(bracketRelease, spaceJoinedRelease, bracket, spaceJoined, false)
+	require.False(t, ok)
+	require.Equal(t, sourceMismatchReason, reason)
+
+	bracketSide := namedRelease{release: bracketRelease, rawName: bracket}
+	spaceJoinedSide := namedRelease{release: spaceJoinedRelease, rawName: spaceJoined}
+	for _, pair := range [][2]namedRelease{{bracketSide, spaceJoinedSide}, {spaceJoinedSide, bracketSide}} {
+		ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+			Source:        pair[0],
+			Candidate:     pair[1],
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		})
+		require.True(t, ok, "%s against %s: %s", pair[0].rawName, pair[1].rawName, reason)
+	}
 }
 
 // When the leftover word repeats the fansub tag, Group and Site say the same
@@ -574,7 +608,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 
 	raw := svc.releaseCache.Parse(rawEpisode)
 	require.True(t, isTVEpisode(raw), "the raw fixture must reach the episode shape gate")
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, raw, files)
+	view, _ := svc.readSearchSource(context.Background(), &torrent, files)
 	require.True(t, isTVSeasonPack(view.release), "search must derive the pack from its files")
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:                 view,
@@ -641,7 +675,7 @@ func TestFindCandidates_ReplaysFileStructureWithoutReplacingExplicitGroup(t *tes
 
 	raw := svc.releaseCache.Parse(sourceName)
 	require.True(t, releaseHasExplicitGroupTag(raw))
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), &qbt.Torrent{Name: sourceName}, raw, files)
+	view, _ := svc.readSearchSource(context.Background(), &qbt.Torrent{Name: sourceName}, files)
 	require.Equal(t, 2, view.release.Series)
 	require.Equal(t, "KIRI", view.release.Group)
 
@@ -680,8 +714,7 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	rawSource := svc.releaseCache.Parse(rawS01)
-	searchSource := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, rawSource, files)
+	searchSource, _ := svc.readSearchSource(context.Background(), &torrent, files)
 	require.Equal(t, 2, searchSource.release.Series)
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        searchSource,
@@ -1009,9 +1042,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
 
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					fansubBracketPack,
-					svc.releaseCache.Parse(fansubBracketPack),
 					targetFiles,
 					true,
 				)
@@ -1106,9 +1138,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					releaseCache:     NewReleaseCache(),
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					fansubBracketPack,
-					svc.releaseCache.Parse(fansubBracketPack),
 					targetFiles,
 					true,
 				)
@@ -1158,9 +1189,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					releaseCache:     NewReleaseCache(),
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					targetName,
-					svc.releaseCache.Parse(targetName),
 					targetFiles,
 					true,
 				)
@@ -1184,4 +1214,110 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 			})
 		}
 	})
+}
+
+// A hyphenated fansub name stays whole in its bracket form but splits at the
+// last dash in its suffix form. The exact-size identity check must still read
+// one group, here where strict matching fails on the source.
+func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
+	const (
+		bracket = "[Moe-Fansub] Example Knight S01 [BD HEVC 1080p FLAC]"
+		suffix  = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Moe-Fansub"
+		other   = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Fansub"
+	)
+	svc := newGroupFallbackService()
+	side := func(name string) namedRelease {
+		return namedRelease{release: svc.releaseCache.Parse(name), rawName: name}
+	}
+	input := func(source, candidate string) searchCandidateInput {
+		return searchCandidateInput{
+			Source:        side(source),
+			Candidate:     side(candidate),
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		}
+	}
+
+	for _, pair := range [][2]string{{bracket, suffix}, {suffix, bracket}} {
+		pairInput := input(pair[0], pair[1])
+		ok, reason := svc.matcher().releasesMatchWithReasonAndNames(
+			pairInput.Source.release, pairInput.Candidate.release, pair[0], pair[1], false)
+		require.False(t, ok)
+		require.Equal(t, sourceMismatchReason, reason)
+
+		ok, reason = svc.matcher().validateExactSizeSearchIdentity(pairInput)
+		require.True(t, ok, "%s against %s: %s", pair[0], pair[1], reason)
+	}
+
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(input(bracket, other))
+	require.False(t, ok)
+	require.Equal(t, "group/site mismatch", reason)
+}
+
+// The selected file is part of the grouped side. Strict matching must read it,
+// both when it alone spells the hyphenated fansub and when it names a longer
+// group than the torrent name.
+func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) {
+	const (
+		bracket    = "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]"
+		suffix     = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub"
+		bare       = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265"
+		longerFile = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Big-Moe-Fansub.mkv"
+		otherFile  = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Other.mkv"
+	)
+	svc := newGroupFallbackService()
+	m := svc.matcher()
+	sited := namedRelease{release: svc.releaseCache.Parse(bracket), rawName: bracket}
+	strict := func(grouped namedRelease) (bool, string) {
+		return m.namedReleasesMatchWithReasonAndTitles(grouped, sited, nil, nil, false)
+	}
+
+	// The view carries the group, but only the selected file spells it.
+	fileGroup := *svc.releaseCache.Parse(bare)
+	fileGroup.Group = "Fansub"
+	fileOnly := namedRelease{
+		release:   &fileGroup,
+		rawName:   bare,
+		tagOrigin: svc.releaseCache.Parse(suffix + ".mkv"),
+	}
+	ok, reason := strict(fileOnly)
+	require.True(t, ok, "selected-file spelling: %s", reason)
+	fileOnly.tagOrigin = nil
+	ok, reason = strict(fileOnly)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+
+	// The torrent name spells the fansub, but the selected file names a longer
+	// fansub or another group entirely.
+	conflicting := namedRelease{
+		release:   svc.releaseCache.Parse(suffix),
+		rawName:   suffix,
+		tagOrigin: svc.releaseCache.Parse(longerFile),
+	}
+	ok, reason = strict(conflicting)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	require.False(t, m.dashSuffixGroupSpellsSite(sited, conflicting))
+	conflicting.tagOrigin = svc.releaseCache.Parse(otherFile)
+	ok, reason = strict(conflicting)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	require.False(t, m.dashSuffixGroupSpellsSite(sited, conflicting))
+	conflicting.tagOrigin = nil
+	ok, reason = strict(conflicting)
+	require.True(t, ok, "torrent-name spelling: %s", reason)
+
+	// The selected file of the bracket side has the same say, in both
+	// directions.
+	grouped := conflicting
+	sited.tagOrigin = svc.releaseCache.Parse(otherFile)
+	ok, reason = strict(grouped)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	ok, reason = m.namedReleasesMatchWithReasonAndTitles(sited, grouped, nil, nil, false)
+	require.False(t, ok)
+	require.Equal(t, "site mismatch", reason)
+	sited.tagOrigin = svc.releaseCache.Parse(suffix + ".mkv")
+	ok, reason = strict(grouped)
+	require.True(t, ok, "bracket side file spelling: %s", reason)
 }

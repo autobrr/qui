@@ -47,7 +47,7 @@ const torrents = [
 // override useTranslation with a stable passthrough translator.
 vi.mock("react-i18next", async (importOriginal) => {
   const translation = {
-    t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
+    t: (key: string) => key,
     i18n: { resolvedLanguage: "en", language: "en" },
   }
   return {

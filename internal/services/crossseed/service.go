@@ -4583,17 +4583,22 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 	// identity evidence and must travel with it.
 	targetSide := req.TargetRelease
 	if targetSide.release == nil {
-		targetSide.release = s.releaseCache.Parse(req.TorrentName)
-	}
-	if targetSide.rawName == "" {
-		targetSide.rawName = req.TorrentName
+		targetSide = s.matcher().readName(req.TorrentName)
 	}
 	targetRelease := targetSide.release
+	// The season pack hint and the file keys pair episodes by season, so a
+	// "Title II" pack reads the season that its numeral names there.
+	seasonedTarget := targetRelease
+	if targetSide.seasonNumeral > 0 {
+		withSeason := *targetRelease
+		withSeason.Series = targetSide.seasonNumeral
+		seasonedTarget = &withSeason
+	}
 	searchDecision := req.SearchDecision
 
 	// The season pack hint compares every local episode with these, so read them once.
 	// Only an admitted decision holds aliases, and it describes the pack's show.
-	packTitles := m.normalizedReleaseTitles(targetRelease, targetSide.rawName)
+	packTitles := m.normalizedReleaseTitles(seasonedTarget, targetSide.rawName)
 	packAliasTitles := slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles)
 
 	// Build basic info for response
@@ -4712,7 +4717,6 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			candidateRelease := s.releaseCache.Parse(torrent.Name)
 			hashKey := normalizeHash(torrent.Hash)
 			if hashKey == "" {
 				continue
@@ -4721,17 +4725,19 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			isSearchSource := searchDecision.admitted() &&
 				searchDecision.SourceInstanceID == instanceID &&
 				searchSourceHash != "" && hashKey == searchSourceHash
-			sourceSide := namedRelease{release: candidateRelease, rawName: torrent.Name}
+			var sourceSide namedRelease
 			if isSearchSource {
 				// Search may have used the selected files to recover structure and
-				// group provenance. Replay that view before any release-shape gate.
-				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent, candidateRelease)
+				// group provenance. Replay that reading before any release-shape gate.
+				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent)
+			} else {
+				sourceSide = s.matcher().readName(torrent.Name)
 			}
 
 			// An episode of the same show marks the pack as buildable from local episodes;
 			// the season pack check verifies coverage before apply. No ARR lookup here.
-			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(targetRelease) &&
-				isTVEpisode(sourceSide.release) && sourceSide.release.Series == targetRelease.Series &&
+			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(seasonedTarget) &&
+				isTVEpisode(sourceSide.release) && sourceSide.release.Series == seasonedTarget.Series &&
 				titleSetsMatch(m.normalizedReleaseTitles(sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
 				response.seasonPackEpisodeCandidates = true
 			}
@@ -4790,11 +4796,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-				fallbackInput.Source.release,
-				fallbackInput.Candidate.release,
-				fallbackInput.Source.rawName,
-				fallbackInput.Candidate.rawName,
+			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+				fallbackInput.Source,
+				fallbackInput.Candidate,
 				fallbackInput.SourceTitles,
 				fallbackInput.CandidateTitles,
 				req.FindIndividualEpisodes,
@@ -4830,7 +4834,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
-					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
+					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide, targetSide, req.FindIndividualEpisodes); !ok {
 						continue
 					}
 					titleRescueHash = hashKey
@@ -4889,8 +4893,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
-			candidateRelease := withTitleNumeralSeason(s.releaseCache.Parse(torrent.Name), targetRelease)
-			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			candidateRead := s.matcher().readName(torrent.Name)
+			candidateRelease := withTitleNumeralSeason(candidateRead.release, seasonedTarget)
+			matchType := m.getMatchTypeFromTitle(seasonedTarget, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}
@@ -4987,16 +4992,10 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
 		torrentHash = meta.HashV2
 	}
-	rawSourceRelease := s.releaseCache.Parse(meta.Name)
-	sourceView := namedRelease{release: rawSourceRelease, rawName: meta.Name}
-
-	// Trackers retitle listings but keep the original info.name. Cached search
-	// decisions must replay search's file-derived view even when that raw name
-	// already parses as TV; ordinary/manual apply keeps its long-standing raw TV
+	// Cached search decisions replay search's file-derived reading even when the
+	// raw name already parses as TV; ordinary/manual apply keeps its raw TV
 	// identity. Non-TV names still need file-derived structure in either path.
-	if !isTVRelease(rawSourceRelease) || requestHasSearchDecision(req) {
-		sourceView = s.applyTargetReleaseViewFromFiles(meta.Name, rawSourceRelease, meta.Files, requestHasSearchDecision(req))
-	}
+	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
 	sourceRelease := sourceView.release
 
 	// Carry private search provenance into candidate discovery. Source identity
@@ -7499,12 +7498,17 @@ func (s *Service) selectBestCandidateAddPlan(
 			continue
 		}
 
-		candidateRelease := s.releaseCache.Parse(torrent.Name)
+		// Only the search source reads its files: search read it that way, and
+		// the file keys of every other torrent come from its name.
+		var candidateRead namedRelease
 		if req != nil && req.SearchDecision.admitted() &&
 			candidate.InstanceID == req.SearchDecision.SourceInstanceID &&
 			hashKey == normalizeHash(req.SearchDecision.SourceHash) {
-			candidateRelease = s.searchSourceReleaseViewFromFiles(ctx, &torrent, candidateRelease, files).release
+			candidateRead, _ = s.readSearchSource(ctx, &torrent, files)
+		} else {
+			candidateRead = s.matcher().readName(torrent.Name)
 		}
+		candidateRelease := candidateRead.release
 
 		manualTarget := req != nil && req.ManualTargetHash != "" &&
 			hashKey == normalizeHash(req.ManualTargetHash)
@@ -8582,27 +8586,35 @@ func alternateConnectorQuery(query string) (string, bool) {
 
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
-// renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name, then the parsed subtitle joined to the title, and last
-// the title without its season numeral. A candidate counts only when its
-// normalized form differs from the primary query, so the retry never repeats
-// the query that already returned nothing.
+// renamed forms), then the Title keys of the release other than its main title
+// (the parsed Alt title, "AKA" segments, the sides of a slash title), then the
+// parsed subtitle joined to the title, and last the title without its season
+// numeral. A candidate counts only when its normalized form differs from the
+// primary query, so the retry never repeats the query that already returned
+// nothing.
 // Returns ("", false) when no distinct alternate title exists.
 // Dir Scan has no Service, so it parses through the default parser.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
-	return matcher{}.alternateTitleQuery(primaryQuery, release, arrTitles, releaseName)
+	query, _, ok := matcher{}.alternateTitleQuery(primaryQuery, namedRelease{release: release, rawName: releaseName}, arrTitles)
+	return query, ok
 }
 
-func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
+// alternateTitleQuery reads a Read release. season is the inferred Season
+// numeral when the query is the title without it, so that the retry searches
+// that season, and 0 otherwise.
+func (m matcher) alternateTitleQuery(primaryQuery string, side namedRelease, arrTitles []string) (query string, season int, ok bool) {
+	release := side.release
 	primary := stringutils.NormalizeForMatching(primaryQuery)
-	candidates := make([]string, 0, len(arrTitles)+4)
-	candidates = append(candidates, arrTitles...)
-	candidates = append(candidates, releaseAlt(release))
-	for _, part := range m.rawAKATitleParts(releaseName) {
-		parsed := m.parseReleaseName(part)
-		candidates = append(candidates, parsed.Title, parsed.Alt)
+	candidates := append([]string(nil), arrTitles...)
+	// The primary query already reads the main title, the first one.
+	candidates = append(candidates, m.appendReleaseTitles(nil, release, side.rawName)[1:]...)
+	candidates = append(candidates, subtitleTitleQuery(release))
+	// A movie keeps its numeral: "Rocky III" is not "Rocky".
+	withoutNumeral := ""
+	if release.Series > 0 || side.seasonNumeral > 0 {
+		withoutNumeral = numeralFreeTitle(release)
+		candidates = append(candidates, withoutNumeral)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8611,9 +8623,12 @@ func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, 
 		if normalized := stringutils.NormalizeForMatching(candidate); normalized == "" || normalized == primary {
 			continue
 		}
-		return candidate, true
+		if candidate == withoutNumeral {
+			return candidate, side.seasonNumeral, true
+		}
+		return candidate, 0, true
 	}
-	return "", false
+	return "", 0, false
 }
 
 // subtitleTitleQuery joins a release's title and parsed subtitle into a query.
@@ -8816,7 +8831,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-	searchSource, contentInfo := s.searchSourceReleaseViewAndContentInfo(ctx, sourceTorrent, sourceRelease, sourceFiles)
+	searchSource, contentInfo := s.readSearchSource(ctx, sourceTorrent, sourceFiles)
 	searchRelease := searchSource.release
 	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
 	// so later release matching follows the same search mode.
@@ -8900,12 +8915,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
-	if searchSource.numeralSeason {
-		// The main query stays as on a plain title; matching and the retry use the season.
-		withoutSeason := *searchRelease
-		withoutSeason.Series = 0
-		queryRelease = &withoutSeason
-	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9299,9 +9308,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	usable := s.searchUsablePredicate(searchBase)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		gatherIn.altTitle, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
-		if searchSource.numeralSeason {
-			gatherIn.altTitleSeason = new(searchRelease.Series)
+		var altSeason int
+		gatherIn.altTitle, altSeason, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchSource, arrTitles)
+		if altSeason > 0 {
+			gatherIn.altTitleSeason = new(altSeason)
 		}
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
@@ -10633,29 +10643,25 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Parse all torrents and track their releases
 	type torrentWithRelease struct {
-		torrent         qbt.Torrent
-		release         *rls.Release
-		normalizedTitle string
+		torrent   qbt.Torrent
+		read      namedRelease
+		titleKeys []string
 	}
 
 	parsed := make([]torrentWithRelease, 0, len(torrents))
 	for _, torrent := range torrents {
-		release := s.releaseCache.Parse(torrent.Name)
-		normalizedTitle := s.stringNormalizer.Normalize(release.Title)
-		parsed = append(parsed, torrentWithRelease{
-			torrent:         torrent,
-			release:         release,
-			normalizedTitle: normalizedTitle,
-		})
+		read := s.matcher().readName(torrent.Name)
+		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
-	// Pre-group by normalized title for faster lookup
-	titleGroups := make(map[string][]int) // normalized title -> indices in parsed
+	// Index each torrent under every Title key, so that only torrents that can
+	// share a title meet the matcher. A grouping key can be looser than the
+	// matcher, never stricter: the matcher still decides each pair.
+	titleGroups := make(map[string][]int) // Title key -> indices in parsed
 	for i, item := range parsed {
-		if item.normalizedTitle != "" {
-			titleGroups[item.normalizedTitle] = append(titleGroups[item.normalizedTitle], i)
+		for _, key := range item.titleKeys {
+			titleGroups[key] = append(titleGroups[key], i)
 		}
 	}
 
@@ -10686,23 +10692,29 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	for i := range parsed {
 		current := &parsed[i]
 
-		// Try to find an existing group this torrent belongs to
-		// First check only torrents with the same normalized title for efficiency
+		// Try to find an existing group this torrent belongs to. The candidates are
+		// the earlier torrents in any bucket of its Title keys, in list order.
 		foundGroup := -1
-		candidateIndices := titleGroups[current.normalizedTitle]
+		var candidateIndices []int
+		for _, key := range current.titleKeys {
+			for _, idx := range titleGroups[key] {
+				if idx >= i {
+					break
+				}
+				candidateIndices = append(candidateIndices, idx)
+			}
+		}
+		slices.Sort(candidateIndices)
+		candidateIndices = slices.Compact(candidateIndices)
 
 		for _, candidateIdx := range candidateIndices {
-			if candidateIdx >= i {
-				// Only check against previous torrents (already processed)
-				continue
-			}
-
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
 			matches, cached := releasesMatchCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches = s.matcher().releasesMatch(current.release, candidate.release, false)
+				matches, _ = s.matcher().releasesMatchWithReasonAndNames(current.read.release, candidate.read.release,
+					current.read.rawName, candidate.read.rawName, false)
 				releasesMatchCache[cacheKey] = matches
 			}
 
@@ -13131,9 +13143,8 @@ func logReleaseMatchDecision(
 			reason = "release mismatch"
 		}
 	}
-	// TRACE, not DEBUG: the only caller runs this for every source torrent
-	// against every candidate in the same release-key bucket. The key has no
-	// title, so one bucket can hold a full library of episodes.
+	// TRACE, not DEBUG: the only caller runs this for each pair that the
+	// cross-match index selects, on every cross-match build.
 	if evt := log.Trace(); evt.Enabled() {
 		evt.
 			Str("sourceTitle", sourceTitle).

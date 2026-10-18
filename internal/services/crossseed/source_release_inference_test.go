@@ -85,6 +85,18 @@ func TestDeriveSourceReleaseForSearch(t *testing.T) {
 			expectedEpisode: 0,
 		},
 		{
+			name:   "season pack with seasoned and absolute files",
+			source: "Some.Show.S02.1080p.WEB-DL.x264-GROUP",
+			files: qbt.TorrentFiles{
+				{Name: "Some.Show.S02E01.1080p.WEB-DL.x264-GROUP.mkv", Size: 1},
+				{Name: "Some Show - 14.mkv", Size: 1},
+				{Name: "Some Show - 15.mkv", Size: 1},
+			},
+			expectedType:    rls.Series,
+			expectedSeries:  2,
+			expectedEpisode: 0,
+		},
+		{
 			name:   "infer seasonless anime episode",
 			source: "[SubsPlease] Classic Stars (1080p)",
 			files: qbt.TorrentFiles{
@@ -172,7 +184,7 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, rls.Episode, searchRelease.Type)
 	require.Equal(t, 37, searchRelease.Episode)
 
-	query := buildSafeSearchQuery("[SubsPlease] Some, Anime (2025) [720p]", searchRelease, searchRelease.Title)
+	query := BuildTorznabQuery("[SubsPlease] Some, Anime (2025) [720p]", searchRelease, false)
 	require.Equal(t, "Some, Anime", query.Query)
 	require.NotNil(t, query.Episode)
 	require.Equal(t, 37, *query.Episode)
@@ -204,9 +216,8 @@ func TestDeriveSearchSourceRelease_ReplaysCategoryMappedView(t *testing.T) {
 		torrent.Hash: files,
 	})
 
-	parsed := svc.releaseCache.Parse(torrent.Name)
-	searchView, contentInfo := svc.searchSourceReleaseViewAndContentInfo(context.Background(), &torrent, parsed, files)
-	replayedView := svc.deriveSearchSourceRelease(context.Background(), instanceID, &torrent, parsed)
+	searchView, contentInfo := svc.readSearchSource(context.Background(), &torrent, files)
+	replayedView := svc.deriveSearchSourceRelease(context.Background(), instanceID, &torrent)
 
 	require.Equal(t, "movie", contentInfo.ContentType)
 	require.Equal(t, rls.Movie, searchView.release.Type,

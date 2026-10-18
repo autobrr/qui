@@ -132,6 +132,21 @@ func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
 	})
 }
 
+func TestSyncManager_DetermineTrackerHealth_UnknownHTTPError(t *testing.T) {
+	sm := &SyncManager{}
+	// libtorrent reports an HTTP status without a reason phrase as
+	// "<code> (unknown HTTP error)". The tracker failed to answer, so the
+	// torrent is not unregistered.
+	torrent := qbt.Torrent{
+		AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
+		Trackers: []qbt.TorrentTracker{
+			{Status: qbt.TrackerStatusNotWorking, Message: "429 (unknown HTTP error)"},
+		},
+	}
+
+	assert.Equal(t, TrackerHealthDown, sm.determineTrackerHealth(&torrent))
+}
+
 func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 	sm := &SyncManager{}
 
