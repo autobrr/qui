@@ -240,10 +240,11 @@ func (c *FolderCleanup) room() int {
 	return c.capacity - c.held
 }
 
-// enqueue hands over torrents that are about to leave their folders. It never
-// blocks on the filesystem. alreadyDropped counts torrents the caller left out
-// for lack of room, so the one warning carries the full count.
-func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
+// enqueue hands over torrents that are about to leave their folders, and
+// reports whether it queued any. It never blocks on the filesystem.
+// alreadyDropped counts torrents the caller left out for lack of room, so the
+// one warning carries the full count.
+func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) bool {
 	expires := time.Now().Add(c.deadline)
 	items := make([]*pendingFolder, 0, len(snaps))
 	for _, snap := range snaps {
@@ -262,10 +263,11 @@ func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
 	}
 
 	dropped := alreadyDropped
+	queued := false
 	c.mu.Lock()
 	if c.stopped {
 		c.mu.Unlock()
-		return
+		return false
 	}
 	for _, item := range items {
 		if c.held+item.cost() > c.capacity {
@@ -274,6 +276,7 @@ func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
 		}
 		c.held += item.cost()
 		c.pending = append(c.pending, item)
+		queued = true
 	}
 	c.mu.Unlock()
 
@@ -281,6 +284,7 @@ func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) {
 		log.Warn().Int("torrents", dropped).
 			Msg("folder cleanup: queue full, leaving these torrents' folders to orphan scan")
 	}
+	return queued
 }
 
 func newPendingFolder(snap folderSnapshot, expires time.Time) (*pendingFolder, error) {

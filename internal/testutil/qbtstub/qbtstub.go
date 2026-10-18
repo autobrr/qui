@@ -85,6 +85,7 @@ type Server struct {
 	writes   map[string]int
 	bodies   map[string]string
 	requests int
+	syncs    int
 }
 
 // New starts a stub whose default save path is savePath.
@@ -145,6 +146,13 @@ func (s *Server) Requests() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.requests
+}
+
+// Syncs counts the sync/maindata requests qBittorrent received.
+func (s *Server) Syncs() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncs
 }
 
 // LastBody is the raw body of the last write to an endpoint.
@@ -332,6 +340,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			"temp_path_enabled": true, "use_subcategories": true, "torrent_changed_tmm_enabled": true, "category_changed_tmm_enabled": true,
 			"scan_dirs": s.ScanDirs})
 	case "sync/maindata":
+		s.syncs++
 		s.rid++
 		torrents := map[string]any{}
 		for h, t := range s.torrents {

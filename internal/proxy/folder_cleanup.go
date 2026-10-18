@@ -58,10 +58,10 @@ func (h *Handler) forwardWithFolderCleanup(w http.ResponseWriter, r *http.Reques
 	rec := &statusRecorder{ResponseWriter: w}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	h.proxy.ServeHTTP(rec, r)
-	if rec.status == http.StatusOK {
-		folders.Queue()
-		// The cleanup judges folders against the sync cache, so refresh it
-		// as qui does after its own writes.
+	// The cleanup judges folders against the sync cache, so refresh it as qui
+	// does after its own writes. A write that queued nothing, such as a delete
+	// that keeps the files, needs no refresh.
+	if rec.status == http.StatusOK && folders.Queue() {
 		h.syncManager.HintMainDataRefresh(instanceID, "proxy_folder_cleanup")
 	}
 }

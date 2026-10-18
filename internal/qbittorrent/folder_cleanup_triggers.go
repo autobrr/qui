@@ -68,11 +68,13 @@ type FolderCleanupBatch struct {
 }
 
 // Queue hands the batch to folder cleanup. Call it only after qBittorrent
-// accepted the operation; a zero batch does nothing.
-func (b FolderCleanupBatch) Queue() {
-	if b.fc != nil {
-		b.fc.enqueue(b.snaps, b.dropped)
+// accepted the operation. A zero batch does nothing. It reports whether
+// anything was queued, which is when the cleanup will read the sync cache.
+func (b FolderCleanupBatch) Queue() bool {
+	if b.fc == nil {
+		return false
 	}
+	return b.fc.enqueue(b.snaps, b.dropped)
 }
 
 // SetFolderCleanup wires the folder cleanup that operations hand their

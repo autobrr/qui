@@ -895,6 +895,27 @@ func TestFolderCleanupQueueOverflowWarnsOnce(t *testing.T) {
 	})
 }
 
+// enqueue reports whether it queued anything, which the proxy uses to skip a
+// sync for a write that leaves nothing to clean.
+func TestFolderCleanupEnqueueReportsWhetherItQueued(t *testing.T) {
+	snap := func(existed bool) folderSnapshot {
+		return folderSnapshot{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
+			Layout: layoutRootFolder, ContentExisted: existed}
+	}
+	fc := NewFolderCleanup(nil, nil, nil)
+	require.False(t, fc.enqueue(nil, 0), "no snapshots")
+	require.False(t, fc.enqueue([]folderSnapshot{snap(false)}, 0), "content already missing")
+	require.True(t, fc.enqueue([]folderSnapshot{snap(false), snap(true)}, 0), "one of two queued")
+	require.False(t, FolderCleanupBatch{}.Queue(), "a zero batch")
+
+	full := NewFolderCleanup(nil, nil, nil)
+	full.capacity = 0
+	require.False(t, full.enqueue([]folderSnapshot{snap(true)}, 0), "no room")
+
+	fc.Stop()
+	require.False(t, fc.enqueue([]folderSnapshot{snap(true)}, 0), "stopped")
+}
+
 // gatedTree holds the worker in its first Lstat until gate closes.
 type gatedTree struct {
 	*memTree

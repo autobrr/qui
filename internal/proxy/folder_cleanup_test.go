@@ -56,6 +56,12 @@ type proxyRig struct {
 }
 
 func newProxyRig(t *testing.T) *proxyRig {
+	return newProxyRigWorker(t, true)
+}
+
+// newProxyRigWorker leaves folder cleanup's worker stopped when start is
+// false, so the queue still takes work but nothing else asks for a sync.
+func newProxyRigWorker(t *testing.T, start bool) *proxyRig {
 	root := t.TempDir()
 	r := &proxyRig{t: t, root: root, stub: qbtstub.New(t, filepath.Join(root, "torrents"))}
 	r.stub.AddCategory("tv", "")
@@ -79,7 +85,9 @@ func newProxyRig(t *testing.T) *proxyRig {
 
 	sm := qbittorrent.NewSyncManager(pool, nil)
 	fc := qbittorrent.NewFolderCleanup(fsops.NewPool(instanceStore, local.NewBackend()), sm, noIgnores{})
-	fc.Start(t.Context())
+	if start {
+		fc.Start(t.Context())
+	}
 	t.Cleanup(fc.Stop)
 	sm.SetFolderCleanup(fc)
 
@@ -343,6 +351,53 @@ func TestProxyFolderCleanupDeleteKeepingFiles(t *testing.T) {
 	// Had the delete queued work, an emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
+}
+
+// rigHintWait outlasts the debounce on a refresh hint, 200 ms.
+const rigHintWait = time.Second
+
+// The cleanup reads the sync cache, so a write that queues cleanup asks for a
+// sync. One that queues nothing does not, since arr clients send many deletes
+// that keep the files. The worker is stopped, so only the proxy can ask.
+func TestProxyFolderCleanupHintsARefreshOnlyWhenItQueues(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		endpoint string
+		body     string
+		handle   func(h *Handler) http.HandlerFunc
+		hint     bool
+	}{
+		{"delete with files", "torrents/delete", "hashes=" + proxyHashA + "&deleteFiles=true",
+			func(h *Handler) http.HandlerFunc { return h.handleDeleteTorrents }, true},
+		{"delete keeping files", "torrents/delete", "hashes=" + proxyHashA + "&deleteFiles=false",
+			func(h *Handler) http.HandlerFunc { return h.handleDeleteTorrents }, false},
+		{"turn ATM on", "torrents/setAutoManagement", "hashes=" + proxyHashA + "&enable=true",
+			func(h *Handler) http.HandlerFunc { return h.handleSetAutoManagement }, true},
+		{"turn ATM off", "torrents/setAutoManagement", "hashes=" + proxyHashA + "&enable=false",
+			func(h *Handler) http.HandlerFunc { return h.handleSetAutoManagement }, false},
+		// Content already missing is left alone, so nothing is queued.
+		{"delete of missing content", "torrents/delete", "hashes=" + proxyHashB + "&deleteFiles=true",
+			func(h *Handler) http.HandlerFunc { return h.handleDeleteTorrents }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newProxyRigWorker(t, false)
+			r.add(r.perRelease(proxyHashA, "movies"))
+			r.add(qbtstub.Torrent{Hash: proxyHashB, Name: "Gone-GRP", SavePath: r.p("torrents/tv"), Category: "tv",
+				Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})
+			require.NoError(t, os.RemoveAll(r.p("torrents/tv/Gone-GRP")))
+			before := r.stub.Syncs()
+
+			require.Equal(t, http.StatusOK, r.post(tc.handle(r.handler), tc.endpoint, tc.body).Code)
+			if tc.hint {
+				require.Eventually(t, func() bool { return r.stub.Syncs() > before }, rigHintWait, 20*time.Millisecond)
+				return
+			}
+			time.Sleep(rigHintWait)
+			require.Equal(t, before, r.stub.Syncs())
+		})
+	}
 }
 
 func TestProxyFolderCleanupSetLocation(t *testing.T) {
