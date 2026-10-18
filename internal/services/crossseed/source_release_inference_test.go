@@ -216,9 +216,8 @@ func TestDeriveSearchSourceRelease_ReplaysCategoryMappedView(t *testing.T) {
 		torrent.Hash: files,
 	})
 
-	parsed := svc.releaseCache.Parse(torrent.Name)
-	searchView, contentInfo := svc.searchSourceReleaseViewAndContentInfo(context.Background(), &torrent, parsed, files)
-	replayedView := svc.deriveSearchSourceRelease(context.Background(), instanceID, &torrent, parsed)
+	searchView, contentInfo := svc.readSearchSource(context.Background(), &torrent, files)
+	replayedView := svc.deriveSearchSourceRelease(context.Background(), instanceID, &torrent)
 
 	require.Equal(t, "movie", contentInfo.ContentType)
 	require.Equal(t, rls.Movie, searchView.release.Type,

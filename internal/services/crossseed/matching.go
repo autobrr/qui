@@ -347,15 +347,25 @@ func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide na
 
 func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
 	titles := make(map[string]struct{})
-	addNormalizedTitle(titles, releaseTitle(release))
-	addNormalizedTitle(titles, releaseAlt(release))
+	var buf [8]string
+	for _, title := range m.appendReleaseTitles(buf[:0], release, rawName) {
+		addNormalizedTitle(titles, title)
+	}
 	addNormalizedTitle(titles, titleWithoutSeasonNumeral(release))
+	return titles
+}
+
+// appendReleaseTitles appends the titles that the matcher reads from a name:
+// the main title first, then the alternate title, each AKA part, and each side
+// of a slash title. An entry can be "". The title without the Season numeral
+// is not one of them, because it depends on the season of the other side.
+func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawName string) []string {
+	titles = append(titles, releaseTitle(release), releaseAlt(release))
 
 	// Cached parse: this runs once per library torrent per search.
 	for _, rawTitle := range m.rawAKATitleParts(rawName) {
 		parsed := m.parseReleaseName(rawTitle)
-		addNormalizedTitle(titles, parsed.Title)
-		addNormalizedTitle(titles, parsed.Alt)
+		titles = append(titles, parsed.Title, parsed.Alt)
 	}
 
 	// rls ends the title at a slash, so an indexer listing like
@@ -374,8 +384,7 @@ func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) m
 	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
 		parsed := m.parseReleaseName(unslashed)
 		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
-			addNormalizedTitle(titles, parsed.Title)
-			addNormalizedTitle(titles, parsed.Alt)
+			titles = append(titles, parsed.Title, parsed.Alt)
 		}
 	}
 
@@ -1024,11 +1033,11 @@ func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Rele
 		// Non-episodic content - require at least one candidate file whose release
 		// key matches the target's release key. This prevents unrelated torrents
 		// with generic filenames from matching purely because rls could parse
-		// something from their names.
-		targetKey := makeReleaseKey(targetRelease)
-
-		if len(candidateReleases) > 0 {
-			if _, exists := candidateReleases[targetKey]; exists {
+		// something from their names. Here the key holds at most a year, and a
+		// missing year agrees with any year, as in the torrent-level match.
+		targetYear := makeReleaseKey(targetRelease).year
+		for key := range candidateReleases {
+			if key.series == 0 && key.month == 0 && (targetYear == 0 || key.year == targetYear) {
 				return "partial-in-pack"
 			}
 		}
@@ -1072,8 +1081,9 @@ func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Rele
 			// with RAR files), trust the torrent-level releasesMatch check that got us here
 			// when neither name has an episode. A batch such as "Show - 01 - 03" has no
 			// single episode, so two batches must name the same episodes.
+			// A year alone does not block: the torrent-level match compared it.
 			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) && targetEp == 0 && candidateEp == 0 &&
+			if targetKey.series == 0 && targetKey.month == 0 && targetEp == 0 && candidateEp == 0 &&
 				slices.EqualFunc(targetRelease.SeriesEpisodes(), candidateRelease.SeriesEpisodes(), slices.Equal[[]int]) {
 				return "release-match"
 			}

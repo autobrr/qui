@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -77,82 +78,121 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 	return &merged
 }
 
-// deriveSearchSourceRelease recovers the same category-aware public view and
-// selected-file provenance used by search.
-func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int, torrent *qbt.Torrent, parsed *rls.Release) namedRelease {
-	view := namedRelease{release: parsed, rawName: torrent.Name}
+// deriveSearchSourceRelease reads a library torrent as search reads it, with
+// its files when they can be read.
+func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int, torrent *qbt.Torrent) namedRelease {
 	files, err := s.getTorrentFilesCached(ctx, instanceID, torrent.Hash)
 	if err != nil {
-		return view
+		files = nil
 	}
-	return s.searchSourceReleaseViewFromFiles(ctx, torrent, parsed, files)
+	read, _ := s.readSearchSource(ctx, torrent, files)
+	return read
 }
 
-// searchSourceReleaseViewFromFiles reconstructs the existing torrent view used
-// by search and cached-decision replay. Category routing is part of that view,
-// so both stages derive the same TV structure.
-func (s *Service) searchSourceReleaseViewFromFiles(ctx context.Context, torrent *qbt.Torrent, parsed *rls.Release, files qbt.TorrentFiles) namedRelease {
-	view, _ := s.searchSourceReleaseViewAndContentInfo(ctx, torrent, parsed, files)
-	return view
-}
-
-func (s *Service) searchSourceReleaseViewAndContentInfo(ctx context.Context, torrent *qbt.Torrent, parsed *rls.Release, files qbt.TorrentFiles) (namedRelease, ContentTypeInfo) {
-	contentDetectionRelease, usedFile := s.selectContentDetectionRelease(torrent.Name, parsed, files)
-	contentInfo := s.applyCategoryMappingRule(ctx, torrent, DetermineContentTypeWithFiles(contentDetectionRelease, files))
-	view := s.buildReleaseView(torrent.Name, parsed, contentDetectionRelease, usedFile, files, contentInfo, releaseViewPolicy{
-		useDerivedTV: true,
+// readSearchSource reads the torrent that search looks up. Category routing is
+// part of the reading, so search and cached-decision replay derive the same TV
+// structure.
+func (s *Service) readSearchSource(ctx context.Context, torrent *qbt.Torrent, files qbt.TorrentFiles) (namedRelease, ContentTypeInfo) {
+	return s.readRelease(torrent.Name, files, readPolicy{
+		mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
+			return s.applyCategoryMappingRule(ctx, torrent, contentInfo)
+		},
 	})
-	return view, contentInfo
 }
 
-// applyTargetReleaseViewFromFiles builds the downloaded candidate's view. A
-// cached search may need file-derived TV structure, but an explicit info.name
-// group remains authoritative and selected-file tags stay as veto evidence.
-func (s *Service) applyTargetReleaseViewFromFiles(name string, parsed *rls.Release, files qbt.TorrentFiles, replaySearch bool) namedRelease {
+// readApplyTarget reads the torrent that apply adds. A cached search may need
+// file-derived TV structure, but an explicit info.name group remains
+// authoritative and selected-file tags stay as veto evidence.
+func (s *Service) readApplyTarget(name string, files qbt.TorrentFiles, replaySearch bool) namedRelease {
+	read, _ := s.readRelease(name, files, readPolicy{applyTarget: true, replaySearch: replaySearch})
+	return read
+}
+
+// readPolicy says how a Match path reads the files of a release.
+type readPolicy struct {
+	// mapContent applies the category mapping rule of the search source.
+	mapContent func(ContentTypeInfo) ContentTypeInfo
+	// applyTarget reads the torrent that apply adds. Trackers retitle listings
+	// but keep the original info.name, so a TV name keeps its own structure
+	// unless apply replays a search, and an explicit info.name group stays.
+	applyTarget  bool
+	replaySearch bool
+}
+
+// readRelease is the one reader of a release name: it returns the Read release
+// (GLOSSARY.md). files, when known, give the season, episode, and pack. The
+// content type is returned only when the files were read or the policy maps
+// content.
+func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPolicy) (namedRelease, ContentTypeInfo) {
+	read := s.matcher().readName(name)
+	parsed := read.release
+	if policy.applyTarget && isTVRelease(parsed) && !policy.replaySearch {
+		files = nil
+	}
+	if len(files) == 0 && policy.mapContent == nil {
+		return read, ContentTypeInfo{}
+	}
+
 	contentDetectionRelease, usedFile := s.selectContentDetectionRelease(name, parsed, files)
 	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
-	return s.buildReleaseView(name, parsed, contentDetectionRelease, usedFile, files, contentInfo, releaseViewPolicy{
-		useDerivedTV:             !isTVRelease(parsed) || replaySearch,
-		preserveExplicitRawGroup: true,
-	})
-}
-
-type releaseViewPolicy struct {
-	useDerivedTV             bool
-	preserveExplicitRawGroup bool
-}
-
-func (s *Service) buildReleaseView(
-	name string,
-	parsed *rls.Release,
-	contentDetectionRelease *rls.Release,
-	usedFile bool,
-	files qbt.TorrentFiles,
-	contentInfo ContentTypeInfo,
-	policy releaseViewPolicy,
-) namedRelease {
-	view := namedRelease{release: parsed, rawName: name}
+	if policy.mapContent != nil {
+		contentInfo = policy.mapContent(contentInfo)
+	}
 	if len(files) == 0 {
-		return view
+		return read, contentInfo
 	}
 
 	if usedFile {
-		view.tagOrigin = contentDetectionRelease
+		read.tagOrigin = contentDetectionRelease
 	}
 	derived := s.selectSourceReleaseForSearch(parsed, contentDetectionRelease, files, contentInfo)
-	if !policy.useDerivedTV || !isTVRelease(derived) {
-		return view
+	if !isTVRelease(derived) {
+		return read, contentInfo
 	}
-	view.seasonNumeral = inferredSeasonNumeral(derived)
-	if policy.preserveExplicitRawGroup && releaseHasExplicitGroupTag(parsed) {
+	read.seasonNumeral = inferredSeasonNumeral(derived)
+	read.release = derived
+	if policy.applyTarget && releaseHasExplicitGroupTag(parsed) {
 		preservedIdentity := *derived
 		preservedIdentity.Group = parsed.Group
 		preservedIdentity.Site = parsed.Site
-		view.release = &preservedIdentity
-		return view
+		read.release = &preservedIdentity
 	}
-	view.release = derived
-	return view
+	return read, contentInfo
+}
+
+// readName reads a release name without its files.
+func (m matcher) readName(name string) namedRelease {
+	return namedRelease{release: m.parseReleaseName(name), rawName: name}
+}
+
+// titleKeys returns the Title keys of a Read release (GLOSSARY.md), each once.
+func (m matcher) titleKeys(read namedRelease) []string {
+	var buf [8]string
+	titles := append(m.appendReleaseTitles(buf[:0], read.release, read.rawName), numeralFreeTitle(read.release))
+	keys := make([]string, 0, len(titles))
+	for _, title := range titles {
+		if title == "" {
+			continue
+		}
+		if key := stringutils.NormalizeForMatching(title); key != "" && !slices.Contains(keys, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// numeralFreeTitle is the title without its Season numeral, or "". A name that
+// parses as a yearless movie also counts, because the matcher reads the numeral
+// of a bare "Title III" against a seasoned other side.
+func numeralFreeTitle(release *rls.Release) string {
+	if title := titleWithoutSeasonNumeral(release); title != "" {
+		return title
+	}
+	if inferredSeasonNumeral(release) == 0 {
+		return ""
+	}
+	_, title := readTitleNumeral(release.Title)
+	return title
 }
 
 // inferredSeasonNumeral reads a last-word II to X as the season of a pack

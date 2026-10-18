@@ -826,9 +826,10 @@ func (m matcher) crossFieldGroupSiteFallbackIdentity(source, candidate namedRele
 	return "", false
 }
 
-// namedRelease keeps the public release fields, raw name, and selected-file
-// tags as one identity view. Keeping the origin inside the view prevents a
-// caller from passing file-derived fields while silently dropping provenance.
+// namedRelease is the Read release (GLOSSARY.md): the public release fields,
+// raw name, and selected-file tags of one name. Keeping the origin
+// inside it prevents a caller from passing file-derived fields while silently
+// dropping provenance. readRelease builds it, and titleKeys reads its Title keys.
 type namedRelease struct {
 	release   *rls.Release
 	rawName   string
