@@ -302,6 +302,40 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	require.Equal(t, "group/site mismatch", reason)
 }
 
+// The tracker name also differs in source and HDR, so strict matching fails on
+// the source and only the exact-size identity check can pair the two names.
+func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bracket     = "Azure Compass (2020) (1080p AMZN Webrip x265 10bit EAC3 5.1 - Kyo) [Mura]"
+		spaceJoined = "Azure Compass (2020) (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Kyo Mura)"
+	)
+	svc := newGroupFallbackService()
+	bracketRelease := svc.releaseCache.Parse(bracket)
+	spaceJoinedRelease := svc.releaseCache.Parse(spaceJoined)
+	require.Equal(t, "Kyo", bracketRelease.Group, "fixture must split group and collective")
+	require.Equal(t, "Mura", bracketRelease.Site)
+	require.Equal(t, "Kyo Mura", spaceJoinedRelease.Group, "fixture must join group and collective")
+	require.Empty(t, spaceJoinedRelease.Site)
+
+	ok, reason := svc.matcher().releasesMatchWithReasonAndNames(bracketRelease, spaceJoinedRelease, bracket, spaceJoined, false)
+	require.False(t, ok)
+	require.Equal(t, sourceMismatchReason, reason)
+
+	bracketSide := namedRelease{release: bracketRelease, rawName: bracket}
+	spaceJoinedSide := namedRelease{release: spaceJoinedRelease, rawName: spaceJoined}
+	for _, pair := range [][2]namedRelease{{bracketSide, spaceJoinedSide}, {spaceJoinedSide, bracketSide}} {
+		ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+			Source:        pair[0],
+			Candidate:     pair[1],
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		})
+		require.True(t, ok, "%s against %s: %s", pair[0].rawName, pair[1].rawName, reason)
+	}
+}
+
 // When the leftover word repeats the fansub tag, Group and Site say the same
 // thing and every gate already agrees. Recording a relaxation there would hand
 // apply a token nothing was rejected for.
