@@ -64,7 +64,7 @@ func (s *Service) classifyAnnouncementSource(
 		return announcementCandidateDecision{decision: decision}
 	}
 
-	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source, rawInput.Source.release)
+	sourceView := s.deriveSearchSourceRelease(ctx, instanceID, source)
 	rawInput.Source = sourceView
 	decision := s.matcher().classifySearchCandidate(rawInput)
 	return announcementCandidateDecision{decision: decision, replayable: true}

@@ -78,7 +78,7 @@ func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 	require.True(t, decision.Accepted)
 	require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
 
-	view := svc.applyTargetReleaseViewFromFiles(split, rawSplit, qbt.TorrentFiles{
+	view := svc.readApplyTarget(split, qbt.TorrentFiles{
 		{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000},
 	}, true)
 	require.Empty(t, view.release.Site, "the selected-file view does not carry the raw Site field")
@@ -94,7 +94,7 @@ func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
 	svc := newGroupFallbackService()
 	files := qbt.TorrentFiles{{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000}}
 	torrent := &qbt.Torrent{Name: split}
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), torrent, svc.releaseCache.Parse(split), files)
+	view, _ := svc.readSearchSource(context.Background(), torrent, files)
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        view,
 		Candidate:     namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
@@ -608,7 +608,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 
 	raw := svc.releaseCache.Parse(rawEpisode)
 	require.True(t, isTVEpisode(raw), "the raw fixture must reach the episode shape gate")
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, raw, files)
+	view, _ := svc.readSearchSource(context.Background(), &torrent, files)
 	require.True(t, isTVSeasonPack(view.release), "search must derive the pack from its files")
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:                 view,
@@ -675,7 +675,7 @@ func TestFindCandidates_ReplaysFileStructureWithoutReplacingExplicitGroup(t *tes
 
 	raw := svc.releaseCache.Parse(sourceName)
 	require.True(t, releaseHasExplicitGroupTag(raw))
-	view := svc.searchSourceReleaseViewFromFiles(context.Background(), &qbt.Torrent{Name: sourceName}, raw, files)
+	view, _ := svc.readSearchSource(context.Background(), &qbt.Torrent{Name: sourceName}, files)
 	require.Equal(t, 2, view.release.Series)
 	require.Equal(t, "KIRI", view.release.Group)
 
@@ -714,8 +714,7 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	rawSource := svc.releaseCache.Parse(rawS01)
-	searchSource := svc.searchSourceReleaseViewFromFiles(context.Background(), &torrent, rawSource, files)
+	searchSource, _ := svc.readSearchSource(context.Background(), &torrent, files)
 	require.Equal(t, 2, searchSource.release.Series)
 	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        searchSource,
@@ -1043,9 +1042,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
 
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					fansubBracketPack,
-					svc.releaseCache.Parse(fansubBracketPack),
 					targetFiles,
 					true,
 				)
@@ -1140,9 +1138,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					releaseCache:     NewReleaseCache(),
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					fansubBracketPack,
-					svc.releaseCache.Parse(fansubBracketPack),
 					targetFiles,
 					true,
 				)
@@ -1192,9 +1189,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					releaseCache:     NewReleaseCache(),
 					stringNormalizer: stringutils.NewDefaultNormalizer(),
 				}
-				target := svc.applyTargetReleaseViewFromFiles(
+				target := svc.readApplyTarget(
 					targetName,
-					svc.releaseCache.Parse(targetName),
 					targetFiles,
 					true,
 				)

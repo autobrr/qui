@@ -25,7 +25,7 @@ import (
 // test, unless the row lists that difference with a reason.
 //
 // Known gap: Dir Scan is not in the corpus. Its comparison lives in the dirscan
-// package, and #3036 decides when it moves to the shared release reading.
+// package, and #3064 moves it to the Read release.
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.
@@ -67,7 +67,6 @@ type corpusDifference struct {
 // corpusTickets are the open issues that known differences name. Add a ticket
 // with its first known difference, and remove it with its last one.
 var corpusTickets = []int{
-	3036, // read a release name in one module
 	3037, // decide every match through one verdict
 }
 
@@ -151,8 +150,7 @@ const (
 	reasonNoEpisodeMap      = "This path holds no episode map, because qui looks up no Sonarr data for local names."
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
 	reasonNoRelabel         = "The web source relabel is a search rule. This path does not run it."
-	reasonDedupKey          = "Dedup groups torrents by the lowercase title before the matcher runs, so the two titles never meet."
-	reasonCrossMatchKey     = "Cross-match sets read the parsed names without raw names or files, so the title rules that need them do not run."
+	reasonDedupNoSizes      = "Dedup reads names only, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
@@ -226,10 +224,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		name:           "season numeral announce against season pack",
@@ -240,10 +234,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.S03.1080p.WEB.H264-GRP", "Kaiju.Squad.S03E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.III.1080p.WEB.H264-GRP", "Kaiju.Squad.III.S03E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		name:           "season numeral announce against another season",
@@ -272,6 +262,9 @@ var corpusRows = []corpusRow{
 		candidateSize: 3 * corpusEpisodeSize,
 		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
 		want:          corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusMatch, reasonDedupNoSizes),
+		},
 	},
 	{
 		name:          "yearless movie sequel of the season pack size",
@@ -282,6 +275,7 @@ var corpusRows = []corpusRow{
 		sourceFiles:   corpusPackFiles("Kaiju.Squad.S03.1080p.BluRay.x264-GRP", "Kaiju.Squad.S03E%02d.1080p.BluRay.x264-GRP"),
 		want:          corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
+			pathDedup:   allowedDifference(corpusMatch, reasonDedupNoSizes),
 			pathSearch:  allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathRetry:   allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathWebhook: allowedDifference(corpusMatch, reasonNumeralSameSize),
@@ -304,9 +298,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.I.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.I.S01E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.S01E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		name:           "season numeral XI with a season 11 marker",
@@ -317,9 +308,6 @@ var corpusRows = []corpusRow{
 		sourceFiles:    corpusPackFiles("Kaiju.Squad.XI.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.XI.S11E%02d.1080p.WEB.H264-GRP"),
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.S11E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		// The listing names the show "Kaiju Squad 100 II", so the numeral is part of the title and not season 2.
@@ -347,9 +335,6 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
 	},
 	{
 		// An AKA after the episode number starts an episode title, not a show title.
@@ -372,10 +357,22 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
-		differences: map[matchPath]corpusDifference{
-			pathCrossMatch: knownDifference(corpusNoMatch, 3036, reasonCrossMatchKey),
-			pathDedup:      knownDifference(corpusNoMatch, 3036, reasonDedupKey),
-		},
+	},
+	{
+		name:          "title that differs only by punctuation",
+		source:        "Bob's Burgers S02E05 1080p WEB H264-GRP",
+		candidate:     "Bobs.Burgers.S02E05.1080p.WEB.H264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		name:          "yearless movie against the same movie with a year",
+		source:        "Harbor.Lights.1080p.BluRay.x264-GRP",
+		candidate:     "Harbor.Lights.2019.1080p.BluRay.x264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
 	},
 	{
 		name:           "Sonarr alternate title",
@@ -868,9 +865,9 @@ func corpusVerdictOf(matched bool) corpusVerdict {
 func (row corpusRow) searchInput(t *testing.T, svc *Service) searchCandidateInput {
 	t.Helper()
 	source := row.sourceTorrent()
-	files := corpusFiles(row.source, row.sourceSize, row.sourceFiles)
+	sourceRead, _ := svc.readSearchSource(t.Context(), &source, corpusFiles(row.source, row.sourceSize, row.sourceFiles))
 	return searchCandidateInput{
-		Source:                svc.searchSourceReleaseViewFromFiles(t.Context(), &source, svc.releaseCache.Parse(row.source), files),
+		Source:                sourceRead,
 		Candidate:             namedRelease{release: svc.releaseCache.Parse(row.candidate), rawName: row.candidate},
 		SourceTitles:          row.titles,
 		EpisodeMap:            row.episodeMap,
@@ -907,13 +904,9 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	if decision := svc.matcher().classifySearchCandidate(row.searchInput(t, svc)); decision.Accepted {
 		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, corpusSourceHash)
 	}
-	// Build the target view from the downloaded files, as processCrossSeedCandidate does.
-	target := svc.releaseCache.Parse(row.candidate)
-	req.TargetRelease = namedRelease{release: target, rawName: row.candidate}
-	if !isTVRelease(target) || req.SearchDecision.admitted() {
-		req.TargetRelease = svc.applyTargetReleaseViewFromFiles(row.candidate, target,
-			corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
-	}
+	// Read the target from the downloaded files, as processCrossSeedCandidate does.
+	req.TargetRelease = svc.readApplyTarget(row.candidate,
+		corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
 	resp, err := svc.FindCandidates(t.Context(), req)
 	require.NoError(t, err)
 	if resp.seasonPackEpisodeCandidates {
