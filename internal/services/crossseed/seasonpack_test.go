@@ -580,6 +580,7 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 // locals also carry CR. Check is ready and apply succeeds all the way through the
 // stamped pipeline (resolveSeasonPackLocalFilesForCandidates + buildSeasonPackPlan).
 func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
+	mediaDir := t.TempDir()
 	packName := "Cool.Show.S03.1080p.CR.WEB-DL.x264-GRP"
 	packFiles := []string{
 		"Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv",
@@ -596,10 +597,10 @@ func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
 		HardlinkBaseDir:          t.TempDir(),
 	}
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e25", Name: "Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e26", Name: "Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e27", Name: "Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e28", Name: "Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -1324,6 +1325,7 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 	store := &stubSeasonPackRunStore{}
 
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 	inst1 := &models.Instance{
 		ID: 1, Name: "Instance1", IsActive: true,
 		HasLocalFilesystemAccess: true,
@@ -1340,10 +1342,10 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 	// Both instances have all 4 episodes, so tie on coverage and matched count.
 	// Winner should be instance 1 (lowest ID).
 	allEpisodes := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -1447,6 +1449,7 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "HardlinkInst", IsActive: true,
@@ -1456,10 +1459,10 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -1502,7 +1505,7 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 
 	// Verify each file maps from source into a single pack folder (no double nesting).
 	for _, fp := range capturedPlan.Files {
-		require.Contains(t, filepath.ToSlash(fp.SourcePath), "/media/")
+		require.Equal(t, mediaDir, filepath.Dir(fp.SourcePath))
 		require.Equal(t, filepath.Join(baseDir, fix.packName), filepath.Dir(fp.TargetPath))
 	}
 
@@ -1545,6 +1548,7 @@ func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fix := newSeasonPackFixture(t)
 			baseDir := t.TempDir()
+			mediaDir := t.TempDir()
 
 			inst := &models.Instance{
 				ID: 1, Name: "HardlinkInst", IsActive: true,
@@ -1555,10 +1559,10 @@ func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
 			}
 
 			episodeTorrents := []qbt.Torrent{
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 			}
 
 			baseSM := newMultiFakeSyncManager(
@@ -1610,6 +1614,7 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "ReflinkInst", IsActive: true,
@@ -1619,10 +1624,10 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -1663,6 +1668,7 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	tests := []struct {
 		name       string
@@ -1755,10 +1761,10 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 			}
 
 			episodeTorrents := []qbt.Torrent{
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", Category: tt.episodeCat, ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 			}
 
 			baseSM := newMultiFakeSyncManager(
@@ -1802,6 +1808,7 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing.T) {
 	fix := alignedSeasonPackFixture(t)
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
@@ -1811,10 +1818,10 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -1868,6 +1875,7 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *testing.T) {
 	fix := newSeasonPackFixture(t) // files share the single 256 KiB piece
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
@@ -1877,10 +1885,10 @@ func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *te
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -2029,6 +2037,7 @@ func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(
 }
 
 func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *testing.T) {
+	mediaDir := t.TempDir()
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	main := bytes.Repeat([]byte("M"), 53)
 	extra := bytes.Repeat([]byte("E"), 11)
@@ -2046,7 +2055,7 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -2085,6 +2094,7 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 }
 
 func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.T) {
+	mediaDir := t.TempDir()
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	main := bytes.Repeat([]byte("M"), 53)
 	extra := bytes.Repeat([]byte("E"), 11)
@@ -2102,7 +2112,7 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -2199,6 +2209,7 @@ func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
 func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) {
 	store := &stubSeasonPackRunStore{}
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	packFiles := []string{
@@ -2224,9 +2235,9 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 
 	// Only 3 of 4 episodes on the instance, but coverage=75% meets threshold.
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/ep01.mkv", Progress: 1.0},
-		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/ep02.mkv", Progress: 1.0},
-		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/ep03.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "ep01.mkv"), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "ep02.mkv"), Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "ep03.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -2284,6 +2295,7 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 }
 
 func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T) {
+	mediaDir := t.TempDir()
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	main := bytes.Repeat([]byte("M"), 64)
 	extra := bytes.Repeat([]byte("E"), 11)
@@ -2301,7 +2313,7 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 	}
 
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -2358,6 +2370,7 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		packFile: bytes.Repeat([]byte("M"), 64),
 	}))
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
@@ -2366,7 +2379,7 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		HardlinkBaseDir:          baseDir,
 	}
 
-	contentDir := "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP"
+	contentDir := filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP")
 	episodeTorrents := []qbt.Torrent{
 		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: contentDir, Progress: 1.0},
 	}
@@ -2806,6 +2819,7 @@ func TestCheckSeasonPackWebhook_KeepsAliasesWhenSeasonTotalUnavailable(t *testin
 // alias titles too, or a pack that checks ready fails every apply with a release
 // mismatch.
 func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.T) {
+	mediaDir := t.TempDir()
 	packName := "Jidou.Hanbaiki.S01.1080p.WEB.x264-GRP"
 	packFiles := []string{
 		"Jidou.Hanbaiki.S01E01.1080p.WEB.x264-GRP.mkv",
@@ -2832,7 +2846,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	for i, name := range localNames {
 		episodeTorrents = append(episodeTorrents, qbt.Torrent{
 			Hash: hashes[i], Name: name,
-			ContentPath: "/media/" + name + ".mkv",
+			ContentPath: filepath.Join(mediaDir, name+".mkv"),
 			Progress:    1.0,
 		})
 	}
