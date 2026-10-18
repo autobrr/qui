@@ -189,6 +189,27 @@ func TestSelectSeasonPackBaseDir_ValidatesSingleDirAgainstSources(t *testing.T) 
 	require.Empty(t, selected)
 }
 
+func TestSeasonPackMetadataTitles(t *testing.T) {
+	t.Parallel()
+
+	m := (&Service{releaseCache: NewReleaseCache()}).matcher()
+	tests := []struct {
+		name string
+		pack string
+		want []string
+	}{
+		{name: "numeral-only pack", pack: "[GRP] Cedar Harbor II [BD 1080p HEVC FLAC]", want: []string{"Cedar Harbor II", "Cedar Harbor"}},
+		{name: "numeral and season marker", pack: "Cedar Harbor III S03 1080p BluRay x264-GRP", want: []string{"Cedar Harbor III", "Cedar Harbor"}},
+		{name: "season marker only", pack: "Cedar Harbor S02 1080p BluRay x264-GRP", want: []string{"Cedar Harbor"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, test.want, seasonPackMetadataTitles(m.parseSeasonPackName(test.pack)))
+		})
+	}
+}
+
 func TestCheckSeasonPackWebhook_ReturnsReadyWhenCoveragePasses(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}

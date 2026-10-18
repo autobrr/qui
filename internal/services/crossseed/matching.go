@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -1069,9 +1070,11 @@ func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Rele
 
 			// For content without usable file-level metadata (games, apps, scene releases
 			// with RAR files), trust the torrent-level releasesMatch check that got us here
-			// when neither name has an episode.
+			// when neither name has an episode. A batch such as "Show - 01 - 03" has no
+			// single episode, so two batches must name the same episodes.
 			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) && targetEp == 0 && candidateEp == 0 {
+			if targetKey == (releaseKey{}) && targetEp == 0 && candidateEp == 0 &&
+				slices.EqualFunc(targetRelease.SeriesEpisodes(), candidateRelease.SeriesEpisodes(), slices.Equal[[]int]) {
 				return "release-match"
 			}
 		}

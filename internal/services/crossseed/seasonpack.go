@@ -1202,17 +1202,30 @@ func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName 
 	// (e.g. "Cool.Show.S01.1080p.WEB.x264-GRP") since metadata APIs expect clean titles.
 	metaSvc := s.getMetadataService(ctx)
 	if metaSvc != nil {
-		showTitle := strings.ReplaceAll(packRelease.Title, ".", " ")
-		total, err := metaSvc.LookupEpisodeTotal(ctx, showTitle, packRelease.Series)
-		if err != nil {
-			log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
-				Msg("season pack: metadata provider lookup failed")
-		} else if total > 0 {
-			return total, aliasTitles, true
+		for _, showTitle := range seasonPackMetadataTitles(packRelease) {
+			total, err := metaSvc.LookupEpisodeTotal(ctx, showTitle, packRelease.Series)
+			if err != nil {
+				log.Debug().Err(err).Str("torrentName", torrentName).Str("title", showTitle).Int("season", packRelease.Series).
+					Msg("season pack: metadata provider lookup failed")
+			} else if total > 0 {
+				return total, aliasTitles, true
+			}
 		}
 	}
 
 	return 0, aliasTitles, false
+}
+
+// seasonPackMetadataTitles returns the show titles to ask the metadata providers
+// for, in order. A pack whose Season numeral names its season, such as
+// "Cedar Harbor II" as S02, also asks for "Cedar Harbor", because the providers
+// can list the show only under that title.
+func seasonPackMetadataTitles(packRelease *rls.Release) []string {
+	titles := []string{strings.ReplaceAll(packRelease.Title, ".", " ")}
+	if base := titleWithoutSeasonNumeral(packRelease); base != "" {
+		titles = append(titles, strings.ReplaceAll(base, ".", " "))
+	}
+	return titles
 }
 
 // computeCoverage calculates episode coverage for each instance by scanning

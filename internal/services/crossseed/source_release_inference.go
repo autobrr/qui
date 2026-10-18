@@ -266,8 +266,9 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		return 0, 0, false, false
 	}
 
+	// Seasonless files in the absolute scheme are episodes of the pack too.
 	switch {
-	case bestEpisodeCount >= 2:
+	case bestEpisodeCount+len(absoluteEpisodes) >= 2:
 		return bestSeries, 0, true, true
 	case bestEpisodeCount == 1:
 		for ep := range bySeries[bestSeries].episodes {

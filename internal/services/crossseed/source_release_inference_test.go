@@ -85,6 +85,18 @@ func TestDeriveSourceReleaseForSearch(t *testing.T) {
 			expectedEpisode: 0,
 		},
 		{
+			name:   "season pack with seasoned and absolute files",
+			source: "Some.Show.S02.1080p.WEB-DL.x264-GROUP",
+			files: qbt.TorrentFiles{
+				{Name: "Some.Show.S02E01.1080p.WEB-DL.x264-GROUP.mkv", Size: 1},
+				{Name: "Some Show - 14.mkv", Size: 1},
+				{Name: "Some Show - 15.mkv", Size: 1},
+			},
+			expectedType:    rls.Series,
+			expectedSeries:  2,
+			expectedEpisode: 0,
+		},
+		{
 			name:   "infer seasonless anime episode",
 			source: "[SubsPlease] Classic Stars (1080p)",
 			files: qbt.TorrentFiles{

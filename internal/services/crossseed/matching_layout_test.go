@@ -516,3 +516,36 @@ func TestGetMatchTypeFromTitle_SeasonlessBatchAgainstSeasonPack(t *testing.T) {
 		})
 	}
 }
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchRanges(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[GRP] Kaiju Squad - 04 - 06 (1080p)"
+	files := qbt.TorrentFiles{
+		{Name: localName + "/[GRP] Kaiju Squad - 04 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 05 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 06 (1080p).mkv", Size: 1 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "same batch", target: localName, want: "release-match"},
+		{name: "other batch", target: "[GRP] Kaiju Squad - 01 - 03 (1080p)", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			require.Equal(t, test.want, svc.matcher().getMatchTypeFromTitle(target, local, files))
+		})
+	}
+}
