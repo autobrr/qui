@@ -4,9 +4,9 @@
 package hardlinktree
 
 import (
-	"io/fs"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
