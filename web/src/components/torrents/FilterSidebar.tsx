@@ -40,7 +40,7 @@ import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
@@ -798,18 +798,16 @@ const FilterSidebarComponent = ({
       isCustomized: boolean
     }> = []
 
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
 
     for (const tracker of trackers) {
-      const lowerTracker = tracker.toLowerCase()
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      if (seenGroups.has(groupKey)) continue
+      seenGroups.add(groupKey)
 
-      const customization = domainToCustomization.get(lowerTracker)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        // Use displayName as uniqueness key for merged trackers
-        const displayKey = customization.displayName.toLowerCase()
-        if (seenDisplayNames.has(displayKey)) continue
-        seenDisplayNames.add(displayKey)
 
         processed.push({
           key: customization.domains[0], // Use primary domain as key
@@ -820,9 +818,6 @@ const FilterSidebarComponent = ({
         })
       } else {
         // No customization - use domain as-is
-        if (seenDisplayNames.has(lowerTracker)) continue
-        seenDisplayNames.add(lowerTracker)
-
         processed.push({
           key: tracker,
           displayName: tracker,

@@ -58,7 +58,7 @@ import { useIndexerTrackerDomains } from "@/hooks/useIndexerTrackerDomains"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
@@ -773,15 +773,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
   const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
-  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
+  const canRead = ruleInstance?.capabilities.read ?? false
+  const pathSourceAvailable = canRead && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
       trackerHealth: supportsTrackerHealth,
-      localFilesystemAccess: hasLocalFilesystemAccess,
+      read: canRead,
       trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess, hasTrustedIdentity]
+    [supportsTrackerHealth, canRead, hasTrustedIdentity]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -865,20 +866,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
     const processed: TrackerOption[] = []
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
     const seenValues = new Set<string>()
 
     // Helper to add a tracker option
     const addTracker = (tracker: string) => {
-      const lowerTracker = tracker.toLowerCase()
-
-      const customization = domainToCustomization.get(lowerTracker)
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        const displayKey = customization.displayName.toLowerCase()
         const mergedValue = customization.domains.join(",")
-        if (seenDisplayNames.has(displayKey) || seenValues.has(mergedValue)) return
-        seenDisplayNames.add(displayKey)
+        if (seenGroups.has(groupKey) || seenValues.has(mergedValue)) return
+        seenGroups.add(groupKey)
         seenValues.add(mergedValue)
 
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
@@ -889,8 +888,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           isCustom: true,
         })
       } else {
-        if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return
-        seenDisplayNames.add(lowerTracker)
+        if (seenGroups.has(groupKey) || seenValues.has(tracker)) return
+        seenGroups.add(groupKey)
         seenValues.add(tracker)
 
         processed.push({

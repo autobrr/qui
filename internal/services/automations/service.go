@@ -923,7 +923,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
-	if evalCtx.InstanceHasLocalAccess && needs.MissingFiles {
+	if evalCtx.InstanceCanRead && needs.MissingFiles {
 		missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
