@@ -411,3 +411,46 @@ func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
 		t.Fatalf("got %v, want ErrTargetExists", err)
 	}
 }
+
+// targetSatisfiesPlan decides both the pre-Link check and the EEXIST branch, so
+// the racing-collision classification turns on these three answers.
+func TestTargetSatisfiesPlan(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.mkv")
+	if err := os.WriteFile(src, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.mkv")
+	if err := os.Link(src, link); err != nil {
+		t.Fatal(err)
+	}
+	stranger := filepath.Join(dir, "stranger.mkv")
+	if err := os.WriteFile(stranger, []byte("b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name          string
+		target        string
+		wantSatisfied bool
+		wantErr       error
+	}{
+		{name: "link to the source is already done", target: link, wantSatisfied: true},
+		{name: "missing target is ours to create", target: filepath.Join(dir, "absent.mkv")},
+		{name: "another file is the collision", target: stranger, wantErr: ErrTargetExists},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: src, TargetPath: tt.target})
+			if satisfied != tt.wantSatisfied {
+				t.Errorf("satisfied = %v, want %v", satisfied, tt.wantSatisfied)
+			}
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else if !errors.Is(err, tt.wantErr) {
+				t.Errorf("got %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}

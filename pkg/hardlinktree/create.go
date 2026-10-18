@@ -74,6 +74,26 @@ func mkdirAllTracked(dir string, created *[]string) error {
 // a link to the source.
 var ErrTargetExists = errors.New("target already exists")
 
+// targetSatisfiesPlan reports whether fp's target already is a hardlink to its
+// source, so Create can skip it. A target holding anything else is the
+// collision ErrTargetExists names.
+func targetSatisfiesPlan(fp FilePlan) (bool, error) {
+	info, err := os.Lstat(fp.TargetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check target %s: %w", fp.TargetPath, err)
+	}
+	if info.Mode().IsRegular() {
+		srcInfo, srcErr := os.Stat(fp.SourcePath)
+		if srcErr == nil && os.SameFile(srcInfo, info) {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath)
+}
+
 // Create materializes the hardlink tree plan on disk.
 // Creates necessary directories and hardlinks files from source to target paths.
 // On failure, attempts best-effort rollback of created files and returns a nil handle.
@@ -123,26 +143,23 @@ func Create(plan *TreePlan) (*Created, error) {
 		}
 
 		// Check if target already exists
-		if info, err := os.Lstat(fp.TargetPath); err == nil {
-			// File exists - check if it's already a hardlink to the source
-			if info.Mode().IsRegular() {
-				srcInfo, srcErr := os.Stat(fp.SourcePath)
-				if srcErr == nil && os.SameFile(srcInfo, info) {
-					// Already a hardlink to the same file - skip (idempotent)
-					continue
-				}
-			}
-			// Different file exists at target - this is an error
-			return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath))
-		} else if !os.IsNotExist(err) {
-			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
+		if satisfied, err := targetSatisfiesPlan(fp); err != nil {
+			return nil, rollbackOnError(err)
+		} else if satisfied {
+			// Already a hardlink to the same file - skip (idempotent)
+			continue
 		}
 
 		// Create hardlink
 		if err := os.Link(fp.SourcePath, fp.TargetPath); err != nil {
-			// A target that appeared between the Lstat above and this Link is the
-			// same collision, so link mode refuses it rather than falling back.
 			if errors.Is(err, fs.ErrExist) {
+				// A target appeared between the check above and this Link. A
+				// concurrent run linking the same release to a shared path
+				// (discussion #2282) created the link we wanted, so take it;
+				// anything else is the collision link mode refuses.
+				if satisfied, satisfiedErr := targetSatisfiesPlan(fp); satisfiedErr == nil && satisfied {
+					continue
+				}
 				return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath))
 			}
 			return nil, rollbackOnError(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
