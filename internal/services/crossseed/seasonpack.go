@@ -196,7 +196,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", "no instances with filesystem write access and hardlink/reflink mode", nil
 	}
 
 	threshold := settings.SeasonPackCoverageThreshold
@@ -250,7 +250,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", "no instances with filesystem write access and hardlink/reflink mode", nil
 	}
 
 	// Try to get episode total from metadata chain (Sonarr -> TVDB/TVMaze).
