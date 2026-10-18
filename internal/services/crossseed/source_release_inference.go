@@ -194,16 +194,29 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		episodes  map[int]struct{}
 	}
 
-	bySeries := make(map[int]*seriesInfo)
-	absoluteEpisodes := make(map[int]struct{})
-	seasonlessEpisodeFiles := 0
+	// Read each file name before the torrent's season is copied in, so the
+	// seasonless files take their numbering scheme from seasonlessFilesPerSeason.
+	fileReleases := make([]*rls.Release, 0, len(files))
+	lowestSeasonlessEpisode := 0
 	for _, file := range files {
 		if shouldIgnoreFile(file.Name, normalizer) {
 			continue
 		}
-
 		fileRelease := s.matcher().parseFileRelease(file.Name)
-		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
+		if ep := absoluteEpisode(fileRelease); ep > 0 && (lowestSeasonlessEpisode == 0 || ep < lowestSeasonlessEpisode) {
+			lowestSeasonlessEpisode = ep
+		}
+		fileReleases = append(fileReleases, fileRelease)
+	}
+	perSeason := lowestSeasonlessEpisode > 0 && seasonlessFilesPerSeason(torrentRelease, lowestSeasonlessEpisode)
+
+	bySeries := make(map[int]*seriesInfo)
+	absoluteEpisodes := make(map[int]struct{})
+	seasonlessEpisodeFiles := 0
+	for _, fileRelease := range fileReleases {
+		if perSeason || absoluteEpisode(fileRelease) == 0 {
+			fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
+		}
 		if fileRelease.Series <= 0 {
 			if fileRelease.Episode > 0 {
 				seasonlessEpisodeFiles++
@@ -253,8 +266,9 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		return 0, 0, false, false
 	}
 
+	// Seasonless files in the absolute scheme are episodes of the pack too.
 	switch {
-	case bestEpisodeCount >= 2:
+	case bestEpisodeCount+len(absoluteEpisodes) >= 2:
 		return bestSeries, 0, true, true
 	case bestEpisodeCount == 1:
 		for ep := range bySeries[bestSeries].episodes {

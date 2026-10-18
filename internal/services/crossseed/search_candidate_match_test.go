@@ -1029,7 +1029,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			}
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
-				tt.downloadedName, tt.existingName, downloadedRelease, existingRelease, existingFiles,
+				downloadedRelease, existingRelease, existingFiles,
 			), "the fixture must pass file validation once the release gate is replayed")
 
 			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
