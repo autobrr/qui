@@ -554,6 +554,17 @@ func TestReleasesMatch_SeasonNumeral(t *testing.T) {
 			candidateName: "Title II S01 1080p BluRay x265-GRP",
 		},
 		{
+			name:          "subtractive numeral matches its season",
+			sourceName:    "Title.XIV.S14.1080p.BluRay.x265-GRP",
+			candidateName: "Title S14 1080p BluRay x265-GRP",
+		},
+		{
+			name:          "numeral in a non-standard spelling is kept",
+			sourceName:    "Title.IIII.S04.1080p.BluRay.x265-GRP",
+			candidateName: "Title S04 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
 			name:          "arabic number is not a season numeral",
 			sourceName:    "Kaiju.Squad.3.S03.1080p.BluRay.x265-GRP",
 			candidateName: "Kaiju Squad S03 1080p BluRay x265-GRP",

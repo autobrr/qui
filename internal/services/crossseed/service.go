@@ -4589,11 +4589,19 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		targetSide.rawName = req.TorrentName
 	}
 	targetRelease := targetSide.release
+	// The season pack hint and the file keys pair episodes by season, so a
+	// "Title II" pack reads the season that its numeral names there.
+	seasonedTarget := targetRelease
+	if targetSide.seasonNumeral > 0 {
+		withSeason := *targetRelease
+		withSeason.Series = targetSide.seasonNumeral
+		seasonedTarget = &withSeason
+	}
 	searchDecision := req.SearchDecision
 
 	// The season pack hint compares every local episode with these, so read them once.
 	// Only an admitted decision holds aliases, and it describes the pack's show.
-	packTitles := m.normalizedReleaseTitles(targetRelease, targetSide.rawName)
+	packTitles := m.normalizedReleaseTitles(seasonedTarget, targetSide.rawName)
 	packAliasTitles := slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles)
 
 	// Build basic info for response
@@ -4730,8 +4738,8 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			// An episode of the same show marks the pack as buildable from local episodes;
 			// the season pack check verifies coverage before apply. No ARR lookup here.
-			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(targetRelease) &&
-				isTVEpisode(sourceSide.release) && sourceSide.release.Series == targetRelease.Series &&
+			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(seasonedTarget) &&
+				isTVEpisode(sourceSide.release) && sourceSide.release.Series == seasonedTarget.Series &&
 				titleSetsMatch(m.normalizedReleaseTitles(sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
 				response.seasonPackEpisodeCandidates = true
 			}
@@ -4887,8 +4895,8 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
-			candidateRelease := withTitleNumeralSeason(s.releaseCache.Parse(torrent.Name), targetRelease)
-			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			candidateRelease := withTitleNumeralSeason(s.releaseCache.Parse(torrent.Name), seasonedTarget)
+			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, seasonedTarget, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}
@@ -8588,19 +8596,26 @@ func alternateConnectorQuery(query string) (string, bool) {
 // Returns ("", false) when no distinct alternate title exists.
 // Dir Scan has no Service, so it parses through the default parser.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
-	return matcher{}.alternateTitleQuery(primaryQuery, release, arrTitles, releaseName)
+	return matcher{}.alternateTitleQuery(primaryQuery, namedRelease{release: release, rawName: releaseName}, arrTitles)
 }
 
-func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
+func (m matcher) alternateTitleQuery(primaryQuery string, side namedRelease, arrTitles []string) (string, bool) {
+	release := side.release
 	primary := stringutils.NormalizeForMatching(primaryQuery)
 	candidates := make([]string, 0, len(arrTitles)+4)
 	candidates = append(candidates, arrTitles...)
 	candidates = append(candidates, releaseAlt(release))
-	for _, part := range m.rawAKATitleParts(releaseName) {
+	for _, part := range m.rawAKATitleParts(side.rawName) {
 		parsed := m.parseReleaseName(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
+	if side.seasonNumeral > 0 {
+		// The retry searches the inferred season, which an arc or batch subtitle does not name.
+		_, withoutNumeral := readTitleNumeral(release.Title)
+		candidates = append(candidates, withoutNumeral)
+	} else {
+		candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
+	}
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8898,12 +8913,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
-	if searchSource.numeralSeason {
-		// The main query stays as on a plain title; matching and the retry use the season.
-		withoutSeason := *searchRelease
-		withoutSeason.Series = 0
-		queryRelease = &withoutSeason
-	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9297,9 +9306,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	usable := s.searchUsablePredicate(searchBase)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		gatherIn.altTitle, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
-		if searchSource.numeralSeason {
-			gatherIn.altTitleSeason = new(searchRelease.Series)
+		gatherIn.altTitle, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchSource, arrTitles)
+		if searchSource.seasonNumeral > 0 {
+			gatherIn.altTitleSeason = new(searchSource.seasonNumeral)
 		}
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}

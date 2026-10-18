@@ -17,6 +17,7 @@ func TestAlternateTitleQuery(t *testing.T) {
 		releaseName  string
 		arrTitles    []string
 		season       int // season read from the files, which the name lacks
+		numeral      int // season inferred from the Season numeral of a seasonless pack
 		wantTitle    string
 		wantOK       bool
 	}{
@@ -108,6 +109,21 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
+			name:         "inferred season numeral is dropped before the subtitle",
+			primaryQuery: "Kaiju Squad 100 II",
+			releaseName:  "Kaiju.Squad.100.II.2011.Harbor.Arc.1080p.BluRay.x265-GRP",
+			numeral:      2,
+			wantTitle:    "Kaiju Squad 100",
+			wantOK:       true,
+		},
+		{
+			name:         "release without an inferred season keeps its subtitle",
+			primaryQuery: "Kaiju Squad 100 II",
+			releaseName:  "Kaiju.Squad.100.II.2011.Harbor.Arc.1080p.BluRay.x265-GRP",
+			wantTitle:    "Kaiju Squad 100 II Harbor Arc",
+			wantOK:       true,
+		},
+		{
 			name:         "season numeral that starts with L is dropped",
 			primaryQuery: "Long Running Show L",
 			releaseName:  "Long.Running.Show.L.S50.1080p.WEB.h264-GRP",
@@ -153,7 +169,7 @@ func TestAlternateTitleQuery(t *testing.T) {
 				release.Type = rls.Series
 				release.Series = tt.season
 			}
-			got, ok := AlternateTitleQuery(tt.primaryQuery, &release, tt.arrTitles, tt.releaseName)
+			got, ok := matcher{}.alternateTitleQuery(tt.primaryQuery, namedRelease{release: &release, rawName: tt.releaseName, seasonNumeral: tt.numeral}, tt.arrTitles)
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
 				require.Equal(t, tt.wantTitle, got)

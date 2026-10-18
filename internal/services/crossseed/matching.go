@@ -391,18 +391,46 @@ func releaseTitle(release *rls.Release) string {
 }
 
 // titleWithoutSeasonNumeral drops a last-word Roman numeral that equals the
-// season, so "Kaiju Squad 100 III" with S03 files also reads as the
-// "Kaiju Squad 100" a tracker lists as S03. Returns "" when no numeral drops.
+// season marker, so "Kaiju Squad 100 III S03" also reads as the
+// "Kaiju Squad 100" a tracker lists as S03. Any value counts, because the
+// numeral and the marker agree. Returns "" when no numeral drops.
 func titleWithoutSeasonNumeral(release *rls.Release) string {
-	if release == nil || release.Series <= 0 {
+	if release == nil || release.Series <= 0 || isYearBearingMovieRelease(release) {
 		return ""
 	}
-	title, last, ok := strings.CutLast(release.Title, " ")
+	if season, title := readTitleNumeral(release.Title); season == release.Series {
+		return title
+	}
+	return ""
+}
+
+// readTitleNumeral reads the last word of a title as a Roman numeral. It
+// returns the numeral's value and the title without it, or 0 when the last
+// word is no numeral.
+func readTitleNumeral(title string) (int, string) {
+	rest, last, ok := strings.CutLast(title, " ")
 	// Runs per library torrent per search, so reject a word with a non-numeral letter before romanNumeral allocates.
-	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" || !strings.EqualFold(last, romanNumeral(release.Series)) {
-		return ""
+	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" {
+		return 0, ""
 	}
-	return strings.TrimSpace(title)
+	value := 0
+	for i := range len(last) {
+		digit := romanDigitValue(last[i])
+		if i+1 < len(last) && digit < romanDigitValue(last[i+1]) {
+			value -= digit
+		} else {
+			value += digit
+		}
+	}
+	// Only the canonical spelling counts, so "IIII" or "IC" stays part of the title.
+	if !strings.EqualFold(last, romanNumeral(value)) {
+		return 0, ""
+	}
+	return value, strings.TrimSpace(rest)
+}
+
+func romanDigitValue(symbol byte) int {
+	return [...]int{1, 5, 10, 50, 100, 500, 1000}[strings.IndexByte("ivxlcdm", symbol|0x20)]
 }
 
 func romanNumeral(n int) string {

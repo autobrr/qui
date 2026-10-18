@@ -69,6 +69,7 @@ type corpusDifference struct {
 var corpusTickets = []int{
 	3036, // read a release name in one module
 	3037, // decide every match through one verdict
+	3062, // one absolute-episode reader and one seasonless-file rule
 }
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
@@ -156,6 +157,7 @@ const (
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
+	reasonNumeralOnlyPack   = "The season pack check reads the pack season from the name only, and a pack named only with a Season numeral reads as a movie."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 )
 
@@ -276,6 +278,58 @@ var corpusRows = []corpusRow{
 			pathSearch:  allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathRetry:   allowedDifference(corpusMatch, reasonNumeralSameSize),
 			pathWebhook: allowedDifference(corpusMatch, reasonNumeralSameSize),
+		},
+	},
+	{
+		name:          "season numeral with an absolute episode against the seasoned episode",
+		source:        "[KaijuSubs] Kaiju Squad 100 II - 03 (1080p).mkv",
+		candidate:     "Kaiju Squad 100 S02E03 1080p WEB-DL AAC2.0 H.264-KaijuSubs",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		name:           "season numeral I with a season 1 marker",
+		source:         "Kaiju.Squad.I.S01.1080p.WEB.H264-GRP",
+		candidate:      "Kaiju.Squad.S01.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.I.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.I.S01E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S01.1080p.WEB.H264-GRP", "Kaiju.Squad.S01E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+		},
+	},
+	{
+		name:           "season numeral XI with a season 11 marker",
+		source:         "Kaiju.Squad.XI.S11.1080p.WEB.H264-GRP",
+		candidate:      "Kaiju.Squad.S11.1080p.WEB.H264-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Kaiju.Squad.XI.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.XI.S11E%02d.1080p.WEB.H264-GRP"),
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S11.1080p.WEB.H264-GRP", "Kaiju.Squad.S11E%02d.1080p.WEB.H264-GRP"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: knownDifference(corpusNoMatch, 3036, reasonDedupKey),
+		},
+	},
+	{
+		// The listing names the show "Kaiju Squad 100 II", so the numeral is part of the title and not season 2.
+		name:           "seasonless season numeral pack against a season 1 listing of the same title",
+		source:         "[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]",
+		candidate:      "Kaiju Squad 100 II S01 1080p BluRay FLAC 2.0 x265-GRP",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathWebhook:      knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
 		},
 	},
 	{
@@ -667,6 +721,18 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju Squad Zero S02 1080p WEB H264-GRP", "Kaiju.Squad.Zero.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences:    packFromEpisodes(nil),
+	},
+	{
+		name:           "announced seasonless season numeral pack",
+		source:         "Kaiju Squad 100 S02E05 1080p BluRay FLAC 2.0 x265-GRP",
+		candidate:      "[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusPackSize,
+		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
+		want:           corpusMatch,
+		differences: packFromEpisodes(map[matchPath]corpusDifference{
+			pathSeasonPack: knownDifference(corpusNoMatch, 3062, reasonNumeralOnlyPack),
+		}),
 	},
 	{
 		name:           "announced season pack with a season numeral",
