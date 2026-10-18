@@ -359,8 +359,10 @@ type SyncManager struct {
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
 	torrentLookupProvider      func(ctx context.Context, instanceID int) (torrentLookup, error)
 
-	syncDebounceMu        sync.Mutex
-	debouncedSyncTimers   map[int]*time.Timer
+	syncDebounceMu      sync.Mutex
+	debouncedSyncTimers map[int]*time.Timer
+	// syncDebounceSince holds when the oldest hint not yet synced arrived.
+	syncDebounceSince     map[int]time.Time
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
 
@@ -4089,6 +4091,9 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 	client.applyOptimisticCacheUpdate(hashes, action, payload)
 }
 
+// syncDebounceMaxWait bounds how long hints can keep postponing a sync.
+const syncDebounceMaxWait = time.Second
+
 // syncAfterModification performs a background sync after a modification operation.
 // Calls are debounced per instance to avoid excessive syncs during bursts of mutations.
 func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, operation string) {
@@ -4107,11 +4112,24 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	if sm.debouncedSyncTimers == nil {
 		sm.debouncedSyncTimers = make(map[int]*time.Timer)
 	}
+	if sm.syncDebounceSince == nil {
+		sm.syncDebounceSince = make(map[int]time.Time)
+	}
 
 	if existing, ok := sm.debouncedSyncTimers[instanceID]; ok {
 		// Best-effort stop; if the timer has already fired, we let its callback run once.
 		existing.Stop()
 	}
+
+	// Hints that keep arriving within the delay would otherwise postpone the
+	// sync for as long as they last.
+	now := time.Now()
+	since, ok := sm.syncDebounceSince[instanceID]
+	if !ok {
+		since = now
+		sm.syncDebounceSince[instanceID] = now
+	}
+	delay = min(delay, since.Add(syncDebounceMaxWait).Sub(now))
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
@@ -4119,6 +4137,10 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		// below completes (the creator holds the lock until it returns).
 		sm.syncDebounceMu.Lock()
 		self := timer
+		// A timer that fired after a newer hint replaced it leaves that hint's window alone.
+		if sm.debouncedSyncTimers[instanceID] == self {
+			delete(sm.syncDebounceSince, instanceID)
+		}
 		sm.syncDebounceMu.Unlock()
 		sm.runDebouncedSync(instanceID, client, operation, self)
 	})
