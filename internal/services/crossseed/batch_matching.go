@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -89,13 +90,27 @@ type matchIndex struct {
 	byTitleKey map[titleEpisodeKey][]*releaseCandidate
 }
 
-// titleEpisodeKey adds the episode to a Title key, so that the episodes of a
-// long-running show do not all meet each other. The matcher, with individual
-// episodes off, accepts only a pair with equal episodes, so the key stays
-// looser than the matcher.
+// titleEpisodeKey adds the episode and the air date to a Title key, so that
+// the episodes of a long-running show or a daily show do not all meet each
+// other. The matcher, with individual episodes off, accepts only a pair with
+// equal episodes, and rejects two full dates that differ. A name without a
+// full date can match any date, so it meets the dated torrents through
+// anyDate. Thus the key stays looser than the matcher.
 type titleEpisodeKey struct {
 	title   string
 	episode int
+	date    int // yyyymmdd, 0 without a full date, or anyDate
+}
+
+// anyDate holds every dated torrent of a Title key and episode, for a source
+// without a full date.
+const anyDate = -1
+
+func releaseDate(r *rls.Release) int {
+	if r.Year > 0 && r.Month > 0 && r.Day > 0 {
+		return r.Year*10000 + r.Month*100 + r.Day
+	}
+	return 0
 }
 
 // BuildCrossMatchSets builds sets of torrent hashes that have cross-seeds on the
@@ -631,9 +646,14 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 
 	read := s.matcher().readName(view.Name)
 	candidate := &releaseCandidate{candidateEntry: entry, read: read}
+	date := releaseDate(read.release)
 	for _, title := range s.matcher().titleKeys(read) {
-		key := titleEpisodeKey{title: title, episode: read.release.Episode}
+		key := titleEpisodeKey{title: title, episode: read.release.Episode, date: date}
 		idx.byTitleKey[key] = append(idx.byTitleKey[key], candidate)
+		if date != 0 {
+			key.date = anyDate
+			idx.byTitleKey[key] = append(idx.byTitleKey[key], candidate)
+		}
 	}
 }
 
@@ -687,27 +707,36 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 	}
 
 	sourceRead := s.matcher().readName(source.Name)
+	// A dated source meets the torrents of its date and the undated torrents.
+	// An undated source meets the undated torrents and every dated torrent.
+	sourceDate := releaseDate(sourceRead.release)
+	otherDate := 0
+	if sourceDate == 0 {
+		otherDate = anyDate
+	}
 	// A candidate under two shared Title keys meets the matcher once.
 	evaluated := make(map[*releaseCandidate]struct{})
 	for _, title := range s.matcher().titleKeys(sourceRead) {
-		for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, episode: sourceRead.release.Episode}] {
-			if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
-				continue
-			}
-			evaluated[c] = struct{}{}
-			match, reason := s.matcher().releasesMatchWithReasonAndNames(sourceRead.release, c.read.release, source.Name, c.read.rawName, false)
-			logReleaseMatchDecision(
-				source.Name,
-				c.read.rawName,
-				false,
-				sourceRead.release,
-				c.read.release,
-				match,
-				reason,
-				"crossseed: release metadata candidate evaluated",
-			)
-			if match {
-				add(c.candidateEntry, matchTypeRelease)
+		for _, date := range [2]int{sourceDate, otherDate} {
+			for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, episode: sourceRead.release.Episode, date: date}] {
+				if _, done := evaluated[c]; done || (sameInstance && c.hash == sourceHash) {
+					continue
+				}
+				evaluated[c] = struct{}{}
+				match, reason := s.matcher().releasesMatchWithReasonAndNames(sourceRead.release, c.read.release, source.Name, c.read.rawName, false)
+				logReleaseMatchDecision(
+					source.Name,
+					c.read.rawName,
+					false,
+					sourceRead.release,
+					c.read.release,
+					match,
+					reason,
+					"crossseed: release metadata candidate evaluated",
+				)
+				if match {
+					add(c.candidateEntry, matchTypeRelease)
+				}
 			}
 		}
 	}
