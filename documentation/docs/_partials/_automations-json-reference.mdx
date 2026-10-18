@@ -285,7 +285,7 @@ Label is the name of the field in the rule builder. With `EQUAL` and `NOT_EQUAL`
 | `HARDLINK_SCOPE` | Hardlink scope | enum | `EQUAL`, `NOT_EQUAL` | `none`, `torrents_only`, `inside_qbittorrent`, `outside_qbittorrent`, `both` | local filesystem access |
 | `HARDLINK_SCOPE_CROSS` | Hardlink scope (cross-instance) | enum | `EQUAL`, `NOT_EQUAL` | `none`, `torrents_only`, `inside_qbittorrent`, `outside_qbittorrent`, `both` | local filesystem access |
 | `HASH` | Hash | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
-| `HAS_MISSING_FILES` | Has Missing Files | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` | local filesystem access |
+| `HAS_MISSING_FILES` | Has Missing Files | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` | filesystem access |
 | `HAS_SKIPPED_FILES` | Has Skipped Files | boolean | `EQUAL`, `NOT_EQUAL` | `true`, `false` |  |
 | `INACTIVE_SEEDING_TIME_LIMIT` | Inactive Seeding Time Limit | integer (seconds) | `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN` |  |  |
 | `INFOHASH_V1` | Infohash v1 | string | `EQUAL`, `NOT_EQUAL`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `MATCHES` |  |  |
