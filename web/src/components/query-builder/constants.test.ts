@@ -45,9 +45,9 @@ describe("FIELD_REQUIREMENTS", () => {
 describe("query-builder translation keys", () => {
   it("every label the helpers look up has an English key", () => {
     const requested = new Set<string>()
-    const recordingT = ((key: string, options?: { defaultValue?: string }) => {
+    const recordingT = ((key: string) => {
       requested.add(key)
-      return options?.defaultValue ?? key
+      return key
     }) as TFunction
 
     const fields = Object.keys(constants.CONDITION_FIELDS)
