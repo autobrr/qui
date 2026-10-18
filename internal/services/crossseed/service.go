@@ -10708,7 +10708,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		candidateIndices = slices.Compact(candidateIndices)
 
 		for _, candidateIdx := range candidateIndices {
-
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
 			matches, cached := releasesMatchCache[cacheKey]
