@@ -409,7 +409,7 @@ func titleWithoutSeasonNumeral(release *rls.Release) string {
 // word is no numeral.
 func readTitleNumeral(title string) (int, string) {
 	rest, last, ok := strings.CutLast(title, " ")
-	// Runs per library torrent per search, so reject a word with a non-numeral letter before romanNumeral allocates.
+	// Runs per library torrent per search, so reject a word with a non-numeral letter before the numeral is parsed.
 	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" {
 		return 0, ""
 	}
@@ -423,7 +423,8 @@ func readTitleNumeral(title string) (int, string) {
 		}
 	}
 	// Only the canonical spelling counts, so "IIII" or "IC" stays part of the title.
-	if !strings.EqualFold(last, romanNumeral(value)) {
+	var canonical [16]byte
+	if !strings.EqualFold(last, string(appendRomanNumeral(canonical[:0], value))) {
 		return 0, ""
 	}
 	return value, strings.TrimSpace(rest)
@@ -433,17 +434,16 @@ func romanDigitValue(symbol byte) int {
 	return [...]int{1, 5, 10, 50, 100, 500, 1000}[strings.IndexByte("ivxlcdm", symbol|0x20)]
 }
 
-func romanNumeral(n int) string {
-	var b strings.Builder
+func appendRomanNumeral(dst []byte, n int) []byte {
 	for _, r := range []struct {
 		value  int
 		symbol string
 	}{{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}} {
 		for ; n >= r.value; n -= r.value {
-			b.WriteString(r.symbol)
+			dst = append(dst, r.symbol...)
 		}
 	}
-	return b.String()
+	return dst
 }
 
 func releaseAlt(release *rls.Release) string {
