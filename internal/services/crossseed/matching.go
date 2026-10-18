@@ -527,9 +527,9 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	// A hyphenated fansub name reads as Site in its bracket form and as a split
 	// Group in its dash-suffix form. Compare the rebuilt suffix name instead.
 	switch {
-	case sourceSite != "" && candidateSite == "" && m.dashSuffixGroupSpellsSite(sourceSide, candidateSide):
+	case m.dashSuffixGroupSpellsSite(sourceSide, candidateSide):
 		candidateGroup = sourceSite
-	case candidateSite != "" && sourceSite == "" && m.dashSuffixGroupSpellsSite(candidateSide, sourceSide):
+	case m.dashSuffixGroupSpellsSite(candidateSide, sourceSide):
 		sourceGroup = candidateSite
 	}
 
