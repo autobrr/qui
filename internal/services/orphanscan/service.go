@@ -1186,10 +1186,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
 	}
-	if !canDeleteOrphans(models.FilesystemCapabilitiesOf(instance)) {
-		s.failRun(ctx, runID, instanceID, "Deleting orphan files needs write access and file identity, and this instance's filesystem access lacks one of them.")
-		return
-	}
 	d := deleteBackend.Paths()
 
 	// Settings drive both the ignore paths and the scan scope, and a thinner
