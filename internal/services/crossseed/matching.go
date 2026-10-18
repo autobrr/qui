@@ -566,10 +566,13 @@ func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, to
 func (m matcher) spaceJoinedGroupSite(source, candidate *rls.Release) bool {
 	normalizer := m.normalizer()
 	joined := func(split, whole *rls.Release) bool {
+		// Most names carry no Site, so skip the normalizer lookups on this hot path.
+		if split.Site == "" || whole.Site != "" {
+			return false
+		}
 		group := normalizer.Normalize(split.Group)
 		site := normalizer.Normalize(split.Site)
-		return group != "" && site != "" && group != site &&
-			normalizer.Normalize(whole.Site) == "" &&
+		return group != "" && group != site &&
 			normalizer.Normalize(whole.Group) == group+" "+site
 	}
 	return joined(source, candidate) || joined(candidate, source)
