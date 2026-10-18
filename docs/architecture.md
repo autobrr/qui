@@ -19,7 +19,7 @@ Internal reference for agents and maintainers. Read this before changing cross-m
 
 ## Core Data Flow
 
-1. `SyncManager` polls qBittorrent instances through `ClientPool`.
+1. `SyncManager` fetches maindata from qBittorrent only when something asks for it. While a browser has an SSE stream open for an instance, a loop syncs that instance about every 2 seconds, and backs off to at most 30 seconds after errors. At other times, a read through a getter without `Unchecked` in its name syncs when the cache is more than 2 seconds old. A refresh hint after a write starts a sync 200 ms after the last hint, and at most 1 second after the first. The tracker health loop reads each connected instance every 60 seconds, so with no browser open, the cache of a reachable instance is at most about 60 seconds old.
 2. Torrent state is cached in memory with delta updates.
 3. Frontend reads state through REST APIs and receives live updates through SSE.
 4. Cross-seed services react to torrent completion and search/match events.
