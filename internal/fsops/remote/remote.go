@@ -701,17 +701,21 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	return created, nil
 }
 
-// targetIsSource reports whether fp's target is already a link to its source,
-// from one stat over both paths on the exec tier. The tier is the live
-// connection's, not the stored row's: the probe writes the row, never this
-// backend's copy of it, so the row lags a key that just gained a shell and
-// would refuse the first reuse after it. The sftp tier answers no: its attrs
-// carry no inode, so the caller keeps the refusal. Any other error is the
-// caller's to report, so a lost connection or a cancelled job never reads as
-// a permanent collision. Neither path is followed: link(2) does not follow a
-// symlinked source either, so the link it made has the symlink's own inode,
-// and a symlink planted at the target reports its own inode and never passes
-// as the source (#3237).
+// targetIsSource reports whether fp's target is already the link that Link
+// would make, from one stat over both paths on the exec tier. The tier is the
+// live connection's, not the stored row's: the probe writes the row, never
+// this backend's copy of it, so the row lags a key that just gained a shell
+// and would refuse the first reuse after it. The sftp tier answers no: its
+// attrs carry no inode, so the caller keeps the refusal. Any other error is
+// the caller's to report, so a lost connection or a cancelled job never
+// reads as a permanent collision.
+//
+// The target is read without following, so a symlink planted there reports
+// its own inode and never passes. The source is matched both ways: link(2)
+// follows a symlinked source on macOS and not on Linux, so the link an
+// earlier run made carries either identity depending on the host. The
+// followed read costs a second session and runs only when the source is a
+// symlink (#3237).
 func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
 	conn, err := b.exec(ctx)
 	if errors.Is(err, fsops.ErrUnsupported) {
@@ -720,25 +724,51 @@ func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) 
 	if err != nil {
 		return false, err
 	}
-	out, err := output(ctx, conn, sshpool.Command{Name: "stat", Options: []string{"--printf", `%d %i %h\0`}, Paths: []string{fp.TargetPath, fp.SourcePath}})
+	ids, types, err := identities(ctx, conn, fp.TargetPath, false, fp.TargetPath, fp.SourcePath)
 	if err != nil {
-		return false, pathError("stat", fp.TargetPath, err)
+		return false, err
+	}
+	if fsops.SameFile(ids[0], b.inst, ids[1], b.inst) {
+		return true, nil
+	}
+	if types[1] != "symbolic link" {
+		return false, nil
+	}
+	followed, _, err := identities(ctx, conn, fp.TargetPath, true, fp.SourcePath)
+	if err != nil {
+		return false, err
+	}
+	return fsops.SameFile(ids[0], b.inst, followed[0], b.inst), nil
+}
+
+// identities stats paths in one command and returns each one's identity and
+// file type. Errors name errPath, the path the caller is deciding about.
+func identities(ctx context.Context, conn *sshpool.Conn, errPath string, follow bool, paths ...string) ([]hardlink.FileID, []string, error) {
+	options := []string{"--printf", `%d %i %h %F\0`}
+	if follow {
+		options = append([]string{"-L"}, options...)
+	}
+	out, err := output(ctx, conn, sshpool.Command{Name: "stat", Options: options, Paths: paths})
+	if err != nil {
+		return nil, nil, pathError("stat", errPath, err)
 	}
 	lines := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
-	if len(lines) != 2 {
-		return false, pathError("stat", fp.TargetPath, fmt.Errorf("unexpected stat output %q", out))
+	if len(lines) != len(paths) {
+		return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
 	}
-	ids := make([]hardlink.FileID, 2)
+	ids := make([]hardlink.FileID, len(lines))
+	types := make([]string, len(lines))
 	for i, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) != 3 {
-			return false, pathError("stat", fp.TargetPath, fmt.Errorf("unexpected stat output %q", out))
+		fields := strings.SplitN(line, " ", 4)
+		if len(fields) != 4 {
+			return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
 		}
 		if ids[i], _, err = parseIdentity(fields[0], fields[1], fields[2]); err != nil {
-			return false, pathError("stat", fp.TargetPath, err)
+			return nil, nil, pathError("stat", errPath, err)
 		}
+		types[i] = fields[3]
 	}
-	return fsops.SameFile(ids[0], b.inst, ids[1], b.inst), nil
+	return ids, types, nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
