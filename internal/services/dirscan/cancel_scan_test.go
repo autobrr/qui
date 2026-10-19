@@ -101,6 +101,24 @@ func TestService_CancelScan_StopsEveryRunOfTheDirectory(t *testing.T) {
 	}
 }
 
+func TestService_CancelScan_RunningRunBumpsLastScanAt(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	svc, store, dir := newDirScanTestService(t)
+	require.True(t, svc.isDueForScan(dir))
+
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusSearching))
+
+	require.NoError(t, svc.CancelScan(ctx, dir.ID))
+
+	updatedDir, err := store.GetDirectory(ctx, dir.ID)
+	require.NoError(t, err)
+	require.False(t, svc.isDueForScan(updatedDir), "a full scan that outlasted the interval stays paused")
+}
+
 func TestService_GetStatus_ListsEveryRunInProgress(t *testing.T) {
 	t.Parallel()
 
