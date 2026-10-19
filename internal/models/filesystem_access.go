@@ -79,11 +79,11 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 // do with its files. A remote instance has Read and Write (#2725, #2942), and
 // Identity when its key reaches the exec tier (#2726).
 //
-// Three callers narrow Write by reading the mode themselves, because no
+// Some callers narrow Write by reading the mode themselves, because no
 // capability names what they need: reflink mode needs a cloning filesystem
-// (UpdateInstance, and reflinkAllowed in the settings panel), and dirscan's
-// link trees and the orphan-scan confirm still apply host filepath to backend
-// paths, so both stay on a local instance until that is fixed.
+// (UpdateInstance, and reflinkAllowed in the settings panel), dirscan's link
+// trees still apply host filepath to backend paths (#2919), and the orphan-scan
+// confirm refuses a remote run until remote deletes land (#3236).
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:
