@@ -133,7 +133,7 @@ If the reason is that qBittorrent did not answer in time, look for these causes:
 - The torrent data is on network storage (NFS, SMB, or an rclone mount) and qBittorrent uses libtorrent 2.0. qBittorrent issue reports show that qBittorrent can stop answering in this setup. In qBittorrent, set **Advanced > Disk IO type** to **Simple pread/pwrite**, or use a qBittorrent build with libtorrent 1.2.
 - You run qBittorrent 5.2.x. An [open qBittorrent issue](https://github.com/qbittorrent/qBittorrent/issues/25068) reports that 5.2.x keeps one thread at 100% CPU and stops answering, and that 5.1.4 works with the same setup.
 
-A large library makes the first update after qui connects slower. If none of the causes above applies, split the torrents over two or more qBittorrent instances. To move torrents to a new instance, use the [Export to Instance](./automations.md#export-to-instance) action.
+A large library makes the first update after qui connects slower. If none of the causes above applies, split the torrents over two or more qBittorrent instances. The [Export to Instance](./automations.md#export-to-instance) action adds torrents to the new instance. The torrent data must already be on the new instance. The action does not remove the torrents from the old instance. After the torrents seed on the new instance, remove them from the old instance. If both instances use the same files, keep the files when you remove the torrents. The new instance needs them.
 
 ## Torrent creator
 
