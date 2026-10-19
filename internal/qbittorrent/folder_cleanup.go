@@ -503,18 +503,32 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 	// lead is the longest time to the item's next check.
 	lead := c.tick
+	// waiting are the items this check leaves for a later one.
+	var waiting []*pendingFolder
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
 		// The instance is checked once one of its items is due, and then
 		// all of them are, so it costs at most one check per remoteTick.
-		// That check runs on the first tick after it is due.
+		// That check runs on the first tick after it is due. Between two
+		// checks only the items at their deadline are checked, so batches
+		// queued a few seconds apart do not each check the rest again.
 		lead = c.remoteTick + c.tick
-		if !slices.ContainsFunc(items, func(item *pendingFolder) bool {
-			return !now.Before(item.checked.Add(c.remoteTick)) || !now.Before(item.expires)
-		}) {
-			return items
-		}
-		for _, item := range items {
-			item.checked = now
+		if slices.ContainsFunc(items, func(item *pendingFolder) bool { return !now.Before(item.checked.Add(c.remoteTick)) }) {
+			for _, item := range items {
+				item.checked = now
+			}
+		} else {
+			var expired []*pendingFolder
+			for _, item := range items {
+				if now.Before(item.expires) {
+					waiting = append(waiting, item)
+				} else {
+					expired = append(expired, item)
+				}
+			}
+			if len(expired) == 0 {
+				return items
+			}
+			items = expired
 		}
 	}
 
@@ -584,6 +598,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	if asked {
 		c.view.hintRefresh(instanceID)
 	}
+	retry = append(retry, waiting...)
 	if len(ready) == 0 {
 		return retry
 	}

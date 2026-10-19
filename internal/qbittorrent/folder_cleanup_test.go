@@ -1232,6 +1232,33 @@ func TestFolderCleanupRemoteAsksForTheSyncATickEarly(t *testing.T) {
 	})
 }
 
+// Batches queued a few seconds apart reach their deadlines a few seconds
+// apart. Between two remote ticks the deadline check reads only the item at
+// its deadline, not the items that wait for the next remote tick.
+func TestFolderCleanupRemoteDeadlineChecksOnlyExpiredItems(t *testing.T) {
+	t.Parallel()
+	e := newStoppedCleanupEnv(t, remoteBackend)
+	e.fc.remoteTick = folderCleanupRemoteTick
+	e.tree("torrents/tv/A-GRP/a.mkv", "torrents/tv/B-GRP/b.mkv")
+	now := time.Now()
+	expired, err := newPendingFolder(e.rootFolder("torrents/tv", "A-GRP"), now)
+	require.NoError(t, err)
+	waiting, err := newPendingFolder(e.rootFolder("torrents/tv", "B-GRP"), now.Add(time.Minute))
+	require.NoError(t, err)
+	expired.checked, waiting.checked = now.Add(-time.Second), now.Add(-time.Second)
+	var read []string
+	e.fs.(*memTree).lstatErr = func(p string) error {
+		read = append(read, p)
+		return nil
+	}
+
+	retry := e.fc.checkInstance(t.Context(), 1, []*pendingFolder{expired, waiting}, now)
+
+	require.Equal(t, []string{e.p("torrents/tv/A-GRP")}, read)
+	require.Contains(t, retry, waiting)
+	require.Equal(t, now.Add(-time.Second), waiting.checked)
+}
+
 func TestFolderCleanupSkipsInstancesWithoutWrite(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCleanupEnv(t, slashBackend)
