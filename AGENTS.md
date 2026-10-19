@@ -11,12 +11,13 @@ Repo rules for AI agents working on qui.
 - Before you post or apply a review suggestion that changes or removes a code branch, show in a test or a trace the input that the branch guards. A simplification that reads cleaner can still drop a case that the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 - No backward compatibility shims unless requested.
+- Dependabot alerts from `documentation/pnpm-lock.yaml` affect only the getqui.com build, and development-scope alerts from `web/pnpm-lock.yaml` never ship. A fix in qui is needed only for runtime-scope `web/` alerts and `go.sum` alerts.
 
 ## Repo Map
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
-- User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
+- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier as a cherry-pick of the squashed commit to `main`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.

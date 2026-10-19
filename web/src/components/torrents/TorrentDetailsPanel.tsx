@@ -470,6 +470,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
 
   // flag-icons inlines 400 flags as data URIs, 73% of the boot stylesheet; load it with the tab.
+  // Not emoji flags: Windows has no flag glyphs and shows the letters, such as "US".
   useEffect(() => {
     // offline PWA: the CSS is not precached, flags just render unstyled
     if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})

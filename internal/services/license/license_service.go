@@ -81,6 +81,9 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 	return existingLicense, nil
 }
 
+// activateWithDodo stores each key that activates as premium access, because the
+// Dodo response does not name the product. A Dodo product that issues a key thus
+// unlocks premium themes, so the supporter subscription must stay keyless.
 func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.dodoClient == nil {
 		return nil, ErrDodoClientNotConfigured
