@@ -5880,7 +5880,12 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 	return nil
 }
 
-// EditCategory edits an existing category
+// EditCategory edits an existing category.
+//
+// qBittorrent before 5.3 builds the category from these params alone, so each
+// edit resets its share limits to the global default and clears its download
+// path (qbittorrent#24787). go-qbittorrent's Category carries only the name and
+// the save path, so qui cannot send the other options back.
 func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name string, path string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {

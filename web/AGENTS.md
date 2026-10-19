@@ -7,6 +7,7 @@ Frontend rules for work under `web/`. i18n and translation rules live in `web/sr
 - React 19 + Vite + TypeScript + Tailwind v4.
 - Organize React modules by feature within `web/src/{pages,routes,components}`.
 - Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
+- A user preference that must follow the user to other browsers uses `useClientSetting` from `web/src/lib/client-settings.ts`. A plain `localStorage` write stays in one browser. `SYNCED_KEYS` and `SYNCED_PREFIXES` only control which local values the first boot copies to the server.
 
 ## Frontend Tests
 

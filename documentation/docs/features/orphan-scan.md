@@ -43,6 +43,8 @@ By default, qui scans a directory only if at least one torrent points to it. If 
 
 The same gap applies one level up. If your torrents all save to `/data/torrents/mydata/`, a stray `/data/torrents/test.txt` is never walked, because no torrent points at `/data/torrents/`.
 
+For a directory outside the default save path and outside each category path, keep one small torrent with its save path in that directory. Orphan scan then walks the directory and all its subdirectories. The save path must match the case of the directory name. On Linux, if the save path is `/data/mtv` and the directory is `/data/MTV`, qBittorrent makes a second, empty `mtv` directory and moves the torrent into it. The scan then walks the new directory and reports it as clean.
+
 ## Scanning the default save path
 
 Turn on **Scan Default Save Path** to close that gap. qui reads the default save path from the instance's own qBittorrent settings and walks it as a scan root, including subdirectories that no torrent uses.

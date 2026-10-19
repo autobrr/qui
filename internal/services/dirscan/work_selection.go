@@ -80,6 +80,9 @@ func selectEligibleRootWork(
 			}
 			// Checked after stale and all_final so the count reads as searches
 			// the option avoided this scan, not as a running total of episodes.
+			// Same rule as SkipIndividualEpisodes in crossseed/service.go: an episode
+			// that cannot join a season pack search is dropped, never searched alone.
+			// Change both together.
 			if skipIndividualEpisodes && item.isEpisode {
 				selection.skippedEpisodes++
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
