@@ -239,6 +239,7 @@ const (
 	episodeMismatchReason  = "episode mismatch"
 	groupMismatchReason    = "group mismatch"
 	checksumMismatchReason = "checksum mismatch"
+	siteMismatchReason     = "site mismatch"
 )
 
 func (m matcher) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
@@ -609,7 +610,7 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 			candidateSiteIdentity = candidateGroup
 		}
 		if candidateSiteIdentity != "" && sourceSite != candidateSiteIdentity {
-			return false, "site mismatch"
+			return false, siteMismatchReason
 		}
 	}
 
