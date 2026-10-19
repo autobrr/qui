@@ -78,6 +78,13 @@ type Backend interface {
 	// HardlinkTree creates a hardlink tree from plan. Rolls back what it
 	// created on partial failure. The result records the files and dirs this
 	// call made, for a later RemoveTree.
+	//
+	// Every implementation owes the same answer to a target that already
+	// exists: skip it when it is provably the same file as its source, and
+	// refuse the whole plan with hardlinktree.ErrTargetExists otherwise. A
+	// skipped target is counted in SkippedExists and never recorded in Files,
+	// because it belongs to whoever made it first and a rollback must not
+	// remove it. A backend that cannot prove identity refuses.
 	HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
 	// ReflinkTree creates a reflink (CoW) tree from plan. Rolls back what it

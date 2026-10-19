@@ -19,7 +19,7 @@ Hardlink mode is an opt-in cross-seeding strategy. qui creates a hardlinked copy
 ## Requirements
 
 - The target qBittorrent instance must have **Local filesystem access** enabled, or be a remote instance.
-- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. On an instance with local filesystem access, a target that is already qui's own link to the same file is reused instead of stopping the add. A remote instance cannot compare file identity over SFTP, so any existing target stops the add there.
+- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. A target that is already qui's own link to the same file is reused instead of stopping the add, on an instance with local filesystem access and on a remote instance where qui can run commands on the host. On a remote instance where qui only has SFTP, it cannot tell its own link from another file, so any existing target stops the add there.
 - The hardlink base directory must reside on the **same filesystem/volume** as the instance download paths. Hardlinks cannot cross filesystems.
 - qui must have permission to read the instance content paths and write to the hardlink base directory.
 

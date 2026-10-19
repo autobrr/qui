@@ -25,6 +25,7 @@ import (
 	"syscall"
 
 	"github.com/pkg/sftp"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -668,18 +669,48 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// Link first: an existing target makes it fail, and the lstat that
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
-			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
+			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr != nil {
+				return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
+			}
+			// ponytail: one stat pair per collision. A retry that collides on
+			// every file of a season pack pays a round trip each; BatchStater
+			// is the upgrade if that is ever measured (#2971).
+			if !b.targetIsSource(ctx, fp) {
 				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
 			}
-			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
+			// Not recorded: the link belongs to whoever made it first, so a
+			// later failure in this plan never rolls it back.
+			created.SkippedExists++
+		} else {
+			created.Files = append(created.Files, fp.TargetPath)
+			created.Created++
 		}
-		created.Files = append(created.Files, fp.TargetPath)
-		created.Created++
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
 	}
+	if created.SkippedExists > 0 {
+		log.Info().Int("instanceID", b.inst.ID).Str("root", plan.RootDir).Int("skipped", created.SkippedExists).
+			Msg("remote: hardlink tree reused links to the source that were already in place")
+	}
 	return created, nil
+}
+
+// targetIsSource reports whether fp's target is already a link to its source.
+// Only the exec tier can say: sftp attrs carry no inode, and identity answers
+// ErrUnsupported there, so every error reads as no and the caller keeps the
+// refusal. The target is read without following, so a symlink planted there
+// reports its own inode and never passes as the source (#3237).
+func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) bool {
+	target, _, err := b.identity(ctx, fp.TargetPath, false)
+	if err != nil {
+		return false
+	}
+	source, _, err := b.identity(ctx, fp.SourcePath, true)
+	if err != nil {
+		return false
+	}
+	return fsops.SameFile(target, b.inst, source, b.inst)
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
