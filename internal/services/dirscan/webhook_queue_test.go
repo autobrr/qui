@@ -95,15 +95,16 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
-// waitForRunStart waits until the run leaves the queued state and returns it.
-func waitForRunStart(t *testing.T, store *models.DirScanStore, runID int64) *models.DirScanRun {
+// waitForRunFailed waits until the run fails and returns it. The test service
+// has no filesystem backend, so each run that starts fails at the walk.
+func waitForRunFailed(t *testing.T, store *models.DirScanStore, runID int64) *models.DirScanRun {
 	t.Helper()
 	var run *models.DirScanRun
 	require.Eventually(t, func() bool {
 		var err error
 		run, err = store.GetRun(t.Context(), runID)
 		require.NoError(t, err)
-		return run != nil && run.Status != models.DirScanRunStatusQueued
+		return run != nil && run.Status == models.DirScanRunStatusFailed
 	}, 5*time.Second, 20*time.Millisecond)
 	return run
 }
@@ -123,9 +124,7 @@ func TestStartWebhookScan_RunsWhileFullScanHoldsRunSlotAndLock(t *testing.T) {
 	webhookID, err := service.StartWebhookScan(ctx, created.ID, filepath.Join(created.Path, "Show"))
 	require.NoError(t, err)
 
-	// The test service has no filesystem backend, so a run that started fails at the walk.
-	run := waitForRunStart(t, store, webhookID)
-	require.Equal(t, models.DirScanRunStatusFailed, run.Status)
+	run := waitForRunFailed(t, store, webhookID)
 	require.Equal(t, "backend pool not configured", run.ErrorMessage)
 }
 
@@ -145,6 +144,6 @@ func TestStartWebhookScan_DoesNotMergeIntoQueuedFullScan(t *testing.T) {
 	require.Equal(t, models.DirScanRunStatusQueued, full.Status, "the full scan stays in the queue")
 	require.Empty(t, full.ScanRoot)
 
-	webhook := waitForRunStart(t, store, webhookID)
+	webhook := waitForRunFailed(t, store, webhookID)
 	require.Equal(t, filepath.Join(created.Path, "Show"), webhook.ScanRoot)
 }
