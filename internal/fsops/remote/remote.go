@@ -670,6 +670,11 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
 			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr != nil {
+				// Only an absent target says the Link error is the whole
+				// story; a lost connection or a cancel here is the cause.
+				if !errors.Is(statErr, fs.ErrNotExist) {
+					return fail(statErr)
+				}
 				return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 			}
 			// ponytail: one stat per collision. A retry that collides on every

@@ -590,3 +590,25 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, created.SkippedExists)
 }
+
+// When Link fails and the lstat that follows fails too for a reason other
+// than an absent target, that reason is the error, not the Link failure.
+func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	plan.Files = plan.Files[:1]
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	require.NoError(t, os.Chmod(plan.RootDir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(plan.RootDir, 0o755) })
+
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "hardlink ", "the lstat failure is the cause, not the link")
+	assert.Contains(t, err.Error(), "lstat")
+}
