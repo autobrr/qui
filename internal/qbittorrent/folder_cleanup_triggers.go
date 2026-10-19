@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -327,7 +328,7 @@ func markContentBatch(ctx context.Context, instanceID int, batch fsops.BatchStat
 	var paths []string
 	var owner []int
 	for i := range snaps {
-		for _, p := range snaps[i].contentProbes(d) {
+		for p := range snaps[i].contentProbes(d) {
 			paths = append(paths, p)
 			owner = append(owner, i)
 		}
@@ -347,7 +348,7 @@ func markContentBatch(ctx context.Context, instanceID int, batch fsops.BatchStat
 // markContent Stats the probes until one exists. It reports false when ctx
 // ended before the check finished.
 func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend) bool {
-	for _, p := range s.contentProbes(backend.Paths()) {
+	for p := range s.contentProbes(backend.Paths()) {
 		// ctx ended, so the content counts as not checked.
 		if ctx.Err() != nil {
 			return false
@@ -365,22 +366,25 @@ func (s *folderSnapshot) markContent(ctx context.Context, backend fsops.Backend)
 // still exists as an empty mount point when the disk below it is gone, so the
 // top-level entries are probed instead: a file set to Do Not Download or
 // removed by hand is missing on its own.
-func (s *folderSnapshot) contentProbes(d fsops.PathDialect) []string {
-	if s.Layout != layoutNoRootFolder {
-		return []string{d.Clean(s.ContentPath)}
+func (s *folderSnapshot) contentProbes(d fsops.PathDialect) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if s.Layout != layoutNoRootFolder {
+			yield(d.Clean(s.ContentPath))
+			return
+		}
+		top, err := topLevelNames(s.Files)
+		if err != nil {
+			return
+		}
+		// An empty mount point can hold one of these, written by a file manager.
+		top = slices.DeleteFunc(top, isJunkName)
+		save := d.Clean(s.ContentPath)
+		for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
+			if !yield(d.Join(save, d.FromSlash(name))) {
+				return
+			}
+		}
 	}
-	top, err := topLevelNames(s.Files)
-	if err != nil {
-		return nil
-	}
-	// An empty mount point can hold one of these, written by a file manager.
-	top = slices.DeleteFunc(top, isJunkName)
-	save := d.Clean(s.ContentPath)
-	probes := make([]string, 0, min(len(top), folderCleanupContentProbes))
-	for _, name := range top[:min(len(top), folderCleanupContentProbes)] {
-		probes = append(probes, d.Join(save, d.FromSlash(name)))
-	}
-	return probes
 }
 
 // markExisted records that a probe exists.
