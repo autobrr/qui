@@ -1,0 +1,3 @@
+.git
+.env*
+web/node_modules
