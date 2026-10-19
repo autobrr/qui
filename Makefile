@@ -48,7 +48,7 @@ themes-fetch:
 	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
 		rm -rf .themes-temp && \
 		git clone --depth=1 --filter=blob:none --sparse \
-			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
+			https://x-access-token:$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
 		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
 		mkdir -p internal/themes/assets/premium && \
 		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \

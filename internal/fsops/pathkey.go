@@ -40,6 +40,10 @@ func CleanPath(d PathDialect, path string) string {
 // container, where qBittorrent can report two save paths that differ only by
 // case for one physical directory.
 //
+// Keep the fold stateless. Orphan scan fills its file map before the walk and
+// runs one goroutine per instance, so a per-scan or global fold flag that
+// differs between Add and Has turns every file into an orphan.
+//
 // Invalid UTF-8 is folded too. strings.ToLower and encoding/json replace a bad
 // byte the same way, so the fold is what lets a name read from disk match the
 // same name after a round trip through the qBittorrent API. Do not add a
