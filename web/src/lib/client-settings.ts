@@ -204,6 +204,8 @@ async function flushPending(): Promise<void> {
     }
     persistPending()
   } catch (error) {
+    // No self-retry, on purpose: a failed batch stays pending until the next write
+    // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
     console.error("Failed to push client settings:", error)
   } finally {
     flushInFlight = false
@@ -373,6 +375,9 @@ export function useClientSetting<T>(
   const valueRef = useRef(value)
   valueRef.current = value
 
+  // valueRef changes only on render, so two functional updates of one key in the
+  // same tick both read the old value and the last one wins. Nothing writes on
+  // mount: corrupt stored JSON renders as the default until the first edit.
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(valueRef.current) : next
