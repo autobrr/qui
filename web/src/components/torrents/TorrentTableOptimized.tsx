@@ -29,7 +29,9 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
+import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
+import { hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
@@ -40,6 +42,7 @@ import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { torrentTableFeatures, type TorrentRow, type TorrentTableColumnDef } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
+import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
@@ -599,49 +602,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [isLoading, torrents.length])
 
-  const hasSidebarFilters = useMemo(() => {
-    const {
-      status = [],
-      excludeStatus = [],
-      categories = [],
-      excludeCategories = [],
-      expandedCategories = [],
-      expandedExcludeCategories = [],
-      tags = [],
-      excludeTags = [],
-      trackers = [],
-      excludeTrackers = [],
-      expr,
-    } = filters
-
-    return (
-      status.length > 0 ||
-      excludeStatus.length > 0 ||
-      categories.length > 0 ||
-      excludeCategories.length > 0 ||
-      expandedCategories.length > 0 ||
-      expandedExcludeCategories.length > 0 ||
-      tags.length > 0 ||
-      excludeTags.length > 0 ||
-      trackers.length > 0 ||
-      excludeTrackers.length > 0 ||
-      Boolean(expr?.trim())
-    )
-  }, [filters])
-
   const hasSearchQuery = Boolean(effectiveSearch)
-  const hasFilterControls = useMemo(() => {
-    return hasSidebarFilters || columnFilters.length > 0
-  }, [hasSidebarFilters, columnFilters])
-  const emptyStateMessage = useMemo(() => {
-    if (hasFilterControls) {
-      return "No torrents match the current filters"
-    }
-    if (hasSearchQuery) {
-      return "No torrents match the current search"
-    }
-    return "No torrents found"
-  }, [hasFilterControls, hasSearchQuery])
+  const hasFilterControls = hasSidebarFilters(filters) || columnFilters.length > 0
+  const emptyStateMessage = useTorrentListEmptyMessage(hasFilterControls, hasSearchQuery)
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -1495,18 +1458,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   !hasFilterControls && "pointer-events-none"
                 )}
               >
-                <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground space-y-3">
-                  <p>{emptyStateMessage}</p>
-                  {hasFilterControls && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => clearFiltersAtomically("all")}
-                    >
-                      {t("columnFilter.clearFilters")}
-                    </Button>
-                  )}
-                </div>
+                <TorrentListEmptyState
+                  hasFilters={hasFilterControls}
+                  hasSearch={hasSearchQuery}
+                  onClearFilters={() => clearFiltersAtomically("all")}
+                />
               </div>
             )}
 

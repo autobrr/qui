@@ -936,6 +936,11 @@
       "moving": "Přesouvání"
     }
   },
+  "emptyState": {
+    "noTorrents": "Nenalezen žádný torrent",
+    "noFilterMatches": "Aktuálním filtrům neodpovídá žádný torrent",
+    "noSearchMatches": "Aktuálnímu hledání neodpovídá žádný torrent"
+  },
   "filterSidebar": {
     "views": {
       "title": "Pohledy",

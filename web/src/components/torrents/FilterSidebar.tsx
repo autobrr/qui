@@ -42,6 +42,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { cn, formatBytes } from "@/lib/utils"
@@ -1681,17 +1682,7 @@ const FilterSidebarComponent = ({
   }, [viewMode])
 
   const clearSidebarFilters = () => {
-    applyFilterChange({
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: undefined,
-    })
+    applyFilterChange(EMPTY_SIDEBAR_FILTERS)
   }
 
   const clearStatusFilter = () => {
@@ -1814,16 +1805,7 @@ const FilterSidebarComponent = ({
     }
   }, [categories, collapsedCategories, incognitoMode, subcategoriesEnabled, setCollapsedCategories])
 
-  const hasActiveFilters =
-    selectedFilters.status.length > 0 ||
-    selectedFilters.excludeStatus.length > 0 ||
-    selectedFilters.categories.length > 0 ||
-    selectedFilters.excludeCategories.length > 0 ||
-    selectedFilters.tags.length > 0 ||
-    selectedFilters.excludeTags.length > 0 ||
-    selectedFilters.trackers.length > 0 ||
-    selectedFilters.excludeTrackers.length > 0 ||
-    Boolean(selectedFilters.expr)
+  const hasActiveFilters = hasSidebarFilters(selectedFilters)
 
   if (isConcreteInstanceScope && !isInstanceActive) {
     return (

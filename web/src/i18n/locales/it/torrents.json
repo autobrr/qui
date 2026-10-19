@@ -880,6 +880,11 @@
       "moving": "Spostamento"
     }
   },
+  "emptyState": {
+    "noTorrents": "Nessun torrent trovato",
+    "noFilterMatches": "Nessun torrent corrisponde ai filtri attuali",
+    "noSearchMatches": "Nessun torrent corrisponde alla ricerca attuale"
+  },
   "filterSidebar": {
     "views": {
       "title": "Viste",

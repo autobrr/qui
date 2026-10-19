@@ -928,6 +928,11 @@
       "moving": "Movent"
     }
   },
+  "emptyState": {
+    "noTorrents": "No s'ha trobat cap torrent",
+    "noFilterMatches": "Cap torrent coincideix amb els filtres actuals",
+    "noSearchMatches": "Cap torrent coincideix amb la cerca actual"
+  },
   "tagCategoryManagement": {
     "createTag": {
       "title": "Crea una etiqueta nova",

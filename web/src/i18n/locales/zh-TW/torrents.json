@@ -824,6 +824,11 @@
       "moving": "移動中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到種子",
+    "noFilterMatches": "沒有符合目前篩選器的種子",
+    "noSearchMatches": "沒有符合目前搜尋的種子"
+  },
   "filterSidebar": {
     "views": {
       "title": "檢視",

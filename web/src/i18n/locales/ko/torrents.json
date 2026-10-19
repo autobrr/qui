@@ -824,6 +824,11 @@
       "moving": "이동 중"
     }
   },
+  "emptyState": {
+    "noTorrents": "토렌트를 찾을 수 없습니다",
+    "noFilterMatches": "현재 필터와 일치하는 토렌트가 없습니다",
+    "noSearchMatches": "현재 검색과 일치하는 토렌트가 없습니다"
+  },
   "filterSidebar": {
     "views": {
       "title": "뷰",
