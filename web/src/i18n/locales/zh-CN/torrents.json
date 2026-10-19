@@ -824,6 +824,11 @@
       "moving": "移动中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到种子",
+    "noFilterMatches": "没有符合当前筛选器的种子",
+    "noSearchMatches": "没有符合当前搜索的种子"
+  },
   "filterSidebar": {
     "views": {
       "title": "视图",
