@@ -60,6 +60,17 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Match path**: One place in qui that decides whether two release names are the same release, such as the webhook check, apply, the season pack check, Local matches, or dedup. Every match path must give the same verdict for a pair unless the corpus lists the difference with a reason. _Avoid_: entry point, matcher (the matcher is the shared rules, not the path).
 - **Generic HDR tag**: An `HDR` tag in a release name that does not say `HDR10`, `HDR10+`, or `HLG`. Cross-seed matching reads it as `HDR10`, so `DV HDR` matches `DV HDR10`. It stays distinct from `HDR10+` and `HLG`. Release fields and Season pack status keep the tag as written. _Avoid_: plain HDR.
 
+## Indexers
+
+- **Native indexer**: An indexer that qui reaches at the tracker's own Torznab endpoint, with no Prowlarr or Jackett between them. _Avoid_: Direct indexer.
+- **Rate-limit cooldown**: The time qui blocks an indexer after it answers 429, for as long as its `Retry-After` header says. _Avoid_: Cooldown (alone), rate limit.
+
+## Cross-seed scans
+
+- **Dir Scan**: The cross-seed search that reads content from folders on disk and searches indexers for releases that match it. It needs no torrent in qBittorrent. _Avoid_: Directory scan (outside UI copy), dirscan.
+- **Library Scan**: The cross-seed search that goes through the torrents an instance already seeds and searches indexers for each one. _Avoid_: Seeded search, search run.
+- **Searchee**: A top-level folder or file in a Dir Scan directory that Dir Scan tries to match to a release.
+
 ## Cross-seed link tree
 
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
