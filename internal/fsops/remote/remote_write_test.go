@@ -7,6 +7,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -566,4 +568,25 @@ func TestTargetIsSource_CancelledContextIsAnError(t *testing.T) {
 	same, err := b.targetIsSource(ctx, plan.Files[0])
 	require.ErrorIs(t, err, context.Canceled)
 	assert.False(t, same)
+}
+
+// The stored tier lags a key that just gained a shell: the probe writes the
+// row, not this backend's copy. The live connection decides, so the first
+// reuse after the upgrade already works.
+func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake exec handler runs the local GNU stat")
+	}
+
+	b, _ := newBackend(t) // row says sftp; the fake answers exec
+	require.NotEqual(t, models.SSHTierExec, b.inst.SSHTier)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(remotePath(plan.RootDir, "Sub -rf"), 0o755))
+	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
+
+	created, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, created.SkippedExists)
 }

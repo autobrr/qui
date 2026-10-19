@@ -697,17 +697,17 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 }
 
 // targetIsSource reports whether fp's target is already a link to its source,
-// from one stat over both paths on the exec tier. The sftp tier answers no:
-// its attrs carry no inode, so the caller keeps the refusal. Any other error
-// is the caller's to report, so a lost connection or a cancelled job never
-// reads as a permanent collision. Neither path is followed: link(2) does not
-// follow a symlinked source either, so the link it made has the symlink's
-// own inode, and a symlink planted at the target reports its own inode and
-// never passes as the source (#3237).
+// from one stat over both paths on the exec tier. The tier is the live
+// connection's, not the stored row's: the probe writes the row, never this
+// backend's copy of it, so the row lags a key that just gained a shell and
+// would refuse the first reuse after it. The sftp tier answers no: its attrs
+// carry no inode, so the caller keeps the refusal. Any other error is the
+// caller's to report, so a lost connection or a cancelled job never reads as
+// a permanent collision. Neither path is followed: link(2) does not follow a
+// symlinked source either, so the link it made has the symlink's own inode,
+// and a symlink planted at the target reports its own inode and never passes
+// as the source (#3237).
 func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
-	if !b.execTier() {
-		return false, nil
-	}
 	conn, err := b.exec(ctx)
 	if errors.Is(err, fsops.ErrUnsupported) {
 		return false, nil
