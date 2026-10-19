@@ -94,9 +94,9 @@ type Service struct {
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
 
-	// Serializes webhook queue/merge decisions so duplicate follow-up runs are not created.
-	// CancelScan also holds it, so a webhook scan cannot start between the list and the cancel.
-	webhookMu sync.Mutex
+	// Serializes run creation and CancelScan, so no run starts between the list and the
+	// cancel of Pause, and webhook merges create no duplicate follow-up runs.
+	runMu sync.Mutex
 
 	// In-memory progress snapshot keyed by runID (for live UI updates).
 	runProgress map[int64]*runProgress
@@ -308,13 +308,15 @@ func (s *Service) isDueForScan(dir *models.DirScanDirectory) bool {
 func (s *Service) triggerScheduledScan(directoryID int) {
 	ctx := s.schedulerCtx
 
-	// Try to create a run; if one is already active, this will fail gracefully
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
+	runID, err := s.createScheduledRun(ctx, directoryID)
 	if err != nil {
 		// ErrDirScanRunAlreadyActive is expected if a scan is in progress
 		if !errors.Is(err, models.ErrDirScanRunAlreadyActive) {
 			log.Error().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to create scheduled run")
 		}
+		return
+	}
+	if runID == 0 {
 		return
 	}
 
@@ -349,6 +351,22 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 	}
 
 	s.startRun(ctx, directoryID, runID)
+}
+
+// createScheduledRun returns 0 when a Pause made the directory no longer due
+// after the scheduler listed it.
+func (s *Service) createScheduledRun(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	dir, err := s.store.GetDirectory(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("get directory: %w", err)
+	}
+	if !s.isDueForScan(dir) {
+		return 0, nil
+	}
+	return s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
 }
 
 func randomDuration(maxDuration time.Duration) (time.Duration, error) {
@@ -389,6 +407,9 @@ func (s *Service) startRun(parent context.Context, directoryID int, runID int64)
 
 // StartManualScan starts a manual scan for a directory.
 func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
 	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual", "")
 	if err != nil {
 		return 0, fmt.Errorf("create run: %w", err)
@@ -409,8 +430,8 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 		return 0, errors.New("dirscan service is not initialized")
 	}
 
-	s.webhookMu.Lock()
-	defer s.webhookMu.Unlock()
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
 
 	dir, err := s.store.GetDirectory(ctx, directoryID)
 	if err != nil {
@@ -449,8 +470,8 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 
 // CancelScan cancels every queued and running scan of a directory.
 func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
-	s.webhookMu.Lock()
-	defer s.webhookMu.Unlock()
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
 
 	runs, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
@@ -479,10 +500,6 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	// interval makes the directory due again.
 	if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
 		log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after cancel")
-	}
-	// A manual or scheduled scan can queue a run while this loop runs.
-	if err := s.store.CancelQueuedRuns(context.Background(), directoryID); err != nil {
-		return fmt.Errorf("cancel queued runs: %w", err)
 	}
 
 	// Run canceled for this directory.

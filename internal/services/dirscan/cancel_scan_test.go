@@ -119,6 +119,25 @@ func TestService_CancelScan_RunningRunBumpsLastScanAt(t *testing.T) {
 	require.False(t, svc.isDueForScan(updatedDir), "a full scan that outlasted the interval stays paused")
 }
 
+func TestService_CreateScheduledRun_SkipsDirectoryThatPauseMadeNotDue(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	svc, store, dir := newDirScanTestService(t)
+	require.True(t, svc.isDueForScan(dir), "the scheduler listed the directory as due")
+
+	// Pause runs after the scheduler listed the directory.
+	require.NoError(t, store.UpdateDirectoryLastScan(ctx, dir.ID))
+
+	runID, err := svc.createScheduledRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.Zero(t, runID)
+
+	activeRun, err := store.GetActiveRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.Nil(t, activeRun, "no scan starts right after Pause")
+}
+
 func TestService_GetStatus_ListsEveryRunInProgress(t *testing.T) {
 	t.Parallel()
 

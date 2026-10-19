@@ -1034,19 +1034,6 @@ func (s *DirScanStore) UpdateRunCanceled(ctx context.Context, runID int64) error
 	return nil
 }
 
-// CancelQueuedRuns marks all queued runs for a directory as canceled.
-func (s *DirScanStore) CancelQueuedRuns(ctx context.Context, directoryID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE dir_scan_runs
-		SET status = ?, completed_at = CURRENT_TIMESTAMP
-		WHERE directory_id = ? AND status = 'queued'
-	`, DirScanRunStatusCanceled, directoryID)
-	if err != nil {
-		return fmt.Errorf("cancel queued runs: %w", err)
-	}
-	return nil
-}
-
 // MarkActiveRunsFailed marks any in-progress runs as failed (typically after a restart).
 func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage string) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
