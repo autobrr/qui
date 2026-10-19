@@ -11,7 +11,7 @@ Repo rules for AI agents working on qui.
 - Before you post or apply a review suggestion that changes or removes a code branch, show in a test or a trace the input that the branch guards. A simplification that reads cleaner can still drop a case that the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 - No backward compatibility shims unless requested.
-- Dependabot alerts from `documentation/pnpm-lock.yaml` affect only the getqui.com build, and development-scope alerts from `web/pnpm-lock.yaml` never ship. A fix in qui is needed only for runtime-scope `web/` alerts and `go.sum` alerts.
+- Dependabot alerts from `documentation/pnpm-lock.yaml` affect only the getqui.com build. Runtime-scope `web/` alerts and `go.sum` alerts always need a fix in qui. A development-scope `web/` alert needs a fix only when the code of the package goes into the bundle, for example the polyfills from `vite-plugin-node-polyfills` and the CSS that `web/src/index.css` imports.
 
 ## Repo Map
 

@@ -16,7 +16,7 @@
 - Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
 - Status text, computed previews, section intros, and empty states are not field help. The rule does not apply to them.
 - If the help text only repeats the label, delete it. Do not move it to a tooltip.
-- If the first element that can take focus in a dialog is a `FieldHelp` trigger, the dialog focuses it on each open, and its tooltip stays open. Pass an `onOpenAutoFocus` handler that calls `preventDefault()`, as `DirScanTab.tsx` does.
+- If the first element that can take focus in a dialog is a `FieldHelp` trigger, the dialog focuses it on each open, and its tooltip stays open. Pass an `onOpenAutoFocus` handler that calls `preventDefault()` and then focuses the dialog content, as `DirScanTab.tsx` does. Without the second call, focus stays outside the dialog.
 
 ## Query cache filters
 
