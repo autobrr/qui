@@ -74,7 +74,7 @@ type FolderCleanup struct {
 }
 
 type backendRequirer interface {
-	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
+	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, more ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
 }
 
 // folderView is the sync manager's cached view of an instance, read on every

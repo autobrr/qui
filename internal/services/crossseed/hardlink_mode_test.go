@@ -2084,3 +2084,45 @@ func TestShouldWarnForReflinkCreateError(t *testing.T) {
 		})
 	}
 }
+
+// An existing target means the tree is half made in the target dir, so link
+// mode reports the error instead of adding in regular mode (#2942 decision 5).
+// A stranger's file sits where the link would go; both backends answer that
+// with hardlinktree.ErrTargetExists.
+func TestProcessHardlinkMode_ExistingTargetRefusesInsteadOfFallingBack(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	linksDir := filepath.Join(tempDir, "links")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+	stranger := filepath.Join(linksDir, "TorrentName--hash123", "Movie", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
+	require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: {
+			ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+			HardlinkBaseDir: linksDir, FallbackToRegularMode: true,
+		}}},
+		syncManager: sync,
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	result := s.processHardlinkMode(
+		t.Context(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact", files, files,
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category", "category.cross",
+	)
+
+	require.False(t, result.Success, "result: %+v", result)
+	assert.Equal(t, "hardlink_error", result.Result.Status, "the refusal is reported as a hardlink error")
+	assert.False(t, result.FallbackToRegular, "an existing target must not become a regular add")
+	assert.False(t, result.RequiresFullRecheck)
+	assert.Empty(t, sync.addedOptions, "nothing is added")
+}

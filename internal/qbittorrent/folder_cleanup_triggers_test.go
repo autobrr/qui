@@ -591,7 +591,7 @@ type hungRequirer struct {
 	backend *hungBackend
 }
 
-func (h hungRequirer) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
+func (h hungRequirer) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, _ ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
 	_, instance, err := h.backendRequirer.Require(ctx, instanceID, capability)
 	if err != nil {
 		return nil, nil, err
