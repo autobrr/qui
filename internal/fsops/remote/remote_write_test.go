@@ -529,3 +529,41 @@ func TestHardlinkTree_ExecTierReusesWholeTree(t *testing.T) {
 		require.NoError(t, err, "%s still belongs to the first run", fp.TargetPath)
 	}
 }
+
+// link(2) does not follow a symlinked source, so the link it makes carries
+// the symlink's own inode; comparing both sides unfollowed is what lets a
+// re-run recognise it.
+func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	real := plan.Files[0].SourcePath
+	viaLink := remotePath(dir, "src", "one.via-symlink.mkv")
+	require.NoError(t, os.Symlink(real, viaLink))
+	plan.Files[0].SourcePath = viaLink
+
+	first, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	require.Equal(t, 2, first.Created)
+	again, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 2, again.SkippedExists)
+}
+
+// A collision check cut short by the caller is the caller's error, never a
+// permanent ErrTargetExists that tells the user to clean up their own link.
+func TestTargetIsSource_CancelledContextIsAnError(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	same, err := b.targetIsSource(ctx, plan.Files[0])
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, same)
+}

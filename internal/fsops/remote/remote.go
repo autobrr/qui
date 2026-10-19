@@ -25,11 +25,11 @@ import (
 	"syscall"
 
 	"github.com/pkg/sftp"
-	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -625,11 +625,11 @@ func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, err
 	return fi, nil
 }
 
-// HardlinkTree mirrors hardlinktree.Create with one difference: a target that
-// already exists always fails. Locally a target that is already a link to the
-// source is skipped; sftp attrs carry no inode, so this backend cannot tell
-// that link from a stranger's file and refuses rather than guesses. A retry
-// after a crash therefore needs the partial tree removed by hand.
+// HardlinkTree mirrors hardlinktree.Create. A target that already exists is
+// skipped when targetIsSource can prove it is a link to the source, which
+// needs the exec tier; the sftp tier refuses it, since its attrs carry no
+// inode to tell that link from a stranger's file (fsops.Backend states the
+// contract).
 func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -672,10 +672,14 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr != nil {
 				return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 			}
-			// ponytail: one stat pair per collision. A retry that collides on
-			// every file of a season pack pays a round trip each; BatchStater
-			// is the upgrade if that is ever measured (#2971).
-			if !b.targetIsSource(ctx, fp) {
+			// ponytail: one stat per collision. A retry that collides on every
+			// file of a season pack pays a round trip each; BatchStater is the
+			// upgrade if that is ever measured (#2971).
+			same, err := b.targetIsSource(ctx, fp)
+			if err != nil {
+				return fail(err)
+			}
+			if !same {
 				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
 			}
 			// Not recorded: the link belongs to whoever made it first, so a
@@ -689,28 +693,47 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 			return fail(err)
 		}
 	}
-	if created.SkippedExists > 0 {
-		log.Info().Int("instanceID", b.inst.ID).Str("root", plan.RootDir).Int("skipped", created.SkippedExists).
-			Msg("remote: hardlink tree reused links to the source that were already in place")
-	}
 	return created, nil
 }
 
-// targetIsSource reports whether fp's target is already a link to its source.
-// Only the exec tier can say: sftp attrs carry no inode, and identity answers
-// ErrUnsupported there, so every error reads as no and the caller keeps the
-// refusal. The target is read without following, so a symlink planted there
-// reports its own inode and never passes as the source (#3237).
-func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) bool {
-	target, _, err := b.identity(ctx, fp.TargetPath, false)
-	if err != nil {
-		return false
+// targetIsSource reports whether fp's target is already a link to its source,
+// from one stat over both paths on the exec tier. The sftp tier answers no:
+// its attrs carry no inode, so the caller keeps the refusal. Any other error
+// is the caller's to report, so a lost connection or a cancelled job never
+// reads as a permanent collision. Neither path is followed: link(2) does not
+// follow a symlinked source either, so the link it made has the symlink's
+// own inode, and a symlink planted at the target reports its own inode and
+// never passes as the source (#3237).
+func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
+	if !b.execTier() {
+		return false, nil
 	}
-	source, _, err := b.identity(ctx, fp.SourcePath, true)
-	if err != nil {
-		return false
+	conn, err := b.exec(ctx)
+	if errors.Is(err, fsops.ErrUnsupported) {
+		return false, nil
 	}
-	return fsops.SameFile(target, b.inst, source, b.inst)
+	if err != nil {
+		return false, err
+	}
+	out, err := output(ctx, conn, sshpool.Command{Name: "stat", Options: []string{"--printf", `%d %i %h\0`}, Paths: []string{fp.TargetPath, fp.SourcePath}})
+	if err != nil {
+		return false, pathError("stat", fp.TargetPath, err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(lines) != 2 {
+		return false, pathError("stat", fp.TargetPath, fmt.Errorf("unexpected stat output %q", out))
+	}
+	ids := make([]hardlink.FileID, 2)
+	for i, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return false, pathError("stat", fp.TargetPath, fmt.Errorf("unexpected stat output %q", out))
+		}
+		if ids[i], _, err = parseIdentity(fields[0], fields[1], fields[2]); err != nil {
+			return false, pathError("stat", fp.TargetPath, err)
+		}
+	}
+	return fsops.SameFile(ids[0], b.inst, ids[1], b.inst), nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {

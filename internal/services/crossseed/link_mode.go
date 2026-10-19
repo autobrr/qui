@@ -479,6 +479,7 @@ func (s *Service) processLinkMode(
 		Str("torrentName", torrentName).
 		Str("destDir", destDir).
 		Int("fileCount", len(plan.Files)).
+		Int("skippedExists", created.SkippedExists).
 		Msg(logPrefix + "created link tree")
 
 	if pooledCompletion && poolDescriptorErr == nil && mode.poolReplaceable {
