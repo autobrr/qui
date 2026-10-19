@@ -186,6 +186,10 @@ func TestSyncErrorMessageRetryHints(t *testing.T) {
 	require.Contains(t, authMessage, "Sync with qBittorrent paused:")
 	require.Contains(t, authMessage, "retrying in 30s")
 
+	timeoutMessage := syncErrorMessage(fmt.Errorf("could not get main data: %w", context.DeadlineExceeded), 30)
+	require.Contains(t, timeoutMessage, "qBittorrent did not answer in time")
+	require.Contains(t, timeoutMessage, "retrying in 30s")
+
 	fallbackMessage := syncErrorMessage(errors.New("temporary sync failure"), 30)
 	require.Equal(t, "Sync with qBittorrent failed (temporary sync failure); retrying in 30s", fallbackMessage)
 }
