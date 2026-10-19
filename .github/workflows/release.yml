@@ -115,9 +115,6 @@ jobs:
     # The MSI needs wixl 0.105 or later for Environment. Ubuntu 24.04 ships 0.103.
     runs-on: ubuntu-26.04
     needs: [test, web]
-    env:
-      # A step "if" cannot read secrets, so the job sets the token. Dependabot runs get no token and skip the premium themes.
-      THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -133,18 +130,25 @@ jobs:
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
 
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
+        env:
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
       - name: Fetch premium themes
-        if: env.THEMES_REPO_TOKEN != ''
+        if: steps.themes.outputs.enabled == 'true'
         uses: actions/checkout@v7.0.1
         with:
           repository: autobrr/qui-premium-themes
-          token: ${{ env.THEMES_REPO_TOKEN }}
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
           path: .themes-temp
           sparse-checkout: themes
           persist-credentials: false
 
       - name: Copy premium themes
-        if: env.THEMES_REPO_TOKEN != ''
+        if: steps.themes.outputs.enabled == 'true'
         run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Set up Go
@@ -269,9 +273,6 @@ jobs:
     name: Build Docker images
     runs-on: ubuntu-latest
     needs: [web, docker-matrix]
-    env:
-      # A step "if" cannot read secrets, so the job sets the token. Dependabot runs get no token and skip the premium themes.
-      THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
     strategy:
       fail-fast: true
       matrix:
@@ -293,18 +294,25 @@ jobs:
           name: web-dist
           path: web/dist
 
+      # A step "if" cannot read secrets. Dependabot runs get no token and skip the premium themes.
+      - name: Check for premium themes token
+        id: themes
+        env:
+          TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+        run: echo "enabled=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
       - name: Fetch premium themes
-        if: env.THEMES_REPO_TOKEN != ''
+        if: steps.themes.outputs.enabled == 'true'
         uses: actions/checkout@v7.0.1
         with:
           repository: autobrr/qui-premium-themes
-          token: ${{ env.THEMES_REPO_TOKEN }}
+          token: ${{ secrets.THEMES_REPO_TOKEN }}
           path: .themes-temp
           sparse-checkout: themes
           persist-credentials: false
 
       - name: Copy premium themes
-        if: env.THEMES_REPO_TOKEN != ''
+        if: steps.themes.outputs.enabled == 'true'
         run: cp .themes-temp/themes/*.css internal/themes/assets/premium/
 
       - name: Extract metadata
