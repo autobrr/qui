@@ -848,7 +848,8 @@ func compareString(value string, cond *RuleCondition) bool {
 
 // compareTrackers matches TRACKER and TRACKERS against every tracker the torrent
 // announces to. The qBittorrent tracker field holds the last tracker that answered,
-// else the first tracker in the list, so it can name a tracker that is down now.
+// so it can name a tracker that is down now. When no tracker answered yet, the field
+// is empty before qBittorrent 5.1 and holds the first tracker in the list from 5.1.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
