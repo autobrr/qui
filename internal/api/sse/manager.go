@@ -256,11 +256,13 @@ type heartbeatLoopState struct {
 type backoffState struct {
 	attempt  int
 	interval time.Duration
-	// primed is set true once the instance has completed at least one successful
-	// sync. Before priming the next sync is a full /sync/maindata and must use the
-	// full-sync timeout. primed is never cleared by a failure (failure streaks are
-	// tracked by attempt > 0); it is only dropped when the whole entry is deleted on
-	// unregister, so a re-registered instance correctly resyncs full first.
+	// primed is true when the last successful sync returned a nonzero rid, so the
+	// next sync is incremental. Before the first sync, or after a sync that
+	// returned rid 0, the next sync is a full /sync/maindata and must use the
+	// full-sync timeout. go-qbittorrent returns rid 0 after it sent the request
+	// again. A failure does not clear primed (failure streaks are tracked by
+	// attempt > 0). Unregister deletes the whole entry, so a re-registered
+	// instance correctly resyncs full first.
 	primed bool
 }
 
@@ -620,7 +622,7 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		return
 	}
 
-	m.markSyncSuccess(instanceID)
+	m.markSyncSuccess(instanceID, data.Rid)
 
 	meta := &StreamMeta{
 		InstanceID: instanceID,
@@ -1952,12 +1954,12 @@ func (m *StreamManager) markSyncFailure(instanceID int) time.Duration {
 	return interval
 }
 
-func (m *StreamManager) markSyncSuccess(instanceID int) {
+func (m *StreamManager) markSyncSuccess(instanceID int, rid int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	state := m.ensureBackoffStateLocked(instanceID)
-	state.primed = true
+	state.primed = rid != 0
 	state.attempt = 0
 
 	if state.interval != defaultSyncInterval {
@@ -2050,8 +2052,8 @@ func jitteredInterval(interval time.Duration) time.Duration {
 }
 
 // syncTimeout returns the context budget for the next forceSync of instanceID.
-// A full /sync/maindata is likely when the instance has never completed a sync
-// (no entry / not primed) or is in a failure streak (attempt > 0): go-qbittorrent
+// A full /sync/maindata is likely when the instance has no sync that returned a
+// nonzero rid (no entry / not primed) or is in a failure streak (attempt > 0): go-qbittorrent
 // resets the rid after a failed sync, so the next sync is a full update. A full
 // update sends the whole torrent set, which can exceed the incremental budget on
 // large instances. A primed instance with no active failure streak is in a
