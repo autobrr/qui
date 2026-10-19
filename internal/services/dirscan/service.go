@@ -100,6 +100,14 @@ type Service struct {
 	// Global run semaphore to cap concurrent scans.
 	runSem chan struct{}
 
+	// searchSlot lets one item search at a time across runs, so the interval
+	// wait and the searches of two runs do not overlap.
+	searchSlot chan struct{}
+
+	// lastSearchAt is when the previous item's search ended, across runs. The
+	// search slot serializes access.
+	lastSearchAt time.Time
+
 	activityPublisher activity.Publisher
 }
 
@@ -166,6 +174,7 @@ func NewService(
 		cancelFuncs:               make(map[int64]context.CancelFunc),
 		runProgress:               make(map[int64]*runProgress),
 		runSem:                    make(chan struct{}, cfg.MaxConcurrentRuns),
+		searchSlot:                make(chan struct{}, 1),
 		activityPublisher:         activity.NopPublisher{},
 	}
 }
@@ -1822,6 +1831,19 @@ func (s *Service) searchWithRetries(
 	minSize, maxSize int64,
 	l *zerolog.Logger,
 ) (*jackett.SearchResponse, error) {
+	if s.searchSlot != nil {
+		select {
+		case s.searchSlot <- struct{}{}:
+			defer func() { <-s.searchSlot }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := s.waitForSearchInterval(ctx); err != nil {
+		return nil, err
+	}
+	defer func() { s.lastSearchAt = time.Now() }()
+
 	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
 	if err != nil || response == nil {
 		return response, err
@@ -1861,6 +1883,23 @@ func (s *Service) searchWithRetries(
 	}
 
 	return response, nil
+}
+
+// waitForSearchInterval waits until the Library Scan minimum interval has passed
+// since the previous item's search ended. The search queue does not pace
+// indexers behind Prowlarr or Jackett, so this wait is the only pacing they get.
+func (s *Service) waitForSearchInterval(ctx context.Context) error {
+	wait := time.Until(s.lastSearchAt.Add(crossseed.MinTorznabSearchInterval))
+	if wait <= 0 {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
 }
 
 // retrySearchPasses lists the query variants to try, in order, when a search

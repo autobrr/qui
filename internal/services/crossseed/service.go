@@ -307,6 +307,10 @@ const (
 	defaultSizeMismatchTolerancePercent   = 5.0
 	maxTitleRescueAttemptsPerSearch       = 3
 
+	// MinTorznabSearchInterval is the minimum Library Scan interval for Torznab
+	// searches. Dir Scan waits this long between the searches for two items.
+	MinTorznabSearchInterval = minSearchIntervalSecondsTorznab * time.Second
+
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
