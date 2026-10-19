@@ -95,6 +95,7 @@ type Service struct {
 	cancelMu    sync.Mutex
 
 	// Serializes webhook queue/merge decisions so duplicate follow-up runs are not created.
+	// CancelScan also holds it, so a webhook scan cannot start between the list and the cancel.
 	webhookMu sync.Mutex
 
 	// In-memory progress snapshot keyed by runID (for live UI updates).
@@ -448,6 +449,9 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 
 // CancelScan cancels every queued and running scan of a directory.
 func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
+	s.webhookMu.Lock()
+	defer s.webhookMu.Unlock()
+
 	runs, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
 		return fmt.Errorf("list active runs: %w", err)
@@ -481,7 +485,7 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 			log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after queued cancel")
 		}
 	}
-	// A webhook can queue a run while this loop runs.
+	// A manual or scheduled scan can queue a run while this loop runs.
 	if err := s.store.CancelQueuedRuns(context.Background(), directoryID); err != nil {
 		return fmt.Errorf("cancel queued runs: %w", err)
 	}
