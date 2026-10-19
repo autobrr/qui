@@ -276,7 +276,7 @@ This option does not affect specials (season 0) or absolute episode numbers.
 
 ### Concurrent scans
 
-Only one scan runs per directory at a time. If a scheduled scan triggers while another scan runs, qui does not start a second run for that directory.
+A directory has at most one full scan, in progress or queued. If the schedule starts a scan while a full scan of the directory runs or waits in the queue, qui does not start a second full scan. A webhook scan can run at the same time as a full scan. See [Webhook scans during a full scan](#webhook-scans-during-a-full-scan).
 
 ### Incremental progress and resets
 
