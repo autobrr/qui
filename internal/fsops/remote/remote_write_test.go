@@ -539,9 +539,9 @@ func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
 	b, _ := newExecBackend(t)
 	dir := t.TempDir()
 	plan := linkPlan(t, dir)
-	real := plan.Files[0].SourcePath
+	linked := plan.Files[0].SourcePath
 	viaLink := remotePath(dir, "src", "one.via-symlink.mkv")
-	require.NoError(t, os.Symlink(real, viaLink))
+	require.NoError(t, os.Symlink(linked, viaLink))
 	plan.Files[0].SourcePath = viaLink
 
 	first, err := b.HardlinkTree(t.Context(), plan)
