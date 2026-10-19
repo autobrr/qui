@@ -6,7 +6,6 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -692,31 +691,52 @@ func (remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	return &models.Instance{ID: id, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
 }
 
-// statSpy stands in for the SSH host and counts the stats that reached it.
-type statSpy struct {
+// batchSpy stands in for the SSH host: it answers from the local disk and
+// counts the batch stats and the single stats that reached it.
+type batchSpy struct {
 	fsops.Backend
-	stats atomic.Int32
+	batches atomic.Int32
+	stats   atomic.Int32
 }
 
-func (s *statSpy) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+func (s *batchSpy) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
 	s.stats.Add(1)
-	return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+	return s.Backend.Stat(ctx, p)
 }
 
-// The ClientPool's instance store still reads the row as local, the backend
-// pool's store reads it as remote. The snapshot must decide from the backend
-// pool's row alone and skip, rather than stat local paths on the SSH host.
-func TestFolderCleanupSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
+func (s *batchSpy) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	s.batches.Add(1)
+	return fsops.StatAll(ctx, s.Backend, paths)
+}
+
+func (s *batchSpy) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	s.batches.Add(1)
+	return fsops.LstatAll(ctx, s.Backend, paths)
+}
+
+// Over SSH a Stat per torrent costs a round trip each, so a remote instance
+// checks the content of the whole batch with one batch stat.
+func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
-	r.add(r.perRelease(hashA, "tv"))
-	spy := &statSpy{}
+	r.add(r.perRelease(hashA, "tv"),
+		qbtstub.Torrent{Hash: hashB, Name: "Film-GRP", SavePath: r.p("torrents/movies"), Category: "movies",
+			Layout: qbtstub.RootFolder, Files: []string{"Film.mkv"}},
+		qbtstub.Torrent{Hash: hashC, Name: "Clip.mkv", SavePath: r.p("torrents/movies"), Category: "movies",
+			Layout: qbtstub.SingleFile})
+	require.NoError(t, os.Remove(r.p("torrents/movies/Clip.mkv")))
+	spy := &batchSpy{Backend: local.NewBackend()}
 	pool := fsops.NewPoolWithRemote(remoteRowStore{}, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
-	fc := NewFolderCleanup(pool, r.sm, &fakeIgnores{})
-	r.sm.SetFolderCleanup(fc)
+	r.sm.SetFolderCleanup(NewFolderCleanup(pool, r.sm, &fakeIgnores{}))
 
-	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA}})
+	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID,
+		FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA, hashB, hashC}})
 
-	require.Empty(t, batch.snaps)
-	require.Zero(t, spy.stats.Load(), "the cleanup must not read the SSH host")
+	require.EqualValues(t, 1, spy.batches.Load())
+	require.Zero(t, spy.stats.Load())
+	existed := map[string]bool{}
+	for _, snap := range batch.snaps {
+		existed[snap.Hash] = snap.ContentExisted
+	}
+	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }

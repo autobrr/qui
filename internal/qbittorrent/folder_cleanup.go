@@ -22,8 +22,11 @@ import (
 )
 
 const (
-	folderCleanupTick     = 3 * time.Second
-	folderCleanupDeadline = 2 * time.Minute
+	folderCleanupTick = 3 * time.Second
+	// folderCleanupRemoteTick is how often a remote instance's items are
+	// checked, since each check costs round trips per torrent over SSH.
+	folderCleanupRemoteTick = 30 * time.Second
+	folderCleanupDeadline   = 2 * time.Minute
 	// folderCleanupVersionTTL is how long the worker reuses an instance's
 	// category nesting support, which costs a request to read.
 	folderCleanupVersionTTL = time.Minute
@@ -49,12 +52,14 @@ type FolderCleanup struct {
 	view    folderView
 	ignores ignoreMatcher
 
-	// tick is how often the worker checks its queue, and deadline how long an
-	// item waits for its torrent to leave. Tests shorten them before Start.
-	tick     time.Duration
-	deadline time.Duration
-	stopWait time.Duration
-	capacity int
+	// tick is how often the worker checks its queue, remoteTick how often it
+	// checks a remote instance's items, and deadline how long an item waits
+	// for its torrent to leave. Tests shorten them before Start.
+	tick       time.Duration
+	remoteTick time.Duration
+	deadline   time.Duration
+	stopWait   time.Duration
+	capacity   int
 	// prepareBudget and proxyPrepareBudget bound how long qui's own
 	// operations and proxied requests wait on their snapshots.
 	prepareBudget      time.Duration
@@ -183,9 +188,12 @@ type pendingFolder struct {
 	// in place.
 	atDeadline bool
 	// syncAsked is when the item, with content still in place, asked for a
-	// sync one tick ahead of its deadline.
+	// sync one check ahead of its deadline.
 	syncAsked time.Time
-	expires   time.Time
+	// checked is when the item was queued or last checked on a remote
+	// instance, which waits remoteTick between checks.
+	checked time.Time
+	expires time.Time
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
@@ -197,6 +205,7 @@ func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatch
 		view:               view,
 		ignores:            ignores,
 		tick:               folderCleanupTick,
+		remoteTick:         folderCleanupRemoteTick,
 		deadline:           folderCleanupDeadline,
 		stopWait:           folderCleanupStopWait,
 		capacity:           folderCleanupCapacity,
@@ -254,7 +263,8 @@ func (c *FolderCleanup) room() int {
 // alreadyDropped counts torrents the caller left out for lack of room, so the
 // one warning carries the full count.
 func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) bool {
-	expires := time.Now().Add(c.deadline)
+	now := time.Now()
+	expires := now.Add(c.deadline)
 	items := make([]*pendingFolder, 0, len(snaps))
 	for _, snap := range snaps {
 		// Content that was missing before the operation may be an unmounted
@@ -268,6 +278,7 @@ func (c *FolderCleanup) enqueue(snaps []folderSnapshot, alreadyDropped int) bool
 				Msg("folder cleanup: skipped torrent")
 			continue
 		}
+		item.checked = now
 		items = append(items, item)
 	}
 
@@ -490,9 +501,21 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	if err != nil {
 		return markUnjudged(instanceID, err, items)
 	}
-	// Remote instances wait for their own ticket, even once they can write.
+	// lead is the longest time to the item's next check.
+	lead := c.tick
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
-		return nil
+		// The instance is checked once one of its items is due, and then
+		// all of them are, so it costs at most one check per remoteTick.
+		// That check runs on the first tick after it is due.
+		lead = c.remoteTick + c.tick
+		if !slices.ContainsFunc(items, func(item *pendingFolder) bool {
+			return !now.Before(item.checked.Add(c.remoteTick)) || !now.Before(item.expires)
+		}) {
+			return items
+		}
+		for _, item := range items {
+			item.checked = now
+		}
 	}
 
 	var ready, retry []*pendingFolder
@@ -523,13 +546,13 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		}
 		// While content is there nothing reads the item's row, so nothing
 		// asks for a sync, and the cache may predate a torrent added at
-		// these folders since. One tick ahead of the deadline the item asks
+		// these folders since. One check ahead of the deadline the item asks
 		// for one, and the deadline judges only against a sync that landed
 		// after that. Without one the item is dropped as before, which is
 		// also what happens when an overrunning tick makes the ticker skip
 		// that last tick before the deadline.
 		if now.Before(item.expires) {
-			if item.syncAsked.IsZero() && !now.Add(c.tick).Before(item.expires) {
+			if item.syncAsked.IsZero() && !now.Add(lead).Before(item.expires) {
 				item.syncAsked = now
 				asked = true
 			}
