@@ -751,7 +751,8 @@ func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggered
 	return id, nil
 }
 
-// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
+// CreateRunIfNoActive creates a full scan run unless the directory already has a
+// full scan queued or running. Webhook scans do not count.
 func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int, triggeredBy, scanRoot string) (int64, error) {
 	var scanRootValue any
 	if scanRoot != "" {
@@ -765,6 +766,7 @@ func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int,
 		WHERE NOT EXISTS (
 			SELECT 1 FROM dir_scan_runs
 			WHERE directory_id = ?
+			  AND triggered_by <> 'webhook'
 			  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 		)
 		RETURNING id
@@ -916,19 +918,22 @@ func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirS
 	return s.scanRun(row)
 }
 
-// GetQueuedRun returns the most recent queued run for a directory, if any.
-func (s *DirScanStore) GetQueuedRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
-	row := s.db.QueryRowContext(ctx, `
+// ListActiveRuns returns the queued and running runs of a directory, oldest first.
+func (s *DirScanStore) ListActiveRuns(ctx context.Context, directoryID int) ([]*DirScanRun, error) {
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, directory_id, status, triggered_by, scan_root, files_found, files_skipped,
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE directory_id = ?
-		  AND status = 'queued'
-		ORDER BY started_at DESC, id DESC
-		LIMIT 1
+		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
+		ORDER BY id
 	`, directoryID)
+	if err != nil {
+		return nil, fmt.Errorf("query active runs: %w", err)
+	}
+	defer rows.Close()
 
-	return s.scanRun(row)
+	return scanRunsFromRows(rows)
 }
 
 // UpdateRunStatus updates the status of a run.
@@ -1029,19 +1034,6 @@ func (s *DirScanStore) UpdateRunCanceled(ctx context.Context, runID int64) error
 	return nil
 }
 
-// CancelQueuedRuns marks all queued runs for a directory as canceled.
-func (s *DirScanStore) CancelQueuedRuns(ctx context.Context, directoryID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE dir_scan_runs
-		SET status = ?, completed_at = CURRENT_TIMESTAMP
-		WHERE directory_id = ? AND status = 'queued'
-	`, DirScanRunStatusCanceled, directoryID)
-	if err != nil {
-		return fmt.Errorf("cancel queued runs: %w", err)
-	}
-	return nil
-}
-
 // MarkActiveRunsFailed marks any in-progress runs as failed (typically after a restart).
 func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage string) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
@@ -1076,9 +1068,12 @@ func (s *DirScanStore) pruneRunHistoryForDirectory(ctx context.Context, director
 }
 
 func pruneRunHistoryForDirectoryQuery(dialect string) string {
+	// A run in progress stays even outside the window: webhook scans that finish
+	// during a long full scan would otherwise delete its row while it runs.
 	base := `
 		DELETE FROM dir_scan_runs
 		WHERE directory_id = ?
+		  AND status NOT IN ('queued', 'scanning', 'searching', 'injecting')
 		  AND id IN (
 			  SELECT id FROM dir_scan_runs
 			  WHERE directory_id = ?
@@ -1549,6 +1544,33 @@ func scanFilesFromRows(rows *sql.Rows) ([]*DirScanFile, error) {
 		return nil, fmt.Errorf("iterate files: %w", err)
 	}
 	return files, nil
+}
+
+// GetFilesByPath returns the tracked rows of a directory for the given paths.
+// A path without a row is left out.
+func (s *DirScanStore) GetFilesByPath(ctx context.Context, directoryID int, paths []string) ([]*DirScanFile, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+
+	args := make([]any, 0, len(paths)+1)
+	args = append(args, directoryID)
+	for _, p := range paths {
+		args = append(args, p)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
+		       matched_torrent_hash, matched_indexer_id, searched_indexer_ids, last_processed_at
+		FROM dir_scan_files
+		WHERE directory_id = ? AND file_path IN (`+buildPlaceholders(len(paths))+`)
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query files by path: %w", err)
+	}
+	defer rows.Close()
+
+	return scanFilesFromRows(rows)
 }
 
 // RequeueNoMatchFiles resets no_match rows for a directory to pending so the
