@@ -30,7 +30,7 @@ import {
 } from "@/lib/tracker-customizations"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
-import type { AppPreferences, CrossInstanceTorrent, Torrent } from "@/types"
+import type { CrossInstanceTorrent, Torrent } from "@/types"
 import type { CellContext, HeaderContext, RowSelectionState } from "@tanstack/react-table"
 import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
 import {
@@ -426,7 +426,7 @@ interface CreateColumnsParams {
   speedUnit?: SpeedUnit
   trackerIcons?: Record<string, string>
   formatTimestamp?: (timestamp: number) => string
-  instancePreferences?: AppPreferences | null
+  instanceMaxRatio?: number
   supportsTrackerHealth?: boolean
   showInstanceColumn?: boolean
   viewMode?: TableViewMode
@@ -440,7 +440,7 @@ export const createColumns = ({
   speedUnit = "bytes",
   trackerIcons,
   formatTimestamp = formatStoredTimestamp,
-  instancePreferences,
+  instanceMaxRatio,
   supportsTrackerHealth = true,
   showInstanceColumn = false,
   viewMode = "normal",
@@ -1109,8 +1109,7 @@ export const createColumns = ({
       header: t("tableColumns.ratioLimit"),
       cell: ({ row }) => {
         const ratioLimit = row.original.ratio_limit
-        const instanceRatioLimit = instancePreferences?.max_ratio
-        const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
+        const displayRatioLimit = ratioLimit === -2 ? (instanceMaxRatio === -1 ? "∞" : instanceMaxRatio?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
 
         return (
           <span

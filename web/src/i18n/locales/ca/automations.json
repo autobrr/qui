@@ -221,7 +221,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",
-      "localFilesystemAccess": "Requereix accés al sistema de fitxers local"
+      "localFilesystemAccess": "Requereix accés al sistema de fitxers local",
+      "remoteInstance": "No disponible en instàncies remotes"
     },
     "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}."
   }

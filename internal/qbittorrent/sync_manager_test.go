@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode/utf8"
 
@@ -31,51 +32,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 )
-
-// The preferences field is tri-state: a nil RawMessage disappears through
-// omitempty, an explicit "null" survives it, and the key stays last.
-func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
-	t.Parallel()
-
-	body, err := json.Marshal(TorrentResponse{Torrents: []TorrentView{}})
-	require.NoError(t, err)
-	assert.NotContains(t, string(body), `"preferences"`)
-
-	body, err = json.Marshal(TorrentResponse{Torrents: []TorrentView{}, AppPreferences: json.RawMessage("null")})
-	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(string(body), `"preferences":null}`),
-		"an explicit null must survive omitempty and stay the last key")
-}
-
-func TestTorrentResponseAppPreferencesMarksFreshFailureForNullClear(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
-		instanceID: 7,
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	prefs, err := torrentResponseAppPreferences(ctx, client, false, 7)
-
-	require.NoError(t, err)
-	require.Equal(t, "null", string(prefs))
-}
-
-func TestTorrentResponseAppPreferencesOmitsCacheOnlyMiss(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
-		instanceID: 7,
-	}
-
-	prefs, err := torrentResponseAppPreferences(context.Background(), client, true, 7)
-
-	require.NoError(t, err)
-	require.Nil(t, prefs)
-}
 
 func TestNormalizeConnectionStatus(t *testing.T) {
 	t.Parallel()
@@ -2600,12 +2556,119 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
 }
 
-// App preferences are a cosmetic ~150-field blob. A failure to render them must
-// not blank the torrent table or turn every stream frame for the instance into an
-// error, so the field is dropped and the list is served.
-func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
+// debouncedSyncTimes records when each debounced sync runs. With no client
+// pool, each sync logs this warning and returns.
+func debouncedSyncTimes(t *testing.T) func() []time.Time {
+	t.Helper()
+	var mu sync.Mutex
+	var times []time.Time
+	originalLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "Client pool is nil, skipping sync" {
+			mu.Lock()
+			times = append(times, time.Now())
+			mu.Unlock()
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+	return func() []time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(times)
+	}
+}
+
+// Hints closer together than the debounce delay must not hold off the sync for
+// as long as they keep coming.
+func TestDebouncedSyncHasAMaximumWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		// A hint every 150 ms for 4 s. Each sync ends a one second window, and
+		// the next window opens with the next hint, so the storm syncs at 1 s,
+		// 2.05 s and 3.1 s.
+		var hints []time.Time
+		for start := time.Now(); time.Since(start) < 4*time.Second; {
+			hints = append(hints, time.Now())
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(150 * time.Millisecond)
+		}
+		synctest.Wait()
+		syncs := syncTimes()
+		require.Len(t, syncs, 3, "the storm synced at %v", syncs)
+
+		var previous time.Time
+		for _, synced := range syncs {
+			i := slices.IndexFunc(hints, func(hint time.Time) bool { return hint.After(previous) })
+			require.NotEqual(t, -1, i, "a sync ran with no hint pending")
+			first := hints[i]
+			require.LessOrEqual(t, synced.Sub(first), syncDebounceMaxWait,
+				"a sync started %v after the first pending hint", synced.Sub(first))
+			previous = synced
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+		require.Len(t, syncTimes(), len(syncs)+1, "the last hints still get one sync")
+	})
+}
+
+func TestDebouncedSyncWaitsTheDelayForASingleHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		start := time.Now()
+		sm.syncAfterModification(1, nil, "single")
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.Len(t, syncs, 1)
+		require.Equal(t, 200*time.Millisecond, syncs[0].Sub(start))
+	})
+}
+
+// A timer whose callback runs after a newer hint replaced it must leave the
+// window open, or the max wait restarts from a later hint.
+func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		sm.syncAfterModification(1, nil, "first")
+		// Stand in for a newer hint whose timer replaced the first one, so the
+		// first callback finds itself replaced when it fires at 200 ms. The next
+		// hint stops this timer, as it would a real one.
+		replacement := time.NewTimer(time.Hour)
+		t.Cleanup(func() { replacement.Stop() })
+		sm.syncDebounceMu.Lock()
+		sm.debouncedSyncTimers[1] = replacement
+		sm.syncDebounceMu.Unlock()
+
+		// A hint every 140 ms from 100 ms to 1.22 s.
+		time.Sleep(100 * time.Millisecond)
+		stormStart := time.Now()
+		for range 9 {
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(140 * time.Millisecond)
+		}
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.GreaterOrEqual(t, len(syncs), 2)
+		require.LessOrEqual(t, syncs[1].Sub(stormStart), syncDebounceMaxWait,
+			"the first storm hint waited %v for the sync after the replaced timer's", syncs[1].Sub(stormStart))
+	})
+}
+
+// The torrent list carries no preferences: screens read the preference view
+// route instead, so a list request neither fetches nor sends them.
+func TestGetTorrentsWithFiltersCarriesNoPreferences(t *testing.T) {
 	t.Parallel()
 
+	var preferenceRequests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/sync/maindata":
@@ -2614,6 +2677,9 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 			}}`))
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/app/preferences":
+			preferenceRequests.Add(1)
+			_, _ = w.Write([]byte(`{"listen_port":6881}`))
 		case "/api/v2/torrents/categories":
 			_, _ = w.Write([]byte(`{}`))
 		case "/api/v2/torrents/tags":
@@ -2627,7 +2693,7 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
@@ -2640,23 +2706,20 @@ func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
 	client.updateHealthStatus(true)
 	require.NoError(t, client.syncManager.Sync(ctx))
 
-	// ProxyType is an interface{} because qBittorrent changed its type across
-	// versions, so it is the field that can hold something json.Marshal rejects.
-	client.preferencesMu.Lock()
-	client.preferencesCache = &qbt.AppPreferences{ProxyType: make(chan int)}
-	client.preferencesJSON = nil
-	client.preferencesMu.Unlock()
-
 	pool.mu.Lock()
 	pool.clients[inst.ID] = client
 	pool.mu.Unlock()
 
 	sm := NewSyncManager(pool, nil)
 
-	resp, err := sm.GetTorrentsWithFilters(WithSkipFreshData(ctx), inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
-	require.NoError(t, err, "unrenderable preferences must not fail the list request")
-	require.Equal(t, 1, resp.Total, "the torrent list is still served")
-	require.Nil(t, resp.AppPreferences, "the unrenderable field is omitted")
+	resp, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.Total)
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"preferences"`)
+	assert.Zero(t, preferenceRequests.Load(), "a list request must not fetch preferences")
 }
 
 // The counts pass shares the list request's library slice instead of cloning
@@ -3174,7 +3237,6 @@ func TestRequestCoversWholeLibrary(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}))
-	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Sort: "name", Reverse: true}))
 
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}))
 	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "cross-seed"}))

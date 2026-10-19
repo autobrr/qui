@@ -2036,7 +2036,8 @@ func partialPoolSameFile(sourcePath, targetPath string) bool {
 		return false
 	}
 	targetID, _, err := hardlink.GetFileID(targetInfo, targetPath)
-	return err == nil && sourceID == targetID
+	// Both paths are on the qui host; the pool hardlinks locally.
+	return err == nil && fsops.SameFile(sourceID, nil, targetID, nil)
 }
 
 func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {

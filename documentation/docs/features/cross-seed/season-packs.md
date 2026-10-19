@@ -105,6 +105,10 @@ If Sonarr resolves the show, qui pulls its series-wide alternate titles and uses
 
 If both sides use the same absolute numbering, qui matches absolute-numbered anime episodes (for example `Show - 1140`, with no season number) against a season pack. qui keys the local episode to the pack season and uses the absolute episode number to identify it.
 
+If a pack file has no season in its name, qui reads its number as an absolute episode, with one exception. If the pack is season 2 or later and the lowest episode number of these files is 1, the files use season numbering. For example, in a `Show S02` pack, the files `Show - 01` to `Show - 12` are `S02E01` to `S02E12`. In the same pack, the files `Show - 13` to `Show - 24` are absolute episodes 13 to 24.
+
+Some pack names have no season number, but the title ends with a Roman numeral from II to X, such as `Show II [Batch]`. qui reads the numeral as the season of the pack, so `Show II [Batch]` is season 2 of `Show`.
+
 Season-pack matching does not translate between numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation needs per-episode data for every file in the pack. Single episodes are different: with Sonarr linked, qui maps one episode between schemes. See [Manual Search](./overview.md#manual-search) in the overview.
 
 A `/check` call without torrent data has no file list to determine the pack's numbering scheme. The check remains optimistic and reports ready against local episodes that use the other scheme. The `/apply` endpoint verifies the real file list of the pack and acts as the authority. A false ready result from the light check costs only one wasted `.torrent` download, and qui injects nothing.
@@ -129,11 +133,11 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- You must enable **Local filesystem access** on the target instance
-- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees.
+- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
-During eligibility checks, qui skips instances that lack local filesystem access or a link mode.
+During eligibility checks, qui skips instances that lack filesystem access or a link mode.
 
 See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
@@ -317,7 +321,7 @@ Keep the `Season pack status` condition in the rule. It limits the rule to episo
 
 If `instanceIds` is omitted or contains multiple instances:
 
-1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
+1. qui filters the list to instances with a link mode qui can use: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode
 2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID

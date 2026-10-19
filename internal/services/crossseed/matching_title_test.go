@@ -554,6 +554,17 @@ func TestReleasesMatch_SeasonNumeral(t *testing.T) {
 			candidateName: "Title II S01 1080p BluRay x265-GRP",
 		},
 		{
+			name:          "subtractive numeral matches its season",
+			sourceName:    "Title.XIV.S14.1080p.BluRay.x265-GRP",
+			candidateName: "Title S14 1080p BluRay x265-GRP",
+		},
+		{
+			name:          "numeral in a non-standard spelling is kept",
+			sourceName:    "Title.IIII.S04.1080p.BluRay.x265-GRP",
+			candidateName: "Title S04 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
 			name:          "arabic number is not a season numeral",
 			sourceName:    "Kaiju.Squad.3.S03.1080p.BluRay.x265-GRP",
 			candidateName: "Kaiju Squad S03 1080p BluRay x265-GRP",
@@ -653,7 +664,27 @@ func TestRawAKATitleParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.expected, rawAKATitleParts(tt.rawName))
+			require.Equal(t, tt.expected, matcher{}.rawAKATitleParts(tt.rawName))
+		})
+	}
+}
+
+// A matcher built without a release cache must read the same titles as one
+// built with a cache. Before the fallback, a bare matcher parsed every name to
+// an empty release and lost the slash title (ADR 0008).
+func TestNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
+	for _, name := range []string{
+		"Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+		"Kaiju Squad 100 AKA Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+	} {
+		t.Run(name, func(t *testing.T) {
+			release := rls.ParseString(name)
+			bare := matcher{}
+			cached := matcher{releaseCache: NewReleaseCache()}
+
+			want := cached.normalizedReleaseTitles(&release, name)
+			require.Greater(t, len(want), 1, "the name must yield more than its main title")
+			require.Equal(t, want, bare.normalizedReleaseTitles(&release, name))
 		})
 	}
 }

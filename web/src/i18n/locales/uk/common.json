@@ -191,8 +191,7 @@
     "trigger": "Докладніше"
   },
   "numberInput": {
-    "unlimited": "Без обмежень",
-    "useUnlimited": " (використовуйте -1 для необмеженого)"
+    "unlimited": "Без обмежень"
   },
   "dateTime": {
     "na": "Н/Д",

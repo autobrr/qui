@@ -126,7 +126,33 @@ If you later enable AutoTMM on an injected torrent, qBittorrent can relocate fil
 Torznab searches run through the shared scheduler at background priority. They queue behind interactive, RSS, and completion cross-seed work.
 
 If the global scan concurrency limit is reached, new scans show as `queued` until a scan slot opens.
-Dir Scan also pauses between candidate torrent-file downloads from an indexer. This protects Prowlarr and indexers from request bursts, which matters most on private trackers. This delay increases scan times when qui checks many candidates.
+
+Dir Scan waits between searches. See [Search pacing](#search-pacing).
+
+Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Library Scan uses the same rule for downloads.
+:::
+
+### Search pacing
+
+Dir Scan searches for one item at a time. An item is a movie, a season, an episode, or another folder or file. A TV folder can give one season item and one item for each episode file.
+
+Before Dir Scan searches for an item, it waits until 60 seconds have passed since the search for the previous item ended. Library Scan uses the same minimum interval between two torrents. The wait applies to all indexers, including indexers behind Prowlarr or Jackett. It applies to manual, scheduled, and webhook scans.
+
+- A search counts even when the [search cache](#search-cache) answered it.
+- An item that sends no search does not wait. For example, an item that is already seeding, or an item that has no enabled indexer.
+- Dir Scan can search again for the same item without the year or with an alternate title. These retry searches do not wait.
+- The wait continues across runs. A webhook scan that starts 20 seconds after the last search of the previous run waits 40 seconds. A restart of qui resets the time.
+- Dir Scan does not wait after the last item of a run.
+- If you cancel a scan during the wait, the scan stops at once.
+
+:::warning First scan of a large library
+At one item per minute, the first scan of a large library takes hours. A TV library with 3,000 episode files can take more than two days. Only one scan runs at a time, so webhook scans wait until the long scan ends.
+
+To keep scans short:
+
+- Set **Only process items changed within the last (days)**. See [the explanation](#only-process-items-changed-within-the-last-days-explained).
+- Set **Max searchees per run**. See [the explanation](#max-searchees-per-run-explained).
+- Turn on [Skip individual episodes](#skip-individual-episodes) for TV directories. Dir Scan then sends one search for a season, not one search for each episode.
 :::
 
 ### Already-seeding detection
@@ -202,7 +228,7 @@ This setting limits how many **top-level folders/files** Dir Scan processes in a
 
 If you configure **Max searchees per run = 5**, Dir Scan processes up to **5 show folders** (TV) or **5 movie folders** (movies) per run. It stops and saves per-file progress for the next run. The next run rechecks the directory, skips finalized files, and retries unfinished work. See [Incremental progress and resets](#incremental-progress-and-resets).
 
-This setting does **not** cap the total number of indexer searches. TV folders can trigger multiple searches (season-level and per-episode heuristics), but count as a single top-level searchee.
+The setting counts top-level folders, not episodes. It does **not** cap the total number of indexer searches. A TV folder can send one search for each season and one for each episode, but it counts as one searchee. Each of these searches waits for the [search pacing](#search-pacing) interval.
 
 ### "Only process items changed within the last (days)" explained
 
@@ -381,7 +407,7 @@ curl -X POST "http://localhost:7476/api/dir-scan/webhook/scan?apikey=YOUR_KEY" \
 Each scan moves through these phases:
 
 1. **Scanning**: qui reads the directory contents and builds the searchee list
-2. **Searching**: qui queries indexers for each searchee
+2. **Searching**: qui queries indexers for each searchee. qui waits 60 seconds between the searches for two items, so this phase is usually the longest. See [Search pacing](#search-pacing)
 3. **Injecting**: qui adds matched torrents to qBittorrent
 4. **Final state**: Success, Failed, or Canceled
 
@@ -460,9 +486,13 @@ Expand a run to see each added or failed torrent and its failure reason.
 - Make sure that **qBittorrent Path Prefix** matches how qBittorrent sees the same files.
 - Test with a torrent's save path in the qBittorrent UI.
 
-**Rate limiting:**
+**Rate limiting (HTTP 429):**
 
-- Indexers can throttle requests. Check **Scheduler Activity** on the Indexers page.
-- Reduce the scan frequency or limit the scan to fewer indexers.
+When an indexer answers 429 (Too Many Requests), qui blocks the indexer for the time that the answer gives. The scan continues without that indexer, so it can miss matches from that tracker. The files stay pending, and the next scan searches them again.
+
+- Open **Scheduler Activity** on the Indexers page to see which indexers are blocked and until when.
+- The 429 can come from Prowlarr, not from the tracker. Prowlarr sends its own 429 when an indexer reaches its **Query Limit** in Prowlarr, or when Prowlarr disabled the indexer after failures. Open the indexer in Prowlarr and look at its limits and its status.
+- Dir Scan has no indexer selection. It searches every enabled indexer that supports the content type. To remove an indexer from Dir Scan, disable it in **Settings > Indexers**. This also removes it from all other searches in qui.
+- To send fewer searches, keep scans short. See [Search pacing](#search-pacing).
 
 For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](./troubleshooting.md).

@@ -8,14 +8,15 @@ import (
 
 	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/releases"
 )
 
-func TestBuildSafeSearchQuery(t *testing.T) {
+func TestBuildTorznabQueryKeepsParsedSeasonAndEpisode(t *testing.T) {
 	tests := []struct {
 		name            string
 		inputName       string
 		release         rls.Release
-		parsedTitle     string
 		expectedQuery   string
 		expectedSeason  *int
 		expectedEpisode *int
@@ -23,9 +24,9 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 		{
 			name:            "AnimeAbsolute",
 			inputName:       "[Fansub] Example Show - 1140 (1080p) [EEC80774]",
-			release:         rls.Release{Type: rls.Unknown},
-			expectedQuery:   "example show 1140",
-			expectedEpisode: intPtr(1140),
+			release:         *releases.NewDefaultParser().Parse("[Fansub] Example Show - 1140 (1080p) [EEC80774]"),
+			expectedQuery:   "Example Show",
+			expectedEpisode: new(1140),
 		},
 		{
 			// Resolution must never be appended to the query: indexers whose free-text
@@ -41,70 +42,21 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 				Episode:    2,
 				Resolution: "720p",
 			},
-			parsedTitle:     "Some Show",
 			expectedQuery:   "Some Show",
-			expectedSeason:  intPtr(1),
-			expectedEpisode: intPtr(2),
-		},
-		{
-			name:      "MovieFallback",
-			inputName: "Some.Movie.2024.1080p.WEBRip.x264",
-			release: rls.Release{
-				Type:       rls.Movie,
-				Resolution: "1080p",
-			},
-			expectedQuery: "some movie 2024",
-		},
-		{
-			// Non-movie path with no parsed title where cleanAnimeTitle strips
-			// everything: fall back to the original name so the query is never empty.
-			name:          "FallsBackToNameWhenCleanedEmpty",
-			inputName:     "[Group][1080p]",
-			release:       rls.Release{Type: rls.Unknown},
-			expectedQuery: "[Group][1080p]",
+			expectedSeason:  new(1),
+			expectedEpisode: new(2),
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			q := buildSafeSearchQuery(tc.inputName, &tc.release, tc.parsedTitle)
+			q := BuildTorznabQuery(tc.inputName, &tc.release, false)
 
 			require.Equal(t, tc.expectedQuery, q.Query)
 			require.Equal(t, tc.expectedSeason, q.Season)
 			require.Equal(t, tc.expectedEpisode, q.Episode)
 		})
 	}
-}
-
-func TestParseEpisodeNumber(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{input: "1080", want: 0},
-		{input: "2025", want: 0},
-		{input: "999", want: 999},
-		{input: "5000", want: 5000},
-		{input: "5001", want: 0},
-		{input: "720", want: 0},
-		{input: "2160", want: 0},
-		{input: "4320", want: 0},
-		{input: "1899", want: 1899},
-		{input: "1900", want: 0},
-		{input: "2100", want: 0},
-		{input: "2101", want: 2101},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.input, func(t *testing.T) {
-			require.Equal(t, tc.want, parseEpisodeNumber(tc.input))
-		})
-	}
-}
-
-func intPtr(v int) *int {
-	value := v
-	return &value
 }
 
 func TestBuildTorznabQueryOmitsYearForMovies(t *testing.T) {
@@ -133,7 +85,7 @@ func TestBuildTorznabQueryFallsBackToName(t *testing.T) {
 
 	got := BuildTorznabQuery("  Untitled Thing  ", &release, false)
 
-	require.Equal(t, "untitled thing", got.Query)
+	require.Equal(t, "Untitled Thing", got.Query)
 }
 
 func TestBuildTorznabQueryKeepsSeasonNumeral(t *testing.T) {
@@ -142,5 +94,5 @@ func TestBuildTorznabQueryKeepsSeasonNumeral(t *testing.T) {
 	got := BuildTorznabQuery("[GRP] Kaiju Squad 100 III (BD 1080p HEVC FLAC) [Dual-Audio]", &release, false)
 
 	require.Equal(t, "Kaiju Squad 100 III", got.Query)
-	require.Equal(t, intPtr(3), got.Season)
+	require.Equal(t, new(3), got.Season)
 }

@@ -144,7 +144,7 @@ type DirScanFile struct {
 	FilePath           string            `json:"filePath"`
 	FileSize           int64             `json:"fileSize"`
 	FileModTime        time.Time         `json:"fileModTime"`
-	FileID             []byte            `json:"-"` // Platform-neutral FileID (dev+ino on Unix, volume serial+128-bit ID on Windows)
+	FileID             []byte            `json:"-"` // hardlink.FileID.Bytes(): one kind byte plus 24 identity bytes
 	Status             DirScanFileStatus `json:"status"`
 	MatchedTorrentHash string            `json:"matchedTorrentHash,omitempty"`
 	MatchedIndexerID   *int              `json:"matchedIndexerId,omitempty"`
@@ -544,6 +544,7 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		return nil, err
 	}
 
+	previousTargetInstanceID := existing.TargetInstanceID
 	applyDirectoryUpdateParams(existing, params)
 	if err := s.ensureUniqueDirectoryPath(ctx, existing.Path, id); err != nil {
 		return nil, err
@@ -571,7 +572,22 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		return nil, fmt.Errorf("marshal allowed download clients: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Stored file IDs only mean the same file on the filesystem the old target
+	// instance read them from, so rename detection must not reuse them. The clear
+	// commits with the directory row, so a rejected update keeps the IDs.
+	if params.TargetInstanceID != nil && *params.TargetInstanceID != previousTargetInstanceID {
+		if _, err := tx.ExecContext(ctx, `UPDATE dir_scan_files SET file_id = NULL WHERE directory_id = ?`, id); err != nil {
+			return nil, fmt.Errorf("clear file ids: %w", err)
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		UPDATE dir_scan_directories
 		SET path = ?,
 		    qbit_path_prefix = ?,
@@ -588,6 +604,9 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, boolToInt(existing.SkipIndividualEpisodes), id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit directory update: %w", err)
 	}
 
 	return s.GetDirectory(ctx, id)

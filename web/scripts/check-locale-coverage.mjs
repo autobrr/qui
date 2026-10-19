@@ -39,19 +39,19 @@ const namespaces = [
 
 // These technical terms, brand names, and abbreviations can stay untranslated.
 const passthroughTerms = new Set([
-  "qBittorrent", "BitTorrent", "autobrr", "qui", "GitHub",
+  "qBittorrent", "BitTorrent", "libtorrent", "autobrr", "qui", "GitHub", "WebUI",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
   "OpenID Connect", "OIDC", "OpenID",
   "DHT", "PEX", "UPnP", "NAT-PMP", "RSS", "SSE", "PWA",
   "TMM", "AutoTMM", "IPv4", "IPv6", "TCP", "UDP", "UTP",
-  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS5",
+  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS4", "SOCKS5", "SMTP", "SMTPS", "STARTTLS",
   "API", "JSON", "CSV", "URL", "IMDb", "TVDb",
   "Torznab", "Gazelle", "OPS", "RED",
   "FLAC", "MP3", "MKV", "REPACK", "PROPER",
   "Freeleech", "cross-seed",
   "KB/s", "MB/s", "KiB", "MiB", "GiB", "TiB",
   "KB", "MB", "GB", "TB", "B/s",
-  "AM", "PM", "N/A", "I/O",
+  "AM", "PM", "N/A", "I/O", "Pread/pwrite",
   "GPL-2.0-or-later",
 ])
 

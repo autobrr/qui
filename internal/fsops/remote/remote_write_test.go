@@ -104,7 +104,10 @@ func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
 	writeFile(t, remotePath(sub, "f"), "x")
 
 	// Callers classify on ENOTEMPTY, which SSH_FX_FAILURE alone does not carry.
-	require.ErrorIs(t, b.Remove(t.Context(), sub, fsops.RemoveOptions{}), syscall.ENOTEMPTY)
+	// fsops.IsDirNotEmpty reads only the code, so this is all it can match.
+	removeErr := b.Remove(t.Context(), sub, fsops.RemoveOptions{})
+	require.ErrorIs(t, removeErr, syscall.ENOTEMPTY)
+	require.True(t, fsops.IsDirNotEmpty(removeErr))
 	_, err := os.Stat(sub)
 	require.NoError(t, err)
 
@@ -249,7 +252,7 @@ func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
 
 	created, err := b.HardlinkTree(t.Context(), plan)
-	require.Error(t, err)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists, "link mode tells this case from other create errors")
 	assert.Nil(t, created)
 
 	_, err = os.Lstat(plan.Files[0].TargetPath)

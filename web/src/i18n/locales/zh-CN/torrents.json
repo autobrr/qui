@@ -824,6 +824,11 @@
       "moving": "移动中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到种子",
+    "noFilterMatches": "没有符合当前筛选器的种子",
+    "noSearchMatches": "没有符合当前搜索的种子"
+  },
   "filterSidebar": {
     "views": {
       "title": "视图",
@@ -1288,6 +1293,7 @@
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",
+    "loadFailed": "无法检查交叉做种匹配。请重新加载后重试。",
     "toast": {
       "savePathCopied": "保存路径已复制",
       "copyFailed": "复制失败"

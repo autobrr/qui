@@ -100,6 +100,14 @@ type Service struct {
 	// Global run semaphore to cap concurrent scans.
 	runSem chan struct{}
 
+	// searchSlot lets one item search at a time across runs, so the interval
+	// wait and the searches of two runs do not overlap.
+	searchSlot chan struct{}
+
+	// lastSearchAt is when the previous item's search ended, across runs. The
+	// search slot serializes access.
+	lastSearchAt time.Time
+
 	activityPublisher activity.Publisher
 }
 
@@ -166,6 +174,7 @@ func NewService(
 		cancelFuncs:               make(map[int64]context.CancelFunc),
 		runProgress:               make(map[int64]*runProgress),
 		runSem:                    make(chan struct{}, cfg.MaxConcurrentRuns),
+		searchSlot:                make(chan struct{}, 1),
 		activityPublisher:         activity.NopPublisher{},
 	}
 }
@@ -880,7 +889,7 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the raw scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
 	if s.backendPool == nil {
 		l.Error().Msg("dirscan: backend pool not configured")
 		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
@@ -900,11 +909,11 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.
-	fileIDIndex := make(map[string]string)
+	fileIDIndex := &seedingIndex{}
 	if s.syncManager != nil {
 		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, backend, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
-		} else if len(index) > 0 {
+		} else if index.len() > 0 {
 			fileIDIndex = index
 			scanner.SetFileIDIndex(index)
 		}
@@ -940,7 +949,7 @@ func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	workSelection scanWorkSelection,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	trackedFiles *trackedFilesIndex,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
@@ -1022,7 +1031,7 @@ func (s *Service) processRootSearchee(
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
 	workItems []searcheeWorkItem,
-	fileIDIndex map[string]string,
+	fileIDIndex *seedingIndex,
 	trackedFiles *trackedFilesIndex,
 	injectedTVGroups map[tvGroupKey]struct{},
 	settings *models.DirScanSettings,
@@ -1518,15 +1527,15 @@ func (s *Service) recoverStuckRuns() error {
 	return nil
 }
 
-func isAlreadySeedingByFileID(searchee *Searchee, index map[string]string) bool {
-	if searchee == nil || len(searchee.Files) == 0 || len(index) == 0 {
+func isAlreadySeedingByFileID(searchee *Searchee, index *seedingIndex) bool {
+	if searchee == nil || len(searchee.Files) == 0 || index.len() == 0 {
 		return false
 	}
 	for _, f := range searchee.Files {
-		if f == nil || f.FileID.IsZero() {
+		if f == nil {
 			return false
 		}
-		if _, ok := index[string(f.FileID.Bytes())]; !ok {
+		if _, ok := index.hash(f.FileID); !ok {
 			return false
 		}
 	}
@@ -1822,6 +1831,19 @@ func (s *Service) searchWithRetries(
 	minSize, maxSize int64,
 	l *zerolog.Logger,
 ) (*jackett.SearchResponse, error) {
+	if s.searchSlot != nil {
+		select {
+		case s.searchSlot <- struct{}{}:
+			defer func() { <-s.searchSlot }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := s.waitForSearchInterval(ctx); err != nil {
+		return nil, err
+	}
+	defer func() { s.lastSearchAt = time.Now() }()
+
 	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
 	if err != nil || response == nil {
 		return response, err
@@ -1861,6 +1883,23 @@ func (s *Service) searchWithRetries(
 	}
 
 	return response, nil
+}
+
+// waitForSearchInterval waits until the Library Scan minimum interval has passed
+// since the previous item's search ended. The search queue does not pace
+// indexers behind Prowlarr or Jackett, so this wait is the only pacing they get.
+func (s *Service) waitForSearchInterval(ctx context.Context) error {
+	wait := time.Until(s.lastSearchAt.Add(crossseed.MinTorznabSearchInterval))
+	if wait <= 0 {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
 }
 
 // retrySearchPasses lists the query variants to try, in order, when a search

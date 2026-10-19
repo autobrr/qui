@@ -23,12 +23,12 @@ func TestScanWalker_ShouldSkipDuplicate(t *testing.T) {
 	t.Parallel()
 
 	w := &scanWalker{
-		seenFileIDs: make(map[hardlink.FileID]struct{}),
+		seenFileIDs: make(map[fsops.FileKey]struct{}),
 	}
 
 	// Single-link file (nlink=1) seen twice: same file reachable through a
 	// second path (bind mount, mergerfs branch) — the alias is a dup (#1212).
-	fid := hardlink.FileID{Dev: 1, Ino: 42}
+	fid := hardlink.UnixFileID(1, 42)
 	if w.shouldSkipDuplicate(fid, 1) {
 		t.Fatal("first occurrence should not be skipped")
 	}
@@ -37,7 +37,7 @@ func TestScanWalker_ShouldSkipDuplicate(t *testing.T) {
 	}
 
 	// Hardlinked file (nlink > 1): distinct directory entries, never deduped.
-	fid2 := hardlink.FileID{Dev: 1, Ino: 99}
+	fid2 := hardlink.UnixFileID(1, 99)
 	if w.shouldSkipDuplicate(fid2, 3) {
 		t.Fatal("hardlinked file should not be skipped")
 	}
@@ -48,6 +48,15 @@ func TestScanWalker_ShouldSkipDuplicate(t *testing.T) {
 	// Zero FileID: never skip.
 	if w.shouldSkipDuplicate(hardlink.FileID{}, 1) {
 		t.Fatal("zero FileID should not be skipped")
+	}
+
+	// A remote ID with no instance has no filesystem scope, so it says
+	// nothing about which file it names: two such files are not aliases.
+	if w.shouldSkipDuplicate(hardlink.RemoteFileID([]byte{1}), 1) {
+		t.Fatal("first unscoped remote file should not be skipped")
+	}
+	if w.shouldSkipDuplicate(hardlink.RemoteFileID([]byte{2}), 1) {
+		t.Fatal("a different unscoped remote file should not be skipped")
 	}
 }
 
@@ -61,7 +70,7 @@ func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {
 	tfm := NewTorrentFileMap(fsops.HostPaths)
 	tfm.Add(inUsePath)
 
-	fid := hardlink.FileID{Dev: 1, Ino: 2}
+	fid := hardlink.UnixFileID(1, 2)
 	old := time.Now().Add(-time.Hour)
 	backend := &fakeWalkBackend{
 		Backend: newTestBackend(),
@@ -71,7 +80,7 @@ func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {
 		},
 	}
 
-	orphans, _, err := walkScanRoot(t.Context(), root, tfm, nil, 0, 0, backend)
+	orphans, _, err := walkScanRoot(t.Context(), root, tfm, nil, 0, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -105,7 +114,7 @@ func TestScanWalker_HardlinkOrphansReportedPerPath(t *testing.T) {
 
 	orphans, _, err := walkScanRoot(
 		t.Context(), root, tfm, nil, 0, 100,
-		newTestBackend(),
+		newTestBackend(), nil,
 	)
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)

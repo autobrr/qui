@@ -46,6 +46,7 @@ const testInstanceSchema = `
 		ssh_username TEXT NOT NULL DEFAULT '',
 		ssh_key_encrypted TEXT NOT NULL DEFAULT '',
 		ssh_host_key_encrypted TEXT NOT NULL DEFAULT '',
+		ssh_tier TEXT NOT NULL DEFAULT 'sftp',
 		FOREIGN KEY (name_id) REFERENCES string_pool(id),
 		FOREIGN KEY (host_id) REFERENCES string_pool(id),
 		FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -75,7 +76,8 @@ const testInstanceSchema = `
 		i.ssh_port,
 		i.ssh_username,
 		i.ssh_key_encrypted,
-		i.ssh_host_key_encrypted
+		i.ssh_host_key_encrypted,
+		i.ssh_tier
 	FROM instances i
 	LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
 	LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
