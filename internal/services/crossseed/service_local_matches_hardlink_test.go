@@ -84,6 +84,7 @@ func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 		sourceInstanceID:      1,
 		sourceHash:            hlSourceHash,
 		sourceSavePath:        sourceDir,
+		sourceContentPath:     sourceDir,
 		sourceHasFileIdentity: true,
 		sourceLocal:           true,
 	}
@@ -134,6 +135,23 @@ func TestLocalLinkedMatchType_SeparateCopy_NoUpgrade(t *testing.T) {
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+}
+
+func TestLocalLinkedMatchType_LinkedSubtitleOnly_NoUpgrade(t *testing.T) {
+	// The videos differ. Only the subtitle is a hardlink, and subtitles do not count.
+	sourceDir, candidateDir := writeHardlinkFixture(t, "Movie.2023.1080p.WEB.srt", true)
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "Movie.2023.1080p.WEB.mkv"), []byte("data"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(candidateDir, "Movie.2023.1080p.WEB.mkv"), []byte("other!"), 0o600))
+
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    {{Name: "Movie.2023.1080p.WEB.mkv", Size: 4}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+		normalizeHash(hlCandidateHash): {{Name: "Movie.2023.1080p.WEB.mkv", Size: 6}, {Name: "Movie.2023.1080p.WEB.srt", Size: 4}},
+	})
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.NoError(t, matchCtx.verificationErr)
 }
 
 func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
@@ -196,9 +214,9 @@ func TestLocalLinkedMatchType_EmptyCandidateFileList_RecordedForStrictMode(t *te
 }
 
 func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
-	// A metadata-less magnet source (empty content path, empty file list) matching a
-	// candidate by name must not attempt the hardlink check: it has no files on disk,
-	// and stamping its empty file list as sourceFilesErr would fail strict delete dialogs.
+	// A metadata-less magnet source (empty content path, empty file list) holds no
+	// data, so it has no cross-seeds. Its empty file list must not be fetched and
+	// stamped as sourceFilesErr, which would fail strict delete dialogs.
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
@@ -213,6 +231,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 	}
 	instance := &models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true}
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	matchCtx.sourceContentPath = ""
 
 	matches := svc.matchTorrentsInInstance(
 		context.Background(), nil, instance,
@@ -222,8 +241,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 		"", matchCtx,
 	)
 
-	require.Len(t, matches, 1)
-	require.Equal(t, matchTypeName, matches[0].MatchType)
+	require.Empty(t, matches)
 	require.NoError(t, matchCtx.sourceFilesErr)
 	require.NoError(t, matchCtx.candidateFilesErr)
 }
@@ -422,4 +440,78 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 		return true
 	}))
 	require.Zero(t, visited)
+}
+
+// A delete dialog can add linked matches to the delete, so it counts only
+// identity that qui's own kernel reports. Browsing still reads a remote
+// instance's identity. The remote backend here is the local one, so the
+// files really are hardlinks.
+func TestLocalLinkedMatchType_DeleteDialogNeedsTrustedIdentity(t *testing.T) {
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+	torrentFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    torrentFiles,
+		normalizeHash(hlCandidateHash): torrentFiles,
+	})
+	remoteExec := &models.Instance{ID: 2, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
+	svc.SetBackendPool(fsops.NewPoolWithRemote(&mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {ID: 1, HasLocalFilesystemAccess: true},
+			2: remoteExec,
+		},
+	}, local.NewBackend(), func(*models.Instance) fsops.Backend { return local.NewBackend() }))
+	candidate := hardlinkTestCandidate(candidateDir)
+	candidate.InstanceID = 2
+
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	require.Equal(t, matchTypeHardlink, svc.localLinkedMatchType(matchCtx, remoteExec, candidate), "browsing reads remote identity")
+
+	matchCtx = hardlinkTestMatchCtx(svc, sourceDir)
+	matchCtx.trustedIdentityOnly = true
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, remoteExec, candidate), "a delete dialog never trusts remote identity")
+}
+
+// The delete dialog admits instances from the list it loaded at the start. If
+// one left local mode since, its backend now answers from the SSH host, so the
+// lookup must fail rather than count that answer. The remote backend here is
+// the local one, so the files really are hardlinks.
+func TestLocalLinkedMatchType_DeleteDialogRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
+	remoteExec := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
+	for _, tc := range []struct {
+		name   string
+		leftID int
+	}{
+		{name: "source", leftID: 1},
+		{name: "candidate", leftID: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fileName := "Movie.2023.1080p.WEB.mkv"
+			sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+			torrentFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+			svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+				normalizeHash(hlSourceHash):    torrentFiles,
+				normalizeHash(hlCandidateHash): torrentFiles,
+			})
+			rows := map[int]*models.Instance{
+				1: {ID: 1, HasLocalFilesystemAccess: true},
+				2: {ID: 2, HasLocalFilesystemAccess: true},
+			}
+			left := *remoteExec
+			left.ID = tc.leftID
+			rows[tc.leftID] = &left
+			svc.SetBackendPool(fsops.NewPoolWithRemote(&mockInstanceStore{instances: rows},
+				local.NewBackend(), func(*models.Instance) fsops.Backend { return local.NewBackend() }))
+			candidate := hardlinkTestCandidate(candidateDir)
+			candidate.InstanceID = 2
+
+			matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+			matchCtx.trustedIdentityOnly = true
+			loaded := &models.Instance{ID: 2, HasLocalFilesystemAccess: true}
+			require.Empty(t, svc.localLinkedMatchType(matchCtx, loaded, candidate))
+			require.Error(t, matchCtx.verificationErr, "the dialog must fail the check, not read no cross-seeds")
+		})
+	}
 }

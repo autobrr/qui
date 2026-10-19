@@ -20,8 +20,8 @@ import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDiscScans } from "@/hooks/useDiscScans"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
+import { useQueueLimits } from "@/hooks/usePreferenceValues"
 import { scheduleTorrentListRefetches } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
@@ -89,7 +89,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [peersToAdd, setPeersToAdd] = useState("")
   const [peerToBan, setPeerToBan] = useState<SortedPeer | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const queueLimits = useQueueLimits(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const queryClient = useQueryClient()
   const [speedUnit] = useSpeedUnits()
@@ -207,7 +207,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
   // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
-  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -470,6 +470,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
 
   // flag-icons inlines 400 flags as data URIs, 73% of the boot stylesheet; load it with the tab.
+  // Not emoji flags: Windows has no flag glyphs and shows the letters, such as "US".
   useEffect(() => {
     // offline PWA: the CSS is not precached, flags just render unstyled
     if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
@@ -942,7 +943,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 displayInfohashV2={displayInfohashV2}
                 displayComment={displayComment}
                 displayCreatedBy={displayCreatedBy}
-                queueingEnabled={metadata?.preferences?.queueing_enabled}
+                queueingEnabled={queueLimits.enabled}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1135,7 +1136,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         </div>
                       </div>
 
-                      {metadata?.preferences?.queueing_enabled && (
+                      {queueLimits.enabled && (
                         <div className="space-y-3">
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.queueManagement")}</h3>
                           <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
@@ -1152,28 +1153,28 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 )}
                               </div>
                             </div>
-                            {(metadata.preferences.max_active_downloads > 0 ||
-                              metadata.preferences.max_active_uploads > 0 ||
-                              metadata.preferences.max_active_torrents > 0) && (
+                            {(queueLimits.maxActiveDownloads > 0 ||
+                              queueLimits.maxActiveUploads > 0 ||
+                              queueLimits.maxActiveTorrents > 0) && (
                               <>
                                 <Separator className="opacity-50" />
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                  {metadata.preferences.max_active_downloads > 0 && (
+                                  {queueLimits.maxActiveDownloads > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxDownloads")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveDownloads}</p>
                                     </div>
                                   )}
-                                  {metadata.preferences.max_active_uploads > 0 && (
+                                  {queueLimits.maxActiveUploads > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxUploads")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveUploads}</p>
                                     </div>
                                   )}
-                                  {metadata.preferences.max_active_torrents > 0 && (
+                                  {queueLimits.maxActiveTorrents > 0 && (
                                     <div className="space-y-1">
                                       <p className="text-muted-foreground">{t("detailsPanel.labels.maxActive")}</p>
-                                      <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                      <p className="font-medium">{queueLimits.maxActiveTorrents}</p>
                                     </div>
                                   )}
                                 </div>
@@ -1724,6 +1725,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
+                loadFailed={!!matchesError}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
@@ -1740,6 +1742,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   {isLoadingMatches ? (
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : matchesError ? (
+                    // A refetch that fails keeps the last data: the error wins,
+                    // so the stale matches and their delete actions go away.
+                    <div className="flex items-center justify-center h-32 text-sm text-destructive">
+                      {t("crossSeedTable.loadFailed")}
                     </div>
                   ) : matchingTorrents.length > 0 ? (
                     <div className="space-y-4">

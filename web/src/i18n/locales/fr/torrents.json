@@ -880,6 +880,11 @@
       "moving": "En déplacement"
     }
   },
+  "emptyState": {
+    "noTorrents": "Aucun torrent trouvé",
+    "noFilterMatches": "Aucun torrent ne correspond aux filtres actuels",
+    "noSearchMatches": "Aucun torrent ne correspond à la recherche actuelle"
+  },
   "filterSidebar": {
     "views": {
       "title": "Vues",
@@ -1359,6 +1364,7 @@
       }
     },
     "noMatches": "Aucun torrent correspondant trouvé sur d'autres instances",
+    "loadFailed": "Impossible de vérifier les correspondances cross-seed. Rechargez pour réessayer.",
     "toast": {
       "savePathCopied": "Chemin de sauvegarde copié",
       "copyFailed": "Échec de la copie"

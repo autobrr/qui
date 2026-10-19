@@ -154,7 +154,7 @@ func TestWalkScanRoot_DiscUnitSuppressedWhenAnyContainedFileInUse(t *testing.T) 
 	}
 
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, inUse))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, inUse))
 
 	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend(), nil)
 	if err != nil {
@@ -328,7 +328,7 @@ func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *tes
 	_ = os.Chtimes(extra, old, old)
 
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, extra))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, extra))
 
 	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend(), nil)
 	if err != nil {
@@ -456,7 +456,7 @@ func writeOldFile(t *testing.T, path string) {
 func orphanPaths(orphans []OrphanFile) []string {
 	paths := make([]string, 0, len(orphans))
 	for _, o := range orphans {
-		paths = append(paths, normalizePath(fsops.HostPaths, o.Path))
+		paths = append(paths, fsops.NormalizePath(fsops.HostPaths, o.Path))
 	}
 	return paths
 }
@@ -483,7 +483,7 @@ func TestWalkScanRoot_IgnoresTrashDirs(t *testing.T) {
 
 	paths := orphanPaths(orphans)
 	for _, p := range paths {
-		if strings.Contains(p, normalizePath(fsops.HostPaths, filepath.Join(root, ".Trash-1000"))) {
+		if strings.Contains(p, fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, ".Trash-1000"))) {
 			t.Fatalf("expected .Trash-* to be ignored, got orphan %q", p)
 		}
 	}
@@ -521,7 +521,7 @@ func TestWalkScanRoot_IgnoresKubernetesInternalDirs(t *testing.T) {
 
 	paths := orphanPaths(orphans)
 	for _, p := range paths {
-		if strings.Contains(p, normalizePath(fsops.HostPaths, filepath.Join(root, "..data"))) {
+		if strings.Contains(p, fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "..data"))) {
 			t.Fatalf("expected k8s internal dirs to be ignored, got orphan %q", p)
 		}
 	}
@@ -710,9 +710,9 @@ func TestWalkScanRoot_MixedCaseMarkerOnDisk(t *testing.T) {
 	// The returned unit path should match the actual on-disk directory.
 	expectedUnit := movieDir
 	gotUnit := filepath.Clean(orphans[0].Path)
-	// On case-sensitive systems, exact match. On case-insensitive (Windows/macOS), normalizePath makes them equal.
-	if normalizePath(fsops.HostPaths, gotUnit) != normalizePath(fsops.HostPaths, expectedUnit) {
-		t.Fatalf("expected orphan unit path %q (normalized), got %q (normalized)", normalizePath(fsops.HostPaths, expectedUnit), normalizePath(fsops.HostPaths, gotUnit))
+	// On case-sensitive systems, exact match. On case-insensitive (Windows/macOS), fsops.NormalizePath makes them equal.
+	if fsops.NormalizePath(fsops.HostPaths, gotUnit) != fsops.NormalizePath(fsops.HostPaths, expectedUnit) {
+		t.Fatalf("expected orphan unit path %q (normalized), got %q (normalized)", fsops.NormalizePath(fsops.HostPaths, expectedUnit), fsops.NormalizePath(fsops.HostPaths, gotUnit))
 	}
 	// Verify the marker directory exists with the actual on-disk casing.
 	if _, err := os.Stat(bdmvDir); err != nil {
@@ -1001,7 +1001,7 @@ func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
 
 			tfm := NewTorrentFileMap(fsops.HostPaths)
 			for _, rel := range tt.inUse {
-				tfm.Add(normalizePath(fsops.HostPaths, filepath.Join(root, filepath.FromSlash(rel))))
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, filepath.FromSlash(rel))))
 			}
 
 			// Map order decides the fold, so repeat to hit every order.

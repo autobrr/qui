@@ -1,6 +1,6 @@
 # Issue tracker: GitHub Discussions, then Issues
 
-Bug reports and feature requests arrive as GitHub Discussions in the categories Issue Triage and Feature Requests, Ideas. Discussions are the triage surface. Issues hold only work that an agent or a human can start: a discussion that reaches `ready-for-agent` gets a linked issue. Specs and tickets from `/to-spec`, `/to-tickets`, and `/wayfinder` are issues.
+Bug reports and feature requests arrive as GitHub Discussions in the categories Issue Triage and Feature Requests, Ideas. Discussions are the triage surface. Issues hold only work that an agent or a human can start: a confirmed bug gets a linked issue in `ready-for-agent` or `ready-for-human`. Specs and tickets from `/to-spec`, `/to-tickets`, and `/wayfinder` are issues.
 
 Use the `gh` CLI for all operations. GitHub shares one number space across discussions and issues. Resolve a bare `#42` in one call: `gh api graphql -f query='{repository(owner:"autobrr",name:"qui"){issueOrPullRequest(number:42){__typename} discussion(number:42){title}}}'`. The command exits non-zero when one side is missing; read `data` anyway. `__typename` tells an issue from a PR.
 
@@ -18,7 +18,7 @@ Use the `gh` CLI for all operations. GitHub shares one number space across discu
   ```
 
   Reasons: `RESOLVED`, `OUTDATED`, `DUPLICATE`.
-- **Promote to issue** (`bug` only, see `docs/agents/triage.md`): `gh issue create --title "..." --label ready-for-agent --body "..."` with `From discussion #<number>` as the last line of the body. Then comment the issue URL on the discussion and close the discussion with reason `RESOLVED`.
+- **Promote to issue** (`bug` only, see `docs/agents/triage.md`): `gh issue create --title "..." --label <ready-for-agent|ready-for-human> --body "..."` with `From discussion #<number>` as the last line of the body. Then comment the issue URL on the discussion and close the discussion with reason `RESOLVED`.
 
 In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writes and binds them to the discussion under triage. The playbook in `docs/agents/triage.md` is the process.
 

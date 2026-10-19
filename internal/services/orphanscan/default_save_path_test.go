@@ -310,7 +310,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	}
 
 	protected := filepath.Join(otherSavePath, "two.mkv")
-	if !result.fileMap.Has(normalizePath(fsops.HostPaths, protected)) {
+	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, protected)) {
 		t.Fatalf("file %q seeded by the other local instance is not protected inside the default save path", protected)
 	}
 }

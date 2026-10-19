@@ -448,7 +448,15 @@ func (s *Service) processLinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg(logPrefix + "failed to create link tree, aborting")
-		return handleCreateError(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
+		handle := handleCreateError
+		if errors.Is(err, hardlinktree.ErrTargetExists) {
+			// The target dir already holds a file: a crashed earlier run or a
+			// second tracker sharing the link path. Falling back would add the
+			// torrent in regular mode inside the matched torrent's path and leave
+			// the partial tree, so refuse and let the user clean up (#2942).
+			handle = handleMaterializationError
+		}
+		return handle(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
 	}
 
 	// Ensure cross-seed category exists with the correct save path derived from

@@ -1642,8 +1642,7 @@ paths:
         are in `data.torrents` or `data.cross_instance_torrents`, respectively.
         The other `data` fields follow the torrent list response.
 
-        In a delta, omitted `counts` and `preferences` retain their previous
-        values. Explicit `preferences: null` clears preferences. Omitted
+        In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
 
         `stream-error` contains an `error` message and optional retry metadata.
@@ -1753,10 +1752,6 @@ paths:
                     type: integer
                   limit:
                     type: integer
-                  preferences:
-                    type: object
-                    nullable: true
-                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -3237,22 +3232,33 @@ paths:
       tags:
         - Instances
       summary: Get instance preferences
-      description: Get qBittorrent instance preferences/settings
+      description: |
+        Get the preference catalog view of the qBittorrent preferences. The list holds
+        each preference that this qBittorrent sent and that qui shows, in display order.
+        A preference is left out when its libtorrent or platform gate does not match the
+        qBittorrent build. The view never holds the qBittorrent API key.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
-          description: Instance preferences
+          description: Preference fields
           content:
             application/json:
               schema:
-                type: object
-                description: qBittorrent preferences object with various settings
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
     patch:
       tags:
         - Instances
       summary: Update instance preferences
-      description: Update qBittorrent instance preferences/settings
+      description: |
+        Write only the changed preferences. The server rejects the whole patch, and sends
+        nothing to qBittorrent, when a key is unknown, read-only, or not shown, or when a
+        value has the wrong type. It does not check ranges. The server accepts a key that the
+        GET view leaves out because qBittorrent did not send it, or because its libtorrent
+        or platform gate does not match. qBittorrent ignores or stores that value, and the
+        value has no effect.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -3261,10 +3267,69 @@ paths:
           application/json:
             schema:
               type: object
-              description: Partial preferences object with settings to update
+              description: The changed preferences, keyed by the qBittorrent preference key.
+              additionalProperties: true
       responses:
         '200':
-          description: Preferences updated successfully
+          description: Preferences saved. The body is the new view.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreferenceField'
+        '400':
+          description: The patch has a rejected key or value. The body names the key and the reason.
+        '500':
+          description: The save failed in qBittorrent.
+
+  /api/instances/{instanceID}/preferences/test-email:
+    post:
+      tags:
+        - Instances
+      summary: Send a test email
+      description: |
+        Ask qBittorrent to send a test email with its saved email notification settings.
+        qBittorrent sends nothing when email notification is off. A success means only that
+        qBittorrent queued the email, not that the email went out. qBittorrent writes SMTP
+        errors to its log. Requires qBittorrent 5.0 or later (WebAPI 2.11.2); see
+        `supportsTestEmail` in the instance capabilities.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '204':
+          description: qBittorrent queued the test email.
+        '400':
+          description: Invalid instance ID, or the qBittorrent version is older than 5.0.
+        '500':
+          description: qBittorrent did not accept the request.
+
+  /api/instances/{instanceID}/network-binding:
+    get:
+      tags:
+        - Instances
+      summary: Get the network binding options
+      description: |
+        List the network interfaces that qBittorrent can bind to, each with its IP addresses.
+        "Any interface" comes first. When qBittorrent does not list the saved interface or the
+        saved address, the list holds it with `available` false. The saved address is in the
+        list of the saved interface. The values `""`, `0.0.0.0`, and `::` mean all addresses,
+        all IPv4 addresses, and all IPv6 addresses, and are not in the address lists.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Network interfaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NetworkBindingInterface'
+        '400':
+          description: Invalid instance ID.
+        '500':
+          description: qBittorrent did not list the interfaces or the addresses.
 
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
@@ -7129,15 +7194,18 @@ components:
 
     FilesystemCapabilities:
       type: object
-      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all four; a remote instance has `read` only.
-      required: [read, identity, write, content]
+      description: What qui can do with this instance's files, derived from `filesystemMode`. A local instance has all five. A remote instance has `read`, and `identity` when its SSH key can run GNU find and stat.
+      required: [read, identity, trustedIdentity, write, content]
       properties:
         read:
           type: boolean
           description: qui can list, stat, and walk paths.
         identity:
           type: boolean
-          description: qui trusts file identity (device and inode) to find hardlinks.
+          description: qui reads file identity (device and inode) to find hardlinks, for matching and deduplication.
+        trustedIdentity:
+          type: boolean
+          description: The file identity comes from the qui host's own kernel, so it can add torrents to a delete, as the include-hardlinks delete option and the hardlink scope conditions do. Only a local instance has it.
         write:
           type: boolean
           description: qui can create and remove hardlink and reflink trees.
@@ -7239,6 +7307,94 @@ components:
           type: string
           description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
+    PreferenceField:
+      type: object
+      description: One qBittorrent preference in the preference catalog view.
+      required:
+        - key
+        - value
+        - tab
+        - section
+        - control
+      properties:
+        key:
+          type: string
+          description: The qBittorrent preference key.
+        value:
+          description: The value that qBittorrent sent, in the wire unit.
+        tab:
+          type: string
+          enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]
+        section:
+          type: string
+          description: The section of the tab.
+        control:
+          type: string
+          enum: [switch, number, text, password, select, path, list, watchFolders]
+        wireUnit:
+          type: string
+          description: The unit of the value, for example B/s.
+        displayUnit:
+          type: string
+          description: The unit that qui shows, for example KiB/s.
+        optionSource:
+          type: string
+          enum: [fixed, pathAutocomplete, networkInterfaces, interfaceAddresses]
+          description: |
+            Where the options come from. A select with `networkInterfaces` or
+            `interfaceAddresses` gets its options from the network binding route.
+        options:
+          type: array
+          description: The values of a select with a fixed option list that this build supports.
+          items: {}
+        dependsOn:
+          type: string
+          description: The switch preference that enables this field.
+        readOnly:
+          type: boolean
+          description: True when a user cannot change the preference in qui.
+        reason:
+          type: string
+          description: Why the preference is read-only.
+
+    NetworkBindingInterface:
+      type: object
+      description: |
+        One network interface that qBittorrent can bind to. The interface with the empty
+        value is "Any interface", and its addresses are the addresses of all interfaces.
+      required:
+        - name
+        - value
+        - available
+        - addresses
+      properties:
+        name:
+          type: string
+          description: |
+            The readable name of the interface. Empty for "Any interface". For a saved
+            interface that is not available, the name comes from `current_interface_name`
+            (qBittorrent 4.6 and later), else it is the value.
+        value:
+          type: string
+          description: The system name, the value of `current_network_interface`.
+        available:
+          type: boolean
+          description: False for a saved interface that qBittorrent does not list.
+        addresses:
+          type: array
+          items:
+            type: object
+            required:
+              - address
+              - available
+            properties:
+              address:
+                type: string
+                description: An IP address, the value of `current_interface_address`.
+              available:
+                type: boolean
+                description: False for a saved address that qBittorrent does not list for this interface.
+
     InstanceCapabilities:
       type: object
       properties:
@@ -7278,6 +7434,21 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsTorrentTmpPath:
+          type: boolean
+          description: Whether the instance accepts a temporary download path when a torrent is added (WebAPI 2.8.4+).
+        supportsPathAutocomplete:
+          type: boolean
+          description: Whether the instance can list folders for path autocomplete (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsTestEmail:
+          type: boolean
+          description: Whether the instance can send a test email (WebAPI 2.11.2+, qBittorrent 5.0+).
+        supportsFreeSpacePathSource:
+          type: boolean
+          description: Whether qui can read the free space of a path on its own host. False when qui runs on Windows.
+        supportsSetRSSFeedURL:
+          type: boolean
+          description: Whether the instance can change the URL of an RSS feed (WebAPI 2.9.1+).
         supportsShareLimitsAction:
           type: boolean
           description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).

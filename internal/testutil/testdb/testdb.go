@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -168,15 +169,84 @@ var migratedTemplatePath = sync.OnceValues(func() (string, error) {
 	return cachedTemplate(dir, database.SQLiteMigrations(), buildMigratedTemplate)
 })
 
+// templateCacheDir returns QUI_TESTDB_CACHE_DIR when it is set. Otherwise it
+// returns qui/testdb in the user cache directory, or a private per-user
+// directory under the temp directory when the user cache directory cannot be
+// found or created (a sandbox with a read-only or missing HOME, such as the
+// Nix builder).
 func templateCacheDir() (string, error) {
 	if dir := os.Getenv(cacheDirEnv); dir != "" {
 		return dir, nil
 	}
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("find template cache dir (set %s): %w", cacheDirEnv, err)
+	if cache, err := os.UserCacheDir(); err == nil {
+		dir := filepath.Join(cache, "qui", "testdb")
+		if err := os.MkdirAll(dir, 0o700); err == nil {
+			return dir, nil
+		}
 	}
-	return filepath.Join(dir, "qui", "testdb"), nil
+	dir := filepath.Join(os.TempDir(), "qui-testdb-"+fallbackDirSuffix())
+	if err := ensurePrivateDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+func fallbackDirSuffix() string {
+	if uid := os.Getuid(); uid >= 0 {
+		return strconv.Itoa(uid)
+	}
+	name := os.Getenv("USERNAME")
+	if name == "" {
+		name = os.Getenv("USER")
+	}
+	return sanitizeFallbackUser(name)
+}
+
+func sanitizeFallbackUser(name string) string {
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if s == "" {
+		return "user"
+	}
+	return s
+}
+
+// ensurePrivateDir creates dir at 0700, or accepts an existing directory that
+// is private to the current user. Lstat, not Stat: a symlink to a directory
+// the current user owns would otherwise pass while still pointing at another
+// user's tree.
+func ensurePrivateDir(dir string) error {
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create testdb cache fallback %s: %w", dir, err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return fmt.Errorf("stat testdb cache fallback %s: %w", dir, err)
+	}
+	return checkPrivateDir(dir, info)
+}
+
+func checkPrivateDir(path string, info os.FileInfo) error {
+	if info.Mode().Type() == os.ModeSymlink {
+		return fmt.Errorf("testdb cache fallback %s is a symlink", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("testdb cache fallback %s is not a directory", path)
+	}
+	return checkPrivateDirPlatform(path, info)
 }
 
 // cachedTemplate returns the template in dir that matches migrations, and

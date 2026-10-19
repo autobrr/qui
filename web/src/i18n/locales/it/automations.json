@@ -222,7 +222,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Richiede qBittorrent 5.1+",
-      "localFilesystemAccess": "Richiede l'accesso al filesystem locale"
+      "localFilesystemAccess": "Richiede l'accesso al filesystem locale",
+      "remoteInstance": "Non disponibile sulle istanze remote"
     }
   }
 }

@@ -824,6 +824,11 @@
       "moving": "移動中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到種子",
+    "noFilterMatches": "沒有符合目前篩選器的種子",
+    "noSearchMatches": "沒有符合目前搜尋的種子"
+  },
   "filterSidebar": {
     "views": {
       "title": "檢視",
@@ -1288,6 +1293,7 @@
       }
     },
     "noMatches": "未在其他實例上找到匹配的種子",
+    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。",
     "toast": {
       "savePathCopied": "儲存路徑已複製",
       "copyFailed": "複製失敗"

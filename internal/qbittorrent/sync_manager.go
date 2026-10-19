@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -30,16 +29,11 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
-
-// backendPoolGetter provides filesystem backends per instance.
-type backendPoolGetter interface {
-	Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error)
-}
 
 // FilesManager interface for caching torrent files.
 // IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
@@ -259,9 +253,7 @@ type InstanceError struct {
 }
 
 // TorrentResponse contains a page of torrent rows plus sidebar, instance, and
-// qBittorrent metadata for the same view. Preferences use a tri-state JSON
-// contract: omitted means leave any existing frontend cache unchanged, a value
-// replaces the cache, and explicit null clears stale cached preferences.
+// qBittorrent metadata for the same view.
 type TorrentResponse struct {
 	Torrents              []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -282,36 +274,6 @@ type TorrentResponse struct {
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
-	// AppPreferences is pre-marshaled, so this type needs no MarshalJSON of its
-	// own. It must stay last: that is where the marshaler it replaced put the key.
-	AppPreferences json.RawMessage `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
-}
-
-// torrentResponseAppPreferences resolves the tri-state preferences field for a
-// torrent response, already rendered to JSON: a nil result omits it, "null"
-// clears the stale frontend cache, and a value replaces it. A fresh fetch
-// failure with no cached preferences becomes the explicit null; cache-only
-// responses omit the field when no cached value exists.
-func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (json.RawMessage, error) {
-	if client == nil {
-		return nil, nil
-	}
-
-	if skipFreshData {
-		return client.cachedAppPreferencesJSON()
-	}
-
-	if _, err := client.GetAppPreferences(ctx); err != nil {
-		// GetAppPreferences serves stale preferences on a failed refresh, so an
-		// error means nothing is cached at all.
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-		return json.RawMessage("null"), nil
-	}
-
-	return client.cachedAppPreferencesJSON()
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -391,8 +353,10 @@ type SyncManager struct {
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
 	torrentLookupProvider      func(ctx context.Context, instanceID int) (torrentLookup, error)
 
-	syncDebounceMu        sync.Mutex
-	debouncedSyncTimers   map[int]*time.Timer
+	syncDebounceMu      sync.Mutex
+	debouncedSyncTimers map[int]*time.Timer
+	// syncDebounceSince holds when the oldest hint not yet synced arrived.
+	syncDebounceSince     map[int]time.Time
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
 
@@ -427,8 +391,7 @@ type SyncManager struct {
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
-	// Backend pool for filesystem operations (managed delete cleanup).
-	backendPool atomic.Value // stores backendPoolGetter interface value
+	folderCleanup atomic.Pointer[FolderCleanup]
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -508,21 +471,6 @@ func (sm *SyncManager) getSyncEventSink() SyncEventSink {
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
-}
-
-// SetBackendPool sets the filesystem backend pool for managed delete cleanup.
-func (sm *SyncManager) SetBackendPool(pool backendPoolGetter) {
-	sm.backendPool.Store(pool)
-}
-
-// getBackendPool returns the current backend pool in a thread-safe manner.
-// Returns nil if no pool is set.
-func (sm *SyncManager) getBackendPool() backendPoolGetter {
-	v := sm.backendPool.Load()
-	if v == nil {
-		return nil
-	}
-	return v.(backendPoolGetter)
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -1813,7 +1761,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
-	var preferencesJSON json.RawMessage
 
 	if syncManager != nil {
 		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
@@ -1832,18 +1779,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		} else {
 			appInfo = info
 		}
-
-		preferencesJSON, err = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
-		if err != nil {
-			// Preferences are cosmetic, so a marshal failure must not blank the
-			// torrent table and turn every stream frame into an error. Omit the
-			// field and keep the list, the same way the app info fetch above does.
-			log.Error().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to marshal qBittorrent app preferences for torrent stream")
-			preferencesJSON = nil
-		}
 	}
 
 	response := &TorrentResponse{
@@ -1856,7 +1791,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
 		AppInfo:                appInfo,     // Include application info for frontend consumers
-		AppPreferences:         preferencesJSON,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -2308,12 +2242,6 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
 
-	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
-	var managedDeleteBackend fsops.Backend
-	if action == "deleteWithFiles" {
-		managedDeleteCleanupTargets, managedDeleteBackend = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
-	}
-
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
 	if variantResolutions > 0 {
 		log.Debug().
@@ -2349,6 +2277,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			unique = append(unique, hash)
 		}
 		canonicalHashes = unique
+	}
+
+	var folders FolderCleanupBatch
+	if action == "deleteWithFiles" {
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: canonicalHashes})
 	}
 
 	if action == "recheck" && postAddRetry {
@@ -2397,9 +2330,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			if managedDeleteBackend != nil {
-				cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, managedDeleteBackend)
-			}
+			folders.Queue()
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -2541,40 +2472,6 @@ func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) boo
 	}
 
 	return true
-}
-
-// buildManagedDeleteCleanupTargets also returns the backend it resolved so the
-// post-delete cleanup uses the same one instead of a second lookup that could
-// disagree with this one.
-func (sm *SyncManager) buildManagedDeleteCleanupTargets(
-	ctx context.Context,
-	instanceID int,
-	syncManager *qbt.SyncManager,
-	hashes []string,
-) ([]managedDeleteCleanupTarget, fsops.Backend) {
-	pool := sm.getBackendPool()
-	if pool == nil || syncManager == nil {
-		return nil, nil
-	}
-	// The base dir and the backend come from one read: a base dir read before
-	// local access was turned off is a local path the SSH host need not have.
-	backend, instance, err := pool.Require(ctx, instanceID, models.CapabilityWrite)
-	if err != nil {
-		if !errors.Is(err, fsops.ErrNotCapable) {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
-		}
-		return nil, nil
-	}
-	if strings.TrimSpace(instance.HardlinkBaseDir) == "" {
-		return nil, nil
-	}
-
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-	if len(torrents) == 0 {
-		return nil, nil
-	}
-
-	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend), backend
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution.
@@ -3344,7 +3241,7 @@ func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
 		case qbt.TrackerStatusOK:
 			hasWorking = true
 		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
-			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
+			if TrackerMessageMatchesUnregistered(tracker.Message) {
 				hasUnregistered = true
 			}
 		default:
@@ -4135,6 +4032,9 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 	client.applyOptimisticCacheUpdate(hashes, action, payload)
 }
 
+// syncDebounceMaxWait bounds how long hints can keep postponing a sync.
+const syncDebounceMaxWait = time.Second
+
 // syncAfterModification performs a background sync after a modification operation.
 // Calls are debounced per instance to avoid excessive syncs during bursts of mutations.
 func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, operation string) {
@@ -4153,11 +4053,24 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	if sm.debouncedSyncTimers == nil {
 		sm.debouncedSyncTimers = make(map[int]*time.Timer)
 	}
+	if sm.syncDebounceSince == nil {
+		sm.syncDebounceSince = make(map[int]time.Time)
+	}
 
 	if existing, ok := sm.debouncedSyncTimers[instanceID]; ok {
 		// Best-effort stop; if the timer has already fired, we let its callback run once.
 		existing.Stop()
 	}
+
+	// Hints that keep arriving within the delay would otherwise postpone the
+	// sync for as long as they last.
+	now := time.Now()
+	since, ok := sm.syncDebounceSince[instanceID]
+	if !ok {
+		since = now
+		sm.syncDebounceSince[instanceID] = now
+	}
+	delay = min(delay, since.Add(syncDebounceMaxWait).Sub(now))
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
@@ -4165,6 +4078,10 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		// below completes (the creator holds the lock until it returns).
 		sm.syncDebounceMu.Lock()
 		self := timer
+		// A timer that fired after a newer hint replaced it leaves that hint's window alone.
+		if sm.debouncedSyncTimers[instanceID] == self {
+			delete(sm.syncDebounceSince, instanceID)
+		}
 		sm.syncDebounceMu.Unlock()
 		sm.runDebouncedSync(instanceID, client, operation, self)
 	})
@@ -5845,9 +5762,11 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 		return err
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Category: category})
 	if err := client.SetCategoryCtx(ctx, hashes, category); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setCategory", map[string]any{"category": category})
@@ -5869,9 +5788,14 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 		return err
 	}
 
+	var folders FolderCleanupBatch
+	if enable {
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEnableATM, Hashes: hashes})
+	}
 	if err := client.SetAutoManagementCtx(ctx, hashes, enable); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "toggleAutoTMM", map[string]any{"enable": enable})
@@ -5956,16 +5880,23 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 	return nil
 }
 
-// EditCategory edits an existing category
+// EditCategory edits an existing category.
+//
+// qBittorrent before 5.3 builds the category from these params alone, so each
+// edit resets its share limits to the global default and clears its download
+// path (qbittorrent#24787). go-qbittorrent's Category carries only the name and
+// the save path, so qui cannot send the other options back.
 func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name string, path string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEditCategory, EditedCategory: name, Path: path})
 	if err := client.EditCategoryCtx(ctx, name, path); err != nil {
 		return err
 	}
+	folders.Queue()
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "edit_category")
@@ -6006,14 +5937,38 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 	return *prefs, nil
 }
 
-// SetAppPreferences updates app preferences
+// GetPreferenceView returns the preference catalog view of the instance preferences.
+func (sm *SyncManager) GetPreferenceView(ctx context.Context, instanceID int) ([]prefcatalog.Field, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	// Without build info, the libtorrent and platform gates pass.
+	var libtorrentVersion, platform string
+	if info, err := client.GetAppInfo(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Preference view without qBittorrent build info")
+	} else if info.BuildInfo != nil {
+		libtorrentVersion = info.BuildInfo.Libtorrent
+		platform = info.BuildInfo.Platform
+	}
+
+	return prefcatalog.View(*prefs, libtorrentVersion, platform)
+}
+
+// SetAppPreferences writes the changed preferences through the preference catalog.
 func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]any) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
+	if err := prefcatalog.Apply(ctx, client.Client, prefs); err != nil {
 		return fmt.Errorf("failed to set preferences: %w", err)
 	}
 
@@ -6025,25 +5980,37 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
-// NormalizeScanDirsPreference validates and normalizes the scan_dirs preference
-// using go-qbittorrent's typed monitored folder support.
-func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
-	rawScanDirs, ok := prefs["scan_dirs"]
-	if !ok {
-		return nil
-	}
-
-	encoded, err := json.Marshal(rawScanDirs)
+// GetNetworkBinding returns the network interfaces and addresses that qBittorrent can bind to.
+func (sm *SyncManager) GetNetworkBinding(ctx context.Context, instanceID int) ([]prefcatalog.BindingInterface, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	var scanDirs qbt.MonitoredFolders
-	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
-		return err
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	prefs["scan_dirs"] = scanDirs
+	binding, err := prefcatalog.NetworkBinding(ctx, client.Client, *prefs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network binding: %w", err)
+	}
+	return binding, nil
+}
+
+// SendTestEmail asks qBittorrent to send a test email with its saved email notification settings.
+// A nil error means only that qBittorrent queued the email.
+func (sm *SyncManager) SendTestEmail(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SendTestEmailCtx(ctx); err != nil {
+		return fmt.Errorf("failed to send test email: %w", err)
+	}
+
 	return nil
 }
 
@@ -6275,10 +6242,12 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		return errors.New("location cannot be empty")
 	}
 
+	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location})
 	// Set the location - this will disable Auto TMM and move the torrents
 	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
+	folders.Queue()
 
 	// Invalidate file cache for all affected torrents since paths may change
 	if fm := sm.getFilesManager(); fm != nil {
@@ -6984,29 +6953,33 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (r
 		return fmt.Errorf("failed to get app preferences: %w", err)
 	}
 	originalEnabled := prefs.RssAutoDownloadingEnabled
+	setAutoDownloading := func(enabled bool) error {
+		return prefcatalog.Apply(ctx, client.Client, map[string]any{"rss_auto_downloading_enabled": enabled})
+	}
+	defer client.InvalidateAppPreferencesCache()
 
 	defer func() {
 		if retErr == nil {
 			return
 		}
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, originalEnabled); err != nil {
+		if err := setAutoDownloading(originalEnabled); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Bool("originalEnabled", originalEnabled).Msg("failed to restore RSS auto-downloading state after reprocess error")
 		}
 	}()
 
 	// Ensure it's disabled first (may already be disabled)
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+	if err := setAutoDownloading(false); err != nil {
 		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
 	}
 
 	// Enable to trigger startProcessing() which processes all unread articles
-	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, true); err != nil {
+	if err := setAutoDownloading(true); err != nil {
 		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
 	}
 
 	// Restore original state if it was disabled
 	if !originalEnabled {
-		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+		if err := setAutoDownloading(false); err != nil {
 			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
 		}
 	}

@@ -75,7 +75,6 @@ vi.mock("@/contexts/SyncStreamContext", () => ({
 import { api } from "@/lib/api"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { STREAM_HIDDEN_PAUSE_DELAY_MS, TORRENT_STREAM_POLL_INTERVAL_MS, useTorrentsList } from "@/hooks/useTorrentsList"
 
 const mockedApi = vi.mocked(api, true)
@@ -1588,178 +1587,42 @@ describe("useTorrentsList background stream gating", () => {
     expect(lastStreamOptions?.enabled).toBe(true)
   })
 
-  it("preserves preference caches when a regular stream frame omits preferences", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0 } },
-    })
-    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
-    queryClient.setQueryData(["instance-metadata", 1], {
-      categories: {},
-      tags: [],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
-    })
-
-    const { result } = renderHook(() => ({
-      list: useTorrentsList(1, { pollingEnabled: false }),
-      preferences: useInstancePreferences(1, { fetchIfMissing: false }),
-    }), { wrapper: makeWrapper(queryClient) })
-
-    act(() => {
-      capturedOnMessage?.({
-        type: "update",
-        data: {
-          torrents: [],
-          total: 0,
-          hasMore: false,
-          categories: {},
-          tags: [],
-        },
-      })
-    })
-
-    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toEqual({
-      listen_port: 6881,
-      use_subcategories: true,
-    })
-    expect(queryClient.getQueryData(["instance-preferences", 1])).toEqual({
-      listen_port: 6881,
-      use_subcategories: true,
-    })
-    expect(result.current.preferences.preferences?.use_subcategories).toBe(true)
-  })
-
-  it("preserves preference caches when a regular delta frame omits preferences", () => {
+  it("puts the categories and tags of a stream frame in the metadata cache and leaves the preferences alone", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     })
     const preferences = makePreferences({ listen_port: 6881, use_subcategories: true })
-    const torrent = makeTorrent({ hash: "a" })
+    queryClient.setQueryData(["instance-preferences", 1], preferences)
 
     renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
 
     act(() => {
       capturedOnMessage?.({
-        type: "init",
+        type: "update",
         data: makeResponse({
-          torrents: [torrent],
-          total: 1,
+          torrents: [],
+          total: 0,
           hasMore: false,
-          preferences,
+          categories: { movies: { name: "movies", savePath: "" } },
+          tags: ["linux"],
         }),
       })
     })
 
-    act(() => {
-      capturedOnMessage?.({
-        type: "delta",
-        data: makeResponse({ torrents: [], total: 1, hasMore: false }),
-      })
+    expect(queryClient.getQueryData(["instance-metadata", 1])).toEqual({
+      categories: { movies: { name: "movies", savePath: "" } },
+      tags: ["linux"],
     })
-
-    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBe(preferences)
     expect(queryClient.getQueryData(["instance-preferences", 1])).toBe(preferences)
   })
 
-  it("updates preference caches when a regular stream frame includes preferences", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0 } },
-    })
-    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: false }))
-    queryClient.setQueryData(["instance-metadata", 1], {
-      categories: {},
-      tags: [],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: false }),
-    })
-
-    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
-
-    act(() => {
-      capturedOnMessage?.({
-        type: "update",
-        data: {
-          torrents: [],
-          total: 0,
-          hasMore: false,
-          categories: {},
-          tags: [],
-          preferences: { listen_port: 51413, use_subcategories: true } as unknown as TorrentResponse["preferences"],
-        },
-      })
-    })
-
-    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toEqual({
-      listen_port: 51413,
-      use_subcategories: true,
-    })
-    expect(queryClient.getQueryData(["instance-preferences", 1])).toEqual({
-      listen_port: 51413,
-      use_subcategories: true,
-    })
-  })
-
-  it("clears preference caches when a regular stream frame explicitly nulls preferences", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0 } },
-    })
-    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
-    queryClient.setQueryData(["instance-metadata", 1], {
-      categories: {},
-      tags: [],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
-    })
-
-    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
-
-    act(() => {
-      capturedOnMessage?.({
-        type: "update",
-        data: {
-          torrents: [],
-          total: 0,
-          hasMore: false,
-          categories: {},
-          tags: [],
-          preferences: null as unknown as TorrentResponse["preferences"],
-        },
-      })
-    })
-
-    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBeUndefined()
-    expect(queryClient.getQueryData(["instance-preferences", 1])).toBeUndefined()
-  })
-
-  it("clears stale preference caches when a fresh REST response explicitly nulls preferences", async () => {
-    streamState = { ...DISCONNECTED }
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0 } },
-    })
-    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
-    queryClient.setQueryData(["instance-metadata", 1], {
-      categories: {},
-      tags: [],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
-    })
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({
-      categories: {},
-      tags: [],
-      preferences: null,
-    }))
-
-    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
-    await flush()
-
-    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBeUndefined()
-    expect(queryClient.getQueryData(["instance-preferences", 1])).toBeUndefined()
-  })
-
-  it("leaves cross-instance metadata untouched when preferences are omitted", () => {
+  it("leaves cross-instance metadata untouched", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     })
     queryClient.setQueryData(["instance-metadata", 0], {
       categories: { old: { name: "old", savePath: "" } },
       tags: ["old"],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
     })
 
     renderHook(() => useTorrentsList(0, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
@@ -1781,7 +1644,6 @@ describe("useTorrentsList background stream gating", () => {
     expect(queryClient.getQueryData(["instance-metadata", 0])).toEqual({
       categories: { old: { name: "old", savePath: "" } },
       tags: ["old"],
-      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
     })
   })
 

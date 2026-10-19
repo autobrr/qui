@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -424,6 +425,6 @@ func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
 		categories[name] = qbt.Category{Name: name}
 	}
 
-	got := resolveCategoryPath(fsops.HostPaths, name, categories, filepath.Join(base, "torrents"), true)
+	got := qbittorrent.CategorySavePath(fsops.HostPaths, name, categories, filepath.Join(base, "torrents"), true)
 	require.Equal(t, want, got, "a deeply nested category must still resolve to its parent chain")
 }

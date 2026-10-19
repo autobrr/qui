@@ -880,6 +880,11 @@
       "moving": "Wird verschoben"
     }
   },
+  "emptyState": {
+    "noTorrents": "Keine Torrents gefunden",
+    "noFilterMatches": "Keine Torrents entsprechen den aktuellen Filtern",
+    "noSearchMatches": "Keine Torrents entsprechen der aktuellen Suche"
+  },
   "filterSidebar": {
     "views": {
       "title": "Ansichten",
@@ -1359,6 +1364,7 @@
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
+    "loadFailed": "Cross-Seed-Treffer konnten nicht geprüft werden. Zum erneuten Versuch neu laden.",
     "toast": {
       "savePathCopied": "Speicherpfad kopiert",
       "copyFailed": "Kopieren fehlgeschlagen"

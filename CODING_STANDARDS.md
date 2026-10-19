@@ -4,4 +4,5 @@ This file is an index. The rules live in `docs/standards/`. Linters and formatte
 
 - When you write or review code in any language, read `docs/standards/simplicity.md`. It covers code shape, Go types, and comments.
 - When you write or review a test, read `docs/standards/tests.md`.
-- When you write or review a React Effect, help text on a form field, or a table, read `docs/standards/frontend-review.md`.
+- When you add a log line or change its level, read `docs/standards/logging.md`.
+- When you write or review a React Effect, a react-query cache filter, help text on a form field, or a table, read `docs/standards/frontend-review.md`.

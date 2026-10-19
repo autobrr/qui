@@ -3,6 +3,7 @@ package automations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -81,7 +82,8 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 				Value:    "BHD",
 			}
 
-			evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+			evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+			require.NoError(t, err)
 
 			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
 			assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
@@ -102,7 +104,30 @@ func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 		Value:    "tier1",
 	}
 
-	evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+	evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+	require.NoError(t, err)
 
 	assert.Nil(t, evalCtx.TrackerDisplayNameByDomain)
+}
+
+type unavailableCrossMatcher struct{ err error }
+
+func (m unavailableCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
+	return &CrossMatchResult{Err: m.err}
+}
+
+func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("torrent snapshot unavailable")
+	svc := &Service{crossMatcher: unavailableCrossMatcher{err: wantErr}}
+	for _, action := range []*models.ActionConditions{
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}},
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}},
+		{Move: &models.MoveAction{Enabled: true}},
+		{Category: &models.CategoryAction{Enabled: true, IncludeCrossSeeds: true}},
+	} {
+		needs := previewNeeds(&models.Automation{Conditions: action})
+		_, _, err := svc.buildEvalContext(t.Context(), 1, nil, nil, needs)
+		require.ErrorIs(t, err, wantErr)
+	}
 }

@@ -143,12 +143,17 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	sourceRelease := s.releaseCache.Parse(meta.Name)
-	packMode := isTVSeasonPack(sourceRelease)
+	// A pack named only with a Season numeral parses as a movie. Its episode
+	// files make it a pack, so a movie sequel stays a movie.
+	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	packEpisodeCount := 0
+	if isTVSeasonPack(packRelease) {
+		packEpisodeCount = len(s.matcher().extractPackEpisodes(meta.Files, packRelease))
+	}
+	packMode := isTVSeasonPack(sourceRelease) || packEpisodeCount > 0
 	proposalLimit := manualMatchProposalLimit
 	assemblyUnavailable := ""
 	if packMode {
-		packEpisodeCount = len(s.matcher().extractPackEpisodes(meta.Files, sourceRelease))
 		proposalLimit = min(manualMatchCoarseLimit, packEpisodeCount+manualMatchProposalLimit)
 		assemblyUnavailable = manualAssemblyUnavailableReason(instance)
 		if packEpisodeCount == 0 {

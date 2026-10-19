@@ -19,3 +19,4 @@ A cross-seed search runs a Torznab primary pass and up to four retries: the year
 - A new retry pass is one block inside `gather` and one row in `TestGatherSearchResults`. The test drives the pass sequence with a recording fake and no HTTP server.
 - The covered set never includes an indexer that failed or was rate limited, so the per-indexer search history never stamps it as searched (#2217).
 - A change that makes the gatherer classify titles, merges the covered set with the usable set, or turns the yearless retry into a per-indexer retry reverses this decision and needs a new ADR.
+- A `depguard` rule in `.golangci.yml` reports an import of `github.com/autobrr/rls` or `github.com/autobrr/qui/pkg/releases` in `search_gather.go`, so the gatherer cannot import a release parser. Issue #3229.
