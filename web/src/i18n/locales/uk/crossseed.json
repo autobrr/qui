@@ -577,6 +577,7 @@
       "requeueFailed": "Не вдалося повторити файли без збігів: {{error}}",
       "resetFailed": "Не вдалося скинути файли: {{error}}"
     },
+    "webhookScanStatus": "Сканування з вебхука · {{status}}",
     "statusLabels": {
       "queued": "У черзі",
       "scanning": "Сканування",

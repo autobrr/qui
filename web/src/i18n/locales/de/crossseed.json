@@ -555,6 +555,7 @@
       "requeueFailed": "Erneuter Versuch für Dateien ohne Treffer fehlgeschlagen: {{error}}",
       "resetFailed": "Dateien konnten nicht zurückgesetzt werden: {{error}}"
     },
+    "webhookScanStatus": "Webhook-Scan · {{status}}",
     "statusLabels": {
       "queued": "In Warteschlange",
       "scanning": "Wird gescannt",

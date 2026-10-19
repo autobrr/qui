@@ -26,6 +26,7 @@ type timedSearcher struct {
 	mu        sync.Mutex
 	delay     time.Duration
 	responses []*jackett.SearchResponse
+	queries   []string
 	starts    []time.Time
 	ends      []time.Time
 }
@@ -33,6 +34,7 @@ type timedSearcher struct {
 func (s *timedSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabSearchRequest, _ string) error {
 	s.mu.Lock()
 	s.starts = append(s.starts, time.Now())
+	s.queries = append(s.queries, req.Query)
 	pass := len(s.starts) - 1
 	s.mu.Unlock()
 	response := &jackett.SearchResponse{RequestedIndexerIDs: []int{1}, CoveredIndexerIDs: []int{1}}
@@ -52,10 +54,14 @@ func (s *timedSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabS
 // intervalTestService takes a parser built outside the synctest bubble: the
 // parser's cache starts a goroutine that never exits.
 func intervalTestService(parser *Parser, searcher *timedSearcher) *Service {
-	return &Service{parser: parser, searcher: NewSearcher(searcher, parser), searchSlot: make(chan struct{}, 1)}
+	return &Service{parser: parser, searcher: NewSearcher(searcher, parser)}
 }
 
 func runIntervalSearchee(ctx context.Context, svc *Service, name string, enabled map[int]struct{}) searcheeOutcome {
+	return runIntervalSearcheeIfPending(ctx, svc, name, enabled, nil)
+}
+
+func runIntervalSearcheeIfPending(ctx context.Context, svc *Service, name string, enabled map[int]struct{}, stillPending func() bool) searcheeOutcome {
 	l := zerolog.New(io.Discard)
 	searchee := &Searchee{
 		Name:  name,
@@ -63,7 +69,7 @@ func runIntervalSearchee(ctx context.Context, svc *Service, name string, enabled
 		Files: []*ScannedFile{{Path: "/data/" + name + "/video.mkv", RelPath: "video.mkv", Size: 1000}},
 	}
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
-	_, outcome := svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, &l)
+	_, outcome := svc.processSearchee(ctx, &models.DirScanDirectory{ID: 1}, searchee, settings, NewMatcher(MatchModeStrict, 0), 1, enabled, stillPending, &l)
 	return outcome
 }
 
@@ -228,6 +234,81 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 			require.Equal(t, 10*time.Second, time.Since(before))
 			require.Equal(t, searcheeOutcome{}, outcome)
 			require.Len(t, searcher.starts, first)
+		})
+	})
+
+	t.Run("a waiting webhook item searches before a full-scan item", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			searcher := &timedSearcher{}
+			svc := intervalTestService(parser, searcher)
+
+			runIntervalSearchee(t.Context(), svc, "First.Item.1080p.WEB-DL", enabled)
+
+			// Both items become free to search at the same instant, so each round is
+			// a tie. Without the priority rule a round goes either way.
+			for round := range 8 {
+				lastEnd := time.Now()
+				full := func() { runIntervalSearchee(t.Context(), svc, "Full.Item.1080p.WEB-DL", enabled) }
+				webhook := func() { runIntervalSearchee(withWebhookRun(t.Context()), svc, "Webhook.Item.1080p.WEB-DL", enabled) }
+				if round%2 == 1 {
+					full, webhook = webhook, full
+				}
+
+				var wg sync.WaitGroup
+				wg.Go(full)
+				time.Sleep(10 * time.Second)
+				wg.Go(webhook)
+				wg.Wait()
+
+				n := len(searcher.queries)
+				require.Equal(t, []string{"Webhook Item", "Full Item"}, searcher.queries[n-2:], "round %d", round)
+				require.Equal(t, 60*time.Second, searcher.starts[n-2].Sub(lastEnd), "the webhook item waits only the rest of the interval")
+			}
+		})
+	})
+
+	t.Run("a canceled webhook item does not hold back a full-scan item", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			searcher := &timedSearcher{}
+			svc := intervalTestService(parser, searcher)
+
+			runIntervalSearchee(t.Context(), svc, "First.Item.1080p.WEB-DL", enabled)
+			lastEnd := time.Now()
+
+			webhookCtx, cancel := context.WithTimeout(withWebhookRun(t.Context()), 10*time.Second)
+			defer cancel()
+			var wg sync.WaitGroup
+			wg.Go(func() { runIntervalSearchee(webhookCtx, svc, "Webhook.Item.1080p.WEB-DL", enabled) })
+			wg.Go(func() { runIntervalSearchee(t.Context(), svc, "Full.Item.1080p.WEB-DL", enabled) })
+			wg.Wait()
+
+			require.Equal(t, []string{"First Item", "Full Item"}, searcher.queries)
+			require.Equal(t, 60*time.Second, searcher.starts[1].Sub(lastEnd))
+		})
+	})
+
+	t.Run("an item that another run finished during the wait skips its search and keeps the interval", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			searcher := &timedSearcher{}
+			svc := intervalTestService(parser, searcher)
+
+			runIntervalSearchee(t.Context(), svc, "First.Item.1080p.WEB-DL", enabled)
+			lastEnd := time.Now()
+
+			var checkedAt time.Time
+			outcome := runIntervalSearcheeIfPending(t.Context(), svc, "Finished.Item.1080p.WEB-DL", enabled, func() bool {
+				checkedAt = time.Now()
+				return false
+			})
+			require.Equal(t, searcheeOutcome{}, outcome)
+			require.Equal(t, 60*time.Second, checkedAt.Sub(lastEnd), "the item checks its state after its turn comes, not before the wait")
+
+			runIntervalSearchee(t.Context(), svc, "Next.Item.1080p.WEB-DL", enabled)
+			require.Equal(t, []string{"First Item", "Next Item"}, searcher.queries)
+			require.Equal(t, 60*time.Second, searcher.starts[1].Sub(lastEnd), "the skipped item does not restart the interval")
 		})
 	})
 }

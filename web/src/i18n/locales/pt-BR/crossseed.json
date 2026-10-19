@@ -555,6 +555,7 @@
       "requeueFailed": "Falha ao repetir arquivos sem correspondência: {{error}}",
       "resetFailed": "Falha ao redefinir arquivos: {{error}}"
     },
+    "webhookScanStatus": "Varredura por webhook · {{status}}",
     "statusLabels": {
       "queued": "Na fila",
       "scanning": "Varrendo",

@@ -58,6 +58,7 @@ import type {
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
+  DirScanStatus,
   DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
@@ -2806,10 +2807,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
   }
 
-  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
-    return this.request<DirScanRun | { status: "idle" }>(
-      `/dir-scan/directories/${directoryId}/status`
-    )
+  async getDirScanStatus(directoryId: number): Promise<DirScanStatus> {
+    return this.request<DirScanStatus>(`/dir-scan/directories/${directoryId}/status`)
   }
 
   async listDirScanRuns(
