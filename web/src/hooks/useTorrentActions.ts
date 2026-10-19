@@ -329,7 +329,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       onActionComplete?.(variables.action)
     },
     onError: (error: Error, variables) => {
-      const count = variables.hashes.length || 1
+      const count = variables.hashes.length || variables.targets?.length || 1
       toast.error(getActionErrorMessage(t, variables.action, count), {
         description: error.message || t("actionToasts.unexpectedError"),
       })
@@ -550,15 +550,26 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientCount,
     })
     // A select-all request cannot carry hashes, so the chosen cross-seeds go in a second request.
-    const crossSeedTargets = isAllSelected ? clientMeta?.crossSeedTargets : undefined
-    if (crossSeedTargets?.length) {
+    // Drop anything the user unticked from the select-all, and anything already covered by the
+    // loaded rows of request 1. Companions outside the loaded window that match the select-all
+    // filter are deleted server-side by request 1 and cannot be detected here.
+    const excludedHashes = new Set(excludeHashes ?? [])
+    const excludedKeys = new Set((clientMeta?.excludeTargets ?? []).map(target => `${target.instanceId}:${target.hash}`))
+    const coveredHashes = new Set(clientMeta?.clientHashes ?? [])
+    const crossSeedTargets = isAllSelected
+      ? (clientMeta?.crossSeedTargets ?? []).filter(target =>
+        !excludedHashes.has(target.hash)
+        && !excludedKeys.has(`${target.instanceId}:${target.hash}`)
+        && !coveredHashes.has(target.hash))
+      : []
+    if (crossSeedTargets.length) {
       const crossSeedHashes = crossSeedTargets.map(target => target.hash)
       await mutation.mutateAsync({
         action: "delete",
         instanceIds,
         targets: crossSeedTargets,
         deleteFiles,
-        hashes: crossSeedHashes,
+        hashes: [],
         clientHashes: crossSeedHashes,
         clientCount: crossSeedHashes.length,
       })

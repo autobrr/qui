@@ -312,7 +312,7 @@ describe("useTorrentActions - delete", () => {
     expect(first.hashes).toEqual([])
     const second = mockedApi.bulkAction.mock.calls[1][1]
     expect(second.selectAll).toBeFalsy()
-    expect(second.hashes).toEqual(["cs1", "cs2"])
+    expect(second.hashes).toEqual([])
     expect(second.targets).toEqual(crossSeedTargets)
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/50")
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.delete/2")
@@ -342,6 +342,77 @@ describe("useTorrentActions - delete", () => {
 
     expect(mockedApi.bulkAction.mock.calls[0][1].deleteFiles).toBe(true)
     expect(mockedApi.bulkAction.mock.calls[1][1].deleteFiles).toBe(true)
+  })
+
+  it("select-all delete never sends an unticked cross-seed in the follow-up request", async () => {
+    const { result } = renderActions()
+    const crossSeedTargets = [
+      { instanceId: 7, hash: "cs1" },
+      { instanceId: 7, hash: "cs2" },
+      { instanceId: 9, hash: "cs3" },
+    ]
+
+    await act(async () => {
+      await result.current.handleDelete(
+        [],
+        true,
+        undefined,
+        "",
+        ["cs1"],
+        {
+          clientHashes: ["a"],
+          totalSelected: 50,
+          excludeTargets: [{ instanceId: 9, hash: "cs3" }],
+          crossSeedTargets,
+        }
+      )
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
+    expect(mockedApi.bulkAction.mock.calls[1][1].targets).toEqual([{ instanceId: 7, hash: "cs2" }])
+  })
+
+  it("select-all delete skips the follow-up when every cross-seed is excluded or already covered", async () => {
+    const { result } = renderActions()
+
+    await act(async () => {
+      await result.current.handleDelete(
+        [],
+        true,
+        undefined,
+        "",
+        ["cs1"],
+        {
+          clientHashes: ["a", "cs2"],
+          totalSelected: 50,
+          crossSeedTargets: [
+            { instanceId: 7, hash: "cs1" },
+            { instanceId: 7, hash: "cs2" },
+          ],
+        }
+      )
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+  })
+
+  it("select-all delete rejects when the cross-seed request fails, after request 1 succeeded", async () => {
+    const { result } = renderActions()
+    mockedApi.bulkAction.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("boom"))
+
+    await act(async () => {
+      await expect(result.current.handleDelete(
+        [],
+        true,
+        undefined,
+        "",
+        undefined,
+        { clientHashes: ["a"], totalSelected: 50, crossSeedTargets: [{ instanceId: 7, hash: "cs1" }] }
+      )).rejects.toThrow("boom")
+    })
+
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(2)
+    expect(mockedToast.error).toHaveBeenCalledTimes(1)
   })
 
   it("non-select-all delete ignores crossSeedTargets", async () => {
