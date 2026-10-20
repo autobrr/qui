@@ -570,7 +570,7 @@ func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
 	require.Equal(t, 8*time.Second, state.interval, "interval should be 8s after 2 failures")
 
 	// Success should reset
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 
 	// Verify state was reset
 	state = manager.syncBackoff[1]
@@ -583,7 +583,7 @@ func TestMarkSyncSuccess_PrimesWithoutPriorState(t *testing.T) {
 
 	// First success without a prior failure should create a primed entry so the
 	// next sync uses the incremental budget.
-	manager.markSyncSuccess(99, 1)
+	manager.markSyncSuccess(99)
 
 	state, exists := manager.syncBackoff[99]
 	require.True(t, exists, "first success should create a primed backoff entry")
@@ -668,7 +668,7 @@ func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				manager.markSyncSuccess(1, 1)
+				manager.markSyncSuccess(1)
 			}
 		}()
 	}
@@ -682,7 +682,7 @@ func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 
 	require.True(t, manager.syncBackoff[1].primed, "first success should prime the instance")
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "primed healthy instance uses incremental budget")
@@ -691,7 +691,7 @@ func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
 func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1))
 
 	manager.markSyncFailure(1)
@@ -699,7 +699,7 @@ func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
 	require.True(t, manager.syncBackoff[1].primed, "failure must not clear primed")
 	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "failure streak uses full budget")
 
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 	require.Equal(t, 0, manager.syncBackoff[1].attempt, "recovery resets attempt")
 	require.True(t, manager.syncBackoff[1].primed)
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "recovered instance returns to incremental budget")
@@ -712,20 +712,8 @@ func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
 	manager.markSyncFailure(1)
 	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "unprimed instance uses full budget")
 
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "first success drops to incremental budget")
-}
-
-func TestStreamManager_syncWithRidZeroKeepsFullBudget(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil)
-
-	manager.HandleMainData(1, &qbt.MainData{Rid: 7})
-	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1))
-
-	// go-qbittorrent returns rid 0 after it sent the sync request again, so the
-	// next sync is a full update.
-	manager.HandleMainData(1, &qbt.MainData{Rid: 0})
-	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "sync with rid 0 must keep the full budget")
 }
 
 func TestBackoffState_IndependentPerInstance(t *testing.T) {
@@ -749,7 +737,7 @@ func TestBackoffState_IndependentPerInstance(t *testing.T) {
 	require.Equal(t, 4*time.Second, state2.interval, "instance 2 should have 4s interval")
 
 	// Reset instance 1, verify instance 2 is unaffected
-	manager.markSyncSuccess(1, 1)
+	manager.markSyncSuccess(1)
 
 	state1 = manager.syncBackoff[1]
 	state2 = manager.syncBackoff[2]
