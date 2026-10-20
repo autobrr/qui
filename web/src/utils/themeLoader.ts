@@ -17,7 +17,6 @@ function getFallbackTheme(): Theme {
   return {
     id: "minimal",
     name: "Minimal",
-    description: "Clean and minimal theme with neutral colors",
     cssVars: {
       light: {
         "--background": "oklch(1 0 0)",

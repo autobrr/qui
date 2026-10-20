@@ -13,6 +13,9 @@ var (
 	Commit    = ""
 	Date      = ""
 	UserAgent = ""
+	// Tray is "true" in qui-tray.exe, the Windows GUI-subsystem build that serves
+	// with the Tray. The linker sets it, not the file name, so a renamed exe still works.
+	Tray = ""
 )
 
 func init() {

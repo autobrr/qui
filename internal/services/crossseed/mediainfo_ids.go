@@ -65,11 +65,11 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return mediaIDsToExternalIDs(entry.IDType, entry.IDValue)
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil
 	}
 
-	backend, err := s.getBackendForInstance(ctx, instance.ID)
+	backend, err := s.getBackendForInstance(ctx, instance.ID, models.CapabilityContent)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrent.Name).Msg("[CROSSSEED-SEARCH] no filesystem backend for media ID lookup; not caching")
 		return nil
@@ -138,7 +138,7 @@ func mediaIDsToExternalIDs(idType, idValue string) *models.ExternalIDs {
 // .mkv file, or "" when none resolves. qBittorrent returns files in stable
 // index order, so the pick is deterministic.
 func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) string {
-	// Filter first: forEachLocalTorrentFile stats every file it visits.
+	// Filter first: forEachLocalTorrentFile stats every file it is given.
 	// Skip deselected/partial files: a stub can sit on disk at the declared
 	// size and would cache a wrong "no tags" row over the complete file.
 	var mkvs qbt.TorrentFiles

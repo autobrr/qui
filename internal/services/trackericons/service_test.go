@@ -12,12 +12,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"code.dny.dev/ssrf"
 	"github.com/stretchr/testify/require"
 )
 
@@ -251,4 +253,142 @@ func TestService_GetIcon_CachedIconIssuesNoRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, svc.iconPath(host), path)
 	require.Equal(t, int32(0), transport.calls.Load())
+}
+
+func TestPublicOnly(t *testing.T) {
+	t.Parallel()
+
+	for _, addr := range []string{"10.0.0.5:443", "169.254.169.254:80", "100.64.0.1:443", "198.18.0.10:443"} {
+		require.ErrorIs(t, publicOnly.Safe("tcp4", addr, nil), ssrf.ErrProhibitedIP, addr)
+	}
+	require.ErrorIs(t, publicOnly.Safe("tcp6", "[::1]:443", nil), ssrf.ErrProhibitedIP)
+
+	// qui allows any port and NAT64.
+	require.NoError(t, publicOnly.Safe("tcp4", "1.1.1.1:8443", nil))
+	require.NoError(t, safeDial("tcp6", "[64:ff9b::101:101]:443", nil))
+}
+
+func TestSafeDial_RefusesNAT64ToPrivateIPv4(t *testing.T) {
+	t.Parallel()
+
+	// 64:ff9b::a9fe:a9fe carries 169.254.169.254, and 64:ff9b::a00:5 carries 10.0.0.5.
+	for _, addr := range []string{"[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::a00:5]:443"} {
+		require.ErrorIs(t, safeDial("tcp6", addr, nil), ssrf.ErrProhibitedIP, addr)
+	}
+	require.ErrorIs(t, checkPublicHost(t.Context(), "64:ff9b::a9fe:a9fe"), ssrf.ErrProhibitedIP)
+}
+
+func TestService_FetchIconBytes_BlocksLocalServer(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("http_proxy", "")
+
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer srv.Close()
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), srv.URL+"/favicon.ico")
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
+	require.Zero(t, hits.Load())
+}
+
+func TestService_FetchIconBytes_BlocksRedirectToLocalServer(t *testing.T) {
+	var hits atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer destination.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL+"/favicon.ico", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	// The proxy answers the first request with a redirect, so qui sends the
+	// second request to the local server without a proxy.
+	t.Setenv("HTTP_PROXY", redirector.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), "http://1.1.1.1:8080/favicon.ico")
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
+	require.Zero(t, hits.Load())
+}
+
+func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
+	icon := testPNG(t)
+	var proxiedHost atomic.Pointer[string]
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxiedHost.Store(&r.Host)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(icon)
+	}))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	// The proxy answers, so qui never dials 1.1.1.1.
+	data, _, err := svc.fetchIconBytes(t.Context(), "http://1.1.1.1:8080/favicon.ico")
+	require.NoError(t, err)
+	require.Equal(t, icon, data)
+	require.Equal(t, "1.1.1.1:8080", *proxiedHost.Load())
+}
+
+func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
+	var hits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	// Go sends a loopback target direct, so this request does not go through
+	// the proxy. It must not reach the proxy as an ordinary request either.
+	_, _, err = svc.fetchIconBytes(t.Context(), proxy.URL+"/admin")
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
+	require.Zero(t, hits.Load())
+}
+
+func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
+	var hits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer proxy.Close()
+
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	svc, err := NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
+	_, _, err = svc.fetchIconBytes(t.Context(), "http://169.254.169.254/latest/meta-data/")
+	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
+	require.Zero(t, hits.Load())
+}
+
+func TestCheckPublicHost_ResolvesNames(t *testing.T) {
+	t.Parallel()
+
+	// localhost resolves from the hosts file, so this sends no DNS query.
+	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), ssrf.ErrProhibitedIP)
+	// The resolver returns this literal as ::ffff:1.1.1.1.
+	require.NoError(t, checkPublicHost(t.Context(), "1.1.1.1"))
+	// The IDNA form of the full-width name is localhost.
+	require.ErrorIs(t, checkPublicHost(t.Context(), "ｌｏｃａｌｈｏｓｔ"), ssrf.ErrProhibitedIP)
 }

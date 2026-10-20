@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { LocalCrossSeedMatch, Torrent } from "@/types"
+import type { FilesystemCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
@@ -32,13 +32,13 @@ export const isInsideBase = (path: string, base: string): boolean => {
 
 /**
  * Check if a torrent is hardlink-managed based on instance config and paths.
- * Only returns true if the instance has hardlink mode enabled AND has local access.
+ * Only returns true if the instance has hardlink mode enabled AND qui can write its files.
  */
 export const isHardlinkManaged = (
   match: { save_path?: string; content_path?: string },
-  instance: { useHardlinks?: boolean; hasLocalFilesystemAccess?: boolean; hardlinkBaseDir?: string } | undefined
+  instance: { useHardlinks?: boolean; capabilities?: Pick<FilesystemCapabilities, "write">; hardlinkBaseDir?: string } | undefined
 ): boolean => {
-  if (!instance?.useHardlinks || !instance?.hasLocalFilesystemAccess) return false
+  if (!instance?.useHardlinks || !instance?.capabilities?.write) return false
   const base = normalizePath(instance.hardlinkBaseDir || "")
   if (!base) return false
   const savePath = normalizePath(match.save_path || "")
@@ -110,9 +110,12 @@ export const useLocalCrossSeedMatches = (
   })
 
   // Call the backend API to get local matches
-  const { data: matches, isLoading: isLoadingMatches } = useQuery({
+  const { data: matches, isLoading: isLoadingMatches, error: matchesError } = useQuery({
     queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
-    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
+    // Strict, like the delete dialogs: the tab offers a select-all delete
+    // with files, and a match whose file overlap could not be checked must
+    // not land in it.
+    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash, true),
     enabled: enabled && !!torrent && instanceId > 0,
     staleTime: 60000,
     gcTime: 5 * 60 * 1000,
@@ -128,6 +131,9 @@ export const useLocalCrossSeedMatches = (
 
   return {
     matchingTorrents,
+    // A strict lookup that could not finish its overlap check rejects; the
+    // tab shows that rather than an empty list that reads as "no matches".
+    matchesError: matchesError ?? null,
     isLoadingMatches: isLoadingInstances || isLoadingMatches,
     isLoadingInstances,
     pendingQueryCount: isLoadingMatches ? 1 : 0,

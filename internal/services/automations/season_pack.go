@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -123,14 +122,4 @@ func (s *Service) buildAnyInstanceSeasonPackSet(ctx context.Context) map[string]
 		}
 	}
 	return packs
-}
-
-// setupPreviewSeasonPackContext builds the season pack sets a preview needs.
-func (s *Service) setupPreviewSeasonPackContext(ctx context.Context, rule *models.Automation, cond *RuleCondition, torrents []qbt.Torrent, evalCtx *EvalContext) {
-	if ConditionUsesField(cond, FieldSeasonPackStatus) || sortingConfigUsesField(rule.SortingConfig, FieldSeasonPackStatus) {
-		evalCtx.SeasonPackSet = buildSeasonPackSet(evalCtx.ReleaseParser, torrents)
-	}
-	if ConditionUsesField(cond, FieldSeasonPackStatusAnyInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeasonPackStatusAnyInstance) {
-		evalCtx.SeasonPackSetAnyInstance = s.buildAnyInstanceSeasonPackSet(ctx)
-	}
 }

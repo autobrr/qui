@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -297,8 +296,8 @@ func (s *Service) processLinkMode(
 		return handleError(mode.name + " mode enabled but base directory is not configured")
 	}
 
-	// Verify instance has local filesystem access (required for links)
-	if !instance.HasLocalFilesystemAccess {
+	// Verify qui may write link trees on the instance
+	if !models.FilesystemCapabilitiesOf(instance).Write {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
@@ -335,10 +334,11 @@ func (s *Service) processLinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
-	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID, models.CapabilityWrite)
 	if err != nil {
 		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
+	d := backend.Paths()
 
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the link base directory.
@@ -349,16 +349,6 @@ func (s *Service) processLinkMode(
 			Str("matchedHash", matchedTorrent.Hash).
 			Msg(logPrefix + "no content path or save path available")
 		return handleError("No content path or save path available for matched torrent")
-	}
-
-	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Str("configuredDirs", instance.HardlinkBaseDir).
-			Str("existingPath", existingFilePath).
-			Msg(logPrefix + "no suitable base directory found")
-		return handleFullRecheckFallback(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Link mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -378,47 +368,18 @@ func (s *Service) processLinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
-
-	// Ensure cross-seed category exists with the correct save path derived from
-	// the base directory and directory preset, rather than the matched torrent's save path.
-	categoryCreationFailed := false
-	if crossCategory != "" {
-		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
-			log.Warn().Err(err).
-				Str("category", crossCategory).
-				Str("savePath", categorySavePath).
-				Msg(logPrefix + "failed to ensure category exists, continuing without category")
-			crossCategory = ""
-			categoryCreationFailed = true
-		}
-	}
-
 	// Build existing files list (all files on disk from matched torrent).
 	// We pass all existing files to BuildPlan so it can use path/name matching
 	// to select the correct source file for each target.
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
 		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: filepath.Join(props.SavePath, filepath.FromSlash(f.Name)),
+			AbsPath: d.Join(props.SavePath, d.FromSlash(f.Name)),
 			RelPath: f.Name,
 			Size:    f.Size,
 		})
 	}
 
-	// Build link tree plan with only the linkable files
-	plan, err := hardlinktree.BuildPlan(candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Str("destDir", destDir).
-			Msg(logPrefix + "failed to build plan, aborting")
-		return handlePlanError(fmt.Sprintf("Failed to build %s plan: %v", mode.name, err))
-	}
 	addPolicy := PolicyForSourceFiles(sourceFiles)
 	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
@@ -429,9 +390,46 @@ func (s *Service) processLinkMode(
 		_, _, _, poolDescriptors, poolDescriptorErr = partialPoolParsedIdentity(torrentBytes)
 	}
 
-	// Materialize only after the coverage and plan gates so clearly invalid
-	// partial matches are skipped before probing filesystem capabilities.
-	created, err := mode.materialize(ctx, backend, selectedBaseDir, plan)
+	// The destination dir, the plan, and the category save path must all come
+	// from the base dir whose tree was created.
+	var (
+		selectedBaseDir, destDir string
+		plan                     *hardlinktree.TreePlan
+		planErr                  error
+		created                  *fsops.TreeCreateResult
+	)
+	err = LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend, func(baseDir string) error {
+		selectedBaseDir = baseDir
+		// Build destination directory based on preset and torrent structure
+		destDir = s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+		// Build link tree plan with only the linkable files
+		plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+		if planErr != nil {
+			return planErr
+		}
+		// Materialize only after the coverage and plan gates so clearly invalid
+		// partial matches are skipped before probing filesystem capabilities.
+		var materializeErr error
+		created, materializeErr = mode.materialize(ctx, backend, baseDir, plan)
+		return materializeErr
+	})
+	if errors.Is(err, ErrNoMatchingBaseDir) {
+		log.Warn().
+			Err(err).
+			Str("configuredDirs", instance.HardlinkBaseDir).
+			Str("existingPath", existingFilePath).
+			Msg(logPrefix + "no suitable base directory found")
+		return handleFullRecheckFallback(fmt.Sprintf("No suitable base directory: %v", err))
+	}
+	if planErr != nil {
+		log.Error().
+			Err(planErr).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("destDir", destDir).
+			Msg(logPrefix + "failed to build plan, aborting")
+		return handlePlanError(fmt.Sprintf("Failed to build %s plan: %v", mode.name, planErr))
+	}
 	if unsupportedErr, ok := errors.AsType[*linkUnsupportedError](err); ok {
 		log.Warn().
 			Str("reason", unsupportedErr.reason).
@@ -450,7 +448,30 @@ func (s *Service) processLinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg(logPrefix + "failed to create link tree, aborting")
-		return handleCreateError(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
+		handle := handleCreateError
+		if errors.Is(err, hardlinktree.ErrTargetExists) {
+			// The target dir already holds a file: a crashed earlier run or a
+			// second tracker sharing the link path. Falling back would add the
+			// torrent in regular mode inside the matched torrent's path and leave
+			// the partial tree, so refuse and let the user clean up (#2942).
+			handle = handleMaterializationError
+		}
+		return handle(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
+	}
+
+	// Ensure cross-seed category exists with the correct save path derived from
+	// the base directory and directory preset, rather than the matched torrent's save path.
+	categoryCreationFailed := false
+	if crossCategory != "" {
+		categorySavePath := s.buildCategorySavePath(ctx, d, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
+			log.Warn().Err(err).
+				Str("category", crossCategory).
+				Str("savePath", categorySavePath).
+				Msg(logPrefix + "failed to ensure category exists, continuing without category")
+			crossCategory = ""
+			categoryCreationFailed = true
+		}
 	}
 
 	log.Info().

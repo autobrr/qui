@@ -11,6 +11,7 @@ import { makeFilters } from "@/test/mockFilters"
 import { makeServerState } from "@/test/mockServerState"
 import { makeTorrent } from "@/test/mockTorrent"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 import type { TorrentResponse } from "@/types"
 
 // Contract tests for the lib/api.ts "torrents" method group (issue #1931).

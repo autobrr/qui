@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
@@ -122,8 +121,15 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
+	// Fallback when an instance has no client transport. Tuned from autobrr's sharedhttp.Transport.
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.MaxIdleConnsPerHost = 10
+	baseTransport.ResponseHeaderTimeout = 120 * time.Second
+	baseTransport.ReadBufferSize = 64 << 10
+	baseTransport.WriteBufferSize = 64 << 10
+
 	// Configure the reverse proxy with retry logic for transient network errors
-	retryTransport := NewRetryTransportWithSelector(sharedhttp.Transport, func(req *http.Request) http.RoundTripper {
+	retryTransport := NewRetryTransportWithSelector(baseTransport, func(req *http.Request) http.RoundTripper {
 		proxyCtx, ok := getProxyContext(req.Context())
 		if !ok || proxyCtx == nil || proxyCtx.httpClient == nil || proxyCtx.httpClient.Transport == nil {
 			return nil
@@ -422,6 +428,13 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
 
+		// Intercepted only to clean up the folders a move leaves behind
+		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
+		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
+		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
+		pr.Post("/api/v2/torrents/setSavePath", h.handleSetSavePath)
+		pr.Post("/api/v2/torrents/setDownloadPath", h.handleSetDownloadPath)
+
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
 		pr.HandleFunc("/*", h.ServeHTTP)
@@ -666,7 +679,7 @@ func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.In
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
 	}
 
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have local filesystem access enabled"}
 	}
 
@@ -1777,11 +1790,10 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
+			Path: strings.TrimSpace(form.get("location"))}, true
+	})
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -2030,9 +2042,8 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+			strings.EqualFold(form.get("deleteFiles"), "true")
+	})
 }

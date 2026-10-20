@@ -20,7 +20,7 @@ import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import type { TorrentFieldName, TorrentFieldSelection } from "@/lib/torrent-field-request"
-import { getToggleSelectionState, getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { getToggleSelectionState, getTorrentDisplayHash, getTorrentFullPaths } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
@@ -281,17 +281,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       return
     }
 
-    const values = torrents
-      .map(t => {
-        const name = incognitoMode ? getLinuxIsoName(t.hash) : t.name
-        const savePath = incognitoMode ? getLinuxSavePath(t.hash) : t.save_path
-        if (!name || !savePath) {
-          return ""
-        }
-        return `${savePath}/${name}`
-      })
-      .map(value => value.trim())
-      .filter(Boolean)
+    const values = getTorrentFullPaths(torrents, incognitoMode)
 
     if (values.length === 0) {
       toast.error(t("contextMenu.toast.fullPathNotAvailable"))

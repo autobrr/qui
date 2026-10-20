@@ -4,6 +4,7 @@
  */
 
 import { toast } from "sonner"
+import i18n from "./i18n"
 import { getBaseUrl, withBasePath } from "./lib/base-url"
 import { isDemo } from "./lib/demo"
 
@@ -11,9 +12,15 @@ let hasRegistered = false
 
 export function setupPWAAutoUpdate(): void {
   if (hasRegistered || isDemo) return
-  if (!("serviceWorker" in navigator)) return
-
   hasRegistered = true
+
+  // A stale page asks for lazy chunks that the new build no longer has. The reload loads the new build.
+  // Offline, the Peers tab flag CSS also fails (not precached), and a reload there would loop.
+  window.addEventListener("vite:preloadError", () => {
+    if (navigator.onLine) window.location.reload()
+  })
+
+  if (!("serviceWorker" in navigator)) return
 
   const scope = getBaseUrl()
   const swUrl = withBasePath("sw.js")
@@ -48,7 +55,7 @@ export function setupPWAAutoUpdate(): void {
       description,
       duration: Number.POSITIVE_INFINITY,
       action: {
-        label: "Reload",
+        label: i18n.t("pwaUpdate.reload", { ns: "common" }),
         onClick: () => {
           dismissUpdateToast()
           onConfirm()
@@ -66,8 +73,8 @@ export function setupPWAAutoUpdate(): void {
 
       const promptForUpdate = () => {
         showUpdateToast({
-          title: "Update available",
-          description: "Reload to apply the latest qui release.",
+          title: i18n.t("updateBanner.updateAvailable", { ns: "common" }),
+          description: i18n.t("pwaUpdate.waitingDescription", { ns: "common" }),
           onConfirm: () => {
             shouldReloadAfterActivation = true
 
@@ -94,8 +101,8 @@ export function setupPWAAutoUpdate(): void {
 
         if (event.isUpdate || event.isExternal) {
           showUpdateToast({
-            title: "qui updated",
-            description: "Reload when convenient to finish installing the latest release.",
+            title: i18n.t("pwaUpdate.activatedTitle", { ns: "common" }),
+            description: i18n.t("pwaUpdate.activatedDescription", { ns: "common" }),
             onConfirm: () => {
               reload()
             },
@@ -112,6 +119,14 @@ export function setupPWAAutoUpdate(): void {
 
       wb.register({ immediate: true }).catch((error) => {
         console.error("Service worker registration failed", error)
+      })
+
+      // A phone PWA resumes from the background without a navigation, so the browser never checks for a new sw.js.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return
+        wb.update().catch((error) => {
+          console.error("Service worker update check failed", error)
+        })
       })
     })
     .catch((error) => {

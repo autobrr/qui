@@ -6,14 +6,18 @@ package hardlinktree
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"syscall"
 
 	"github.com/autobrr/qui/pkg/fsutil"
 )
+
+// ErrRollbackFailed marks a failed tree create whose rollback also failed, so
+// part of the tree may still be on disk.
+var ErrRollbackFailed = errors.New("rollback also failed")
 
 // Created records the files and directories a single Create call actually
 // made on disk. Rollback removes exactly those and nothing else: destinations
@@ -66,6 +70,30 @@ func mkdirAllTracked(dir string, created *[]string) error {
 	return nil
 }
 
+// ErrTargetExists reports a target path that already holds a file that is not
+// a link to the source.
+var ErrTargetExists = errors.New("target already exists")
+
+// targetSatisfiesPlan reports whether fp's target already is a hardlink to its
+// source, so Create can skip it. A target holding anything else is the
+// collision ErrTargetExists names.
+func targetSatisfiesPlan(fp FilePlan) (bool, error) {
+	info, err := os.Lstat(fp.TargetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check target %s: %w", fp.TargetPath, err)
+	}
+	if info.Mode().IsRegular() {
+		srcInfo, srcErr := os.Stat(fp.SourcePath)
+		if srcErr == nil && os.SameFile(srcInfo, info) {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath)
+}
+
 // Create materializes the hardlink tree plan on disk.
 // Creates necessary directories and hardlinks files from source to target paths.
 // On failure, attempts best-effort rollback of created files and returns a nil handle.
@@ -92,7 +120,7 @@ func Create(plan *TreePlan) (*Created, error) {
 	rollbackOnError := func(err error) error {
 		rollbackErr := rollback(createdFiles, createdDirs)
 		if rollbackErr != nil {
-			return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return fmt.Errorf("%w (%w: %w)", err, ErrRollbackFailed, rollbackErr)
 		}
 		return err
 	}
@@ -115,23 +143,25 @@ func Create(plan *TreePlan) (*Created, error) {
 		}
 
 		// Check if target already exists
-		if info, err := os.Lstat(fp.TargetPath); err == nil {
-			// File exists - check if it's already a hardlink to the source
-			if info.Mode().IsRegular() {
-				srcInfo, srcErr := os.Stat(fp.SourcePath)
-				if srcErr == nil && os.SameFile(srcInfo, info) {
-					// Already a hardlink to the same file - skip (idempotent)
-					continue
-				}
-			}
-			// Different file exists at target - this is an error
-			return nil, rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
-		} else if !os.IsNotExist(err) {
-			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
+		if satisfied, err := targetSatisfiesPlan(fp); err != nil {
+			return nil, rollbackOnError(err)
+		} else if satisfied {
+			// Already a hardlink to the same file - skip (idempotent)
+			continue
 		}
 
 		// Create hardlink
 		if err := os.Link(fp.SourcePath, fp.TargetPath); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				// A target appeared between the check above and this Link. A
+				// concurrent run linking the same release to a shared path
+				// (discussion #2282) created the link we wanted, so take it;
+				// anything else is the collision link mode refuses.
+				if satisfied, satisfiedErr := targetSatisfiesPlan(fp); satisfiedErr == nil && satisfied {
+					continue
+				}
+				return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath))
+			}
 			return nil, rollbackOnError(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
 		}
 		createdFiles = append(createdFiles, fp.TargetPath)
@@ -172,17 +202,8 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// isDirNotEmpty checks if an error indicates a non-empty directory.
+// isDirNotEmpty reports whether os.Remove failed because the folder still has
+// entries. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY.
 func isDirNotEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, syscall.ENOTEMPTY) {
-		return true
-	}
-	// Different OS have different error messages
-	errStr := err.Error()
-	return strings.Contains(errStr, "not empty") ||
-		strings.Contains(errStr, "directory not empty") ||
-		strings.Contains(errStr, "The directory is not empty")
+	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
 }

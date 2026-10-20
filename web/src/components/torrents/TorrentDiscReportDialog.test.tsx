@@ -8,12 +8,14 @@ import type { DiscScanRun } from "@/types"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DiscReportButton, TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
+import "@/i18n"
 
 const { toast, copyTextToClipboard } = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
   copyTextToClipboard: vi.fn(),
 }))
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string, options?: Record<string, unknown>) => options ? `${key}:${Object.values(options).join(",")}` : key }),
 }))
 vi.mock("sonner", () => ({ toast }))
@@ -153,9 +155,9 @@ describe("TorrentDiscReportDialog", () => {
   })
 
   it("shows the start error when the server refuses the scan", () => {
-    const scans = scansWith(undefined, { isError: true, error: new Error("Instance does not have filesystem access") } as Partial<DiscScans["start"]>)
+    const scans = scansWith(undefined, { isError: true, error: new Error("Disc scanning requires local filesystem access") } as Partial<DiscScans["start"]>)
     const { getByText } = render(<TorrentDiscReportDialog discPath="Set/Disc 1" onClose={() => {}} scans={scans} />)
-    expect(getByText("Instance does not have filesystem access")).toBeTruthy()
+    expect(getByText("Disc scanning requires local filesystem access")).toBeTruthy()
     fireEvent.click(getByText("discScan.retry"))
     expect(scans.start.mutate).toHaveBeenCalledWith({ discPath: "Set/Disc 1", force: false })
   })

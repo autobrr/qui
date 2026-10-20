@@ -11,12 +11,12 @@ import (
 )
 
 // Backend abstracts filesystem operations so services work identically against
-// a local filesystem or a future SSH-backed remote. It covers exactly the
+// a local filesystem or an SSH-backed remote. It covers exactly the
 // operations qui's services need: syscall-level primitives (stat, walk,
 // mkdir, remove) plus the high-level tree operations (HardlinkTree,
-// ReflinkTree, RemoveTree) that create-and-rollback as a unit. Path
-// manipulation (filepath.Clean, filepath.Rel, etc.) is not part of this
-// interface — it stays as direct calls in service code.
+// ReflinkTree, RemoveTree) that create-and-rollback as a unit, and the path
+// dialect (Paths) that callers manipulate backend paths with, since a remote
+// backend's paths are not in the host's grammar.
 //
 // Every method accepts a context.Context and must respect cancellation.
 //
@@ -43,7 +43,10 @@ type Backend interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
-	// The channel is closed when the walk completes, is cancelled via ctx, or
+	// Entries within one directory arrive in lexical order and a directory's
+	// own entry precedes everything beneath it; nothing more is promised about
+	// order, as a backend may list sibling directories concurrently. The
+	// channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
@@ -91,7 +94,49 @@ type Backend interface {
 
 	// --- Capabilities ---
 
+	// Paths is the dialect of this backend's filesystem. Every Join, Dir,
+	// IsAbs or Rel on a path that goes to or comes from this backend uses it.
+	Paths() PathDialect
+
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
+}
+
+// BatchStater is a Backend that answers many paths in one request, so a
+// remote host costs a few round trips per batch and not a few per path.
+type BatchStater interface {
+	// StatBatch is Stat for each path: infos[i] and errs[i] answer paths[i].
+	StatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+	// LstatBatch is Lstat for each path: infos[i] and errs[i] answer paths[i].
+	LstatBatch(ctx context.Context, paths []string) (infos []*LstatInfo, errs []error)
+}
+
+// StatAll is Stat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Stat per
+// path.
+func StatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.StatBatch(ctx, paths)
+	}
+	return statEach(ctx, paths, b.Stat)
+}
+
+// LstatAll is Lstat for each path: infos[i] and errs[i] answer paths[i]. A
+// BatchStater answers in one call, and any other backend gets one Lstat per
+// path.
+func LstatAll(ctx context.Context, b Backend, paths []string) (infos []*LstatInfo, errs []error) {
+	if batch, ok := b.(BatchStater); ok {
+		return batch.LstatBatch(ctx, paths)
+	}
+	return statEach(ctx, paths, b.Lstat)
+}
+
+func statEach(ctx context.Context, paths []string, stat func(context.Context, string) (*LstatInfo, error)) ([]*LstatInfo, []error) {
+	infos := make([]*LstatInfo, len(paths))
+	errs := make([]error, len(paths))
+	for i, p := range paths {
+		infos[i], errs[i] = stat(ctx, p)
+	}
+	return infos, errs
 }

@@ -9,14 +9,12 @@ export type TrackerMatchMode = "include" | "exclude" | "mixed"
 
 /**
  * Export format for workflows. This is the clipboard JSON format.
- * - Includes trackerDomains (primary) and derived trackerPattern
  * - Omits id, instanceId, sortOrder, enabled
  * - Omits intervalSeconds when it equals default 900
  */
 export interface WorkflowExport {
   name: string
   trackerPattern: string
-  trackerDomains: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   sortingConfig?: SortingConfig
@@ -24,6 +22,9 @@ export interface WorkflowExport {
   dryRun?: boolean
   notify?: boolean
 }
+
+/** Parsed import JSON, with every key as written. The backend checks the keys and lists each problem. */
+export type WorkflowImport = WorkflowExport & Record<string, unknown>
 
 const DEFAULT_INTERVAL_SECONDS = 900
 
@@ -33,13 +34,9 @@ const DEFAULT_INTERVAL_SECONDS = 900
  * omits intervalSeconds when it equals the default 900.
  */
 export function toExportFormat(workflow: Automation): WorkflowExport {
-  const trackerDomains = workflow.trackerDomains ?? []
-  const trackerPattern = deriveTrackerPattern(trackerDomains, workflow.trackerPattern)
-
   const exported: WorkflowExport = {
     name: workflow.name,
-    trackerPattern,
-    trackerDomains,
+    trackerPattern: workflow.trackerPattern,
     conditions: workflow.conditions,
     sortingConfig: workflow.sortingConfig,
   }
@@ -64,37 +61,16 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
   return exported
 }
 
-/**
- * Derives the trackerPattern from trackerDomains.
- * If domains is empty and pattern is "*", returns "*".
- * Otherwise joins domains with comma.
- */
-function deriveTrackerPattern(domains: string[], existingPattern?: string): string {
-  if (domains.length === 0) {
-    return existingPattern?.trim() ?? ""
-  }
-  return domains.join(",")
-}
-
-export function getTrackerTokens(source: { trackerDomains?: string[]; trackerPattern?: string }): string[] {
-  let values: string[] = []
-  if (source.trackerDomains && source.trackerDomains.length > 0) {
-    values = source.trackerDomains
-  } else if (source.trackerPattern) {
-    values = [source.trackerPattern]
-  }
-
+export function getTrackerTokens(source: { trackerPattern?: string }): string[] {
   const tokens: string[] = []
   const seen = new Set<string>()
-  for (const value of values) {
-    for (const part of value.split(/[|,;]/)) {
-      const token = part.trim()
-      if (!token) continue
-      const key = token.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      tokens.push(token)
-    }
+  for (const part of (source.trackerPattern ?? "").split(/[|,;]/)) {
+    const token = part.trim()
+    if (!token) continue
+    const key = token.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    tokens.push(token)
   }
   return tokens
 }
@@ -108,53 +84,30 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
 }
 
 /**
- * Parses and normalizes import data to AutomationInput.
- * - trackerDomains is authoritative; trackerPattern is recomputed
+ * Create payload for import: the JSON as written, except that
  * - enabled is forced to false
- * - sortOrder is omitted (will be appended)
+ * - sortOrder is omitted, so the backend appends the rule
  * - name gets "(copy)" suffix via generateUniqueName
  */
 export function fromImportFormat(
-  data: WorkflowExport,
+  data: WorkflowImport,
   existingNames: string[]
 ): AutomationInput {
   return {
+    ...data,
     name: generateUniqueName(data.name, existingNames),
     enabled: false, // Always start disabled
-    ...importedFields(data),
+    sortOrder: undefined,
   }
 }
 
-/** Update payload for "Edit as JSON": the JSON supplies every exported field, the rule keeps enabled and sortOrder. */
-export function toEditInput(rule: Automation, data: WorkflowExport): AutomationInput {
+/** Update payload for "Edit as JSON": the JSON as written, except that the rule keeps enabled and sortOrder. */
+export function toEditInput(rule: Automation, data: WorkflowImport): AutomationInput {
   return {
-    name: data.name,
+    ...data,
     enabled: rule.enabled,
     sortOrder: rule.sortOrder,
-    ...importedFields(data),
   }
-}
-
-type ImportedFields = Omit<AutomationInput, "name" | "enabled" | "sortOrder">
-
-function importedFields(data: WorkflowExport): ImportedFields {
-  const trackerDomains = data.trackerDomains ?? []
-  const fields: ImportedFields = {
-    trackerPattern: deriveTrackerPattern(trackerDomains, data.trackerPattern),
-    trackerDomains,
-    conditions: data.conditions,
-    freeSpaceSource: data.freeSpaceSource,
-    sortingConfig: data.sortingConfig,
-    dryRun: data.dryRun ?? false,
-    notify: data.notify ?? true,
-  }
-
-  // Include intervalSeconds if specified and differs from default
-  if (data.intervalSeconds && data.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
-    fields.intervalSeconds = data.intervalSeconds
-  }
-
-  return fields
 }
 
 /**
@@ -165,8 +118,7 @@ export function toDuplicateInput(
   workflow: Automation,
   existingNames: string[]
 ): AutomationInput {
-  const exportData = toExportFormat(workflow)
-  return fromImportFormat(exportData, existingNames)
+  return fromImportFormat({ ...toExportFormat(workflow) }, existingNames)
 }
 
 /**
@@ -204,7 +156,7 @@ export function generateUniqueName(baseName: string, existingNames: string[]): s
 const IMPORT_ERROR_KEYS = "preferences.workflowsOverview.importDialog.errors"
 
 /** Validates import JSON; the error is an `instances` i18n key for the caller to translate. */
-export function parseImportJSON(jsonString: string): { data: WorkflowExport; error: null } | { data: null; error: string } {
+export function parseImportJSON(jsonString: string): { data: WorkflowImport; error: null } | { data: null; error: string } {
   let parsed: unknown
   try {
     parsed = JSON.parse(jsonString)
@@ -227,39 +179,8 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
     return { data: null, error: `${IMPORT_ERROR_KEYS}.missingConditions` }
   }
 
-  // Validate tracker fields
-  const hasValidTrackerDomains = Array.isArray(obj.trackerDomains) &&
-    obj.trackerDomains.every((el: unknown) => typeof el === "string")
-  const hasValidTrackerPattern = typeof obj.trackerPattern === "string"
-
-  if (!hasValidTrackerDomains && !hasValidTrackerPattern) {
-    return { data: null, error: `${IMPORT_ERROR_KEYS}.missingTracker` }
-  }
-
-  // Build the export data
-  const data: WorkflowExport = {
-    name: obj.name as string,
-    trackerPattern: hasValidTrackerPattern ? (obj.trackerPattern as string) : "",
-    trackerDomains: hasValidTrackerDomains ? (obj.trackerDomains as string[]) : [],
-    conditions: obj.conditions as ActionConditions,
-    freeSpaceSource: obj.freeSpaceSource as FreeSpaceSource | undefined,
-    sortingConfig: obj.sortingConfig as SortingConfig | undefined,
-  }
-
-  // Optional intervalSeconds
-  if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
-    data.intervalSeconds = obj.intervalSeconds
-  }
-
-  if (typeof obj.dryRun === "boolean") {
-    data.dryRun = obj.dryRun
-  }
-
-  if (typeof obj.notify === "boolean") {
-    data.notify = obj.notify
-  }
-
-  return { data, error: null }
+  // The backend rejects a rule with no tracker, so a missing tracker is not checked here.
+  return { data: obj as WorkflowImport, error: null }
 }
 
 /**

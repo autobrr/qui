@@ -29,7 +29,9 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
+import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
+import { hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
@@ -40,6 +42,7 @@ import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { torrentTableFeatures, type TorrentRow, type TorrentTableColumnDef } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
+import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
@@ -61,7 +64,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
@@ -69,6 +72,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { unitLabel } from "@/lib/unit-format"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
 import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
@@ -108,56 +112,14 @@ import {
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns } from "./TorrentTableColumns"
 import { TableColumnHeader } from "./table/TableColumnHeader"
 import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
+import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
 // Default values for persisted state hooks (module scope for stable references)
-const DEFAULT_COLUMN_VISIBILITY = {
-  priority: true,
-  status_icon: true,
-  tracker_icon: true,
-  name: true,
-  size: true,
-  total_size: false,
-  progress: true,
-  state: true,
-  num_seeds: true,
-  num_leechs: true,
-  dlspeed: true,
-  upspeed: true,
-  eta: true,
-  ratio: true,
-  popularity: true,
-  category: true,
-  tags: true,
-  added_on: true,
-  completion_on: false,
-  tracker: false,
-  dl_limit: false,
-  up_limit: false,
-  downloaded: false,
-  uploaded: false,
-  downloaded_session: false,
-  uploaded_session: false,
-  amount_left: false,
-  time_active: false,
-  seeding_time: false,
-  save_path: false,
-  completed: false,
-  ratio_limit: false,
-  seen_complete: false,
-  last_activity: false,
-  availability: false,
-  infohash_v1: false,
-  infohash_v2: false,
-  reannounce: false,
-  private: false,
-  instance: true,
-}
 const DEFAULT_COLUMN_SIZING = {}
 const STREAM_STATUS_TRANSITION_DELAY_MS = 800
 const NAME_COLUMN_MIN_WIDTH = 160
@@ -175,19 +137,6 @@ function columnDefId(col: TorrentTableColumnDef): string | null {
 }
 
 type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
-
-// Helper function to get default column order (module scope for stable reference)
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
-  const order = cols.map(columnDefId).filter((v): v is string => typeof v === "string")
-
-  const trackerIconIndex = order.indexOf("tracker_icon")
-  if (trackerIconIndex > -1 && trackerIconIndex !== 2) {
-    order.splice(2, 0, order.splice(trackerIconIndex, 1)[0])
-  }
-
-  return order
-}
 
 interface ExternalIPAddressProps {
   address?: string | null
@@ -301,7 +250,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false, enabled: instanceId > 0 })
+  const instanceMaxRatio = useGlobalMaxRatio(instanceId)
+  const listenPort = useListenPort(instanceId)
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
@@ -313,21 +263,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
-  // These should be defined at module scope, not inside the component, to ensure stable references
-  // (If not already, move them to the top of the file)
-  // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
-
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
   const [stretchNameColumn, toggleStretchNameColumn] = usePersistedStretchMode(instanceId)
-  // Column order with persistence (get default order at runtime to avoid initialization order issues)
+  // Column order with persistence
   // Latest accessor for the table's leaf column ids — reassigned after the table
   // is created below; useColumnDnd reads it lazily at drag time.
   const leafColumnIdsRef = useRef<() => string[]>(() => [])
   const getLeafColumnIds = useCallback(() => leafColumnIdsRef.current(), [])
   const { columnOrder, setColumnOrder, sensors, onDragEnd } = useColumnDnd({
     instanceId,
-    defaultColumnOrder: getDefaultColumnOrder(),
+    defaultColumnOrder: isUnifiedView ? DEFAULT_UNIFIED_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
     getLeafColumnIds,
   })
   // Column sizing with persistence
@@ -563,7 +509,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           }
           return {
             label: t("statusBar.streamStatus.fallback.degraded.label"),
-            message: t("statusBar.streamStatus.fallback.degraded.message"),
+            message: backendStreamError ?? t("statusBar.streamStatus.fallback.degraded.message"),
             secondary: degradedSecondary,
             tone: plan.tone,
             animate: false,
@@ -628,9 +574,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     capabilitySupport: capabilities?.supportsTrackerHealth,
     responseSupport: trackerHealthSupported,
   })
-  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -657,49 +602,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [isLoading, torrents.length])
 
-  const hasSidebarFilters = useMemo(() => {
-    const {
-      status = [],
-      excludeStatus = [],
-      categories = [],
-      excludeCategories = [],
-      expandedCategories = [],
-      expandedExcludeCategories = [],
-      tags = [],
-      excludeTags = [],
-      trackers = [],
-      excludeTrackers = [],
-      expr,
-    } = filters
-
-    return (
-      status.length > 0 ||
-      excludeStatus.length > 0 ||
-      categories.length > 0 ||
-      excludeCategories.length > 0 ||
-      expandedCategories.length > 0 ||
-      expandedExcludeCategories.length > 0 ||
-      tags.length > 0 ||
-      excludeTags.length > 0 ||
-      trackers.length > 0 ||
-      excludeTrackers.length > 0 ||
-      Boolean(expr?.trim())
-    )
-  }, [filters])
-
   const hasSearchQuery = Boolean(effectiveSearch)
-  const hasFilterControls = useMemo(() => {
-    return hasSidebarFilters || columnFilters.length > 0
-  }, [hasSidebarFilters, columnFilters])
-  const emptyStateMessage = useMemo(() => {
-    if (hasFilterControls) {
-      return "No torrents match the current filters"
-    }
-    if (hasSearchQuery) {
-      return "No torrents match the current search"
-    }
-    return "No torrents found"
-  }, [hasFilterControls, hasSearchQuery])
+  const hasFilterControls = hasSidebarFilters(filters) || columnFilters.length > 0
+  const emptyStateMessage = useTorrentListEmptyMessage(hasFilterControls, hasSearchQuery)
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -756,7 +661,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     speedUnit,
     trackerIcons,
     formatTimestamp,
-    preferences,
+    instanceMaxRatio,
     supportsTrackerHealth,
     isUnifiedView,
     isCrossInstanceEndpoint,
@@ -949,7 +854,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const listenPort = metadata?.preferences?.listen_port
   const connectionStatusTooltip = hasConnectionStatus ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}` : t("statusBar.connectionUnknown")
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
@@ -1392,7 +1296,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             >
                               {compactSortOptions.map(option => (
                                 <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
-                                  {option.label}
+                                  {t(option.labelKey)}
                                 </DropdownMenuRadioItem>
                               ))}
                             </DropdownMenuRadioGroup>
@@ -1554,18 +1458,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   !hasFilterControls && "pointer-events-none"
                 )}
               >
-                <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground space-y-3">
-                  <p>{emptyStateMessage}</p>
-                  {hasFilterControls && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => clearFiltersAtomically("all")}
-                    >
-                      {t("columnFilter.clearFilters")}
-                    </Button>
-                  )}
-                </div>
+                <TorrentListEmptyState
+                  hasFilters={hasFilterControls}
+                  hasSearch={hasSearchQuery}
+                  onClearFilters={() => clearFiltersAtomically("all")}
+                />
               </div>
             )}
 
@@ -1747,7 +1644,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
                         >
                           <ArrowUpDown className="h-3 w-3" />
-                          <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                          <span>{speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>

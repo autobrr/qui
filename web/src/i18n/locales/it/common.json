@@ -12,7 +12,9 @@
     "generalSettings": "Impostazioni generali",
     "manageInstances": "Gestisci istanze",
     "appearance": "Aspetto",
-    "instanceBackups": "Backup delle istanze"
+    "instanceBackups": "Backup delle istanze",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentazione"
   },
   "sidebar": {
     "instances": "Istanze",
@@ -22,8 +24,8 @@
     "version": "Versione {{version}}",
     "language": "Lingua",
     "viewOnGitHub": "Visualizza su GitHub",
-    "rssRunning": "RSS in esecuzione",
-    "rssEnabled": "RSS abilitato",
+    "rssRunning": "RSS cross-seed in esecuzione",
+    "rssEnabled": "RSS cross-seed abilitato",
     "scanRunning": "Scansione in esecuzione",
     "showSidebar": "Mostra barra laterale",
     "hideSidebar": "Nascondi barra laterale"
@@ -58,11 +60,14 @@
     "torrentCreationTasksTitle": "Attività di creazione torrent",
     "updateAvailable": "Aggiornamento disponibile",
     "updateVersion": "Versione {{version}}",
-    "rssRunning": "RSS in esecuzione",
-    "rssEnabled": "RSS abilitato",
+    "rssRunning": "RSS cross-seed in esecuzione",
+    "rssEnabled": "RSS cross-seed abilitato",
     "scanRunning": "Scansione in esecuzione",
     "allScope": "TUTTI",
     "unified": "Unificato"
+  },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
   },
   "unifiedScope": {
     "unified": "Unificato",
@@ -81,8 +86,8 @@
     "noActiveClients": "Nessun client attivo",
     "updateAvailable": "Aggiornamento disponibile",
     "updateVersion": "Versione {{version}}",
-    "rssRunning": "RSS in esecuzione",
-    "rssEnabled": "RSS abilitato",
+    "rssRunning": "RSS cross-seed in esecuzione",
+    "rssEnabled": "RSS cross-seed abilitato",
     "scanRunning": "Scansione in esecuzione",
     "logout": "Esci",
     "version": "Versione {{version}}",
@@ -98,8 +103,7 @@
     "copyPath": "Copia percorso",
     "scrollToTop": "Scorri in alto",
     "search": "Cerca",
-    "select": "Seleziona",
-    "toggle": "Attiva/disattiva"
+    "select": "Seleziona"
   },
   "placeholders": {
     "search": "Cerca...",
@@ -107,6 +111,13 @@
   },
   "feedback": {
     "noResultsFound": "Nessun risultato trovato."
+  },
+  "errors": {
+    "unknown": "Errore sconosciuto",
+    "httpStatus": "Errore HTTP! Stato: {{status}}",
+    "httpStatusHtml": "Errore HTTP! Stato: {{status}} (il server ha restituito una pagina di errore HTML)",
+    "ssoHtmlResponse": "L'API ha restituito una risposta HTML invece di JSON. Se sei dietro un proxy SSO (Cloudflare Access, Pangolin, ecc.), prova ad aggiornare la pagina o a riaprire l'URL in una nuova scheda.",
+    "torrentFileDownloadFailed": "Impossibile scaricare il file torrent: {{status}}"
   },
   "status": {
     "disabled": "Disabilitato",
@@ -142,14 +153,18 @@
     "switchedToMode": "Passato alla modalità {{mode}}",
     "switchedToTheme": "Passato al tema {{theme}}",
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza.",
-    "custom": "Personalizzato"
+    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",
     "versionAvailable": "La versione {{version}} è ora disponibile",
-    "viewRelease": "Visualizza la release",
     "dismiss": "Ignora"
+  },
+  "pwaUpdate": {
+    "reload": "Ricarica",
+    "waitingDescription": "Ricarica per applicare l'ultima versione di qui.",
+    "activatedTitle": "qui è stato aggiornato",
+    "activatedDescription": "Ricarica quando preferisci per completare l'installazione dell'ultima versione."
   },
   "notFound": {
     "title": "Ops! Persi nello sciame?",
@@ -176,8 +191,7 @@
     "trigger": "Maggiori informazioni"
   },
   "numberInput": {
-    "unlimited": "Illimitato",
-    "useUnlimited": " (usa -1 per illimitato)"
+    "unlimited": "Illimitato"
   },
   "dateTime": {
     "na": "N/D",
@@ -202,6 +216,25 @@
       "year_one": "{{count}} anno",
       "year_other": "{{count}} anni"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Sostieni qui",

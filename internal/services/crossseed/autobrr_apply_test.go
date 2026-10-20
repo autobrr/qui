@@ -561,14 +561,6 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			expectExcludeTags:       []string{"temporary"},
 		},
 		{
-			name:                    "nil settings results in empty filters",
-			settings:                nil,
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-		},
-		{
 			name:                    "empty settings results in empty filters",
 			settings:                &models.CrossSeedAutomationSettings{},
 			expectCategories:        nil,
@@ -645,13 +637,12 @@ func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	}
 
 	_, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
-		TorrentData:  base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
-		TorrentName:  announcedName,
-		InstanceIDs:  []int{instance.ID},
-		Indexer:      "tracker-a",
-		Category:     "incoming",
-		Tags:         []string{"from-webhook"},
-		SkipIfExists: new(true),
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+		Indexer:     "tracker-a",
+		Category:    "incoming",
+		Tags:        []string{"from-webhook"},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, captured)

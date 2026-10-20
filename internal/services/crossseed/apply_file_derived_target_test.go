@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -108,7 +110,7 @@ func createNamedFileTestTorrent(t *testing.T, rootName, fileName string, size in
 	return buf.Bytes()
 }
 
-func TestApplyTargetReleaseViewFromFiles(t *testing.T) {
+func TestReadApplyTarget(t *testing.T) {
 	service := &Service{
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -117,19 +119,19 @@ func TestApplyTargetReleaseViewFromFiles(t *testing.T) {
 	parsed := service.releaseCache.Parse(bracketAnimePackName)
 	require.False(t, isTVRelease(parsed), "bracket-anime pack name should parse as non-TV for this regression to mean anything")
 
-	view := service.applyTargetReleaseViewFromFiles(bracketAnimePackName, parsed, bracketAnimePackTorrentFiles(), true)
+	view := service.readApplyTarget(bracketAnimePackName, bracketAnimePackTorrentFiles(), true)
 	require.NotNil(t, view.release)
 	require.NotNil(t, view.tagOrigin)
 	require.Equal(t, rls.Series, view.release.Type)
 	require.Equal(t, 1, view.release.Series)
 	require.Zero(t, view.release.Episode)
 
-	view = service.applyTargetReleaseViewFromFiles(bracketAnimePackName, parsed, nil, true)
+	view = service.readApplyTarget(bracketAnimePackName, nil, true)
 	require.Same(t, parsed, view.release)
 	require.Nil(t, view.tagOrigin)
 }
 
-func TestReleaseViewRetainsNonTVSelectedFileProvenance(t *testing.T) {
+func TestReadReleaseRetainsNonTVSelectedFileProvenance(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -143,14 +145,14 @@ func TestReleaseViewRetainsNonTVSelectedFileProvenance(t *testing.T) {
 	parsed := service.releaseCache.Parse(splitName)
 	require.False(t, isTVRelease(parsed))
 
-	view := service.applyTargetReleaseViewFromFiles(splitName, parsed, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
+	view := service.readApplyTarget(splitName, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
 	require.Same(t, parsed, view.release, "movie files must not invent TV structure")
 	require.NotNil(t, view.tagOrigin, "non-TV selected-file tags remain identity evidence")
 	require.Equal(t, "FoV", view.tagOrigin.Group)
 	require.True(t, releaseHasGroupTag(view.tagOrigin, "FoV"))
 }
 
-func TestApplyTargetReleaseViewPreservesExplicitRawGroupWhenFilesSupplyTVStructure(t *testing.T) {
+func TestReadApplyTargetPreservesExplicitRawGroupWhenFilesSupplyTVStructure(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -165,7 +167,7 @@ func TestApplyTargetReleaseViewPreservesExplicitRawGroupWhenFilesSupplyTVStructu
 	require.False(t, isTVRelease(parsed))
 	require.True(t, releaseHasExplicitGroupTag(parsed))
 
-	view := service.applyTargetReleaseViewFromFiles(rawName, parsed, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
+	view := service.readApplyTarget(rawName, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
 	require.Equal(t, rls.Episode, view.release.Type)
 	require.Equal(t, 1, view.release.Series)
 	require.Equal(t, 3, view.release.Episode)
@@ -448,8 +450,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	rawRelease := service.releaseCache.Parse(rawEpisode)
-	incomingView := service.applyTargetReleaseViewFromFiles(rawEpisode, rawRelease, incomingFiles, true)
+	incomingView := service.readApplyTarget(rawEpisode, incomingFiles, true)
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
 	startPaused := true
@@ -469,4 +470,125 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	require.Equal(t, "added", result.Status)
 	require.Equal(t, []fileRenameInstruction{{oldPath: incomingRoot, newPath: matchedRoot}}, sync.folderRenames,
 		"a file-derived incoming pack must not be mistaken for an episode and skip required root alignment")
+}
+
+func TestReadReleaseReadsSeasonFromTitleNumeral(t *testing.T) {
+	t.Parallel()
+
+	episodeFiles := func(format string, episodes ...int) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, len(episodes))
+		for _, ep := range episodes {
+			files = append(files, qbt.TorrentFile{Name: fmt.Sprintf(format, ep), Size: 1_000_000})
+		}
+		return files
+	}
+	tests := []struct {
+		name        string
+		torrentName string
+		files       qbt.TorrentFiles
+		wantSeries  int
+		wantNumeral int
+	}{
+		{
+			name:        "numeral infers the season of a pack with no other season",
+			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+			wantNumeral: 2,
+		},
+		{
+			name:        "file season wins over the numeral",
+			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - S03E%02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+			wantSeries:  3,
+		},
+		{
+			name:        "numeral above X is part of the title",
+			torrentName: "[GRP] Kaiju Squad 100 XI [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 XI - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
+		},
+		{
+			name:        "single episode keeps its absolute number",
+			torrentName: "[GRP] Kaiju Squad 100 II - 07 [BDRip 1080p HEVC FLAC]",
+			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 7),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+			view := service.readApplyTarget(tt.torrentName, tt.files, true)
+			require.Equal(t, tt.wantSeries, view.release.Series)
+			require.Equal(t, tt.wantNumeral, view.seasonNumeral)
+		})
+	}
+}
+
+// Only the "II" carries the season of these packs. The downloaded torrent keeps
+// its original root folder; the local copy can sit in a renamed "Season 02" one.
+func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "c6d7f67e4726bc80b43cad4a471f36a8de32d456"
+		name       = "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]"
+	)
+	tests := []struct {
+		name      string
+		localRoot string
+		decision  searchDecisionProvenance
+	}{
+		{
+			name:      "local copy in a renamed season folder",
+			localRoot: "Season 02 [BD]",
+			decision: searchDecisionProvenance{
+				Class:                searchCandidateClassExactSizeFallback,
+				SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+				StrictMismatchReason: "source mismatch",
+				RelaxedDifferences:   []string{"source"},
+			},
+		},
+		{
+			name:      "local copy in the original folder",
+			localRoot: name,
+			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrentBytes := createTestTorrent(t, name, []string{
+				"[GRP] Kaiju Squad 100 II - 01 [BDRip 1080p HEVC FLAC].mkv",
+				"[GRP] Kaiju Squad 100 II - 02 [BDRip 1080p HEVC FLAC].mkv",
+			}, 256*1024)
+			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+			require.NoError(t, err)
+			localFiles := slices.Clone(meta.Files)
+			for i := range localFiles {
+				localFiles[i].Name = strings.Replace(localFiles[i].Name, name, tt.localRoot, 1)
+			}
+
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{Hash: sourceHash, Name: name, SavePath: "/downloads", Progress: 1}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: localFiles,
+				})},
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			decision := tt.decision
+			decision.SourceInstanceID = instanceID
+			decision.SourceHash = sourceHash
+
+			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
+				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs:            []int{instanceID},
+				SkipPieceBoundarySafetyCheck: true,
+				SearchDecision:               decision,
+			})
+			require.NoError(t, err)
+			require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+		})
+	}
 }

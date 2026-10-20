@@ -90,7 +90,7 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 				store:          models.NewDirScanStore(db),
 				blocklistStore: blocklist,
 				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(cache)),
-				injector:       NewInjector(nil, adder, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
+				injector:       NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
 			}
 
 			l := zerolog.New(io.Discard)

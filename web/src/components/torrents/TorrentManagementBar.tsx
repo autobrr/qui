@@ -24,6 +24,7 @@ import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActio
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
@@ -132,17 +133,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [selectedTorrents])
   const availableTags = metadata?.tags?.length ? metadata.tags : fallbackTags
   const availableCategories = Object.keys(metadata?.categories ?? {}).length > 0 ? (metadata?.categories ?? {}) : fallbackCategories
-  const preferences = metadata?.preferences
 
   const isLoadingTagsData = metadataInstanceId > 0 && isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = metadataInstanceId > 0 && isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories =
-    supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? false))
+  const allowSubcategories = useSubcategoriesEnabled(metadataInstanceId, capabilities)
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()
@@ -467,7 +464,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <div
         className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
-        aria-label={t("managementBar.ariaLabel", { count: selectionCount, plural: selectionCount !== 1 ? "s" : "" })}
+        aria-label={t("managementBar.ariaLabel", { count: selectionCount })}
       >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
           <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
