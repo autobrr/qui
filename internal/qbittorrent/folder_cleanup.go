@@ -187,8 +187,8 @@ type pendingFolder struct {
 	// atDeadline marks an item judged at the deadline with content still
 	// in place.
 	atDeadline bool
-	// syncAsked is when the item, with content still in place, asked for a
-	// sync one check ahead of its deadline.
+	// syncAsked is when the item, with content still in place, last asked
+	// for a sync ahead of its deadline.
 	syncAsked time.Time
 	// checked is when the item was queued or last checked on a remote
 	// instance, which waits remoteTick between checks.
@@ -197,6 +197,14 @@ type pendingFolder struct {
 }
 
 func (p *pendingFolder) cost() int { return 1 + len(p.relDirs) + len(p.topLevel) }
+
+// asksAgain reports whether p, which asked for a sync on an earlier check,
+// asks again on the last tick before its deadline. On a remote instance that
+// earlier ask came a remote tick ahead, and a torrent added at these folders
+// since would be missing from the scope. It needs no read of the backend.
+func (p *pendingFolder) asksAgain(now time.Time, tick time.Duration) bool {
+	return !p.syncAsked.IsZero() && now.Sub(p.syncAsked) >= tick && !now.Add(tick).Before(p.expires)
+}
 
 // NewFolderCleanup returns a stopped cleanup; Start runs its worker.
 func NewFolderCleanup(pool backendRequirer, view folderView, ignores ignoreMatcher) *FolderCleanup {
@@ -505,6 +513,11 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	lead := c.tick
 	// waiting are the items this check leaves for a later one.
 	var waiting []*pendingFolder
+	// hint asks for a sync at the end of the check, and asked records an
+	// item's request for one ahead of its deadline, which goes out before
+	// the check removes anything on this instance, so the sync lands
+	// before the next tick.
+	hint, asked := false, false
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
 		// The instance is checked once one of its items is due, and then
 		// all of them are, so it costs at most one check per remoteTick.
@@ -520,12 +533,19 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 			var expired []*pendingFolder
 			for _, item := range items {
 				if now.Before(item.expires) {
+					if item.asksAgain(now, c.tick) {
+						item.syncAsked = now
+						asked = true
+					}
 					waiting = append(waiting, item)
 				} else {
 					expired = append(expired, item)
 				}
 			}
 			if len(expired) == 0 {
+				if asked {
+					c.view.hintRefresh(instanceID)
+				}
 				return items
 			}
 			items = expired
@@ -533,11 +553,6 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 
 	var ready, retry []*pendingFolder
-	// hint asks for a sync at the end of the check, and asked records an
-	// item's request for one ahead of its deadline, which goes out before
-	// the check removes anything on this instance, so the sync lands
-	// before the next tick.
-	hint, asked := false, false
 	// synced is read once, and only for an item at its deadline.
 	var synced *time.Time
 	var syncErr error
@@ -561,12 +576,13 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		// While content is there nothing reads the item's row, so nothing
 		// asks for a sync, and the cache may predate a torrent added at
 		// these folders since. One check ahead of the deadline the item asks
-		// for one, and the deadline judges only against a sync that landed
-		// after that. Without one the item is dropped as before, which is
-		// also what happens when an overrunning tick makes the ticker skip
-		// that last tick before the deadline.
+		// for one, again on the last tick if that check came earlier, and the
+		// deadline judges only against a sync that landed after the last ask.
+		// Without one the item is dropped as before, which is also what
+		// happens when an overrunning tick makes the ticker skip that last
+		// tick before the deadline.
 		if now.Before(item.expires) {
-			if item.syncAsked.IsZero() && !now.Add(lead).Before(item.expires) {
+			if item.syncAsked.IsZero() && !now.Add(lead).Before(item.expires) || item.asksAgain(now, c.tick) {
 				item.syncAsked = now
 				asked = true
 			}

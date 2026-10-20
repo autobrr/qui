@@ -1232,6 +1232,46 @@ func TestFolderCleanupRemoteAsksForTheSyncATickEarly(t *testing.T) {
 	})
 }
 
+// The last remote check comes about remoteTick before the deadline, and its
+// sync lands right after. A torrent added at these folders after that sync
+// must still keep them, so the deadline needs a sync asked for one tick ahead.
+func TestFolderCleanupRemoteAsksForTheSyncAgainATickBeforeTheDeadline(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		addedAt time.Duration
+		// behind queues the item this long after another, so it is checked
+		// on the other's schedule and its last full check, at 120 s, is
+		// also its last tick.
+		behind time.Duration
+	}{
+		{"added at 100s", 100 * time.Second, 0},
+		{"added at 115s", 115 * time.Second, 0},
+		{"last tick on a full check", 100 * time.Second, time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				e := newStoppedCleanupEnv(t, remoteBackend)
+				e.fc.remoteTick = folderCleanupRemoteTick
+				e.start()
+				layout := []string{"torrents/tv/Rel-GRP/Extras/Thumbs.db", "torrents/tv/Rel-GRP/Sub/user.nfo"}
+				e.tree(layout...)
+
+				if tc.behind > 0 {
+					e.fc.enqueue([]folderSnapshot{e.rootFolder("torrents/tv", "Gone-GRP")}, 0)
+					time.Sleep(tc.behind)
+				}
+				e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", "Extras/a.mkv", "Sub/a.srt")}, 0)
+				time.Sleep(tc.addedAt)
+				synctest.Wait()
+				e.view.setTorrentsOnSync(qbt.Torrent{Hash: e.nextHash(), SavePath: e.p("torrents/tv/Rel-GRP/Extras"), ContentPath: e.p("torrents/tv/Rel-GRP/Extras")})
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree(layout, nil)
+			})
+		})
+	}
+}
+
 // Batches queued a few seconds apart reach their deadlines a few seconds
 // apart. Between two remote ticks the deadline check reads only the item at
 // its deadline, not the items that wait for the next remote tick.
