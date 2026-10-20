@@ -747,6 +747,11 @@ func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExec
 	}
 	s.mu.Lock()
 	item.detached = true
+	// A pending RSS fetch would make Submit skip later RSS runs for this
+	// indexer before they reach the stuck-indexer error.
+	if item.task.isRSS {
+		delete(s.pendingRSS, item.task.indexer.ID)
+	}
 	s.mu.Unlock()
 	// Wake the loop: a queued task with no deadline and no pacing wait has no
 	// retry timer, so it would wait for the stuck exec otherwise.

@@ -1467,3 +1467,45 @@ func TestSearchScheduler_DetachedIndexerFailsQueuedTasks(t *testing.T) {
 	require.Equal(t, 1, recvWithin(t, started))
 	require.NoError(t, recvWithin(t, done))
 }
+
+// A stuck RSS search keeps its RSS fetch pending. After the warning, a later
+// RSS run must get the stuck-indexer error, not a silent deduplication skip.
+func TestSearchScheduler_DetachedIndexerFailsRSSTasks(t *testing.T) {
+	old := detachedExecWarnAfter
+	detachedExecWarnAfter = 50 * time.Millisecond
+	t.Cleanup(func() { detachedExecWarnAfter = old })
+
+	s := newSearchScheduler(nil, 2)
+	defer s.Stop()
+	stuck := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+	rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
+	release := make(chan struct{})
+	defer close(release)
+	submitRSS := func(exec func(), done chan<- error) {
+		t.Helper()
+		_, err := s.Submit(t.Context(), SubmitRequest{
+			Indexers:         []*models.TorznabIndexer{stuck},
+			Meta:             rssMeta,
+			ExecutionTimeout: 20 * time.Millisecond,
+			ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+				exec()
+				return nil, nil, nil
+			},
+			Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { done <- err }},
+		})
+		require.NoError(t, err)
+	}
+
+	timedOut := make(chan error, 1)
+	submitRSS(func() { <-release }, timedOut)
+	require.ErrorIs(t, recvWithin(t, timedOut), context.DeadlineExceeded)
+	require.Eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.inFlight[stuck.ID].detached
+	}, time.Second, 5*time.Millisecond)
+
+	done := make(chan error, 1)
+	submitRSS(func() {}, done)
+	require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
+}
