@@ -1822,7 +1822,10 @@ func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *mode
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, _, instance := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	evalCtx, _, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	if err != nil {
+		return nil, err
+	}
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1834,12 +1837,7 @@ func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *mode
 
 	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
 
-	directSet := make(map[string]struct{}, len(states))
-	for hash, state := range states {
-		if tagStateChangesTags(state) {
-			directSet[hash] = struct{}{}
-		}
-	}
+	ownDecision := tagStatesChanging(states)
 
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, t := range torrents {
@@ -1847,17 +1845,39 @@ func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *mode
 	}
 	s.expandTagStatesForCrossSeeds(ctx, instanceID, states, torrents, torrentByHash, map[int]*models.Automation{rule.ID: rule}, evalCtx)
 
-	crossSeedSet := make(map[string]struct{})
+	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
+
+	return s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
+}
+
+// tagStatesChanging is the set of torrents whose state would change their
+// tags. Read before expansion it is the rule's own decisions; read after, it
+// is what the run would touch.
+func tagStatesChanging(states map[string]*torrentDesiredState) map[string]struct{} {
+	changing := make(map[string]struct{}, len(states))
 	for hash, state := range states {
-		if _, direct := directSet[hash]; direct {
-			continue
-		}
 		if tagStateChangesTags(state) {
+			changing[hash] = struct{}{}
+		}
+	}
+	return changing
+}
+
+// splitTagPreviewSets classifies the states after expansion: a torrent that
+// still changes is direct when the rule decided for it before expansion and
+// a cross-seed otherwise. A torrent whose own removal a sibling's expansion
+// cancelled changes nothing and lands in neither set.
+func splitTagPreviewSets(states map[string]*torrentDesiredState, ownDecision map[string]struct{}) (directSet, crossSeedSet map[string]struct{}) {
+	directSet = make(map[string]struct{}, len(ownDecision))
+	crossSeedSet = make(map[string]struct{})
+	for hash := range tagStatesChanging(states) {
+		if _, own := ownDecision[hash]; own {
+			directSet[hash] = struct{}{}
+		} else {
 			crossSeedSet[hash] = struct{}{}
 		}
 	}
-
-	return s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
+	return directSet, crossSeedSet
 }
 
 // evalTagStatesForPreview runs the rule's tag actions against every

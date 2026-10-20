@@ -732,28 +732,16 @@ func TestPreviewTag_DirectVsCrossSeedClassification(t *testing.T) {
 	})
 	evalCtx := &EvalContext{}
 
-	// Mirror PreviewTagRule's classification: direct = changed pre-expansion,
-	// cross-seed = changed only after expansion.
+	// PreviewTagRule's classification: direct = the rule's own decision,
+	// cross-seed = changed only through expansion.
 	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
-	directSet := make(map[string]struct{}, len(states))
-	for hash, state := range states {
-		if tagStateChangesTags(state) {
-			directSet[hash] = struct{}{}
-		}
-	}
-	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet)
+	ownDecision := tagStatesChanging(states)
+	require.Equal(t, map[string]struct{}{"trigger": {}}, ownDecision)
 
 	s.expandTagStatesForCrossSeeds(context.Background(), 1, states, torrents, torrentByHash, map[int]*models.Automation{1: rule}, evalCtx)
 
-	crossSeedSet := make(map[string]struct{})
-	for hash, state := range states {
-		if _, direct := directSet[hash]; direct {
-			continue
-		}
-		if tagStateChangesTags(state) {
-			crossSeedSet[hash] = struct{}{}
-		}
-	}
+	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
+	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet)
 	require.Equal(t, map[string]struct{}{"sibling": {}}, crossSeedSet, "already-tagged sibling is a no-op and must be excluded")
 
 	result := s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, previewConfig{limit: 25}, rule, nil)
@@ -802,24 +790,60 @@ func TestPreviewTag_ManagedResetCountsReAdds(t *testing.T) {
 	// The live path deletes "managed" from the client first, so re-adding it to
 	// the trigger and its sibling is a real change the preview must count.
 	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
-	directSet := make(map[string]struct{}, len(states))
-	for hash, state := range states {
-		if tagStateChangesTags(state) {
-			directSet[hash] = struct{}{}
-		}
-	}
-	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet, "already-tagged trigger is re-added after the reset")
+	ownDecision := tagStatesChanging(states)
+	require.Equal(t, map[string]struct{}{"trigger": {}}, ownDecision, "already-tagged trigger is re-added after the reset")
 
 	s.expandTagStatesForCrossSeeds(context.Background(), 1, states, torrents, torrentByHash, map[int]*models.Automation{1: rule}, evalCtx)
 
-	crossSeedSet := make(map[string]struct{})
-	for hash, state := range states {
-		if _, direct := directSet[hash]; direct {
-			continue
-		}
-		if tagStateChangesTags(state) {
-			crossSeedSet[hash] = struct{}{}
-		}
-	}
+	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
+	require.Equal(t, map[string]struct{}{"trigger": {}}, directSet)
 	require.Equal(t, map[string]struct{}{"tagged-sibling": {}}, crossSeedSet, "already-tagged sibling is re-added after the reset")
+}
+
+// A full-mode rule removes the tag from a non-matching sibling, and the
+// matching trigger's expansion adds it back: nothing changes for the
+// sibling, so the preview must count it as neither direct nor cross-seed.
+func TestPreviewTag_ExpansionCancellingOwnRemovalCountsNothing(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{syncManager: sm}
+
+	torrents := []qbt.Torrent{
+		{Hash: "trigger", Name: "Matching Trigger", SavePath: "/data", ContentPath: "/data/show", Tags: "abcd"},
+		{Hash: "sibling", Name: "Tagged Copy", SavePath: "/data", ContentPath: "/data/show", Tags: "managed"},
+		{Hash: "unrelated", Name: "Unrelated", SavePath: "/data", ContentPath: "/data/other", Tags: "managed"},
+	}
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
+	}
+
+	rule := tagExpansionRule(&models.TagAction{
+		Enabled:           true,
+		Tags:              []string{"managed"},
+		Mode:              models.TagModeFull,
+		IncludeCrossSeeds: true,
+		Condition: &models.RuleCondition{
+			Field:    models.FieldTags,
+			Operator: models.OperatorContains,
+			Value:    "abcd",
+		},
+	})
+	evalCtx := &EvalContext{}
+
+	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
+	ownDecision := tagStatesChanging(states)
+	require.Equal(t, map[string]struct{}{"trigger": {}, "sibling": {}, "unrelated": {}}, ownDecision, "full mode decides for every torrent")
+
+	s.expandTagStatesForCrossSeeds(context.Background(), 1, states, torrents, torrentByHash, map[int]*models.Automation{1: rule}, evalCtx)
+
+	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
+	assert.Equal(t, map[string]struct{}{"trigger": {}, "unrelated": {}}, directSet, "the sibling's own removal was cancelled by the trigger's expansion")
+	assert.Empty(t, crossSeedSet, "a cancelled removal is not a cross-seed change either")
+
+	result := s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, previewConfig{limit: 25}, rule, nil)
+	assert.Equal(t, 2, result.TotalMatches)
+	assert.Equal(t, 0, result.CrossSeedCount)
+	for _, example := range result.Examples {
+		assert.NotEqual(t, "sibling", example.Hash, "a torrent nothing changes for is not an example")
+	}
 }
