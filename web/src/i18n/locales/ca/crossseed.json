@@ -555,6 +555,7 @@
       "requeueFailed": "No s'han pogut reintentar els fitxers sense coincidència: {{error}}",
       "resetFailed": "No s'han pogut restablir els fitxers: {{error}}"
     },
+    "webhookScanStatus": "Exploració per webhook · {{status}}",
     "statusLabels": {
       "queued": "En cua",
       "scanning": "Explorant",

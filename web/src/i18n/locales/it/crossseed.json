@@ -555,6 +555,7 @@
       "requeueFailed": "Impossibile riprovare i file senza corrispondenza: {{error}}",
       "resetFailed": "Reimpostazione dei file non riuscita: {{error}}"
     },
+    "webhookScanStatus": "Analisi webhook · {{status}}",
     "statusLabels": {
       "queued": "In coda",
       "scanning": "Analisi in corso",

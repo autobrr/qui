@@ -544,6 +544,7 @@
       "requeueFailed": "미일치 파일 재시도 실패: {{error}}",
       "resetFailed": "파일을 재설정하지 못했습니다: {{error}}"
     },
+    "webhookScanStatus": "웹훅 스캔 · {{status}}",
     "statusLabels": {
       "queued": "대기 중",
       "scanning": "스캔 중",
