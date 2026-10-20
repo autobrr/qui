@@ -7059,7 +7059,7 @@ func (s *Service) sendPendingRecheck(instanceID int, hash string, req *pendingRe
 	req.recheckPending = false
 	// Verification timing counts from the recheck, not from the failed add.
 	req.addedAt = time.Now()
-	log.Info().
+	log.Debug().
 		Int("instanceID", instanceID).
 		Str("hash", hash).
 		Msg("Sent deferred post-add recheck")
