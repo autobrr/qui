@@ -554,20 +554,42 @@ func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
 	assert.Equal(t, 2, again.SkippedExists)
 }
 
-// A collision check cut short by the caller is the caller's error, never a
-// permanent ErrTargetExists that tells the user to clean up their own link.
-func TestTargetIsSource_CancelledContextIsAnError(t *testing.T) {
+// A collision check cut short while the stat is running is the caller's
+// error, never a permanent ErrTargetExists that tells the user to clean up
+// their own link. The connection is opened and probed first, so the hang is
+// in the stat itself and not in the connect.
+func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
+	t.Parallel()
+
+	b, server := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	_, err := b.Stat(t.Context(), plan.Files[0].SourcePath)
+	require.NoError(t, err)
+	server.SetExec(sshtest.ExecHang)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	same, err := b.targetIsSource(ctx, plan.Files[0])
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.False(t, same)
+}
+
+// A source that vanished after the plan was built is not a reason to fall
+// back to a regular add into the matched torrent's path: the occupied target
+// still refuses, as it does on the sftp tier and the local backend.
+func TestHardlinkTree_ExecTierMissingSourceStillRefuses(t *testing.T) {
 	t.Parallel()
 
 	b, _ := newExecBackend(t)
 	dir := t.TempDir()
 	plan := linkPlan(t, dir)
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	require.NoError(t, os.Link(plan.Files[0].SourcePath, plan.Files[0].TargetPath))
+	require.NoError(t, os.Remove(plan.Files[0].SourcePath))
 
-	same, err := b.targetIsSource(ctx, plan.Files[0])
-	require.ErrorIs(t, err, context.Canceled)
-	assert.False(t, same)
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
 }
 
 // The stored tier lags a key that just gained a shell: the probe writes the

@@ -707,8 +707,8 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 // this backend's copy of it, so the row lags a key that just gained a shell
 // and would refuse the first reuse after it. The sftp tier answers no: its
 // attrs carry no inode, so the caller keeps the refusal. Any other error is
-// the caller's to report, so a lost connection or a cancelled job never
-// reads as a permanent collision.
+// the caller's to report only when it says nothing about the files, a lost
+// connection or a cancelled job; any other failure refuses.
 //
 // The target is read without following, so a symlink planted there reports
 // its own inode and never passes. The source is matched both ways: link(2)
@@ -718,15 +718,12 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 // symlink (#3237).
 func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
 	conn, err := b.exec(ctx)
-	if errors.Is(err, fsops.ErrUnsupported) {
-		return false, nil
-	}
 	if err != nil {
-		return false, err
+		return false, transient(ctx, err)
 	}
 	ids, types, err := identities(ctx, conn, fp.TargetPath, false, fp.TargetPath, fp.SourcePath)
 	if err != nil {
-		return false, err
+		return false, transient(ctx, err)
 	}
 	if fsops.SameFile(ids[0], b.inst, ids[1], b.inst) {
 		return true, nil
@@ -736,9 +733,25 @@ func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) 
 	}
 	followed, _, err := identities(ctx, conn, fp.TargetPath, true, fp.SourcePath)
 	if err != nil {
-		return false, err
+		return false, transient(ctx, err)
 	}
 	return fsops.SameFile(ids[0], b.inst, followed[0], b.inst), nil
+}
+
+// transient returns err when it says nothing about the files, because the
+// job was cancelled or the connection was lost, and nil for any other
+// failure. A stat that fails for a source that has gone, or a tier without
+// exec, then reads as "not the source" and the caller refuses with
+// ErrTargetExists, as develop did on both tiers, rather than failing with an
+// error that link mode would turn into a regular add (#2942).
+func transient(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, fsops.ErrConnectionLost) {
+		return err
+	}
+	return nil
 }
 
 // identities stats paths in one command and returns each one's identity and
