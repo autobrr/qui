@@ -24,7 +24,7 @@ const (
 	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
 
 	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
-	// cannot hold them forever; writerMu is not context-aware while blocked.
+	// cannot hold them forever.
 	cacheWriteTimeout = 5 * time.Second
 
 	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)

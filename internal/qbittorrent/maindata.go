@@ -137,8 +137,10 @@ func resolveMainData(provider mainDataProvider, mode mainDataReadMode) *qbt.Main
 		// mainDataReadFresh has already synced, so the cache is current.
 		trackers = provider.GetTrackersUnchecked()
 	case mainDataRead:
-		// The checked getter is the one that refreshes a stale cache. Read it
-		// first so the getters below see what it filled in.
+		// The checked getter starts a background refresh of a stale cache and
+		// returns the stale data. On a cold cache it waits for the first sync,
+		// up to one request timeout. Read it first so the getters below see
+		// what that first sync filled in.
 		trackers = provider.GetTrackers()
 	default:
 		return nil
