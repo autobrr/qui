@@ -720,6 +720,20 @@ func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	})
 }
 
+// A root folder that is a symlink stays until the deadline, since it reads as
+// content left. The clean then must not walk into the folder it points to.
+func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.fs.symlink(e.p("torrents/tv/Pack"))
+		e.tree("torrents/tv/Pack/Empty/")
+		e.run(e.rootFolder("torrents/tv", "Pack"))
+		time.Sleep(e.fc.deadline)
+		synctest.Wait()
+		e.requireTree([]string{"torrents/tv/Pack/Empty", "torrents/tv/Pack"}, nil)
+	})
+}
+
 // One bulk action across instances queues snapshots from each; every
 // instance is checked and cleaned in the same tick.
 func TestFolderCleanupAcrossInstances(t *testing.T) {

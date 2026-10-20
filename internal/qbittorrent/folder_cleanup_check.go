@@ -426,7 +426,11 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 			}
 		}
 	case item.snap.Layout == layoutRootFolder && !s.sealed(folder):
-		s.walkDown(ctx, folder)
+		// A root folder that is a symlink reads as content left until the
+		// deadline, and the folder it points to is not the torrent's.
+		if info, err := s.backend.Lstat(ctx, folder); err == nil && info.IsDir {
+			s.walkDown(ctx, folder)
+		}
 	}
 
 	limit := anchor
