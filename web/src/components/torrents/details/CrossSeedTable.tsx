@@ -34,6 +34,7 @@ import { toast } from "sonner"
 interface CrossSeedTableProps {
   matches: CrossSeedTorrent[]
   loading: boolean
+  loadFailed: boolean
   incognitoMode: boolean
   selectedTorrents: Set<string>
   onToggleSelection: (key: string) => void
@@ -114,6 +115,7 @@ function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<
 export const CrossSeedTable = memo(function CrossSeedTable({
   matches,
   loading,
+  loadFailed,
   incognitoMode,
   selectedTorrents,
   onToggleSelection,
@@ -337,10 +339,18 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     )
   }
 
+  if (loadFailed) {
+    return (
+      <div className="flex items-center justify-center h-full text-destructive text-sm">
+        {t("crossSeedTable.loadFailed")}
+      </div>
+    )
+  }
+
   if (matches.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {t("crossSeedTable.noMatches", { defaultValue: "No matching torrents found on other instances" })}
+        {t("crossSeedTable.noMatches")}
       </div>
     )
   }

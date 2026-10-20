@@ -51,8 +51,8 @@ func TestClassifyAnnouncementSourceKnownSize(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	expectedSourceView := svc.searchSourceReleaseViewFromFiles(
-		context.Background(), &source, svc.releaseCache.Parse(sourceName), files,
+	expectedSourceView, _ := svc.readSearchSource(
+		context.Background(), &source, files,
 	)
 
 	tests := []struct {
@@ -120,8 +120,8 @@ func TestClassifyAnnouncementSourceKnownSizeUsesFileDerivedTVStructure(t *testin
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
-	expectedSourceView := svc.searchSourceReleaseViewFromFiles(
-		context.Background(), &source, svc.releaseCache.Parse(sourceName), files,
+	expectedSourceView, _ := svc.readSearchSource(
+		context.Background(), &source, files,
 	)
 	want := svc.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:           expectedSourceView,

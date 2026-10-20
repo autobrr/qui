@@ -349,7 +349,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -379,7 +379,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	values := make([]string, 0, len(torrents))
 	for _, torrent := range torrents {
-		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
+		value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
 		if shouldIncludeTorrentFieldValue(req.Field, value) {
 			values = append(values, value)
 		}
@@ -391,7 +391,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, contentPath, tags, magnetURI string) string {
 	switch field {
 	case "name":
 		return strings.TrimSpace(name)
@@ -402,7 +402,7 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 			InfohashV2: infohashV2,
 		})
 	case "full_path":
-		return fullPathValue(savePath, name)
+		return strings.TrimSpace(contentPath)
 	case "tags":
 		return tags
 	case "magnet_uri":
@@ -646,41 +646,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
-	// NOTE: qBittorrent's API does not properly support the start_paused_enabled preference
-	// (it gets rejected/ignored when set via app/setPreferences). As a workaround, the frontend
-	// now stores this preference in localStorage and applies it when adding torrents.
-	// This complex logic attempts to respect qBittorrent's global preference, but since the
-	// preference cannot be set via API, this is effectively unused in the current implementation.
+	// Always send the choice: qBittorrent 4.x reads paused, 5.x reads stopped.
 	if pausedStr := r.FormValue("paused"); pausedStr != "" {
-		requestedPaused := pausedStr == "true"
-
-		// Get current preferences to check start_paused_enabled
-		prefs, err := h.torrentAdder.GetAppPreferences(ctx, instanceID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
-			// If we can't get preferences, apply the requested paused state explicitly
-			if requestedPaused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			} else {
-				options["paused"] = "false"
-				options["stopped"] = "false"
-			}
-		} else {
-			// Only set paused options if the requested state differs from the global preference
-			globalStartPaused := prefs.StartPausedEnabled
-			if requestedPaused != globalStartPaused {
-				if requestedPaused {
-					options["paused"] = "true"
-					options["stopped"] = "true"
-				} else {
-					options["paused"] = "false"
-					options["stopped"] = "false"
-				}
-			}
-			// If requestedPaused == globalStartPaused, don't set paused options
-			// This allows qBittorrent's global preference to take effect
-		}
+		paused := strconv.FormatBool(pausedStr == "true")
+		options["paused"] = paused
+		options["stopped"] = paused
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
@@ -1259,20 +1229,6 @@ func preferredHashValue(torrent *qbt.Torrent) string {
 	}
 
 	return ""
-}
-
-func fullPathValue(savePath, name string) string {
-	normalizedSavePath := strings.ReplaceAll(strings.TrimSpace(savePath), "\\", "/")
-	trimmedName := strings.TrimSpace(name)
-	if normalizedSavePath == "" || trimmedName == "" {
-		return ""
-	}
-
-	if strings.HasSuffix(normalizedSavePath, "/") {
-		return normalizedSavePath + trimmedName
-	}
-
-	return normalizedSavePath + "/" + trimmedName
 }
 
 // BulkAction performs bulk operations on torrents
@@ -2771,8 +2727,8 @@ func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
 	}
 }
 
-// requireLocalAccess checks that the instance has local filesystem access enabled.
-func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+// requireContentAccess checks that qui may read the instance's file content.
+func (h *TorrentsHandler) requireContentAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	if h.instanceStore == nil {
 		log.Error().Msg("Instance store not configured")
 		RespondError(w, http.StatusInternalServerError, "Instance store not configured")
@@ -2793,7 +2749,7 @@ func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Requ
 		RespondError(w, http.StatusNotFound, "Instance not found")
 		return false
 	}
-	if !instance.HasLocalFilesystemAccess {
+	if !models.FilesystemCapabilitiesOf(instance).Content {
 		RespondError(w, http.StatusForbidden, "Instance does not have local filesystem access enabled")
 		return false
 	}
@@ -3022,7 +2978,7 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 		return resolvedTorrentContentFile{}, false
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireContentAccess(w, r, instanceID) {
 		return resolvedTorrentContentFile{}, false
 	}
 
@@ -3246,7 +3202,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
+	if !h.requireContentAccess(w, r, instanceID) {
 		return
 	}
 

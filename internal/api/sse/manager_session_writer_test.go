@@ -50,8 +50,7 @@ func TestInitPhaseWritesDirectlyToSocket(t *testing.T) {
 // writes synchronous (and off the bounded queue), so they precede the drain and
 // cannot race or overflow-drop a healthy client.
 func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)

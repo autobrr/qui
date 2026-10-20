@@ -122,13 +122,11 @@
     "cacheSource": "來源：{{source}} · 範圍：{{scope}}",
     "refreshReadyIn": "{{seconds}} 秒後可重新整理",
     "refreshFromIndexers": "從索引器重新整理",
-    "noValue": "-",
     "categoryFallback": "分類 {{id}}",
     "noResultsFor": "未找到「{{query}}」的結果",
     "enterQuery": "輸入搜尋內容以開始",
     "free": "免費",
-    "freeNeutral": "中性",
-    "noInfoUrlAvailable": "無可用的詳情連結"
+    "freeNeutral": "中性"
   },
   "historyMeta": "{{type}} · {{count}} 條結果 · {{timestamp}}",
   "table": {

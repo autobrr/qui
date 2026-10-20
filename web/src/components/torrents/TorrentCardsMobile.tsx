@@ -36,9 +36,9 @@ import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
+import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
@@ -47,8 +47,8 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { api } from "@/lib/api"
 import { useClientSetting } from "@/lib/client-settings"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
@@ -96,6 +96,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import {
   buildSpeedLimitInitialState,
   LocationWarningDialog,
@@ -116,12 +117,13 @@ import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
+import { unitLabel } from "@/lib/unit-format"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters, TorrentStreamPayload } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 // Mobile-friendly Share Limits Dialog
@@ -1247,7 +1249,6 @@ export function TorrentCardsMobile({
   const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
-  const preferences = metadata?.preferences
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
@@ -1255,67 +1256,7 @@ export function TorrentCardsMobile({
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
   const navigate = useNavigate()
-  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    setStreamActiveTaskCount(null)
-  }, [instanceId])
-
-  const activeTaskStreamParams = useMemo(() => {
-    // The torrent stream is keyed to a single concrete instance; never open one
-    // for the all-instances scope or an unselected instance, otherwise the backend
-    // rejects the whole multiplexed batch and the shared EventSource reconnects forever.
-    if (isAllInstancesView || instanceId <= 0) {
-      return null
-    }
-
-    return {
-      instanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-    }
-  }, [instanceId, isAllInstancesView])
-
-  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
-    const value = payload.data?.activeTaskCount
-    if (typeof value === "number") {
-      setStreamActiveTaskCount(value)
-    }
-  }, [])
-
-  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: Boolean(activeTaskStreamParams),
-    onMessage: handleActiveTaskStreamMessage,
-  })
-
-  // Drop the streamed value when the stream is not live so the count reflects the
-  // fresh REST fallback instead of a stale snapshot from before the disconnect.
-  useEffect(() => {
-    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
-      setStreamActiveTaskCount(null)
-    }
-  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
-
-  const canPollActiveTask = !isAllInstancesView && instanceId > 0
-  const shouldUseActiveTaskFallback =
-    canPollActiveTask && (
-      !activeTaskStreamState.connected ||
-      !!activeTaskStreamState.error ||
-      streamActiveTaskCount === null
-    )
-
-  // Active task count is streamed via SSE; REST polling only runs as fallback
-  // and never for the all-instances view or an unselected instance.
-  const { data: polledActiveTaskCount = 0 } = useQuery({
-    queryKey: ["active-task-count", instanceId],
-    queryFn: () => api.getActiveTaskCount(instanceId),
-    enabled: shouldUseActiveTaskFallback,
-    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check)
-    refetchIntervalInBackground: true,
-  })
-  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
+  const activeTaskCount = useActiveTaskCount(instanceId, !isAllInstancesView)
 
   // Columns controls removed on mobile
 
@@ -1385,11 +1326,10 @@ export function TorrentCardsMobile({
     responseSupport: trackerHealthSupported,
   })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
-  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
@@ -2097,7 +2037,7 @@ export function TorrentCardsMobile({
                     size="sm"
                     className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                   >
-                    {t("mobileCards.sort")}: {currentSortOption.label}
+                    {t("mobileCards.sort")}: {t(currentSortOption.labelKey)}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
@@ -2108,7 +2048,7 @@ export function TorrentCardsMobile({
                   >
                     {TORRENT_SORT_OPTIONS.map(option => (
                       <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                        {option.label}
+                        {t(option.labelKey)}
                       </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>
@@ -2134,7 +2074,7 @@ export function TorrentCardsMobile({
               >
                 <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
-                  {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
+                  {speedUnit === "bytes" ? unitLabel("MiB", true) : unitLabel("Mb", true)}
                 </span>
               </button>
             </div>
@@ -2166,11 +2106,20 @@ export function TorrentCardsMobile({
       {/* Torrent cards with virtual scrolling */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
+        className="flex-1 overflow-y-auto overscroll-contain"
         style={{
           paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
         }}
       >
+        {torrents.length === 0 && !isLoading && (
+          <div className="flex h-full items-center justify-center px-4">
+            <TorrentListEmptyState
+              hasFilters={hasSidebarFilters(filters)}
+              hasSearch={Boolean(effectiveSearch)}
+              onClearFilters={onFilterChange ? () => onFilterChange(EMPTY_SIDEBAR_FILTERS) : undefined}
+            />
+          </div>
+        )}
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

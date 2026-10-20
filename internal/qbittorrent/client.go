@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"math"
@@ -38,8 +37,10 @@ var (
 	renameFolderMinVersion               = semver.MustParse("2.7.0")
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
+	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
+	testEmailMinVersion                  = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
@@ -88,8 +89,10 @@ type Client struct {
 	supportsFilePriority       bool
 	supportsSubcategories      bool
 	subcategoriesAlwaysEnabled bool
+	nestsCategorySavePaths     bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
+	supportsTestEmail          bool
 	trackerIncludeSupported    bool
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
@@ -111,7 +114,6 @@ type Client struct {
 	appInfoGroup         singleflight.Group
 	peerSyncGroup        singleflight.Group
 	preferencesCache     *qbt.AppPreferences
-	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
 	preferencesMu        sync.RWMutex
 	syncEventSink        SyncEventSink
@@ -288,7 +290,7 @@ func (c *Client) IsHealthy() bool {
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
-// Deadline expiry keeps the client healthy: it is treated as slow by design (see isDeadlineExpired),
+// Deadline expiry keeps the client healthy: it is treated as slow by design (see IsDeadlineExpired),
 // and flipping it unhealthy sends every caller into the probe/backoff path (502 storms).
 // The error is still dispatched so the SSE loop backs off and escalates to the full sync budget.
 func (c *Client) handleSyncManagerError(err error) {
@@ -304,7 +306,7 @@ func (c *Client) handleSyncManagerError(err error) {
 		return
 	}
 
-	if isDeadlineExpired(err) {
+	if IsDeadlineExpired(err) {
 		log.Debug().
 			Err(err).
 			Int("instanceID", c.instanceID).
@@ -336,7 +338,7 @@ func isContextStopped(err error) bool {
 	return strings.Contains(msg, "context canceled")
 }
 
-// isDeadlineExpired recognizes request timeouts even after wrappers flatten the sentinel.
+// IsDeadlineExpired recognizes request timeouts even after wrappers flatten the sentinel.
 // A deadline is ambiguous: usually a saturated instance working through its
 // queue, but it can also be a dial that never completed (a blackholed host).
 // A caller deadline firing before the 30s dial timeout yields the same
@@ -344,7 +346,7 @@ func isContextStopped(err error) bool {
 // as slow: stale data with a staleness badge beats backoff and 502s.
 // Hard failures (refused, DNS, EOF, a bare "dial tcp: i/o timeout") are
 // unambiguous evidence of a dead instance and stay unmatched here.
-func isDeadlineExpired(err error) bool {
+func IsDeadlineExpired(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -468,8 +470,10 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
+	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
+	c.supportsTestEmail = !v.LessThan(testEmailMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
@@ -543,6 +547,15 @@ func (c *Client) SubcategoriesAlwaysEnabled() bool {
 	return c.subcategoriesAlwaysEnabled
 }
 
+// NestsCategorySavePaths reports whether this qBittorrent version can resolve an
+// empty category save path under the parent category. qBittorrent 4.6 shows
+// subcategories but always saves to the default save path plus the full name.
+func (c *Client) NestsCategorySavePaths() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nestsCategorySavePaths
+}
+
 func (c *Client) SupportsTorrentTmpPath() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -553,6 +566,12 @@ func (c *Client) SupportsPathAutocomplete() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsPathAutocomplete
+}
+
+func (c *Client) SupportsTestEmail() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTestEmail
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
@@ -573,7 +592,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 
 	if err := c.RefreshCapabilities(ctx); err != nil {
 		// Slow, not down: a timed-out probe keeps the current health state.
-		if !isDeadlineExpired(err) {
+		if !IsDeadlineExpired(err) {
 			c.updateHealthStatus(false)
 		}
 		return errors.Wrap(err, "health check failed")
@@ -748,9 +767,7 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 
 	handler := c.completionHandler
 
-	for _, removed := range data.TorrentsRemoved {
-		delete(c.completionState, normalizeHashForCompletion(removed))
-	}
+	pruneRemovedTorrents(c.completionState, data.Torrents)
 
 	if !c.completionInit {
 		if len(data.Torrents) == 0 {
@@ -758,7 +775,6 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 			return
 		}
 		for hash, torrent := range data.Torrents {
-			normalized := normalizeHashForCompletion(hash)
 			// Mirror the steady-state trust model: while checking/moving or
 			// stopped, byte counts can be verification fractions, so a
 			// completed torrent observed there must baseline on the stamp
@@ -767,9 +783,9 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 			// re-downloading after a failed recheck keeps its stamp but must
 			// not baseline as complete, or its real completion never fires.
 			if isCheckingState(torrent.State) || isStoppedOrErrorState(torrent.State) {
-				c.completionState[normalized] = hasCompletionStamp(&torrent)
+				c.completionState[hash] = hasCompletionStamp(&torrent)
 			} else {
-				c.completionState[normalized] = isTorrentComplete(&torrent)
+				c.completionState[hash] = isTorrentComplete(&torrent)
 			}
 		}
 		c.completionInit = true
@@ -791,12 +807,11 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 			// may mark a torrent handled but never un-mark one.
 			continue
 		}
-		normalized := normalizeHashForCompletion(hash)
-		alreadyHandled := c.completionState[normalized]
+		alreadyHandled := c.completionState[hash]
 		// Track current completeness rather than latching: if qbit knocks a
 		// completed torrent back to downloading (failed recheck-on-completion),
 		// this re-arms so the eventual real completion fires again.
-		c.completionState[normalized] = isComplete
+		c.completionState[hash] = isComplete
 
 		if !alreadyHandled && isComplete {
 			ready = append(ready, torrent)
@@ -814,8 +829,13 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	}
 }
 
-func normalizeHashForCompletion(hash string) string {
-	return strings.ToUpper(strings.TrimSpace(hash))
+// pruneRemovedTorrents drops hashes missing from the merged torrent map.
+// go-qbittorrent never forwards TorrentsRemoved to OnUpdate.
+func pruneRemovedTorrents[V any](state map[string]V, torrents map[string]qbt.Torrent) {
+	maps.DeleteFunc(state, func(hash string, _ V) bool {
+		_, exists := torrents[hash]
+		return !exists
+	})
 }
 
 func (c *Client) handleAddedUpdates(data *qbt.MainData) {
@@ -830,9 +850,7 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 
 	handler := c.addedHandler
 
-	for _, removed := range data.TorrentsRemoved {
-		delete(c.addedState, normalizeHashForCompletion(removed))
-	}
+	pruneRemovedTorrents(c.addedState, data.Torrents)
 
 	if !c.addedInit {
 		if len(data.Torrents) == 0 {
@@ -840,7 +858,7 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 			return
 		}
 		for hash := range data.Torrents {
-			c.addedState[normalizeHashForCompletion(hash)] = struct{}{}
+			c.addedState[hash] = struct{}{}
 		}
 		c.addedInit = true
 		c.addedMu.Unlock()
@@ -849,11 +867,10 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 
 	ready := make([]qbt.Torrent, 0)
 	for hash, torrent := range data.Torrents {
-		normalized := normalizeHashForCompletion(hash)
-		if _, ok := c.addedState[normalized]; ok {
+		if _, ok := c.addedState[hash]; ok {
 			continue
 		}
-		c.addedState[normalized] = struct{}{}
+		c.addedState[hash] = struct{}{}
 		ready = append(ready, torrent)
 	}
 	c.addedMu.Unlock()

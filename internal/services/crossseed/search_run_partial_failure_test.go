@@ -107,9 +107,10 @@ func runSearchLoopToCompletion(t *testing.T, svc *Service, state *searchRunState
 		close(done)
 	}()
 
+	// Gazelle-only runs wait minSearchIntervalSecondsGazelleOnly after a candidate that sent a request.
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("search run loop did not finish")
 	}
 }

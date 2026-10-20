@@ -3,15 +3,17 @@
 
 // Package fsops defines the Backend interface that abstracts filesystem
 // operations for qui's services. Current implementations: Local (delegates
-// to os.* on the qui host) and Noop (returns ErrNoFilesystemAccess for
-// instances without filesystem access). A Remote implementation (SSH-backed)
-// is planned. Services still call os.* directly; they adopt this interface
-// in a separate callsite migration, after which the transport is transparent
-// to them.
+// to os.* on the qui host), Remote (SFTP over the instance's pooled SSH
+// connection; reads only for now) and Noop (returns ErrNoFilesystemAccess
+// for instances without filesystem access). Services resolve their backend
+// per instance through Pool.GetBackend, so the transport is transparent to
+// them.
 package fsops
 
 import (
 	"io/fs"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -72,6 +74,27 @@ type WalkOptions struct {
 	// set instead of silently skipping them. Consumers that delete based on
 	// walk results use this to fail closed on paths they cannot verify.
 	EmitStatErrors bool
+}
+
+// Skip reports whether a walk leaves out an entry, and its subtree when the
+// entry is a directory. fullPath is in the backend's own path dialect, since
+// IgnorePaths is an exact string compare. The walk root is exempt from every
+// filter except IgnorePaths, so an ignored root gives an empty walk.
+func (o *WalkOptions) Skip(name, fullPath string, isDir, isRoot bool) bool {
+	if slices.Contains(o.IgnorePaths, fullPath) {
+		return true
+	}
+	if isRoot {
+		return false
+	}
+	if o.SkipHidden && strings.HasPrefix(name, ".") {
+		return true
+	}
+	return isDir && (slices.ContainsFunc(o.IgnoreDirNames, func(ignored string) bool {
+		return strings.EqualFold(ignored, name)
+	}) || slices.ContainsFunc(o.IgnoreDirNamePrefixes, func(prefix string) bool {
+		return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
+	}))
 }
 
 // StatfsResult holds filesystem space information.

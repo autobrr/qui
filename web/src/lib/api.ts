@@ -9,6 +9,8 @@ import type {
   AddTorrentResponse,
   ApplicationInfo,
   AppPreferences,
+  PreferenceField,
+  NetworkBindingInterface,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
@@ -56,6 +58,7 @@ import type {
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
+  DirScanStatus,
   DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
@@ -124,8 +127,12 @@ import type {
   TrackerCustomizationInput,
   TransferInfo,
   BuiltinTheme,
+  SelfUpdateResult,
   ThemeSettings,
+  ThemeSlot,
+  ThemeSlots,
   User,
+  VersionInfo,
   WarningResponse,
   WebSeed
 } from "@/types"
@@ -138,6 +145,9 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+// The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
+// English namespaces out of the entry chunk into eight extra initial requests.
+import i18n from "i18next"
 
 const API_BASE = getApiBaseUrl()
 
@@ -322,6 +332,50 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
   }
 }
 
+let ssoRecoveryPaused = false
+
+// While qui restarts, every request fails with "Failed to fetch", and the SSO
+// recovery would send the tab to "/", where the browser shows its own error page.
+export function setSSORecoveryPaused(paused: boolean): void {
+  ssoRecoveryPaused = paused
+}
+
+/**
+ * Unregister qui's service worker and delete qui's Cache Storage entries, so
+ * the next navigation loads the frontend from the network. The SW re-registers
+ * on the next page load via pwa.ts. localStorage stays: it holds the theme
+ * that index.html paints before the app loads.
+ */
+export async function clearQuiServiceWorker(): Promise<void> {
+  // Scope cleanup to qui's own service worker and caches to avoid disrupting
+  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
+  const quiScope = new URL(withBasePath("/"), window.location.origin).href
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(
+        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+      )
+    } catch {
+      // ignore unregister errors
+    }
+  }
+
+  // Workbox names its precache after the SW scope, so filtering by quiScope
+  // avoids touching other apps' caches.
+  if ("caches" in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+      )
+    } catch {
+      // ignore cache clear errors
+    }
+  }
+}
+
 /**
  * Attempt a single hard navigation to let the browser follow the SSO redirect
  * at the top level. Uses sessionStorage to prevent infinite navigation loops.
@@ -329,7 +383,7 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
  * Returns true if navigation was triggered, false if blocked.
  */
 async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
-  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+  if (ssoRecoveryPaused || typeof window === "undefined" || typeof sessionStorage === "undefined") {
     return false
   }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -344,40 +398,13 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
 
-  // Scope cleanup to qui's own service worker and caches to avoid disrupting
-  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
-  const quiScope = new URL(withBasePath("/"), window.location.origin).href
-
   // Unregister qui's service worker so its NavigationRoute cannot intercept the
   // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
   // to fetch index.html from the network on cache miss, which Badger/Pangolin
   // redirect cross-origin — the SW can't handle that response for a navigation
   // request, and some mobile browsers don't fall back to the network properly.
-  // The SW re-registers automatically on the next page load via pwa.ts.
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
-      )
-    } catch {
-      // ignore unregister errors
-    }
-  }
-
-  // Clear qui's caches so the next navigation goes straight to the network,
-  // letting the SSO proxy intercept. Workbox names its precache after the SW
-  // scope, so filtering by quiScope avoids touching other apps' caches.
-  if ("caches" in window) {
-    try {
-      const names = await caches.keys()
-      await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
-      )
-    } catch {
-      // ignore cache clear errors
-    }
-  }
+  // The caches go too, so the navigation reaches the network and the SSO proxy.
+  await clearQuiServiceWorker()
 
   sessionStorage.setItem("qui_sso_recovered", "1")
 
@@ -427,11 +454,7 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
     if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
       return new Promise<Response>(() => {})
     }
-    throw new Error(
-      "Received an HTML response instead of JSON from the API. " +
-      "If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), " +
-      "try refreshing the page or re-opening the URL in a new tab."
-    )
+    throw new Error(i18n.t("errors.ssoHtmlResponse", { ns: "common" }))
   }
 
   clearSSORecoveryGuard()
@@ -511,7 +534,7 @@ class ApiClient {
   }
 
   private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
-    const fallbackMessage = `HTTP error! status: ${response.status}`
+    const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
 
     try {
       const contentType = response.headers.get("content-type") || ""
@@ -535,7 +558,7 @@ class ApiClient {
         // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
         if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
           // Don't show raw HTML to user, provide a readable message
-          return { message: `${fallbackMessage} (server returned HTML error page)` }
+          return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
         }
 
         // Plain text error
@@ -1074,6 +1097,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      // Stays English: AddTorrentDialog.tsx:550 prefix-matches this text to tell
+      // "the server sent no message" from a real one, and shows its own hint instead.
       let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
@@ -1644,8 +1669,8 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
   }
 
-  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
-    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
+    return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
     })
@@ -1899,7 +1924,7 @@ class ApiClient {
     )
 
     if (!response.ok) {
-      throw new Error(`Failed to download torrent file: ${response.statusText}`)
+      throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }))
     }
 
     // Get filename from Content-Disposition header
@@ -2192,15 +2217,19 @@ class ApiClient {
   }
 
   // Theme settings (theme selection stored in the database; writes premium-gated server-side)
-  async getThemeSettings(): Promise<ThemeSettings | null> {
-    return this.request<ThemeSettings | null>("/themes/settings")
+  async getThemeSettings(): Promise<ThemeSlots> {
+    return this.request<ThemeSlots>("/themes/settings")
   }
 
-  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
-    return this.request<ThemeSettings>("/themes/settings", {
+  async updateThemeSettings(data: ThemeSettings, slot: ThemeSlot = "default"): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>(`/themes/settings?slot=${slot}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  async deleteMobileThemeSettings(): Promise<void> {
+    return this.request("/themes/settings?slot=mobile", { method: "DELETE" })
   }
 
   // Client settings (frontend user settings stored in the database as opaque key-value pairs;
@@ -2209,19 +2238,27 @@ class ApiClient {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints
-  async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  // Preferences endpoints. Both return the catalog view of the preferences.
+  async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
   }
 
   async updateInstancePreferences(
     instanceId: number,
     preferences: Partial<AppPreferences>
-  ): Promise<AppPreferences> {
-    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+  ): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`, {
       method: "PATCH",
       body: JSON.stringify(preferences),
     })
+  }
+
+  async getNetworkBinding(instanceId: number): Promise<NetworkBindingInterface[]> {
+    return this.request<NetworkBindingInterface[]>(`/instances/${instanceId}/network-binding`)
+  }
+
+  async sendTestEmail(instanceId: number): Promise<void> {
+    await this.request<void>(`/instances/${instanceId}/preferences/test-email`, { method: "POST" })
   }
 
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
@@ -2236,6 +2273,21 @@ class ApiClient {
 
   async getApplicationInfo(): Promise<ApplicationInfo> {
     return this.request<ApplicationInfo>("/application/info")
+  }
+
+  async getVersion(): Promise<VersionInfo> {
+    return this.request<VersionInfo>("/version")
+  }
+
+  async restartQui(): Promise<void> {
+    await this.request<void>("/system/restart", { method: "POST" })
+  }
+
+  async selfUpdateQui(version: string): Promise<SelfUpdateResult> {
+    return this.request<SelfUpdateResult>("/system/update", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    })
   }
 
   async getLatestVersion(): Promise<{
@@ -2755,10 +2807,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
   }
 
-  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
-    return this.request<DirScanRun | { status: "idle" }>(
-      `/dir-scan/directories/${directoryId}/status`
-    )
+  async getDirScanStatus(directoryId: number): Promise<DirScanStatus> {
+    return this.request<DirScanStatus>(`/dir-scan/directories/${directoryId}/status`)
   }
 
   async listDirScanRuns(

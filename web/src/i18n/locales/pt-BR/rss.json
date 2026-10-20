@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Feeds",
     "refreshAll": "Atualizar Todos",
-    "addFolder": "Adicionar Pasta",
-    "addFeed": "Adicionar Feed",
     "articles": "Artigos",
     "unread": "{{count}} não lidos",
     "markAllAsRead": "Marcar todos como lidos",
@@ -143,14 +141,10 @@
     "saveChanges": "Salvar Alterações"
   },
   "settingsPopover": {
-    "title": "Configurações de RSS",
     "refreshInterval": "Intervalo de atualização",
-    "min": "min",
     "maxArticles": "Máx. de artigos por feed",
     "autoDownload": "Download Automático",
-    "downloadRepack": "Baixar REPACK/PROPER",
-    "saving": "Salvando...",
-    "save": "Salvar"
+    "downloadRepack": "Baixar REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE Ao Vivo",
@@ -196,8 +190,6 @@
     "ruleCreated": "Regra criada com sucesso",
     "failedToCreateRule": "Falha ao criar regra",
     "ruleUpdated": "Regra atualizada com sucesso",
-    "failedToUpdateRuleEdit": "Falha ao atualizar regra",
-    "rssSettingsSaved": "Configurações de RSS salvas",
-    "failedToSaveRssSettings": "Falha ao salvar configurações de RSS"
+    "failedToUpdateRuleEdit": "Falha ao atualizar regra"
   }
 }

@@ -275,6 +275,26 @@ func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, retryAfter), "an acquiring member excludes another claim")
 }
 
+func TestSelectPartialPoolDownloaderChecksMissingFilesHardlinkAdmission(t *testing.T) {
+	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	service := &Service{}
+	member := partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"video.mkv", 100}, partialPoolTestFile{"release.nfo", 4})
+	member.Mode = models.CrossSeedPartialPoolModeHardlink
+	member.Status = models.CrossSeedPartialPoolMemberStatusVerifying
+	member.LastError = partialPoolRecheckPending
+	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{member}}
+	// qBittorrent 5.2 reports a stopped skip_checking add with a missing extra file as missingFiles.
+	snapshot := partialPoolTestSnapshot(member, 4)
+	snapshot.torrent.State = qbt.TorrentStateMissingFiles
+	snapshots := map[int64]*partialPoolMemberSnapshot{1: snapshot}
+
+	require.Same(t, member, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "the deferred first recheck must run for a missingFiles hardlink admission")
+
+	member.Status = models.CrossSeedPartialPoolMemberStatusWaiting
+	member.LastError = ""
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "a verified hardlink member in missingFiles must not be resumed")
+}
+
 func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	service := &Service{}

@@ -66,5 +66,5 @@ The first entry in `domains` is the primary domain and always counts toward Dash
 ## Where display names are used
 
 - **Dashboard** statistics and tracker breakdown.
-- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it with `{{.Tracker}}`. See [Move](./automations.md#move) for when `{{.Tracker}}` uses the display name.
+- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and Move and Export to Instance save paths can use it with `{{.Tracker}}`.
 - **[Cross-seed link directories](./cross-seed/link-directories.md)**: the `by-tracker` preset uses the display name for folder names.

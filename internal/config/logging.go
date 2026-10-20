@@ -30,8 +30,7 @@ type LogManager struct {
 // NewLogManager creates a new LogManager with the given version string.
 func NewLogManager(version string) *LogManager {
 	hub := logstream.NewHub(logstream.DefaultBufferSize)
-	baseWriter := baseLogWriter(version)
-	switchable := logstream.NewSwitchableWriter(baseWriter, hub)
+	switchable := logstream.NewSwitchableWriter(ignoreWriteErrors{baseLogWriter(version)}, hub)
 
 	return &LogManager{
 		hub:        hub,
@@ -89,6 +88,7 @@ func (lm *LogManager) Apply(level, logPath string, maxSize, maxBackups int) erro
 }
 
 func (lm *LogManager) buildWriter(baseWriter io.Writer, logPath string, maxSize, maxBackups int) (io.Writer, io.Closer, error) {
+	baseWriter = ignoreWriteErrors{baseWriter}
 	if logPath == "" {
 		return baseWriter, nil, nil
 	}
@@ -113,6 +113,16 @@ func (lm *LogManager) buildWriter(baseWriter io.Writer, logPath string, maxSize,
 		Compress:   true,
 	}
 	return io.MultiWriter(baseWriter, rotator), rotator, nil
+}
+
+// ignoreWriteErrors wraps the stderr writer. A process without a console, such
+// as the qui-tray.exe supervisor, has no valid stderr handle: its error would
+// stop io.MultiWriter before the log file, and SwitchableWriter before the log hub.
+type ignoreWriteErrors struct{ io.Writer }
+
+func (w ignoreWriteErrors) Write(p []byte) (int, error) {
+	_, _ = w.Writer.Write(p)
+	return len(p), nil
 }
 
 // LogSettingsResponse represents the log settings for API responses.

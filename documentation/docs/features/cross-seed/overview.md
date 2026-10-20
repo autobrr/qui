@@ -9,7 +9,7 @@ description: Automatically cross-seed torrents across trackers.
 
 qui finds torrents on other trackers that match content you already seed. It adds them to your qBittorrent instances, so you seed the same content on more than one tracker.
 
-qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance.
+qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance. See [Move from standalone cross-seed](./standalone-cross-seed.md).
 
 ## How It Works
 
@@ -102,7 +102,7 @@ Completion searches use the same Torznab result classifier as interactive and sc
 Right-click any torrent in the list to open the cross-seed actions:
 
 - **Search Cross-Seeds**: Query indexers for matching torrents on other trackers
-- **Filter Cross-Seeds**: Show torrents in your library that share content with the selected torrent. Use this to identify existing cross-seeds.
+- **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents.
 
 Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
 
@@ -149,7 +149,7 @@ For multiple targets, season pack category routing supplies the initial category
 
 ### Season Pack Assembly
 
-qui can assemble season-pack torrents from individual episodes you already seed. To use automatic assembly, first enable **Assemble season packs automatically** in the settings; it is disabled by default. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires local filesystem access and hardlink or reflink mode. See [Season Packs](./season-packs.md) for setup.
+qui can assemble season-pack torrents from individual episodes you already seed. To use automatic assembly, first enable **Assemble season packs automatically** in the settings; it is disabled by default. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires a link mode on the target instance: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode. See [Season Packs](./season-packs.md) for setup.
 
 ## Blocklist
 
@@ -157,5 +157,15 @@ Use the per-instance blocklist to stop qui from injecting specific infohashes ag
 
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
+
+The blocklist applies to these add paths:
+
+- Cross-seed applies from search, RSS, completion, autobrr, and a manual match with one target
+- [Dir Scan](./dir-scan.md)
+- Season pack assembly from the [apply webhook](./season-packs.md#4-configure-the-apply-action) and from [automatic assembly](./season-packs.md#automatic-assembly)
+
+An entry blocks the infohash only on its own instance. Season pack assembly can still use another eligible instance that has no entry.
+
+A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
 
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.

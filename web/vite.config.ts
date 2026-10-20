@@ -83,7 +83,15 @@ export default defineConfig(({ mode }) => {
         // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
         // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
         // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
+        // A denylist entry cannot stop a precached URL: a precache hit wins over the
+        // navigation fallback. The regexes match pathname plus search, so a $-anchored
+        // pattern fails once a query is present.
         navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/, /\/cdn-cgi(?:\/|$)/, /\/\.well-known(?:\/|$)/],
+        // Serve navigations from the SPA root, not index.html: the server 301s /index.html
+        // to the root (#1600), and a precache miss would hand that redirect to a navigation,
+        // which the browser rejects with ERR_FAILED.
+        templatedURLs: { "./": ["index.html"] },
+        navigateFallback: "./",
         // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
         manifestTransforms: [
           async (entries) => {

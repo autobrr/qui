@@ -60,6 +60,8 @@ In your new autobrr filter, go to **External** tab → **Add new**:
 | HTTP Request Headers      | `X-API-Key=YOUR_QUI_API_KEY`                         |
 | Expected HTTP Status Code | `200`                                                |
 
+If the autobrr **Test** button shows `404` with `"canCrossSeed":false` in the body, autobrr connected to qui and qui accepted the API key. See [Test the External filter](#test-the-external-filter).
+
 **Data (JSON):**
 
 ```json
@@ -109,17 +111,45 @@ Use autobrr's **Retry** block to handle `202 Accepted` responses:
 - **Maximum retry attempts:** `10`
 - **Retry delay in seconds:** `4`
 
+### Test the External filter
+
+The autobrr **Test** button sends a sample release, `Best.Show.Ever.S18E21.1080p.AMZN.WEB-DL.DDP2.0.H.264-GROUP`. You do not seed this release, so qui finds no match. autobrr then shows a result that starts with `Webhook responded with status 404 (expected 200)`, with this body:
+
+```json
+{"canCrossSeed":false,"matches":null,"recommendation":"skip"}
+```
+
+This result is correct. qui sent the body, so autobrr connected to qui and qui accepted the API key.
+
+qui sends the same `404` when it has no active qBittorrent instance to scan. qui skips each ID in `instanceIds` that does not exist or that is disabled. Make sure that each ID in `instanceIds` is an active instance in qui, or remove `instanceIds` to scan all instances.
+
+Other problems give a different result:
+
+- `401` or `403`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
+- `400` with an `error` body: the request is not valid, and the `error` text gives the cause. Make sure that **Data (JSON)** is the same as the template above.
+- A connection error or a timeout: autobrr cannot connect to qui. Make sure that the host and port in **Endpoint** are correct. If you use Docker Compose, read the Docker Compose tip above.
+
+To make sure that the full setup works:
+
+1. Make sure that you added the `/api/cross-seed/apply` Action from [Apply Endpoint](#apply-endpoint).
+2. Wait for a tracker to announce a release that you already seed.
+3. Make sure that the filter accepted the release in autobrr.
+4. Make sure that the torrent is in qBittorrent. qui often adds cross-seeds paused.
+
 ## Apply Endpoint
 
 When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 **Action setup in autobrr:**
 
-| Field       | Value                                                                |
-| ----------- | -------------------------------------------------------------------- |
-| Action Type | `Webhook`                                                            |
-| Name        | `qui cross-seed`                                                     |
-| Endpoint    | `http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY` |
+| Field                | Value                                                                |
+| -------------------- | -------------------------------------------------------------------- |
+| Action Type          | `Webhook`                                                            |
+| Name                 | `qui cross-seed`                                                     |
+| Endpoint             | `http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY` |
+| Expected HTTP status | `200`                                                                |
+
+The **Expected HTTP status** field needs an autobrr release with [autobrr/autobrr#2494](https://github.com/autobrr/autobrr/pull/2494). Without it, autobrr marks the action as done for every status.
 
 **Payload (JSON):**
 
@@ -139,9 +169,14 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `instanceIds` (optional): Target instances (omit to apply to any matching instance)
 - `indexer` (optional): The autobrr indexer identifier (for example `hdb`). If you enable "Use indexer name as category", qui uses this value as the category. Otherwise qui ignores it.
 - `tags` (optional): Override the webhook tags from settings
-- `category` (optional): Override the category. Takes precedence over `indexer`.
-- `startPaused` (optional): Override whether qui adds torrents paused
-- `skipIfExists` (optional): Skip the add if the torrent already exists
+- `category` (optional): The category for the added torrent. qui uses the first category that applies, in this order:
+  1. The **Custom category** mode
+  2. The `category` field
+  3. The `indexer` field, in **Use indexer name as category** mode
+  4. The category of the matched torrent
+
+  A season pack that qui builds from local episodes ignores the `category` field.
+- `startPaused` (optional): Set to `false` to add the torrent unpaused. When you omit it, qui adds the torrent paused and resumes it after verification, unless **Auto-resume after injection** is off on the **Webhook** tab.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 The action performs the first torrent-file download in this flow. qui calculates the actual total from the torrent metadata.
@@ -182,6 +217,10 @@ If autobrr shows that the filter accepted the release, or your autobrr notificat
 
 If the cause is still not clear, see [Cross-Seed Troubleshooting](./troubleshooting.md).
 
+### Troubleshooting: Test shows status 404 (expected 200)
+
+If the autobrr **Test** button shows `status 404 (expected 200)` and the body has `"canCrossSeed":false`, autobrr connected to qui and qui accepted the API key. See [Test the External filter](#test-the-external-filter).
+
 ## Webhook Source Filters
 
 By default, the webhook endpoint matches against **all** torrents on your instances. You can configure filters to exclude categories or tags from the match:
@@ -200,6 +239,8 @@ Use these filters when:
 :::note
 Exclude filters take precedence over include filters. Tag matching is case-sensitive. If you configure both category and tag include filters, a torrent must pass both checks. It must match at least one allowed category and at least one allowed tag.
 :::
+
+If qui cannot read its settings, `/check` and `/apply` fail instead of ignoring these filters. A failed `/check` rejects the release. For a failed `/apply`, qui sends a webhook failure notification, and autobrr shows the action as failed when **Expected HTTP status** is set.
 
 Configure in qui UI: **Cross-Seed > Webhook**
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -62,7 +63,7 @@ func (s scanScope) withPersistedRoots(roots []string) scanScope {
 // A scope that cannot be resolved is an error, never a quieter scan: falling
 // back to torrent-derived roots would report a clean result over a narrower tree
 // than the operator asked for (discussion #2365).
-func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope scanScope) (roots, categoryPaths []string, err error) {
+func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, instanceID int, scope scanScope) (roots, categoryPaths []string, err error) {
 	if scope.isZero() {
 		return nil, nil, nil
 	}
@@ -73,7 +74,7 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
 	}
-	defaultSavePath, err := validDefaultSavePath(prefs.SavePath)
+	defaultSavePath, err := validDefaultSavePath(d, prefs.SavePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -83,15 +84,15 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 	}
 
 	if scope.needsCategories() {
-		// Only category resolution needs the nesting state, and on qBittorrent
-		// before 5.2 answering it costs a second preferences read.
+		// Only category resolution needs the nesting state, and answering it
+		// costs a WebAPI version request.
 		var useSubcategories bool
-		useSubcategories, err = s.sync.SubcategoriesEnabled(ctx, instanceID)
+		useSubcategories, err = s.sync.CategorySavePathsNest(ctx, instanceID)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath, useSubcategories)
+		categoryPaths, err = s.categoryPaths(ctx, d, instanceID, defaultSavePath, useSubcategories)
 		if err != nil {
 			return nil, nil, err
 		}

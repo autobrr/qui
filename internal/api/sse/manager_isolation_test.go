@@ -187,8 +187,7 @@ func TestFlushReturnsImmediatelyWhileSocketBlocks(t *testing.T) {
 // TestFlushReturnsImmediatelyWhileSocketBlocks and TestOverflowingClientIsDropped,
 // which park a real socket write on a gate.
 func TestSlowClientDoesNotBlockOthers(t *testing.T) {
-	store, cleanup := newTestInstanceStore(t)
-	defer cleanup()
+	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
 	manager := NewStreamManager(nil, provider, store)

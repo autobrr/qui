@@ -7,10 +7,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +35,13 @@ func TestNewService(t *testing.T) {
 		service2 := NewService(nil, nil, nil)
 		assert.NotNil(t, service2)
 		assert.Nil(t, service2.config)
+	})
+
+	t.Run("sizes the execution limit from the config", func(t *testing.T) {
+		assert.Equal(t, 3, cap(NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: 3}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, &domain.Config{}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, &domain.Config{ExternalProgramMaxRunning: -1}).slots))
+		assert.Equal(t, defaultMaxRunningPrograms, cap(NewService(nil, nil, nil).slots))
 	})
 }
 
@@ -382,7 +392,7 @@ func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
 			data := buildTorrentData(tt.torrent, nil)
 
 			// Verify the data is stored as-is (not executed or interpreted)
-			// The actual shell escaping happens in shellquote.Join when building commands
+			// The actual shell escaping happens in shellJoin when building commands
 			assert.NotEmpty(t, data[tt.checkKey])
 
 			// For name-based tests, verify the exact value is preserved
@@ -1343,7 +1353,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
@@ -1359,7 +1369,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
@@ -1375,7 +1385,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			UseTerminal: false,
 		}
 		args := []string{"--name", "test value", "--hash", "abc123"}
-		cmd := service.buildCommand(ctx, program, args)
+		cmd, _ := service.buildCommand(ctx, program, args)
 
 		for _, arg := range args {
 			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
@@ -1387,7 +1397,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
@@ -1402,7 +1412,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
@@ -1416,7 +1426,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Program Files\\My App\\test.exe",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
@@ -1427,7 +1437,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			Path:        "C:\\Program Files\\My App\\test.exe",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
 		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
@@ -1439,7 +1449,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 			UseTerminal: false,
 		}
 		args := []string{"--name", "Test & Value", "--path", "C:\\My Files\\data"}
-		cmd := service.buildCommand(ctx, program, args)
+		cmd, _ := service.buildCommand(ctx, program, args)
 
 		for _, arg := range args {
 			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
@@ -1573,7 +1583,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assert.Equal(t, "/usr/bin/test", cmd.Path)
 		assert.Equal(t, []string{"/usr/bin/test", "arg1", "arg2"}, cmd.Args)
@@ -1584,7 +1594,7 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: false,
 		}
-		cmd := service.buildCommand(ctx, program, nil)
+		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assert.Equal(t, "/usr/bin/test", cmd.Path)
 		assert.Equal(t, []string{"/usr/bin/test"}, cmd.Args)
@@ -1595,11 +1605,129 @@ func TestBuildCommand_Unix(t *testing.T) {
 			Path:        "/usr/bin/test",
 			UseTerminal: true,
 		}
-		cmd := service.buildCommand(ctx, program, []string{"arg1"})
+		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
 
 		// On Unix, terminal mode should use a terminal emulator
 		// The exact emulator depends on what's available
 		assert.NotNil(t, cmd)
 		assert.NotEmpty(t, cmd.Path)
 	})
+}
+
+func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("direct runs hold their slot only on Unix")
+	}
+
+	ctx := t.Context()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "block.sh")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+d=$(dirname "$0")
+touch "$d/started-$1"
+while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
+`), 0o700))
+
+	s := NewService(nil, nil, &domain.Config{ExternalProgramAllowList: []string{dir}})
+	s.slots = make(chan struct{}, 2)
+	s.maxWaiting = 1
+
+	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}"}
+	execute := func(hash string) ExecuteResult {
+		return s.Execute(ctx, ExecuteRequest{Program: program, Torrent: &qbt.Torrent{Hash: hash, Name: hash}, InstanceID: 1})
+	}
+	started := func() []string {
+		matches, globErr := filepath.Glob(filepath.Join(dir, "started-*"))
+		require.NoError(t, globErr)
+		return matches
+	}
+	t.Cleanup(func() {
+		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
+		require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+	})
+
+	require.True(t, execute("a").Success)
+	require.True(t, execute("b").Success)
+	require.Eventually(t, func() bool { return len(started()) == 2 }, 5*time.Second, 10*time.Millisecond)
+
+	s.waitTimeout = 100 * time.Millisecond
+	require.True(t, execute("c").Success, "a request that must wait is still admitted")
+	require.Equal(t, "Program already waiting for this torrent", execute("c").Message, "a second request for a waiting torrent is skipped, not rejected")
+
+	full := execute("d")
+	require.False(t, full.Success)
+	require.ErrorContains(t, full.Error, "execution queue full")
+
+	require.Eventually(t, func() bool { return s.admitted.Load() == 2 }, 5*time.Second, 10*time.Millisecond, "c gives up after the wait timeout")
+	assert.ElementsMatch(t, []string{filepath.Join(dir, "started-a"), filepath.Join(dir, "started-b")}, started())
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "release"), nil, 0o600))
+	s.waitTimeout = 5 * time.Second
+	require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, "Program execution initiated", execute("c").Message, "a dropped run no longer blocks its torrent")
+	require.Equal(t, "Program execution initiated", execute("d").Message, "a rejected run does not block its torrent")
+	require.Eventually(t, func() bool { return len(started()) == 4 }, 5*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, "Program execution initiated", execute("a").Message, "a run that got a slot no longer blocks its torrent")
+
+	require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+	for _, h := range []string{"f", "g", "h"} {
+		require.True(t, execute(h).Success, "finished runs free their admission: %s", h)
+	}
+}
+
+func TestService_Execute_LimitsTerminalFallback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the sh fallback needs a host with no terminal emulator")
+	}
+
+	bin := t.TempDir()
+	for _, tool := range []string{"sh", "dirname", "touch", "sleep"} {
+		target, err := exec.LookPath(tool)
+		require.NoError(t, err)
+		require.NoError(t, os.Symlink(target, filepath.Join(bin, tool)))
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("TERM_PROGRAM", "")
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "block.sh")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+d=$(dirname "$0")
+touch "$d/started-$1"
+while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
+`), 0o700))
+
+	s := NewService(nil, nil, nil)
+	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}", UseTerminal: true}
+
+	_, launcher := s.buildCommand(t.Context(), program, nil)
+	require.False(t, launcher, "no terminal emulator, so qui runs the program with sh -c")
+
+	t.Cleanup(func() {
+		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
+		require.Eventually(t, func() bool { return s.admitted.Load() == 0 }, 5*time.Second, 10*time.Millisecond)
+	})
+	for i := range 10 {
+		require.True(t, s.Execute(t.Context(), ExecuteRequest{Program: program, Torrent: &qbt.Torrent{Hash: strconv.Itoa(i)}, InstanceID: 1}).Success)
+	}
+
+	started := func() int {
+		matches, err := filepath.Glob(filepath.Join(dir, "started-*"))
+		require.NoError(t, err)
+		return len(matches)
+	}
+	require.Eventually(t, func() bool { return started() == defaultMaxRunningPrograms }, 5*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return started() > defaultMaxRunningPrograms }, 300*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestShellJoin_RoundTripsThroughShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shellJoin targets POSIX shells")
+	}
+
+	args := []string{"/usr/bin/my prog", "", "it's", `a"b`, "$HOME", "`id`", "a\\b", "x;y|z&", "line1\nline2", "~", "*", "\t"}
+	out, err := exec.CommandContext(t.Context(), "sh", "-c", `printf '%s\0' `+shellJoin(args)).Output()
+	require.NoError(t, err)
+	assert.Equal(t, args, strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00"))
 }

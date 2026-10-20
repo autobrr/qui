@@ -1,6 +1,7 @@
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
 import type { PrismTheme } from "prism-react-renderer";
+import { releaseBody } from "./src/components/DiscordEmbed/releaseBody";
 
 // Custom minimal light theme
 const minimalLightTheme: PrismTheme = {
@@ -53,10 +54,17 @@ const config: Config = {
   projectName: "qui",
 
   onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
+
+  future: {
+    faster: true,
+    // Required by faster.ssgWorkerThreads.
+    v4: { removeLegacyPostBuildHeadAttribute: true },
+  },
 
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: "warn",
+      onBrokenMarkdownLinks: "throw",
     },
   },
 
@@ -88,6 +96,7 @@ const config: Config = {
         generateLLMsFullTxt: true,
         excludeImports: true,
         removeDuplicateHeadings: true,
+        generateMarkdownFiles: true,
       },
     ],
   ],
@@ -102,7 +111,21 @@ const config: Config = {
           routeBasePath: "docs",
           showLastUpdateTime: true,
         },
-        blog: false,
+        blog: {
+          routeBasePath: "release-notes",
+          blogTitle: "Release notes",
+          blogDescription: "What changed in each qui release.",
+          blogSidebarTitle: "Release notes",
+          blogSidebarCount: "ALL",
+          showReadingTime: false,
+          onUntruncatedBlogPosts: "ignore",
+          // The Discord link preview card lists the highlights and change counts of each post.
+          processBlogPosts: async ({ blogPosts }) => {
+            for (const post of blogPosts) {
+              post.metadata.frontMatter.discord_embed_body = releaseBody(post.content);
+            }
+          },
+        },
         sitemap: {
           ignorePatterns: ["/search/"],
           lastmod: "date",
@@ -133,6 +156,7 @@ const config: Config = {
           position: "left",
           label: "Docs",
         },
+        { to: "/release-notes", label: "Release notes", position: "left" },
         {
           href: "https://discord.autobrr.com/qui",
           position: "right",

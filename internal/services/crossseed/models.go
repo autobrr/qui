@@ -30,10 +30,8 @@ type CrossSeedRequest struct {
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 	// Category to apply to the cross-seeded torrent
 	Category string `json:"category,omitempty"`
-	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
+	// Tags to apply to the cross-seeded torrent (the Trigger's tags from settings)
 	Tags []string `json:"tags,omitempty"`
-	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
-	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
 	// InheritSourceTags controls whether to also copy tags from the matched source torrent.
@@ -316,6 +314,9 @@ type TorrentSearchResponse struct {
 	// stamp per-indexer search history; an indexer missing here was rate
 	// limited or failed a pass and stays eligible for the next run.
 	CoveredIndexerIDs []int `json:"-"`
+	// TorznabAnswered reports that an indexer answered some pass, even when a
+	// failed retry left CoveredIndexerIDs empty.
+	TorznabAnswered bool `json:"-"`
 	// DecisionTrace explains why the Torznab passes accepted or rejected
 	// candidates. Ephemeral diagnostics for the manual search dialog; unset
 	// when no Torznab search ran (Gazelle-only or failed searches).
@@ -489,11 +490,10 @@ type AutobrrApplyRequest struct {
 	// downloaded metainfo info.name used for replay validation.
 	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
-	InstanceIDs  []int    `json:"instanceIds,omitempty"`
-	Category     string   `json:"category,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	StartPaused  *bool    `json:"startPaused,omitempty"`
-	SkipIfExists *bool    `json:"skipIfExists,omitempty"`
+	InstanceIDs []int    `json:"instanceIds,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	StartPaused *bool    `json:"startPaused,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 	// Indexer is autobrr's stable indexer identifier (for example "hdb").

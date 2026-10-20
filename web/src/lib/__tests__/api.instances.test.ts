@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { http, HttpResponse } from "msw"
 import { server } from "@/test/msw/server"
+import "@/i18n"
 import { api, APIError } from "@/lib/api"
 
 describe("api instances group — contract", () => {

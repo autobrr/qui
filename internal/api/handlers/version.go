@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/version"
 )
 
@@ -21,12 +22,14 @@ type latestReleaseProvider interface {
 type VersionHandler struct {
 	updateService  latestReleaseProvider
 	currentVersion string
+	availability   update.Availability
 }
 
-func NewVersionHandler(updateService latestReleaseProvider, currentVersion string) *VersionHandler {
+func NewVersionHandler(updateService latestReleaseProvider, currentVersion string, availability update.Availability) *VersionHandler {
 	return &VersionHandler{
 		updateService:  updateService,
 		currentVersion: currentVersion,
+		availability:   availability,
 	}
 }
 
@@ -41,9 +44,12 @@ type LatestVersionResponse struct {
 // newer release has been detected. Intended for monitoring tools (e.g. Argus)
 // that track the deployed version of a service.
 type VersionResponse struct {
-	Version         string `json:"version"`
-	LatestVersion   string `json:"latestVersion,omitempty"`
-	UpdateAvailable bool   `json:"updateAvailable"`
+	Version                     string `json:"version"`
+	LatestVersion               string `json:"latestVersion,omitempty"`
+	UpdateAvailable             bool   `json:"updateAvailable"`
+	SelfUpdate                  bool   `json:"selfUpdate"`
+	SelfUpdateUnavailableReason string `json:"selfUpdateUnavailableReason"`
+	Restart                     bool   `json:"restart"`
 }
 
 // GetVersion returns the version qui is currently running. When the update
@@ -52,7 +58,10 @@ type VersionResponse struct {
 // LatestVersion is omitted.
 func (h *VersionHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	response := VersionResponse{
-		Version: h.currentVersion,
+		Version:                     h.currentVersion,
+		SelfUpdate:                  h.availability.SelfUpdate,
+		SelfUpdateUnavailableReason: h.availability.SelfUpdateUnavailableReason,
+		Restart:                     h.availability.Restart,
 	}
 
 	if release := h.updateService.GetLatestRelease(r.Context()); release != nil {

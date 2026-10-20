@@ -23,8 +23,6 @@
   "feeds": {
     "title": "Canals",
     "refreshAll": "Actualitza'ls tots",
-    "addFolder": "Afegeix una carpeta",
-    "addFeed": "Afegeix un canal",
     "articles": "Articles",
     "unread": "{{count}} sense llegir",
     "markAllAsRead": "Marca'ls tots com a llegits",
@@ -143,14 +141,10 @@
     "saveChanges": "Desa els canvis"
   },
   "settingsPopover": {
-    "title": "Configuració d'RSS",
     "refreshInterval": "Interval d'actualització",
-    "min": "min",
     "maxArticles": "Màxim d'articles per canal",
     "autoDownload": "Baixada automàtica",
-    "downloadRepack": "Baixa REPACK/PROPER",
-    "saving": "S'està desant...",
-    "save": "Desa"
+    "downloadRepack": "Baixa REPACK/PROPER"
   },
   "sseStatus": {
     "live": "SSE en directe",
@@ -196,8 +190,6 @@
     "ruleCreated": "S'ha creat la regla correctament",
     "failedToCreateRule": "No s'ha pogut crear la regla",
     "ruleUpdated": "S'ha actualitzat la regla correctament",
-    "failedToUpdateRuleEdit": "No s'ha pogut actualitzar la regla",
-    "rssSettingsSaved": "S'ha desat la configuració d'RSS",
-    "failedToSaveRssSettings": "No s'ha pogut desar la configuració d'RSS"
+    "failedToUpdateRuleEdit": "No s'ha pogut actualitzar la regla"
   }
 }

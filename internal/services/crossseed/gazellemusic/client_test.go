@@ -2,9 +2,12 @@ package gazellemusic
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestNewClient_SharesLimiterPerHost(t *testing.T) {
@@ -89,4 +92,105 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	// 192.0.2.1 is TEST-NET-1 (RFC 5737), reserved for documentation. The guard
 	// fires before connect, so nothing leaves the machine either way.
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
+}
+
+// The ban and wrong-key rows copy real tracker replies (wrong keys captured
+// 2026-09-22, the ban from #2807). Do not edit them to fit the code.
+func TestClientClassifiesAccessDenied(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		wantDenied bool
+		wantText   string
+	}{
+		{
+			name:       "OPS ip ban",
+			status:     http.StatusOK,
+			body:       `{"status":"failure","error":"Your IP address has been banned."}`,
+			wantDenied: true,
+			wantText:   "Your IP address has been banned.",
+		},
+		{
+			name:       "OPS wrong key",
+			status:     http.StatusOK,
+			body:       `{"status":"failure","error":"invalid token","info":{"source":"Orpheus","version":1}}`,
+			wantDenied: true,
+			wantText:   "invalid token",
+		},
+		{
+			name:       "RED wrong key",
+			status:     http.StatusUnauthorized,
+			body:       `{"status":"failure","error":"bad credentials"}`,
+			wantDenied: true,
+			wantText:   "bad credentials",
+		},
+		{
+			name:       "short body with invalid UTF-8",
+			status:     http.StatusForbidden,
+			body:       "denied \xff",
+			wantDenied: true,
+			wantText:   "denied",
+		},
+		{
+			name:     "other api failure",
+			status:   http.StatusOK,
+			body:     `{"status":"failure","error":"rate limit exceeded"}`,
+			wantText: "rate limit exceeded",
+		},
+		{
+			name:     "other api failure that says banned",
+			status:   http.StatusOK,
+			body:     `{"status":"failure","error":"This format is banned."}`,
+			wantText: "This format is banned.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			c, err := NewClient("redacted.sh", server.URL, "key")
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			_, searchErr := c.SearchByFilename(t.Context(), "track")
+			_, downloadErr := c.DownloadTorrent(t.Context(), 1)
+			for _, err := range []error{searchErr, downloadErr} {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if got := errors.Is(err, ErrAccessDenied); got != tt.wantDenied {
+					t.Fatalf("errors.Is(err, ErrAccessDenied) = %v, want %v (err: %v)", got, tt.wantDenied, err)
+				}
+				if !strings.Contains(err.Error(), tt.wantText) {
+					t.Fatalf("error %q does not carry the tracker text %q", err, tt.wantText)
+				}
+				if !utf8.ValidString(err.Error()) {
+					t.Fatalf("error %q is not valid UTF-8; Postgres rejects it in the run record", err)
+				}
+			}
+		})
+	}
+}
+
+// A denial whose text reads like Gazelle's not-found reply must still stop the
+// lookup, not count as a hash miss.
+func TestSearchByHashKeepsAccessDenied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"failure","error":"bad parameters"}`))
+	}))
+	defer server.Close()
+
+	c, err := NewClient("redacted.sh", server.URL, "key")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.SearchByHash(t.Context(), "abc"); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("SearchByHash error = %v, want ErrAccessDenied", err)
+	}
 }

@@ -27,22 +27,25 @@ type gatherInput struct {
 	req           *jackett.TorznabSearchRequest
 	tagSourcedIDs bool
 	// altTitle is the alternate-title query; empty skips that pass.
-	altTitle    string
-	torrentName string
+	altTitle string
+	// altTitleSeason replaces the season on the alternate-title pass. Nil keeps the season of req.
+	altTitleSeason *int
+	torrentName    string
 }
 
 // gather returns the response with every pass's results merged, the covered
-// indexer IDs, and the primary-pass or context error. Passes search on waitCtx.
+// indexer IDs, whether any indexer answered any pass, and the primary-pass or
+// context error. Passes search on waitCtx.
 // Only ctx cancellation aborts a retry. A failed yearless retry marks the
 // response partial. A failed per-indexer retry removes its targets from coverage.
-func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*jackett.SearchResponse, []int, error) {
+func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*jackett.SearchResponse, []int, bool, error) {
 	req := in.req
 	resp, err := g.search(waitCtx, req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.New("search timed out")
 		}
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	results := resp.Results
 
@@ -50,6 +53,9 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// search: a pass it missed is exactly the query that might have matched,
 	// so it must stay eligible for the next run.
 	covered := resp.CoveredIndexerIDs
+	// A failed retry uncovers indexers that did answer, so coverage cannot
+	// tell whether Torznab ran at all.
+	answered := len(covered) > 0
 	yearlessRetryRan := false
 
 	// Retry without year when the first pass turned up nothing usable, whether
@@ -69,7 +75,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		retryResp, retryErr := g.search(waitCtx, &retryReq)
 		if retryErr != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, nil, ctxErr
+				return nil, nil, false, ctxErr
 			}
 			log.Debug().
 				Err(retryErr).
@@ -84,6 +90,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 			retryResp.Partial = resp.Partial || retryResp.Partial
 			resp = retryResp
 			covered = intersectInts(covered, retryResp.CoveredIndexerIDs)
+			answered = answered || len(retryResp.CoveredIndexerIDs) > 0
 			yearlessRetryRan = true
 		}
 	}
@@ -95,7 +102,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// passes reuse the Torznab result cache instead of re-hitting indexers.
 	// Outcome reporting keys on indexer ID under the primary job. A failed
 	// pass drops its targets from the covered set.
-	retry := func(pass string, targets []int, query string) error {
+	retry := func(pass string, targets []int, query string, season *int) error {
 		if len(targets) == 0 {
 			return nil
 		}
@@ -110,6 +117,9 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		clearSearchRequestIDs(&retryReq)
 		retryReq.Query = query
 		retryReq.IndexerIDs = targets
+		if season != nil {
+			retryReq.Season = season
+		}
 		if yearlessRetryRan {
 			retryReq.Year = 0
 		}
@@ -132,6 +142,7 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 			return nil
 		}
 		covered = uncoverMissed(covered, targets, retryResp.CoveredIndexerIDs)
+		answered = answered || len(retryResp.CoveredIndexerIDs) > 0
 		if len(retryResp.Results) > 0 {
 			log.Debug().
 				Str("torrentName", in.torrentName).
@@ -152,8 +163,8 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 	// primary pass and are covered by the passes below.
 	if in.tagSourcedIDs {
 		targets := intersectInts(g.idCapIndexers(waitCtx, req), unsatisfied())
-		if err := retry("title retry after tag-sourced IDs", targets, req.Query); err != nil {
-			return nil, nil, err
+		if err := retry("title retry after tag-sourced IDs", targets, req.Query, nil); err != nil {
+			return nil, nil, false, err
 		}
 	}
 
@@ -166,22 +177,22 @@ func (g searchGatherer) gather(ctx, waitCtx context.Context, in gatherInput) (*j
 		// already produced a usable candidate is left alone, because
 		// cross-seed success is per tracker, not per search.
 		if in.altTitle != "" {
-			if err := retry("alternate title", unsatisfied(), in.altTitle); err != nil {
-				return nil, nil, err
+			if err := retry("alternate title", unsatisfied(), in.altTitle, in.altTitleSeason); err != nil {
+				return nil, nil, false, err
 			}
 		}
 		// Some trackers index a show with "&" while the release name spells
 		// out "and". A literal q only matches one spelling; the match loop
 		// dedupes the merged candidates by GUID/download URL.
 		if altQuery, ok := alternateConnectorQuery(req.Query); ok {
-			if err := retry("alternate connector", unsatisfied(), altQuery); err != nil {
-				return nil, nil, err
+			if err := retry("alternate connector", unsatisfied(), altQuery, nil); err != nil {
+				return nil, nil, false, err
 			}
 		}
 	}
 
 	resp.Results = results
-	return resp, covered, nil
+	return resp, covered, answered, nil
 }
 
 // indexersWithoutResults returns the requested indexer IDs that produced no
