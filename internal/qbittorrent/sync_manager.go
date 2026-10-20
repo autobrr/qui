@@ -2431,7 +2431,9 @@ func waitForPostAddRecheckReady(
 		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
 		lastSyncErr = syncManager.Sync(syncCtx)
 		cancel()
-		if err := waitErr(); err != nil {
+		// Only the caller's cancellation stops here: a sync that succeeded as the
+		// overall wait expired still has fresh state to check.
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if lastSyncErr != nil {
