@@ -1509,3 +1509,48 @@ func TestSearchScheduler_DetachedIndexerFailsRSSTasks(t *testing.T) {
 	submitRSS(func() {}, done)
 	require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
 }
+
+func TestSearchScheduler_DetachedExecKeepsReplacementRSSMarker(t *testing.T) {
+	old := detachedExecWarnAfter
+	detachedExecWarnAfter = 50 * time.Millisecond
+	t.Cleanup(func() { detachedExecWarnAfter = old })
+
+	s := newSearchScheduler(nil, 2)
+	defer s.Stop()
+	stuck := &models.TorznabIndexer{ID: 1, Name: "stuck"}
+	release := make(chan struct{})
+	timedOut := make(chan error, 1)
+	_, err := s.Submit(t.Context(), SubmitRequest{
+		Indexers:         []*models.TorznabIndexer{stuck},
+		Meta:             &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}},
+		ExecutionTimeout: 20 * time.Millisecond,
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			<-release
+			return nil, nil, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { timedOut <- err }},
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, recvWithin(t, timedOut), context.DeadlineExceeded)
+	require.Eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.inFlight[stuck.ID].detached
+	}, time.Second, 5*time.Millisecond)
+
+	// An RSS run submitted after the detach owns the marker now.
+	s.mu.Lock()
+	s.pendingRSS[stuck.ID] = struct{}{}
+	s.mu.Unlock()
+	close(release)
+	require.Eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, running := s.inFlight[stuck.ID]
+		return !running
+	}, time.Second, 5*time.Millisecond)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	require.Contains(t, s.pendingRSS, stuck.ID)
+}

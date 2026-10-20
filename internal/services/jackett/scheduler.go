@@ -680,7 +680,8 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
 		s.mu.Lock()
 		delete(s.inFlight, task.indexer.ID)
-		if task.isRSS {
+		// A detached exec released its RSS marker, which a later RSS run may own now.
+		if task.isRSS && !item.detached {
 			delete(s.pendingRSS, task.indexer.ID)
 		}
 		s.mu.Unlock()
