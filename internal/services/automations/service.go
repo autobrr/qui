@@ -1986,8 +1986,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	needs := NeedsFor(eligibleRules)
-	if needs.TrackerEntries {
-		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	if needs.TrackerEntries || needs.TrackerURLs {
+		torrents = s.attachTrackers(ctx, instanceID, torrents, needs)
 		if trackerDataMissing(torrents) {
 			log.Debug().
 				Int("instanceID", instanceID).
@@ -4950,11 +4950,12 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 	if s == nil || s.syncManager == nil || rule == nil {
 		return torrents
 	}
-	if !previewNeeds(rule).TrackerEntries {
+	needs := previewNeeds(rule)
+	if !needs.TrackerEntries && !needs.TrackerURLs {
 		return torrents
 	}
 
-	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	hydrated := s.attachTrackers(ctx, instanceID, torrents, needs)
 	if trackerDataMissing(hydrated) {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -4963,6 +4964,16 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
 	}
 	return hydrated
+}
+
+// attachTrackers sets the tracker list that the tracker conditions read. Only
+// the status and message conditions fetch details from qBittorrent; the
+// tracker conditions read the URLs from MainData.
+func (s *Service) attachTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds) []qbt.Torrent {
+	if needs.TrackerEntries {
+		return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	}
+	return s.syncManager.AttachTrackerURLs(ctx, instanceID, torrents)
 }
 
 // trackerDataMissing reports that no torrent carries tracker entries. An empty

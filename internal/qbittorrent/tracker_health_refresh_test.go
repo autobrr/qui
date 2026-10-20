@@ -41,7 +41,7 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, "2.11.4")
 		case "/api/v2/sync/maindata":
-			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}}}`,
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}},"trackers":{"https://tracker.example.invalid/announce":[%[1]q]}}`,
 				trackerHealthTestHash, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 		case "/api/v2/torrents/info":
 			rig.infoFetches.Add(1)
@@ -119,7 +119,8 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 	rig.sm.StartTrackerHealthRefresh(1)
 	t.Cleanup(func() { rig.sm.StopTrackerHealthRefresh(1) })
 
-	passes := func() int { return len(rig.sink.getTrackerHealthUpdates()) }
+	// Each pass on qBittorrent 5.1 fetches the library once.
+	passes := func() int { return int(rig.infoFetches.Load()) }
 	require.Eventually(t, func() bool { return passes() == 1 }, 2*time.Second, 5*time.Millisecond, "initial pass")
 	require.True(t, rig.unhealthy())
 

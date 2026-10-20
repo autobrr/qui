@@ -22,7 +22,8 @@ type RuleNeeds struct {
 	SeasonPackAnyInstance bool
 	FreeSpace             bool
 	TrackerNames          bool
-	TrackerEntries        bool // the per-torrent tracker list
+	TrackerURLs           bool // the URL of each tracker, from MainData
+	TrackerEntries        bool // the per-torrent tracker list with status and message
 }
 
 // fieldData is the prepared data one condition field reads. A field without a
@@ -77,8 +78,8 @@ var conditionFieldData = map[ConditionField]fieldData{
 	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }, known: otherInstanceCrossSeedKnown},
 	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }, known: otherInstanceCrossSeedKnown},
 	FieldFreeSpace:              {need: func(n *RuleNeeds) { n.FreeSpace = true }},
-	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
-	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
+	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
+	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
 	FieldTrackerStatus:          {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 	FieldTrackerMessage:         {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 }

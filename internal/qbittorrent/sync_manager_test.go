@@ -48,8 +48,6 @@ func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
 
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
 	require.True(t, trackerHealthSupported)
-	require.False(t, trackerHealthHydrationEnabled(trackerHealthSupported, true))
-	require.True(t, trackerHealthHydrationEnabled(trackerHealthSupported, false))
 }
 
 func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
@@ -59,7 +57,6 @@ func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
 
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
 	require.False(t, trackerHealthSupported)
-	require.False(t, trackerHealthHydrationEnabled(trackerHealthSupported, false))
 }
 
 func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
@@ -169,309 +166,58 @@ func TestNewCacheMetadata(t *testing.T) {
 	}
 }
 
-func TestSeedValidatedTrackerMappingFromMainData(t *testing.T) {
+func TestTrackerMappingFromMainData(t *testing.T) {
 	t.Parallel()
 
-	sm := &SyncManager{
-		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
-	}
-
+	sm := &SyncManager{}
 	torrents := []qbt.Torrent{
 		{Hash: "hash-a", Tracker: "https://tracker-a.example/announce"},
-		{Hash: "hash-b", Tracker: "udp://tracker-b.example:80/announce"},
-		{Hash: "hash-stale", Tracker: "https://current.example/announce"},
-		{Hash: "hash-empty-primary"},
-		{
-			Hash: "hash-multi",
-			Trackers: []qbt.TorrentTracker{
-				{Url: "https://multi-one.example/announce"},
-				{Url: "https://multi-two.example/announce"},
-			},
-		},
+		{Hash: "hash-multi", Tracker: "https://multi-one.example/announce"},
 	}
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"https://tracker-a.example/announce": {"hash-a", "hash-missing"},
-			"udp://tracker-b.example:80/announce": {
-				"hash-b",
-			},
-			"https://stale.example/announce":       {"hash-stale"},
-			"https://fallback.example/announce":    {"hash-empty-primary"},
-			"** [DHT] **":                          {"hash-a"},
-			"https://multi-two.example/announce":   {"hash-multi"},
-			"https://stale-multi.example/announce": {"hash-multi"},
+			"https://tracker-a.example/announce":  {"hash-a", "hash-missing"},
+			"** [DHT] **":                         {"hash-a"},
+			"https://multi-one.example/announce":  {"hash-multi"},
+			"udp://multi-two.example:80/announce": {"hash-multi"},
 		},
 	}
 
-	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-a.example")
-	require.Contains(t, mapping.HashToDomains["hash-b"], "tracker-b.example")
-	require.Contains(t, mapping.HashToDomains["hash-empty-primary"], "fallback.example")
-	require.Contains(t, mapping.HashToDomains["hash-multi"], "multi-two.example")
-
-	require.NotContains(t, mapping.HashToDomains, "hash-missing")
-	require.NotContains(t, mapping.HashToDomains, "hash-stale")
-	require.NotContains(t, mapping.DomainToHashes, "stale.example")
-	require.NotContains(t, mapping.DomainToHashes, "stale-multi.example")
-	require.NotContains(t, mapping.DomainToHashes, "")
+	mapping := sm.trackerMappingFromMainData(torrents, mainData)
+	require.Equal(t, map[string]map[string]struct{}{
+		"hash-a":     {"tracker-a.example": {}},
+		"hash-multi": {"multi-one.example": {}, "multi-two.example": {}},
+	}, mapping.HashToDomains, "a torrent counts under each tracker, not only the one that answered last")
+	require.Equal(t, map[string]map[string]struct{}{
+		"tracker-a.example": {"hash-a": {}},
+		"multi-one.example": {"hash-multi": {}},
+		"multi-two.example": {"hash-multi": {}},
+	}, mapping.DomainToHashes)
 }
 
-func TestSeedValidatedTrackerMappingFromMainDataClearsStaleMappingWhenNoCurrentHashesMatch(t *testing.T) {
+func TestStoreTrackerMappingKeepsGenerationWhenUnchanged(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{
 		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
 			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"old-hash": {"stale.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"stale.example": {"old-hash": {}},
-				},
-				UpdatedAt: time.Now().Add(-time.Hour),
+				HashToDomains:  map[string]map[string]struct{}{"old-hash": {"stale.example": {}}},
+				DomainToHashes: map[string]map[string]struct{}{"stale.example": {"old-hash": {}}},
 			},
 		},
 	}
-	torrents := []qbt.Torrent{
-		{Hash: "current-hash", Tracker: "https://current.example/announce"},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://stale.example/announce": {"old-hash"},
-		},
-	}
+	mainData := &qbt.MainData{Trackers: map[string][]string{"https://current.example/announce": {"current-hash"}}}
+	torrents := []qbt.Torrent{{Hash: "current-hash"}}
 
-	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+	require.True(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData)))
+	require.Equal(t, map[string]map[string]struct{}{"current.example": {"current-hash": {}}}, sm.getValidatedTrackerMapping(7).DomainToHashes)
 
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.Empty(t, mapping.HashToDomains)
-	require.Empty(t, mapping.DomainToHashes)
-	require.NotContains(t, mapping.HashToDomains, "old-hash")
-	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+	gen := sm.trackerMappingGen.Load()
+	require.False(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData)))
+	require.Equal(t, gen, sm.trackerMappingGen.Load(), "an unchanged mapping keeps cached counts valid")
 }
 
-func TestSeedValidatedTrackerMappingFromMainDataClearsStaleMappingForEmptyCurrentList(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"old-hash": {"stale.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"stale.example": {"old-hash": {}},
-				},
-				UpdatedAt: time.Now().Add(-time.Hour),
-			},
-		},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://stale.example/announce": {"old-hash"},
-		},
-	}
-
-	sm.seedValidatedTrackerMappingFromMainData(7, nil, mainData, time.Now())
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.Empty(t, mapping.HashToDomains)
-	require.Empty(t, mapping.DomainToHashes)
-}
-
-func TestFallbackTrackerMappingDoesNotDriveCountsAndFilters(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
-	}
-	client := &Client{instanceID: 7}
-	torrents := []qbt.Torrent{
-		{Hash: "current-hash", Tracker: ""},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://stale.example/announce": {"current-hash"},
-		},
-	}
-
-	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.True(t, mapping.FallbackOnly)
-	require.Contains(t, mapping.DomainToHashes, "stale.example")
-
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
-	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.TrackerTransfers, "stale.example")
-
-	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
-	require.Empty(t, filtered)
-}
-
-func TestFallbackTrackerMappingDoesNotReplaceAuthoritativeMapping(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"old-hash": {"authoritative.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"authoritative.example": {"old-hash": {}},
-				},
-				UpdatedAt: time.Now().Add(-time.Minute),
-			},
-		},
-	}
-	torrents := []qbt.Torrent{
-		{Hash: "current-hash", Tracker: "https://fallback.example/announce"},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://fallback.example/announce": {"current-hash"},
-		},
-	}
-
-	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.False(t, mapping.FallbackOnly)
-	require.Contains(t, mapping.DomainToHashes, "authoritative.example")
-	require.NotContains(t, mapping.DomainToHashes, "fallback.example")
-
-	authoritative := sm.getAuthoritativeTrackerMapping(7)
-	require.NotNil(t, authoritative)
-	require.Contains(t, authoritative.DomainToHashes, "authoritative.example")
-}
-
-func TestFallbackTrackerMappingReplacesPriorFallbackMapping(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"old-hash": {"old-fallback.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"old-fallback.example": {"old-hash": {}},
-				},
-				UpdatedAt:    time.Now().Add(-time.Minute),
-				FallbackOnly: true,
-			},
-		},
-	}
-	torrents := []qbt.Torrent{
-		{Hash: "current-hash", Tracker: "https://new-fallback.example/announce"},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://new-fallback.example/announce": {"current-hash"},
-		},
-	}
-
-	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.True(t, mapping.FallbackOnly)
-	require.Contains(t, mapping.DomainToHashes, "new-fallback.example")
-	require.NotContains(t, mapping.DomainToHashes, "old-fallback.example")
-	require.Nil(t, sm.getAuthoritativeTrackerMapping(7))
-}
-
-func TestDirectTrackerEditDoesNotPromoteFallbackTrackerMapping(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
-	}
-	client := &Client{instanceID: 7}
-	torrents := []qbt.Torrent{
-		{Hash: "current-hash", Tracker: "https://new.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "/data/current"},
-		{Hash: "untouched-hash", Tracker: "https://fallback.example/announce", Uploaded: 1, Downloaded: 2, Size: 3, ContentPath: "/data/untouched"},
-	}
-	mainData := &qbt.MainData{
-		Trackers: map[string][]string{
-			"https://stale.example/announce":    {"current-hash"},
-			"https://fallback.example/announce": {"untouched-hash"},
-		},
-	}
-
-	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
-	sm.updateTrackerMappingForEdit(7, "current-hash", "stale.example", "new.example")
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.True(t, mapping.FallbackOnly)
-	require.NotContains(t, mapping.DomainToHashes, "stale.example")
-	require.Contains(t, mapping.DomainToHashes, "new.example")
-	require.Contains(t, mapping.DomainToHashes["fallback.example"], "untouched-hash")
-	require.Contains(t, mapping.HashToDomains["current-hash"], "new.example")
-	require.Contains(t, mapping.HashToDomains["untouched-hash"], "fallback.example")
-
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
-	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.Trackers, "new.example")
-	require.Equal(t, 1, counts.Trackers["fallback.example"])
-
-	staleFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
-	require.Empty(t, staleFiltered)
-
-	untouchedFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"fallback.example"}}, mainData, nil, false)
-	require.Len(t, untouchedFiltered, 1)
-	require.Equal(t, "untouched-hash", untouchedFiltered[0].Hash)
-}
-
-func TestFallbackTrackerMappingMutationsPreserveSnapshot(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"hash-a": {"tracker-a.example": {}},
-					"hash-b": {"tracker-b.example": {}},
-					"hash-c": {"tracker-c.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"tracker-a.example": {"hash-a": {}},
-					"tracker-b.example": {"hash-b": {}},
-					"tracker-c.example": {"hash-c": {}},
-				},
-				UpdatedAt:    time.Now(),
-				FallbackOnly: true,
-			},
-		},
-	}
-
-	sm.addHashToTrackerMapping(7, "hash-a", "tracker-new.example")
-	sm.removeHashFromTrackerMapping(7, "hash-b", "tracker-b.example")
-	sm.removeHashFromAllTrackerMappings(7, []string{"hash-c"})
-
-	mapping := sm.getValidatedTrackerMapping(7)
-	require.NotNil(t, mapping)
-	require.True(t, mapping.FallbackOnly)
-	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-a.example")
-	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-new.example")
-	require.Contains(t, mapping.DomainToHashes["tracker-a.example"], "hash-a")
-	require.Contains(t, mapping.DomainToHashes["tracker-new.example"], "hash-a")
-	require.NotContains(t, mapping.HashToDomains, "hash-b")
-	require.NotContains(t, mapping.DomainToHashes, "tracker-b.example")
-	require.NotContains(t, mapping.HashToDomains, "hash-c")
-	require.NotContains(t, mapping.DomainToHashes, "tracker-c.example")
-}
-
-func TestUnsupportedTrackerHydrationSeedDropsStaleDomainsFromCountsAndFilters(t *testing.T) {
+func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{
@@ -505,7 +251,7 @@ func TestUnsupportedTrackerHydrationSeedDropsStaleDomainsFromCountsAndFilters(t 
 		},
 	}
 
-	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+	sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData))
 
 	mapping := sm.getValidatedTrackerMapping(7)
 	require.NotNil(t, mapping)
@@ -2025,7 +1771,7 @@ func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
 	}
 
 	// Test ascending: empty trackers should go to the end
-	sm.sortCrossInstanceTorrents(torrents, "tracker", false, false)
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
 
 	require.Equal(t, "hash3", torrents[0].Hash, "apple.com should be first")
 	require.Equal(t, "hash2", torrents[1].Hash, "zebra.com should be second")
@@ -2034,7 +1780,7 @@ func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
 
 	// Test descending: empty trackers should STILL go to the end (not beginning)
 	// Within the empty group, the hash tiebreak flips too
-	sm.sortCrossInstanceTorrents(torrents, "tracker", true, false)
+	sm.sortCrossInstanceTorrents(torrents, "tracker", true)
 
 	require.Equal(t, "hash2", torrents[0].Hash, "zebra.com should be first in desc")
 	require.Equal(t, "hash3", torrents[1].Hash, "apple.com should be second in desc")
@@ -2058,7 +1804,7 @@ func TestSortCrossInstanceTorrentsByTracker_WithCustomNames(t *testing.T) {
 		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"}}, InstanceName: "Instance1"},
 	}
 
-	sm.sortCrossInstanceTorrents(torrents, "tracker", false, false)
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
 
 	// ABC Tracker (zebra.com) comes before mango.com before XYZ Tracker (apple.com)
 	require.Equal(t, "hash1", torrents[0].Hash, "ABC Tracker (zebra.com) should be first")
@@ -2076,7 +1822,7 @@ func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T)
 		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://valid.com/announce", Name: "Valid"}}, InstanceName: "Instance1"},
 	}
 
-	sm.sortCrossInstanceTorrents(torrents, "tracker", false, false)
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
 
 	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
 	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
@@ -2163,7 +1909,7 @@ func TestSortCrossInstanceTorrents_CommonFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			torrents := build()
-			sm.sortCrossInstanceTorrents(torrents, tc.sort, tc.desc, false)
+			sm.sortCrossInstanceTorrents(torrents, tc.sort, tc.desc)
 			require.Equal(t, tc.firstHash, torrents[0].Hash)
 			require.Equal(t, tc.lastHash, torrents[len(torrents)-1].Hash)
 		})
@@ -2212,7 +1958,7 @@ func TestSortCrossInstanceTorrentsStateUsesTrackerHealthPriority(t *testing.T) {
 		},
 	}
 
-	sm.sortCrossInstanceTorrents(torrents, "state", false, false)
+	sm.sortCrossInstanceTorrents(torrents, "state", false)
 
 	require.Equal(t, "hash-unregistered", torrents[0].Hash)
 	require.Equal(t, "hash-error", torrents[1].Hash)

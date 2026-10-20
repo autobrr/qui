@@ -35,6 +35,13 @@ qui detects the features that each qBittorrent instance supports and adjusts the
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. If a build links against libtorrent 1.x, it ignores the `format` parameter.
 :::
 
+## Tracker health refresh
+
+qui checks the tracker health of each torrent in the background every 60 seconds. Tracker health is the state that qui shows for the trackers of a torrent: unregistered, tracker down, or tracker error.
+
+- On qBittorrent 5.2.0 and newer, the sync data of qBittorrent tells qui which torrents have a tracker problem. qui asks for the tracker details of a torrent only when its problem starts or changes. Thus, qui shows a new tracker problem within 60 seconds after qBittorrent reports it. If only the tracker message changes, qui shows the new message within 10 minutes.
+- On qBittorrent 5.1, qui asks for the tracker details of all torrents every 60 seconds. On a library with tens of thousands of torrents, this request can make qBittorrent slow for several seconds.
+
 ## Authentication compatibility
 
 ### API key auth with reverse-proxy Basic Auth
