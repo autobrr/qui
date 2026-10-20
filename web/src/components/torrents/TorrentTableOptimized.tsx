@@ -509,7 +509,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           }
           return {
             label: t("statusBar.streamStatus.fallback.degraded.label"),
-            message: t("statusBar.streamStatus.fallback.degraded.message"),
+            message: backendStreamError ?? t("statusBar.streamStatus.fallback.degraded.message"),
             secondary: degradedSecondary,
             tone: plan.tone,
             animate: false,

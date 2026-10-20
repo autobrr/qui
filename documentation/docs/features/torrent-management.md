@@ -28,7 +28,7 @@ qui waits up to two minutes for qBittorrent to finish deleting or moving the fil
 
 Before it sends a delete or move, qui checks the content for at most 5 seconds for a request that comes through the reverse proxy, and for at most 30 seconds for one from the qui UI or an automation, even when a disk or network mount stops answering. Content it has not checked by then is left to orphan scan.
 
-qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those. Instances reached over SSH are skipped for now.
+qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those.
 
 ## Tags and categories
 
@@ -118,6 +118,22 @@ The arrow keys replace the selection with the focused row, the same as a plain c
 Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
 
 Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
+
+## Live updates paused
+
+While the torrent table is open, qui asks qBittorrent for changes every 2 seconds. qBittorrent answers these requests on the same thread that runs its torrents. If that thread is busy, the answer waits.
+
+If qBittorrent does not answer in time, the status bar under the table shows **Live updates paused**. qui keeps the last data on screen and tries again. To see the reason and the age of the data, put the pointer on the status.
+
+If the reason is that qBittorrent did not answer in time, look for these causes:
+
+- qBittorrent is not running, or its host does not answer. Make sure that the qBittorrent WebUI opens.
+- qBittorrent checks or moves torrents. The live updates return when the check or the move ends.
+- Other apps send many requests to the same qBittorrent, for example a second web UI or a tool that lists all torrents.
+- The torrent data is on network storage (NFS, SMB, or an rclone mount) and qBittorrent uses libtorrent 2.0. qBittorrent issue reports show that qBittorrent can stop answering in this setup. In qBittorrent, set **Advanced > Disk IO type** to **Simple pread/pwrite**, or use a qBittorrent build with libtorrent 1.2.
+- You run qBittorrent 5.2.x. An [open qBittorrent issue](https://github.com/qbittorrent/qBittorrent/issues/25068) reports that 5.2.x keeps one thread at 100% CPU and stops answering, and that 5.1.4 works with the same setup.
+
+A large library makes the first update after qui connects slower. If none of the causes above applies, split the torrents over two or more qBittorrent instances. The [Export to Instance](./automations.md#export-to-instance) action adds torrents to the new instance. The torrent data must already be on the new instance. The action does not remove the torrents from the old instance. After the torrents seed on the new instance, remove them from the old instance. If both instances use the same files, keep the files when you remove the torrents. The new instance needs them.
 
 ## Torrent creator
 

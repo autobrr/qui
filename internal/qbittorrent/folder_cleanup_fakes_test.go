@@ -494,15 +494,20 @@ type backendKind string
 const (
 	localBackend backendKind = "local"
 	slashBackend backendKind = "slash"
+	// remoteBackend is the slash fake behind a remote instance row that can
+	// write, checked every tick so the module tests run unchanged.
+	remoteBackend backendKind = "remote"
 )
 
-func newCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
+// newStoppedCleanupEnv is newCleanupEnv before start, for a test that sets
+// the worker's timing.
+func newStoppedCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
 	e := &cleanupEnv{t: t, ignores: &fakeIgnores{}}
 	switch kind {
 	case localBackend:
 		e.fs = localTree{Backend: local.NewBackend(), t: t}
 		e.root = t.TempDir()
-	case slashBackend:
+	case slashBackend, remoteBackend:
 		e.fs = newMemTree()
 		e.root = "/data"
 	}
@@ -521,17 +526,33 @@ func newCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
 		UseSubcategories: true,
 	}, support: nestingSupport{Nests: true}}
 	e.req = &fakeRequirer{backend: e.fs, instance: models.Instance{HasLocalFilesystemAccess: true, HardlinkBaseDir: e.p("torrents/qui-links")}}
+	if kind == remoteBackend {
+		e.req.instance = models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "h",
+			HardlinkBaseDir: e.p("torrents/qui-links")}
+	}
 	e.fc = NewFolderCleanup(e.req, e.view, e.ignores)
-	e.fc.Start(t.Context())
-	t.Cleanup(e.fc.Stop)
+	if kind == remoteBackend {
+		e.fc.remoteTick = e.fc.tick
+	}
 	return e
 }
 
-// eachBackend runs body on the real local backend and on the slash-dialect
-// fake, each inside a synctest bubble so the ticker and deadline run on fake
-// time.
+func newCleanupEnv(t *testing.T, kind backendKind) *cleanupEnv {
+	e := newStoppedCleanupEnv(t, kind)
+	e.start()
+	return e
+}
+
+func (e *cleanupEnv) start() {
+	e.fc.Start(e.t.Context())
+	e.t.Cleanup(e.fc.Stop)
+}
+
+// eachBackend runs body on the real local backend, on the slash-dialect fake,
+// and on that fake behind a remote instance, each inside a synctest bubble so
+// the ticker and deadline run on fake time.
 func eachBackend(t *testing.T, body func(t *testing.T, e *cleanupEnv)) {
-	for _, kind := range []backendKind{localBackend, slashBackend} {
+	for _, kind := range []backendKind{localBackend, slashBackend, remoteBackend} {
 		t.Run(string(kind), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				body(t, newCleanupEnv(t, kind))

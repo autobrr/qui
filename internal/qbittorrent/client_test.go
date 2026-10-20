@@ -814,7 +814,7 @@ func TestIsDeadlineExpired(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, isDeadlineExpired(tc.err))
+			require.Equal(t, tc.want, IsDeadlineExpired(tc.err))
 		})
 	}
 }

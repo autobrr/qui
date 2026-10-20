@@ -555,6 +555,7 @@
       "requeueFailed": "Échec de la relance des fichiers sans correspondance : {{error}}",
       "resetFailed": "Échec de la réinitialisation : {{error}}"
     },
+    "webhookScanStatus": "Analyse webhook · {{status}}",
     "statusLabels": {
       "queued": "En attente",
       "scanning": "En analyse",

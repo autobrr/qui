@@ -555,6 +555,7 @@
       "requeueFailed": "Failed to retry unmatched files: {{error}}",
       "resetFailed": "Failed to reset files: {{error}}"
     },
+    "webhookScanStatus": "Webhook scan · {{status}}",
     "statusLabels": {
       "queued": "Queued",
       "scanning": "Scanning",

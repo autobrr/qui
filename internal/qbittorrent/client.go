@@ -290,7 +290,7 @@ func (c *Client) IsHealthy() bool {
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
-// Deadline expiry keeps the client healthy: it is treated as slow by design (see isDeadlineExpired),
+// Deadline expiry keeps the client healthy: it is treated as slow by design (see IsDeadlineExpired),
 // and flipping it unhealthy sends every caller into the probe/backoff path (502 storms).
 // The error is still dispatched so the SSE loop backs off and escalates to the full sync budget.
 func (c *Client) handleSyncManagerError(err error) {
@@ -306,7 +306,7 @@ func (c *Client) handleSyncManagerError(err error) {
 		return
 	}
 
-	if isDeadlineExpired(err) {
+	if IsDeadlineExpired(err) {
 		log.Debug().
 			Err(err).
 			Int("instanceID", c.instanceID).
@@ -338,7 +338,7 @@ func isContextStopped(err error) bool {
 	return strings.Contains(msg, "context canceled")
 }
 
-// isDeadlineExpired recognizes request timeouts even after wrappers flatten the sentinel.
+// IsDeadlineExpired recognizes request timeouts even after wrappers flatten the sentinel.
 // A deadline is ambiguous: usually a saturated instance working through its
 // queue, but it can also be a dial that never completed (a blackholed host).
 // A caller deadline firing before the 30s dial timeout yields the same
@@ -346,7 +346,7 @@ func isContextStopped(err error) bool {
 // as slow: stale data with a staleness badge beats backoff and 502s.
 // Hard failures (refused, DNS, EOF, a bare "dial tcp: i/o timeout") are
 // unambiguous evidence of a dead instance and stay unmatched here.
-func isDeadlineExpired(err error) bool {
+func IsDeadlineExpired(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -592,7 +592,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 
 	if err := c.RefreshCapabilities(ctx); err != nil {
 		// Slow, not down: a timed-out probe keeps the current health state.
-		if !isDeadlineExpired(err) {
+		if !IsDeadlineExpired(err) {
 			c.updateHealthStatus(false)
 		}
 		return errors.Wrap(err, "health check failed")
