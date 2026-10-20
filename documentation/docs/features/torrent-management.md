@@ -28,7 +28,7 @@ qui waits up to two minutes for qBittorrent to finish deleting or moving the fil
 
 Before it sends a delete or move, qui checks the content for at most 5 seconds for a request that comes through the reverse proxy, and for at most 30 seconds for one from the qui UI or an automation, even when a disk or network mount stops answering. Content it has not checked by then is left to orphan scan.
 
-qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those. Instances reached over SSH are skipped for now.
+qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those.
 
 ## Tags and categories
 

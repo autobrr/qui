@@ -720,6 +720,20 @@ func TestFolderCleanupWalkDownSkipsSymlinks(t *testing.T) {
 	})
 }
 
+// A root folder that is a symlink stays until the deadline, since it reads as
+// content left. The clean then must not walk into the folder it points to.
+func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.fs.symlink(e.p("torrents/tv/Pack"))
+		e.tree("torrents/tv/Pack/Empty/")
+		e.run(e.rootFolder("torrents/tv", "Pack"))
+		time.Sleep(e.fc.deadline)
+		synctest.Wait()
+		e.requireTree([]string{"torrents/tv/Pack/Empty", "torrents/tv/Pack"}, nil)
+	})
+}
+
 // One bulk action across instances queues snapshots from each; every
 // instance is checked and cleaned in the same tick.
 func TestFolderCleanupAcrossInstances(t *testing.T) {
@@ -1185,30 +1199,132 @@ func TestFolderCleanupStopDropsPendingWork(t *testing.T) {
 	})
 }
 
-func TestFolderCleanupSkipsRemoteInstances(t *testing.T) {
+// Over SSH a check costs round trips per torrent, so a remote instance's items
+// wait remoteTick between checks, here counted from the one enqueue. The last
+// check before the deadline asks for the sync that the deadline check needs.
+func TestFolderCleanupChecksRemoteInstancesEveryRemoteTick(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newStoppedCleanupEnv(t, remoteBackend)
+		e.fc.remoteTick = folderCleanupRemoteTick
+		e.start()
+		userFile := "torrents/tv/Rel-GRP/Sub/user.nfo"
+		e.tree("torrents/tv/Rel-GRP/Extras/", userFile)
+		mem := e.fs.(*memTree)
+		mem.calls.Store(0)
+
+		e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", "Extras/a.mkv", "Sub/a.srt")}, 0)
+		e.tick(9)
+		require.Zero(t, mem.calls.Load(), "no check before remoteTick")
+		e.tick(1)
+		checked := mem.calls.Load()
+		require.NotZero(t, checked, "a check at remoteTick")
+		e.tick(9)
+		require.Equal(t, checked, mem.calls.Load(), "no check between two remote ticks")
+		e.requireTree([]string{"torrents/tv/Rel-GRP/Extras", userFile}, nil)
+
+		time.Sleep(e.fc.deadline)
+		synctest.Wait()
+		e.requireTree([]string{userFile}, []string{"torrents/tv/Rel-GRP/Extras"})
+	})
+}
+
+// A remote check can land a tick later than remoteTick after the last one. A
+// remoteTick of 29 s puts the checks at 30, 60 and 90 s and the next one on the
+// deadline, so the check at 90 s must already ask for the sync.
+func TestFolderCleanupRemoteAsksForTheSyncATickEarly(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newStoppedCleanupEnv(t, remoteBackend)
+		e.fc.remoteTick = 29 * time.Second
+		e.start()
+		userFile := "torrents/tv/Rel-GRP/Sub/user.nfo"
+		e.tree("torrents/tv/Rel-GRP/Extras/", userFile)
+
+		e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", "Extras/a.mkv", "Sub/a.srt")}, 0)
+		time.Sleep(e.fc.deadline + e.fc.tick)
+		synctest.Wait()
+		e.requireTree([]string{userFile}, []string{"torrents/tv/Rel-GRP/Extras"})
+	})
+}
+
+// The last remote check comes about remoteTick before the deadline, and its
+// sync lands right after. A torrent added at these folders after that sync
+// must still keep them, so the deadline needs a sync asked for one tick ahead.
+func TestFolderCleanupRemoteAsksForTheSyncAgainATickBeforeTheDeadline(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		edit func(e *cleanupEnv)
+		name    string
+		addedAt time.Duration
+		// behind queues the item this long after another, so it is checked
+		// on the other's schedule and its last full check, at 120 s, is
+		// also its last tick.
+		behind time.Duration
 	}{
-		{"remote row that can write", func(e *cleanupEnv) {
-			e.req.instance = models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "h"}
-		}},
-		{"instance without write", func(e *cleanupEnv) { e.req.err = fmt.Errorf("instance 1: %w", fsops.ErrNotCapable) }},
+		{"added at 100s", 100 * time.Second, 0},
+		{"added at 115s", 115 * time.Second, 0},
+		{"last tick on a full check", 100 * time.Second, time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				e := newCleanupEnv(t, slashBackend)
-				tc.edit(e)
-				e.tree("torrents/tv/Rel-GRP/")
-				mem := e.fs.(*memTree)
-				mem.calls.Store(0)
-				e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
-				e.tick(1)
-				require.Zero(t, mem.calls.Load(), "a skipped instance's filesystem must not be touched")
-				e.requireTree([]string{"torrents/tv/Rel-GRP"}, nil)
+				e := newStoppedCleanupEnv(t, remoteBackend)
+				e.fc.remoteTick = folderCleanupRemoteTick
+				e.start()
+				layout := []string{"torrents/tv/Rel-GRP/Extras/Thumbs.db", "torrents/tv/Rel-GRP/Sub/user.nfo"}
+				e.tree(layout...)
+
+				if tc.behind > 0 {
+					e.fc.enqueue([]folderSnapshot{e.rootFolder("torrents/tv", "Gone-GRP")}, 0)
+					time.Sleep(tc.behind)
+				}
+				e.fc.enqueue([]folderSnapshot{e.noRoot("torrents/tv/Rel-GRP", "Extras/a.mkv", "Sub/a.srt")}, 0)
+				time.Sleep(tc.addedAt)
+				synctest.Wait()
+				e.view.setTorrentsOnSync(qbt.Torrent{Hash: e.nextHash(), SavePath: e.p("torrents/tv/Rel-GRP/Extras"), ContentPath: e.p("torrents/tv/Rel-GRP/Extras")})
+				time.Sleep(e.fc.deadline)
+				synctest.Wait()
+				e.requireTree(layout, nil)
 			})
 		})
 	}
+}
+
+// Batches queued a few seconds apart reach their deadlines a few seconds
+// apart. Between two remote ticks the deadline check reads only the item at
+// its deadline, not the items that wait for the next remote tick.
+func TestFolderCleanupRemoteDeadlineChecksOnlyExpiredItems(t *testing.T) {
+	t.Parallel()
+	e := newStoppedCleanupEnv(t, remoteBackend)
+	e.fc.remoteTick = folderCleanupRemoteTick
+	e.tree("torrents/tv/A-GRP/a.mkv", "torrents/tv/B-GRP/b.mkv")
+	now := time.Now()
+	expired, err := newPendingFolder(e.rootFolder("torrents/tv", "A-GRP"), now)
+	require.NoError(t, err)
+	waiting, err := newPendingFolder(e.rootFolder("torrents/tv", "B-GRP"), now.Add(time.Minute))
+	require.NoError(t, err)
+	expired.checked, waiting.checked = now.Add(-time.Second), now.Add(-time.Second)
+	var read []string
+	e.fs.(*memTree).lstatErr = func(p string) error {
+		read = append(read, p)
+		return nil
+	}
+
+	retry := e.fc.checkInstance(t.Context(), 1, []*pendingFolder{expired, waiting}, now)
+
+	require.Equal(t, []string{e.p("torrents/tv/A-GRP")}, read)
+	require.Contains(t, retry, waiting)
+	require.Equal(t, now.Add(-time.Second), waiting.checked)
+}
+
+func TestFolderCleanupSkipsInstancesWithoutWrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		e.req.err = fmt.Errorf("instance 1: %w", fsops.ErrNotCapable)
+		e.tree("torrents/tv/Rel-GRP/")
+		mem := e.fs.(*memTree)
+		mem.calls.Store(0)
+		e.run(e.noRoot("torrents/tv/Rel-GRP", "a.mkv"))
+		e.tick(1)
+		require.Zero(t, mem.calls.Load(), "a skipped instance's filesystem must not be touched")
+		e.requireTree([]string{"torrents/tv/Rel-GRP"}, nil)
+	})
 }
 
 func TestFolderCleanupFailsClosed(t *testing.T) {
