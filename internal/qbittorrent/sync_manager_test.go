@@ -3591,6 +3591,62 @@ func TestAddTagsSyncsWhenTheHashIsMissingFromTheCache(t *testing.T) {
 	require.NoError(t, NewSyncManager(pool, nil).AddTags(ctx, inst.ID, []string{"bb22"}, "fresh"))
 }
 
+// Before Web API 2.11.4, Set Tags removes the tags it reads from the cache, so a
+// tag added outside qui since the last sync must be read before the removal.
+func TestSetTagsFallbackRemovesTagsAddedSinceTheLastSync(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	removed := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"old"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"aa11":{"tags":"old, outside"}}}`))
+		case "/api/v2/torrents/removeTags":
+			removed <- r.PostFormValue("tags")
+		case "/api/v2/torrents/addTags":
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.3"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	require.NoError(t, NewSyncManager(pool, nil).SetTags(ctx, inst.ID, []string{"aa11"}, "new"))
+	select {
+	case tags := <-removed:
+		require.ElementsMatch(t, []string{"old", "outside"}, strings.Split(tags, ","))
+	default:
+		t.Fatal("Set Tags removed no tags")
+	}
+}
+
 // Directory scan starts one ResumeWhenComplete poller per injected torrent.
 // The pollers must share the sync instead of each fetching maindata on its own
 // schedule.

@@ -5689,9 +5689,12 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 			Str("webAPIVersion", client.GetWebAPIVersion()).
 			Msg("SetTags: qBittorrent version < 2.11.4, using fallback RemoveTags + AddTags")
 
-		// Use sync manager data instead of direct API call for better performance
-		// Get torrents directly from the client's torrent map for O(1) lookups
-		torrents := client.getTorrentsByHashes(hashes)
+		// The removal list comes from these tags, so a tag added outside qui
+		// since the last sync must be in them.
+		torrents, err := sm.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+		if err != nil {
+			return fmt.Errorf("failed to read existing tags during fallback: %w", err)
+		}
 
 		existingTagsSet := make(map[string]bool)
 		for _, torrent := range torrents {
