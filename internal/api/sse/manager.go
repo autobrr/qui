@@ -726,6 +726,9 @@ func syncErrorMessage(err error, retrySeconds int) string {
 	if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
 		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
 	}
+	if qbittorrent.IsDeadlineExpired(err) {
+		return fmt.Sprintf("Sync with qBittorrent paused: qBittorrent did not answer in time. qBittorrent is busy or not running; retrying in %ds", retrySeconds)
+	}
 	return fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 }
 
