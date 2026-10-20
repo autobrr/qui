@@ -48,6 +48,7 @@ import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
@@ -95,6 +96,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import {
   buildSpeedLimitInitialState,
   LocationWarningDialog,
@@ -2109,6 +2111,15 @@ export function TorrentCardsMobile({
           paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
         }}
       >
+        {torrents.length === 0 && !isLoading && (
+          <div className="flex h-full items-center justify-center px-4">
+            <TorrentListEmptyState
+              hasFilters={hasSidebarFilters(filters)}
+              hasSearch={Boolean(effectiveSearch)}
+              onClearFilters={onFilterChange ? () => onFilterChange(EMPTY_SIDEBAR_FILTERS) : undefined}
+            />
+          </div>
+        )}
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

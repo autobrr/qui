@@ -775,15 +775,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
   const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
-  const pathSourceAvailable = (ruleInstance?.capabilities.read ?? false) && !pathSourceWindowsBlocked
+  const canRead = ruleInstance?.capabilities.read ?? false
+  const pathSourceAvailable = canRead && !pathSourceWindowsBlocked
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
       trackerHealth: supportsTrackerHealth,
-      localFilesystemAccess: hasLocalFilesystemAccess,
+      read: canRead,
       trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, hasLocalFilesystemAccess, hasTrustedIdentity]
+    [supportsTrackerHealth, canRead, hasTrustedIdentity]
   )
 
   // Callback for path autocomplete suggestion selection

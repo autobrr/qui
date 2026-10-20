@@ -125,7 +125,7 @@ export const FIELD_GROUPS = [
 ];
 
 // Capability types for disabling fields/states in query builder
-export type CapabilityKey = "trackerHealth" | "localFilesystemAccess" | "trustedIdentity"
+export type CapabilityKey = "trackerHealth" | "read" | "trustedIdentity"
 
 export type Capabilities = Record<CapabilityKey, boolean>
 
@@ -139,19 +139,18 @@ export interface DisabledStateValue {
   reason: string
 }
 
+// The backend gates the "local filesystem access" fields on trusted identity, which only a local
+// instance has.
 const REQUIREMENT_CAPABILITIES = {
   "qBittorrent 5.1+": "trackerHealth",
-  "local filesystem access": "localFilesystemAccess",
+  "local filesystem access": "trustedIdentity",
+  "filesystem access": "read",
 } as const satisfies Record<FieldSpec extends { requires: infer R } ? R : never, CapabilityKey>;
-
-// The backend gates the hardlink fields on trusted identity, which only a local instance has,
-// so the Go table names local filesystem access for them.
-const TRUSTED_IDENTITY_FIELDS: ReadonlySet<string> = new Set<ConditionField>(["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS"]);
 
 // The capability that each field needs before it has data.
 export const FIELD_REQUIREMENTS: Partial<Record<ConditionField, CapabilityKey>> = Object.fromEntries(
   Object.entries(CONDITION_FIELDS).flatMap(([field, spec]) =>
-    "requires" in spec ? [[field, TRUSTED_IDENTITY_FIELDS.has(field) ? "trustedIdentity" : REQUIREMENT_CAPABILITIES[spec.requires]]] : []
+    "requires" in spec ? [[field, REQUIREMENT_CAPABILITIES[spec.requires]]] : []
   )
 );
 
@@ -172,9 +171,15 @@ export function getFieldLabel(field: string, t: TFunction): string {
 
 /** Get translated reason a field or state value is unavailable on this instance */
 export function getCapabilityReason(capability: CapabilityKey, t: TFunction, isRemote = false): string {
+  if (capability === "trackerHealth") {
+    return t("queryBuilder.capabilityReasons.trackerHealth", { ns: "automations" });
+  }
   // Trusted identity needs local access, which a remote instance can never have.
-  const reason = capability !== "trustedIdentity" ? capability : isRemote ? "remoteInstance" : "localFilesystemAccess";
-  return t(`queryBuilder.capabilityReasons.${reason}`, { ns: "automations" });
+  if (capability === "trustedIdentity" && isRemote) {
+    return t("queryBuilder.capabilityReasons.remoteInstance", { ns: "automations" });
+  }
+  // An instance without Read has no filesystem access, and local access is the setting that gives it.
+  return t("queryBuilder.capabilityReasons.localFilesystemAccess", { ns: "automations" });
 }
 
 /** Get translated label for a field group */

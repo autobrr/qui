@@ -307,6 +307,10 @@ const (
 	defaultSizeMismatchTolerancePercent   = 5.0
 	maxTitleRescueAttemptsPerSearch       = 3
 
+	// MinTorznabSearchInterval is the minimum Library Scan interval for Torznab
+	// searches. Dir Scan waits this long between the searches for two items.
+	MinTorznabSearchInterval = minSearchIntervalSecondsTorznab * time.Second
+
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
@@ -3757,6 +3761,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			continue
 		}
 
+		// Only processed items are skipped. A skipped or size-rejected item is evaluated
+		// again each run until it leaves the feed, on purpose: the local candidate changes
+		// over time (a copy finishes, another instance gets it, reflinks are turned on).
 		alreadyHandled, lastStatus, err := s.automationStore.HasProcessedFeedItem(ctx, result.GUID, result.IndexerID)
 		if err != nil {
 			log.Warn().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to check feed item cache")
@@ -3823,7 +3830,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 }
 
 // sizeMismatchLogLevel returns debug for the first size-mismatch rejection of a
-// (source, matched) pair and trace for repeats: RSS retries the same doomed
+// (source, matched) pair and trace for repeats: RSS retries the same rejected
 // pair every run until it leaves the feed. In-memory and unbounded on purpose.
 func (s *Service) sizeMismatchLogLevel(sourceHash, matchedHash string) zerolog.Level {
 	if _, seen := s.sizeMismatchWarned.LoadOrStore(sourceHash+"|"+matchedHash, struct{}{}); seen {
@@ -10925,6 +10932,9 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		deduplicated = specific
 	}
 
+	// Same rule as skipIndividualEpisodes in dirscan/work_selection.go: an episode
+	// that cannot join a season pack search is dropped, never searched alone.
+	// Change both together.
 	searchable := deduplicated
 	if state.opts.SkipIndividualEpisodes {
 		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t qbt.Torrent) bool {

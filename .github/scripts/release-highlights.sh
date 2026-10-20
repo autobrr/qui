@@ -73,6 +73,14 @@ collect_input() {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
+		# Users cannot reach a "no-ui-yet" PR until its UI ships, so leave it
+		# out, unless it breaks something. The SSH API is reachable already.
+		if jq -e --arg subject "$subject" '
+			any(.labels[]; .name == "no-ui-yet") and
+			(any(.labels[]; .name == "BREAKING CHANGE") or ($subject | test("^\\w+(\\([^)]*\\))?!:")) | not)
+		' <<<"$json" >/dev/null; then
+			continue
+		fi
 		# Dependency, CI-only, and docs-only PRs give only their title.
 		if [[ $subject =~ ^(chore\(deps\)|ci|docs)[:\(!] ]] ||
 			jq -e 'any(.labels[]; .name == "dependencies")' <<<"$json" >/dev/null; then
@@ -107,6 +115,7 @@ Write this section only when a PR has the "BREAKING CHANGE" label, has a "!" bef
 - Keep one fact for each bullet: a version requirement, an option name as it shows in the app, or a striking number.
 - Use 3 to 6 bullets on a normal release, fewer on a small release, in about 1,000 to 1,500 characters. The last bullet is always "**Fixes and polish.**" with the smaller items, each named in a few words.
 - If no change in the release is visible to users, write no Highlights section.
+- A PR with the "no-ui-yet" label goes only in Breaking changes, never in the Highlights. Users cannot reach its feature in the app yet.
 - Use only facts from the PR titles, labels, and bodies. Do not invent features or numbers.
 - Do not quote torrent or release names from the PRs.
 

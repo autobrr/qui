@@ -15,7 +15,7 @@ Most people run qui with one qBittorrent instance. Multi-instance support is opt
 
 qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
 
-If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode or hardlink mode.
 
 ## Features
 

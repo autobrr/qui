@@ -98,13 +98,15 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	hasTrustedIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).TrustedIdentity
-	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
+	var capabilities models.FilesystemCapabilities
+	if instance != nil {
+		capabilities = models.FilesystemCapabilitiesOf(instance)
+	}
 	// A remote instance cannot turn on local access without becoming a local
 	// one, so it gets the answer the UI gives, not that advice.
 	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
 	for field, data := range conditionFieldData {
-		if (data.trustedIdentity && !hasTrustedIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+		if (data.trustedIdentity && !capabilities.TrustedIdentity || data.read && !capabilities.Read) && actionConditionsUseField(conditions, field) {
 			if isRemote {
 				return ruleError("This file condition is not available on remote instances.")
 			}
@@ -136,7 +138,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
-		if !hasTrustedIdentity {
+		if !capabilities.TrustedIdentity {
 			if isRemote {
 				return ruleError("includeHardlinks is not available on remote instances.")
 			}

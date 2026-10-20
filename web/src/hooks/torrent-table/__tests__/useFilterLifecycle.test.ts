@@ -4,6 +4,7 @@
  */
 
 import { useFilterLifecycle, type UseFilterLifecycleParams } from "@/hooks/torrent-table/useFilterLifecycle"
+import { EMPTY_SIDEBAR_FILTERS } from "@/lib/filter-views"
 import type { Virtualizer } from "@tanstack/react-virtual"
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -27,11 +28,6 @@ function makeParams(over: Partial<UseFilterLifecycleParams> = {}): UseFilterLife
   }
 }
 
-const EMPTY_FILTERS = {
-  status: [], excludeStatus: [], categories: [], excludeCategories: [],
-  tags: [], excludeTags: [], trackers: [], excludeTrackers: [],
-}
-
 describe("useFilterLifecycle", () => {
   afterEach(cleanup)
 
@@ -46,7 +42,7 @@ describe("useFilterLifecycle", () => {
     expect(p.virtualizer.scrollToOffset).toHaveBeenCalledWith(0)
     expect(p.virtualizer.measure).toHaveBeenCalled()
     expect(p.setLoadedRows).toHaveBeenCalledWith(100) // min(100, 500)
-    expect(p.onFilterChange).toHaveBeenCalledWith(EMPTY_FILTERS)
+    expect(p.onFilterChange).toHaveBeenCalledWith(EMPTY_SIDEBAR_FILTERS)
   })
 
   it.each([false, true])("clears columns only without touching parent filters, cross-seed=%s", (isCrossSeedFiltering) => {

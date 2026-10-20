@@ -252,7 +252,7 @@ func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
 
 	created, err := b.HardlinkTree(t.Context(), plan)
-	require.Error(t, err)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists, "link mode tells this case from other create errors")
 	assert.Nil(t, created)
 
 	_, err = os.Lstat(plan.Files[0].TargetPath)

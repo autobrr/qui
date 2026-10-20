@@ -669,7 +669,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
 			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
-				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
 			}
 			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 		}

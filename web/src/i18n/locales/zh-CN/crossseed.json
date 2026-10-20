@@ -544,6 +544,7 @@
       "requeueFailed": "重试未匹配文件失败：{{error}}",
       "resetFailed": "重置文件失败：{{error}}"
     },
+    "webhookScanStatus": "Webhook 扫描 · {{status}}",
     "statusLabels": {
       "queued": "排队中",
       "scanning": "扫描中",

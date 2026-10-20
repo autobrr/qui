@@ -139,6 +139,8 @@ func (s *Service) applyCategoryPlan(ctx context.Context, plan *RestorePlan, appl
 		applied.Categories.Created = append(applied.Categories.Created, spec.Name)
 	}
 
+	// See SyncManager.EditCategory: before qBittorrent 5.3, an edit clears the
+	// category's share limits and download path.
 	for _, update := range plan.Categories.Update {
 		if err := ctx.Err(); err != nil {
 			return err

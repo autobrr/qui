@@ -992,6 +992,11 @@
       "moving": "Переміщення"
     }
   },
+  "emptyState": {
+    "noTorrents": "Торенти не знайдено",
+    "noFilterMatches": "Жоден торент не відповідає поточним фільтрам",
+    "noSearchMatches": "Жоден торент не відповідає поточному пошуку"
+  },
   "filterSidebar": {
     "views": {
       "title": "Подання",

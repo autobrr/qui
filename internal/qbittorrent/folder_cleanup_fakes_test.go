@@ -39,7 +39,7 @@ type fakeRequirer struct {
 	err      error
 }
 
-func (f *fakeRequirer) Require(_ context.Context, instanceID int, _ models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
+func (f *fakeRequirer) Require(_ context.Context, instanceID int, _ models.FilesystemCapability, _ ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
 	if f.err != nil {
 		return nil, nil, f.err
 	}

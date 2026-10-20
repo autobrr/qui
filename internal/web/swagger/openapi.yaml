@@ -4243,14 +4243,14 @@ paths:
         '404':
           description: Directory not found
         '409':
-          description: A scan is already in progress
+          description: A full scan is already queued or in progress. A webhook scan in progress does not block a manual scan.
         '500':
           description: Failed to start scan
     delete:
       tags:
         - Dir Scan
       summary: Cancel a directory scan
-      description: Cancels the currently running scan for the given directory, if any
+      description: Cancels every queued and running scan of the given directory, full scans and webhook scans
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4389,7 +4389,7 @@ paths:
         '404':
           description: No enabled directory matched the provided path
         '409':
-          description: Request conflicts with directory state, such as ambiguous path matches or an active scan
+          description: More than one enabled directory matches the path
         '500':
           description: Failed to start scan
 
@@ -4398,7 +4398,10 @@ paths:
       tags:
         - Dir Scan
       summary: Get directory scan status
-      description: Returns the status of the active scan run or the most recent run (or idle)
+      description: |
+        Returns the queued and running scan runs of the directory. A directory can have a full scan
+        and a webhook scan in progress at the same time. If no run is queued or running, the list holds
+        the most recent run. A directory without runs returns an empty list.
       parameters:
         - $ref: '#/components/parameters/directoryID'
       responses:
@@ -4407,9 +4410,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/DirScanRun'
-                  - $ref: '#/components/schemas/DirScanIdleStatus'
+                $ref: '#/components/schemas/DirScanStatus'
         '404':
           description: Directory not found
         '500':
@@ -10379,15 +10380,15 @@ components:
         - directoryPath
         - scanRoot
 
-    DirScanIdleStatus:
+    DirScanStatus:
       type: object
       properties:
-        status:
-          type: string
-          enum:
-            - idle
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirScanRun'
       required:
-        - status
+        - runs
 
     WarningResponse:
       type: object

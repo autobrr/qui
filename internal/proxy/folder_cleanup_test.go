@@ -195,7 +195,7 @@ type hungMountPool struct {
 	mount hungMount
 }
 
-func (h hungMountPool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
+func (h hungMountPool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, _ ...models.FilesystemCapability) (fsops.Backend, *models.Instance, error) {
 	_, instance, err := h.Pool.Require(ctx, instanceID, capability)
 	if err != nil {
 		return nil, nil, err

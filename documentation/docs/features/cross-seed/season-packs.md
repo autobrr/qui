@@ -133,11 +133,11 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- You must enable **Local filesystem access** on the target instance
-- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees.
+- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
-During eligibility checks, qui skips instances that lack local filesystem access or a link mode.
+During eligibility checks, qui skips instances that lack filesystem access or a link mode.
 
 See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
@@ -321,7 +321,7 @@ Keep the `Season pack status` condition in the rule. It limits the rule to episo
 
 If `instanceIds` is omitted or contains multiple instances:
 
-1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
+1. qui filters the list to instances with a link mode qui can use: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode
 2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID
