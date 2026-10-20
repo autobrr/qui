@@ -37,7 +37,7 @@ Hybrid and v2 torrent creation requires a qBittorrent build that links against l
 
 ## Category folders
 
-A category with no save path saves its torrents to a folder with the name of the category. qBittorrent 5.3 changed how it makes the folder name. qBittorrent 5.2 and earlier replace each run of the characters `: ? " * < > |` with one space. qBittorrent 5.3 and later remove the spaces at the start and the end of the name, and replace each run of reserved characters with one `_`. The reserved characters depend on the operating system that qBittorrent runs on:
+A category with no save path saves its torrents to a folder with the name of the category. qBittorrent 5.3 changed how it makes the folder name. qBittorrent 5.2 and earlier replace each run of the characters `: ? " * < > |` with one space. qBittorrent 5.3 and later remove the spaces at the start and the end of the name, and replace each run of reserved characters with one `_`. The reserved characters depend on the platform that qBittorrent was built for:
 
 - Linux: control characters only.
 - macOS: control characters and `:`.
@@ -45,7 +45,7 @@ A category with no save path saves its torrents to a folder with the name of the
 
 For example, the category `tv:uhd` uses the folder `tv uhd` on qBittorrent 5.2, `tv:uhd` on qBittorrent 5.3 on Linux, and `tv_uhd` on qBittorrent 5.3 on macOS and Windows.
 
-qui uses the rule of the qBittorrent version and the operating system of each instance. Thus the cleanup of empty folders and the orphan scan keep the correct category folder.
+qui uses the rule of the qBittorrent version and the build platform of each instance. Thus the cleanup of empty folders and the orphan scan keep the correct category folder.
 
 ## Authentication compatibility
 

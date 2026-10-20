@@ -26,6 +26,8 @@ type fakeSync struct {
 	getAppPreferences    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	getCategories        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	subcategoriesEnabled func(ctx context.Context, instanceID int) (bool, error)
+	// categoryPathRule, when set, replaces subcategoriesEnabled with a full rule.
+	categoryPathRule func(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
 }
 
 // stubSync installs a fakeSync on svc the first time it is called and returns
@@ -106,6 +108,9 @@ func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[strin
 }
 
 func (f *fakeSync) CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error) {
+	if f.categoryPathRule != nil {
+		return f.categoryPathRule(ctx, instanceID)
+	}
 	if f.subcategoriesEnabled == nil {
 		return qbittorrent.CategoryPathRule{}, errNotStubbed
 	}
