@@ -1,3 +1,4 @@
 .git
-.env*
+**/.env*
+.themes-temp
 web/node_modules
