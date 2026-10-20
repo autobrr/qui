@@ -210,6 +210,13 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 		{name: "subcategory under the download path", stop: "torrents/incomplete/tv/anime"},
 		{name: "category with invalid characters under the download path", stop: "torrents/incomplete/movies hd"},
 		{
+			name: "category with invalid characters on qBittorrent 5.3 for Windows",
+			stop: "torrents/movies_hd",
+			edit: func(e *cleanupEnv) {
+				e.view.support = nestingSupport{Nests: true, Always: true, FileName: true, Platform: "windows"}
+			},
+		},
+		{
 			name: "inner of two hardlink base dirs",
 			stop: "torrents/links/inner",
 			edit: func(e *cleanupEnv) {
@@ -1424,9 +1431,9 @@ func (e *cleanupEnv) requireCategoryFolderKept(folder string) {
 	e.requireTree([]string{folder}, []string{folder + "/Rel-GRP"})
 }
 
-// The worker decides nesting by CategorySavePathsNest's rule: the version
-// must nest, and then either always does or the preference is on.
-func TestFolderCleanupNestsAsCategorySavePathsNestDoes(t *testing.T) {
+// The worker decides nesting by SyncManager.CategoryPathRule's rule: the
+// version must nest, and then either always does or the preference is on.
+func TestFolderCleanupNestsAsCategoryPathRuleDoes(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
 		support          nestingSupport

@@ -10,6 +10,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 var errNotStubbed = errors.New("orphanscan test: call not stubbed")
@@ -104,9 +105,10 @@ func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[strin
 	return f.getCategories(ctx, instanceID)
 }
 
-func (f *fakeSync) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
+func (f *fakeSync) CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error) {
 	if f.subcategoriesEnabled == nil {
-		return false, errNotStubbed
+		return qbittorrent.CategoryPathRule{}, errNotStubbed
 	}
-	return f.subcategoriesEnabled(ctx, instanceID)
+	nest, err := f.subcategoriesEnabled(ctx, instanceID)
+	return qbittorrent.CategoryPathRule{Nest: nest}, err
 }

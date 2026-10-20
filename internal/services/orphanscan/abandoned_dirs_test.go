@@ -14,6 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type directoryReadCounter struct {
@@ -493,7 +494,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 				return tt.categories, nil
 			}
 
-			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, tt.useSubcategories)
+			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, qbittorrent.CategoryPathRule{Nest: tt.useSubcategories})
 			if err != nil {
 				t.Fatalf("categoryPaths: %v", err)
 			}
