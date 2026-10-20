@@ -10506,6 +10506,10 @@ components:
           type: string
         skip_checking:
           type: boolean
+          description: Legacy name of seed_mode. qui returns the same value in both fields.
+        seed_mode:
+          type: boolean
+          description: Skip the hash check. If a request has both fields, seed_mode is used.
         upload_limit:
           type: integer
         download_limit:
@@ -10516,6 +10520,9 @@ components:
           type: integer
         share_limit_action:
           type: string
+        share_limits_mode:
+          type: string
+          description: MatchAny or MatchAll. qBittorrent 5.3 and later.
         ratio_limit:
           type: number
           format: double
