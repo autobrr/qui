@@ -29,7 +29,7 @@ qui detects the features that each qBittorrent instance supports and adjusts the
 | **External IP Reporting (IPv4/IPv6)** | 5.1.0+ (Web API 2.11.3+) | Exposes the `last_external_address_v4` / `_v6` fields |
 | **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Detects unregistered torrents and tracker issues |
 | **Share limit action** | 5.2.0+ (Web API **2.15.1**+) | If a torrent reaches a ratio, seeding time, or inactive seeding limit, choose an action: stop, remove, remove with content, or enable super seeding. If the instance reports Web API **2.15.1** or newer, qui shows this control |
-| **Share limit mode** | unreleased (Web API **2.16.0**+) | Controls whether that action runs when the torrent reaches **any** configured limit or only when it reaches **all** limits. If the instance reports Web API **2.16.0** or newer, qui shows this control |
+| **Share limit mode** | 5.3.0+ (Web API **2.16.0**+) | Controls whether that action runs when the torrent reaches **any** configured limit or only when it reaches **all** limits. If the instance reports Web API **2.16.0** or newer, qui shows this control |
 
 :::note
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. If a build links against libtorrent 1.x, it ignores the `format` parameter.
