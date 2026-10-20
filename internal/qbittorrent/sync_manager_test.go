@@ -1013,6 +1013,20 @@ func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
 	require.Equal(t, 2, syncer.mapCalls)
 }
 
+func TestWaitForPostAddRecheckReadyNamesFailedSync(t *testing.T) {
+	t.Parallel()
+
+	syncErr := errors.New("could not get main data")
+	syncer := &bulkActionRetrySyncer{syncErr: syncErr}
+
+	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.ErrorContains(t, err, "last sync failed: could not get main data")
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 0, syncer.mapCalls)
+}
+
 func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -1045,6 +1059,8 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.NotErrorIs(t, err, context.DeadlineExceeded, "a sync deadline must not read as caller cancellation")
+	require.ErrorContains(t, err, "last sync failed: context deadline exceeded")
 	require.Equal(t, 1, syncer.syncCalls)
 	require.Equal(t, 0, syncer.mapCalls)
 }
@@ -1064,6 +1080,21 @@ func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 1, syncer.syncCalls)
 	require.LessOrEqual(t, syncer.mapCalls, 2)
+}
+
+func TestWaitForPostAddRecheckReadyChecksSyncThatEndsAtTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps:               []map[string]qbt.Torrent{{"abc": {Hash: "abc", State: qbt.TorrentStateStoppedUp}}},
+		syncDoneAtDeadline: true,
+	}
+
+	// The overall budget equals the sync timeout, so both deadlines pass together.
+	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, 50*time.Millisecond)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, syncer.mapCalls)
 }
 
 func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
@@ -1800,6 +1831,8 @@ type bulkActionRetrySyncer struct {
 	syncCalls          int
 	mapCalls           int
 	blockSyncUntilDone bool
+	// syncDoneAtDeadline blocks Sync until its context ends, then reports success.
+	syncDoneAtDeadline bool
 }
 
 func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
@@ -1807,6 +1840,10 @@ func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 	if s.blockSyncUntilDone {
 		<-ctx.Done()
 		return ctx.Err()
+	}
+	if s.syncDoneAtDeadline {
+		<-ctx.Done()
+		return nil
 	}
 	if len(s.mapsAfterSync) > 0 {
 		index := min(s.syncCalls-1, len(s.mapsAfterSync)-1)
