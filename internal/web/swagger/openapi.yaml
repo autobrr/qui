@@ -10522,7 +10522,8 @@ components:
           type: string
         share_limits_mode:
           type: string
-          description: MatchAny or MatchAll. qBittorrent 5.3 and later.
+          enum: [Default, MatchAny, MatchAll]
+          description: Default uses the global share limits mode. qBittorrent 5.3 and later.
         ratio_limit:
           type: number
           format: double
