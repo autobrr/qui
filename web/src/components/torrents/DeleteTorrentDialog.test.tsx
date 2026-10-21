@@ -7,11 +7,22 @@ import { cleanup, render, screen } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
+import { getLinuxIsoName } from "@/lib/incognito"
 import { makeTorrent } from "@/test/mockTorrent"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import "@/i18n"
 
-afterEach(cleanup)
+let incognito = false
+vi.mock("@/lib/incognito", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/incognito")>(),
+  useIncognitoMode: () => [incognito, vi.fn()],
+}))
+
+afterEach(() => {
+  cleanup()
+  incognito = false
+})
 
 const torrents = ["Alpha", "Bravo", "Charlie", "Delta"].map(name => makeTorrent({ hash: `hash-${name}`, name }))
 
@@ -28,6 +39,8 @@ function renderDialog(props: Partial<ComponentProps<typeof DeleteTorrentDialog>>
       isDeleteFilesLocked={false}
       onToggleDeleteFilesLock={vi.fn()}
       deleteCrossSeeds={false}
+      showBlockCrossSeeds={false}
+      blockCrossSeeds={false}
       onDeleteCrossSeedsChange={vi.fn()}
       onBlockCrossSeedsChange={vi.fn()}
       onConfirm={vi.fn()}
@@ -60,7 +73,7 @@ describe("DeleteTorrentDialog", () => {
   it("says that select all reaches torrents that are not loaded", () => {
     renderDialog({ count: 7500, isAllSelected: true, previewTorrents: torrents })
 
-    expect(screen.getByRole("heading").textContent).toBe("Delete all 7500 torrents that match the filter?")
+    expect(screen.getByRole("heading").textContent).toBe("Delete 7500 torrents that match the filter?")
     expect(screen.getByText(/Select all is on\. .* 7496 of them are not loaded in the table\./)).not.toBeNull()
     expect(screen.getByText("and 7497 more")).not.toBeNull()
     expect(screen.getByRole("button", { name: "Delete 7500 torrents" })).not.toBeNull()
@@ -71,5 +84,30 @@ describe("DeleteTorrentDialog", () => {
 
     expect(screen.getByText(/^Select all is on\.[^.]*\.$/)).not.toBeNull()
     expect(screen.getByRole("button", { name: "Delete 2 torrents" })).not.toBeNull()
+  })
+
+  it("masks the names in incognito mode", () => {
+    incognito = true
+    renderDialog({ count: 12, previewTorrents: torrents })
+
+    expect(screen.queryByText("Alpha")).toBeNull()
+    expect(screen.getByText(getLinuxIsoName("hash-Alpha"))).not.toBeNull()
+  })
+
+  it("keeps cross-seeds out of the select all filter count", () => {
+    renderDialog({
+      count: 10,
+      isAllSelected: true,
+      previewTorrents: torrents,
+      deleteCrossSeeds: true,
+      crossSeedWarning: {
+        affectedTorrents: torrents.slice(0, 2).map(torrent => ({ ...torrent, matchType: "content_path" })),
+        searchState: "complete",
+        hasWarning: true,
+      } as unknown as CrossSeedWarningResult,
+    })
+
+    expect(screen.getByRole("heading").textContent).toBe("Delete 10 torrents that match the filter?")
+    expect(screen.getByRole("button", { name: "Delete 12 torrents" })).not.toBeNull()
   })
 })

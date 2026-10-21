@@ -11,7 +11,7 @@ qui provides tools to manage torrent lists: tags, categories, tracker URLs, save
 
 ## Deleting and moving torrents
 
-When a delete reaches 10 torrents or more, or when Ctrl/Cmd + A selected all torrents, the delete dialog names the first three torrents and gives the number of the others. The **Delete** button shows the count, for example **Delete 7500 torrents**. After Ctrl/Cmd + A, the dialog also tells you that the delete reaches every torrent that matches the current filter, and how many of them are not loaded in the table.
+When a delete reaches 10 torrents or more, or when Ctrl/Cmd + A selected all torrents, the delete dialog names the first three torrents and gives the number of the others. The **Delete** button shows the count, for example **Delete 7500 torrents**. After Ctrl/Cmd + A, the dialog also tells you that select all is on, and how many of the selected torrents are not loaded in the table.
 
 qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
 
