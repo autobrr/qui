@@ -1468,11 +1468,6 @@
     "matchCount_other": "{{count}} збігів",
     "deleteSelected": "Видалити ({{count}})",
     "deleteThis": "Видалити це",
-    "statusLabels": {
-      "trackerDown": "Трекер вимкнено",
-      "unregistered": "Незареєстрований",
-      "trackerError": "Помилка трекера"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Зміст",

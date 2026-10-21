@@ -1399,11 +1399,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",

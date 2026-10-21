@@ -1336,11 +1336,6 @@
     "matchCount_other": "{{count}} Treffer",
     "deleteSelected": "Löschen ({{count}})",
     "deleteThis": "Diesen löschen",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Nicht registriert",
-      "trackerError": "Tracker-Fehler"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Inhalt",

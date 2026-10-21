@@ -28,6 +28,7 @@ import {
   resolveTrackerDisplay,
   type TrackerCustomizationLookup
 } from "@/lib/tracker-customizations"
+import { getStatusBadgeProps, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
@@ -186,22 +187,6 @@ const STATUS_SORT_ORDER: Record<string, number> = {
   missingFiles: 81,
 }
 
-const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): string => {
-  if (supportsTrackerHealth) {
-    if (torrent.tracker_health === "unregistered") {
-      return t("tableColumns.unregistered")
-    }
-    if (torrent.tracker_health === "tracker_down") {
-      return t("tableColumns.trackerDown")
-    }
-    if (torrent.tracker_health === "tracker_error") {
-      return t("tableColumns.trackerError")
-    }
-  }
-
-  return getStateLabel(torrent.state, t)
-}
-
 const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction) => {
   if (supportsTrackerHealth) {
     if (torrent.tracker_health === "unregistered") {
@@ -236,18 +221,10 @@ const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: 
   }
 }
 
-const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTrackerHealth: boolean = true) => {
+const getStatusIcon = (state: string, trackerHealth?: TrackerHealth | null, supportsTrackerHealth: boolean = true) => {
   // Check tracker health first if supported
   if (supportsTrackerHealth && trackerHealth) {
-    if (trackerHealth === "unregistered") {
-      return XCircle
-    }
-    if (trackerHealth === "tracker_down") {
-      return AlertCircle
-    }
-    if (trackerHealth === "tracker_error") {
-      return XCircle
-    }
+    return TRACKER_HEALTH_DISPLAY[trackerHealth].icon
   }
 
   // Map states to icons matching FilterSidebar.tsx
@@ -298,8 +275,6 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
   }
 }
 
-type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
-
 const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean, t: TFunction): number => {
   const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth, t)
   const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth, t)
@@ -329,86 +304,6 @@ const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, support
   const nameB = torrentB.name || ""
 
   return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
-}
-
-const getStatusBadgeMeta = (
-  torrent: Torrent,
-  supportsTrackerHealth: boolean,
-  t: TFunction
-): {
-  label: string
-  variant: StatusBadgeVariant
-  className: string
-  iconClass: string
-} => {
-  const state = torrent.state
-  const baseLabel = getTrackerAwareStatusLabel(torrent, supportsTrackerHealth, t)
-  const trackerHealth = torrent.tracker_health ?? null
-
-  let badgeVariant: StatusBadgeVariant = "outline"
-  if (state === "downloading" || state === "uploading") {
-    badgeVariant = "default"
-  } else if (
-    state === "stalledDL" ||
-    state === "stalledUP" ||
-    state === "pausedDL" ||
-    state === "pausedUP" ||
-    state === "queuedDL" ||
-    state === "queuedUP"
-  ) {
-    badgeVariant = "secondary"
-  } else if (state === "error" || state === "missingFiles") {
-    badgeVariant = "destructive"
-  }
-
-  let badgeClass = ""
-  let label = baseLabel
-  let iconClass = "text-muted-foreground"
-
-  if (supportsTrackerHealth) {
-    if (trackerHealth === "tracker_down") {
-      label = t("tableColumns.trackerDown")
-      badgeVariant = "outline"
-      badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-      iconClass = "text-yellow-500"
-    } else if (trackerHealth === "tracker_error") {
-      label = t("tableColumns.trackerError")
-      badgeVariant = "outline"
-      badgeClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-      iconClass = "text-orange-500"
-    } else if (trackerHealth === "unregistered") {
-      label = t("tableColumns.unregistered")
-      badgeVariant = "outline"
-      badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
-      iconClass = "text-destructive"
-    }
-  }
-
-  if (badgeClass === "") {
-    switch (badgeVariant) {
-      case "default":
-        iconClass = "text-primary"
-        break
-      case "secondary":
-        iconClass = "text-secondary-foreground"
-        break
-      case "destructive":
-        iconClass = "text-destructive"
-        break
-      default:
-        iconClass = "text-muted-foreground"
-        break
-    }
-  } else if (!iconClass) {
-    iconClass = "text-muted-foreground"
-  }
-
-  return {
-    label,
-    variant: badgeVariant,
-    className: badgeClass,
-    iconClass,
-  }
 }
 
 export type TableViewMode = "normal" | "dense" | "compact"
@@ -691,7 +586,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const torrent = row.original
         const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
-        const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth, t)
+        const { label: statusLabel, iconClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, t)
 
         return (
           <div
@@ -718,7 +613,7 @@ export const createColumns = ({
         const state = torrent.state
         const priority = torrent.priority
         const isQueued = state === "queuedDL" || state === "queuedUP"
-        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth, t)
+        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, t)
 
         if (isQueued && priority > 0) {
           return (

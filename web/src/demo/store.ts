@@ -293,7 +293,9 @@ function generateTorrent(rng: () => number, now: number, index: number): Torrent
   const active = state === "downloading" || (state === "uploading" && rng() < 0.08)
   const dlspeed = state === "downloading" ? Math.round((0.3 + rng() * 6) * MIB) : 0
   const upspeed = active && state === "uploading" ? Math.round((50 + rng() * 4000) * KIB) : 0
-  const health = rng() < 0.012 ? "unregistered" : rng() < 0.004 ? "tracker_down" : undefined
+  // The second roll splits between down and error, so the draws from rng() stay the same.
+  const healthRoll = rng() < 0.012 ? -1 : rng()
+  const health = healthRoll < 0 ? "unregistered" : healthRoll < 0.004 ? "tracker_down" : healthRoll < 0.008 ? "tracker_error" : undefined
   const savePath = `/data/torrents/${category.split("/")[0]}`
   return {
     added_on: added,
@@ -592,7 +594,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
   }
 
   const domain = trackerDomain(t)
-  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : 2
+  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : t.tracker_health === "tracker_error" ? 5 : 2
   const trackers: TorrentTracker[] = [
     { url: "** [DHT] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
     { url: "** [PeX] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
@@ -604,7 +606,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
       num_seeds: t.num_complete,
       num_leeches: t.num_incomplete,
       num_downloaded: Math.floor(rng() * 5000),
-      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : "",
+      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : t.tracker_health === "tracker_error" ? "Internal tracker error" : "",
     },
   ]
 

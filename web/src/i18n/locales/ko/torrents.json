@@ -1265,11 +1265,6 @@
     "matchCount_other": "일치 {{count}}개",
     "deleteSelected": "삭제 ({{count}})",
     "deleteThis": "이 항목 삭제",
-    "statusLabels": {
-      "trackerDown": "트래커 다운",
-      "unregistered": "등록되지 않음",
-      "trackerError": "트래커 오류"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "콘텐츠",
