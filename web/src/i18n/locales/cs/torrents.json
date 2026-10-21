@@ -1049,7 +1049,7 @@
       "unregistered": "Neregistrované",
       "trackerDown": "Tracker je nedostupný",
       "crossSeeds": "Křížové sdílení",
-      "trackerError": "Tracker chyba"
+      "trackerError": "Chyba trackeru"
     }
   },
   "statusBar": {
@@ -1399,11 +1399,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",
@@ -1678,7 +1673,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
-    "trackerError": "Tracker chyba",
+    "trackerError": "Chyba trackeru",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"

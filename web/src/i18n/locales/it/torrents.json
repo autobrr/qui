@@ -1336,11 +1336,6 @@
     "matchCount_other": "{{count}} corrispondenze",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina questo",
-    "statusLabels": {
-      "trackerDown": "Tracker non raggiungibile",
-      "unregistered": "Non registrato",
-      "trackerError": "Errore tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenuto",

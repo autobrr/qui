@@ -1265,11 +1265,6 @@
     "matchCount_other": "{{count}} 个匹配",
     "deleteSelected": "删除（{{count}}）",
     "deleteThis": "删除此项",
-    "statusLabels": {
-      "trackerDown": "Tracker 离线",
-      "unregistered": "未注册",
-      "trackerError": "Tracker 错误"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "内容",

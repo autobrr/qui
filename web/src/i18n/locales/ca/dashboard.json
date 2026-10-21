@@ -54,6 +54,7 @@
     "externalIPv6": "IPv6 externa",
     "unregisteredTorrents": "Torrents no registrats",
     "trackerDown": "Tracker caigut",
+    "trackerError": "Error del tracker",
     "errors": "Errors",
     "reannounceTooltip": "Reanunci automàtic al tracker activat",
     "altSpeedLimits": "Límits de velocitat alternatius: {{status}}",

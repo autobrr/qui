@@ -720,11 +720,6 @@
     "matchCount_other": "{{count}} coincidències",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina aquest",
-    "statusLabels": {
-      "trackerDown": "Tracker caigut",
-      "unregistered": "No registrat",
-      "trackerError": "Error del tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contingut",

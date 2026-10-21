@@ -31,7 +31,7 @@ import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
@@ -1819,42 +1819,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             }
                           }
 
-                          // Get enriched status (tracker-aware)
-                          const trackerHealth = match.tracker_health ?? null
-                          let statusLabel = getStateLabel(match.state, t)
-                          let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
-                          let statusClass = ""
-
-                          // Check tracker health first (if supported)
-                          if (trackerHealth === "unregistered") {
-                            statusLabel = t("crossSeedTable.statusLabels.unregistered")
-                            statusVariant = "outline"
-                            statusClass = "text-destructive border-destructive/40 bg-destructive/10"
-                          } else if (trackerHealth === "tracker_down") {
-                            statusLabel = t("crossSeedTable.statusLabels.trackerDown")
-                            statusVariant = "outline"
-                            statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-                          } else if (trackerHealth === "tracker_error") {
-                            statusLabel = t("crossSeedTable.statusLabels.trackerError")
-                            statusVariant = "outline"
-                            statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-                          } else {
-                            // Normal state-based styling
-                            if (match.state === "downloading" || match.state === "uploading") {
-                              statusVariant = "default"
-                            } else if (
-                              match.state === "stalledDL" ||
-                              match.state === "stalledUP" ||
-                              match.state === "pausedDL" ||
-                              match.state === "pausedUP" ||
-                              match.state === "queuedDL" ||
-                              match.state === "queuedUP"
-                            ) {
-                              statusVariant = "secondary"
-                            } else if (match.state === "error" || match.state === "missingFiles") {
-                              statusVariant = "destructive"
-                            }
-                          }
+                          const { label: statusLabel, variant: statusVariant, className: statusClass } = getStatusBadgeProps(match, true, t)
 
                           // Match type display
                           const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "hardlink" | "reflink" | "release" | "name"
