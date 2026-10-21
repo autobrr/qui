@@ -104,7 +104,18 @@
     "totalSize": "Celková velikost: {{size}}",
     "blockCrossSeeds": "Blokovat křížová sdílení infohashů (zabránit opětovnému přidání)",
     "cancel": "Zrušit",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "titleSelectAll_one": "Smazat {{count}} torrent, který odpovídá filtru?",
+    "titleSelectAll_few": "Smazat všechny {{count}} torrenty, které odpovídají filtru?",
+    "titleSelectAll_other": "Smazat všech {{count}} torrentů, které odpovídají filtru?",
+    "selectAllNotice": "Výběr všech je zapnutý. Tato akce smaže každý torrent, který odpovídá aktuálnímu filtru.",
+    "notLoaded_one": "{{count}} z nich není načten v tabulce.",
+    "notLoaded_few": "{{count}} z nich nejsou načteny v tabulce.",
+    "notLoaded_other": "{{count}} z nich není načteno v tabulce.",
+    "andMore": "a {{more}} dalších",
+    "deleteCount_one": "Smazat {{count}} torrent",
+    "deleteCount_few": "Smazat {{count}} torrenty",
+    "deleteCount_other": "Smazat {{count}} torrentů"
   },
   "deleteFilesPreference": {
     "label": "Také smazat soubory z disku",

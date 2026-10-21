@@ -2570,6 +2570,8 @@ export function TorrentCardsMobile({
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={crossSeedWarning}
         onConfirm={handleDeleteWrapper}
+        isAllSelected={!torrentToDelete && isAllSelected}
+        previewTorrents={showDeleteDialog && !torrentToDelete && isAllSelected? torrents.filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent))): deleteTorrents}
       />
 
       {/* Tags dialog */}

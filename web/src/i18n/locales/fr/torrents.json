@@ -103,7 +103,15 @@
     "totalSize": "Taille totale : {{size}}",
     "blockCrossSeeds": "Bloquer les infohash de cross-seeds (empêcher la rajout)",
     "cancel": "Annuler",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "titleSelectAll_one": "Supprimer le {{count}} torrent qui correspond au filtre ?",
+    "titleSelectAll_other": "Supprimer les {{count}} torrents qui correspondent au filtre ?",
+    "selectAllNotice": "Tout sélectionner est activé. Cette action supprime chaque torrent qui correspond au filtre actuel.",
+    "notLoaded_one": "{{count}} d'entre eux n'est pas chargé dans le tableau.",
+    "notLoaded_other": "{{count}} d'entre eux ne sont pas chargés dans le tableau.",
+    "andMore": "et {{more}} de plus",
+    "deleteCount_one": "Supprimer {{count}} torrent",
+    "deleteCount_other": "Supprimer {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Supprimer également les fichiers du disque",

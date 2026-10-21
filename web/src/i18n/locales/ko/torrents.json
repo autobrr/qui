@@ -102,7 +102,12 @@
     "totalSize": "전체 크기: {{size}}",
     "blockCrossSeeds": "cross-seed infohash 차단(재추가 방지)",
     "cancel": "취소",
-    "delete": "삭제"
+    "delete": "삭제",
+    "titleSelectAll_other": "필터와 일치하는 토렌트 {{count}}개를 모두 삭제하시겠습니까?",
+    "selectAllNotice": "전체 선택이 켜져 있습니다. 현재 필터와 일치하는 모든 토렌트를 삭제합니다.",
+    "notLoaded_other": "그중 {{count}}개는 표에 로드되지 않았습니다.",
+    "andMore": "외 {{more}}개",
+    "deleteCount_other": "토렌트 {{count}}개 삭제"
   },
   "deleteFilesPreference": {
     "label": "디스크에서 파일도 삭제",
