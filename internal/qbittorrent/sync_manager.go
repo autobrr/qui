@@ -93,7 +93,7 @@ func trackerHealthRefreshLevel(elapsed time.Duration) zerolog.Level {
 	return zerolog.DebugLevel
 }
 
-var errPostAddRecheckNotReady = errors.New("torrent still checking resume data after post-add wait")
+var errPostAddRecheckNotReady = errors.New("torrent not ready for recheck after post-add wait")
 
 type bulkActionTorrentSyncer interface {
 	Sync(ctx context.Context) error
@@ -1334,6 +1334,23 @@ func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter q
 	return syncManager.GetTorrents(filter), nil
 }
 
+// GetTorrentsFresh syncs before it reads. GetTorrents returns a stale cache
+// while it refreshes, so it can miss a torrent added since the last sync.
+func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	// Sync twice: the first call can join a sync that was in flight before the
+	// read and return its older snapshot. The second one starts after it.
+	for range 2 {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	return syncManager.GetTorrentsUnchecked(filter), nil
+}
+
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
 func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
 	if sm == nil || sm.clientPool == nil {
@@ -2405,12 +2422,20 @@ func waitForPostAddRecheckReady(
 	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
 	defer cancel()
 
+	var lastSyncErr error
+	notReady := func() error {
+		if lastSyncErr != nil {
+			// %v, not %w: a wrapped sync deadline would read as the caller's own cancellation in BulkAction.
+			return fmt.Errorf("%w: last sync failed: %v", errPostAddRecheckNotReady, lastSyncErr) //nolint:errorlint // see above
+		}
+		return errPostAddRecheckNotReady
+	}
 	waitErr := func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := overallCtx.Err(); err != nil {
-			return errPostAddRecheckNotReady
+			return notReady()
 		}
 		return nil
 	}
@@ -2421,20 +2446,22 @@ func waitForPostAddRecheckReady(
 		}
 
 		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
-		syncErr := syncManager.Sync(syncCtx)
+		lastSyncErr = syncManager.Sync(syncCtx)
 		cancel()
-		if err := waitErr(); err != nil {
+		// Only the caller's cancellation stops here: a sync that succeeded as the
+		// overall wait expired still has fresh state to check.
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if syncErr != nil {
-			log.Trace().Err(syncErr).Int("instanceID", instanceID).
+		if lastSyncErr != nil {
+			log.Trace().Err(lastSyncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
 		} else if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
 			return nil
 		}
 
 		if attempt == maxAttempts {
-			return errPostAddRecheckNotReady
+			return notReady()
 		}
 
 		log.Trace().Int("instanceID", instanceID).Int("attempt", attempt).
@@ -2447,7 +2474,7 @@ func waitForPostAddRecheckReady(
 		}
 	}
 
-	return errPostAddRecheckNotReady
+	return notReady()
 }
 
 func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time.Duration) time.Duration {
@@ -4363,7 +4390,9 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 }
 
 // GetAllTorrents returns the current torrent list for an instance without pagination,
-// with optimistic updates applied.
+// with optimistic updates applied. A cache past the fresh window is synced first, but
+// the rows can still predate a change made during the fresh window or during a sync
+// that was already in flight. GetTorrentsFresh closes both gaps at the cost of two requests.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -4371,8 +4400,15 @@ func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qb
 		return nil, err
 	}
 
-	// Get all torrents from sync manager
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	// The checked getter serves the stale cache and refreshes behind it, so on a
+	// headless instance these callers saw a snapshot as old as their own interval.
+	// An instance the SSE loop keeps warm is inside the window and pays nothing.
+	if time.Since(syncManager.LastSuccessfulSyncTime()) > torrentResponseFreshWindow {
+		if err := syncManager.Sync(ctx); err != nil {
+			return nil, fmt.Errorf("refresh maindata: %w", err)
+		}
+	}
+	torrents := syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
 
 	// NOTE: Tracker health counts (unregistered/tracker_down) are handled via
 	// background cache refresh, not inline enrichment. See StartTrackerHealthRefresh.
@@ -5601,32 +5637,14 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
 	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
 	}
 
 	// Validate that torrents exist
-	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-
-	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
-	for _, torrent := range torrentList {
-		torrentMap[torrent.Hash] = torrent
-	}
-
-	if len(torrentMap) == 0 {
-		return errors.New("no sync data available")
-	}
-
-	existingCount := 0
-	for _, hash := range hashes {
-		if _, exists := torrentMap[hash]; exists {
-			existingCount++
-		}
-	}
-
-	if existingCount == 0 {
-		return errors.New("no valid torrents found to add tags")
+	if err := sm.validateTorrentsExist(client, hashes, "add tags"); err != nil {
+		return err
 	}
 
 	if err := client.AddTagsCtx(ctx, hashes, tags); err != nil {
@@ -5681,9 +5699,12 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 			Str("webAPIVersion", client.GetWebAPIVersion()).
 			Msg("SetTags: qBittorrent version < 2.11.4, using fallback RemoveTags + AddTags")
 
-		// Use sync manager data instead of direct API call for better performance
-		// Get torrents directly from the client's torrent map for O(1) lookups
-		torrents := client.getTorrentsByHashes(hashes)
+		// The removal list comes from these tags, so a tag added outside qui
+		// since the last sync must be in them.
+		torrents, err := sm.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+		if err != nil {
+			return fmt.Errorf("failed to read existing tags during fallback: %w", err)
+		}
 
 		existingTagsSet := make(map[string]bool)
 		for _, torrent := range torrents {

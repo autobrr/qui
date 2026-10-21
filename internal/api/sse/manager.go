@@ -44,11 +44,12 @@ const (
 	// short budget keeps the ~2s loop snappy and frees the goroutine when qbit is
 	// briefly slow.
 	syncTimeoutIncremental = 10 * time.Second
-	// syncTimeoutFull bounds a full /sync/maindata update (first sync for an instance,
-	// or any sync after a failure when qBittorrent has reset the rid and resends the
-	// whole torrent set). A 20k-torrent full fetch+parse can exceed 10s; this is
-	// aligned with the qbit HTTP client timeout (60s, see ClientPool.GetClient) so the
-	// per-sync budget is bounded by the transport, not a tighter inner deadline.
+	// syncTimeoutFull bounds the wait for a full /sync/maindata update (first sync
+	// for an instance, or a sync after a failed or cancelled sync: go-qbittorrent
+	// then resets the rid, so qBittorrent sends the whole torrent set). A
+	// 20k-torrent full fetch+parse can exceed 10s; this is aligned with the qbit
+	// HTTP client timeout (60s, see ClientPool.GetClient), which go-qbittorrent
+	// also uses as the deadline of a full update.
 	syncTimeoutFull   = 60 * time.Second
 	heartbeatInterval = 5 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
@@ -2022,7 +2023,9 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 				return
 			case <-timer.C:
 				// Pass the loop ctx so a cancelled/restarted loop (e.g. backoff change
-				// or shutdown) aborts an in-flight sync instead of running to completion.
+				// or shutdown) stops waiting at once. The shared go-qbittorrent sync
+				// does not stop: it runs until it ends or reaches its own deadline, and
+				// the next loop joins it while it runs.
 				m.forceSync(ctx, instanceID)
 
 				if ctx.Err() != nil {
@@ -2053,10 +2056,14 @@ func jitteredInterval(interval time.Duration) time.Duration {
 
 // syncTimeout returns the context budget for the next forceSync of instanceID.
 // A full /sync/maindata is likely when the instance has never completed a sync
-// (no entry / not primed) or is in a failure streak (attempt > 0): qBittorrent
-// resets the rid on these and resends the whole torrent set, which can exceed the
-// incremental budget on large instances. A primed instance with no active failure
-// streak is in a healthy delta streak and gets the short budget.
+// (no entry / not primed) or is in a failure streak (attempt > 0): go-qbittorrent
+// resets the rid after a failed sync, so the next sync is a full update. A full
+// update sends the whole torrent set, which can exceed the incremental budget on
+// large instances. A primed instance with no active failure streak is in a
+// healthy delta streak and gets the short budget. A sync that another caller
+// cancelled also resets the rid, but reports no failure here. The loop then waits
+// only the short budget, and the full update, which runs on its own deadline,
+// still lands through OnUpdate.
 func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
