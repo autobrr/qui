@@ -1144,3 +1144,29 @@ func TestInitRequestsCounts(t *testing.T) {
 	defer provider.mu.Unlock()
 	require.True(t, provider.torrentsCachedCounts, "the init frame must carry counts")
 }
+
+func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	// A tracker-health rebuild more than 2 s after the last sync reports cached data.
+	canned := cannedResponse()
+	canned.CacheMetadata = &qbittorrent.CacheMetadata{Source: "cache", Age: 5, IsStale: true}
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-cache-metadata"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.Equal(t, streamEventDelta, updatePayload.Type)
+	require.NotNil(t, updatePayload.Data.CacheMetadata)
+	require.Equal(t, "fresh", updatePayload.Data.CacheMetadata.Source)
+	require.False(t, updatePayload.Data.CacheMetadata.IsStale)
+}

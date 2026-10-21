@@ -170,7 +170,7 @@ func NormalizeConnectionStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
 
-// newCacheMetadata derives the freshness signal from the last successful sync.
+// NewCacheMetadata derives the freshness signal from the last successful sync.
 // A zero lastSuccessfulSync means the age is unknown, so no cache metadata is emitted.
 // Data stays fresh for the expected torrent response cadence; anything older is
 // reported as cached and stale so the UI can flag it after a sync window is
@@ -178,7 +178,7 @@ func NormalizeConnectionStatus(status string) string {
 // calculated from the full duration. lastSuccessfulSync must be the last
 // SUCCESSFUL sync time, not the last attempt, otherwise a failing instance would
 // falsely report as fresh.
-func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
+func NewCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
 	if lastSuccessfulSync.IsZero() {
 		return nil
 	}
@@ -1646,7 +1646,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var appInfo *AppInfo
 
 	if syncManager != nil {
-		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
+		cacheMetadata = NewCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
 	}
 
 	if client != nil {

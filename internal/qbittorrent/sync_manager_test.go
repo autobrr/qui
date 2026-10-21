@@ -152,7 +152,7 @@ func TestNewCacheMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			meta := newCacheMetadata(tt.lastSuccessful, now)
+			meta := NewCacheMetadata(tt.lastSuccessful, now)
 			if tt.wantNil {
 				require.Nil(t, meta)
 				return

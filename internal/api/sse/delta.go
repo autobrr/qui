@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -146,6 +147,8 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	snapshot.ServerState = serverState
 	snapshot.InstanceMeta = instanceMeta
 	snapshot.ActiveTaskCount = activeTaskCount
+	// The tick comes from a successful sync, so the rows are fresh again.
+	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
 	g.baselineSnapshot = &snapshot
 	baseVersion := g.version
 	g.version.Minor++
