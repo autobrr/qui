@@ -358,7 +358,8 @@ describe("TorrentTableOptimized smoke", () => {
     fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
 
     fireEvent.click(within(container).getByText("Bravo Release"))
-    expect(onTorrentSelect).toHaveBeenLastCalledWith(torrents[1])
+    // The page closes the panel when it gets the open torrent again.
+    expect(onTorrentSelect).not.toHaveBeenCalled()
     expect(checkedRows(container)).toEqual(["Bravo Release"])
 
     fireEvent.click(within(container).getByText("Bravo Release"))

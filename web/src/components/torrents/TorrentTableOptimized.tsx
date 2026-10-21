@@ -1157,7 +1157,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
     s.setRowSelection({ [row.id]: true })
     lastSelectedIndexRef.current = currentIndex
-    s.onTorrentSelect?.(torrent)
+    // The page closes the panel when it gets the open torrent again.
+    if (!isSelected) {
+      s.onTorrentSelect?.(torrent)
+    }
   }, [lastSelectedIndexRef])
 
   const handleRowContextMenu = useCallback((row: TorrentRow, isRowSelected: boolean) => {
