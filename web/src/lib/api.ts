@@ -935,6 +935,7 @@ class ApiClient {
       order: "asc" | "desc"
       search?: string
       filters?: TorrentFilters | null
+      summary?: boolean
     }>,
     options: { activity?: boolean } = {}
   ): string {
@@ -951,6 +952,7 @@ class ApiClient {
         order: stream.order,
         search: stream.search ?? "",
         filters: serializeFilters(stream.filters) ?? null,
+        summary: stream.summary ?? false,
       }))
       params.set("streams", JSON.stringify(normalized))
     }

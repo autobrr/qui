@@ -96,6 +96,8 @@ type StreamOptions struct {
 	Order       string
 	Search      string
 	Filters     qbittorrent.FilterOptions
+	// Summary asks for the totals of the view without its rows.
+	Summary bool
 }
 
 // isMultiInstance reports whether the subscription aggregates multiple instances.
@@ -141,7 +143,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s",
+		"%s|%d|%d|%s|%s|%s|%s|%t",
 		instanceKey,
 		opts.Page,
 		opts.Limit,
@@ -149,6 +151,7 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(opts.Order),
 		strconv.Quote(opts.Search),
 		strconv.Quote(filtersKey),
+		opts.Summary,
 	)
 }
 
@@ -319,6 +322,10 @@ type StreamMeta struct {
 	LastSuccessfulSync *time.Time `json:"lastSuccessfulSync,omitempty"`
 	RetryInSeconds     int        `json:"retryInSeconds,omitempty"`
 	StreamKey          string     `json:"streamKey,omitempty"`
+	// serverState is set when the sync changed only the server state. The tick
+	// then sends it with the rows and counts of the last frame, and does not
+	// rebuild the view.
+	serverState *qbt.ServerState
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -631,6 +638,9 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		// sidebar only refreshed on the 60s tracker-health tick, so a new torrent
 		// sat in the table for up to a minute before the sidebar counted it.
 		IncludeCounts: true,
+	}
+	if qbittorrent.ServerStateOnly(data.Changes) {
+		meta.serverState = new(data.ServerState)
 	}
 
 	go m.publishInstance(instanceID, meta)
@@ -1315,6 +1325,10 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta)
 	metaCopy := cloneMeta(meta)
 
 	group.mu.Lock()
+	// The pending tick still has to rebuild the view.
+	if group.hasPending && group.pendingMeta.serverState == nil {
+		metaCopy.serverState = nil
+	}
 	group.pendingMeta = metaCopy
 	group.hasPending = true
 	if group.sending {
@@ -1358,10 +1372,20 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			continue
 		}
 
+		var payload *StreamPayload
+		if meta.serverState != nil {
+			// A cross-instance view carries no server state.
+			if opts.isMultiInstance() {
+				continue
+			}
+			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(m.ctx, opts.InstanceID), meta)
+		}
 		// Every enqueued group event is a tick update (init is written synchronously
 		// in onSession, never routed here), so build an incremental update: a delta
 		// against the group baseline, or a full keyframe. See buildUpdatePayload.
-		payload := m.buildGroupUpdatePayload(group, opts, meta)
+		if payload == nil {
+			payload = m.buildGroupUpdatePayload(group, opts, meta)
+		}
 		if payload == nil {
 			continue
 		}
@@ -1436,6 +1460,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
 	if metaCopy != nil && metaCopy.IncludeCounts {
 		ctx = qbittorrent.WithCachedCountsWhenSkippingTrackerHydration(ctx)
+	}
+	if opts.Summary {
+		ctx = qbittorrent.WithSummary(ctx)
 	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
@@ -2175,6 +2202,7 @@ type streamRequestPayload struct {
 	Order       string                     `json:"order"`
 	Search      string                     `json:"search"`
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
+	Summary     bool                       `json:"summary"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2251,11 +2279,15 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		Order:   order,
 		Search:  p.Search,
 		Filters: filters,
+		Summary: p.Summary,
 	}
 
 	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and
 	// dedupe the member ids. InstanceID is left 0 for these.
 	if len(p.InstanceIDs) > 0 {
+		if p.Summary {
+			return StreamOptions{}, errors.New("summary needs a single instance")
+		}
 		if len(p.InstanceIDs) > maxStreamRequests {
 			return StreamOptions{}, errInvalidInstanceID
 		}

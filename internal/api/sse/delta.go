@@ -125,6 +125,43 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	}
 }
 
+// buildServerStatePayload sends a new server state with the rows and counts of the
+// last frame, as a delta with no changed rows. It returns nil when the view must
+// be rebuilt: the group has no baseline yet, or the subcategory mode changed,
+// which changes the category counts.
+func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	prev := g.baselineSnapshot
+	if prev == nil {
+		return nil
+	}
+	if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+		return nil
+	}
+
+	snapshot := *prev
+	snapshot.ServerState = serverState
+	snapshot.InstanceMeta = instanceMeta
+	g.baselineSnapshot = &snapshot
+	baseVersion := g.version
+	g.version.Minor++
+
+	deltaResp := snapshot
+	deltaResp.Torrents = nil
+	deltaResp.CrossInstanceTorrents = nil
+	deltaResp.Counts = nil
+
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   &StreamDelta{BaseVersion: baseVersion},
+		Meta:    meta,
+		Version: new(g.version),
+	}
+}
+
 // buildInitPayload returns the exact complete snapshot represented by the group's
 // current baseline. The first init seeds that baseline from resp; later callers
 // ignore independently materialized rows so they cannot join halfway through a
