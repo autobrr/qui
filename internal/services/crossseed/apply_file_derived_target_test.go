@@ -110,7 +110,7 @@ func createNamedFileTestTorrent(t *testing.T, rootName, fileName string, size in
 	return buf.Bytes()
 }
 
-func TestApplyTargetReleaseViewFromFiles(t *testing.T) {
+func TestReadApplyTarget(t *testing.T) {
 	service := &Service{
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -119,19 +119,19 @@ func TestApplyTargetReleaseViewFromFiles(t *testing.T) {
 	parsed := service.releaseCache.Parse(bracketAnimePackName)
 	require.False(t, isTVRelease(parsed), "bracket-anime pack name should parse as non-TV for this regression to mean anything")
 
-	view := service.applyTargetReleaseViewFromFiles(bracketAnimePackName, parsed, bracketAnimePackTorrentFiles(), true)
+	view := service.readApplyTarget(bracketAnimePackName, bracketAnimePackTorrentFiles(), true)
 	require.NotNil(t, view.release)
 	require.NotNil(t, view.tagOrigin)
 	require.Equal(t, rls.Series, view.release.Type)
 	require.Equal(t, 1, view.release.Series)
 	require.Zero(t, view.release.Episode)
 
-	view = service.applyTargetReleaseViewFromFiles(bracketAnimePackName, parsed, nil, true)
+	view = service.readApplyTarget(bracketAnimePackName, nil, true)
 	require.Same(t, parsed, view.release)
 	require.Nil(t, view.tagOrigin)
 }
 
-func TestReleaseViewRetainsNonTVSelectedFileProvenance(t *testing.T) {
+func TestReadReleaseRetainsNonTVSelectedFileProvenance(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -145,14 +145,14 @@ func TestReleaseViewRetainsNonTVSelectedFileProvenance(t *testing.T) {
 	parsed := service.releaseCache.Parse(splitName)
 	require.False(t, isTVRelease(parsed))
 
-	view := service.applyTargetReleaseViewFromFiles(splitName, parsed, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
+	view := service.readApplyTarget(splitName, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
 	require.Same(t, parsed, view.release, "movie files must not invent TV structure")
 	require.NotNil(t, view.tagOrigin, "non-TV selected-file tags remain identity evidence")
 	require.Equal(t, "FoV", view.tagOrigin.Group)
 	require.True(t, releaseHasGroupTag(view.tagOrigin, "FoV"))
 }
 
-func TestApplyTargetReleaseViewPreservesExplicitRawGroupWhenFilesSupplyTVStructure(t *testing.T) {
+func TestReadApplyTargetPreservesExplicitRawGroupWhenFilesSupplyTVStructure(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -167,7 +167,7 @@ func TestApplyTargetReleaseViewPreservesExplicitRawGroupWhenFilesSupplyTVStructu
 	require.False(t, isTVRelease(parsed))
 	require.True(t, releaseHasExplicitGroupTag(parsed))
 
-	view := service.applyTargetReleaseViewFromFiles(rawName, parsed, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
+	view := service.readApplyTarget(rawName, qbt.TorrentFiles{{Name: fileName, Size: 1_000_000}}, true)
 	require.Equal(t, rls.Episode, view.release.Type)
 	require.Equal(t, 1, view.release.Series)
 	require.Equal(t, 3, view.release.Episode)
@@ -450,8 +450,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	rawRelease := service.releaseCache.Parse(rawEpisode)
-	incomingView := service.applyTargetReleaseViewFromFiles(rawEpisode, rawRelease, incomingFiles, true)
+	incomingView := service.readApplyTarget(rawEpisode, incomingFiles, true)
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
 	startPaused := true
@@ -473,7 +472,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 		"a file-derived incoming pack must not be mistaken for an episode and skip required root alignment")
 }
 
-func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
+func TestReadReleaseReadsSeasonFromTitleNumeral(t *testing.T) {
 	t.Parallel()
 
 	episodeFiles := func(format string, episodes ...int) qbt.TorrentFiles {
@@ -488,14 +487,13 @@ func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
 		torrentName string
 		files       qbt.TorrentFiles
 		wantSeries  int
-		wantNumeral bool
+		wantNumeral int
 	}{
 		{
-			name:        "numeral is the season of a pack with no other season",
+			name:        "numeral infers the season of a pack with no other season",
 			torrentName: "[GRP] Kaiju Squad 100 II [BDRip 1080p HEVC FLAC]",
 			files:       episodeFiles("[GRP] Kaiju Squad 100 II - %02d [BDRip 1080p HEVC FLAC].mkv", 1, 2, 3),
-			wantSeries:  2,
-			wantNumeral: true,
+			wantNumeral: 2,
 		},
 		{
 			name:        "file season wins over the numeral",
@@ -519,11 +517,10 @@ func TestReleaseViewReadsSeasonFromTitleNumeral(t *testing.T) {
 			t.Parallel()
 
 			service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
-			parsed := service.releaseCache.Parse(tt.torrentName)
 
-			view := service.applyTargetReleaseViewFromFiles(tt.torrentName, parsed, tt.files, true)
+			view := service.readApplyTarget(tt.torrentName, tt.files, true)
 			require.Equal(t, tt.wantSeries, view.release.Series)
-			require.Equal(t, tt.wantNumeral, view.numeralSeason)
+			require.Equal(t, tt.wantNumeral, view.seasonNumeral)
 		})
 	}
 }

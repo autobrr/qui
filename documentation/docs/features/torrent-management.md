@@ -2,12 +2,35 @@
 sidebar_position: 14
 title: Manage torrents in qui
 sidebar_label: Torrent Management
-description: Tags, categories, tracker URLs, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
+description: Tags, categories, tracker URLs, leftover folders after deletes and moves, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo reports.
 ---
 
 # Torrent Management
 
 qui provides tools to manage torrent lists: tags, categories, tracker URLs, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+
+## Deleting and moving torrents
+
+When a delete reaches 10 torrents or more, or when Ctrl/Cmd + A selected all torrents, the delete dialog names the first three torrents and gives the number of the others. The **Delete** button shows the count, for example **Delete 7500 torrents**. After Ctrl/Cmd + A, the dialog also tells you that select all is on, and how many of the selected torrents are not loaded in the table.
+
+qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
+
+qui removes a folder only when it is empty, or holds nothing but `Thumbs.db`, `desktop.ini`, `.directory`, `.DS_Store`, or files whose names end in `~`. It starts at the torrent's own folder and works up, one empty folder at a time. It stops at:
+
+- the default save path, the download path, a category folder, a category's folder in the download path, and the hardlink base directory. qui never removes these. A download path set on the category itself is not recognized yet, so an empty one can be removed;
+- a folder qBittorrent monitors for `.torrent` files, and the save path set for it. qui never removes these either;
+- a folder that holds any other file, such as subtitles or an `.nfo` you added. A symlink, a Windows junction, or another special file counts as a file even when its name is on the list above;
+- a folder under your [orphan scan ignore paths](./orphan-scan.md), even with orphan scan off;
+- the save path or content path of a torrent still in the instance, or a folder above one;
+- a symlink or a Windows junction.
+
+When the save path is not inside a folder from the first item in this list, qui never goes above the torrent's save path, and never removes the save path itself. For an incomplete torrent in its own download path, the same holds for that download path. A monitored folder and the save path set for it are never removed, but they do not limit how far up qui goes. When qBittorrent adds a torrent from a subfolder of a monitored folder, it saves the torrent to a subfolder of the same name wherever that monitored folder saves, and qui can remove that subfolder once it is empty if it sits inside one of the folders from the first item, which is always the case with **Default save location**.
+
+qui waits up to two minutes for qBittorrent to finish deleting or moving the files, and for the torrent to leave the instance after a delete or show its new content path after a move. When files are still there after two minutes, such as an `.nfo` you added in one of the torrent's subfolders, and the torrent has left the instance or moved, qui removes the torrent's folders that are empty and keeps the rest. This needs qBittorrent to answer a sync just before the two minutes are up. Otherwise the folders are left to orphan scan. A torrent that turns out not to be deleted or moved keeps its folder. Anything still there after a move to another disk that takes longer, or in a folder qui could not read, is left to [orphan scan](./orphan-scan.md#abandoned-directories). If the content was already missing before the delete or move, for example because a disk was not mounted, qui leaves the folder alone.
+
+Before it sends a delete or move, qui checks the content for at most 5 seconds for a request that comes through the reverse proxy, and for at most 30 seconds for one from the qui UI or an automation, even when a disk or network mount stops answering. Content it has not checked by then is left to orphan scan.
+
+qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those.
 
 ## Tags and categories
 
@@ -80,7 +103,8 @@ A view stores the sidebar filter selection only. It does not include search text
 
 | Input | Action |
 |-------|--------|
-| Click | Selects the row and opens the details panel. Click the same row again to close the panel and clear the selection. |
+| Click | Selects only the row and opens the details panel. Other selected rows become unselected, also after Ctrl/Cmd + A. If the row is the only selected row and its details panel is open, the click closes the panel and clears the selection. |
+| Right-click | Opens the context menu. If the row is selected, the menu acts on all selected rows. If the row is not selected, qui selects only that row, and the menu acts on that row. |
 | Ctrl/Cmd + click | Toggles selection of the row |
 | Shift + click | Selects the range from the last selected row |
 | Ctrl/Cmd + A | Selects all torrents in the current view |
@@ -97,6 +121,22 @@ The arrow keys replace the selection with the focused row, the same as a plain c
 Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
 
 Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
+
+## Live updates paused
+
+While the torrent table is open, qui asks qBittorrent for changes every 2 seconds. qBittorrent answers these requests on the same thread that runs its torrents. If that thread is busy, the answer waits.
+
+If qBittorrent does not answer in time, the status bar under the table shows **Live updates paused**. qui keeps the last data on screen and tries again. To see the reason and the age of the data, put the pointer on the status.
+
+If the reason is that qBittorrent did not answer in time, look for these causes:
+
+- qBittorrent is not running, or its host does not answer. Make sure that the qBittorrent WebUI opens.
+- qBittorrent checks or moves torrents. The live updates return when the check or the move ends.
+- Other apps send many requests to the same qBittorrent, for example a second web UI or a tool that lists all torrents.
+- The torrent data is on network storage (NFS, SMB, or an rclone mount) and qBittorrent uses libtorrent 2.0. qBittorrent issue reports show that qBittorrent can stop answering in this setup. In qBittorrent, set **Advanced > Disk IO type** to **Simple pread/pwrite**, or use a qBittorrent build with libtorrent 1.2.
+- You run qBittorrent 5.2.x. An [open qBittorrent issue](https://github.com/qbittorrent/qBittorrent/issues/25068) reports that 5.2.x keeps one thread at 100% CPU and stops answering, and that 5.1.4 works with the same setup.
+
+A large library makes the first update after qui connects slower. If none of the causes above applies, split the torrents over two or more qBittorrent instances. The [Export to Instance](./automations.md#export-to-instance) action adds torrents to the new instance. The torrent data must already be on the new instance. The action does not remove the torrents from the old instance. After the torrents seed on the new instance, remove them from the old instance. If both instances use the same files, keep the files when you remove the torrents. The new instance needs them.
 
 ## Torrent creator
 

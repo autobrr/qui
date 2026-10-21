@@ -898,9 +898,9 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 				matches bool
 			}{
 				{name: "nil context"},
-				{name: "nil maps", ctx: &EvalContext{InstanceHasLocalAccess: true, InstanceHasTrustedIdentity: true}},
+				{name: "nil maps", ctx: &EvalContext{InstanceCanRead: true, InstanceHasTrustedIdentity: true}},
 				{name: "missing hash", ctx: &EvalContext{
-					InstanceHasLocalAccess:     true,
+					InstanceCanRead:            true,
 					InstanceHasTrustedIdentity: true,
 					HardlinkScopeByHash:        map[string]string{"other": HardlinkScopeNone},
 					HardlinkCrossScopeByHash:   map[string]string{"other": HardlinkScopeNone},
@@ -912,21 +912,21 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known none", known: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:     true,
+					InstanceCanRead:            true,
 					InstanceHasTrustedIdentity: true,
 					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeNone},
 					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeNone},
 					HasMissingFilesByHash:      map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known torrents only", known: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:     true,
+					InstanceCanRead:            true,
 					InstanceHasTrustedIdentity: true,
 					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
 					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
 					HasMissingFilesByHash:      map[string]bool{torrent.Hash: false},
 				}},
 				{name: "known match", known: true, matches: true, ctx: &EvalContext{
-					InstanceHasLocalAccess:     true,
+					InstanceCanRead:            true,
 					InstanceHasTrustedIdentity: true,
 					HardlinkScopeByHash:        map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
 					HardlinkCrossScopeByHash:   map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
@@ -947,12 +947,12 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 	}
 }
 
-// Read without Identity is a remote instance once #2791 lifts the missing-files
-// gate: the missing-files field is known, the hardlink fields stay unknown.
+// Read without trusted identity is a remote instance: the missing-files field
+// is known, the hardlink fields stay unknown.
 func TestEvaluateCondition_ReadWithoutIdentityLeavesHardlinkFieldsUnknown(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "abc"}
 	ctx := &EvalContext{
-		InstanceHasLocalAccess:   true,
+		InstanceCanRead:          true,
 		HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
 		HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
 		HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
@@ -1041,7 +1041,7 @@ func TestEvaluateCondition_NegateUnknownGroups(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cond := &RuleCondition{Operator: tc.operator, Conditions: tc.children, Negate: tc.negate}
-			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceHasLocalAccess: true}, 0); got != tc.want {
+			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceCanRead: true}, 0); got != tc.want {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})

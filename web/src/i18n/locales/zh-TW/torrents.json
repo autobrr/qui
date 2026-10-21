@@ -102,7 +102,12 @@
     "totalSize": "總大小：{{size}}",
     "blockCrossSeeds": "封鎖輔種雜湊值（防止重新新增）",
     "cancel": "取消",
-    "delete": "刪除"
+    "delete": "刪除",
+    "titleSelectAll_other": "刪除符合篩選條件的 {{count}} 個種子？",
+    "selectAllNotice": "已開啟全選。此操作會刪除符合目前篩選條件的已選種子。",
+    "notLoaded_other": "其中 {{count}} 個未在表格中載入。",
+    "andMore": "以及另外 {{more}} 個",
+    "deleteCount_other": "刪除 {{count}} 個種子"
   },
   "deleteFilesPreference": {
     "label": "同時從磁碟刪除檔案",
@@ -824,6 +829,11 @@
       "moving": "移動中"
     }
   },
+  "emptyState": {
+    "noTorrents": "未找到種子",
+    "noFilterMatches": "沒有符合目前篩選器的種子",
+    "noSearchMatches": "沒有符合目前搜尋的種子"
+  },
   "filterSidebar": {
     "views": {
       "title": "檢視",
@@ -1260,11 +1270,6 @@
     "matchCount_other": "{{count}} 個匹配",
     "deleteSelected": "刪除（{{count}}）",
     "deleteThis": "刪除此項",
-    "statusLabels": {
-      "trackerDown": "Tracker 離線",
-      "unregistered": "未註冊",
-      "trackerError": "Tracker 錯誤"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "內容",

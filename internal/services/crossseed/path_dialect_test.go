@@ -263,6 +263,12 @@ func (b *batchSlashBackend) LstatBatch(ctx context.Context, paths []string) ([]*
 	return infos, errs
 }
 
+// StatBatch makes this a fsops.BatchStater. Cross-seed never stats with
+// links followed, so a call fails the test.
+func (b *batchSlashBackend) StatBatch(context.Context, []string) ([]*fsops.LstatInfo, []error) {
+	panic("cross-seed does not use StatBatch")
+}
+
 func TestForEachLocalTorrentFileBatchesOnABatchBackend(t *testing.T) {
 	t.Parallel()
 

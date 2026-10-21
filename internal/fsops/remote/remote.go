@@ -320,10 +320,18 @@ func (w *walker) list(job walkJob) {
 // lostConnection tells a request that failed because the transport went away
 // from one the server refused: pkg/sftp answers every request in flight with
 // ErrSSHFxConnectionLost when its connection closes, and a closed socket
-// surfaces as net.ErrClosed. io.EOF is not here, because pkg/sftp also returns
-// it for a server's SSH_FX_EOF answer. readDirError is where it counts.
+// surfaces as net.ErrClosed. A request sent before pkg/sftp sees the close
+// fails with "failed to send packet" around the cause: a socket error, or the
+// io.EOF of the closed channel. A server's SSH_FX_EOF answer is the bare
+// io.EOF, so only a wrapped one counts here. readDirError takes both.
 func lostConnection(err error) bool {
-	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed)
+	if errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		return true
+	}
+	return errors.Is(err, io.EOF) && errors.Unwrap(err) != nil
 }
 
 // poolSentinels are the answers sshpool gives on purpose. They say why the
@@ -661,7 +669,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
 			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
-				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
 			}
 			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 		}

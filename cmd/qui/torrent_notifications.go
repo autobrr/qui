@@ -20,7 +20,7 @@ const (
 )
 
 type torrentNotificationSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	ExtractDomainFromURL(rawURL string) string
 }
 
@@ -103,7 +103,7 @@ func refreshTorrentForNotification(ctx context.Context, syncManager torrentNotif
 	refreshCtx, cancel := context.WithTimeout(refreshCtx, torrentAddedRefreshTimeout)
 	defer cancel()
 
-	torrents, err := syncManager.GetTorrents(refreshCtx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+	torrents, err := syncManager.GetTorrentsFresh(refreshCtx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
 	if err != nil {
 		log.Debug().
 			Err(err).

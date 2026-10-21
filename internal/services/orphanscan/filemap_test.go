@@ -48,8 +48,8 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 
 			p1 := filepath.Join("downloads", tt.composed, "file.mkv")
 			p2 := filepath.Join("downloads", tt.decomposed, "file.mkv")
-			n1 := normalizePath(fsops.HostPaths, p1)
-			n2 := normalizePath(fsops.HostPaths, p2)
+			n1 := fsops.NormalizePath(fsops.HostPaths, p1)
+			n2 := fsops.NormalizePath(fsops.HostPaths, p2)
 			if n1 != n2 {
 				t.Fatalf("expected normalized paths equal:\n  %q\n  %q\n  -> %q\n  -> %q", p1, p2, n1, n2)
 			}
@@ -66,7 +66,7 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 	t.Parallel()
 
-	// On Unix, filenames are arbitrary bytes. cleanPath is the form that is
+	// On Unix, filenames are arbitrary bytes. fsops.CleanPath is the form that is
 	// stored in settings and shown to the user, so it must keep them verbatim.
 	bad := string([]byte{0xff, 0xfe})
 	if utf8.ValidString(bad) {
@@ -75,7 +75,7 @@ func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 
 	p := filepath.Join("downloads", bad, "file.mkv")
 	want := filepath.Clean(p)
-	got := cleanPath(fsops.HostPaths, p)
+	got := fsops.CleanPath(fsops.HostPaths, p)
 	if got != want {
 		t.Fatalf("expected invalid UTF-8 path preserved:\n  %q\n  %q", got, want)
 	}
@@ -110,9 +110,9 @@ func TestNormalizePath_InvalidUTF8MatchesAPIForm(t *testing.T) {
 	// the walker does for each path it reads off disk.
 	m := NewTorrentFileMap(fsops.HostPaths)
 	m.Add(viaAPI)
-	if !m.Has(normalizePath(fsops.HostPaths, onDisk)) {
+	if !m.Has(fsops.NormalizePath(fsops.HostPaths, onDisk)) {
 		t.Fatalf("owned file must match its API spelling:\n  disk %q -> %q\n  api  %q -> %q",
-			onDisk, normalizePath(fsops.HostPaths, onDisk), viaAPI, normalizePath(fsops.HostPaths, viaAPI))
+			onDisk, fsops.NormalizePath(fsops.HostPaths, onDisk), viaAPI, fsops.NormalizePath(fsops.HostPaths, viaAPI))
 	}
 }
 
@@ -123,8 +123,8 @@ func TestNormalizePath_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 
 	sep := string(filepath.Separator)
-	p1 := normalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv"))
-	p2 := normalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
+	p1 := fsops.NormalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv"))
+	p2 := fsops.NormalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
 	if p1 != p2 {
 		t.Fatalf("expected normalized paths equal:\n  %q\n  %q", p1, p2)
 	}

@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -408,8 +409,10 @@ func TestWalkDir_PoolFailureEndsTheWalkWithConnectionLost(t *testing.T) {
 }
 
 // A connection that drops while a directory read is in flight ends the walk
-// the same way: the read fails with pkg/sftp's connection-lost status, not
-// with a refusal the walk would step over.
+// the same way, not with a refusal the walk would step over. The message keeps
+// the cause, which depends on where the cut lands: pkg/sftp's connection-lost
+// status for a request that waits for a reply, or a send error for a request
+// written after the cut.
 func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +430,8 @@ func TestWalkDir_DropDuringReadDirEndsTheWalkWithConnectionLost(t *testing.T) {
 
 	cut := drainAfterCut(t, ch)
 	require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
-	require.ErrorContains(t, cut.Err, sftp.ErrSSHFxConnectionLost.Error())
+	_, cause, _ := strings.Cut(cut.Err.Error(), fsops.ErrConnectionLost.Error()+": ")
+	assert.NotEmpty(t, cause, "the message keeps the cause: %q", cut.Err)
 	assert.Contains(t, []string{"a", "a/sub", "m"}, cut.RelPath)
 }
 
@@ -437,6 +441,10 @@ func TestLostConnection(t *testing.T) {
 	assert.True(t, lostConnection(sftp.ErrSSHFxConnectionLost))
 	assert.True(t, lostConnection(fmt.Errorf("wrapped: %w", net.ErrClosed)))
 	assert.False(t, lostConnection(io.EOF), "io.EOF can be a server's answer")
+	assert.True(t, lostConnection(fmt.Errorf("failed to send packet: %w", io.EOF)),
+		"pkg/sftp could not send the request on a channel that had closed")
+	assert.True(t, lostConnection(fmt.Errorf("failed to send packet: %w", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET})),
+		"the socket failed under the send")
 	assert.False(t, lostConnection(fs.ErrPermission), "a refused directory is not a lost connection")
 	assert.False(t, lostConnection(sftp.ErrSSHFxNoSuchFile))
 

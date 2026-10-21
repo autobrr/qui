@@ -8,15 +8,16 @@ Repo rules for AI agents working on qui.
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval.
 - Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
-- A review suggestion that changes a branch lands only after you show the input that branch guarded, in a test or a trace. A simplification that reads cleaner can still drop a case the old guard handled.
+- Before you post or apply a review suggestion that changes or removes a code branch, show in a test or a trace the input that the branch guards. A simplification that reads cleaner can still drop a case that the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 - No backward compatibility shims unless requested.
+- Dependabot alerts from `documentation/pnpm-lock.yaml` affect only the getqui.com build. Runtime-scope `web/` alerts and `go.sum` alerts always need a fix in qui. A development-scope `web/` alert needs a fix only when the code of the package goes into the bundle, for example the polyfills from `vite-plugin-node-polyfills` and the CSS that `web/src/index.css` imports.
 
 ## Repo Map
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
-- Frontend: `web/src`, assets `web/public`, bundle output `internal/web/dist`
-- User docs: `documentation/docs/`; internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
+- Frontend: `web/src`, assets `web/public`, bundle output `web/dist` (the binary embeds it through `web/build.go`)
+- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier as a cherry-pick of the squashed commit to `main`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
@@ -76,6 +77,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Before you edit, spec, or revie
 ## Commits / PRs
 
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
+  - Until the SSH setup screen (#2917) ships, a documentation change that describes only remote instances goes in #3330, not in the PR. Add it there as an item with the PR number.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.

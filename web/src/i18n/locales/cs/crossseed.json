@@ -569,6 +569,7 @@
       "requeueFailed": "Nepodařilo se zopakovat soubory bez shody: {{error}}",
       "resetFailed": "Selhalo resetování souborů: {{error}}"
     },
+    "webhookScanStatus": "Skenování z webhooku · {{status}}",
     "statusLabels": {
       "queued": "Ve frontě",
       "scanning": "Skenování",

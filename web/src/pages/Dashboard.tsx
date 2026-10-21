@@ -68,7 +68,8 @@ import {
   resolveDashboardTorrentCounts,
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
-import { copyTextToClipboard, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
+import { TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { cn, copyTextToClipboard, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
   DashboardSettings,
@@ -343,6 +344,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       limit: 1,
       sort: "added_on",
       order: "desc" as const,
+      summary: true,
     }),
     []
   )
@@ -703,6 +705,13 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
 }
 
 
+// Issue rows of the instance card, in the order they show
+const TRACKER_HEALTH_ROWS: Array<{ health: TrackerHealth; labelKey: string }> = [
+  { health: "unregistered", labelKey: "instanceCard.unregisteredTorrents" },
+  { health: "tracker_down", labelKey: "instanceCard.trackerDown" },
+  { health: "tracker_error", labelKey: "instanceCard.trackerError" },
+]
+
 function InstanceCard({
   instanceData,
   isAdvancedMetricsOpen,
@@ -825,7 +834,7 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} overflow-hidden`}>
+        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} grid-cols-[minmax(0,1fr)] overflow-hidden`}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
               to={linkTo}
@@ -1028,40 +1037,29 @@ function InstanceCard({
 
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
                 {/* Issue rows - only shown when there are problems */}
-                {(torrentCounts?.status?.unregistered || 0) > 0 && (
-                  <Link
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    onClick={() => {
-                      writeRaw("qui-filters-global", JSON.stringify({
-                        status: ["unregistered"],
-                        excludeStatus: [],
-                      }))
-                    }}
-                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
-                  >
-                    <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
-                    <span className="text-destructive">{t("instanceCard.unregisteredTorrents")}</span>
-                    <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
-                  </Link>
-                )}
-                {(torrentCounts?.status?.tracker_down || 0) > 0 && (
-                  <Link
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    onClick={() => {
-                      writeRaw("qui-filters-global", JSON.stringify({
-                        status: ["tracker_down"],
-                        excludeStatus: [],
-                      }))
-                    }}
-                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
-                  >
-                    <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                    <span className="text-yellow-500">{t("instanceCard.trackerDown")}</span>
-                    <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
-                  </Link>
-                )}
+                {TRACKER_HEALTH_ROWS.map(({ health, labelKey }) => {
+                  const count = torrentCounts?.status?.[health] || 0
+                  if (count === 0) return null
+                  const { icon: Icon, iconClass, hoverClass } = TRACKER_HEALTH_DISPLAY[health]
+                  return (
+                    <Link
+                      key={health}
+                      to="/instances/$instanceId"
+                      params={{ instanceId: instance.id.toString() }}
+                      onClick={() => {
+                        writeRaw("qui-filters-global", JSON.stringify({
+                          status: [health],
+                          excludeStatus: [],
+                        }))
+                      }}
+                      className={cn("flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 transition-colors", hoverClass)}
+                    >
+                      <Icon className={cn("h-3 w-3 flex-shrink-0", iconClass)} />
+                      <span className={iconClass}>{t(labelKey)}</span>
+                      <span className={cn("ml-auto font-medium", iconClass)}>{count}</span>
+                    </Link>
+                  )
+                })}
                 {(torrentCounts?.status?.errored || 0) > 0 && (
                   <Link
                     to="/instances/$instanceId"

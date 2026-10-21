@@ -880,3 +880,25 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	require.Contains(t, run.ErrorMessage, "remote instance on the same host")
 	f.requireNothingDeleted(t)
 }
+
+// With Write (#2942) and the exec tier's Identity, canDeleteOrphans passes on a
+// remote instance, so the recorded-mode gate is what keeps remote deletes off
+// until #3236 turns them on. A remote run on an exec-tier instance is still
+// refused at confirm and keeps its preview.
+func TestConfirmDeletion_RemoteExecTierRunIsStillRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-exec-refuse", models.FilesystemModeRemote, nil)
+	f.instance.mu.Lock()
+	f.instance.inst.SSHTier = models.SSHTierExec
+	f.instance.mu.Unlock()
+	require.True(t, canDeleteOrphans(models.FilesystemCapabilitiesOf(&f.instance.inst)), "the capability gate alone would admit this instance")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
+	f.requireNothingDeleted(t)
+}

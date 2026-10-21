@@ -923,7 +923,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
-	if evalCtx.InstanceHasLocalAccess && needs.MissingFiles {
+	if evalCtx.InstanceCanRead && needs.MissingFiles {
 		missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
@@ -1032,7 +1032,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
@@ -1551,7 +1554,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
@@ -1990,8 +1996,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	needs := NeedsFor(eligibleRules)
-	if needs.TrackerEntries {
-		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	if needs.TrackerEntries || needs.TrackerURLs {
+		torrents, err = s.attachTrackers(ctx, instanceID, torrents, needs)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: tracker data incomplete, skipping run")
+			s.notifyAutomationFailure(ctx, instanceID, err)
+			return nil, err
+		}
 		if trackerDataMissing(torrents) {
 			log.Debug().
 				Int("instanceID", instanceID).
@@ -4971,15 +4982,19 @@ func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map
 	return buildCategorySavePaths(categories, prefs.SavePath, nest)
 }
 
-func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
+func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) ([]qbt.Torrent, error) {
 	if s == nil || s.syncManager == nil || rule == nil {
-		return torrents
+		return torrents, nil
 	}
-	if !previewNeeds(rule).TrackerEntries {
-		return torrents
+	needs := previewNeeds(rule)
+	if !needs.TrackerEntries && !needs.TrackerURLs {
+		return torrents, nil
 	}
 
-	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	hydrated, err := s.attachTrackers(ctx, instanceID, torrents, needs)
+	if err != nil {
+		return nil, err
+	}
 	if trackerDataMissing(hydrated) {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -4987,7 +5002,18 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 			Int("torrents", len(hydrated)).
 			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
 	}
-	return hydrated
+	return hydrated, nil
+}
+
+// attachTrackers sets the tracker list that the tracker conditions read. Only
+// the status and message conditions fetch details from qBittorrent; the
+// tracker conditions read the URLs from MainData. A torrent without tracker
+// data matches a negated tracker condition, so a failed fetch stops the run.
+func (s *Service) attachTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds) ([]qbt.Torrent, error) {
+	if needs.TrackerEntries {
+		return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	}
+	return s.syncManager.AttachTrackerURLs(ctx, instanceID, torrents), nil
 }
 
 // trackerDataMissing reports that no torrent carries tracker entries. An empty
