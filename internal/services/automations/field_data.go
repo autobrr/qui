@@ -118,7 +118,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	}
 	// An unread extra candidate cannot undo a confirmed positive match.
 	var confirmed map[string]struct{}
-	switch field {
+	switch field { //nolint:exhaustive // Only these fields have a set of confirmed hashes.
 	case FieldExistsOnSameInstance:
 		confirmed = ctx.SameInstanceCrossSeedHashSet
 	case FieldSeedingOnSameInstance:

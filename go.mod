@@ -1,6 +1,6 @@
 module github.com/autobrr/qui
 
-go 1.27.0
+go 1.27.3
 
 require (
 	code.dny.dev/ssrf v0.3.0
