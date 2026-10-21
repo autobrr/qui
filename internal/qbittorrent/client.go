@@ -31,6 +31,7 @@ var (
 	exportTorrentMinVersion              = semver.MustParse("2.8.11")
 	trackerEditingMinVersion             = semver.MustParse("2.2.0")
 	trackerIncludeMinVersion             = semver.MustParse("2.11.4")
+	announceFlagsMinVersion              = semver.MustParse("2.11.7") // qBittorrent 5.2: has_tracker_* flags in sync/maindata
 	filePriorityMinVersion               = semver.MustParse("2.2.0")
 	renameTorrentMinVersion              = semver.MustParse("2.0.0")
 	renameFileMinVersion                 = semver.MustParse("2.4.0")
@@ -96,6 +97,7 @@ type Client struct {
 	supportsPathAutocomplete   bool
 	supportsTestEmail          bool
 	trackerIncludeSupported    bool
+	supportsAnnounceFlags      bool
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
@@ -121,7 +123,8 @@ type Client struct {
 	syncEventSink        SyncEventSink
 
 	// countsGen versions every client-owned input of the sidebar counts: it
-	// moves on each applied sync and on tracker-exclusion changes, so the
+	// moves on each sync that changes more than the server state and on
+	// tracker-exclusion changes, so the
 	// countsCache entry stays valid exactly while the generations it recorded
 	// hold.
 	countsGen   atomic.Uint64
@@ -220,17 +223,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.DynamicSync = true
 
 	// Set up health check callbacks
-	syncOpts.OnUpdate = func(data *qbt.MainData) {
-		client.prunePeerSyncManagers(data)
-		client.countsGen.Add(1)
-		client.updateHealthStatus(true)
-		client.updateServerState(data)
-		client.handleCompletionUpdates(data)
-		client.handleAddedUpdates(data)
-		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
-
-		client.dispatchMainData(data)
-	}
+	syncOpts.OnUpdate = client.handleSyncUpdate
 
 	syncOpts.OnError = client.handleSyncManagerError
 
@@ -289,6 +282,20 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
+}
+
+func (c *Client) handleSyncUpdate(data *qbt.MainData) {
+	c.prunePeerSyncManagers(data)
+	if !ServerStateOnly(data.Changes) {
+		c.countsGen.Add(1)
+	}
+	c.updateHealthStatus(true)
+	c.updateServerState(data)
+	c.handleCompletionUpdates(data)
+	c.handleAddedUpdates(data)
+	log.Trace().Int("instanceID", c.instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+
+	c.dispatchMainData(data)
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
@@ -466,6 +473,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 	c.trackerIncludeSupported = !v.LessThan(trackerIncludeMinVersion)
+	c.supportsAnnounceFlags = !v.LessThan(announceFlagsMinVersion)
 	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
@@ -675,6 +683,14 @@ func (c *Client) supportsTrackerInclude() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.trackerIncludeSupported
+}
+
+// announceFlagsSupported reports whether sync/maindata carries the per-torrent
+// announce flags that tracker health follows.
+func (c *Client) announceFlagsSupported() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsAnnounceFlags
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {

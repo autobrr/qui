@@ -104,7 +104,18 @@
     "totalSize": "Celková velikost: {{size}}",
     "blockCrossSeeds": "Blokovat křížová sdílení infohashů (zabránit opětovnému přidání)",
     "cancel": "Zrušit",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "titleSelectAll_one": "Smazat {{count}} torrent, který odpovídá filtru?",
+    "titleSelectAll_few": "Smazat {{count}} torrenty, které odpovídají filtru?",
+    "titleSelectAll_other": "Smazat {{count}} torrentů, které odpovídají filtru?",
+    "selectAllNotice": "Výběr všech je zapnutý. Tato akce smaže vybrané torrenty, které odpovídají aktuálnímu filtru.",
+    "notLoaded_one": "{{count}} z nich není načten v tabulce.",
+    "notLoaded_few": "{{count}} z nich nejsou načteny v tabulce.",
+    "notLoaded_other": "{{count}} z nich není načteno v tabulce.",
+    "andMore": "a {{more}} dalších",
+    "deleteCount_one": "Smazat {{count}} torrent",
+    "deleteCount_few": "Smazat {{count}} torrenty",
+    "deleteCount_other": "Smazat {{count}} torrentů"
   },
   "deleteFilesPreference": {
     "label": "Také smazat soubory z disku",
@@ -1049,7 +1060,7 @@
       "unregistered": "Neregistrované",
       "trackerDown": "Tracker je nedostupný",
       "crossSeeds": "Křížové sdílení",
-      "trackerError": "Tracker chyba"
+      "trackerError": "Chyba trackeru"
     }
   },
   "statusBar": {
@@ -1399,11 +1410,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",
@@ -1678,7 +1684,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
-    "trackerError": "Tracker chyba",
+    "trackerError": "Chyba trackeru",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"

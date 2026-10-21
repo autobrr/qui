@@ -45,6 +45,7 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -175,9 +176,9 @@ const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon 
   { value: "errored", labelKey: "filterSidebar.states.errored", icon: XCircle },
   { value: "checking", labelKey: "filterSidebar.states.checking", icon: RotateCw },
   { value: "moving", labelKey: "filterSidebar.states.moving", icon: MoveRight },
-  { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: XCircle },
-  { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: AlertCircle },
-  { value: "tracker_error", labelKey: "filterSidebar.states.trackerError", icon: XCircle },
+  { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: TRACKER_HEALTH_DISPLAY.unregistered.icon },
+  { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: TRACKER_HEALTH_DISPLAY.tracker_down.icon },
+  { value: "tracker_error", labelKey: "filterSidebar.states.trackerError", icon: TRACKER_HEALTH_DISPLAY.tracker_error.icon },
   { value: "cross-seeds", labelKey: "filterSidebar.states.crossSeeds", icon: GitBranch },
 ]
 
@@ -302,9 +303,7 @@ const FilterSidebarComponent = ({
   const visibleTorrentStates = useMemo(() => {
     let states = TORRENT_STATES
     if (!supportsTrackerHealth) {
-      states = TORRENT_STATES.filter(
-        state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
-      )
+      states = TORRENT_STATES.filter(state => !Object.hasOwn(TRACKER_HEALTH_DISPLAY, state.value))
     }
 
     // Only show cross-seeds when there's an active cross-seed filter

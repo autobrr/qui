@@ -11,6 +11,8 @@ qui provides tools to manage torrent lists: tags, categories, tracker URLs, save
 
 ## Deleting and moving torrents
 
+When a delete reaches 10 torrents or more, or when Ctrl/Cmd + A selected all torrents, the delete dialog names the first three torrents and gives the number of the others. The **Delete** button shows the count, for example **Delete 7500 torrents**. After Ctrl/Cmd + A, the dialog also tells you that select all is on, and how many of the selected torrents are not loaded in the table.
+
 qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
 
 qui removes a folder only when it is empty, or holds nothing but `Thumbs.db`, `desktop.ini`, `.directory`, `.DS_Store`, or files whose names end in `~`. It starts at the torrent's own folder and works up, one empty folder at a time. It stops at:
@@ -101,7 +103,8 @@ A view stores the sidebar filter selection only. It does not include search text
 
 | Input | Action |
 |-------|--------|
-| Click | Selects the row and opens the details panel. Click the same row again to close the panel and clear the selection. |
+| Click | Selects only the row and opens the details panel. Other selected rows become unselected, also after Ctrl/Cmd + A. If the row is the only selected row and its details panel is open, the click closes the panel and clears the selection. |
+| Right-click | Opens the context menu. If the row is selected, the menu acts on all selected rows. If the row is not selected, qui selects only that row, and the menu acts on that row. |
 | Ctrl/Cmd + click | Toggles selection of the row |
 | Shift + click | Selects the range from the last selected row |
 | Ctrl/Cmd + A | Selects all torrents in the current view |
