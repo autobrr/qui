@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -739,15 +740,15 @@ func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
 	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
 		skipSymlinksOnWindows(t, e)
-		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Plain/b.mkv")
-		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Plain/b.mkv")
+		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Sub/Other/c.mkv", "torrents/tv/Show/Plain/b.mkv")
+		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Sub/Other/c.mkv", "Plain/b.mkv")
 		e.rm("torrents/tv/Show/Sub", "torrents/tv/Show/Plain/b.mkv")
 		e.fs.symlink(e.p("torrents/tv/Show/Sub"))
-		e.tree("torrents/tv/Show/Sub/Deeper/Thumbs.db")
+		e.tree("torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub/Other/")
 		e.run(snap)
 		time.Sleep(e.fc.deadline)
 		synctest.Wait()
-		e.requireTree([]string{"torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub"},
+		e.requireTree([]string{"torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub/Other", "torrents/tv/Show/Sub"},
 			[]string{"torrents/tv/Show/Plain"})
 	})
 }
@@ -780,6 +781,66 @@ func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
 		e.run(snap)
 		e.requireTree([]string{"torrents/tv/A/Pack/Empty", "torrents/tv/A/Pack", "torrents/tv/A"}, nil)
 	})
+}
+
+// The check for a symlink above each folder reads every folder once, so a
+// deeper torrent costs no more Lstats of its top folder, and more folders
+// below a symlink cost no more Lstats of the symlink.
+func TestFolderCleanupReadsEachFolderAboveOnce(t *testing.T) {
+	topLstats := func(depth int) int32 {
+		var n atomic.Int32
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			parts := make([]string, depth)
+			for i := range parts {
+				parts[i] = fmt.Sprintf("L%d", i+1)
+			}
+			file := strings.Join(parts, "/") + "/a.mkv"
+			e.tree("torrents/tv/Show/" + file)
+			snap := e.noRoot("torrents/tv/Show", file)
+			e.rm("torrents/tv/Show/" + file)
+			top := e.p("torrents/tv/Show/L1")
+			e.fs.(*memTree).lstatErr = func(p string) error {
+				if p == top {
+					n.Add(1)
+				}
+				return nil
+			}
+			e.run(snap)
+			e.requireTree([]string{"torrents/tv"}, []string{"torrents/tv/Show"})
+		})
+		return n.Load()
+	}
+	require.Equal(t, topLstats(4), topLstats(12))
+
+	linkLstats := func(below int) int32 {
+		var n atomic.Int32
+		synctest.Test(t, func(t *testing.T) {
+			e := newCleanupEnv(t, slashBackend)
+			files := make([]string, 0, below)
+			for i := range below {
+				files = append(files, fmt.Sprintf("Sub/D%d/E/a.mkv", i))
+			}
+			snap := e.noRoot("torrents/tv/Show", files...)
+			e.fs.symlink(e.p("torrents/tv/Show/Sub"))
+			for i := range below {
+				e.tree(fmt.Sprintf("torrents/tv/Show/Sub/D%d/E/", i))
+			}
+			link := e.p("torrents/tv/Show/Sub")
+			e.fs.(*memTree).lstatErr = func(p string) error {
+				if p == link {
+					n.Add(1)
+				}
+				return nil
+			}
+			e.run(snap)
+			time.Sleep(e.fc.deadline)
+			synctest.Wait()
+			e.requireTree([]string{"torrents/tv/Show/Sub/D0/E"}, nil)
+		})
+		return n.Load()
+	}
+	require.Equal(t, linkLstats(2), linkLstats(6))
 }
 
 // A folder in between whose Lstat fails keeps the folders below it. The

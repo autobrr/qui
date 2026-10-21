@@ -420,7 +420,8 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 	// Below a symlink, folder and everything under it lie in the folder the
 	// symlink points to. anchor and the path above it are the user's setting,
 	// and remove() never follows a symlink at dir itself.
-	if s.belowLink(ctx, anchor, folder) {
+	plain := make(map[string]bool)
+	if s.belowLink(ctx, anchor, folder, plain) {
 		return
 	}
 
@@ -428,7 +429,7 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 	case item.snap.Layout == layoutNoRootFolder:
 		for _, rel := range item.relDirs {
 			dir := d.Join(anchor, d.FromSlash(rel))
-			if !s.protected(dir) && !s.insideSealed(anchor, dir) && !s.belowLink(ctx, anchor, dir) {
+			if !s.protected(dir) && !s.insideSealed(anchor, dir) && !s.belowLink(ctx, anchor, dir, plain) {
 				s.remove(ctx, dir)
 			}
 		}
@@ -461,14 +462,21 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 // to. A folder whose Lstat fails counts the same. anchor itself may be a
 // symlink, since it is the save or download path the user set. A folder that
 // is gone counts as plain, so the clean goes on past it.
-func (s *cleanupScope) belowLink(ctx context.Context, anchor, dir string) bool {
+//
+// plain keeps each folder's answer for the rest of the clean, so the check
+// reads a folder once however many of the torrent's folders sit below it.
+func (s *cleanupScope) belowLink(ctx context.Context, anchor, dir string, plain map[string]bool) bool {
 	for p := s.d.Dir(dir); pathUnder(s.d, p, anchor); p = s.d.Dir(p) {
-		info, err := s.backend.Lstat(ctx, p)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
+		ok, known := plain[p]
+		if !known {
+			info, err := s.backend.Lstat(ctx, p)
+			ok = errors.Is(err, fs.ErrNotExist) || err == nil && info.IsDir
+			plain[p] = ok
+			if !ok {
+				log.Debug().Err(err).Str("dir", dir).Str("above", p).Msg("folder cleanup: kept folder below one that is not a plain folder")
+			}
 		}
-		if err != nil || !info.IsDir {
-			log.Debug().Err(err).Str("dir", dir).Str("above", p).Msg("folder cleanup: kept folder below one that is not a plain folder")
+		if !ok {
 			return true
 		}
 	}
