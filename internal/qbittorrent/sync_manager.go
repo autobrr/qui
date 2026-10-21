@@ -4392,16 +4392,18 @@ func (sm *SyncManager) AttachTrackerURLs(ctx context.Context, instanceID int, to
 }
 
 // HydrateTorrentTrackers enriches torrents with per-tracker status/message data when supported.
-// Returns the original slice unchanged when hydration is unavailable or fails.
-func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent) []qbt.Torrent {
+// Returns the original slice unchanged when hydration is unavailable. On
+// qBittorrent 5.2+ it returns an error when a fetch fails, because some
+// torrents then have no tracker data.
+func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
 	if len(torrents) == 0 {
-		return torrents
+		return torrents, nil
 	}
 
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Skipping tracker hydration for automations")
-		return torrents
+		return torrents, nil
 	}
 
 	if client.announceFlagsSupported() {
@@ -4409,13 +4411,13 @@ func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID in
 		// automations keep their own cache of every torrent's details.
 		cache := sm.trackerDetailsFor(sm.automationTrackerDetails, instanceID)
 		if err := sm.hydrateTrackerDetails(ctx, client, cache, torrents, false); err != nil {
-			log.Debug().Err(err).Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("Failed to fetch tracker details for automations")
+			return torrents, fmt.Errorf("fetch tracker details: %w", err)
 		}
-		return torrents
+		return torrents, nil
 	}
 
 	enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
-	return enriched
+	return enriched, nil
 }
 
 func isSearchSeparator(c byte) bool {

@@ -353,10 +353,11 @@ func TestHydrateTorrentTrackersFetchesByHashOnFlagsVersions(t *testing.T) {
 		rig.mu.Lock()
 		before := len(rig.requests)
 		rig.mu.Unlock()
-		torrents := rig.sm.HydrateTorrentTrackers(t.Context(), 1, []qbt.Torrent{
+		torrents, err := rig.sm.HydrateTorrentTrackers(t.Context(), 1, []qbt.Torrent{
 			{Hash: flagsHashDown, HasTrackerWarning: downFlags.trackerWarning, HasTrackerError: downFlags.trackerError, HasOtherAnnounceError: downFlags.otherAnnounceError},
 			{Hash: flagsHashHealthy},
 		})
+		require.NoError(t, err)
 		rig.mu.Lock()
 		defer rig.mu.Unlock()
 		return torrents, sortedRequests(slices.Clone(rig.requests[before:]))
@@ -378,6 +379,27 @@ func TestHydrateTorrentTrackersFetchesByHashOnFlagsVersions(t *testing.T) {
 	rig.sm.RemoveHashesFromTrackerHealthCache(1, []string{flagsHashHealthy})
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashHealthy}}, requests, "an edit fetches that torrent")
+}
+
+// A torrent without tracker data matches a negated tracker condition, so an
+// automation run must not see a partial fetch as complete.
+func TestHydrateTorrentTrackersReportsPartialFetch(t *testing.T) {
+	t.Parallel()
+
+	rig := newFlagsRig(t)
+	torrents := []qbt.Torrent{{Hash: flagsHashDown}, {Hash: flagsHashHealthy}}
+	rig.set(func() {
+		// 101 torrents need two requests.
+		for i := range 99 {
+			hash := fmt.Sprintf("%040x", i+0xf000)
+			rig.torrents[hash] = &flagsTorrent{trackers: rig.torrents[flagsHashHealthy].trackers}
+			torrents = append(torrents, qbt.Torrent{Hash: hash})
+		}
+		rig.failFrom = 2
+	})
+
+	_, err := rig.sm.HydrateTorrentTrackers(t.Context(), 1, torrents)
+	require.Error(t, err)
 }
 
 // A pass that fails part way keeps what it fetched, so the next pass asks only
