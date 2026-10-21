@@ -696,6 +696,71 @@ func TestServerStateTickKeepsQueuedRebuild(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "the queued rebuild was dropped")
 }
 
+func TestServerStateTickRetriesFailedRebuild(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-failed-rebuild"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	provider.mu.Lock()
+	provider.torrentsErr = errors.New("boom")
+	provider.mu.Unlock()
+	builds := provider.torrentsCallCount()
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+1
+	}, 5*time.Second, 10*time.Millisecond, "expected the rebuild to run")
+
+	provider.mu.Lock()
+	provider.torrentsErr = nil
+	provider.mu.Unlock()
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true, serverState: &qbt.ServerState{}})
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+2
+	}, 5*time.Second, 10*time.Millisecond, "the server-state tick kept the rows of the failed rebuild")
+}
+
+func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse(), crossInstanceResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	payload := streamPayload(instanceID, "stream-combined-server-state")
+	payload[0]["instanceId"] = 0
+	payload[0]["instanceIds"] = []int{instanceID}
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, payload)
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	provider.mu.Lock()
+	builds := provider.crossInstanceCalls
+	provider.mu.Unlock()
+
+	// A member's subcategory mode changes its category counts in the combined view.
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{
+			Rid:         2,
+			ServerState: qbt.ServerState{UseSubcategories: true},
+			Changes:     qbt.MainDataChanges{ServerState: true},
+		})
+	})
+	require.True(t, isTickEvent(decodeStreamPayloadData(t, updateEvent.data).Type))
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Greater(t, provider.crossInstanceCalls, builds, "a combined view must rebuild on a server-state tick")
+}
+
 // TestServeCoalescesBurstOfUpdates verifies that a rapid burst of HandleMainData
 // calls collapses into far fewer torrent builds than events while still
 // delivering at least one update to the connected subscriber.

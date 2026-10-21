@@ -245,6 +245,9 @@ type subscriptionGroup struct {
 	baselineFP       map[string]uint64
 	baselineOrder    []string
 	baselineSnapshot *qbittorrent.TorrentResponse
+	// rebuildFailed makes the next server-state tick rebuild the view, because
+	// the baseline rows are older than the sync that the failed rebuild was for.
+	rebuildFailed bool
 }
 
 type syncLoopState struct {
@@ -1373,11 +1376,8 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		}
 
 		var payload *StreamPayload
-		if meta.serverState != nil {
-			// A cross-instance view carries no server state.
-			if opts.isMultiInstance() {
-				continue
-			}
+		// A cross-instance view carries no server state, so it rebuilds.
+		if meta.serverState != nil && !opts.isMultiInstance() {
 			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(m.ctx, opts.InstanceID), meta)
 		}
 		// Every enqueued group event is a tick update (init is written synchronously
@@ -1441,6 +1441,9 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 	metaCopy := cloneMeta(meta)
 	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
 	if errPayload != nil {
+		group.baselineMu.Lock()
+		group.rebuildFailed = true
+		group.baselineMu.Unlock()
 		return errPayload
 	}
 

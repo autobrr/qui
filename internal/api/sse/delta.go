@@ -76,6 +76,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	g.baselineFP = newFP
 	g.baselineOrder = order
 	g.baselineSnapshot = &snapshot
+	g.rebuildFailed = false
 	g.version.Minor++
 
 	if forceFull {
@@ -127,14 +128,14 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 
 // buildServerStatePayload sends a new server state with the rows and counts of the
 // last frame, as a delta with no changed rows. It returns nil when the view must
-// be rebuilt: the group has no baseline yet, or the subcategory mode changed,
-// which changes the category counts.
+// be rebuilt: the group has no baseline yet, the last rebuild failed, or the
+// subcategory mode changed, which changes the category counts.
 func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, meta *StreamMeta) *StreamPayload {
 	g.baselineMu.Lock()
 	defer g.baselineMu.Unlock()
 
 	prev := g.baselineSnapshot
-	if prev == nil {
+	if prev == nil || g.rebuildFailed {
 		return nil
 	}
 	if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
