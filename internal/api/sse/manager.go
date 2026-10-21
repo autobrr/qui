@@ -163,6 +163,7 @@ type syncProvider interface {
 	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
+	GetActiveTaskCount(ctx context.Context, instanceID int) int
 }
 
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
@@ -1147,6 +1148,8 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		InstanceID: sub.options.InstanceID,
 		FullUpdate: true,
 		Timestamp:  time.Now(),
+		// The next tick can be minutes away when nothing changes.
+		IncludeCounts: true,
 	}
 
 	payload := m.buildGroupInitPayload(group, group.options, meta)
@@ -1378,7 +1381,7 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		var payload *StreamPayload
 		// A cross-instance view carries no server state, so it rebuilds.
 		if meta.serverState != nil && !opts.isMultiInstance() {
-			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(m.ctx, opts.InstanceID), meta)
+			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(m.ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(m.ctx, opts.InstanceID), meta)
 		}
 		// Every enqueued group event is a tick update (init is written synchronously
 		// in onSession, never routed here), so build an incremental update: a delta

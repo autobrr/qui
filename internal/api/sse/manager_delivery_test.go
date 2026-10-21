@@ -99,6 +99,12 @@ func (f *fakeSyncProvider) ReadCachedConnectionStatus(_ context.Context, _ int) 
 	return f.connectionStatus
 }
 
+func (f *fakeSyncProvider) GetActiveTaskCount(_ context.Context, _ int) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.torrentsResponse.ActiveTaskCount
+}
+
 func (f *fakeSyncProvider) torrentsCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1084,4 +1090,50 @@ func decodeStreamPayloadData(t *testing.T, data string) *StreamPayload {
 	var payload StreamPayload
 	require.NoError(t, json.Unmarshal([]byte(data), &payload), "failed to decode stream payload data")
 	return &payload
+}
+
+func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-task-count"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	// A torrent-creation task ends while only the server state changes.
+	provider.mu.Lock()
+	provider.torrentsResponse.ActiveTaskCount = 0
+	provider.mu.Unlock()
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.Equal(t, streamEventDelta, updatePayload.Type)
+	require.Equal(t, 0, updatePayload.Data.ActiveTaskCount)
+}
+
+func TestInitRequestsCounts(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	payload := streamPayload(instanceID, "stream-init-counts")
+	payload[0]["summary"] = true
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, payload)
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.torrentsCachedCounts, "the init frame must carry counts")
 }

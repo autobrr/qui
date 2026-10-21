@@ -130,7 +130,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 // last frame, as a delta with no changed rows. It returns nil when the view must
 // be rebuilt: the group has no baseline yet, the last rebuild failed, or the
 // subcategory mode changed, which changes the category counts.
-func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, meta *StreamMeta) *StreamPayload {
+func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
 	g.baselineMu.Lock()
 	defer g.baselineMu.Unlock()
 
@@ -145,6 +145,7 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	snapshot := *prev
 	snapshot.ServerState = serverState
 	snapshot.InstanceMeta = instanceMeta
+	snapshot.ActiveTaskCount = activeTaskCount
 	g.baselineSnapshot = &snapshot
 	baseVersion := g.version
 	g.version.Minor++
