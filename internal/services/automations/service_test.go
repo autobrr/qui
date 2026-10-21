@@ -392,8 +392,8 @@ func TestNeedsForTrackerEntries(t *testing.T) {
 		want  bool
 	}{
 		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
-		{name: "tracker field", rules: []*models.Automation{trackerRule}, want: true},
-		{name: "trackers field", rules: []*models.Automation{trackersRule}, want: true},
+		{name: "tracker field reads URLs only", rules: []*models.Automation{trackerRule}, want: false},
+		{name: "trackers field reads URLs only", rules: []*models.Automation{trackersRule}, want: false},
 		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
 		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
 		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},

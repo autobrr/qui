@@ -31,6 +31,7 @@ var (
 	exportTorrentMinVersion              = semver.MustParse("2.8.11")
 	trackerEditingMinVersion             = semver.MustParse("2.2.0")
 	trackerIncludeMinVersion             = semver.MustParse("2.11.4")
+	announceFlagsMinVersion              = semver.MustParse("2.11.7") // qBittorrent 5.2: has_tracker_* flags in sync/maindata
 	filePriorityMinVersion               = semver.MustParse("2.2.0")
 	renameTorrentMinVersion              = semver.MustParse("2.0.0")
 	renameFileMinVersion                 = semver.MustParse("2.4.0")
@@ -94,6 +95,7 @@ type Client struct {
 	supportsPathAutocomplete   bool
 	supportsTestEmail          bool
 	trackerIncludeSupported    bool
+	supportsAnnounceFlags      bool
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
@@ -464,6 +466,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 	c.trackerIncludeSupported = !v.LessThan(trackerIncludeMinVersion)
+	c.supportsAnnounceFlags = !v.LessThan(announceFlagsMinVersion)
 	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
@@ -664,6 +667,14 @@ func (c *Client) supportsTrackerInclude() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.trackerIncludeSupported
+}
+
+// announceFlagsSupported reports whether sync/maindata carries the per-torrent
+// announce flags that tracker health follows.
+func (c *Client) announceFlagsSupported() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsAnnounceFlags
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {

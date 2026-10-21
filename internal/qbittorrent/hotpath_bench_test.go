@@ -306,7 +306,7 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 				b.StopTimer()
 				copy(work, src)
 				b.StartTimer()
-				sm.sortCrossInstanceTorrents(work, sortKey, false, false)
+				sm.sortCrossInstanceTorrents(work, sortKey, false)
 			}
 		})
 	}
