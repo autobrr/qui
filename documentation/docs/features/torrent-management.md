@@ -101,7 +101,8 @@ A view stores the sidebar filter selection only. It does not include search text
 
 | Input | Action |
 |-------|--------|
-| Click | Selects the row and opens the details panel. Click the same row again to close the panel and clear the selection. |
+| Click | Selects only the row and opens the details panel. Other selected rows become unselected, also after Ctrl/Cmd + A. If the row is the only selected row and its details panel is open, the click closes the panel and clears the selection. |
+| Right-click | Opens the context menu. If the row is selected, the menu acts on all selected rows. If the row is not selected, qui selects only that row, and the menu acts on that row. |
 | Ctrl/Cmd + click | Toggles selection of the row |
 | Shift + click | Selects the range from the last selected row |
 | Ctrl/Cmd + A | Selects all torrents in the current view |

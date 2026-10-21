@@ -1088,7 +1088,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isReadOnly,
     isAllSelected,
     selectedRowIds,
-    selectedHashes,
     onTorrentSelect,
     handleRowSelection,
     getSelectionIdentity,
@@ -1146,38 +1145,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    // Plain click - open details panel
-    // Re-clicking the currently focused row toggles both details and selection off.
-    if (isSelected && isRowSelected) {
-      if (s.isAllSelected) {
-        s.handleRowSelection(selectionIdentity, false, row.id)
-      } else {
-        s.setRowSelection(prev => {
-          if (!prev[row.id]) {
-            return prev
-          }
-
-          const next = { ...prev }
-          delete next[row.id]
-          return next
-        })
-
-        if (s.selectedRowIds.length <= 1) {
-          lastSelectedIndexRef.current = null
-        }
-      }
-
+    // Plain click - select only this torrent and open details panel.
+    // Re-clicking the focused row when it is the only selection toggles both details and selection off.
+    if (isSelected && isRowSelected && !s.isAllSelected && s.selectedRowIds.length <= 1) {
+      s.setRowSelection({})
+      lastSelectedIndexRef.current = null
       s.onTorrentSelect?.(null)
       return
     }
 
-    // If row is not selected, select only this torrent (replace selection).
-    if (!isRowSelected) {
-      s.setIsAllSelected(false)
-      s.setExcludedFromSelectAll(new Set())
-      s.setRowSelection({ [row.id]: true })
-      lastSelectedIndexRef.current = currentIndex
-    }
+    s.setIsAllSelected(false)
+    s.setExcludedFromSelectAll(new Set())
+    s.setRowSelection({ [row.id]: true })
+    lastSelectedIndexRef.current = currentIndex
     s.onTorrentSelect?.(torrent)
   }, [lastSelectedIndexRef])
 
@@ -1186,8 +1166,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (s.isReadOnly) {
       return
     }
-    // Only select this row if not already selected and not part of a multi-selection
-    if (!isRowSelected && s.selectedHashes.length <= 1) {
+    // A row outside the selection replaces it, so the menu acts on that row only.
+    if (!isRowSelected) {
+      s.setIsAllSelected(false)
+      s.setExcludedFromSelectAll(new Set())
       s.setRowSelection({ [row.id]: true })
     }
   }, [])
