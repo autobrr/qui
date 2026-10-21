@@ -1381,7 +1381,11 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 		var payload *StreamPayload
 		// A cross-instance view carries no server state, so it rebuilds.
 		if meta.serverState != nil && !opts.isMultiInstance() {
-			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(m.ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(m.ctx, opts.InstanceID), meta)
+			// The same bound as a rebuild, so a stalled task count request
+			// does not hold back the speeds.
+			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+			payload = group.buildServerStatePayload(meta.serverState, m.buildInstanceMeta(ctx, opts.InstanceID), m.syncManager.GetActiveTaskCount(ctx, opts.InstanceID), meta)
+			cancel()
 		}
 		// Every enqueued group event is a tick update (init is written synchronously
 		// in onSession, never routed here), so build an incremental update: a delta

@@ -46,6 +46,7 @@ type fakeSyncProvider struct {
 	crossSkipTracker      bool
 	crossCachedCounts     bool
 	connectionStatus      string
+	taskCountDeadline     bool
 }
 
 func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
@@ -99,9 +100,10 @@ func (f *fakeSyncProvider) ReadCachedConnectionStatus(_ context.Context, _ int) 
 	return f.connectionStatus
 }
 
-func (f *fakeSyncProvider) GetActiveTaskCount(_ context.Context, _ int) int {
+func (f *fakeSyncProvider) GetActiveTaskCount(ctx context.Context, _ int) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	_, f.taskCountDeadline = ctx.Deadline()
 	return f.torrentsResponse.ActiveTaskCount
 }
 
@@ -1115,6 +1117,11 @@ func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.Equal(t, streamEventDelta, updatePayload.Type)
 	require.Equal(t, 0, updatePayload.Data.ActiveTaskCount)
+
+	// A stalled qBittorrent must not hold back the next server-state frames.
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.taskCountDeadline, "the task count request has no deadline")
 }
 
 func TestInitRequestsCounts(t *testing.T) {
