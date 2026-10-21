@@ -328,6 +328,30 @@ describe("TorrentTableOptimized smoke", () => {
     expect(checkedRows(container)).toEqual(["Alpha Release"])
   })
 
+  it("shift-click after a right-click on a row outside the selection ranges from the right-clicked row", () => {
+    const { container } = renderTable()
+    fireEvent.click(within(container).getByText("Alpha Release"))
+    fireEvent.contextMenu(within(container).getByText("Charlie Release"))
+
+    fireEvent.click(within(container).getByText("Bravo Release"), { shiftKey: true })
+
+    expect(checkedRows(container)).toEqual(["Bravo Release", "Charlie Release"])
+  })
+
+  it("click on the open row closes it when select all reaches only that row", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderTable({ selectedTorrent: torrents[1], onTorrentSelect })
+    fireEvent.click(container.querySelector("[role=\"checkbox\"]") as Element)
+    fireEvent.click(within(container).getByText("Alpha Release"), { ctrlKey: true })
+    fireEvent.click(within(container).getByText("Charlie Release"), { ctrlKey: true })
+    expect(checkedRows(container)).toEqual(["Bravo Release"])
+
+    fireEvent.click(within(container).getByText("Bravo Release"))
+
+    expect(onTorrentSelect).toHaveBeenLastCalledWith(null)
+    expect(checkedRows(container)).toEqual([])
+  })
+
   it("click on the open row keeps the panel open until the row is the only selection", () => {
     const onTorrentSelect = vi.fn()
     const { container } = renderTable({ selectedTorrent: torrents[1], onTorrentSelect })
