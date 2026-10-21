@@ -35,6 +35,18 @@ qui detects the features that each qBittorrent instance supports and adjusts the
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. If a build links against libtorrent 1.x, it ignores the `format` parameter.
 :::
 
+## Category folders
+
+A category with no save path saves its torrents to a folder with the name of the category. qBittorrent 5.3 changed how it makes the folder name. qBittorrent 5.2 and earlier replace each run of the characters `: ? " * < > |` with one space. qBittorrent 5.3 and later remove the spaces at the start and the end of the name, and replace each run of reserved characters with one `_`. The reserved characters depend on the platform that qBittorrent was built for:
+
+- Linux: control characters only.
+- macOS: control characters and `:`.
+- Windows: control characters and `\ < > : " | ? *`. qBittorrent also removes dots and spaces at the end of the name, and adds `_1` to a reserved device name such as `con`.
+
+For example, the category `tv:uhd` uses the folder `tv uhd` on qBittorrent 5.2, `tv:uhd` on qBittorrent 5.3 on Linux, and `tv_uhd` on qBittorrent 5.3 on macOS and Windows.
+
+qui uses the rule of the qBittorrent version and the build platform of each instance. Thus the cleanup of empty folders and the orphan scan keep the correct category folder.
+
 ## Tracker health refresh
 
 qui checks the tracker health of each torrent in the background every 60 seconds. Tracker health is the state that qui shows for the trackers of a torrent: unregistered, tracker down, or tracker error.

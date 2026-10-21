@@ -112,7 +112,6 @@ type stopInputs struct {
 	TempPathEnabled bool
 	Categories      map[string]qbt.Category
 	// UseSubcategories is the use_subcategories preference as read.
-	// buildScope replaces it with whether category save paths nest.
 	UseSubcategories bool
 	// ScanDirs are qBittorrent's monitored folders, each with where it saves
 	// the torrents it adds.
@@ -153,13 +152,16 @@ type folderSnapshot struct {
 }
 
 // nestingSupport is what an instance's qBittorrent version says about
-// category save paths, the half of CategorySavePathsNest that costs a request.
+// category save paths, the half of SyncManager.CategoryPathRule that costs a request.
 type nestingSupport struct {
 	// Nests: an empty category save path can resolve under the parent
 	// category's save path (qBittorrent 5.0+).
 	Nests bool
 	// Always: qBittorrent 5.2+ dropped use_subcategories and always nests.
 	Always bool
+	// FileName and Platform go to CategoryPathRule.
+	FileName bool
+	Platform string
 }
 
 type nestingMemo struct {

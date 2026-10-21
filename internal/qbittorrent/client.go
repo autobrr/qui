@@ -39,6 +39,7 @@ var (
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
 	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
+	categoryFileNameMinVersion           = semver.MustParse("2.15.4") // qBittorrent 5.3; 5.2.x is 2.15.1, and dev builds at 2.15.3 predate the rule
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	testEmailMinVersion                  = semver.MustParse("2.11.2")
@@ -91,6 +92,7 @@ type Client struct {
 	supportsSubcategories      bool
 	subcategoriesAlwaysEnabled bool
 	nestsCategorySavePaths     bool
+	categoryFileNames          bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
 	supportsTestEmail          bool
@@ -479,6 +481,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
 	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
+	c.categoryFileNames = !v.LessThan(categoryFileNameMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsTestEmail = !v.LessThan(testEmailMinVersion)
@@ -562,6 +565,14 @@ func (c *Client) NestsCategorySavePaths() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.nestsCategorySavePaths
+}
+
+// CategoryFileNames reports whether this qBittorrent names the folder of a
+// category with no save path with toValidFileName, not toValidPath.
+func (c *Client) CategoryFileNames() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.categoryFileNames
 }
 
 func (c *Client) SupportsTorrentTmpPath() bool {

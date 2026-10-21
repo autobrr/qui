@@ -18,7 +18,7 @@ import (
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
 // resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
+func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, rule qbittorrent.CategoryPathRule) ([]string, error) {
 	categories, err := s.sync.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
@@ -26,7 +26,7 @@ func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instan
 
 	seen := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(d, seen, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, useSubcategories))
+		addAbsoluteScanRoot(d, seen, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, rule))
 	}
 
 	return sortedRoots(seen), nil
