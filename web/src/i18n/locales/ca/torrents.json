@@ -103,7 +103,15 @@
     "totalSize": "Mida total: {{size}}",
     "blockCrossSeeds": "Bloqueja els infohash dels cross-seed (evita que es tornin a afegir)",
     "cancel": "Cancel·la",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Vols eliminar el {{count}} torrent que coincideix amb el filtre?",
+    "titleSelectAll_other": "Vols eliminar els {{count}} torrents que coincideixen amb el filtre?",
+    "selectAllNotice": "Selecciona-ho tot està activat. Això elimina els torrents seleccionats que coincideixen amb el filtre actual.",
+    "notLoaded_one": "{{count}} d'ells no està carregat a la taula.",
+    "notLoaded_other": "{{count}} d'ells no estan carregats a la taula.",
+    "andMore": "i {{more}} més",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Elimina també els fitxers del disc",

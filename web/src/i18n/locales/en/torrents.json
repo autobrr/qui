@@ -103,7 +103,15 @@
     "totalSize": "Total size: {{size}}",
     "blockCrossSeeds": "Block cross-seed infohashes (prevent re-add)",
     "cancel": "Cancel",
-    "delete": "Delete"
+    "delete": "Delete",
+    "titleSelectAll_one": "Delete the {{count}} torrent that matches the filter?",
+    "titleSelectAll_other": "Delete {{count}} torrents that match the filter?",
+    "selectAllNotice": "Select all is on. This deletes the selected torrents that match the current filter.",
+    "notLoaded_one": "{{count}} of them is not loaded in the table.",
+    "notLoaded_other": "{{count}} of them are not loaded in the table.",
+    "andMore": "and {{more}} more",
+    "deleteCount_one": "Delete {{count}} torrent",
+    "deleteCount_other": "Delete {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Also delete files from disk",
