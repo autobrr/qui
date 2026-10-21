@@ -40,6 +40,10 @@ func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
 	}
 	ids := slices.Sorted(maps.Keys(clients))
 	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
+	for _, id := range ids {
+		sm.refreshTrackerHealthCounts(t.Context(), id)
+		require.NotZero(t, sm.GetTrackerHealthCounts(id).Unregistered, "the state sort must see tracker health")
+	}
 
 	for _, column := range append(sortGoldenColumns(), "instance") {
 		for _, order := range []string{"asc", "desc"} {

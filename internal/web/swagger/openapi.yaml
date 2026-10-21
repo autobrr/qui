@@ -1644,6 +1644,8 @@ paths:
 
         In a delta, omitted `counts` retain their previous values. Omitted
         `categories` and `tags` mean empty collections and clear previous values.
+        When a sync changes only the server state, the delta has no changed
+        rows and no order, and it carries the new `serverState`.
 
         `stream-error` contains an `error` message and optional retry metadata.
         `heartbeat` keeps the connection alive. Neither advances the data version.
@@ -1654,12 +1656,14 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, and `filters`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
-            same fields as the torrent list filters.
+            same fields as the torrent list filters. If `summary` is true, the
+            frames carry the totals, stats, counts, and server state of the view,
+            but no rows. `summary` needs a single `instanceId`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'

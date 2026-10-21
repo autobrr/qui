@@ -344,6 +344,15 @@ describe("SyncStreamContext", () => {
       expect(MockEventSource.instances).toHaveLength(1)
     })
 
+    it("sends the summary option on the wire", () => {
+      renderSubscriber({ ...BASE_PARAMS, summary: true })
+      flushConnectionQueue()
+
+      const url = new URL(MockEventSource.instances[0].url, "http://localhost")
+      const streams = JSON.parse(url.searchParams.get("streams") ?? "[]")
+      expect(streams[0].summary).toBe(true)
+    })
+
     it("marks the entry connected once an update payload arrives", () => {
       const { controls } = renderSubscriber(BASE_PARAMS)
       flushConnectionQueue()

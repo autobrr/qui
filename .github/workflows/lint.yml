@@ -158,7 +158,7 @@ jobs:
       - name: Lint backend
         uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: v2.13.0
+          version: v2.14.0
           # The backlog is zero as of this change, so the gate covers the whole
           # repo rather than only changed lines. That is what stops drift
           # accumulating unnoticed again — see #2380.

@@ -191,10 +191,14 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 	if err != nil {
 		return nil, nil, err
 	}
-	// CategorySavePathsNest's rule. The preference comes from this check's
-	// read, so a toggle is seen on the next check.
-	in.UseSubcategories = nesting.Nests && (nesting.Always || in.UseSubcategories)
-	stops, kept, err := stopFolders(d, in, instance.HardlinkBaseDir)
+	// SyncManager.CategoryPathRule's rule. The preference comes from this
+	// check's read, so a toggle is seen on the next check.
+	rule := CategoryPathRule{
+		Nest:     nesting.Nests && (nesting.Always || in.UseSubcategories),
+		FileName: nesting.FileName,
+		Platform: nesting.Platform,
+	}
+	stops, kept, err := stopFolders(d, in, rule, instance.HardlinkBaseDir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -241,7 +245,7 @@ func (c *FolderCleanup) cachedNesting(ctx context.Context, instanceID int) (nest
 // folders, which are never removed but set no limit. It fails rather than
 // return a short list: without the default save path no inheriting category
 // resolves, and a missing stop folder can be removed.
-func stopFolders(d fsops.PathDialect, in stopInputs, hardlinkBaseDirs string) (stops, kept []string, err error) {
+func stopFolders(d fsops.PathDialect, in stopInputs, rule CategoryPathRule, hardlinkBaseDirs string) (stops, kept []string, err error) {
 	defaultSavePath := d.Clean(in.DefaultSavePath)
 	if !d.IsAbs(defaultSavePath) {
 		return nil, nil, fmt.Errorf("default save path %q is not absolute", in.DefaultSavePath)
@@ -256,11 +260,11 @@ func stopFolders(d fsops.PathDialect, in stopInputs, hardlinkBaseDirs string) (s
 		stops = append(stops, tempPath)
 	}
 	for name := range in.Categories {
-		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, in.UseSubcategories))
+		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, rule))
 		if tempPath != "" {
 			// qBittorrent's categoryDownloadPath: <download path>/<category>. A
 			// category's own download path is not in go-qbittorrent's Category.
-			stops = append(stops, CategorySavePath(d, name, nil, tempPath, in.UseSubcategories))
+			stops = append(stops, CategorySavePath(d, name, nil, tempPath, rule))
 		}
 	}
 	// qBittorrent stops watching a removed monitored folder until it restarts.

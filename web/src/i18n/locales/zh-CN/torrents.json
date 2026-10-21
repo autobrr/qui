@@ -102,7 +102,12 @@
     "totalSize": "总大小：{{size}}",
     "blockCrossSeeds": "屏蔽辅种哈希值（防止重新添加）",
     "cancel": "取消",
-    "delete": "删除"
+    "delete": "删除",
+    "titleSelectAll_other": "删除符合筛选条件的 {{count}} 个种子？",
+    "selectAllNotice": "已开启全选。此操作会删除符合当前筛选条件的已选种子。",
+    "notLoaded_other": "其中 {{count}} 个未在表格中加载。",
+    "andMore": "以及另外 {{more}} 个",
+    "deleteCount_other": "删除 {{count}} 个种子"
   },
   "deleteFilesPreference": {
     "label": "同时从磁盘删除文件",
@@ -1265,11 +1270,6 @@
     "matchCount_other": "{{count}} 个匹配",
     "deleteSelected": "删除（{{count}}）",
     "deleteThis": "删除此项",
-    "statusLabels": {
-      "trackerDown": "Tracker 离线",
-      "unregistered": "未注册",
-      "trackerError": "Tracker 错误"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "内容",
