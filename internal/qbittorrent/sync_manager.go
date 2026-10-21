@@ -170,7 +170,7 @@ func NormalizeConnectionStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
 
-// newCacheMetadata derives the freshness signal from the last successful sync.
+// NewCacheMetadata derives the freshness signal from the last successful sync.
 // A zero lastSuccessfulSync means the age is unknown, so no cache metadata is emitted.
 // Data stays fresh for the expected torrent response cadence; anything older is
 // reported as cached and stale so the UI can flag it after a sync window is
@@ -178,7 +178,7 @@ func NormalizeConnectionStatus(status string) string {
 // calculated from the full duration. lastSuccessfulSync must be the last
 // SUCCESSFUL sync time, not the last attempt, otherwise a failing instance would
 // falsely report as fresh.
-func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
+func NewCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
 	if lastSuccessfulSync.IsZero() {
 		return nil
 	}
@@ -1578,7 +1578,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	if sort != "" {
+	summary := SummaryRequested(ctx)
+	if sort != "" && !summary {
 		sm.sortTorrents(filteredTorrents, sort, order == "desc", trackerHealthSupported, cachedHealth)
 	}
 
@@ -1598,6 +1599,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Check if there are more pages (only meaningful when limit > 0)
 	hasMore := limit > 0 && end < totalTorrents
+	if summary {
+		paginatedTorrents, hasMore = nil, false
+	}
 
 	if !includeCachedCounts {
 		counts = nil
@@ -1618,7 +1622,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			}
 			return torrents
 		}
-		counts, _, _ = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, nil, trackerHealthSupported, useSubcategories)
+		counts = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, trackerHealthSupported, useSubcategories)
 	}
 
 	var paginatedViews []TorrentView
@@ -1642,7 +1646,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var appInfo *AppInfo
 
 	if syncManager != nil {
-		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
+		cacheMetadata = NewCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
 	}
 
 	if client != nil {
@@ -3576,10 +3580,8 @@ type cachedInstanceCounts struct {
 // walks the whole library and produces a byte-identical result for every
 // request between sync ticks, so one computation per tick serves all of them.
 //
-// Requests that carry pre-enriched tracker data compute their own counts: the
-// enrichment feeds tracker-health detection, so their result depends on more
-// than the generations. The MainData fallback branch is never cached either,
-// because it also queues tracker icon fetches.
+// The MainData fallback branch is never cached, because it also queues tracker
+// icon fetches.
 //
 // The cached TorrentCounts is shared between requests, so nothing downstream
 // may write to it. The one writer, the tracker-health overwrite, gets a copied
@@ -3589,9 +3591,9 @@ type cachedInstanceCounts struct {
 // to agree rejects a request whose rows and generation came from different
 // libraries: it neither serves nor stores a cache entry, at the cost of one
 // uncached counts pass.
-func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
-	if client == nil || client.countsGen.Load() != clientGen || len(trackerMap) > 0 || !sm.hasTrackerMapping(client.instanceID) {
-		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
+func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
+	if client == nil || client.countsGen.Load() != clientGen || !sm.hasTrackerMapping(client.instanceID) {
+		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerHealthSupported, useSubcategories)
 	}
 
 	mappingGen := sm.trackerMappingGen.Load()
@@ -3610,12 +3612,10 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 				counts = &withHealth
 			}
 		}
-		// A hit enriched nothing, so it has no enriched library to hand back. The
-		// caller treats that as "no fallback available", which is what it is.
-		return counts, trackerMap, nil
+		return counts
 	}
 
-	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerHealthSupported, useSubcategories)
 
 	client.countsCache.Store(&cachedInstanceCounts{
 		clientGen:              clientGen,
@@ -3625,7 +3625,7 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 		counts:                 counts,
 	})
 
-	return counts, trackerMap, enrichedAll
+	return counts
 }
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information.
@@ -3634,7 +3634,7 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 // Tracker health counts (unregistered, tracker_down) are fetched from a background cache
 // that is refreshed every 60 seconds per instance. This avoids blocking API requests
 // while still providing accurate counts in the sidebar for qBittorrent 5.1+ users.
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
@@ -3649,16 +3649,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		TagSizes:      make(map[string]int64),
 		Trackers:      make(map[string]int),
 		Total:         len(allTorrents),
-	}
-
-	// If we have pre-enriched tracker data from a previous operation (e.g., filtering),
-	// apply it to torrents so countTorrentStatuses can detect tracker health issues
-	if len(trackerMap) > 0 {
-		for i := range allTorrents {
-			if trackers, ok := trackerMap[allTorrents[i].Hash]; ok && len(allTorrents[i].Trackers) == 0 {
-				allTorrents[i].Trackers = trackers
-			}
-		}
 	}
 
 	sharedContentPaths := findSharedContentPaths(allTorrents)
@@ -3896,7 +3886,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	}
 
-	return counts, trackerMap, allTorrents
+	return counts
 }
 
 // Helper methods

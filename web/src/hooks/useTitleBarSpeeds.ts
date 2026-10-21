@@ -80,6 +80,7 @@ export function useTitleBarSpeeds({
       limit: 1,
       sort: "added_on",
       order: "desc" as const,
+      summary: true,
     }
   }, [enabled, instanceId])
 

@@ -1210,3 +1210,15 @@ func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 		t.Fatal("SyncPeers kept waiting for a fetch after its caller went away")
 	}
 }
+
+func TestSyncUpdateMovesCountsGenerationOnlyForCountedChanges(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 1}
+
+	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true}})
+	require.Zero(t, client.countsGen.Load(), "a server-state sync keeps the cached counts")
+
+	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true, Tags: true}})
+	require.Equal(t, uint64(1), client.countsGen.Load(), "a tag change invalidates the cached counts")
+}

@@ -339,3 +339,19 @@ func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
 	_, changedIdx3, _ := computeRowDelta(mutated, singleRowKey, singleRowFingerprint, fp)
 	require.Equal(t, []int{1}, changedIdx3)
 }
+
+func TestServerStatePayloadRebuildsWhenSubcategoryModeChanges(t *testing.T) {
+	g := &subscriptionGroup{}
+	opts := StreamOptions{InstanceID: 1}
+	seed := singleResp(tv("a", "A"))
+	seed.ServerState = &qbt.ServerState{DlInfoSpeed: 1}
+	g.buildUpdatePayload(opts, seed, &StreamMeta{})
+
+	same := g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 2}, nil, 0, &StreamMeta{})
+	require.NotNil(t, same)
+	require.Equal(t, int64(2), same.Data.ServerState.DlInfoSpeed)
+	require.Equal(t, int64(2), g.baselineSnapshot.ServerState.DlInfoSpeed, "a joiner must get the new server state")
+	require.Equal(t, same.Delta.BaseVersion.Minor+1, same.Version.Minor)
+
+	require.Nil(t, g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 3, UseSubcategories: true}, nil, 0, &StreamMeta{}))
+}

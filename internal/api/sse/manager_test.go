@@ -1225,3 +1225,24 @@ func TestShutdown_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, manager.closing.Load())
 }
+
+func TestParseStreamRequests_Summary(t *testing.T) {
+	parse := func(entry map[string]any) ([]streamRequest, error) {
+		raw, err := json.Marshal([]map[string]any{entry})
+		require.NoError(t, err)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+		return parseStreamRequests(req)
+	}
+
+	requests, err := parse(map[string]any{"instanceId": 1, "summary": true})
+	require.NoError(t, err)
+	require.True(t, requests[0].options.Summary)
+
+	rows, err := parse(map[string]any{"instanceId": 1})
+	require.NoError(t, err)
+	require.NotEqual(t, streamOptionsKey(rows[0].options), streamOptionsKey(requests[0].options),
+		"a summary stream must not share a group with a row stream")
+
+	_, err = parse(map[string]any{"instanceIds": []int{1, 2}, "summary": true})
+	require.Error(t, err, "a cross-instance view has no summary")
+}

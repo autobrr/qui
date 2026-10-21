@@ -343,6 +343,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       limit: 1,
       sort: "added_on",
       order: "desc" as const,
+      summary: true,
     }),
     []
   )

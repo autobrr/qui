@@ -152,7 +152,7 @@ func TestNewCacheMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			meta := newCacheMetadata(tt.lastSuccessful, now)
+			meta := NewCacheMetadata(tt.lastSuccessful, now)
 			if tt.wantNil {
 				require.Nil(t, meta)
 				return
@@ -259,7 +259,7 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 	require.NotContains(t, mapping.DomainToHashes, "stale.example")
 	require.NotContains(t, mapping.HashToDomains, "old-hash")
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 	require.Equal(t, 1, counts.Trackers["current.example"])
 	require.NotContains(t, counts.Trackers, "stale.example")
 	require.Equal(t, TrackerTransferStats{
@@ -298,7 +298,7 @@ func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupporte
 		{Hash: "hash-a", Tracker: "https://tracker.example/announce"},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.Zero(t, counts.Status["unregistered"])
 	require.Zero(t, counts.Status["tracker_down"])
@@ -331,7 +331,7 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain
 		{Hash: "hash-a", Tracker: "https://new.example/announce"},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
 	require.NotContains(t, counts.TrackerTransfers, "stale.example")
@@ -369,7 +369,7 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesPartiallyLiveValidatedD
 		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "b"},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.Equal(t, 1, counts.Trackers["tracker.example"])
 	require.Equal(t, TrackerTransferStats{Uploaded: 100, Downloaded: 200, TotalSize: 300, Count: 1}, counts.TrackerTransfers["tracker.example"])
@@ -404,7 +404,7 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutE
 		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "same-path"},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.Equal(t, 2, counts.Trackers["tracker.example"])
 	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 300, Count: 2}, counts.TrackerTransfers["tracker.example"])
@@ -434,7 +434,7 @@ func TestCalculateCountsFromTorrentsWithTrackersDoesNotDeduplicateEmptyContentPa
 		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.Equal(t, 2, counts.Trackers["tracker.example"])
 	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 330, Count: 2}, counts.TrackerTransfers["tracker.example"])
@@ -459,7 +459,7 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(
 		},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
 	require.NotContains(t, counts.TrackerTransfers, "stale.example")
@@ -485,7 +485,7 @@ func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T)
 		},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
 	require.NotContains(t, counts.Trackers, "")
 	require.Equal(t, 1, counts.Trackers["Unknown"])
@@ -2575,6 +2575,63 @@ func TestGetTorrentsWithFiltersSearchKeepsWholeLibraryCounts(t *testing.T) {
 	require.Equal(t, "Beta.Two", resp.Torrents[1].Name)
 }
 
+// A summary stream gets the totals of the view without its rows.
+func TestGetTorrentsWithFiltersSummaryOmitsRows(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One",  "state":"uploading",   "size": 100, "progress": 1, "upspeed": 5},
+				"bb22": {"name":"Beta.Two",   "state":"downloading", "size": 200, "progress": 0.5, "dlspeed": 7}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.GetTorrentsWithFilters(WithSummary(WithSkipFreshData(ctx)), inst.ID, 1, 0, "added_on", "desc", "", FilterOptions{})
+	require.NoError(t, err)
+	require.Empty(t, resp.Torrents)
+	require.False(t, resp.HasMore)
+	require.Equal(t, 2, resp.Total)
+	require.NotNil(t, resp.Stats)
+	require.Equal(t, 5, resp.Stats.TotalUploadSpeed)
+	require.Equal(t, 7, resp.Stats.TotalDownloadSpeed)
+	require.NotNil(t, resp.Counts)
+	require.Equal(t, 2, resp.Counts.Status["all"])
+}
+
 // A stalled instance must still be visible now that the per-pass start line is
 // gone.
 func TestTrackerHealthRefreshLevel(t *testing.T) {
@@ -2605,7 +2662,7 @@ func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 		{Hash: "hash-c", ContentPath: "/data/c", Size: 20, Uploaded: 1, Downloaded: 1},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, false, false)
 
 	require.Equal(t, TrackerTransferStats{
 		Uploaded:   17,
@@ -2637,7 +2694,7 @@ func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
 		},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
 	require.Equal(t, 1, counts.Trackers["dupe.example"])
 	require.Equal(t, TrackerTransferStats{
@@ -2745,7 +2802,7 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 			t.Parallel()
 
 			sm := &SyncManager{}
-			counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, tt.torrents, nil, nil, false, tt.useSubcategories)
+			counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, tt.torrents, nil, false, tt.useSubcategories)
 
 			require.Equal(t, tt.wantCategories, counts.Categories)
 			require.Equal(t, tt.wantCategorySize, counts.CategorySizes)
@@ -2770,8 +2827,8 @@ func TestSizeTotalsDoNotDependOnTorrentOrder(t *testing.T) {
 	reversed := []qbt.Torrent{torrents[2], torrents[1], torrents[0]}
 
 	sm := &SyncManager{}
-	forward, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, nil, false, false)
-	backward, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, reversed, nil, nil, false, false)
+	forward := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, false, false)
+	backward := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, reversed, nil, false, false)
 
 	require.Equal(t, forward.CategorySizes, backward.CategorySizes)
 	require.Equal(t, forward.TagSizes, backward.TagSizes)
@@ -2817,7 +2874,7 @@ func TestStatusCountsExpandFromStates(t *testing.T) {
 		{Hash: "g", State: qbt.TorrentStateCheckingUp, Progress: 1},
 	}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, false, false)
 
 	require.Equal(t, map[string]int{
 		"all": 7, "completed": 5,
@@ -2853,14 +2910,14 @@ func TestCachedCountsHitSkipsLibraryMaterialization(t *testing.T) {
 		return torrents
 	}
 
-	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, nil, false, false)
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
 	require.Equal(t, 1, calls, "a miss must materialize the library once")
 
-	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, nil, false, false)
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
 	require.Equal(t, 1, calls, "a hit must not materialize the library")
 
 	client.countsGen.Add(1)
-	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, nil, false, false)
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
 	require.Equal(t, 2, calls, "an invalidated entry must materialize again")
 }
 
@@ -2882,49 +2939,28 @@ func TestCachedCountsServedWhileGenerationsHold(t *testing.T) {
 		{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Category: "tv", Size: 200, ContentPath: "/data/two"},
 	}
 
-	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, false, false)
+	counts := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
 	require.Equal(t, 2, counts.Total)
 	require.Equal(t, 1, counts.Trackers["tracker.example.invalid"])
 
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "ccc", Name: "Three", State: qbt.TorrentStateUploading, Size: 300, ContentPath: "/data/three"})
 
 	// No generation moved, so the grown library must NOT be recounted.
-	cached, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, nil, false, false)
+	cached := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, false)
 	require.Equal(t, 2, cached.Total, "expected the cached result, not a recount")
 
 	// Each generation invalidates on its own.
 	client.countsGen.Add(1)
-	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, nil, false, false)
+	fresh := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, false)
 	require.Equal(t, 3, fresh.Total, "a sync tick must invalidate the cache")
 
 	sm.trackerMappingGen.Add(1)
-	fresh, _, _ = sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, false, false)
+	fresh = sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
 	require.Equal(t, 2, fresh.Total, "a tracker mapping write must invalidate the cache")
 
 	// A different subcategory mode is a different result, never a hit.
-	subcats, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, nil, false, true)
+	subcats := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, true)
 	require.Equal(t, 3, subcats.Total)
-}
-
-func TestCachedCountsBypassedWithEnrichedTrackerData(t *testing.T) {
-	t.Parallel()
-
-	mapping := newValidatedTrackerMapping()
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
-	}
-	client := &Client{instanceID: 1}
-
-	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
-	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, false, false)
-	require.Equal(t, 1, counts.Total)
-
-	// Enriched tracker data feeds tracker-health detection, so such a request
-	// must recount even though no generation moved.
-	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Size: 200})
-	trackerMap := map[string][]qbt.TorrentTracker{"aaa": {{Url: "https://tracker.example.invalid/announce"}}}
-	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, trackerMap, false, false)
-	require.Equal(t, 2, fresh.Total)
 }
 
 func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
@@ -2938,7 +2974,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	client := &Client{instanceID: 1, trackerIncludeSupported: true}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
-	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, true, false)
+	stored := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
 	require.Equal(t, 0, stored.Status["unregistered"])
 
 	// The health cache refreshed between requests. The hit must show the new
@@ -2947,7 +2983,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	sm.trackerHealthCache[1] = &TrackerHealthCounts{Unregistered: 4, TrackerDown: 2, TrackerError: 1}
 	sm.trackerHealthMu.Unlock()
 
-	layered, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, true, false)
+	layered := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
 	require.Equal(t, 4, layered.Status["unregistered"])
 	require.Equal(t, 2, layered.Status["tracker_down"])
 	require.Equal(t, 1, layered.Status["tracker_error"])
@@ -2975,19 +3011,19 @@ func TestCachedCountsBypassWhenGenerationMoved(t *testing.T) {
 	// for later requests to read.
 	moved := client.countsGen.Load()
 	client.countsGen.Add(1)
-	stale, _, _ := sm.cachedCountsForRequest(context.Background(), client, moved, staticTorrents(grown), nil, nil, false, false)
+	stale := sm.cachedCountsForRequest(context.Background(), client, moved, staticTorrents(grown), nil, false, false)
 	require.Equal(t, 2, stale.Total)
 	require.Nil(t, client.countsCache.Load(), "a request whose generation moved must not store a cache entry")
 
 	// A request whose generation held stores normally.
 	held := client.countsGen.Load()
-	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(torrents), nil, nil, false, false)
+	stored := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(torrents), nil, false, false)
 	require.Equal(t, 1, stored.Total)
 	require.NotNil(t, client.countsCache.Load())
 
 	// And a request whose generation moved must recount rather than serve it.
 	client.countsGen.Add(1)
-	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(grown), nil, nil, false, false)
+	fresh := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(grown), nil, false, false)
 	require.Equal(t, 2, fresh.Total, "a request whose generation moved must not read the cache")
 }
 
@@ -3002,13 +3038,13 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 	client := &Client{instanceID: 1, trackerIncludeSupported: true}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
-	supported, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, true, false)
+	supported := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
 	require.Equal(t, 4, supported.Status["unregistered"], "health support bakes the cached counts in")
 
 	// The capability probe has not resolved yet for this request, so it must see
 	// the per-torrent numbers rather than the health counts baked into the entry
 	// the previous request stored under the same generation.
-	unsupported, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, false, false)
+	unsupported := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
 	require.Equal(t, 0, unsupported.Status["unregistered"], "a request without health support must not read baked-in health counts")
 	require.Equal(t, 0, unsupported.Status["tracker_down"])
 	require.Equal(t, 0, unsupported.Status["tracker_error"])
@@ -3049,7 +3085,7 @@ func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 		"https://tracker.example/announce": {"hash-a"},
 	}}
 
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, false, false)
 
 	require.Empty(t, counts.Trackers)
 	require.Empty(t, counts.TrackerTransfers)
