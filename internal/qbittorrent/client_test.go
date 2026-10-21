@@ -295,7 +295,8 @@ func TestCategoryPathRule(t *testing.T) {
 		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: nests},
 		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: nests},
 		// The build platform comes from the cached app info.
-		{name: "5.3 names the folder for its platform", version: "2.15.3", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}},
+		{name: "5.3 dev build before the file name rule", version: "2.15.3", want: nests},                                                           // highest version below the gate
+		{name: "5.3 names the folder for its platform", version: "2.15.4", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}}, // lowest version at the gate
 	}
 
 	for _, tc := range tests {
@@ -331,6 +332,12 @@ func TestCategoryPathRule(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, int64(1), versionRequests.Load())
+
+			// The folder cleanup reads the same name rule.
+			nesting, err := sm.categoryNesting(t.Context(), 1)
+			require.NoError(t, err)
+			require.Equal(t, tc.want.FileName, nesting.FileName)
+			require.Equal(t, tc.want.Platform, nesting.Platform)
 		})
 	}
 }

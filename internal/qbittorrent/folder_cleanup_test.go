@@ -217,6 +217,13 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 			},
 		},
 		{
+			name: "category with invalid characters under the download path on qBittorrent 5.3 for Windows",
+			stop: "torrents/incomplete/movies_hd",
+			edit: func(e *cleanupEnv) {
+				e.view.support = nestingSupport{Nests: true, Always: true, FileName: true, Platform: "windows"}
+			},
+		},
+		{
 			name: "inner of two hardlink base dirs",
 			stop: "torrents/links/inner",
 			edit: func(e *cleanupEnv) {

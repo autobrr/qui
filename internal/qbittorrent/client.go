@@ -38,7 +38,7 @@ var (
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
 	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
-	categoryFileNameMinVersion           = semver.MustParse("2.15.3") // qBittorrent 5.3; 5.2.x is 2.15.1
+	categoryFileNameMinVersion           = semver.MustParse("2.15.4") // qBittorrent 5.3; 5.2.x is 2.15.1, and dev builds at 2.15.3 predate the rule
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	testEmailMinVersion                  = semver.MustParse("2.11.2")
