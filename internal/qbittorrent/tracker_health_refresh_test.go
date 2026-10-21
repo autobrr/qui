@@ -129,8 +129,9 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 	lastKick := time.Now()
 	rig.sm.KickTrackerHealthRefresh(1)
-	require.Eventually(t, func() bool { return passes() == 2 && !rig.unhealthy() }, 2*time.Second, 5*time.Millisecond, "a kick runs a pass that sees the new status")
+	require.Eventually(t, func() bool { return passes() == 2 }, 2*time.Second, 5*time.Millisecond, "a kick runs a pass")
 	require.GreaterOrEqual(t, time.Since(lastKick), 100*time.Millisecond, "every kick gets the full settle delay")
+	require.Eventually(t, func() bool { return !rig.unhealthy() }, 2*time.Second, 5*time.Millisecond, "the kicked pass sees the new status")
 
 	// A burst inside the interval coalesces into one pass at the interval's end,
 	// which starts when the previous kicked pass started.
