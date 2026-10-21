@@ -371,6 +371,11 @@ const getStatusBadgeMeta = (
       badgeVariant = "outline"
       badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
       iconClass = "text-yellow-500"
+    } else if (trackerHealth === "tracker_error") {
+      label = t("tableColumns.trackerError")
+      badgeVariant = "outline"
+      badgeClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
+      iconClass = "text-orange-500"
     } else if (trackerHealth === "unregistered") {
       label = t("tableColumns.unregistered")
       badgeVariant = "outline"
