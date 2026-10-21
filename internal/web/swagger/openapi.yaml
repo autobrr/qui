@@ -7756,6 +7756,12 @@ components:
           type: string
         savePath:
           type: string
+        download_path:
+          description: The category's own download path option, from qBittorrent 4.4. Left out when the category inherits it, false when it is turned off, and the path when it is on. qBittorrent resolves an empty or relative path itself. On qBittorrent 5.1 and earlier a change back to inherit can take until the next full sync to show.
+          oneOf:
+            - type: boolean
+              enum: [false]
+            - type: string
 
     LogSettings:
       type: object

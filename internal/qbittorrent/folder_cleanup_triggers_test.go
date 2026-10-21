@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -305,6 +306,152 @@ func TestFolderCleanupTriggerEditCategory(t *testing.T) {
 	require.FileExists(t, r.p("torrents/new/A/a.mkv"))
 	require.FileExists(t, r.p("torrents/new/B/b.mkv"))
 	require.FileExists(t, r.p("torrents/manual/C-GRP/c.mkv"))
+}
+
+// Up to qBittorrent 5.2 an edit replaces every option of the category, so an
+// edit of the save path sends the download path option the category has.
+func TestEditCategoryKeepsTheDownloadPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		option any
+	}{
+		{name: "own path", option: "/data/incomplete/archive"},
+		{name: "turned off", option: false},
+		{name: "inherited", option: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", tc.option)
+			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+			require.Equal(t, tc.option, r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
+// Before WebAPI 2.11.10 a partial maindata update leaves download_path out
+// when a category goes back to inherit, so the cache can still hold a path.
+// The edit reads the option from qBittorrent instead: here the cache synced
+// before the category went back to inherit.
+func TestEditCategoryReadsTheDownloadPathFresh(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+	r.add()
+	r.stub.SetCategoryDownloadPath("archive", nil)
+	require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Nil(t, r.stub.CategoryDownloadPath("archive"))
+}
+
+// With the download path kept, an edit to the same save path changes nothing,
+// which qBittorrent 5.1 answers with 409. For a category that exists, that is
+// a success with nothing to do.
+func TestEditCategoryAcceptsAnEditThatChangesNothing(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"torrents/old/archive", "torrents/old/archive/"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+			r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/old/archive")+strings.TrimPrefix(path, "torrents/old/archive")))
+			require.Equal(t, 1, r.stub.Conflicts("torrents/editCategory"))
+			require.Equal(t, "/data/incomplete/archive", r.stub.CategoryDownloadPath("archive"))
+		})
+	}
+}
+
+// Only a 409 for a category that exists counts as nothing to do. Any other
+// failure is still an error.
+func TestEditCategoryFailsWhenQBittorrentRejectsTheEdit(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.Reject = http.StatusInternalServerError
+	require.Error(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+}
+
+// Which branch an edit takes depends on the version, so a failed version read
+// fails the edit and sends nothing.
+func TestEditCategoryFailsWhenItCannotReadTheVersion(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.WebAPIVersionStatus = http.StatusBadGateway
+	require.Error(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Zero(t, r.stub.Writes("torrents/editCategory"))
+}
+
+// A category that does not exist still fails, even though 5.1 answers it
+// with the same 409.
+func TestEditCategoryFailsForAMissingCategory(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	require.Error(t, r.sm.EditCategory(t.Context(), r.instanceID, "missing", r.p("torrents/new")))
+}
+
+// From qBittorrent 5.3 (WebAPI 2.16.1) an edit keeps what it leaves out, so
+// it sends the save path alone and needs no read.
+func TestEditCategorySendsTheSavePathAloneOnQBittorrent53(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.WebAPIVersion = "2.16.1"
+	client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.NoError(t, client.RefreshCapabilities(t.Context()))
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+	r.stub.CategoriesStatus = http.StatusInternalServerError
+	require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.NotContains(t, r.stub.LastBody("torrents/editCategory"), "downloadPathEnabled")
+	require.Equal(t, "/data/incomplete/archive", r.stub.CategoryDownloadPath("archive"))
+}
+
+// The client's capabilities can predate an in-place downgrade from 5.3, so
+// the edit reads the version first.
+func TestEditCategoryKeepsTheDownloadPathAfterADowngrade(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.WebAPIVersion = "2.16.2"
+	client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.NoError(t, client.RefreshCapabilities(t.Context()))
+	r.stub.WebAPIVersion = "2.15.1"
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+	require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Equal(t, "/data/incomplete/archive", r.stub.CategoryDownloadPath("archive"))
+}
+
+// The partial edit landed while qBittorrent still reported 2.16.0, so a
+// 2.16.0 build may replace every option, and the edit sends the download path.
+func TestEditCategoryKeepsTheDownloadPathOnWebAPI2160(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.WebAPIVersion = "2.16.0"
+	client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.NoError(t, client.RefreshCapabilities(t.Context()))
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+	require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Equal(t, "/data/incomplete/archive", r.stub.CategoryDownloadPath("archive"))
+}
+
+// Without the category's download path the edit would reset it, so a failed
+// read fails the edit and sends nothing.
+func TestEditCategoryFailsWhenItCannotReadTheDownloadPath(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/old/archive"))
+	r.stub.SetCategoryDownloadPath("archive", "/data/incomplete/archive")
+	r.stub.CategoriesStatus = http.StatusInternalServerError
+	require.Error(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
+	require.Zero(t, r.stub.Writes("torrents/editCategory"))
+	require.Equal(t, "/data/incomplete/archive", r.stub.CategoryDownloadPath("archive"))
 }
 
 // qBittorrent sets an ATM torrent's save path at once and its content path
