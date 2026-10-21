@@ -734,6 +734,100 @@ func TestFolderCleanupWalkDownSkipsASymlinkedRoot(t *testing.T) {
 	})
 }
 
+// A torrent's subfolder that is now a symlink also reads as content left until
+// the deadline, and the folders below it are in the folder it points to.
+func TestFolderCleanupSkipsFoldersBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/Show/Sub/Deeper/a.mkv", "torrents/tv/Show/Plain/b.mkv")
+		snap := e.noRoot("torrents/tv/Show", "Sub/Deeper/a.mkv", "Plain/b.mkv")
+		e.rm("torrents/tv/Show/Sub", "torrents/tv/Show/Plain/b.mkv")
+		e.fs.symlink(e.p("torrents/tv/Show/Sub"))
+		e.tree("torrents/tv/Show/Sub/Deeper/Thumbs.db")
+		e.run(snap)
+		time.Sleep(e.fc.deadline)
+		synctest.Wait()
+		e.requireTree([]string{"torrents/tv/Show/Sub/Deeper/Thumbs.db", "torrents/tv/Show/Sub"},
+			[]string{"torrents/tv/Show/Plain"})
+	})
+}
+
+// The climb from a single file's folder does not remove a folder below a
+// symlink either.
+func TestFolderCleanupClimbSkipsFoldersBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/A/B/f.mkv")
+		snap := e.singleFile("torrents/tv", "A/B/f.mkv")
+		e.rm("torrents/tv/A")
+		e.fs.symlink(e.p("torrents/tv/A"))
+		e.tree("torrents/tv/A/B/")
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/A/B", "torrents/tv/A"}, nil)
+	})
+}
+
+// A root folder below a symlink is in the folder the symlink points to, so
+// the walk down does not start.
+func TestFolderCleanupWalkDownSkipsARootFolderBelowASymlink(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.tree("torrents/tv/A/Pack/a.mkv")
+		snap := e.rootFolder("torrents/tv", "A/Pack")
+		e.rm("torrents/tv/A")
+		e.fs.symlink(e.p("torrents/tv/A"))
+		e.tree("torrents/tv/A/Pack/Empty/")
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/A/Pack/Empty", "torrents/tv/A/Pack", "torrents/tv/A"}, nil)
+	})
+}
+
+// A folder in between whose Lstat fails keeps the folders below it. The
+// content check lists Mid but never Lstats it, so the clean runs.
+func TestFolderCleanupKeepsFoldersBelowAnUnreadableFolder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCleanupEnv(t, slashBackend)
+		e.tree("torrents/tv/Show/Sub/Mid/Deeper/a.mkv")
+		snap := e.noRoot("torrents/tv/Show", "Sub/Mid/Deeper/a.mkv")
+		e.rm("torrents/tv/Show/Sub/Mid/Deeper/a.mkv")
+		mid := e.p("torrents/tv/Show/Sub/Mid")
+		e.fs.(*memTree).lstatErr = func(p string) error {
+			if p == mid {
+				return fs.ErrPermission
+			}
+			return nil
+		}
+		e.run(snap)
+		e.requireTree([]string{"torrents/tv/Show/Sub/Mid/Deeper"}, nil)
+	})
+}
+
+// A folder that is already gone does not stop the climb, which goes on to the
+// stop folder.
+func TestFolderCleanupClimbPassesAGoneFolder(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		e.tree("torrents/x/A/B/f.mkv")
+		snap := e.singleFile("torrents/x", "A/B/f.mkv")
+		e.rm("torrents/x/A")
+		e.run(snap)
+		e.requireTree([]string{"torrents"}, []string{"torrents/x"})
+	})
+}
+
+// A save path that is a symlink is the user's setting, and the torrent's
+// folders below it are still cleaned.
+func TestFolderCleanupCleansBelowASymlinkedSavePath(t *testing.T) {
+	eachBackend(t, func(t *testing.T, e *cleanupEnv) {
+		skipSymlinksOnWindows(t, e)
+		e.fs.symlink(e.p("torrents/linked"))
+		e.tree("torrents/linked/Show/Sub/a.mkv")
+		snap := e.noRoot("torrents/linked", "Show/Sub/a.mkv")
+		e.rm("torrents/linked/Show/Sub/a.mkv")
+		e.run(snap)
+		e.requireTree([]string{"torrents/linked"}, []string{"torrents/linked/Show"})
+	})
+}
+
 // One bulk action across instances queues snapshots from each; every
 // instance is checked and cleaned in the same tick.
 func TestFolderCleanupAcrossInstances(t *testing.T) {
@@ -1741,7 +1835,8 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 		t.Skip("host dialect is Windows only on Windows")
 	}
 	d := fsops.HostPaths
-	scope := &cleanupScope{d: d, stops: []string{`C:\Data\Torrents`, `C:\Data\Torrents\TV`, `\\nas\share\torrents`}}
+	scope := &cleanupScope{d: d, stops: []string{`C:\Data\Torrents`, `C:\Data\Torrents\TV`, `\\nas\share\torrents`},
+		ignored: func(string) bool { return false }}
 	require.Equal(t, `C:\Data\Torrents\TV`, scope.stopFor(`C:\Data\Torrents\TV\Show`))
 	require.Equal(t, `\\nas\share\torrents`, scope.stopFor(`\\nas\share\torrents\x`))
 	// The climb limit compares exactly; a case variant is only protected.
@@ -1749,6 +1844,13 @@ func TestFolderCleanupWindowsPaths(t *testing.T) {
 	require.Empty(t, scope.stopFor(`D:\elsewhere`))
 	require.True(t, pathUnder(d, fsops.NormalizePath(d, `C:\x`), fsops.NormalizePath(d, `C:\`)))
 	require.False(t, pathUnder(d, fsops.NormalizePath(d, `C:\Data\TorrentsX`), fsops.NormalizePath(d, `C:\Data\Torrents`)))
+	// Clean leaves a share root bare, and Dir below it adds the separator back.
+	share := d.Clean(`\\nas\share`)
+	require.Equal(t, share+`\`, d.Dir(share+`\Show`))
+	require.False(t, pathUnder(d, share+`\`, share))
+	require.True(t, pathAtOrUnder(d, share+`\`, share))
+	require.True(t, pathUnder(d, share+`\Show`, share))
+	require.False(t, scope.insideSealed(share, share+`\Show`))
 
 	snap := folderSnapshot{SavePath: `C:\Data\Torrents\TV`, DownloadPath: `C:\Data\Incomplete`, ContentPath: `C:\Data\Incomplete\Show`, Layout: layoutRootFolder}
 	anchor, folder, ok := snap.placement(d)
