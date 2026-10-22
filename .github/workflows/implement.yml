@@ -279,5 +279,12 @@ jobs:
             echo "---"
             echo "Implementer run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Skills: s0up4200/skills@$SKILLS."
           } > "$RUNNER_TEMP/body.md"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
-            --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
+            --title "$title" --body-file "$RUNNER_TEMP/body.md")
+          echo "$url"
+          # CodeRabbit skips a pull request from a bot user, and its
+          # configuration has no exception for one. This command starts one
+          # review. A draft gets none, because it failed its checks.
+          if (( ! ${#draft[@]} )); then
+            gh pr comment "$url" --body '@coderabbitai review'
+          fi
