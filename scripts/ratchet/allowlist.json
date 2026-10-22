@@ -120,7 +120,6 @@
   },
   "nilerr": {
     "internal/backups/service.go": 4,
-    "internal/models/crossseed.go": 1,
     "internal/models/torznab_cache.go": 1,
     "internal/services/arr/service.go": 1,
     "internal/services/crossseed/manual_assemble.go": 1,

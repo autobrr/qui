@@ -1838,7 +1838,7 @@ func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, nil //nolint:nilerr // the delete succeeded; the row count is informational only
 	}
 
 	return rows, nil
