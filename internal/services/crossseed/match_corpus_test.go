@@ -766,6 +766,26 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		// The CRC tag of an episode file does not name the pack, so the pack listing
+		// still matches when its size is rounded. The sizes differ, so the webhook
+		// check reads the local name only.
+		name:           "season folder pack of CRC-tagged episodes against its season pack listing",
+		source:         "Season 2",
+		candidate:      "[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
+		candidateFiles: corpusPackFiles("[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathWebhook:      knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+		},
+	},
+	{
 		name:           "season folder pack of another show",
 		source:         "Season 2",
 		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",

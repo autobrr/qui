@@ -183,6 +183,7 @@ func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFile
 	borrowed := *fileRelease
 	borrowed.Type = rls.Series
 	borrowed.Episode = 0
+	borrowed.Sum = ""
 	return &borrowed
 }
 
