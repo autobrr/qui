@@ -46,10 +46,10 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 
 	backend := newTestBackend()
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(normalizePath(fsops.HostPaths, aliasFile))
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, aliasFile))
 
 	t.Run("scan excludes protected junction and finds ordinary orphan", func(t *testing.T) {
-		orphans, truncated, err := walkScanRoot(t.Context(), scanRoot, tfm, nil, 0, 0, backend)
+		orphans, truncated, err := walkScanRoot(t.Context(), scanRoot, tfm, nil, 0, 0, backend, nil)
 		require.NoError(t, err)
 		require.False(t, truncated)
 		paths := make([]string, 0, len(orphans))

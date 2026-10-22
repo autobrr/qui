@@ -212,7 +212,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Vyžaduje qBittorrent 5.1+",
-      "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému"
+      "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému",
+      "remoteInstance": "Není dostupné pro vzdálené instance"
     },
     "selectTrackerStatus": "Vybrat stav",
     "selectContentType": "Vybrat typ obsahu",

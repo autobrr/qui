@@ -210,7 +210,7 @@
     "reflinkDescription": "Crea clons amb reflinks. Més segur amb fitxers de més o que falten, i és el que millor mitiga la corrupció.",
     "baseDirectories": "Directoris base",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Camins separats per comes. Es farà servir el primer directori que sigui al mateix sistema de fitxers que l'origen.",
+    "baseDirectoriesDescription": "Camins separats per comes. qui fa servir un directori que sigui al mateix sistema de fitxers que l'origen i prova primer el que comparteix amb l'origen el prefix de camí més llarg. Després d'un error d'enllaç entre dispositius, prova el següent.",
     "directoryOrganization": "Organització dels directoris",
     "flat": "Plana (tot al directori base)",
     "byTracker": "Per tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "No s'han pogut reintentar els fitxers sense coincidència: {{error}}",
       "resetFailed": "No s'han pogut restablir els fitxers: {{error}}"
     },
+    "webhookScanStatus": "Exploració per webhook · {{status}}",
     "statusLabels": {
       "queued": "En cua",
       "scanning": "Explorant",

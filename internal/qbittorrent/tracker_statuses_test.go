@@ -146,8 +146,18 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Torrent has been rejected.",
 			want:    true,
 		},
+		{
+			name:    "unknown outside the libtorrent HTTP error",
+			message: "Unknown torrent",
+			want:    true,
+		},
 
 		// Non-matching messages
+		{
+			name:    "libtorrent unknown HTTP error",
+			message: "504 (unknown HTTP error)",
+			want:    false,
+		},
 		{
 			name:    "working tracker",
 			message: "Peers: 5 seeders, 2 leechers",

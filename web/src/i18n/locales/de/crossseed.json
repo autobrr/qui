@@ -210,7 +210,7 @@
     "reflinkDescription": "Reflinked Klone erstellen. Sicherer bei zusätzlichen/fehlenden Dateien, beste Absicherung gegen Beschädigung.",
     "baseDirectories": "Basisverzeichnisse",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Kommagetrennte Pfade. Verwendet wird das erste Verzeichnis auf demselben Dateisystem wie die Quelle.",
+    "baseDirectoriesDescription": "Kommagetrennte Pfade. qui verwendet ein Verzeichnis auf demselben Dateisystem wie die Quelle und probiert zuerst das Verzeichnis, das mit ihr das längste gemeinsame Pfadpräfix hat. Nach einem Cross-Device-Link-Fehler probiert qui das nächste.",
     "directoryOrganization": "Verzeichnisorganisation",
     "flat": "Flach (alles im Basisverzeichnis)",
     "byTracker": "Nach Tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "Erneuter Versuch für Dateien ohne Treffer fehlgeschlagen: {{error}}",
       "resetFailed": "Dateien konnten nicht zurückgesetzt werden: {{error}}"
     },
+    "webhookScanStatus": "Webhook-Scan · {{status}}",
     "statusLabels": {
       "queued": "In Warteschlange",
       "scanning": "Wird gescannt",

@@ -6,6 +6,7 @@ package automations
 import (
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -43,8 +44,8 @@ func TestNeedsFor(t *testing.T) {
 		{name: "EXISTS_ON_OTHER_INSTANCE", rules: onTag(FieldExistsOnOtherInstance), want: RuleNeeds{CrossMatch: CrossMatchNeeds{OtherExists: true}}},
 		{name: "SEEDING_ON_OTHER_INSTANCE", rules: onTag(FieldSeedingOnOtherInstance), want: RuleNeeds{CrossMatch: CrossMatchNeeds{OtherSeeding: true}}},
 		{name: "FREE_SPACE", rules: onTag(FieldFreeSpace), want: RuleNeeds{FreeSpace: true}},
-		{name: "TRACKER", rules: onTag(FieldTracker), want: RuleNeeds{TrackerNames: true, TrackerEntries: true}},
-		{name: "TRACKERS", rules: onTag(FieldTrackers), want: RuleNeeds{TrackerNames: true, TrackerEntries: true}},
+		{name: "TRACKER", rules: onTag(FieldTracker), want: RuleNeeds{TrackerNames: true, TrackerURLs: true}},
+		{name: "TRACKERS", rules: onTag(FieldTrackers), want: RuleNeeds{TrackerNames: true, TrackerURLs: true}},
 		{name: "TRACKER_STATUS", rules: onTag(FieldTrackerStatus), want: RuleNeeds{TrackerEntries: true}},
 		{name: "TRACKER_MESSAGE", rules: onTag(FieldTrackerMessage), want: RuleNeeds{TrackerEntries: true}},
 		{name: "a torrent-only field", rules: onTag(FieldName)},
@@ -68,7 +69,7 @@ func TestNeedsFor(t *testing.T) {
 		{name: "legacy tag", rules: enabled(&models.ActionConditions{Tag: &models.TagAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "tags", rules: enabled(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Condition: scope}}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "category", rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
-		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
+		{name: "move", rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}}},
 		{name: "external program", rules: enabled(&models.ActionConditions{ExternalProgram: &models.ExternalProgramAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "auto management that turns ATM off", rules: enabled(&models.ActionConditions{AutoManagement: &models.AutoManagementAction{Enabled: false, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "export to instance", rules: enabled(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
@@ -98,7 +99,7 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "include hardlinks",
 			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, IncludeHardlinks: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}}),
-			want:  RuleNeeds{HardlinkScope: true},
+			want:  RuleNeeds{HardlinkScope: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "include hardlinks outside the include-cross-seeds mode",
@@ -116,7 +117,22 @@ func TestNeedsFor(t *testing.T) {
 		{
 			name:  "tracker name in a move path",
 			rules: enabled(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}),
-			want:  RuleNeeds{TrackerNames: true},
+			want:  RuleNeeds{TrackerNames: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "preserve cross-seeds delete",
+			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}}),
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "plain delete with files counts free space once per cross-seed group",
+			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFiles, Condition: &RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"}}}),
+			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
+		},
+		{
+			name:  "category that blocks on cross-seeds",
+			rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, BlockIfCrossSeedInCategories: []string{"keep"}}}),
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
 			name:  "needs of several rules add up",
@@ -130,5 +146,37 @@ func TestNeedsFor(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, NeedsFor(tt.rules))
 		})
+	}
+}
+
+func TestCrossSeedFields_ConfirmedPositiveSurvivesUnreadCandidate(t *testing.T) {
+	t.Parallel()
+	torrent := qbt.Torrent{Hash: "source"}
+	for _, confirmed := range []bool{false, true} {
+		var matches map[string]struct{}
+		if confirmed {
+			matches = map[string]struct{}{torrent.Hash: {}}
+		}
+		ctx := &EvalContext{
+			SameInstanceCrossSeedHashSet: matches, SameInstanceCrossSeedSeedingHashSet: matches,
+			CrossInstanceHashSet: matches, CrossInstanceSeedingHashSet: matches,
+			SameInstanceCrossSeedUnknown: map[string]struct{}{torrent.Hash: {}},
+			CrossInstanceUnknown:         map[string]struct{}{torrent.Hash: {}},
+		}
+		for _, field := range []ConditionField{FieldExistsOnSameInstance, FieldSeedingOnSameInstance, FieldExistsOnOtherInstance, FieldSeedingOnOtherInstance} {
+			for _, value := range []string{"true", "false"} {
+				for _, negate := range []bool{false, true} {
+					cond := &RuleCondition{Field: field, Operator: models.OperatorEqual, Value: value, Negate: negate}
+					want := confirmed && ((value == "true") != negate)
+					require.Equal(t, want, EvaluateConditionWithContext(cond, torrent, ctx, 0), "field=%s value=%s negate=%t confirmed=%t", field, value, negate, confirmed)
+				}
+			}
+		}
+		require.False(t, conditionDataKnown(FieldCrossSeedTags, torrent.Hash, ctx), "the tag set can still be incomplete")
+		require.False(t, crossSeedGroupKnown(torrent, nil, ctx), "action safety still needs the unread candidate")
+		ctx.SameInstanceCrossSeedSeedingHashSet = nil
+		ctx.CrossInstanceSeedingHashSet = nil
+		require.False(t, conditionDataKnown(FieldSeedingOnSameInstance, torrent.Hash, ctx), "confirmed existence does not prove seeding")
+		require.False(t, conditionDataKnown(FieldSeedingOnOtherInstance, torrent.Hash, ctx))
 	}
 }

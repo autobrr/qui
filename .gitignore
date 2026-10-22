@@ -22,7 +22,7 @@ Thumbs.db
 .vscode
 
 # Package manager
-node_modules/
+node_modules
 .pnp.*
 .yarn/*
 !.yarn/patches

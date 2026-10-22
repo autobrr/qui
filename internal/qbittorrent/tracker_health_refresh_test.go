@@ -41,7 +41,7 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, "2.11.4")
 		case "/api/v2/sync/maindata":
-			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}}}`,
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"One"},%q:{"name":"Deleted"}},"trackers":{"https://tracker.example.invalid/announce":[%[1]q]}}`,
 				trackerHealthTestHash, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 		case "/api/v2/torrents/info":
 			rig.infoFetches.Add(1)
@@ -119,9 +119,10 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 	rig.sm.StartTrackerHealthRefresh(1)
 	t.Cleanup(func() { rig.sm.StopTrackerHealthRefresh(1) })
 
-	passes := func() int { return len(rig.sink.getTrackerHealthUpdates()) }
-	require.Eventually(t, func() bool { return passes() == 1 }, 2*time.Second, 5*time.Millisecond, "initial pass")
-	require.True(t, rig.unhealthy())
+	// Each pass on qBittorrent 5.1 fetches the library once. The stub counts the
+	// fetch before the pass stores its snapshot, so wait for the snapshot too.
+	passes := func() int { return int(rig.infoFetches.Load()) }
+	require.Eventually(t, func() bool { return passes() == 1 && rig.unhealthy() }, 2*time.Second, 5*time.Millisecond, "initial pass")
 
 	rig.status.Store(int32(qbt.TrackerStatusOK))
 	rig.sm.KickTrackerHealthRefresh(1)
@@ -130,7 +131,7 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 	rig.sm.KickTrackerHealthRefresh(1)
 	require.Eventually(t, func() bool { return passes() == 2 }, 2*time.Second, 5*time.Millisecond, "a kick runs a pass")
 	require.GreaterOrEqual(t, time.Since(lastKick), 100*time.Millisecond, "every kick gets the full settle delay")
-	require.False(t, rig.unhealthy(), "the kicked pass sees the new status")
+	require.Eventually(t, func() bool { return !rig.unhealthy() }, 2*time.Second, 5*time.Millisecond, "the kicked pass sees the new status")
 
 	// A burst inside the interval coalesces into one pass at the interval's end,
 	// which starts when the previous kicked pass started.

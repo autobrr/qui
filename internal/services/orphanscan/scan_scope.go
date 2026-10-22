@@ -9,6 +9,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // scanScope carries the opt-in settings that widen a run. The zero value is the
@@ -86,13 +87,13 @@ func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, in
 	if scope.needsCategories() {
 		// Only category resolution needs the nesting state, and answering it
 		// costs a WebAPI version request.
-		var useSubcategories bool
-		useSubcategories, err = s.sync.CategorySavePathsNest(ctx, instanceID)
+		var rule qbittorrent.CategoryPathRule
+		rule, err = s.sync.CategoryPathRule(ctx, instanceID)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		categoryPaths, err = s.categoryPaths(ctx, d, instanceID, defaultSavePath, useSubcategories)
+		categoryPaths, err = s.categoryPaths(ctx, d, instanceID, defaultSavePath, rule)
 		if err != nil {
 			return nil, nil, err
 		}

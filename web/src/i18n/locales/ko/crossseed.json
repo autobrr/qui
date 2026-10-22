@@ -207,7 +207,7 @@
     "reflinkDescription": "리플링크된 복제본을 생성합니다. 추가/누락 파일에 더 안전하며, 손상을 가장 잘 완화합니다.",
     "baseDirectories": "기본 디렉터리",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "쉼표로 구분된 경로입니다. 소스와 동일한 파일시스템에 있는 첫 번째 디렉터리가 사용됩니다.",
+    "baseDirectoriesDescription": "쉼표로 구분된 경로입니다. qui는 소스와 동일한 파일시스템에 있는 디렉터리를 사용하며, 소스와 가장 긴 경로 접두사를 공유하는 디렉터리를 먼저 시도합니다. 장치 간 링크 오류가 발생하면 다음 디렉터리를 시도합니다.",
     "directoryOrganization": "디렉터리 구성",
     "flat": "평면(모두 기본 디렉터리에)",
     "byTracker": "트래커별",
@@ -544,6 +544,7 @@
       "requeueFailed": "미일치 파일 재시도 실패: {{error}}",
       "resetFailed": "파일을 재설정하지 못했습니다: {{error}}"
     },
+    "webhookScanStatus": "웹훅 스캔 · {{status}}",
     "statusLabels": {
       "queued": "대기 중",
       "scanning": "스캔 중",

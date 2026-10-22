@@ -210,7 +210,7 @@
     "reflinkDescription": "Crea cloni in reflink. Più sicuro per i file aggiuntivi/mancanti, mitiga al meglio la corruzione.",
     "baseDirectories": "Directory di base",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Percorsi separati da virgole. Verrà usata la prima directory sullo stesso filesystem dell'origine.",
+    "baseDirectoriesDescription": "Percorsi separati da virgole. qui usa una directory sullo stesso filesystem dell'origine, provando prima quella che condivide con essa il prefisso di percorso più lungo. Dopo un errore di collegamento tra dispositivi, prova quella successiva.",
     "directoryOrganization": "Organizzazione delle directory",
     "flat": "Piatta (tutto nella directory di base)",
     "byTracker": "Per tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "Impossibile riprovare i file senza corrispondenza: {{error}}",
       "resetFailed": "Reimpostazione dei file non riuscita: {{error}}"
     },
+    "webhookScanStatus": "Analisi webhook · {{status}}",
     "statusLabels": {
       "queued": "In coda",
       "scanning": "Analisi in corso",

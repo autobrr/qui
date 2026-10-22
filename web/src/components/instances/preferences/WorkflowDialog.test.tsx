@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Automation, FilesystemCapabilities } from "@/types"
 
 const mocks = vi.hoisted(() => {
@@ -112,7 +113,7 @@ describe("WorkflowDialog category validation", () => {
   })
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 
 describe("WorkflowDialog include hardlinks", () => {
   const deleteRule: Automation = {
@@ -121,12 +122,14 @@ describe("WorkflowDialog include hardlinks", () => {
   }
 
   it.each([
-    { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, write: true, content: true }, hasIdentity: true },
-    { name: "a remote instance", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true }, hasIdentity: false },
+    { name: "a local instance", hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, enabled: true },
+    { name: "a remote instance", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true }, enabled: false },
+    // Identity a remote host reports never adds torrents to a delete.
+    { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true, identity: true }, enabled: false },
     // The setting is off here, so only the capability can offer the option.
-    { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true, identity: true }, hasIdentity: true },
-  ])("follows the identity capability for $name", ({ hasLocalFilesystemAccess, capabilities, hasIdentity }) => {
-    mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, capabilities }]
+    { name: "an instance with the trusted identity capability", hasLocalFilesystemAccess: false, filesystemMode: "local", capabilities: { ...noCapabilities, read: true, identity: true, trustedIdentity: true }, enabled: true },
+  ])("follows the trusted identity capability for $name", ({ hasLocalFilesystemAccess, filesystemMode, capabilities, enabled }) => {
+    mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, filesystemMode, capabilities }]
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
@@ -135,7 +138,7 @@ describe("WorkflowDialog include hardlinks", () => {
     )
 
     const checkbox = screen.getByRole("checkbox", { name: key("delete.includeHardlinkedCopies") })
-    expect(checkbox.hasAttribute("disabled")).toBe(!hasIdentity)
+    expect(checkbox.hasAttribute("disabled")).toBe(!enabled)
     client.clear()
   })
 })
@@ -170,6 +173,56 @@ describe("WorkflowDialog tracker pattern", () => {
     const payload = mocks.save.mock.calls[0][2]
     expect(payload.trackerPattern).toBe(trackerPattern)
     expect(payload).not.toHaveProperty("trackerDomains")
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog move path on a disabled rule", () => {
+  const renderRule = (path: string) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const moveRule: Automation = { ...rule, enabled: false, conditions: { schemaVersion: "1", move: { enabled: true, path } } }
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={moveRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+
+  it("saves a rule saved before the check existed, since the server skips disabled rules", async () => {
+    mocks.save.mockResolvedValue({})
+    const client = renderRule("data/archive")
+
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    client.clear()
+  })
+
+  it("shows the dialog's own move path error when a dry run is blocked", () => {
+    const client = renderRule("data/archive")
+    expect(screen.queryByText(key("move.errors.mustBeAbsolute"))).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(mocks.dryRun).not.toHaveBeenCalled()
+    expect(screen.getByText(key("move.errors.mustBeAbsolute"))).not.toBeNull()
+    // The error explains the dry run; saving the disabled rule stays allowed.
+    expect(screen.getByRole("button", { name: key("save") }).hasAttribute("disabled")).toBe(false)
+    client.clear()
+  })
+
+  it("shows the server's move path error when a dry run is rejected", async () => {
+    const message = "Move path must be absolute, for example /data/archive or D:\\Archive. For a sample torrent it renders \"sample/x\""
+    mocks.dryRun.mockRejectedValueOnce(new Error(message))
+    const client = renderRule("{{ .Category }}/x")
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(await screen.findByText(message)).not.toBeNull()
+    expect(mocks.error).not.toHaveBeenCalled()
     client.clear()
   })
 })

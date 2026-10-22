@@ -38,6 +38,7 @@ type fakeSyncProvider struct {
 	torrentsSkipFresh     bool
 	torrentsSkipTracker   bool
 	torrentsCachedCounts  bool
+	torrentsSummary       bool
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
@@ -45,6 +46,7 @@ type fakeSyncProvider struct {
 	crossSkipTracker      bool
 	crossCachedCounts     bool
 	connectionStatus      string
+	taskCountDeadline     bool
 }
 
 func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
@@ -53,6 +55,7 @@ func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _,
 	f.torrentsSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
 	f.torrentsSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
 	f.torrentsCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
+	f.torrentsSummary = qbittorrent.SummaryRequested(ctx)
 	err := f.torrentsErr
 	gate := f.torrentsGate
 	var resp *qbittorrent.TorrentResponse
@@ -97,6 +100,13 @@ func (f *fakeSyncProvider) ReadCachedConnectionStatus(_ context.Context, _ int) 
 	return f.connectionStatus
 }
 
+func (f *fakeSyncProvider) GetActiveTaskCount(ctx context.Context, _ int) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, f.taskCountDeadline = ctx.Deadline()
+	return f.torrentsResponse.ActiveTaskCount
+}
+
 func (f *fakeSyncProvider) torrentsCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -124,6 +134,24 @@ func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T)
 	defer provider.mu.Unlock()
 	require.True(t, provider.torrentsSkipFresh)
 	require.True(t, provider.torrentsSkipTracker)
+}
+
+func TestMaterializeGroupResponsePassesSummary(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	_, errPayload := manager.materializeGroupResponse(StreamOptions{InstanceID: 1, Limit: 1}, &StreamMeta{}, "rows")
+	require.Nil(t, errPayload)
+	provider.mu.Lock()
+	require.False(t, provider.torrentsSummary)
+	provider.mu.Unlock()
+
+	_, errPayload = manager.materializeGroupResponse(StreamOptions{InstanceID: 1, Limit: 1, Summary: true}, &StreamMeta{}, "summary")
+	require.Nil(t, errPayload)
+	provider.mu.Lock()
+	require.True(t, provider.torrentsSummary)
+	provider.mu.Unlock()
 }
 
 // gateTorrentBuilds makes every subsequent torrents build park until the returned
@@ -613,6 +641,134 @@ func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
 	provider.mu.Unlock()
 }
 
+func TestServeServerStateOnlyTickSkipsRebuild(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	canned := cannedResponse()
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-server-state"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	builds := provider.torrentsCallCount()
+
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{
+			Rid:         2,
+			ServerState: qbt.ServerState{DlInfoSpeed: 4096},
+			Changes:     qbt.MainDataChanges{ServerState: true},
+		})
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.Equal(t, streamEventDelta, updatePayload.Type)
+	require.NotNil(t, updatePayload.Data.ServerState)
+	require.Equal(t, int64(4096), updatePayload.Data.ServerState.DlInfoSpeed)
+	require.Empty(t, updatePayload.Data.Torrents)
+	require.Equal(t, canned.Total, updatePayload.Data.Total)
+	require.Equal(t, canned.SessionID, updatePayload.Data.SessionID)
+	require.Equal(t, builds, provider.torrentsCallCount(), "a server-state tick must not rebuild the view")
+}
+
+func TestServerStateTickKeepsQueuedRebuild(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-queued-rebuild"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	release := provider.gateTorrentBuilds()
+	builds := provider.torrentsCallCount()
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+1
+	}, 5*time.Second, 10*time.Millisecond, "expected the first rebuild to start")
+
+	// Both ticks queue behind the parked build. The second one must not turn
+	// the queued rebuild into a server-state frame.
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true, serverState: &qbt.ServerState{}})
+	release()
+
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+2
+	}, 5*time.Second, 10*time.Millisecond, "the queued rebuild was dropped")
+}
+
+func TestServerStateTickRetriesFailedRebuild(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-failed-rebuild"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	provider.mu.Lock()
+	provider.torrentsErr = errors.New("boom")
+	provider.mu.Unlock()
+	builds := provider.torrentsCallCount()
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+1
+	}, 5*time.Second, 10*time.Millisecond, "expected the rebuild to run")
+
+	provider.mu.Lock()
+	provider.torrentsErr = nil
+	provider.mu.Unlock()
+	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true, serverState: &qbt.ServerState{}})
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == builds+2
+	}, 5*time.Second, 10*time.Millisecond, "the server-state tick kept the rows of the failed rebuild")
+}
+
+func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse(), crossInstanceResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	payload := streamPayload(instanceID, "stream-combined-server-state")
+	payload[0]["instanceId"] = 0
+	payload[0]["instanceIds"] = []int{instanceID}
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, payload)
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	provider.mu.Lock()
+	builds := provider.crossInstanceCalls
+	provider.mu.Unlock()
+
+	// A member's subcategory mode changes its category counts in the combined view.
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{
+			Rid:         2,
+			ServerState: qbt.ServerState{UseSubcategories: true},
+			Changes:     qbt.MainDataChanges{ServerState: true},
+		})
+	})
+	require.True(t, isTickEvent(decodeStreamPayloadData(t, updateEvent.data).Type))
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Greater(t, provider.crossInstanceCalls, builds, "a combined view must rebuild on a server-state tick")
+}
+
 // TestServeCoalescesBurstOfUpdates verifies that a rapid burst of HandleMainData
 // calls collapses into far fewer torrent builds than events while still
 // delivering at least one update to the connected subscriber.
@@ -936,4 +1092,81 @@ func decodeStreamPayloadData(t *testing.T, data string) *StreamPayload {
 	var payload StreamPayload
 	require.NoError(t, json.Unmarshal([]byte(data), &payload), "failed to decode stream payload data")
 	return &payload
+}
+
+func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-task-count"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	// A torrent-creation task ends while only the server state changes.
+	provider.mu.Lock()
+	provider.torrentsResponse.ActiveTaskCount = 0
+	provider.mu.Unlock()
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.Equal(t, streamEventDelta, updatePayload.Type)
+	require.Equal(t, 0, updatePayload.Data.ActiveTaskCount)
+
+	// A stalled qBittorrent must not hold back the next server-state frames.
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.taskCountDeadline, "the task count request has no deadline")
+}
+
+func TestInitRequestsCounts(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	payload := streamPayload(instanceID, "stream-init-counts")
+	payload[0]["summary"] = true
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, payload)
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.torrentsCachedCounts, "the init frame must carry counts")
+}
+
+func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	// A tracker-health rebuild more than 2 s after the last sync reports cached data.
+	canned := cannedResponse()
+	canned.CacheMetadata = &qbittorrent.CacheMetadata{Source: "cache", Age: 5, IsStale: true}
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-cache-metadata"))
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.Equal(t, streamEventDelta, updatePayload.Type)
+	require.NotNil(t, updatePayload.Data.CacheMetadata)
+	require.Equal(t, "fresh", updatePayload.Data.CacheMetadata.Source)
+	require.False(t, updatePayload.Data.CacheMetadata.IsStale)
 }

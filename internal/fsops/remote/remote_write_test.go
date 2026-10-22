@@ -7,6 +7,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -104,7 +106,10 @@ func TestRemove_NonRecursiveDirFailsWhenNotEmpty(t *testing.T) {
 	writeFile(t, remotePath(sub, "f"), "x")
 
 	// Callers classify on ENOTEMPTY, which SSH_FX_FAILURE alone does not carry.
-	require.ErrorIs(t, b.Remove(t.Context(), sub, fsops.RemoveOptions{}), syscall.ENOTEMPTY)
+	// fsops.IsDirNotEmpty reads only the code, so this is all it can match.
+	removeErr := b.Remove(t.Context(), sub, fsops.RemoveOptions{})
+	require.ErrorIs(t, removeErr, syscall.ENOTEMPTY)
+	require.True(t, fsops.IsDirNotEmpty(removeErr))
 	_, err := os.Stat(sub)
 	require.NoError(t, err)
 
@@ -240,7 +245,10 @@ func TestHardlinkTree_CreateAndRemoveTree(t *testing.T) {
 func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	t.Parallel()
 
-	b, _ := newBackend(t)
+	b, server := newBackend(t)
+	// The pool reads the tier from a probe of the live connection, so the
+	// fake must refuse exec for this to be the sftp tier at all.
+	server.SetExec(sshtest.ExecSFTPOnly)
 	dir := t.TempDir()
 	plan := linkPlan(t, dir)
 	// Even a target that already links the source is a conflict over sftp:
@@ -249,7 +257,7 @@ func TestHardlinkTree_ExistingTargetFailsAndRollsBack(t *testing.T) {
 	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
 
 	created, err := b.HardlinkTree(t.Context(), plan)
-	require.Error(t, err)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists, "link mode tells this case from other create errors")
 	assert.Nil(t, created)
 
 	_, err = os.Lstat(plan.Files[0].TargetPath)
@@ -417,4 +425,212 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 			require.ErrorIs(t, err, fs.ErrNotExist, "the held remove landed before the call returned")
 		})
 	}
+}
+
+// On the exec tier a target that is already a link to its source is skipped,
+// the way the local backend skips it (#3237). The skip is not recorded: the
+// link belongs to whoever made it first.
+func TestHardlinkTree_ExecTierSkipsOwnLink(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(remotePath(plan.RootDir, "Sub -rf"), 0o755))
+	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
+
+	created, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, created.Created)
+	assert.Equal(t, 1, created.SkippedExists)
+	assert.Equal(t, []string{plan.Files[0].TargetPath}, created.Files, "the skipped link is not ours to record")
+
+	for _, fp := range plan.Files {
+		src, _ := unixID(t, fp.SourcePath, true)
+		dst, _ := unixID(t, fp.TargetPath, false)
+		assert.Equal(t, src, dst, "%s links its source", fp.TargetPath)
+	}
+}
+
+// A stranger's file at the target is still the collision link mode refuses,
+// on the exec tier as on sftp: identity is what tells the two apart.
+func TestHardlinkTree_ExecTierStrangerStillRefuses(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	writeFile(t, plan.Files[1].TargetPath, "stranger")
+
+	created, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
+	assert.Nil(t, created)
+
+	_, err = os.Lstat(plan.Files[0].TargetPath)
+	require.ErrorIs(t, err, fs.ErrNotExist, "the link made before the conflict is rolled back")
+	body, err := os.ReadFile(plan.Files[1].TargetPath)
+	require.NoError(t, err)
+	assert.Equal(t, "stranger", string(body), "the stranger's file is untouched")
+}
+
+// A symlink at the target reports its own inode, never its target's, so it
+// can not pass as the source and stays a refusal.
+func TestHardlinkTree_ExecTierSymlinkAtTargetRefuses(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(remotePath(plan.RootDir, "Sub -rf"), 0o755))
+	require.NoError(t, os.Symlink(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
+
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
+}
+
+// A skipped link survives a later failure in the same plan: it was never
+// recorded, so rollback never reaches it.
+func TestHardlinkTree_ExecTierSkippedLinkSurvivesLaterFailure(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	require.NoError(t, os.Link(plan.Files[0].SourcePath, plan.Files[0].TargetPath))
+	writeFile(t, plan.Files[1].TargetPath, "stranger")
+
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
+
+	src, _ := unixID(t, plan.Files[0].SourcePath, true)
+	dst, _ := unixID(t, plan.Files[0].TargetPath, false)
+	assert.Equal(t, src, dst, "the pre-existing link is left in place")
+}
+
+// A whole tree left on disk without its torrent is reused, which is what lets
+// cross-seed recreate a torrent whose own earlier tree occupies its target.
+func TestHardlinkTree_ExecTierReusesWholeTree(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	first, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	require.Equal(t, 2, first.Created)
+
+	again, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 0, again.Created)
+	assert.Equal(t, 2, again.SkippedExists)
+	assert.Empty(t, again.Files)
+	require.NoError(t, b.RemoveTree(t.Context(), again), "removing a result that recorded nothing is a no-op")
+	for _, fp := range plan.Files {
+		_, err := os.Lstat(fp.TargetPath)
+		require.NoError(t, err, "%s still belongs to the first run", fp.TargetPath)
+	}
+}
+
+// link(2) does not follow a symlinked source, so the link it makes carries
+// the symlink's own inode; comparing both sides unfollowed is what lets a
+// re-run recognise it.
+func TestHardlinkTree_ExecTierSymlinkedSourceReuses(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	linked := plan.Files[0].SourcePath
+	viaLink := remotePath(dir, "src", "one.via-symlink.mkv")
+	require.NoError(t, os.Symlink(linked, viaLink))
+	plan.Files[0].SourcePath = viaLink
+
+	first, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	require.Equal(t, 2, first.Created)
+	again, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 2, again.SkippedExists)
+}
+
+// A collision check cut short while the stat is running is the caller's
+// error, never a permanent ErrTargetExists that tells the user to clean up
+// their own link. The connection is opened and probed first, so the hang is
+// in the stat itself and not in the connect.
+func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
+	t.Parallel()
+
+	b, server := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	_, err := b.Stat(t.Context(), plan.Files[0].SourcePath)
+	require.NoError(t, err)
+	server.SetExec(sshtest.ExecHang)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	same, err := b.targetIsSource(ctx, plan.Files[0])
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.False(t, same)
+}
+
+// A source that vanished after the plan was built is not a reason to fall
+// back to a regular add into the matched torrent's path: the occupied target
+// still refuses, as it does on the sftp tier and the local backend.
+func TestHardlinkTree_ExecTierMissingSourceStillRefuses(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newExecBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	require.NoError(t, os.Link(plan.Files[0].SourcePath, plan.Files[0].TargetPath))
+	require.NoError(t, os.Remove(plan.Files[0].SourcePath))
+
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.ErrorIs(t, err, hardlinktree.ErrTargetExists)
+}
+
+// The stored tier lags a key that just gained a shell: the probe writes the
+// row, not this backend's copy. The live connection decides, so the first
+// reuse after the upgrade already works.
+func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("the fake exec handler runs the local GNU stat")
+	}
+
+	b, _ := newBackend(t) // row says sftp; the fake answers exec
+	require.NotEqual(t, models.SSHTierExec, b.inst.SSHTier)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	require.NoError(t, os.MkdirAll(remotePath(plan.RootDir, "Sub -rf"), 0o755))
+	require.NoError(t, os.Link(plan.Files[1].SourcePath, plan.Files[1].TargetPath))
+
+	created, err := b.HardlinkTree(t.Context(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, created.SkippedExists)
+}
+
+// When Link fails and the lstat that follows fails too for a reason other
+// than an absent target, that reason is the error, not the Link failure.
+func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	plan := linkPlan(t, dir)
+	plan.Files = plan.Files[:1]
+	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
+	require.NoError(t, os.Chmod(plan.RootDir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(plan.RootDir, 0o755) })
+
+	_, err := b.HardlinkTree(t.Context(), plan)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "hardlink ", "the lstat failure is the cause, not the link")
+	assert.Contains(t, err.Error(), "lstat")
 }

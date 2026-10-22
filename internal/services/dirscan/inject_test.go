@@ -283,7 +283,7 @@ func TestBuildLinkTreeMatchedFiles_UsesTorrentFileSize(t *testing.T) {
 
 	// The bug was that existing[0].Size used the searchee file size instead of the
 	// torrent file size. Exact file-size matching means these should now be equal.
-	_, err = hardlinktree.BuildPlan(linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
+	_, err = hardlinktree.BuildPlan(fsops.HostPaths, linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
 	if err != nil {
 		t.Fatalf("BuildPlan should succeed with exact matched sizes, got: %v", err)
 	}
@@ -1315,8 +1315,8 @@ func TestInjector_PartialReflinkResumeSkipsLinkedFileCheck(t *testing.T) {
 	})
 }
 
-// A remote instance has Read only, so link-tree injection refuses it even with
-// a link mode and a base dir configured.
+// Link-tree injection is host code until #2919, so it refuses a remote
+// instance even with Write (#2942), a link mode and a base dir configured.
 func TestValidateLinkTreeInstanceRefusesRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		UseHardlinks: true, HardlinkBaseDir: "/links",
