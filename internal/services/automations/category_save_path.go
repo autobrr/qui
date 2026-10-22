@@ -4,12 +4,12 @@
 package automations
 
 import (
-	"regexp"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 const (
@@ -31,16 +31,12 @@ func ruleTemplatesUseSavePaths(ac *models.ActionConditions) bool {
 	return export != nil && export.Enabled && usesSavePathVariable(export.SavePath)
 }
 
-// qbtInvalidPathChars matches Utils::Fs::toValidPath, which qBittorrent applies
-// to a category name it turns into a folder (same as orphanscan's copy).
-var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
-
 // buildCategorySavePaths resolves every category's save path the way
 // qBittorrent's categorySavePath does for Auto TMM. The "" key holds the
-// default save path, for uncategorized torrents. nest is
-// CategoryPathRule.Nest: whether an empty-path subcategory goes under
-// its parent's path or under the default path with its full name.
-func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, nest bool) map[string]string {
+// default save path, for uncategorized torrents. It keeps its own separator
+// handling because qbittorrent.CategorySavePath needs a backend's path dialect,
+// and a move needs no file access.
+func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, rule qbittorrent.CategoryPathRule) map[string]string {
 	resolved := make(map[string]string, len(categories)+1)
 	resolved[""] = trimTrailingSeparators(defaultSavePath)
 
@@ -50,16 +46,15 @@ func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath 
 			return p
 		}
 		p := categories[name].SavePath
-		base := defaultSavePath
 		if p == "" {
-			p = name
-			if i := strings.LastIndex(name, "/"); nest && i >= 0 {
-				base, p = resolve(name[:i]), name[i+1:]
+			base, folder := defaultSavePath, name
+			if i := strings.LastIndex(name, "/"); rule.Nest && i >= 0 {
+				base, folder = resolve(name[:i]), name[i+1:]
 			}
-			p = qbtInvalidPathChars.ReplaceAllString(p, " ")
-		}
-		if !isAbsoluteRemotePath(p) {
-			p = joinRemotePath(base, p)
+			// A folder name is always relative, even "a:b" from a qBittorrent 5.3+ Linux build.
+			p = joinRemotePath(base, qbittorrent.CategoryFolderName(folder, rule))
+		} else if !isAbsoluteRemotePath(p) {
+			p = joinRemotePath(defaultSavePath, p)
 		}
 		p = trimTrailingSeparators(p)
 		// A missing parent still resolves implicitly, but must not become a

@@ -4,20 +4,27 @@
 package automations
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
+
+var nestRule = qbittorrent.CategoryPathRule{Nest: true}
 
 func TestBuildCategorySavePaths(t *testing.T) {
 	tests := []struct {
 		name        string
 		categories  map[string]qbt.Category
 		defaultPath string
-		nest        bool
+		rule        qbittorrent.CategoryPathRule
 		want        map[string]string
 	}{
 		{
@@ -59,7 +66,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 		},
 		{
 			name: "empty subcategory path nests under the parent's resolved path",
-			nest: true,
+			rule: nestRule,
 			categories: map[string]qbt.Category{
 				"tv":        {Name: "tv", SavePath: "/media/tv"},
 				"tv/anime":  {Name: "tv/anime"},
@@ -83,7 +90,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 		},
 		{
 			name: "trailing separators as qBittorrent reports them are dropped",
-			nest: true,
+			rule: nestRule,
 			categories: map[string]qbt.Category{
 				"tvs":       {Name: "tvs", SavePath: "/media/tv/"},
 				"tvs/anime": {Name: "tvs/anime"},
@@ -113,6 +120,38 @@ func TestBuildCategorySavePaths(t *testing.T) {
 			},
 		},
 		{
+			name: "qBittorrent 5.3+ on linux keeps characters a linux file name allows",
+			rule: qbittorrent.CategoryPathRule{Nest: true, FileName: true, Platform: "linux"},
+			categories: map[string]qbt.Category{
+				"tv":     {Name: "tv", SavePath: "/media/tv"},
+				"tv/a:b": {Name: "tv/a:b"},
+				"c:x":    {Name: "c:x"},
+			},
+			defaultPath: "/downloads",
+			want: map[string]string{
+				"":       "/downloads",
+				"tv":     "/media/tv",
+				"tv/a:b": "/media/tv/a:b",
+				"c:x":    "/downloads/c:x",
+			},
+		},
+		{
+			name: "qBittorrent 5.3+ on windows pads reserved characters and device names",
+			rule: qbittorrent.CategoryPathRule{Nest: true, FileName: true, Platform: "windows"},
+			categories: map[string]qbt.Category{
+				"tv":     {Name: "tv", SavePath: `D:\media\tv`},
+				"tv/a:b": {Name: "tv/a:b"},
+				"tv/CON": {Name: "tv/CON"},
+			},
+			defaultPath: `C:\Downloads`,
+			want: map[string]string{
+				"":       `C:\Downloads`,
+				"tv":     `D:\media\tv`,
+				"tv/a:b": `D:\media\tv\a_b`,
+				"tv/CON": `D:\media\tv\CON_1`,
+			},
+		},
+		{
 			name: "windows default save path",
 			categories: map[string]qbt.Category{
 				"movies": {Name: "movies"},
@@ -131,7 +170,7 @@ func TestBuildCategorySavePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, buildCategorySavePaths(tt.categories, tt.defaultPath, tt.nest))
+			require.Equal(t, tt.want, buildCategorySavePaths(tt.categories, tt.defaultPath, tt.rule))
 		})
 	}
 }
@@ -160,7 +199,7 @@ func TestTrimTrailingSeparators(t *testing.T) {
 func TestResolveMovePath_TrailingSeparatorSavePaths(t *testing.T) {
 	evalCtx := &EvalContext{CategorySavePaths: buildCategorySavePaths(map[string]qbt.Category{
 		"tvs": {Name: "tvs", SavePath: "/media/tv/"},
-	}, "/downloads/", true)}
+	}, "/downloads/", nestRule)}
 	for path, want := range map[string]string{
 		"{{.DefaultSavePath}}/x":  "/downloads/x",
 		"{{.CategorySavePath}}/x": "/media/tv/x",
@@ -176,7 +215,7 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 		"tv":       {Name: "tv", SavePath: "/media/tv"},
 		"tv/anime": {Name: "tv/anime"},
 		"a/b":      {Name: "a/b"},
-	}, "/downloads", true)}
+	}, "/downloads", nestRule)}
 
 	tests := []struct {
 		name     string
@@ -206,7 +245,7 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 func TestResolveMovePath_DefaultSavePath(t *testing.T) {
 	evalCtx := &EvalContext{CategorySavePaths: buildCategorySavePaths(map[string]qbt.Category{
 		"tv": {Name: "tv", SavePath: "/media/tv"},
-	}, "/downloads", true)}
+	}, "/downloads", nestRule)}
 
 	for _, category := range []string{"", "tv", "gone"} {
 		torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: category}
@@ -217,6 +256,26 @@ func TestResolveMovePath_DefaultSavePath(t *testing.T) {
 
 	_, ok := renderPathTemplate("{{.DefaultSavePath}}/archive", qbt.Torrent{Hash: "abc"}, nil, &EvalContext{})
 	require.False(t, ok, "map not loaded skips the move")
+}
+
+func TestRenderPathTemplate_LogLevel(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&logs)
+	t.Cleanup(func() { log.Logger = previous })
+
+	evalCtx := &EvalContext{CategorySavePaths: map[string]string{"": "/downloads"}}
+	for path, want := range map[string]string{
+		"{{.CategorySavePath}}/done": "debug",
+		"/data/{{ .Name":             "error",
+	} {
+		logs.Reset()
+		_, ok := renderPathTemplate(path, qbt.Torrent{Hash: "abc", Category: "gone"}, nil, evalCtx)
+		require.False(t, ok, path)
+		var entry struct{ Level string }
+		require.NoError(t, json.Unmarshal(logs.Bytes(), &entry), path)
+		require.Equal(t, want, entry.Level, path)
+	}
 }
 
 func TestNeedsForSavePaths(t *testing.T) {

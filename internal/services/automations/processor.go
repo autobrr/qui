@@ -737,7 +737,12 @@ func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredS
 
 	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker, evalCtx))
 	if err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		// A missing key, such as a deleted category's .CategorySavePath, repeats for every torrent on every run.
+		if errors.As(err, new(template.ExecError)) {
+			log.Debug().Err(err).Str("path", path).Str("hash", torrent.Hash).Msg("failed to render path template")
+		} else {
+			log.Error().Err(err).Str("path", path).Msg("failed to render path template")
+		}
 		return "", false
 	}
 	if resolvedPath == "" {

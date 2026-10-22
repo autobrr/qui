@@ -120,13 +120,18 @@ func CategorySavePath(d fsops.PathDialect, name string, categories map[string]qb
 	if parent == "" {
 		return ""
 	}
+	return d.Join(parent, CategoryFolderName(folder, rule))
+}
+
+// CategoryFolderName is the folder qBittorrent names after a category with no
+// save path: folder is the full name, or only its last segment under rule.Nest.
+func CategoryFolderName(folder string, rule CategoryPathRule) string {
 	switch {
 	case folder == "":
 		// A name that ends in "/" adds no segment.
+		return ""
 	case rule.FileName:
-		folder = toValidFileName(folder, rule.Platform)
-	default:
-		folder = toValidPath(folder)
+		return toValidFileName(folder, rule.Platform)
 	}
-	return d.Join(parent, folder)
+	return toValidPath(folder)
 }

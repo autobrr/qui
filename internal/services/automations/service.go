@@ -5004,7 +5004,7 @@ func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to check subcategory paths for category save paths")
 		return nil
 	}
-	return buildCategorySavePaths(categories, prefs.SavePath, rule.Nest)
+	return buildCategorySavePaths(categories, prefs.SavePath, rule)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) ([]qbt.Torrent, error) {

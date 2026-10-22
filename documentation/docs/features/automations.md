@@ -687,7 +687,7 @@ When you save an enabled rule or start a dry run, qui renders the path for a sam
   - qBittorrent 5.2 and later, or 5.0 and 5.1 with subcategories turned on: the parent category's save path, then the last part of the name. If `tv` saves to `/media/tv`, `tv/anime` becomes `/media/tv/anime`.
   - qBittorrent 4.x, or 5.0 and 5.1 with subcategories turned off: the default save path, then the full name: `/downloads/tv/anime`.
 
-qBittorrent replaces the characters `:?"*<>|` in a category name with a space when it turns the name into a folder. qui does the same.
+qBittorrent changes some characters when it turns a category name into a folder name, and the rule changed in qBittorrent 5.3. Before 5.3, it replaces each run of `:?"*<>|` with a space. From 5.3, it replaces each run of reserved characters with `_`, and the reserved characters depend on the platform qBittorrent was built for. qui uses the rule of the instance's qBittorrent. See [Category folders](../advanced/compatibility.md#category-folders).
 
 Neither variable ends with a separator, so write `{{.CategorySavePath}}/done`. Some qBittorrent versions report save paths with a trailing `/`, and qui drops it. A bare root such as `/` stays as it is.
 
