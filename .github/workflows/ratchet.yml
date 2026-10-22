@@ -26,7 +26,10 @@ jobs:
   # docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
   fix:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    # The claude environment also allows v* tags, for release.yml. Only
+    # admins make those tags, and each new one carries this check, so a
+    # dispatch at a tag never reaches the app key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     environment: claude
     timeout-minutes: 30
     concurrency:
