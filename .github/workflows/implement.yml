@@ -48,9 +48,10 @@ jobs:
           # The agent can read .git/config, so leave no token in it.
           persist-credentials: false
 
-      # The issue must be open, have the ready-for-agent label, have no open
-      # sub-issues, and have no open implementer pull request. The agent has no
-      # GitHub token, so this step saves the issue and its parent for it.
+      # The issue must be open, have the ready-for-agent label, and have no
+      # open sub-issues, open blockers, or open implementer pull request. The
+      # agent has no GitHub token, so this step saves the issue and its parent
+      # for it.
       - name: Check the issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,6 +76,18 @@ jobs:
           children=$(jq -r '[.data.repository.issue.subIssues.nodes[] | select(.state == "OPEN") | "#\(.number)"] | join(", ")' "$RUNNER_TEMP/tree.json")
           if [[ -n "$children" ]]; then
             echo "::error::Issue #$ISSUE has open sub-issues: $children. Start a run on one of them."
+            exit 1
+          fi
+          # A "blocked by" link can name only an issue, so a body line
+          # "Blocked by #N" names a blocking pull request.
+          blockers=$({
+            gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/dependencies/blocked_by" --paginate \
+              --jq '.[] | select(.state == "open") | .html_url'
+            jq -r '.body' .implement/issue.json | grep -oiE 'blocked by #[0-9]+' | grep -oE '[0-9]+' | sort -u |
+              while read -r n; do gh api "repos/$GITHUB_REPOSITORY/issues/$n" --jq 'select(.state == "open") | .html_url'; done
+          } | sort -u | paste -sd, -)
+          if [[ -n "$blockers" ]]; then
+            echo "::error::Issue #$ISSUE is blocked by open work: $blockers"
             exit 1
           fi
           open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json headRefName,url \

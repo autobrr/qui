@@ -30,6 +30,7 @@ The agent cannot change `.github/`, `.claude/`, `docs/agents/`, the `AGENTS.md` 
 The run uses the `/implement` skill from `s0up4200/skills`, at the main branch at the time of the run. The pull request body records the commit. `.github/scripts/implement/prompt.md` changes the steps that need a person:
 
 - The workflow refuses an issue with open sub-issues, so the issue is the spec.
+- The workflow refuses an issue that open work blocks: an open issue in its "blocked by" links, or an open issue or pull request in a `Blocked by #N` line of its body. GitHub accepts only an issue in a "blocked by" link, so the body line is the way to name a pull request.
 - The agent picks its own answer to each departure from the spec, builds it, and lists it in the pull request body.
 - The agent posts no `Brief amendment` comment and runs no field test and no code review. The review bots review the pull request.
 
