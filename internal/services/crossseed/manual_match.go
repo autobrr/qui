@@ -229,11 +229,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	filesByHash := s.batchLoadCandidateFiles(ctx, instanceID, shortlist)
 	trackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	torrentHash := meta.HashV1
-	if torrentHash == "" {
-		torrentHash = meta.HashV2
-	}
-
 	// Effective destination varies only through the target save path (link-mode
 	// base-dir selection); cache per save path.
 	effectiveBySavePath := make(map[string]string)
@@ -241,7 +236,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if path, ok := effectiveBySavePath[torrent.SavePath]; ok {
 			return path
 		}
-		path := s.manualMatchEffectiveSavePath(ctx, instance, torrent.SavePath, torrentHash, meta.Name, trackerDomain, meta.Files)
+		path := s.manualMatchEffectiveSavePath(ctx, instance, torrent.SavePath, meta.Name, trackerDomain, meta.Files)
 		effectiveBySavePath[torrent.SavePath] = path
 		return path
 	}
@@ -346,7 +341,7 @@ func (s *Service) manualMatchEffectiveSavePath(
 	ctx context.Context,
 	instance *models.Instance,
 	targetSavePath string,
-	torrentHash, torrentName, trackerDomain string,
+	torrentName, trackerDomain string,
 	sourceFiles qbt.TorrentFiles,
 ) string {
 	if instance == nil || (!instance.UseReflinks && !instance.UseHardlinks) {
@@ -361,7 +356,10 @@ func (s *Service) manualMatchEffectiveSavePath(
 		treeFiles = append(treeFiles, hardlinktree.TorrentFile{Path: f.Name, Size: f.Size})
 	}
 	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name}
-	return s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, trackerDomain, &CrossSeedRequest{}, treeFiles)
+	// The folder is not reserved here, so the apply can still fall back to
+	// the <name>--<shortHash> folder when another torrent takes the name first.
+	_, destDir := linkDestDir(d, s.linkPresetDir(ctx, d, instance, baseDir, candidate, trackerDomain, &CrossSeedRequest{}), torrentName, treeFiles)
+	return destDir
 }
 
 // previewLinkBaseDir picks the configured link base directory on the same

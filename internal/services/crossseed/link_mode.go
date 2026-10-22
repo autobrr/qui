@@ -400,18 +400,20 @@ func (s *Service) processLinkMode(
 	)
 	err = LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend, func(baseDir string) error {
 		selectedBaseDir = baseDir
-		// Build destination directory based on preset and torrent structure
-		destDir = s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
-		// Build link tree plan with only the linkable files
-		plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
-		if planErr != nil {
-			return planErr
-		}
-		// Materialize only after the coverage and plan gates so clearly invalid
-		// partial matches are skipped before probing filesystem capabilities.
-		var materializeErr error
-		created, materializeErr = mode.materialize(ctx, backend, baseDir, plan)
-		return materializeErr
+		presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
+		var linkErr error
+		created, linkErr = LinkIntoNewFolder(ctx, backend, presetDir, torrentHash, torrentName, candidateTorrentFilesAll, func(dir string) (*fsops.TreeCreateResult, error) {
+			destDir = dir
+			// Build link tree plan with only the linkable files
+			plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+			if planErr != nil {
+				return nil, planErr
+			}
+			// Materialize only after the coverage and plan gates so clearly invalid
+			// partial matches are skipped before probing filesystem capabilities.
+			return mode.materialize(ctx, backend, baseDir, plan)
+		})
+		return linkErr
 	})
 	if errors.Is(err, ErrNoMatchingBaseDir) {
 		log.Warn().
