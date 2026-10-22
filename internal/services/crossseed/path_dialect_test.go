@@ -425,6 +425,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
 				},
 			}
+			s.settler = idleSettler(s.syncManager)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {

@@ -779,6 +779,7 @@ func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) 
 			automationSettingsLoader: defaultSettings(true, 1.0),
 			seasonPackRunStore:       &stubSeasonPackRunStore{},
 		}
+		svc.settler = idleSettler(svc.syncManager)
 		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 
 		resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
@@ -823,6 +824,7 @@ func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) 
 			seasonPackRunStore:       &stubSeasonPackRunStore{},
 			automationSettingsLoader: defaultSettings(true, 1.0),
 		}
+		svc.settler = idleSettler(svc.syncManager)
 		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 
 		resp, err := svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: inst.ID, TorrentData: torrentData, TargetHashes: hashes})

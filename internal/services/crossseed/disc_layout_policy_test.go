@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -164,45 +165,41 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 		matchedTorrent: &matchedTorrent,
 	}
 	service := &Service{
-		syncManager:       mockSync,
-		instanceStore:     &discPolicyInstanceStore{instances: map[int]*models.Instance{instanceID: {ID: instanceID}}},
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 1),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      mockSync,
+		instanceStore:    &discPolicyInstanceStore{instances: map[int]*models.Instance{instanceID: {ID: instanceID}}},
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	startPaused := false
-	result := service.processCrossSeedCandidate(
-		context.Background(),
-		CrossSeedCandidate{
-			InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matchedTorrent}, titleRescue: true,
-		},
-		[]byte("torrent"),
-		newHash,
-		"",
-		newName,
-		&CrossSeedRequest{StartPaused: &startPaused},
-		service.releaseCache.Parse(newName),
-		sourceFiles,
-		nil,
-	)
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, verifyScript(newHash)...)
+		startPaused := false
+		result := service.processCrossSeedCandidate(
+			context.Background(),
+			CrossSeedCandidate{
+				InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matchedTorrent}, titleRescue: true,
+			},
+			[]byte("torrent"),
+			newHash,
+			"",
+			newName,
+			&CrossSeedRequest{StartPaused: &startPaused},
+			service.releaseCache.Parse(newName),
+			sourceFiles,
+			nil,
+		)
 
-	require.True(t, result.Success, result.Message)
-	require.Equal(t, "true", mockSync.addedOptions["paused"])
-	require.Equal(t, "true", mockSync.addedOptions["stopped"])
-	require.Contains(t, mockSync.bulkActions, "recheck:"+newHash)
-	require.NotContains(t, mockSync.bulkActions, "resume:"+newHash)
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes)
-		requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
-	default:
-		require.Fail(t, "expected title rescue to wait for a full recheck")
-	}
+		require.True(t, result.Success, result.Message)
+		require.Equal(t, "true", mockSync.addedOptions["paused"])
+		require.Equal(t, "true", mockSync.addedOptions["stopped"])
+		require.Contains(t, mockSync.bulkActions, "recheck:"+newHash)
+		require.NotContains(t, mockSync.bulkActions, "resume:"+newHash)
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck:" + newHash, "resume:" + newHash}, actions,
+			"a title rescue resumes only after an observed full recheck")
+	})
 }
 
 func (m *discPolicyInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
@@ -274,12 +271,10 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	}
 
 	service := &Service{
-		syncManager:       mockSync,
-		instanceStore:     mockInstances,
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 10),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      mockSync,
+		instanceStore:    mockInstances,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
@@ -297,32 +292,27 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		StartPaused: &startPausedFalse, // Explicitly set to false
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, completeScript(newHash)...)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
-	// Verify the torrent was added successfully
-	require.True(t, result.Success, "Expected success, got: %s", result.Message)
-	require.Equal(t, "added", result.Status)
+		// Verify the torrent was added successfully
+		require.True(t, result.Success, "Expected success, got: %s", result.Message)
+		require.Equal(t, "added", result.Status)
 
-	// Even though StartPaused=false, disc layout policy should force paused
-	assert.Equal(t, "true", mockSync.addedOptions["paused"], "Disc layout should force paused=true")
-	assert.Equal(t, "true", mockSync.addedOptions["stopped"], "Disc layout should force stopped=true")
+		// Even though StartPaused=false, disc layout policy should force paused
+		assert.Equal(t, "true", mockSync.addedOptions["paused"], "Disc layout should force paused=true")
+		assert.Equal(t, "true", mockSync.addedOptions["stopped"], "Disc layout should force stopped=true")
 
-	// Verify the status message mentions disc layout
-	assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
-	assert.Contains(t, result.Message, "BDMV", "Result message should mention the marker")
+		// Verify the status message mentions disc layout
+		assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
+		assert.Contains(t, result.Message, "BDMV", "Result message should mention the marker")
 
-	// Disc-layout torrents should be queued for resume only after a full (100%) recheck
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending)
-		assert.Equal(t, instanceID, pending.instanceID)
-		assert.Equal(t, newHash, pending.hash)
-		if assert.NotNil(t, pending.budgetBytes) {
-			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
-		}
-	default:
-		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
-	}
+		// Disc-layout torrents should be queued for resume only after a full (100%) recheck
+		actions, polled := script.wait()
+		assert.Equal(t, []string{"recheck:" + newHash}, actions, "a disc-layout torrent 1 MiB short of complete stays paused")
+		assert.Equal(t, 2, polled, "the disc-layout torrent is watched until its recheck ends")
+	})
 }
 
 // TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch verifies that disc layout torrents
@@ -375,12 +365,10 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	}
 
 	service := &Service{
-		syncManager:       mockSync,
-		instanceStore:     mockInstances,
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 10),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      mockSync,
+		instanceStore:    mockInstances,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
@@ -399,31 +387,26 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		SkipAutoResume: false, // Would normally allow auto-resume
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, completeScript(newHash)...)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
-	// Verify the torrent was added successfully
-	require.True(t, result.Success, "Expected success, got: %s", result.Message)
+		// Verify the torrent was added successfully
+		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
-	// We should not resume immediately; it must wait for a full recheck.
-	for _, action := range mockSync.bulkActions {
-		assert.NotContains(t, action, "resume", "No resume action should be called for disc layout torrents")
-	}
-
-	// Verify the status message mentions disc layout
-	assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
-	assert.Contains(t, result.Message, "VIDEO_TS", "Result message should mention the marker")
-
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending)
-		assert.Equal(t, instanceID, pending.instanceID)
-		assert.Equal(t, newHash, pending.hash)
-		if assert.NotNil(t, pending.budgetBytes) {
-			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
+		// We should not resume immediately; it must wait for a full recheck.
+		for _, action := range mockSync.bulkActions {
+			assert.NotContains(t, action, "resume", "No resume action should be called for disc layout torrents")
 		}
-	default:
-		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
-	}
+
+		// Verify the status message mentions disc layout
+		assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
+		assert.Contains(t, result.Message, "VIDEO_TS", "Result message should mention the marker")
+
+		actions, polled := script.wait()
+		assert.Equal(t, []string{"recheck:" + newHash}, actions, "a disc-layout torrent 1 MiB short of complete stays paused")
+		assert.Equal(t, 2, polled, "the disc-layout torrent is watched until its recheck ends")
+	})
 }
 
 // TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume verifies that non-disc torrents
@@ -572,12 +555,10 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	}
 
 	service := &Service{
-		syncManager:       mockSync,
-		instanceStore:     mockInstances,
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 10),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      mockSync,
+		instanceStore:    mockInstances,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			return settings, nil
@@ -596,29 +577,24 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		StartPaused: &startPausedFalse,
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, completeScript(newHash)...)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
-	require.True(t, result.Success, "Expected success, got: %s", result.Message)
-	require.Equal(t, "added", result.Status)
-	assert.Equal(t, "true", mockSync.addedOptions["paused"])
-	assert.Equal(t, "true", mockSync.addedOptions["stopped"])
-	assert.Contains(t, result.Message, "link-mode filesystem fallback")
+		require.True(t, result.Success, "Expected success, got: %s", result.Message)
+		require.Equal(t, "added", result.Status)
+		assert.Equal(t, "true", mockSync.addedOptions["paused"])
+		assert.Equal(t, "true", mockSync.addedOptions["stopped"])
+		assert.Contains(t, result.Message, "link-mode filesystem fallback")
 
-	for _, action := range mockSync.bulkActions {
-		assert.NotContains(t, action, "resume", "filesystem fallback must not resume immediately")
-	}
-
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending)
-		assert.Equal(t, instanceID, pending.instanceID)
-		assert.Equal(t, newHash, pending.hash)
-		if assert.NotNil(t, pending.budgetBytes) {
-			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
+		for _, action := range mockSync.bulkActions {
+			assert.NotContains(t, action, "resume", "filesystem fallback must not resume immediately")
 		}
-	default:
-		require.Fail(t, "expected filesystem fallback torrent to be queued for full recheck resume")
-	}
+
+		actions, polled := script.wait()
+		assert.Equal(t, []string{"recheck:" + newHash}, actions, "a filesystem fallback torrent 1 MiB short of complete stays paused")
+		assert.Equal(t, 2, polled, "the filesystem fallback torrent is watched until its recheck ends")
+	})
 }
 
 func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.T) {
@@ -680,12 +656,10 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	}
 
 	service := &Service{
-		syncManager:       mockSync,
-		instanceStore:     mockInstances,
-		stringNormalizer:  stringutils.NewDefaultNormalizer(),
-		releaseCache:      NewReleaseCache(),
-		recheckResumeChan: make(chan *pendingResume, 10),
-		recheckResumeCtx:  context.Background(),
+		syncManager:      mockSync,
+		instanceStore:    mockInstances,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		releaseCache:     NewReleaseCache(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			return settings, nil
@@ -710,10 +684,4 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	require.Contains(t, result.Message, "alignment failed")
 	require.Contains(t, mockSync.bulkActions, "pause:"+newHash)
 	require.NotContains(t, mockSync.bulkActions, "recheck:"+newHash)
-
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.Failf(t, "did not expect failed alignment to queue full recheck resume", "pending=%+v", pending)
-	default:
-	}
 }

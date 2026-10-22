@@ -12,12 +12,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
-	qbsync "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -195,15 +196,10 @@ type alignFakeManager struct {
 	folderRenames [][2]string
 	// renameLog records file and folder renames in a single call-ordered list ("file"/"folder")
 	// so tests can assert files are renamed before the root folder.
-	renameLog   []string
-	bulkActions []string
-	resumeCount int
+	renameLog []string
 	// renameErr, when set, makes every rename fail without touching the file list, simulating a
 	// qBittorrent that does not support renaming (e.g. WebAPI < 2.7.0).
 	renameErr error
-	// recheckErr, when set, makes the "recheck" BulkAction fail, simulating an instance that
-	// briefly could not schedule the post-alignment recheck.
-	recheckErr error
 	// filesErr, when set, makes GetTorrentFilesBatch fail, simulating an instance whose file list
 	// cannot be read so a rename can never be confirmed.
 	filesErr error
@@ -221,22 +217,6 @@ func (m *alignFakeManager) visibleLocked() bool {
 func (m *alignFakeManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addOptions = options
 	return nil, nil
-}
-
-func (m *alignFakeManager) BulkAction(_ context.Context, _ int, _ []string, action string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.bulkActions = append(m.bulkActions, action)
-	if action == "recheck" && m.recheckErr != nil {
-		return m.recheckErr
-	}
-	return nil
-}
-
-func (m *alignFakeManager) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.resumeCount++
 }
 
 func (m *alignFakeManager) RenameTorrentFile(_ context.Context, _ int, _, oldPath, newPath string) error {
@@ -321,7 +301,8 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 			{Name: "Linux.Distribution.Release.01/b.iso", Size: 5},
 		},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -387,11 +368,8 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 	}
 
 	// After aligning, qBittorrent must recheck the data, then resume (StartPaused=false).
-	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
-		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
-	}
-	if manager.resumeCount != 1 {
-		t.Errorf("expected ResumeWhenComplete to be queued once, got %d", manager.resumeCount)
+	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
@@ -408,7 +386,8 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		hash:  "deadbeef04",
 		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -450,11 +429,8 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 	if names := manager.currentNames(); len(names) != 1 || names[0] != "Show S01E01.mkv" {
 		t.Errorf("torrent file not aligned to on-disk name, got %+v", names)
 	}
-	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
-		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
-	}
-	if manager.resumeCount != 1 {
-		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
@@ -473,7 +449,8 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		files:     qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		renameErr: errors.New("qBittorrent instance does not support folder renaming"),
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -510,11 +487,8 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		t.Errorf("expected an error message describing the alignment failure")
 	}
 	// It must be left paused for inspection: no recheck and no resume watcher.
-	if len(manager.bulkActions) != 0 {
-		t.Errorf("expected no recheck when alignment fails, got %+v", manager.bulkActions)
-	}
-	if manager.resumeCount != 0 {
-		t.Errorf("expected no resume watcher when alignment fails, got %d", manager.resumeCount)
+	if len(settle.calls()) != 0 {
+		t.Errorf("expected no recheck when alignment fails, got %+v", settle.calls())
 	}
 }
 
@@ -530,7 +504,8 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		hash:  "deadbeef02",
 		files: qbt.TorrentFiles{{Name: "Release 01/a.iso", Size: 4}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -570,29 +545,22 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 	if manager.addOptions["skip_checking"] != "true" {
 		t.Errorf("expected skip_checking on the fast path, got %+v", manager.addOptions)
 	}
-	if len(manager.bulkActions) != 0 {
-		t.Errorf("expected no recheck on the fast path, got %+v", manager.bulkActions)
+	if len(settle.calls()) != 0 {
+		t.Errorf("expected no recheck on the fast path, got %+v", settle.calls())
 	}
 }
 
-func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(t *testing.T) {
+func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager, *InjectRequest) {
+	t.Helper()
 	searcheeDir := filepath.Join(t.TempDir(), "Release 01")
 	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
-
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
-
-	// Renames succeed, but the post-alignment recheck can't be scheduled. The torrent was added
-	// force-paused for alignment, so a swallowed recheck error would strand it paused while the
-	// run reports success. It must be reported as a failure instead.
 	manager := &alignFakeManager{
-		hash:       "deadbeef05",
-		files:      qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
-		recheckErr: errors.New("instance temporarily unreachable"),
+		hash:  "deadbeef05",
+		files: qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
-
 	req := &InjectRequest{
 		InstanceID:   1,
 		TorrentBytes: []byte("x"),
@@ -613,26 +581,111 @@ func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(
 			IsPerfectMatch: true,
 		},
 		SearchResult: &jackett.SearchResult{Indexer: "Test"},
-		StartPaused:  false,
 	}
+	return instance, manager, req
+}
+
+// A post-alignment recheck that fails is sent again from the settle queue, and
+// the torrent resumes once it is complete.
+func TestInjector_Inject_AlignmentRecheckFailure_IsRetried(t *testing.T) {
+	instance, manager, req := alignmentRecheckRequest(t)
+	synctest.Test(t, func(t *testing.T) {
+		settle := &settleFake{
+			recheckFailures: 1,
+			polls: []*qbt.Torrent{
+				{Hash: "deadbeef05", State: qbt.TorrentStateStoppedUp, Progress: 1},
+				{Hash: "deadbeef05", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+				{Hash: "deadbeef05", State: qbt.TorrentStatePausedUp, Progress: 1},
+				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
+				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
+			},
+		}
+		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+		res, err := injector.Inject(t.Context(), req)
+		if err != nil || !res.Success {
+			t.Fatalf("inject: res=%+v err=%v", res, err)
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := settle.calls(); !slices.Equal(got, []string{"recheck", "recheck", "resume"}) {
+			t.Fatalf("settle calls = %v, want recheck, recheck, resume", got)
+		}
+	})
+}
+
+// The torrent was added force-paused for alignment. When the settle module
+// cannot take it, nothing would recheck or resume it, so the run reports failure.
+func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
+	instance, manager, req := alignmentRecheckRequest(t)
+	settle := &settleFake{}
+	settler := settle.idle()
+	for full := false; !full; {
+		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+	}
+	injector := NewInjector(nil, manager, settler, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	res, err := injector.Inject(context.Background(), req)
 	if err != nil {
 		t.Fatalf("inject returned error: %v", err)
 	}
-	if res.Success {
-		t.Fatalf("expected Success=false when the post-alignment recheck fails, got %+v", res)
+	if res.Success || res.ErrorMessage == "" {
+		t.Fatalf("expected a reported failure when the settle queue is full, got %+v", res)
 	}
-	if res.ErrorMessage == "" {
-		t.Errorf("expected an error message describing the alignment failure")
-	}
-	// The renames landed (alignment itself worked)...
 	if len(manager.folderRenames) != 1 {
 		t.Errorf("expected the folder rename to have been applied, got %+v", manager.folderRenames)
 	}
-	// ...the recheck was attempted and failed, so no resume watcher must be queued.
-	if manager.resumeCount != 0 {
-		t.Errorf("expected no resume watcher when the recheck fails, got %d", manager.resumeCount)
+}
+
+// A regular add whose settle queue is full fails only when it was added paused:
+// nothing would recheck or resume it. A running partial add downloads without the module.
+func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
+	runningPartial := func(t *testing.T) (*models.Instance, *InjectRequest) {
+		t.Helper()
+		instance, req := discLayoutRequest(t)
+		req.ParsedTorrent.Files = []TorrentFile{
+			{Path: "Movie/movie.mkv", Size: 4},
+			{Path: "Movie/extras.nfo", Size: 1, Offset: 4},
+		}
+		req.Searchee.Files = []*ScannedFile{{Path: "/tmp/movie.mkv", RelPath: "movie.mkv", Size: 4}}
+		req.MatchResult = &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: "/tmp/movie.mkv", RelPath: "movie.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Movie/movie.mkv", Size: 4},
+			}},
+			UnmatchedTorrentFiles: []TorrentFile{{Path: "Movie/extras.nfo", Size: 1}},
+			IsMatch:               true,
+			IsPartialMatch:        true,
+		}
+		return instance, req
+	}
+
+	tests := []struct {
+		name        string
+		request     func(*testing.T) (*models.Instance, *InjectRequest)
+		wantSuccess bool
+	}{
+		{name: "disc layout added paused reports failure", request: discLayoutRequest},
+		{name: "running partial succeeds", request: runningPartial, wantSuccess: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance, req := tt.request(t)
+			settle := &settleFake{}
+			settler := settle.idle()
+			for full := false; !full; {
+				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+			}
+			injector := NewInjector(nil, &recordingTorrentManager{}, settler, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+			res, err := injector.Inject(t.Context(), req)
+			if err != nil {
+				t.Fatalf("inject returned error: %v", err)
+			}
+			if res.Success != tt.wantSuccess || res.Success == (res.ErrorMessage != "") {
+				t.Fatalf("result = %+v, want success %v", res, tt.wantSuccess)
+			}
+		})
 	}
 }
 
@@ -651,7 +704,8 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		hash:  "deadbeef07",
 		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -701,11 +755,8 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 	if names := manager.currentNames(); len(names) != 1 || names[0] != "Release Folder/Movie (2020).mkv" {
 		t.Errorf("torrent file not aligned to on-disk layout, got %+v", names)
 	}
-	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
-		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
-	}
-	if manager.resumeCount != 1 {
-		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
@@ -724,7 +775,8 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		// qBittorrent stores the root-stripped path after a NoSubfolder add.
 		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -772,11 +824,8 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 	if names := manager.currentNames(); len(names) != 1 || names[0] != "Movie (2020).mkv" {
 		t.Errorf("torrent file not aligned to on-disk name, got %+v", names)
 	}
-	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
-		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
-	}
-	if manager.resumeCount != 1 {
-		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
@@ -794,7 +843,8 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		hash:  "deadbeef10",
 		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -836,8 +886,8 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 	if len(manager.fileRenames) != 0 || len(manager.folderRenames) != 0 {
 		t.Errorf("expected no renames, got files=%+v folders=%+v", manager.fileRenames, manager.folderRenames)
 	}
-	if len(manager.bulkActions) != 0 {
-		t.Errorf("expected no recheck on the fast path, got %+v", manager.bulkActions)
+	if len(settle.calls()) != 0 {
+		t.Errorf("expected no recheck on the fast path, got %+v", settle.calls())
 	}
 }
 
@@ -847,7 +897,8 @@ func TestInjector_waitForTorrentFiles_NeverVisibleFails(t *testing.T) {
 		files:             qbt.TorrentFiles{{Name: "a.iso", Size: 4}},
 		visibleAfterCalls: 1 << 30, // never becomes visible
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -873,7 +924,8 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		files:             qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		visibleAfterCalls: 5, // more polls than renameTorrentPath alone would attempt
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -908,8 +960,8 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 	if len(manager.folderRenames) != 1 || manager.folderRenames[0] != [2]string{"Linux.Distribution.Release.01", "Release 01"} {
 		t.Fatalf("expected folder rename after the torrent became visible, got %+v", manager.folderRenames)
 	}
-	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
-		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
+	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
@@ -922,7 +974,8 @@ func TestInjector_renameTorrentPath_UnconfirmedRenameFails(t *testing.T) {
 		files:    qbt.TorrentFiles{{Name: "Some.Release/a.mkv", Size: 4}},
 		filesErr: errors.New("files temporarily unavailable"),
 	}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil, testBackendPool(&models.Instance{ID: 1}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

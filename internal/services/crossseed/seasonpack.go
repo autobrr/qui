@@ -503,20 +503,25 @@ func (s *Service) addSeasonPack(
 			}
 		}
 		recheckHashes := collectHashes(prep.meta)
-		switch {
-		case len(recheckHashes) == 0:
+		if len(recheckHashes) == 0 {
 			message = "torrent added paused; missing files require manual recheck"
-		case s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, recheckHashes, "recheck") != nil:
-			message = "torrent added paused; automatic recheck failed"
-		default:
-			activeHash := seasonPackActiveHash(prep.meta)
-			if activeHash == "" {
-				message = "torrent added paused; automatic resume could not be queued"
-			} else if s.recheckResumeChan == nil {
-				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths, blockedRun); err != nil {
+		} else {
+			outcome := s.settler.Settle(ctx, AddedTorrent{
+				InstanceID:    inst.ID,
+				Hashes:        recheckHashes,
+				LinkedPaths:   linkedPaths,
+				Gate:          GateThreshold,
+				Threshold:     resumeThreshold,
+				SeasonPackRun: blockedRun,
+			})
+			switch {
+			case outcome.QueueFull && outcome.RecheckFailed:
+				message = "torrent added paused; automatic recheck failed"
+			case outcome.QueueFull:
 				message = "torrent added paused; automatic resume queue is full"
-			} else {
+			case outcome.RecheckFailed:
+				message = "torrent added paused; automatic recheck failed, retry queued"
+			default:
 				message = "torrent added paused; recheck queued"
 			}
 		}
@@ -1797,13 +1802,6 @@ func collectHashes(meta TorrentMetadata) []string {
 		hashes = append(hashes, meta.HashV2)
 	}
 	return hashes
-}
-
-func seasonPackActiveHash(meta TorrentMetadata) string {
-	if meta.HashV1 != "" {
-		return meta.HashV1
-	}
-	return meta.HashV2
 }
 
 // buildCheckResponse constructs the check response from computed matches.

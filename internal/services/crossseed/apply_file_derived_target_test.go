@@ -366,6 +366,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	startPaused := true
 	result := service.processCrossSeedCandidate(
 		context.Background(),
@@ -450,6 +451,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	incomingView := service.readApplyTarget(rawEpisode, incomingFiles, true)
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
@@ -647,6 +649,7 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(tt.torrentBytes),
@@ -718,6 +721,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 			decision := tt.decision
 			decision.SourceInstanceID = instanceID
 			decision.SourceHash = sourceHash
