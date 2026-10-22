@@ -165,30 +165,26 @@ func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPo
 }
 
 // seasonFolderRelease reads a name that holds only a season, such as
-// "Season 2", with the identity of its largest content file: the files carry
-// the title, year, and tags that the folder name lacks. A sample or a bonus
-// video is not content, because it names no episode. The name keeps its season
-// pack shape, and a largest file of another season lends nothing.
+// "Season 2", with the identity of its largest file of the same season: the
+// files carry the title, year, and tags that the folder name lacks. A bonus
+// video names no season, and a special or a file of another season names
+// another one, so they lend nothing. The name keeps its season pack shape.
 func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
 	if parsed.Title != "" || parsed.Series == 0 || parsed.Episode != 0 {
 		return parsed
 	}
-	normalizer := s.matcher().normalizer()
-	var largest *qbt.TorrentFile
-	for i := range files {
-		if !shouldIgnoreFile(files[i].Name, normalizer) && (largest == nil || files[i].Size > largest.Size) {
-			largest = &files[i]
+	var fileRelease *rls.Release
+	var largestSize int64
+	for _, file := range files {
+		if fileRelease != nil && file.Size <= largestSize {
+			continue
+		}
+		release := s.matcher().parseFileRelease(path.Base(file.Name))
+		if release.Title != "" && release.Series == parsed.Series {
+			fileRelease, largestSize = release, file.Size
 		}
 	}
-	if largest == nil {
-		// The ignore words also match show names, such as "Trailer Park Boys".
-		largest = FindLargestFile(files)
-	}
-	if largest == nil {
-		return parsed
-	}
-	fileRelease := s.matcher().parseFileRelease(path.Base(largest.Name))
-	if fileRelease.Title == "" || fileRelease.Series != parsed.Series {
+	if fileRelease == nil {
 		return parsed
 	}
 	borrowed := *fileRelease

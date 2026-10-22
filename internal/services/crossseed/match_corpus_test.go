@@ -128,6 +128,13 @@ func corpusPackWithBonus(dir string) qbt.TorrentFiles {
 	return append(files, qbt.TorrentFile{Name: dir + "/Extras/Behind the Scenes (1080p).mkv", Size: 2 * corpusEpisodeSize})
 }
 
+// corpusPackWithSpecial is a pack of ten episodes and a season 0 special that
+// is larger than each episode.
+func corpusPackWithSpecial(dir string) qbt.TorrentFiles {
+	files := corpusPackFiles(dir, "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+	return append(files, qbt.TorrentFile{Name: dir + "/Kaiju Squad (2020) - S00E01 - Special (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv", Size: 3 * corpusEpisodeSize})
+}
+
 // corpusEpisodeWithNFO is an episode with an NFO file, so its total size is not
 // equal to the bare episode. Local matches then cannot rescue the title, and
 // the name rules alone decide.
@@ -802,6 +809,24 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusPackSize + 2*corpusEpisodeSize,
 		sourceFiles:    corpusPackWithBonus("Season 2"),
 		candidateFiles: corpusPackWithBonus("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+		},
+	},
+	{
+		// The special is the largest file, and it names season 0, so the Read
+		// release takes its identity from the largest episode of season 2.
+		name:           "season folder pack with a large special against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize + 3*corpusEpisodeSize,
+		candidateSize:  corpusPackSize + 3*corpusEpisodeSize,
+		sourceFiles:    corpusPackWithSpecial("Season 2"),
+		candidateFiles: corpusPackWithSpecial("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
 			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
