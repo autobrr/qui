@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package remote implements fsops.Backend over SFTP, on the pooled SSH
-// connection the instance's stored credentials open. Reflinks and file
-// identity have no sftp operation and answer fsops.ErrUnsupported; hardlinks
-// need the server to advertise hardlink@openssh.com. Remote paths are
+// connection the instance's stored credentials open. Reflinks have no sftp
+// operation and answer fsops.ErrUnsupported, and hardlinks need the server to
+// advertise hardlink@openssh.com. File identity needs the exec tier, where
+// GNU stat and find run as remote commands. Remote paths are
 // slash-delimited, so this package uses path and never path/filepath: the
 // separator belongs to the remote host, not to ours.
 package remote
@@ -28,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/sshpool"
+	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -43,7 +45,10 @@ func New(pool *sshpool.Pool, inst *models.Instance) *Backend {
 	return &Backend{pool: pool, inst: inst}
 }
 
-var _ fsops.Backend = (*Backend)(nil)
+var (
+	_ fsops.Backend     = (*Backend)(nil)
+	_ fsops.BatchStater = (*Backend)(nil)
+)
 
 // errNoIdentity is what sftp cannot answer: its attrs carry no device or inode
 // number, so hardlink identity degrades to zero FileID plus this error, which
@@ -79,7 +84,9 @@ func (b *Backend) Stat(ctx context.Context, p string) (*fsops.LstatInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, true)
+	return info, nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
@@ -91,7 +98,9 @@ func (b *Backend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error)
 	if err != nil {
 		return nil, err
 	}
-	return lstatInfo(fi, p), nil
+	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
+	b.setIdentity(ctx, info, false)
+	return info, nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, error) {
@@ -133,7 +142,14 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		if opts.Skip(path.Base(root), root, fi.IsDir(), true) {
 			return
 		}
-		if !send(ctx, ch, walkEntry(fi, root, ".", opts.WantFileID)) || !fi.IsDir() {
+		entry := walkEntry(fi, root, ".", opts.WantFileID)
+		if opts.WantFileID && fi.Mode().IsRegular() {
+			b.setIdentity(ctx, &entry.LstatInfo, false)
+		}
+		if !send(ctx, ch, entry) || !fi.IsDir() {
+			return
+		}
+		if b.execTier() && b.walkExec(ctx, ch, root, opts) {
 			return
 		}
 		b.walk(ctx, ch, root, opts)
@@ -305,10 +321,18 @@ func (w *walker) list(job walkJob) {
 // lostConnection tells a request that failed because the transport went away
 // from one the server refused: pkg/sftp answers every request in flight with
 // ErrSSHFxConnectionLost when its connection closes, and a closed socket
-// surfaces as net.ErrClosed. io.EOF is not here, because pkg/sftp also returns
-// it for a server's SSH_FX_EOF answer. readDirError is where it counts.
+// surfaces as net.ErrClosed. A request sent before pkg/sftp sees the close
+// fails with "failed to send packet" around the cause: a socket error, or the
+// io.EOF of the closed channel. A server's SSH_FX_EOF answer is the bare
+// io.EOF, so only a wrapped one counts here. readDirError takes both.
 func lostConnection(err error) bool {
-	return errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed)
+	if errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		return true
+	}
+	return errors.Is(err, io.EOF) && errors.Unwrap(err) != nil
 }
 
 // poolSentinels are the answers sshpool gives on purpose. They say why the
@@ -391,6 +415,9 @@ func statfsResult(stat *sftp.StatVFS) *fsops.StatfsResult {
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
+	if b.execTier() {
+		return b.sameFilesystemExec(ctx, p1, p2)
+	}
 	client, err := b.client(ctx)
 	if err != nil {
 		return false, err
@@ -510,7 +537,7 @@ func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions
 //
 // ponytail: serial, one extra round trip per entry on top of the listing;
 // nothing reachable in this release removes a large tree, and rm -rf -- over
-// exec (#2726) is the upgrade when one does.
+// exec is the upgrade when one does.
 func removeDir(ctx context.Context, client *sftp.Client, dir string) error {
 	entries, err := readDir(ctx, client, dir)
 	if err != nil {
@@ -598,11 +625,11 @@ func lstat(ctx context.Context, client *sftp.Client, p string) (os.FileInfo, err
 	return fi, nil
 }
 
-// HardlinkTree mirrors hardlinktree.Create with one difference: a target that
-// already exists always fails. Locally a target that is already a link to the
-// source is skipped; sftp attrs carry no inode, so this backend cannot tell
-// that link from a stranger's file and refuses rather than guesses. A retry
-// after a crash therefore needs the partial tree removed by hand.
+// HardlinkTree mirrors hardlinktree.Create. A target that already exists is
+// skipped when targetIsSource can prove it is a link to the source, which
+// needs the exec tier; the sftp tier refuses it, since its attrs carry no
+// inode to tell that link from a stranger's file (fsops.Backend states the
+// contract).
 func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -622,7 +649,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	// half made because the job was cancelled is still ours to take back.
 	fail := func(err error) (*fsops.TreeCreateResult, error) {
 		if rollbackErr := b.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
-			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
+			return nil, fmt.Errorf("%w (%w: %w)", err, hardlinktree.ErrRollbackFailed, rollbackErr)
 		}
 		return nil, err
 	}
@@ -642,18 +669,119 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 		// Link first: an existing target makes it fail, and the lstat that
 		// names the cause is paid only then.
 		if err := awaitMutation(ctx, func() error { return client.Link(fp.SourcePath, fp.TargetPath) }); err != nil {
-			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr == nil {
-				return fail(fmt.Errorf("target already exists: %s", fp.TargetPath))
+			if _, statErr := lstat(ctx, client, fp.TargetPath); statErr != nil {
+				// Only an absent target says the Link error is the whole
+				// story; a lost connection or a cancel here is the cause.
+				if !errors.Is(statErr, fs.ErrNotExist) {
+					return fail(statErr)
+				}
+				return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
 			}
-			return fail(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, requestError("link", fp.TargetPath, err)))
+			// ponytail: one stat per collision. A retry that collides on every
+			// file of a season pack pays a round trip each; BatchStater is the
+			// upgrade if that is ever measured (#2971).
+			same, err := b.targetIsSource(ctx, fp)
+			if err != nil {
+				return fail(err)
+			}
+			if !same {
+				return fail(fmt.Errorf("%w: %s", hardlinktree.ErrTargetExists, fp.TargetPath))
+			}
+			// Not recorded: the link belongs to whoever made it first, so a
+			// later failure in this plan never rolls it back.
+			created.SkippedExists++
+		} else {
+			created.Files = append(created.Files, fp.TargetPath)
+			created.Created++
 		}
-		created.Files = append(created.Files, fp.TargetPath)
-		created.Created++
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
 	}
 	return created, nil
+}
+
+// targetIsSource reports whether fp's target is already the link that Link
+// would make, from one stat over both paths on the exec tier. The tier is the
+// live connection's, not the stored row's: the probe writes the row, never
+// this backend's copy of it, so the row lags a key that just gained a shell
+// and would refuse the first reuse after it. The sftp tier answers no: its
+// attrs carry no inode, so the caller keeps the refusal. Any other error is
+// the caller's to report only when it says nothing about the files, a lost
+// connection or a cancelled job; any other failure refuses.
+//
+// The target is read without following, so a symlink planted there reports
+// its own inode and never passes. The source is matched both ways: link(2)
+// follows a symlinked source on macOS and not on Linux, so the link an
+// earlier run made carries either identity depending on the host. The
+// followed read costs a second session and runs only when the source is a
+// symlink (#3237).
+func (b *Backend) targetIsSource(ctx context.Context, fp hardlinktree.FilePlan) (bool, error) {
+	conn, err := b.exec(ctx)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	ids, types, err := identities(ctx, conn, fp.TargetPath, false, fp.TargetPath, fp.SourcePath)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	if fsops.SameFile(ids[0], b.inst, ids[1], b.inst) {
+		return true, nil
+	}
+	if types[1] != "symbolic link" {
+		return false, nil
+	}
+	followed, _, err := identities(ctx, conn, fp.TargetPath, true, fp.SourcePath)
+	if err != nil {
+		return false, transient(ctx, err)
+	}
+	return fsops.SameFile(ids[0], b.inst, followed[0], b.inst), nil
+}
+
+// transient returns err when it says nothing about the files, because the
+// job was cancelled or the connection was lost, and nil for any other
+// failure. A stat that fails for a source that has gone, or a tier without
+// exec, then reads as "not the source" and the caller refuses with
+// ErrTargetExists, as develop did on both tiers, rather than failing with an
+// error that link mode would turn into a regular add (#2942).
+func transient(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, fsops.ErrConnectionLost) {
+		return err
+	}
+	return nil
+}
+
+// identities stats paths in one command and returns each one's identity and
+// file type. Errors name errPath, the path the caller is deciding about.
+func identities(ctx context.Context, conn *sshpool.Conn, errPath string, follow bool, paths ...string) ([]hardlink.FileID, []string, error) {
+	options := []string{"--printf", `%d %i %h %F\0`}
+	if follow {
+		options = append([]string{"-L"}, options...)
+	}
+	out, err := output(ctx, conn, sshpool.Command{Name: "stat", Options: options, Paths: paths})
+	if err != nil {
+		return nil, nil, pathError("stat", errPath, err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(lines) != len(paths) {
+		return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
+	}
+	ids := make([]hardlink.FileID, len(lines))
+	types := make([]string, len(lines))
+	for i, line := range lines {
+		fields := strings.SplitN(line, " ", 4)
+		if len(fields) != 4 {
+			return nil, nil, pathError("stat", errPath, fmt.Errorf("unexpected stat output %q", out))
+		}
+		if ids[i], _, err = parseIdentity(fields[0], fields[1], fields[2]); err != nil {
+			return nil, nil, pathError("stat", errPath, err)
+		}
+		types[i] = fields[3]
+	}
+	return ids, types, nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
@@ -766,14 +894,6 @@ func fileInfo(fi os.FileInfo, p string) fsops.FileInfo {
 		IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
 		Mode:      fi.Mode(),
 	}
-}
-
-func lstatInfo(fi os.FileInfo, p string) *fsops.LstatInfo {
-	info := &fsops.LstatInfo{FileInfo: fileInfo(fi, p)}
-	if fi.Mode().IsRegular() || fi.IsDir() {
-		info.FileIDErr = errNoIdentity
-	}
-	return info
 }
 
 func walkEntry(fi os.FileInfo, p, rel string, wantFileID bool) fsops.WalkEntry {

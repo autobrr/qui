@@ -210,7 +210,7 @@
     "reflinkDescription": "Criar clones com reflink. Mais seguro para arquivos extras/ausentes, atenua melhor a corrupção.",
     "baseDirectories": "Diretórios base",
     "baseDirectoriesPlaceholder": "/caminho/para/crossseed-data, /outro/caminho/para/crossseed-data",
-    "baseDirectoriesDescription": "Caminhos separados por vírgula. O primeiro diretório no mesmo sistema de arquivos da fonte será usado.",
+    "baseDirectoriesDescription": "Caminhos separados por vírgula. O qui usa um diretório no mesmo sistema de arquivos da fonte e tenta primeiro aquele que compartilha com ela o prefixo de caminho mais longo. Após um erro de link entre dispositivos, ele tenta o próximo.",
     "directoryOrganization": "Organização do diretório",
     "flat": "Plano (tudo no diretório base)",
     "byTracker": "Por Tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "Falha ao repetir arquivos sem correspondência: {{error}}",
       "resetFailed": "Falha ao redefinir arquivos: {{error}}"
     },
+    "webhookScanStatus": "Varredura por webhook · {{status}}",
     "statusLabels": {
       "queued": "Na fila",
       "scanning": "Varrendo",

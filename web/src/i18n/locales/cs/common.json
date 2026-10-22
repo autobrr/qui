@@ -191,8 +191,7 @@
     "trigger": "Více informací"
   },
   "numberInput": {
-    "unlimited": "Neomezené",
-    "useUnlimited": " (použij -1 pro neomezené)"
+    "unlimited": "Neomezené"
   },
   "dateTime": {
     "na": "N/A",

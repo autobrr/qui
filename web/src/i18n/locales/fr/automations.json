@@ -222,7 +222,8 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Nécessite qBittorrent 5.1+",
-      "localFilesystemAccess": "Nécessite l'accès au système de fichiers local"
+      "localFilesystemAccess": "Nécessite l'accès au système de fichiers local",
+      "remoteInstance": "Non disponible sur les instances distantes"
     }
   }
 }

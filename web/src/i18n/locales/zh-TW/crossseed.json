@@ -207,7 +207,7 @@
     "reflinkDescription": "建立引用連結克隆。對額外/缺失檔案更安全，最佳防損壞方案。",
     "baseDirectories": "基礎目錄",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "以逗號分隔的路徑。將使用與原始檔位於同一檔案系統的第一個目錄。",
+    "baseDirectoriesDescription": "以逗號分隔的路徑。qui 會使用與原始檔位於同一檔案系統的目錄，並優先嘗試與原始檔共用最長路徑字首的目錄。遇到跨裝置連結錯誤後，會嘗試下一個目錄。",
     "directoryOrganization": "目錄組織方式",
     "flat": "扁平（全部放在基礎目錄中）",
     "byTracker": "按 Tracker",
@@ -544,6 +544,7 @@
       "requeueFailed": "重試未匹配檔案失敗：{{error}}",
       "resetFailed": "重置檔案失敗：{{error}}"
     },
+    "webhookScanStatus": "Webhook 掃描 · {{status}}",
     "statusLabels": {
       "queued": "排隊中",
       "scanning": "掃描中",

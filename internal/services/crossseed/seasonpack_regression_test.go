@@ -507,6 +507,7 @@ func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t
 func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	baseDir := t.TempDir()
+	mediaDir := t.TempDir()
 	inst := &models.Instance{
 		ID:                       1,
 		Name:                     "Test",
@@ -519,10 +520,10 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	baseSM := newMultiFakeSyncManager(
 		map[int][]qbt.Torrent{
 			inst.ID: {
-				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/e01.mkv", Progress: 1.0},
-				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/e02.mkv", Progress: 1.0},
-				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/e03.mkv", Progress: 1.0},
-				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/e04.mkv", Progress: 1.0},
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "e01.mkv"), Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "e02.mkv"), Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "e03.mkv"), Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "e04.mkv"), Progress: 1.0},
 			},
 		},
 		map[int]*models.Instance{inst.ID: inst},

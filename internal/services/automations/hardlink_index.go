@@ -118,7 +118,8 @@ type hardlinkBuildState struct {
 }
 
 // key binds a FileID this instance reported to the filesystem it came from.
-func (state *hardlinkBuildState) key(id hardlink.FileID) fsops.FileKey {
+// ok is false for an ID that names no file; see fsops.FileKeyOf.
+func (state *hardlinkBuildState) key(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, state.instance)
 }
 
@@ -323,7 +324,10 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 
 	for _, info := range torrentInfoByHash {
 		for _, lf := range info.linkedFiles {
-			key := fsops.FileKeyOf(lf.fileID, instance)
+			key, ok := fsops.FileKeyOf(lf.fileID, instance)
+			if !ok {
+				continue
+			}
 			tracker := globalFileIDMap[key]
 			if tracker == nil {
 				tracker = &fileIDTracker{nlink: lf.nlink}
@@ -390,7 +394,9 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 	}
 	for _, info := range scanned {
 		for _, fileID := range info.fileIDs {
-			staleFileIDs[previous.key(fileID)] = struct{}{}
+			if key, ok := previous.key(fileID); ok {
+				staleFileIDs[key] = struct{}{}
+			}
 		}
 	}
 
@@ -461,7 +467,8 @@ func scopeAfterRescan(info *torrentFileInfo, instance *models.Instance, fileIDMa
 	hasInside, hasOutside := false, false
 	for _, lf := range info.linkedFiles {
 		uniquePaths := 1
-		if tracker := fileIDMap[fsops.FileKeyOf(lf.fileID, instance)]; tracker != nil && tracker.uniquePathCount > 1 {
+		key, ok := fsops.FileKeyOf(lf.fileID, instance)
+		if tracker := fileIDMap[key]; ok && tracker != nil && tracker.uniquePathCount > 1 {
 			uniquePaths = tracker.uniquePathCount
 		}
 
@@ -529,7 +536,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
-	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
 			Msg("automations: failed to get backend to re-read delete candidates, holding the deletions")
@@ -612,7 +619,9 @@ func planTorrentRescan(previous *hardlinkBuildState, torrentByHash map[string]qb
 			rescan[hash] = struct{}{}
 		}
 		for _, fileID := range info.fileIDs {
-			staleFileIDs[previous.key(fileID)] = struct{}{}
+			if key, ok := previous.key(fileID); ok {
+				staleFileIDs[key] = struct{}{}
+			}
 		}
 	}
 
@@ -644,7 +653,8 @@ func planSharingRescan(
 			continue
 		}
 		for _, fileID := range info.fileIDs {
-			if _, stale := staleFileIDs[previous.key(fileID)]; stale {
+			key, ok := previous.key(fileID)
+			if _, stale := staleFileIDs[key]; ok && stale {
 				sharing[hash] = struct{}{}
 				break
 			}
@@ -671,7 +681,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 		return nil, false
 	}
 
-	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	backend, _, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
 			Msg("automations: failed to get backend for hardlink index update, falling back to a full build")
@@ -725,10 +735,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	// The caller admitted the instance from a snapshot. sftp reports no inode
-	// numbers, so a build over it would only cost a stat per file and cache an
-	// index with every scope unknown.
-	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityIdentity)
+	// The caller admitted the instance from a snapshot. Delete rules act on this
+	// index, so if the instance left local mode since, a remote host's link
+	// counts must not build it.
+	backend, instance, err := s.backendPool.Require(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
 		index.builtAt = time.Now()
@@ -1087,6 +1097,7 @@ func (idx *HardlinkIndex) finalizeCrossScope(instanceID int, reason string) {
 }
 
 // listCrossScopeInstances returns IDs of other active instances with trusted file identity.
+// A remote identity never matches a local file key, so a remote instance is left out.
 func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) ([]int, error) {
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
@@ -1094,7 +1105,7 @@ func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) (
 	}
 	var result []int
 	for _, inst := range instances {
-		if inst.ID != instanceID && inst.IsActive && models.FilesystemCapabilitiesOf(inst).Identity {
+		if inst.ID != instanceID && inst.IsActive && models.FilesystemCapabilitiesOf(inst).TrustedIdentity {
 			result = append(result, inst.ID)
 		}
 	}
@@ -1132,7 +1143,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
-		backend, otherInstance, backendErr := s.backendPool.Require(ctx, otherID, models.CapabilityIdentity)
+		backend, otherInstance, backendErr := s.backendPool.Require(ctx, otherID, models.CapabilityTrustedIdentity)
 		if backendErr != nil {
 			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
 				Msg("automations: failed to get backend for cross-scope scan, skipping instance")
@@ -1209,9 +1220,9 @@ func (s *Service) scanOtherInstancesForDeficits(
 					continue
 				}
 
-				key := fsops.FileKeyOf(fileID, otherInstance)
+				key, ok := fsops.FileKeyOf(fileID, otherInstance)
 				tracker, isDeficit := deficitSet[key]
-				if !isDeficit {
+				if !ok || !isDeficit {
 					continue
 				}
 
@@ -1254,8 +1265,9 @@ func computeScopeMap(state *hardlinkBuildState) map[string]string {
 func scopeForTorrent(info *torrentFileInfo, state *hardlinkBuildState) string {
 	hasInside, hasOutside := false, false
 	for _, fileID := range info.fileIDs {
-		tracker := state.globalFileIDMap[state.key(fileID)]
-		if tracker == nil || tracker.nlink <= 1 {
+		key, ok := state.key(fileID)
+		tracker := state.globalFileIDMap[key]
+		if !ok || tracker == nil || tracker.nlink <= 1 {
 			continue // Not hard-linked
 		}
 		if tracker.uniquePathCount > 1 {

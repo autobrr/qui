@@ -210,7 +210,7 @@
     "reflinkDescription": "Crée des clones en reflink. Plus sûr pour les fichiers en plus/manquants, atténue mieux la corruption.",
     "baseDirectories": "Répertoires de base",
     "baseDirectoriesPlaceholder": "/chemin/vers/crossseed-data, /autre/chemin/vers/crossseed",
-    "baseDirectoriesDescription": "Chemins séparés par des virgules. Le premier répertoire sur le même système de fichiers que la source sera utilisé.",
+    "baseDirectoriesDescription": "Chemins séparés par des virgules. qui utilise un répertoire sur le même système de fichiers que la source, en essayant d'abord celui qui partage avec elle le plus long préfixe de chemin. Après une erreur de lien entre périphériques, il essaie le suivant.",
     "directoryOrganization": "Organisation des répertoires",
     "flat": "Plat (tout dans le répertoire de base)",
     "byTracker": "Par Tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "Échec de la relance des fichiers sans correspondance : {{error}}",
       "resetFailed": "Échec de la réinitialisation : {{error}}"
     },
+    "webhookScanStatus": "Analyse webhook · {{status}}",
     "statusLabels": {
       "queued": "En attente",
       "scanning": "En analyse",

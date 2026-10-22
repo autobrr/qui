@@ -1029,7 +1029,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			}
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
-				tt.downloadedName, tt.existingName, downloadedRelease, existingRelease, existingFiles,
+				downloadedRelease, existingRelease, existingFiles,
 			), "the fixture must pass file validation once the release gate is replayed")
 
 			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
@@ -1249,7 +1249,7 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 
-	ok, reason := service.matcher().validateGroupSiteAndChecksum(&source, &candidate, false)
+	ok, reason := service.matcher().validateGroupSiteAndChecksum(input.Source, input.Candidate, false)
 	require.False(t, ok, "strict matcher must keep rejecting the missing group")
 	require.Equal(t, "group mismatch", reason)
 }
@@ -1262,14 +1262,14 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 	require.NotEmpty(t, source.Sum)
 	require.Empty(t, bare.Sum)
 
-	ok, reason := service.matcher().releasesMatchExceptTitleWithReason(&source, &bare, false)
+	ok, reason := service.matcher().releasesMatchExceptTitleWithReason(namedRelease{release: &source}, namedRelease{release: &bare}, false)
 	require.True(t, ok, "reason: %s", reason)
 
-	ok, reason = service.matcher().releasesMatchExceptTitleWithReason(&source, &conflicting, false)
+	ok, reason = service.matcher().releasesMatchExceptTitleWithReason(namedRelease{release: &source}, namedRelease{release: &conflicting}, false)
 	require.False(t, ok)
 	require.Equal(t, "checksum mismatch", reason)
 
-	ok, reason = service.matcher().validateGroupSiteAndChecksum(&source, &bare, false)
+	ok, reason = service.matcher().validateGroupSiteAndChecksum(namedRelease{release: &source}, namedRelease{release: &bare}, false)
 	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
 	require.Equal(t, "checksum mismatch", reason)
 }

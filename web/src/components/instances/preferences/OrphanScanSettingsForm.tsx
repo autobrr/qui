@@ -25,6 +25,8 @@ interface OrphanScanSettingsFormProps {
   instanceId: number
   /** The instance is remote, where deletion and auto-cleanup do not run yet. */
   isRemote?: boolean
+  /** The instance reads file identity. */
+  hasIdentity?: boolean
   onSuccess?: () => void
   /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
@@ -47,6 +49,7 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
 export function OrphanScanSettingsForm({
   instanceId,
   isRemote = false,
+  hasIdentity = false,
   onSuccess,
   formId,
 }: OrphanScanSettingsFormProps) {
@@ -363,7 +366,7 @@ export function OrphanScanSettingsForm({
         </div>
 
         <div className="space-y-4">
-          {isRemote && <OrphanScanRemoteLimits />}
+          {isRemote && <OrphanScanRemoteLimits hasIdentity={hasIdentity} />}
 
           <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
             <div className="flex items-center gap-2">

@@ -215,7 +215,7 @@
     "reflinkDescription": "Vytvořit \"reflinked\" kopie. Bezpečnější pro extra/chybějící soubory, minimální riziko poškození.",
     "baseDirectories": "Základní adresáře",
     "baseDirectoriesPlaceholder": "/cesta/k/crossseed-data, /cesta/k/dalsimu/crossseed-data",
-    "baseDirectoriesDescription": "Cesty oddělené čárkami. Bude použit první adresář na stejném souborovém systému jako zdroj.",
+    "baseDirectoriesDescription": "Cesty oddělené čárkami. qui použije adresář na stejném souborovém systému jako zdroj a nejprve zkusí ten, který se zdrojem sdílí nejdelší předponu cesty. Po chybě odkazu mezi zařízeními zkusí další.",
     "directoryOrganization": "Organizace adresářů",
     "flat": "Plochý (vše v základním adresáři)",
     "byTracker": "Podle Trackeru",
@@ -569,6 +569,7 @@
       "requeueFailed": "Nepodařilo se zopakovat soubory bez shody: {{error}}",
       "resetFailed": "Selhalo resetování souborů: {{error}}"
     },
+    "webhookScanStatus": "Skenování z webhooku · {{status}}",
     "statusLabels": {
       "queued": "Ve frontě",
       "scanning": "Skenování",

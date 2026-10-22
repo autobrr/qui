@@ -20,9 +20,11 @@ describe("getCapabilityReason", () => {
     await changeLanguage("de")
 
     expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
-    expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
-    // Until #2726 gives a remote instance file identity, it shares the local access reason.
-    expect(getCapabilityReason("fileIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    // An instance without Read has no filesystem access, local or remote.
+    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    // Trusted identity needs local access, so a remote instance can never get it.
+    expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
   })
 })
 
@@ -32,9 +34,9 @@ describe("FIELD_REQUIREMENTS", () => {
       IS_UNREGISTERED: "trackerHealth",
       TRACKER_STATUS: "trackerHealth",
       TRACKER_MESSAGE: "trackerHealth",
-      HAS_MISSING_FILES: "localFilesystemAccess",
-      HARDLINK_SCOPE: "fileIdentity",
-      HARDLINK_SCOPE_CROSS: "fileIdentity",
+      HAS_MISSING_FILES: "read",
+      HARDLINK_SCOPE: "trustedIdentity",
+      HARDLINK_SCOPE_CROSS: "trustedIdentity",
     })
   })
 })
@@ -44,9 +46,9 @@ describe("FIELD_REQUIREMENTS", () => {
 describe("query-builder translation keys", () => {
   it("every label the helpers look up has an English key", () => {
     const requested = new Set<string>()
-    const recordingT = ((key: string, options?: { defaultValue?: string }) => {
+    const recordingT = ((key: string) => {
       requested.add(key)
-      return options?.defaultValue ?? key
+      return key
     }) as TFunction
 
     const fields = Object.keys(constants.CONDITION_FIELDS)
@@ -56,8 +58,10 @@ describe("query-builder translation keys", () => {
     for (const group of constants.FIELD_GROUPS) {
       constants.getFieldGroupLabel(group.label, recordingT)
     }
-    for (const capability of Object.keys(constants.CAPABILITY_REASONS) as (keyof typeof constants.CAPABILITY_REASONS)[]) {
+    const capabilities = new Set([...Object.values(constants.FIELD_REQUIREMENTS), ...Object.values(constants.STATE_VALUE_REQUIREMENTS)])
+    for (const capability of capabilities) {
       constants.getCapabilityReason(capability, recordingT)
+      constants.getCapabilityReason(capability, recordingT, true)
     }
 
     const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>

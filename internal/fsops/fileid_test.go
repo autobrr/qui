@@ -29,29 +29,34 @@ func TestSameFile(t *testing.T) {
 	windows := hardlink.WindowsFileID(1, identifier)
 
 	tests := []struct {
-		name        string
-		a, b        hardlink.FileID
-		aInst       *models.Instance
-		bInst       *models.Instance
-		wantMatch   bool
-		wantSameKey bool
+		name      string
+		a, b      hardlink.FileID
+		aInst     *models.Instance
+		bInst     *models.Instance
+		wantMatch bool
+		aHasKey   bool
 	}{
-		{"unix vs windows, same raw bytes", unix, windows, local, local, false, false},
-		{"unix vs remote, same raw bytes", unix, hardlink.RemoteFileID(unix.Bytes()[1:]), local, boxA, false, false},
+		{"unix vs windows, same raw bytes", unix, windows, local, local, false, true},
+		{"unix vs remote, same raw bytes", unix, hardlink.RemoteFileID(unix.Bytes()[1:]), local, boxA, false, true},
 		{"two local instances share the host", unix, unix, local, &models.Instance{ID: 6}, true, true},
 		{"remote, same host and port", remote, remote, boxA, boxAAgain, true, true},
-		{"remote, different port", remote, remote, boxA, boxAOtherPort, false, false},
-		{"remote, different host", remote, remote, boxA, boxB, false, false},
-		{"zero never matches", hardlink.FileID{}, hardlink.FileID{}, local, local, false, true},
-		{"remote with no instance never matches", remote, remote, nil, nil, false, true},
-		{"remote with an empty host never matches", remote, remote, local, &models.Instance{ID: 6}, false, true},
-		{"remote with a host vs one without", remote, remote, boxA, nil, false, false},
+		{"remote, different port", remote, remote, boxA, boxAOtherPort, false, true},
+		{"remote, different host", remote, remote, boxA, boxB, false, true},
+		{"zero never matches", hardlink.FileID{}, hardlink.FileID{}, local, local, false, false},
+		{"remote with no instance never matches", remote, remote, nil, nil, false, false},
+		{"remote with an empty host never matches", remote, remote, local, &models.Instance{ID: 6}, false, false},
+		{"remote with a host vs one without", remote, remote, boxA, nil, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.wantMatch, SameFile(tt.a, tt.aInst, tt.b, tt.bInst))
-			require.Equal(t, tt.wantSameKey, FileKeyOf(tt.a, tt.aInst) == FileKeyOf(tt.b, tt.bInst))
+			aKey, aOK := FileKeyOf(tt.a, tt.aInst)
+			bKey, bOK := FileKeyOf(tt.b, tt.bInst)
+			require.Equal(t, tt.aHasKey, aOK)
+			if aOK && bOK {
+				require.Equal(t, tt.wantMatch, aKey == bKey, "keys are equal exactly when SameFile holds")
+			}
 		})
 	}
 }

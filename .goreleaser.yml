@@ -104,7 +104,7 @@ checksum:
 changelog:
   sort: asc
   use: github
-  format: "{{ .Message }} ({{ with .Author.Username }}@{{ . }}{{ else }}{{ .Author.Name }}{{ end }})"
+  format: "{{ .Message }}{{ if .Logins }} ({{ .Logins | englishJoin }}){{ end }}"
   filters:
     exclude:
       - Merge pull request

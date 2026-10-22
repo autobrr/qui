@@ -125,8 +125,35 @@ If you later enable AutoTMM on an injected torrent, qBittorrent can relocate fil
 :::info
 Torznab searches run through the shared scheduler at background priority. They queue behind interactive, RSS, and completion cross-seed work.
 
-If the global scan concurrency limit is reached, new scans show as `queued` until a scan slot opens.
-Dir Scan also pauses between candidate torrent-file downloads from an indexer. This protects Prowlarr and indexers from request bursts, which matters most on private trackers. This delay increases scan times when qui checks many candidates.
+A full scan is a manual or scheduled scan of the whole directory. Full scans run one at a time. A new full scan shows as `queued` until the full scan before it ends. A webhook scan does not wait for a full scan. See [Webhook scans during a full scan](#webhook-scans-during-a-full-scan).
+
+Dir Scan waits between searches. See [Search pacing](#search-pacing).
+
+Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Library Scan uses the same rule for downloads.
+:::
+
+### Search pacing
+
+Dir Scan searches for one item at a time. An item is a movie, a season, an episode, or another folder or file. A TV folder can give one season item and one item for each episode file.
+
+Before Dir Scan searches for an item, it waits until 60 seconds have passed since the search for the previous item ended. Library Scan uses the same minimum interval between two torrents. The wait applies to all indexers, including indexers behind Prowlarr or Jackett. It applies to manual, scheduled, and webhook scans.
+
+- A search counts even when the [search cache](#search-cache) answered it.
+- An item that sends no search does not wait. For example, an item that is already seeding, or an item that has no enabled indexer.
+- Dir Scan can search again for the same item without the year or with an alternate title. These retry searches do not wait.
+- The wait continues across runs. A webhook scan that starts 20 seconds after the last search of the previous run waits 40 seconds. A restart of qui resets the time.
+- Dir Scan does not wait after the last item of a run.
+- If you cancel a scan during the wait, the scan stops at once.
+- If an item of a webhook scan and an item of a full scan both wait, the webhook item searches first. The 60-second wait also applies between the two items.
+
+:::warning First scan of a large library
+At one item per minute, the first scan of a large library takes hours. A TV library with 3,000 episode files can take more than two days. Webhook scans do not wait for this scan. A webhook scan searches between the items of the full scan. See [Webhook scans during a full scan](#webhook-scans-during-a-full-scan).
+
+To keep scans short:
+
+- Set **Only process items changed within the last (days)**. See [the explanation](#only-process-items-changed-within-the-last-days-explained).
+- Set **Max searchees per run**. See [the explanation](#max-searchees-per-run-explained).
+- Turn on [Skip individual episodes](#skip-individual-episodes) for TV directories. Dir Scan then sends one search for a season, not one search for each episode.
 :::
 
 ### Already-seeding detection
@@ -202,7 +229,7 @@ This setting limits how many **top-level folders/files** Dir Scan processes in a
 
 If you configure **Max searchees per run = 5**, Dir Scan processes up to **5 show folders** (TV) or **5 movie folders** (movies) per run. It stops and saves per-file progress for the next run. The next run rechecks the directory, skips finalized files, and retries unfinished work. See [Incremental progress and resets](#incremental-progress-and-resets).
 
-This setting does **not** cap the total number of indexer searches. TV folders can trigger multiple searches (season-level and per-episode heuristics), but count as a single top-level searchee.
+The setting counts top-level folders, not episodes. It does **not** cap the total number of indexer searches. A TV folder can send one search for each season and one for each episode, but it counts as one searchee. Each of these searches waits for the [search pacing](#search-pacing) interval.
 
 ### "Only process items changed within the last (days)" explained
 
@@ -249,7 +276,7 @@ This option does not affect specials (season 0) or absolute episode numbers.
 
 ### Concurrent scans
 
-Only one scan runs per directory at a time. If a scheduled scan triggers while another scan runs, qui does not start a second run for that directory.
+A directory has at most one full scan, in progress or queued. If the schedule starts a scan while a full scan of the directory runs or waits in the queue, qui does not start a second full scan. A webhook scan can run at the same time as a full scan. See [Webhook scans during a full scan](#webhook-scans-during-a-full-scan).
 
 ### Incremental progress and resets
 
@@ -345,14 +372,23 @@ In split-mount configurations, the *arr app must send the same library path that
 | Status Code | Meaning |
 |-------------|---------|
 | `200` | Webhook accepted but skipped by directory filters. Example: `{"skipped": true, "reason": "download client not allowed"}` |
-| `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan already runs for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
+| `202` | Scan accepted. If no webhook scan runs for that directory, qui starts the run immediately. This is also true when a full scan runs. If a webhook scan already runs for that directory, qui keeps one queued follow-up run and merges the paths of later webhooks into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
 | `204` | Test webhook accepted. No scan started |
 | `400` | Invalid JSON payload, or no supported path field in the request body |
 | `404` | No enabled directory matches the path in the payload |
 | `409` | Request conflicts with directory state, such as multiple matching directories |
 | `500` | Internal server error. qui failed to start the scan because of an internal failure |
 
-If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request and does not require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
+If a second webhook arrives while a webhook scan of the same directory runs, qui returns `202` again. It does not reject the request, and the client does not have to try again. qui updates one queued follow-up webhook scan for that directory. If necessary, it changes the queued `scanRoot` to the nearest common parent folder of the two paths. A webhook never merges into a queued full scan.
+
+#### Webhook scans during a full scan
+
+A webhook scan is a scan that an import in Sonarr, Radarr, Lidarr, or Readarr starts. A webhook scan does not wait for a full scan of the same directory or of a different directory. Its first search starts within about 60 seconds. If a webhook item waits, it searches before the next item of the full scan. If no webhook item waits, the full scan continues.
+
+- Each scan in progress has its own status line on the directory card. The status line of a webhook scan starts with "Webhook scan".
+- **Scan** shows when the directory has no full scan in progress or queued. **Pause** shows when a scan is in progress. The card can show the two buttons at the same time.
+- **Pause** stops all scans of the directory, in progress and queued.
+- Before the full scan searches an item, it reads the status of the item again. If the webhook scan already finished the item, the full scan skips it.
 
 Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that keep old filesystem mtimes.
 
@@ -381,7 +417,7 @@ curl -X POST "http://localhost:7476/api/dir-scan/webhook/scan?apikey=YOUR_KEY" \
 Each scan moves through these phases:
 
 1. **Scanning**: qui reads the directory contents and builds the searchee list
-2. **Searching**: qui queries indexers for each searchee
+2. **Searching**: qui queries indexers for each searchee. qui waits 60 seconds between the searches for two items, so this phase is usually the longest. See [Search pacing](#search-pacing)
 3. **Injecting**: qui adds matched torrents to qBittorrent
 4. **Final state**: Success, Failed, or Canceled
 
@@ -460,9 +496,13 @@ Expand a run to see each added or failed torrent and its failure reason.
 - Make sure that **qBittorrent Path Prefix** matches how qBittorrent sees the same files.
 - Test with a torrent's save path in the qBittorrent UI.
 
-**Rate limiting:**
+**Rate limiting (HTTP 429):**
 
-- Indexers can throttle requests. Check **Scheduler Activity** on the Indexers page.
-- Reduce the scan frequency or limit the scan to fewer indexers.
+When an indexer answers 429 (Too Many Requests), qui blocks the indexer for the time that the answer gives. The scan continues without that indexer, so it can miss matches from that tracker. The files stay pending, and the next scan searches them again.
+
+- Open **Scheduler Activity** on the Indexers page to see which indexers are blocked and until when.
+- The 429 can come from Prowlarr, not from the tracker. Prowlarr sends its own 429 when an indexer reaches its **Query Limit** in Prowlarr, or when Prowlarr disabled the indexer after failures. Open the indexer in Prowlarr and look at its limits and its status.
+- Dir Scan has no indexer selection. It searches every enabled indexer that supports the content type. To remove an indexer from Dir Scan, disable it in **Settings > Indexers**. This also removes it from all other searches in qui.
+- To send fewer searches, keep scans short. See [Search pacing](#search-pacing).
 
 For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](./troubleshooting.md).

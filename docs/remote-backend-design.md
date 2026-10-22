@@ -19,7 +19,8 @@ uses native SSH primitives on a single connection:
 - exec sessions (additional channels on the same connection) for what it
   cannot, when the key permits exec,
 - a capability probe at connect time that decides which tier the instance
-  gets. Nothing is persisted; capabilities are re-probed on every connect.
+  gets. Only the tier is stored, in `instances.ssh_tier`, and every connect
+  probes the host again and writes it.
 
 Rationale: no binaries to build per arch or keep in lockstep with qui;
 shared seedboxes essentially always offer SFTP but do not always allow exec;
@@ -46,11 +47,15 @@ existing target is always a conflict and fails the create — never a
 silent skip (raised by Audionut on #1914). The degraded mode must be
 surfaced in the UI, not silent.
 
-**SFTP+exec**: identity arrives via `find`/`stat` sweeps, reflink support is
-probed and used, `SameFilesystem` is exact. "Full functionality" means
-every operation has either a supported SFTP extension or an exec
-fallback — the probe verifies that per operation, it is not implied by
-the tier label.
+**SFTP+exec** (tier `exec`): the key runs a shell with GNU `find` and
+`stat`. Identity comes from `find`/`stat`, and `SameFilesystem` is
+exact. Only the tier is stored, not each probe flag, because no other flag
+changes a capability yet. Reflink is not probed, and reflinks are off on
+every remote tier. A host without the GNU tools gets tier `sftp`, and so
+does a login shell that does not quote like POSIX: every command is
+single-quoted for that shell, and fish reads `\'` inside single quotes as
+an escape, so the probe runs `printf '%s' 'a\'` and expects `a\` before it
+asks for the tools.
 
 `SameFilesystem` with unusable fsids (servers that report zeroes, no exec
 fallback): returns an explicit error, never a guess in either direction.
@@ -62,24 +67,47 @@ non-link strategies, which is the safe degradation.
 
 | fsops.Backend | SFTP-only | with exec |
 |---|---|---|
-| `Stat` / `Lstat` | `SSH_FXP_STAT` / `LSTAT` (identity → `FileIDErr`) | + `stat` for identity |
+| `Stat` / `Lstat` | `SSH_FXP_STAT` / `LSTAT` (identity → `FileIDErr`) | + `stat -L` / `stat` for identity, never following a link for `Lstat` |
 | `ReadDir` | `SSH_FXP_READDIR` (attrs included, no per-entry stat) | same |
-| `WalkDir` | recursive readdir | `find -printf` streams a tree's paths+identity in one round trip |
-| `Statfs` | `statvfs@openssh.com` | same (fallback `df -P`) |
+| `WalkDir` | recursive readdir | `find -printf` streams a tree's paths+identity in one round trip; qui reads all of it and sorts it in Go |
+| `Statfs` | `statvfs@openssh.com` | same |
 | `SameFilesystem` | fsid compare from statvfs, if the server reports real fsids (probe; some return zero) | `stat -c %d` compare |
 | `MkdirAll` | `SSH_FXP_MKDIR` walk-up | same |
-| `Remove` | `REMOVE`/`RMDIR`; recursive = readdir-driven bottom-up | recursive = `rm -rf --` |
+| `Remove` | `REMOVE`/`RMDIR`; recursive = readdir-driven bottom-up | same |
 | `HardlinkTree` | `hardlink@openssh.com` per file | same |
-| `ReflinkTree` | unsupported | `cp --reflink=always` |
+| `ReflinkTree` | unsupported | unsupported |
 | `RemoveTree` | `REMOVE` over the recorded handle | same |
-| `SupportsReflink` | false | probed once per fs root |
+| `SupportsReflink` | false | false |
 
-`StatBatch`/`LstatBatch` were dropped from `fsops.Backend` pending a
-consumer; this backend is that consumer. pkg/sftp pipelines concurrent
-requests over the one session, and the exec path fills a batch with a single
-`xargs -0 stat` round trip — the batch seam is what makes remote hardlink
-indexing (hundreds of thousands of lstats) survivable. They come back with
-the exec tier (3e, #2726), which is the first thing that can fill them.
+Batch stat is the optional `fsops.BatchStater`, with `StatBatch` and
+`LstatBatch`. It is not on `fsops.Backend`. A caller that knows all its paths
+calls `fsops.StatAll` or `fsops.LstatAll`. Each helper uses the batch when the
+backend has it, and one `Stat` or `Lstat` per path when it does not. The local
+backend has no batch. `StatAll` follows symlinks and `LstatAll` does not.
+
+On the exec tier, one `find -maxdepth 0 -printf` reads up to 1,000 paths with
+their identity in two round trips. `StatBatch` adds `-L`. A single `Stat` or
+`Lstat` answers each path that `find` did not print, such as a missing path,
+so the errors are the same as for one path. `find -L` prints a broken link as
+the link itself, so `StatBatch` sends that path to `Stat` too. On the sftp
+tier, a single call answers each path.
+
+The single calls of a batch run 32 at a time on the one sftp client, so they
+share round trips. In the tests, 64 paths at 25 ms of delay take about 50 ms,
+not 1.6 s. The same pipeline answers the files of a completed torrent after the user moved
+them away. On the exec tier, that torrent costs one `find`, plus about one
+round trip for each 32 missing files. After a lost connection, the batches
+stop, and at most one single call dials the host again. If the host is back,
+the single calls answer. If not, each path that is left gets its own
+`fsops.ErrConnectionLost` at once, because the pool remembers the failed dial.
+
+The exec tier uses `find` and not `xargs -0 stat`, because `find` prints the
+same record as the walk, so one parser reads both. Cross-seed hardlink
+matching uses `LstatBatch` since #2726. A 20-file pack takes about 200 ms at
+100 ms of delay, not about 6 s. The missing-files condition (#2933) will be the
+first caller of `StatAll`. The hardlink index keeps one `Lstat` per file. It
+needs trusted identity, which only a local instance has, and a local backend
+has no batch.
 
 ## File Identity Over the Wire — DECIDED
 
@@ -124,10 +152,13 @@ when the remote is unix and the bytes are a `dev`/`ino`: it is parsed
 from command output on a host qui does not control, and the tag keeps
 peer-asserted identity type-distinct from kernel-attested identity. Peer
 identity is advisory. It may suppress work (dedup accounting,
-already-seeding skips) but never expands a destructive action:
-automations' delete-expansion groups torrents by a FileID signature and
-deletes the group with files, so on a remote backend that expansion
-degrades to the no-identity behavior. A hostile remote can never reach a
+already-seeding skips) but never expands a destructive action. The guard
+is the capability `TrustedIdentity`, which only a local instance has.
+The include-hardlinks delete option, the `HARDLINK_SCOPE` and
+`HARDLINK_SCOPE_CROSS` conditions and hardlink grouping in automations gate
+on it, not on Identity. A remote host that reports `nlink=1` for a file
+linked into a library would otherwise make that torrent read as scope
+`none`, and a "Remove Upgraded Torrents" rule would delete it. A hostile remote can never reach a
 worse outcome than the SFTP-only tier already produces with no identity
 at all.
 
@@ -136,9 +167,11 @@ at all.
 - `LC_ALL=C` and NUL separators everywhere; torrent filenames can contain
   nearly anything except NUL and `/`.
 - Probe GNU vs BSD userland at connect (`find -printf` and `stat -c` are
-  GNU-only); degrade the affected ops per-tool on BSD remotes.
-- Every exec carries a timeout and honors ctx cancellation; output is
-  size-capped.
+  GNU-only). A host without GNU `find` and `stat` gets tier `sftp`.
+- Every exec honors ctx cancellation. One command has a 30 s timeout and
+  keeps at most 1 MiB of output. `find` has no total output cap: it has a
+  cap for each record, a cap of 500,000 entries, and ctx.
+- One connection runs at most four exec sessions at a time.
 
 ## Path Domains
 
@@ -198,13 +231,14 @@ the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
   file names always join beneath one.
 - Exec command lines never interpolate raw paths into a shell string:
   arguments are strictly quoted, and options are terminated with `--`
-  before any path for `find`, `stat`, `xargs`, `rm`, and `cp`.
+  before any path for `find` and `stat`.
 - Symlink policy for destructive ops: recursion never follows a link, on
   any tier. A symlinked directory is never descended; the link itself is
-  removed, never the target's contents. `rm -rf --` and the local
-  backend's `os.RemoveAll` both traverse `openat`-style, so they refuse
-  links and are immune to a mid-walk swap. SFTP v3 gets only the first
-  half: no `openat`, no `O_NOFOLLOW`, every path re-resolved server-side,
+  removed, never the target's contents. The local backend's
+  `os.RemoveAll` traverses `openat`-style, so it refuses links and is
+  immune to a mid-walk swap. SFTP v3 gets only the first half, and an
+  exec-tier remote removes over SFTP too: no `openat`, no `O_NOFOLLOW`,
+  every path re-resolved server-side,
   so a swapped ancestor directory can redirect an unlink between the walk
   and the remove. That race is unfixable over v3; bound it by
   re-`lstat`ing immediately before each unlink. `RemoveTree` is a path
@@ -344,9 +378,15 @@ including a row with credentials and no confirmed pin, is refused before
 it connects and is not memoised.
 A connection nobody has used for ten minutes is closed.
 
-Exec sessions will share the same connection. Concurrency comes from sftp
-request pipelining plus bounded parallel exec sessions — no helper-process
-lifecycle to manage.
+Exec sessions share the same connection, at most four at a time.
+Concurrency comes from sftp request pipelining plus these exec sessions,
+with no helper process to manage. A running exec counts as use, so the idle
+close does not cut a long `find`. Every connect runs the GNU probe and
+writes the tier to the row when it changed, so an existing instance moves to
+`exec` on its first connect, and a key that lost its shell moves back to
+`sftp`. A probe that gets no answer writes nothing, and that connection
+runs no exec. An exec that a caller started on the stored `exec` tier, on a
+connection whose probe found `sftp`, fails with `fsops.ErrUnsupported`.
 
 ## Schema
 
@@ -356,8 +396,9 @@ field), and the pinned host key stored as the marshaled public key plus
 its algorithm under the same AEAD (AAD: instance id + field + host +
 port). Not a fingerprint column: the `HostKeyAlgorithms` preference and
 the mismatch flow both need the full key, and fingerprints are
-display-only (see Security). No helper-deploy columns, no persisted
-capabilities. `FilesystemAccessMode` resolves to local | remote | none.
+display-only (see Security). No helper-deploy columns. Of the probe
+results, only the tier is stored (`ssh_tier`, `sftp` or `exec`): the SSH
+test route, the pin routes and every pool connect write it again. `FilesystemAccessMode` resolves to local | remote | none.
 This is the slimmed scope for #1917, which also carries the credential
 store that owns these columns: the AEAD write and read path, and a pin
 the store sets once, drops when the host or port changes, and keeps when
@@ -389,7 +430,9 @@ need insert-then-update in one transaction.
 ## Frontend
 
 SSH configuration on the instance form; the test flow confirms the host-key
-fingerprint and shows the probed tier. Instances on the SFTP-only tier show
+fingerprint and shows the probed tier. The UI draws the capabilities of an
+instance from the stored tier, so it needs no connection to do so.
+Reflinks are off on every remote tier. Instances on the SFTP-only tier show
 a degraded-mode indicator naming what's off (hardlink dedup, reflinks).
 
 ## Windows Remotes
@@ -438,8 +481,8 @@ scratch directories and a temporarily added, uniquely tagged
   holds on the real filesystem.
 - Reflink is unsupported (XFS without reflink). Providers mostly do not
   enable it on shared hosts, and where it exists it is a dedicated-host
-  option on request, so the design expectation is: probe it, assume off,
-  hardlink mode is the real path there.
+  option on request. qui does not probe it: reflinks are off on every
+  remote tier, and hardlink mode is the real path there.
 - Latency is the load-bearing number: about 740 ms per sftp readdir round
   trip from a home connection, and 2.1 to 3.5 s per cold connect, auth and
   exec.
@@ -461,8 +504,9 @@ scratch directories and a temporarily added, uniquely tagged
      read methods. Writes refuse with `fsops.ErrUnsupported`.
    - 3c (#2724): path dialect on the backend and the callsite sweep.
    - 3d (#2725): SFTP write operations.
-   - 3e (#2726): exec tier and batch methods; extends the pool to hand out
-     the ssh client for exec sessions.
+   - 3e (#2726): the exec tier and remote file identity. The pool hands out
+     the ssh client for bounded exec sessions, and batch lstat for
+     cross-seed matching. The rest of batch stat is #2971.
 4. Frontend. Lands last. It is the only UI path that sets up SSH access,
    so it gates the rollout for users. Until #2917 ships, no UI text names
    SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
@@ -473,7 +517,9 @@ scratch directories and a temporarily added, uniquely tagged
 5. Feature rollout per service, degraded-mode UX. Consumers admit an
    instance on a filesystem capability (`Pool.Require`,
    `models.FilesystemCapabilitiesOf`): automations
-   (missing-files condition, hardlink index; rule save and dry-run
+   (missing-files condition; the hardlink index, which gates on Identity
+   and which 3e opens to exec-tier remotes, while the automations fields
+   that read it gate on `TrustedIdentity`; rule save and dry-run
    validation), dirscan, cross-seed (link mode, manual assemble,
    mediainfo, season pack, partial pool, local-match detection), the sync
    manager's hardlink base dir, the disc-scan route (which requires
@@ -508,5 +554,5 @@ performance wall, #1913 has the protocol design ready.
 
 ## Open Questions
 
-1. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
-   supported floor there?
+1. BSD/macOS remotes get tier `sftp`, like every non-GNU host. Is a BSD
+   exec dialect worth adding?

@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -61,6 +62,15 @@ func isTVRelease(r *rls.Release) bool {
 // absolute-numbered episodes that do not carry a season number.
 func isTVEpisode(r *rls.Release) bool {
 	return isTVRelease(r) && r.Episode > 0
+}
+
+// absoluteEpisode is the episode of a name with no season, such as "Show - 81".
+// It is 0 when the name has a season or no episode.
+func absoluteEpisode(r *rls.Release) int {
+	if r.Series != 0 {
+		return 0
+	}
+	return r.Episode
 }
 
 // isTVSeasonPack returns true if the release is a TV season pack, including
@@ -144,7 +154,7 @@ func makeReleaseKey(r *rls.Release) releaseKey {
 // parseReleaseName is the matcher's only parser. A matcher with no release cache
 // falls back to the process-wide default parser, as normalizer does (ADR 0008).
 func (m matcher) parseReleaseName(name string) *rls.Release {
-	return cmp.Or(m.releaseCache, releases.DefaultParser).Parse(name)
+	return cmp.Or(m.releaseCache, releases.DefaultParser).Parse(name) //nolint:forbidigo // the one fallback to the default parser (ADR 0008)
 }
 
 // parseFileRelease removes RAR volume suffixes so .s01 does not become season 1.
@@ -174,11 +184,24 @@ func (m matcher) releasesMatchWithReasonAndNames(source, candidate *rls.Release,
 }
 
 func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	return m.namedReleasesMatchWithReasonAndTitles(
+		namedRelease{release: source, rawName: sourceName},
+		namedRelease{release: candidate, rawName: candidateName},
+		sourceTitles, candidateTitles, findIndividualEpisodes,
+	)
+}
+
+// namedReleasesMatchWithReasonAndTitles is the strict match on full identity
+// views, so the group check can read the selected-file tags too.
+func (m matcher) namedReleasesMatchWithReasonAndTitles(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
+	sourceName, candidateName := sourceSide.rawName, candidateSide.rawName
 	if source == candidate {
 		return true, ""
 	}
 	// rls reads a bare "Title III" as a movie, so only the other side can say that its numeral is a season.
 	source, candidate = withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source)
+	sourceSide.release, candidateSide.release = source, candidate
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
@@ -187,7 +210,7 @@ func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, false); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, false); !ok {
 		return false, reason
 	}
 	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
@@ -301,7 +324,8 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 // paused-add full recheck as the final authority; callers that only report
 // existing pairings (local match detection) do not, so their false positives
 // must stay confined to display.
-func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := m.validateArtistAndDates(source, candidate, isTV); !ok {
 		return false, reason
@@ -309,7 +333,7 @@ func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Relea
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := m.validateGroupSiteAndChecksum(source, candidate, true); !ok {
+	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, true); !ok {
 		return false, reason
 	}
 	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
@@ -323,15 +347,25 @@ func (m matcher) releasesMatchExceptTitleWithReason(source, candidate *rls.Relea
 
 func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
 	titles := make(map[string]struct{})
-	addNormalizedTitle(titles, releaseTitle(release))
-	addNormalizedTitle(titles, releaseAlt(release))
+	var buf [8]string
+	for _, title := range m.appendReleaseTitles(buf[:0], release, rawName) {
+		addNormalizedTitle(titles, title)
+	}
 	addNormalizedTitle(titles, titleWithoutSeasonNumeral(release))
+	return titles
+}
+
+// appendReleaseTitles appends the titles that the matcher reads from a name:
+// the main title first, then the alternate title, each AKA part, and each side
+// of a slash title. An entry can be "". The title without the Season numeral
+// is not one of them, because it depends on the season of the other side.
+func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawName string) []string {
+	titles = append(titles, releaseTitle(release), releaseAlt(release))
 
 	// Cached parse: this runs once per library torrent per search.
 	for _, rawTitle := range m.rawAKATitleParts(rawName) {
 		parsed := m.parseReleaseName(rawTitle)
-		addNormalizedTitle(titles, parsed.Title)
-		addNormalizedTitle(titles, parsed.Alt)
+		titles = append(titles, parsed.Title, parsed.Alt)
 	}
 
 	// rls ends the title at a slash, so an indexer listing like
@@ -350,8 +384,7 @@ func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) m
 	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
 		parsed := m.parseReleaseName(unslashed)
 		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
-			addNormalizedTitle(titles, parsed.Title)
-			addNormalizedTitle(titles, parsed.Alt)
+			titles = append(titles, parsed.Title, parsed.Alt)
 		}
 	}
 
@@ -377,31 +410,59 @@ func releaseTitle(release *rls.Release) string {
 }
 
 // titleWithoutSeasonNumeral drops a last-word Roman numeral that equals the
-// season, so "Kaiju Squad 100 III" with S03 files also reads as the
-// "Kaiju Squad 100" a tracker lists as S03. Returns "" when no numeral drops.
+// season marker, so "Kaiju Squad 100 III S03" also reads as the
+// "Kaiju Squad 100" a tracker lists as S03. Any value counts, because the
+// numeral and the marker agree. Returns "" when no numeral drops.
 func titleWithoutSeasonNumeral(release *rls.Release) string {
-	if release == nil || release.Series <= 0 {
+	if release == nil || release.Series <= 0 || isYearBearingMovieRelease(release) {
 		return ""
 	}
-	title, last, ok := strings.CutLast(release.Title, " ")
-	// Runs per library torrent per search, so reject a word with a non-numeral letter before romanNumeral allocates.
-	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" || !strings.EqualFold(last, romanNumeral(release.Series)) {
-		return ""
+	if season, title := readTitleNumeral(release.Title); season == release.Series {
+		return title
 	}
-	return strings.TrimSpace(title)
+	return ""
 }
 
-func romanNumeral(n int) string {
-	var b strings.Builder
+// readTitleNumeral reads the last word of a title as a Roman numeral. It
+// returns the numeral's value and the title without it, or 0 when the last
+// word is no numeral.
+func readTitleNumeral(title string) (int, string) {
+	rest, last, ok := strings.CutLast(title, " ")
+	// Runs per library torrent per search, so reject a word with a non-numeral letter before the numeral is parsed.
+	if !ok || strings.Trim(last, "IVXLCDMivxlcdm") != "" {
+		return 0, ""
+	}
+	value := 0
+	for i := range len(last) {
+		digit := romanDigitValue(last[i])
+		if i+1 < len(last) && digit < romanDigitValue(last[i+1]) {
+			value -= digit
+		} else {
+			value += digit
+		}
+	}
+	// Only the canonical spelling counts, so "IIII" or "IC" stays part of the title.
+	var canonical [16]byte
+	if !strings.EqualFold(last, string(appendRomanNumeral(canonical[:0], value))) {
+		return 0, ""
+	}
+	return value, strings.TrimSpace(rest)
+}
+
+func romanDigitValue(symbol byte) int {
+	return [...]int{1, 5, 10, 50, 100, 500, 1000}[strings.IndexByte("ivxlcdm", symbol|0x20)]
+}
+
+func appendRomanNumeral(dst []byte, n int) []byte {
 	for _, r := range []struct {
 		value  int
 		symbol string
 	}{{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}} {
 		for ; n >= r.value; n -= r.value {
-			b.WriteString(r.symbol)
+			dst = append(dst, r.symbol...)
 		}
 	}
-	return b.String()
+	return dst
 }
 
 func releaseAlt(release *rls.Release) string {
@@ -500,7 +561,8 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	return true, ""
 }
 
-func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
+func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRelease, tolerateMissingCandidateTags bool) (bool, string) {
+	source, candidate := sourceSide.release, candidateSide.release
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
 	normalizer := m.normalizer()
@@ -508,9 +570,19 @@ func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, to
 	candidateGroup := normalizer.Normalize((candidate.Group))
 	sourceSite := normalizer.Normalize(source.Site)
 	candidateSite := normalizer.Normalize(candidate.Site)
+	spaceJoined := m.spaceJoinedGroupSite(source, candidate)
+
+	// A hyphenated fansub name reads as Site in its bracket form and as a split
+	// Group in its dash-suffix form. Compare the rebuilt suffix name instead.
+	switch {
+	case m.dashSuffixGroupSpellsSite(sourceSide, candidateSide):
+		candidateGroup = sourceSite
+	case m.dashSuffixGroupSpellsSite(candidateSide, sourceSide):
+		sourceGroup = candidateSite
+	}
 
 	// Only enforce group matching if the source has a group tag
-	if sourceGroup != "" {
+	if sourceGroup != "" && !spaceJoined {
 		candidateGroupIdentity := candidateGroup
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
@@ -531,7 +603,7 @@ func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, to
 	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
 	// non-empty site tags as incompatible, but don't reject candidates that simply
 	// lack this metadata.
-	if sourceSite != "" {
+	if sourceSite != "" && !spaceJoined {
 		candidateSiteIdentity := candidateSite
 		if candidateSiteIdentity == "" {
 			candidateSiteIdentity = candidateGroup
@@ -557,6 +629,24 @@ func (m matcher) validateGroupSiteAndChecksum(source, candidate *rls.Release, to
 	}
 
 	return true, ""
+}
+
+// spaceJoinedGroupSite reports whether one name writes the group and the
+// collective as "- Kyo Mura)" and the other as "- Kyo) [Mura]". rls reads the
+// first as one group with a space, so only the other name shows the split.
+func (m matcher) spaceJoinedGroupSite(source, candidate *rls.Release) bool {
+	normalizer := m.normalizer()
+	joined := func(split, whole *rls.Release) bool {
+		// Most names carry no Site, so skip the normalizer lookups on this hot path.
+		if split.Site == "" || whole.Site != "" {
+			return false
+		}
+		group := normalizer.Normalize(split.Group)
+		site := normalizer.Normalize(split.Site)
+		return group != "" && group != site &&
+			normalizer.Normalize(whole.Group) == group+" "+site
+	}
+	return joined(source, candidate) || joined(candidate, source)
 }
 
 // sourceMismatchReason is the rejection reason emitted when two releases differ
@@ -741,9 +831,17 @@ func joinNormalizedSlice(slice []string) string {
 	return strings.Join(normalized, " ")
 }
 
+// joinNormalizedHDRSlice reads a generic HDR tag as HDR10 (see Generic HDR tag in GLOSSARY.md).
 func joinNormalizedHDRSlice(slice []string) string {
-	normalized := releases.NormalizeHDRTags(slice)
-	return strings.Join(normalized, " ")
+	tags := make([]string, len(slice))
+	for i, tag := range slice {
+		// The parser stores canonical tags, so an exact compare is enough.
+		if tag == "HDR" {
+			tag = "HDR10"
+		}
+		tags[i] = tag
+	}
+	return strings.Join(releases.NormalizeHDRTags(tags), " ")
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.
@@ -887,7 +985,7 @@ func joinNormalizedCodecSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
+func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	seasonlessEpisodes := false
@@ -935,11 +1033,11 @@ func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetR
 		// Non-episodic content - require at least one candidate file whose release
 		// key matches the target's release key. This prevents unrelated torrents
 		// with generic filenames from matching purely because rls could parse
-		// something from their names.
-		targetKey := makeReleaseKey(targetRelease)
-
-		if len(candidateReleases) > 0 {
-			if _, exists := candidateReleases[targetKey]; exists {
+		// something from their names. Here the key holds at most a year, and a
+		// missing year agrees with any year, as in the torrent-level match.
+		targetYear := makeReleaseKey(targetRelease).year
+		for key := range candidateReleases {
+			if key.series == 0 && key.month == 0 && (targetYear == 0 || key.year == targetYear) {
 				return "partial-in-pack"
 			}
 		}
@@ -962,50 +1060,31 @@ func (m matcher) getMatchTypeFromTitle(targetName, candidateName string, targetR
 		return "release-match"
 	}
 
-	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
-	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
-	// rls fails to parse " - 1150 " as an episode).
+	// Fallback: the files give no release keys, as a seasonless anime episode
+	// ("Show - 1150") does, but the titles match. Accept the same absolute episode.
 	if len(candidateReleases) == 0 {
 		targetTitle := stringutils.NormalizeForMatching(targetRelease.Title)
 		candidateTitle := stringutils.NormalizeForMatching(candidateRelease.Title)
 		if targetTitle != "" && targetTitle == candidateTitle {
-			// Extract simple episode number from torrent names of the form "... - 1150 (...)".
-			extractEpisode := func(name string) string {
-				nameLower := strings.ToLower(name)
-				// Look for " - <digits> " pattern.
-				for i := 0; i+4 < len(nameLower); i++ {
-					if nameLower[i] == ' ' && nameLower[i+1] == '-' && nameLower[i+2] == ' ' {
-						j := i + 3
-						start := j
-						for j < len(nameLower) && nameLower[j] >= '0' && nameLower[j] <= '9' {
-							j++
-						}
-						if j > start && j < len(nameLower) && nameLower[j] == ' ' {
-							return nameLower[start:j]
-						}
-						break
-					}
-				}
-				return ""
-			}
+			targetEp := absoluteEpisode(targetRelease)
+			candidateEp := absoluteEpisode(candidateRelease)
 
-			targetEp := extractEpisode(targetName)
-			candidateEp := extractEpisode(candidateName)
-
-			// If episode numbers match (anime fallback), accept the match
-			if targetEp != "" && candidateEp != "" && targetEp == candidateEp {
+			if targetEp > 0 && targetEp == candidateEp {
 				log.Debug().
 					Str("title", targetRelease.Title).
-					Str("episode", targetEp).
+					Int("episode", targetEp).
 					Msg("Falling back to title+episode candidate match")
 				return "partial-in-pack"
 			}
 
 			// For content without usable file-level metadata (games, apps, scene releases
 			// with RAR files), trust the torrent-level releasesMatch check that got us here
-			// when no episode pattern exists in the names.
+			// when neither name has an episode. A batch such as "Show - 01 - 03" has no
+			// single episode, so two batches must name the same episodes.
+			// A year alone does not block: the torrent-level match compared it.
 			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) && targetEp == "" && candidateEp == "" {
+			if targetKey.series == 0 && targetKey.month == 0 && targetEp == 0 && candidateEp == 0 &&
+				slices.EqualFunc(targetRelease.SeriesEpisodes(), candidateRelease.SeriesEpisodes(), slices.Equal[[]int]) {
 				return "release-match"
 			}
 		}

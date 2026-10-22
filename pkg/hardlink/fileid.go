@@ -47,9 +47,10 @@ func WindowsFileID(volumeSerial uint64, identifier [16]byte) FileID {
 }
 
 // RemoteFileID wraps up to 24 bytes of identity a remote host reported.
-// Empty input is no identity.
+// Empty or longer input is no identity: cutting it would let two identities
+// that share their first 24 bytes compare equal.
 func RemoteFileID(raw []byte) FileID {
-	if len(raw) == 0 {
+	if len(raw) == 0 || len(raw) > fileIDRawLen {
 		return FileID{}
 	}
 	f := FileID{kind: KindRemote}

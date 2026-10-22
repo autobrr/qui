@@ -38,8 +38,9 @@ const (
 type Requirement string
 
 const (
-	RequiresQBit51      Requirement = "qBittorrent 5.1+"
-	RequiresLocalAccess Requirement = "local filesystem access"
+	RequiresQBit51           Requirement = "qBittorrent 5.1+"
+	RequiresLocalAccess      Requirement = "local filesystem access"
+	RequiresFilesystemAccess Requirement = "filesystem access"
 )
 
 // FieldSpec describes one condition field.
@@ -199,7 +200,7 @@ var ConditionFields = map[ConditionField]FieldSpec{
 	models.FieldSequentialDownload:     booleanField(),
 	models.FieldSuperSeeding:           booleanField(),
 	models.FieldIsUnregistered:         {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresQBit51},
-	models.FieldHasMissingFiles:        {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresLocalAccess},
+	models.FieldHasMissingFiles:        {Type: ValueBoolean, Operators: equalOperators, Values: booleanValues, Requires: RequiresFilesystemAccess},
 	models.FieldHasSkippedFiles:        booleanField(),
 	models.FieldIsGrouped:              booleanField(),
 	models.FieldExistsOnOtherInstance:  booleanField(),

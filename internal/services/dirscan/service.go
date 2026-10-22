@@ -57,6 +57,14 @@ func DefaultConfig() Config {
 	}
 }
 
+// triggeredByWebhook marks a webhook scan. Every other run is a full scan.
+const triggeredByWebhook = "webhook"
+
+type directoryMuKey struct {
+	directoryID int
+	webhook     bool
+}
+
 // Service handles directory scanning and torrent matching.
 type Service struct {
 	cfg            Config
@@ -77,16 +85,18 @@ type Service struct {
 	searcher *Searcher
 	injector *Injector
 
-	// Per-directory mutex to prevent overlapping scans.
-	directoryMu map[int]*sync.Mutex
+	// Per-directory mutexes: two full scans or two webhook scans of a directory
+	// do not overlap, but a webhook scan does not wait for a full scan.
+	directoryMu map[directoryMuKey]*sync.Mutex
 	mu          sync.Mutex // protects directoryMu map
 
 	// In-memory cancel handles keyed by runID.
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
 
-	// Serializes webhook queue/merge decisions so duplicate follow-up runs are not created.
-	webhookMu sync.Mutex
+	// Serializes run creation and CancelScan, so no run starts between the list and the
+	// cancel of Pause, and webhook merges create no duplicate follow-up runs.
+	runMu sync.Mutex
 
 	// In-memory progress snapshot keyed by runID (for live UI updates).
 	runProgress map[int64]*runProgress
@@ -97,8 +107,12 @@ type Service struct {
 	schedulerCancel context.CancelFunc
 	schedulerWg     sync.WaitGroup
 
-	// Global run semaphore to cap concurrent scans.
+	// Global run semaphore to cap concurrent full scans. Webhook scans do not
+	// take it, so an import is not stuck behind a long full scan.
 	runSem chan struct{}
+
+	// searchGate lets one item search at a time across runs.
+	searchGate searchGate
 
 	activityPublisher activity.Publisher
 }
@@ -162,7 +176,7 @@ func NewService(
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
-		directoryMu:               make(map[int]*sync.Mutex),
+		directoryMu:               make(map[directoryMuKey]*sync.Mutex),
 		cancelFuncs:               make(map[int64]context.CancelFunc),
 		runProgress:               make(map[int64]*runProgress),
 		runSem:                    make(chan struct{}, cfg.MaxConcurrentRuns),
@@ -294,13 +308,15 @@ func (s *Service) isDueForScan(dir *models.DirScanDirectory) bool {
 func (s *Service) triggerScheduledScan(directoryID int) {
 	ctx := s.schedulerCtx
 
-	// Try to create a run; if one is already active, this will fail gracefully
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
+	runID, err := s.createScheduledRun(ctx, directoryID)
 	if err != nil {
 		// ErrDirScanRunAlreadyActive is expected if a scan is in progress
 		if !errors.Is(err, models.ErrDirScanRunAlreadyActive) {
 			log.Error().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to create scheduled run")
 		}
+		return
+	}
+	if runID == 0 {
 		return
 	}
 
@@ -335,6 +351,22 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 	}
 
 	s.startRun(ctx, directoryID, runID)
+}
+
+// createScheduledRun returns 0 when a Pause made the directory no longer due
+// after the scheduler listed it.
+func (s *Service) createScheduledRun(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	dir, err := s.store.GetDirectory(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("get directory: %w", err)
+	}
+	if !s.isDueForScan(dir) {
+		return 0, nil
+	}
+	return s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
 }
 
 func randomDuration(maxDuration time.Duration) (time.Duration, error) {
@@ -373,8 +405,12 @@ func (s *Service) startRun(parent context.Context, directoryID int, runID int64)
 	}()
 }
 
-func (s *Service) startScan(ctx context.Context, directoryID int, triggeredBy, scanRoot string) (int64, error) {
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, triggeredBy, scanRoot)
+// StartManualScan starts a manual scan for a directory.
+func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual", "")
 	if err != nil {
 		return 0, fmt.Errorf("create run: %w", err)
 	}
@@ -388,102 +424,82 @@ func (s *Service) startScan(ctx context.Context, directoryID int, triggeredBy, s
 	return runID, nil
 }
 
-// StartManualScan starts a manual scan for a directory.
-func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
-	return s.startScan(ctx, directoryID, "manual", "")
-}
-
 // StartWebhookScan starts a webhook-triggered subtree scan for a directory.
 func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoot string) (int64, error) {
 	if s == nil || s.store == nil {
 		return 0, errors.New("dirscan service is not initialized")
 	}
 
-	s.webhookMu.Lock()
-	defer s.webhookMu.Unlock()
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
 
 	dir, err := s.store.GetDirectory(ctx, directoryID)
 	if err != nil {
 		return 0, fmt.Errorf("get directory: %w", err)
 	}
 
-	active, err := s.store.GetActiveRun(ctx, directoryID)
+	active, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
-		return 0, fmt.Errorf("get active run: %w", err)
+		return 0, fmt.Errorf("list active runs: %w", err)
 	}
-	if active == nil {
-		return s.startScan(ctx, directoryID, "webhook", scanRoot)
-	}
-
-	mergedRoot := mergeWebhookScanRoots(dir.Path, active.ScanRoot, scanRoot)
-	if active.Status == models.DirScanRunStatusQueued {
-		if mergedRoot != active.ScanRoot {
-			if err := s.store.UpdateRunScanRoot(ctx, active.ID, mergedRoot); err != nil {
+	// A webhook merges only into a queued webhook scan, so a directory has at
+	// most one webhook scan running and one queued behind it.
+	for _, run := range active {
+		if run.TriggeredBy != triggeredByWebhook || run.Status != models.DirScanRunStatusQueued {
+			continue
+		}
+		if mergedRoot := mergeWebhookScanRoots(dir.Path, run.ScanRoot, scanRoot); mergedRoot != run.ScanRoot {
+			if err := s.store.UpdateRunScanRoot(ctx, run.ID, mergedRoot); err != nil {
 				return 0, fmt.Errorf("merge queued webhook scan root: %w", err)
 			}
 		}
-		return active.ID, nil
+		return run.ID, nil
 	}
 
-	queued, err := s.store.GetQueuedRun(ctx, directoryID)
+	runID, err := s.store.CreateRun(ctx, directoryID, triggeredByWebhook, scanRoot)
 	if err != nil {
-		return 0, fmt.Errorf("get queued run: %w", err)
-	}
-	if queued != nil {
-		mergedRoot = mergeWebhookScanRoots(dir.Path, queued.ScanRoot, scanRoot)
-		if mergedRoot != queued.ScanRoot {
-			if err := s.store.UpdateRunScanRoot(ctx, queued.ID, mergedRoot); err != nil {
-				return 0, fmt.Errorf("merge follow-up webhook scan root: %w", err)
-			}
-		}
-		return queued.ID, nil
+		return 0, fmt.Errorf("create webhook run: %w", err)
 	}
 
-	runID, err := s.store.CreateRun(ctx, directoryID, "webhook", scanRoot)
-	if err != nil {
-		return 0, fmt.Errorf("create queued webhook run: %w", err)
-	}
-
-	// Follow-up run queued for this directory.
+	// Run queued for this directory.
 	s.emitRunActivity(directoryID, 0)
 
 	s.startRun(context.Background(), directoryID, runID)
 	return runID, nil
 }
 
-// CancelScan cancels an active scan.
+// CancelScan cancels every queued and running scan of a directory.
 func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
-	run, err := s.store.GetActiveRun(ctx, directoryID)
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	runs, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
-		return fmt.Errorf("get active run: %w", err)
+		return fmt.Errorf("list active runs: %w", err)
 	}
-	if run == nil {
-		return nil // No active run
-	}
-
-	s.cancelMu.Lock()
-	cancel, ok := s.cancelFuncs[run.ID]
-	s.cancelMu.Unlock()
-
-	if ok {
-		cancel()
+	if len(runs) == 0 {
+		return nil
 	}
 
-	if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
-		return fmt.Errorf("update run canceled: %w", err)
-	}
+	for _, run := range runs {
+		s.cancelMu.Lock()
+		cancel, ok := s.cancelFuncs[run.ID]
+		s.cancelMu.Unlock()
 
-	// If a run is canceled while still queued, the directory's last_scan_at has not
-	// been updated yet. Without bumping last_scan_at here, the scheduler will see
-	// the directory as immediately due again and recreate a queued run shortly
-	// after the user clicks "Pause"/cancel.
-	if run.Status == models.DirScanRunStatusQueued {
-		if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
-			log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after queued cancel")
+		if ok {
+			cancel()
+		}
+
+		if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
+			return fmt.Errorf("update run canceled: %w", err)
 		}
 	}
-	if err := s.store.CancelQueuedRuns(context.Background(), directoryID); err != nil {
-		return fmt.Errorf("cancel queued runs: %w", err)
+
+	// Pause updates last_scan_at, so the scheduler does not start a new scan right after it.
+	// A queued run did not set last_scan_at yet. A full scan that runs longer than the scan
+	// interval makes the directory due again.
+	if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
+		log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after cancel")
 	}
 
 	// Run canceled for this directory.
@@ -500,33 +516,28 @@ func (s *Service) GetActiveRun(ctx context.Context, directoryID int) (*models.Di
 	return run, nil
 }
 
-// GetStatus returns the status of a directory's current or most recent scan.
-func (s *Service) GetStatus(ctx context.Context, directoryID int) (*models.DirScanRun, error) {
-	// First check for active run
-	run, err := s.store.GetActiveRun(ctx, directoryID)
+// GetStatus returns the queued and running runs of a directory. When none
+// is active, it returns the most recent run, or nothing for a new directory.
+func (s *Service) GetStatus(ctx context.Context, directoryID int) ([]*models.DirScanRun, error) {
+	runs, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
-		return nil, fmt.Errorf("get active run: %w", err)
+		return nil, fmt.Errorf("list active runs: %w", err)
 	}
-	if run != nil {
-		if progress, ok := s.getRunProgress(run.ID); ok {
-			runCopy := *run
-			runCopy.MatchesFound = progress.matchesFound
-			runCopy.TorrentsAdded = progress.torrentsAdded
-			return &runCopy, nil
+	if len(runs) == 0 {
+		runs, err = s.store.ListRuns(ctx, directoryID, 1)
+		if err != nil {
+			return nil, fmt.Errorf("list runs: %w", err)
 		}
-		return run, nil
+		return runs, nil
 	}
 
-	// Get most recent run
-	runs, err := s.store.ListRuns(ctx, directoryID, 1)
-	if err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+	for _, run := range runs {
+		if progress, ok := s.getRunProgress(run.ID); ok {
+			run.MatchesFound = progress.matchesFound
+			run.TorrentsAdded = progress.torrentsAdded
+		}
 	}
-	if len(runs) > 0 {
-		return runs[0], nil
-	}
-
-	return nil, nil
+	return runs, nil
 }
 
 // executeScan performs the actual directory scan.
@@ -548,14 +559,18 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	if !s.acquireRunSlot(ctx, runID, &l) {
-		s.markRunCanceled(context.Background(), runID, &l, "while waiting for run slot")
-		return
+	webhook := run.TriggeredBy == triggeredByWebhook
+	if webhook {
+		ctx = withWebhookRun(ctx)
+	} else {
+		if !s.acquireRunSlot(ctx, runID, &l) {
+			s.markRunCanceled(context.Background(), runID, &l, "while waiting for run slot")
+			return
+		}
+		defer s.releaseRunSlot()
 	}
-	defer s.releaseRunSlot()
 
-	// Acquire per-directory mutex
-	dirMu := s.getDirectoryMutex(directoryID)
+	dirMu := s.getDirectoryMutex(directoryID, webhook)
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
@@ -928,7 +943,7 @@ func maxSearcheeAgeDaysFromSettings(settings *models.DirScanSettings) int {
 }
 
 func effectiveMaxSearcheeAgeDays(settings *models.DirScanSettings, triggeredBy string) int {
-	if triggeredBy == "webhook" {
+	if triggeredBy == triggeredByWebhook {
 		return 0
 	}
 
@@ -1119,7 +1134,10 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, enabledIndexerIDs, l)
+		stillPending := func() bool {
+			return !s.itemFinishedByAnotherRun(ctx, dir.ID, item, trackedFiles, enabledIndexerIDs, l)
+		}
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1268,6 +1286,48 @@ func (s *Service) processRootSearchee(
 	}
 
 	return matchesFoundOut, torrentsAddedOut
+}
+
+// itemFinishedByAnotherRun rereads the item's files into the run's snapshot and
+// reports whether another run of the directory finished them since the snapshot.
+// A webhook scan and a full scan can run on the same directory at once. The
+// reread also stops the final status update from overwriting the other run's result.
+func (s *Service) itemFinishedByAnotherRun(
+	ctx context.Context,
+	directoryID int,
+	item searcheeWorkItem,
+	trackedFiles *trackedFilesIndex,
+	enabledIndexerIDs map[int]struct{},
+	l *zerolog.Logger,
+) bool {
+	if s.store == nil || trackedFiles == nil {
+		return false
+	}
+
+	paths := make([]string, 0, len(item.searchee.Files))
+	for _, f := range item.searchee.Files {
+		if f != nil {
+			paths = append(paths, f.Path)
+		}
+	}
+	files, err := s.store.GetFilesByPath(ctx, directoryID, paths)
+	if err != nil {
+		if l != nil {
+			l.Debug().Err(err).Str("name", item.searchee.Name).Msg("dirscan: failed to reread item files, searching it")
+		}
+		return false
+	}
+	for _, f := range files {
+		trackedFiles.byPath[f.FilePath] = f
+	}
+
+	if workItemHasPendingFiles(item, trackedFiles, enabledIndexerIDs) {
+		return false
+	}
+	if l != nil {
+		l.Debug().Str("name", item.searchee.Name).Msg("dirscan: another run finished this item, skipping it")
+	}
+	return true
 }
 
 func shouldSkipWorkItemTVGroup(item searcheeWorkItem, injectedTVGroups map[tvGroupKey]struct{}) bool {
@@ -1627,6 +1687,7 @@ func (s *Service) processSearchee(
 	matcher *Matcher,
 	runID int64,
 	enabledIndexerIDs map[int]struct{},
+	stillPending func() bool,
 	l *zerolog.Logger,
 ) ([]*searcheeMatch, searcheeOutcome) {
 	if searchee == nil || settings == nil || matcher == nil {
@@ -1671,7 +1732,7 @@ func (s *Service) processSearchee(
 	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
 
 	// Search indexers
-	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, l)
+	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, stillPending, l)
 	if err != nil {
 		// Cancellation is handled by the caller; avoid marking this as a retryable error.
 		if ctx.Err() != nil {
@@ -1820,8 +1881,20 @@ func (s *Service) searchWithRetries(
 	categories []int,
 	arrTitles []string,
 	minSize, maxSize int64,
+	stillPending func() bool,
 	l *zerolog.Logger,
 ) (*jackett.SearchResponse, error) {
+	if err := s.searchGate.acquire(ctx, isWebhookRun(ctx)); err != nil {
+		return nil, err
+	}
+	// Check after the wait: another run of the directory can finish this item
+	// while it waits, for example a webhook item that went first.
+	if stillPending != nil && !stillPending() {
+		s.searchGate.releaseUnused()
+		return nil, nil
+	}
+	defer s.searchGate.release()
+
 	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
 	if err != nil || response == nil {
 		return response, err
@@ -1861,6 +1934,104 @@ func (s *Service) searchWithRetries(
 	}
 
 	return response, nil
+}
+
+// searchGate lets one item search at a time across runs, and starts the next
+// item's search only when the Library Scan minimum interval has passed since
+// the previous item's search ended. The search queue does not pace indexers
+// behind Prowlarr or Jackett, so this wait is the only pacing they get.
+//
+// A waiting item does not hold the gate, so a webhook item that arrives during
+// the wait still searches next: a full-scan item takes the gate only when no
+// webhook item waits.
+type searchGate struct {
+	mu             sync.Mutex
+	busy           bool
+	lastSearchAt   time.Time
+	webhookWaiting int
+	// changed is closed when the gate frees or the last webhook item stops waiting.
+	changed chan struct{}
+}
+
+func (g *searchGate) acquire(ctx context.Context, webhook bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if webhook {
+		g.webhookWaiting++
+		defer func() {
+			g.webhookWaiting--
+			if g.webhookWaiting == 0 {
+				g.broadcast()
+			}
+		}()
+	}
+
+	for {
+		wait := time.Until(g.lastSearchAt.Add(crossseed.MinTorznabSearchInterval))
+		if !g.busy && wait <= 0 && (webhook || g.webhookWaiting == 0) {
+			g.busy = true
+			return nil
+		}
+
+		var intervalDone <-chan time.Time
+		if !g.busy && wait > 0 {
+			intervalDone = time.After(wait)
+		}
+		if g.changed == nil {
+			g.changed = make(chan struct{})
+		}
+		changed := g.changed
+
+		g.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			g.mu.Lock()
+			return ctx.Err()
+		case <-changed:
+		case <-intervalDone:
+		}
+		g.mu.Lock()
+	}
+}
+
+func (g *searchGate) release() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.busy = false
+	g.lastSearchAt = time.Now()
+	g.broadcast()
+}
+
+// releaseUnused frees the gate after an item that sent no search, so the
+// interval keeps counting from the previous search.
+func (g *searchGate) releaseUnused() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.busy = false
+	g.broadcast()
+}
+
+func (g *searchGate) broadcast() {
+	if g.changed != nil {
+		close(g.changed)
+		g.changed = nil
+	}
+}
+
+type webhookRunKey struct{}
+
+// withWebhookRun marks the context of a webhook scan, so its searches go
+// before the searches of full scans.
+func withWebhookRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, webhookRunKey{}, true)
+}
+
+func isWebhookRun(ctx context.Context) bool {
+	webhook, _ := ctx.Value(webhookRunKey{}).(bool)
+	return webhook
 }
 
 // retrySearchPasses lists the query variants to try, in order, when a search
@@ -2973,15 +3144,17 @@ func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *ti
 	return startedAt, run.CompletedAt
 }
 
-// getDirectoryMutex returns the mutex for a directory, creating one if needed.
-func (s *Service) getDirectoryMutex(directoryID int) *sync.Mutex {
+// getDirectoryMutex returns the mutex for one kind of run in a directory,
+// creating one if needed.
+func (s *Service) getDirectoryMutex(directoryID int, webhook bool) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	mu, ok := s.directoryMu[directoryID]
+	key := directoryMuKey{directoryID: directoryID, webhook: webhook}
+	mu, ok := s.directoryMu[key]
 	if !ok {
 		mu = &sync.Mutex{}
-		s.directoryMu[directoryID] = mu
+		s.directoryMu[key] = mu
 	}
 	return mu
 }

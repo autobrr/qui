@@ -210,7 +210,7 @@
     "reflinkDescription": "Create reflinked clones. Safer for extra/missing files, mitigates corruption best.",
     "baseDirectories": "Base directories",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Comma-separated paths. The first directory on the same filesystem as the source will be used.",
+    "baseDirectoriesDescription": "Comma-separated paths. qui uses a directory on the same filesystem as the source and tries first the one that shares the longest path prefix with it. After a cross-device link error it tries the next one.",
     "directoryOrganization": "Directory organization",
     "flat": "Flat (all in base directory)",
     "byTracker": "By Tracker",
@@ -555,6 +555,7 @@
       "requeueFailed": "Failed to retry unmatched files: {{error}}",
       "resetFailed": "Failed to reset files: {{error}}"
     },
+    "webhookScanStatus": "Webhook scan · {{status}}",
     "statusLabels": {
       "queued": "Queued",
       "scanning": "Scanning",

@@ -191,8 +191,7 @@
     "trigger": "Weitere Informationen"
   },
   "numberInput": {
-    "unlimited": "Unbegrenzt",
-    "useUnlimited": " (-1 für unbegrenzt verwenden)"
+    "unlimited": "Unbegrenzt"
   },
   "dateTime": {
     "na": "N/V",
