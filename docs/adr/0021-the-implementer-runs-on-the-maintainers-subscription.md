@@ -33,7 +33,7 @@ The run uses the `/implement` skill from `s0up4200/skills`, at the main branch a
 - The agent picks its own answer to each departure from the spec, builds it, and lists it in the pull request body.
 - The agent posts no `Brief amendment` comment and runs no field test and no code review. The review bots review the pull request.
 
-A run whose checks pass opens a ready pull request, so CodeRabbit reviews it. A failed run opens a draft with its problems, because CodeRabbit does not review a draft. A run refuses an issue that has an open `implement/<issue>/` pull request, and one concurrency group allows one run at a time.
+A run whose checks pass opens a ready pull request, so CodeRabbit reviews it. A run with a change that fails its checks opens a draft with its problems, because CodeRabbit does not review a draft. A run that makes no change opens no pull request and fails, so GitHub sends s0up4200 an email and the issue stays free for the next run. A run refuses an issue that has an open `implement/<issue>/` pull request, and one concurrency group allows one run at a time.
 
 ## Considered options
 
@@ -45,7 +45,7 @@ A run whose checks pass opens a ready pull request, so CodeRabbit reviews it. A 
 
 ## Consequences
 
-Each run uses the plan limits of s0up4200, and so does interactive use. If a run reaches the limit, it stops and opens a draft pull request. The job has a 60-minute timeout and a limit of 150 turns.
+Each run uses the plan limits of s0up4200, and so does interactive use. If a run reaches the limit, it stops. It opens a draft pull request if it changed files before it stopped. The job has a 60-minute timeout and a limit of 150 turns.
 
 The sandbox has no golangci-lint, no Postgres binary, and no network. CI runs those checks on the pull request. A test that writes into the repo fails in the sandbox.
 
