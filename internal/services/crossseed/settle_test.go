@@ -1129,3 +1129,45 @@ func actionNames(actions []string) []string {
 func idleSettler(sync qbittorrentSync) *Settler {
 	return NewSettler(&settleScript{qbittorrentSync: sync}, nil)
 }
+
+// lookupFake lists the same torrents for each filtered read. The unfiltered
+// read fails with allErr.
+type lookupFake struct {
+	settleFake
+	listed []qbt.Torrent
+	allErr error
+}
+
+func (f *lookupFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	if len(filter.Hashes) == 0 && f.allErr != nil {
+		return nil, f.allErr
+	}
+	return f.listed, nil
+}
+
+func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {
+	const v1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const v2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	// The recheck ended short of the complete gate, so the step drops the entry.
+	torrent := qbt.Torrent{Hash: v1, InfohashV1: v1, InfohashV2: v2, State: qbt.TorrentStatePausedDl, Progress: 0.5, AmountLeft: 100}
+	settler := NewSettler(&lookupFake{listed: []qbt.Torrent{torrent}}, nil)
+	pending := make(map[string]*pendingResume)
+	for _, hash := range []string{v1, v2} {
+		pending[recheckResumeKey(1, hash)] = &pendingResume{instanceID: 1, hash: hash, budgetBytes: new(int64), sawChecking: true}
+	}
+
+	// The v2 entry is rekeyed onto v1 and dropped before the v1 hash comes up.
+	settler.pollInstance(t.Context(), pending, 1, []string{v2, v1})
+	require.Empty(t, pending)
+}
+
+func TestPollInstanceKeepsEntryWhenFullLookupFails(t *testing.T) {
+	const hash = "cccccccccccccccccccccccccccccccccccccccc"
+	settler := NewSettler(&lookupFake{allErr: errors.New("timeout")}, nil)
+	pending := map[string]*pendingResume{
+		recheckResumeKey(1, hash): {instanceID: 1, hash: hash, budgetBytes: new(int64)},
+	}
+
+	settler.pollInstance(t.Context(), pending, 1, []string{hash})
+	require.Contains(t, pending, recheckResumeKey(1, hash))
+}

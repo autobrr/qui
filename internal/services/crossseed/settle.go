@@ -933,6 +933,10 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 	for _, hash := range hashes {
 		key := recheckResumeKey(instanceID, hash)
 		req := pending[key]
+		if req == nil {
+			// The step for another hash of the same torrent already took this entry.
+			continue
+		}
 		torrent, found := torrentByHash[normalizeHash(hash)]
 		if !found && req.recheckPending {
 			// A stalled qBittorrent can hide a fresh add from the cache;
@@ -959,7 +963,7 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 
 // torrentLookup gets the torrents for hashes, keyed by each of their hashes. When
 // a hash is missing, it falls back to the full torrent list of the instance. It
-// returns false when the first call fails.
+// returns false when a call fails, so that no entry is dropped as gone.
 func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, bool) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	torrents, err := s.sync.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
@@ -985,8 +989,8 @@ func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []st
 			Err(allErr).
 			Int("instanceID", instanceID).
 			Int("hashCount", len(hashes)).
-			Msg("Failed to get full torrent state map during recheck resume, using exact hash results")
-		return torrentByHash, true
+			Msg("Failed to get full torrent state map during recheck resume, will retry")
+		return nil, false
 	}
 	return buildTorrentVariantLookup(allTorrents), true
 }
