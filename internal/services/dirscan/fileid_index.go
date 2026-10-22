@@ -28,10 +28,11 @@ func (idx *seedingIndex) len() int {
 
 // hash returns the torrent seeding the file with this identity.
 func (idx *seedingIndex) hash(id hardlink.FileID) (string, bool) {
-	if id.IsZero() {
+	key, ok := fsops.FileKeyOf(id, nil)
+	if !ok {
 		return "", false
 	}
-	hash, ok := idx.byKey[fsops.FileKeyOf(id, nil)]
+	hash, ok := idx.byKey[key]
 	return hash, ok
 }
 
@@ -107,10 +108,9 @@ func addTorrentFilesToFileIDIndex(ctx context.Context, index *seedingIndex, hash
 			continue
 		}
 
-		if info.FileID.IsZero() {
-			continue
+		if key, ok := fsops.FileKeyOf(info.FileID, nil); ok {
+			index.byKey[key] = hash
 		}
-		index.byKey[fsops.FileKeyOf(info.FileID, nil)] = hash
 	}
 
 	return statErrors

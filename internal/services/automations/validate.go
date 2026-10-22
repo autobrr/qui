@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
 // RuleError is a validation failure. Message is safe to show the user.
@@ -90,18 +91,29 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
-	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	// A disabled rule skips these, so one saved before a check existed stays editable.
 	if rule.Enabled {
+		if err := validateMovePath(conditions.Move); err != nil {
+			return err
+		}
 		if regexErrs := ConditionRegexErrors(conditions); len(regexErrs) > 0 {
 			firstErr := regexErrs[0]
 			return ruleError(fmt.Sprintf("Invalid regex pattern in %s: %s (Go/RE2 does not support Perl features like lookahead/lookbehind)", firstErr.Field, firstErr.Message))
 		}
 	}
 
-	hasIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).Identity
-	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
+	var capabilities models.FilesystemCapabilities
+	if instance != nil {
+		capabilities = models.FilesystemCapabilitiesOf(instance)
+	}
+	// A remote instance cannot turn on local access without becoming a local
+	// one, so it gets the answer the UI gives, not that advice.
+	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
 	for field, data := range conditionFieldData {
-		if (data.fileIdentity && !hasIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
+		if (data.trustedIdentity && !capabilities.TrustedIdentity || data.read && !capabilities.Read) && actionConditionsUseField(conditions, field) {
+			if isRemote {
+				return ruleError("This file condition is not available on remote instances.")
+			}
 			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		}
 	}
@@ -130,7 +142,10 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
-		if !hasIdentity {
+		if !capabilities.TrustedIdentity {
+			if isRemote {
+				return ruleError("includeHardlinks is not available on remote instances.")
+			}
 			return ruleError("includeHardlinks requires Local Filesystem Access to be enabled on this instance")
 		}
 	}
@@ -150,6 +165,30 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	return nil
+}
+
+// validateMovePath rejects a move path that renders relative for a placeholder torrent.
+func validateMovePath(move *models.MoveAction) error {
+	if move == nil || !move.Enabled {
+		return nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" {
+		return ruleError("Move path is required")
+	}
+	rendered, err := renderMovePathSample(path)
+	if err != nil {
+		return ruleError(fmt.Sprintf("Invalid move path template: %v", err))
+	}
+	// A conditional template can render empty for the placeholder yet be absolute for a real torrent.
+	if rendered == "" || pathcmp.IsAbsolute(rendered) {
+		return nil
+	}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
+	}
+	return ruleError(msg)
 }
 
 // conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.

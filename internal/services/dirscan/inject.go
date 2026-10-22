@@ -669,8 +669,9 @@ func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
 
 // rollbackLinkTree removes what the link-tree creator recorded in the result,
 // never the whole plan: target paths can be shared with an earlier successful
-// injection for the same release (discussion #2282). The root dir is removed
-// only when empty.
+// injection for the same release (discussion #2282). The result lists the
+// folder that crossseed.LinkIntoNewFolder reserved. The root dir can be the
+// base dir itself, so it is not removed here.
 func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCreateResult, rootDir string, backend fsops.Backend) {
 	if created == nil || rootDir == "" || backend == nil {
 		return
@@ -682,7 +683,6 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 	if err := backend.RemoveTree(ctx, created); err != nil {
 		log.Warn().Err(err).Str("rootDir", rootDir).Msg("dirscan: failed to rollback link tree")
 	}
-	_ = backend.Remove(ctx, rootDir, fsops.RemoveOptions{})
 }
 
 // calculateSavePath determines the save path for the torrent.
@@ -802,7 +802,6 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	}
 
 	incomingFiles := buildLinkTreeIncomingFiles(req.ParsedTorrent)
-	needsIsolation := !hardlinktree.HasCommonRootFolder(incomingFiles)
 
 	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
 	if err != nil {
@@ -822,37 +821,41 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 			return fmt.Errorf("create hardlink base dir: %w", err)
 		}
 
-		destDir := buildLinkDestDir(baseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
-
+		presetDir := buildLinkPresetDir(backend.Paths(), baseDir, instance, trackerDisplayName)
 		var err error
-		plan, err = hardlinktree.BuildPlan(backend.Paths(), linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
-		if err != nil {
-			// Debug: dump file data so we can diagnose BuildPlan mismatches.
-			for idx, lf := range linkableFiles {
-				log.Debug().
-					Int("idx", idx).
-					Str("path", lf.Path).
-					Int64("size", lf.Size).
-					Msg("dirscan: linkable file (candidate)")
+		created, err = crossseed.LinkIntoNewFolder(ctx, backend, presetDir, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, incomingFiles, func(destDir string) (*fsops.TreeCreateResult, error) {
+			var err error
+			plan, err = hardlinktree.BuildPlan(backend.Paths(), linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+			if err != nil {
+				// Debug: dump file data so we can diagnose BuildPlan mismatches.
+				for idx, lf := range linkableFiles {
+					log.Debug().
+						Int("idx", idx).
+						Str("path", lf.Path).
+						Int64("size", lf.Size).
+						Msg("dirscan: linkable file (candidate)")
+				}
+				for idx, ef := range existingFiles {
+					log.Debug().
+						Int("idx", idx).
+						Str("absPath", ef.AbsPath).
+						Str("relPath", ef.RelPath).
+						Int64("size", ef.Size).
+						Msg("dirscan: existing file")
+				}
+				log.Warn().
+					Err(err).
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Str("torrentName", req.ParsedTorrent.Name).
+					Msg("dirscan: failed to build link plan")
+				return nil, humanizeLinkPlanError(err)
 			}
-			for idx, ef := range existingFiles {
-				log.Debug().
-					Int("idx", idx).
-					Str("absPath", ef.AbsPath).
-					Str("relPath", ef.RelPath).
-					Int64("size", ef.Size).
-					Msg("dirscan: existing file")
-			}
-			log.Warn().
-				Err(err).
-				Int("instanceID", instance.ID).
-				Str("instanceName", instance.Name).
-				Str("torrentName", req.ParsedTorrent.Name).
-				Msg("dirscan: failed to build link plan")
-			return humanizeLinkPlanError(err)
-		}
 
-		mode, created, err = i.createLinkTree(ctx, instance, baseDir, existingFiles, plan, backend)
+			var treeCreated *fsops.TreeCreateResult
+			mode, treeCreated, err = i.createLinkTree(ctx, instance, baseDir, existingFiles, plan, backend)
+			return treeCreated, err
+		})
 		return err
 	})
 	if errors.Is(err, crossseed.ErrNoMatchingBaseDir) {
@@ -906,7 +909,10 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	if !models.FilesystemCapabilitiesOf(instance).Write {
+	// Dirscan builds its link destinations with host filepath and walks through
+	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
+	// until #2919 moves it to the backend path dialect.
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
 	if instance.HardlinkBaseDir == "" {
@@ -1008,31 +1014,20 @@ func (i *Injector) createLinkTree(ctx context.Context, instance *models.Instance
 	return "", nil, errors.New("no link mode enabled")
 }
 
-func buildLinkDestDir(baseDir string, instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, trackerDisplayName string) string {
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
-	}
-
+// buildLinkPresetDir applies the instance's hardlink directory preset to
+// baseDir. crossseed.LinkIntoNewFolder picks the folder for the tree in it.
+func buildLinkPresetDir(d fsops.PathDialect, baseDir string, instance *models.Instance, trackerDisplayName string) string {
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		display := trackerDisplayName
 		if display == "" {
 			display = "Unknown"
 		}
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(display), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(display))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(display))
 	case "by-instance":
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
 	default: // "flat" or unknown
-		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return baseDir
 	}
 }
 

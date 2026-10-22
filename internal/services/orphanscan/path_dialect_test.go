@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // winRootTestDialect carries Windows drive and UNC roots through ignore matching on
@@ -233,7 +234,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 		"movies": "/media/movies",
 		"music":  "/data/music",
 	} {
-		require.Equal(t, want, resolveCategoryPath(fsops.SlashPaths, name, categories, "/data", true), name)
+		require.Equal(t, want, qbittorrent.CategorySavePath(fsops.SlashPaths, name, categories, "/data", qbittorrent.CategoryPathRule{Nest: true}), name)
 	}
 
 	files := qbt.TorrentFiles{{Name: "Show/e1.mkv"}, {Name: "Show/e2.mkv"}}

@@ -16,6 +16,11 @@
     "security": "安全",
     "logs": "日誌"
   },
+  "nav": {
+    "general": "一般",
+    "connections": "連線",
+    "access": "存取"
+  },
   "language": {
     "cardTitle": "語言",
     "cardDescription": "選擇您偏好的顯示語言"

@@ -55,7 +55,9 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(appInfo)
+	if err := json.NewEncoder(w).Encode(appInfo); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode qBittorrent application info")
+	}
 }
 
 // getQBittorrentAppInfo fetches application info from qBittorrent API

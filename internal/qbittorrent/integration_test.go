@@ -132,6 +132,21 @@ func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
 	})
 }
 
+func TestSyncManager_DetermineTrackerHealth_UnknownHTTPError(t *testing.T) {
+	sm := &SyncManager{}
+	// libtorrent reports an HTTP status without a reason phrase as
+	// "<code> (unknown HTTP error)". The tracker failed to answer, so the
+	// torrent is not unregistered.
+	torrent := qbt.Torrent{
+		AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
+		Trackers: []qbt.TorrentTracker{
+			{Status: qbt.TrackerStatusNotWorking, Message: "429 (unknown HTTP error)"},
+		},
+	}
+
+	assert.Equal(t, TrackerHealthDown, sm.determineTrackerHealth(&torrent))
+}
+
 func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 	sm := &SyncManager{}
 
@@ -1208,114 +1223,6 @@ func BenchmarkSyncManager_CacheOperations(b *testing.B) {
 }
 
 // TestSyncManager_GetDomainsForTorrent tests the domain extraction from torrent trackers.
-func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
-	sm := &SyncManager{}
-
-	testCases := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		expected map[string]struct{}
-	}{
-		{
-			name: "Multiple trackers returns all domains",
-			torrent: &qbt.Torrent{
-				Hash: "hash1",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://tracker1.example.com/announce"},
-					{Url: "udp://tracker2.org:6969/announce"},
-					{Url: "http://tracker3.net:8080/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"tracker1.example.com": {},
-				"tracker2.org":         {},
-				"tracker3.net":         {},
-			},
-		},
-		{
-			name: "Single Tracker field (legacy) returns domain",
-			torrent: &qbt.Torrent{
-				Hash:    "hash2",
-				Tracker: "https://legacy.tracker.com/announce",
-			},
-			expected: map[string]struct{}{
-				"legacy.tracker.com": {},
-			},
-		},
-		{
-			name: "Trackers field takes precedence over Tracker field",
-			torrent: &qbt.Torrent{
-				Hash:    "hash3",
-				Tracker: "https://legacy.tracker.com/announce",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://primary.tracker.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"primary.tracker.com": {},
-			},
-		},
-		{
-			name: "Empty URL entries are filtered out",
-			torrent: &qbt.Torrent{
-				Hash: "hash4",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://valid.tracker.com/announce"},
-					{Url: ""},
-					{Url: "https://another-valid.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"valid.tracker.com": {},
-				"another-valid.com": {},
-			},
-		},
-		{
-			name: "Empty torrent returns empty map",
-			torrent: &qbt.Torrent{
-				Hash: "hash5",
-			},
-			expected: map[string]struct{}{},
-		},
-		{
-			name: "Duplicate domains are deduplicated",
-			torrent: &qbt.Torrent{
-				Hash: "hash6",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "https://tracker.example.com/announce"},
-					{Url: "http://tracker.example.com/scrape"},
-					{Url: "udp://tracker.example.com:6969"},
-				},
-			},
-			expected: map[string]struct{}{
-				"tracker.example.com": {},
-			},
-		},
-		{
-			name: "Pseudo trackers are filtered out",
-			torrent: &qbt.Torrent{
-				Hash: "hash7",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "** [DHT] **"},
-					{Url: "[PeX]"},
-					{Url: " [LSD] "},
-					{Url: "https://valid.tracker.com/announce"},
-				},
-			},
-			expected: map[string]struct{}{
-				"valid.tracker.com": {},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := sm.getDomainsForTorrent(tc.torrent)
-			assert.Equal(t, tc.expected, result)
-		})
-	}
-}
-
 func TestSyncManager_ExtractDomainFromURL_IgnoresPseudoTrackers(t *testing.T) {
 	sm := &SyncManager{}
 

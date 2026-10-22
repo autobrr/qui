@@ -763,6 +763,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		effective.HasLocalFilesystemAccess = *req.HasLocalFilesystemAccess
 	}
 	canWrite := models.FilesystemCapabilitiesOf(&effective).Write
+	// No backend reflinks over sftp, so reflink mode stays a local-only choice
+	// even though a remote instance has Write (#2942).
+	canReflink := canWrite && models.FilesystemAccessMode(&effective) == models.FilesystemModeLocal
 	effectiveUseHardlinks := existingInstance.UseHardlinks
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
@@ -794,7 +797,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	if effectiveUseReflinks {
-		if !canWrite {
+		if !canReflink {
 			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
 			return
 		}

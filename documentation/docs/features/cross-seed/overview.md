@@ -102,7 +102,7 @@ Completion searches use the same Torznab result classifier as interactive and sc
 Right-click any torrent in the list to open the cross-seed actions:
 
 - **Search Cross-Seeds**: Query indexers for matching torrents on other trackers
-- **Filter Cross-Seeds**: Show torrents in your library that share content with the selected torrent. Use this to identify existing cross-seeds.
+- **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents.
 
 Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
 
@@ -149,7 +149,7 @@ For multiple targets, season pack category routing supplies the initial category
 
 ### Season Pack Assembly
 
-qui can assemble season-pack torrents from individual episodes you already seed. To use automatic assembly, first enable **Assemble season packs automatically** in the settings; it is disabled by default. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires local filesystem access and hardlink or reflink mode. See [Season Packs](./season-packs.md) for setup.
+qui can assemble season-pack torrents from individual episodes you already seed. To use automatic assembly, first enable **Assemble season packs automatically** in the settings; it is disabled by default. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires a link mode on the target instance: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode. See [Season Packs](./season-packs.md) for setup.
 
 ## Blocklist
 

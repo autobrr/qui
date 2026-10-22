@@ -307,6 +307,10 @@ const (
 	defaultSizeMismatchTolerancePercent   = 5.0
 	maxTitleRescueAttemptsPerSearch       = 3
 
+	// MinTorznabSearchInterval is the minimum Library Scan interval for Torznab
+	// searches. Dir Scan waits this long between the searches for two items.
+	MinTorznabSearchInterval = minSearchIntervalSecondsTorznab * time.Second
+
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
@@ -486,6 +490,9 @@ type pendingResume struct {
 	hash       string
 	// monitorOnly observes a full recheck without ever resuming the torrent.
 	monitorOnly bool
+	// recheckPending marks a post-add recheck that failed; the worker sends it
+	// once qBittorrent answers again.
+	recheckPending bool
 	// verificationRequired marks an ambiguous search match that must not trust
 	// qBittorrent's optimistic pre-check completion state. The WebUI API exposes
 	// no recheck generation, so the worker observes checking, then a 100% result.
@@ -879,18 +886,20 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Normalize content path for comparison (case-insensitive, cleaned)
 	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
 
-	// Create match context with lazy file loading. Files are fetched only when
-	// content-path overlap or linked-copy verification needs them.
+	// Create match context with lazy file loading. Files are fetched only for
+	// candidates that pass the prefilter.
 	matchCtx := &localMatchContext{
-		ctx:                   ctx,
-		svc:                   s,
-		sourceInstanceID:      sourceInstanceID,
-		sourceInstance:        instanceByID(instances, sourceInstanceID),
-		sourceHash:            sourceTorrent.Hash,
-		sourceSavePath:        sourceTorrent.SavePath,
-		sourceHasFileIdentity: instanceHasFileIdentity(instances, sourceInstanceID),
-		sourceLocal:           instanceIsLocal(instances, sourceInstanceID),
+		ctx:                 ctx,
+		svc:                 s,
+		sourceInstanceID:    sourceInstanceID,
+		sourceInstance:      instanceByID(instances, sourceInstanceID),
+		sourceHash:          sourceTorrent.Hash,
+		sourceSavePath:      sourceTorrent.SavePath,
+		sourceContentPath:   sourceTorrent.ContentPath,
+		sourceLocal:         instanceIsLocal(instances, sourceInstanceID),
+		trustedIdentityOnly: strict,
 	}
+	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 
@@ -984,22 +993,44 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
-		if (matchType == matchTypeName || matchType == matchTypeRelease) && sourceTorrent.ContentPath != "" {
-			linkedMatchType := s.localLinkedMatchType(matchCtx, instance, cached)
-			// Upgrade name/release matches whose files are hardlinks of or share
-			// allocated ReFS extents with the source torrent's files.
-			// An empty source content path (metadata-less magnet) has no files on disk,
-			// so skip the check instead of tripping strict mode on its empty file list.
-			if linkedMatchType != "" {
-				matchType = linkedMatchType
-			}
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
+		if !ok {
+			continue
 		}
-		if matchType != "" {
+		if matchType := s.classifyLocalCandidate(matchCtx, instance, cached, nameOrRelease); matchType != "" {
 			matches = append(matches, newLocalMatch(instance, cached, matchType))
 		}
 	}
 	return matches
+}
+
+// classifyLocalCandidate fetches the file lists of a prefiltered candidate and
+// the source, and returns the candidate's tier. A failed fetch is recorded on
+// matchCtx for strict mode and gives "".
+func (s *Service) classifyLocalCandidate(
+	matchCtx *localMatchContext,
+	instance *models.Instance,
+	candidate *qbittorrent.CrossInstanceTorrentView,
+	nameOrRelease string,
+) string {
+	// A magnet without metadata has no content path and no files on disk.
+	if matchCtx.sourceContentPath == "" || candidate.ContentPath == "" {
+		return ""
+	}
+	if err := matchCtx.getSourceFiles(); err != nil {
+		return ""
+	}
+	candidateFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
+	if !ok {
+		return ""
+	}
+	return localMatchTier(
+		instance.ID == matchCtx.sourceInstanceID,
+		nameOrRelease,
+		matchCtx.sourceData,
+		newSameDataFiles(candidate.SavePath, candidateFiles, normalizerForService(s)),
+		func() string { return s.localLinkedMatchType(matchCtx, instance, candidate) },
+	)
 }
 
 // newLocalMatch creates a LocalMatch from instance and torrent data.
@@ -1024,23 +1055,28 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 
 // localMatchContext holds source file data for file-level matching.
 // Source files are lazily fetched on first access to avoid unnecessary API calls
-// when no ambiguous content_path matches are encountered.
+// when no candidate passes the prefilter.
 type localMatchContext struct {
-	ctx                   context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	ctx                   context.Context
 	svc                   *Service
 	sourceInstanceID      int
 	sourceInstance        *models.Instance // scopes sourceFileIDs; nil reads as the qui host
 	sourceHash            string
 	sourceSavePath        string
+	sourceContentPath     string
 	sourceHasFileIdentity bool
 	sourceLocal           bool
+	// trustedIdentityOnly limits linked matches to instances with
+	// TrustedIdentity. A delete dialog can add linked matches to the delete,
+	// and identity that a remote host reports never expands a destructive
+	// action.
+	trustedIdentityOnly bool
 
 	// Lazy-loaded source file data
-	fetched          bool
-	sourceFilesErr   error // Error from fetching/parsing source files
-	sourceFiles      qbt.TorrentFiles
-	sourceFileKeys   map[string]int64
-	sourceTotalBytes int64
+	fetched        bool
+	sourceFilesErr error            // Error from fetching/parsing source files
+	sourceFiles    qbt.TorrentFiles // without the files that contentFiles removes
+	sourceData     sameDataFiles
 
 	// Lazy-loaded FileIDs of the source's hard-linked files (nlink > 1),
 	// used to detect hardlinked cross-seed copies.
@@ -1052,18 +1088,17 @@ type localMatchContext struct {
 	verificationErr   error
 }
 
-// getSourceFiles lazily fetches and caches source file keys.
-// Returns the file keys, total bytes, and any error encountered.
-func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBytes int64, err error) {
+// getSourceFiles lazily fetches and caches the source file list.
+func (m *localMatchContext) getSourceFiles() error {
 	if m.fetched {
-		return m.sourceFileKeys, m.sourceTotalBytes, m.sourceFilesErr
+		return m.sourceFilesErr
 	}
 	m.fetched = true
 
 	srcFiles, err := m.svc.getTorrentFilesCached(m.ctx, m.sourceInstanceID, m.sourceHash)
 	if err != nil {
 		m.sourceFilesErr = err
-		return nil, 0, err
+		return err
 	}
 
 	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
@@ -1071,35 +1106,13 @@ func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBy
 	// overlap checks would produce false negatives in delete dialogs.
 	if len(srcFiles) == 0 {
 		m.sourceFilesErr = fmt.Errorf("source torrent %s returned empty file list", normalizeHash(m.sourceHash))
-		return nil, 0, m.sourceFilesErr
+		return m.sourceFilesErr
 	}
 
-	m.sourceFiles = srcFiles
-	m.sourceFileKeys = make(map[string]int64, len(srcFiles))
-	for _, f := range srcFiles {
-		key := normalizePathForComparison(f.Name) + "|" + strconv.FormatInt(f.Size, 10)
-		m.sourceFileKeys[key] = f.Size
-		m.sourceTotalBytes += f.Size
-	}
-
-	return m.sourceFileKeys, m.sourceTotalBytes, nil
-}
-
-// sharesLargestFileSize reports whether the largest files of the source and
-// the candidate have the same size. A failed file fetch counts as no.
-func (m *localMatchContext) sharesLargestFileSize(candidate *qbittorrent.CrossInstanceTorrentView) bool {
-	if _, _, err := m.getSourceFiles(); err != nil {
-		return false
-	}
-	candidateFiles, err := m.svc.getTorrentFilesCached(m.ctx, candidate.InstanceID, candidate.Hash)
-	if err != nil {
-		if m.candidateFilesErr == nil {
-			m.candidateFilesErr = err
-		}
-		return false
-	}
-	sourceLargest, candidateLargest := FindLargestFile(m.sourceFiles), FindLargestFile(candidateFiles)
-	return candidateLargest != nil && sourceLargest.Size == candidateLargest.Size
+	normalizer := normalizerForService(m.svc)
+	m.sourceFiles = contentFiles(srcFiles, normalizer)
+	m.sourceData = newSameDataFiles(m.sourceSavePath, srcFiles, normalizer)
+	return nil
 }
 
 // getSourceFileIDs lazily stats the source torrent's files on the local filesystem
@@ -1113,11 +1126,11 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 	}
 	m.fileIDsFetched = true
 
-	if _, _, err := m.getSourceFiles(); err != nil {
+	if err := m.getSourceFiles(); err != nil {
 		return nil
 	}
 
-	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, models.CapabilityIdentity)
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, m.identity())
 	if err != nil {
 		// Unlike a per-file stat failure, a backend outage discards ALL
 		// hardlink evidence for the instance — record it so strict mode
@@ -1130,8 +1143,8 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 
 	ids := make(map[fsops.FileKey]struct{})
 	if err := forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
-		if nlink > 1 {
-			ids[fsops.FileKeyOf(id, m.sourceInstance)] = struct{}{}
+		if key, ok := fsops.FileKeyOf(id, m.sourceInstance); ok && nlink > 1 {
+			ids[key] = struct{}{}
 		}
 		return true
 	}); err != nil && m.verificationErr == nil {
@@ -1151,7 +1164,8 @@ func candidateSharesSourceFileID(
 ) (bool, error) {
 	shared := false
 	err := forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
-		if _, ok := sourceIDs[fsops.FileKeyOf(id, candidateInstance)]; ok {
+		key, ok := fsops.FileKeyOf(id, candidateInstance)
+		if _, found := sourceIDs[key]; ok && found {
 			shared = true
 			return false
 		}
@@ -1163,18 +1177,30 @@ func candidateSharesSourceFileID(
 	return false, err
 }
 
+// identity is the capability an instance needs for its file identity to
+// count in this match. The backends ask for it again, since the instance
+// list the match started from can be older than the row.
+func (m *localMatchContext) identity() models.FilesystemCapability {
+	if m.trustedIdentityOnly {
+		return models.CapabilityTrustedIdentity
+	}
+	return models.CapabilityIdentity
+}
+
 func (s *Service) localLinkedMatchType(
 	matchCtx *localMatchContext,
 	candidateInstance *models.Instance,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 ) string {
 	if matchCtx == nil || !matchCtx.sourceHasFileIdentity ||
-		candidateInstance == nil || !models.FilesystemCapabilitiesOf(candidateInstance).Identity ||
-		candidate == nil || candidate.ContentPath == "" {
+		candidateInstance == nil || candidate == nil || candidate.ContentPath == "" {
+		return ""
+	}
+	if !models.FilesystemCapabilitiesOf(candidateInstance).Has(matchCtx.identity()) {
 		return ""
 	}
 
-	if _, _, err := matchCtx.getSourceFiles(); err != nil {
+	if err := matchCtx.getSourceFiles(); err != nil {
 		return ""
 	}
 	sourceIDs := matchCtx.getSourceFileIDs()
@@ -1194,8 +1220,10 @@ func (s *Service) localLinkedMatchType(
 	if !ok {
 		return ""
 	}
+	// A linked subtitle alone does not make a different video a cross-seed.
+	candidateFiles = contentFiles(candidateFiles, normalizerForService(s))
 
-	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, models.CapabilityIdentity)
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, matchCtx.identity())
 	if err != nil {
 		// A backend outage discards all evidence for the candidate — record it
 		// so strict mode fails the check instead of reading "no cross-seeds".
@@ -1216,7 +1244,7 @@ func (s *Service) localLinkedMatchType(
 	if filesShareAllocation == nil {
 		return ""
 	}
-	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, models.CapabilityIdentity)
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID, matchCtx.identity())
 	if err != nil {
 		if matchCtx.verificationErr == nil {
 			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)
@@ -1256,8 +1284,8 @@ func (s *Service) getLocalMatchCandidateFiles(
 ) (qbt.TorrentFiles, bool) {
 	candidateFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
 	if err == nil && len(candidateFiles) == 0 {
-		// Same fail-safe as candidateSharesSourceFiles: an empty file list means a
-		// stale torrent or API issue, not evidence that no linked files exist.
+		// An empty file list means a stale torrent or API issue, not evidence
+		// that no linked files exist.
 		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
 	}
 	if err != nil {
@@ -1379,11 +1407,12 @@ func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, instan
 			return true
 		}
 		normalizedPath := normalizeTorrentRelativePath(file.Name)
+		fileID, hasFileID := fsops.FileKeyOf(info.FileID, instance)
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
-			fileID:         fsops.FileKeyOf(info.FileID, instance),
-			hasFileID:      !fsops.FileKeyOf(info.FileID, instance).IsZero(),
+			fileID:         fileID,
+			hasFileID:      hasFileID,
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})
@@ -1437,16 +1466,48 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
-	var firstErr error
+	// Resolve every name first, so a backend with a batch lstats them in one
+	// round trip. A backend without one lstats inside the loop, so a callback
+	// that stops early costs one lstat, not one per file.
+	type resolved struct {
+		file     qbt.TorrentFile
+		fullPath string // empty when the name does not resolve under base
+	}
+	entries := make([]resolved, 0, len(files))
+	paths := make([]string, 0, len(files))
 	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(d, base, file.Name)
 		if !ok {
+			entries = append(entries, resolved{file: file})
+			continue
+		}
+		entries = append(entries, resolved{file: file, fullPath: fullPath})
+		paths = append(paths, fullPath)
+	}
+	batch, batched := backend.(fsops.BatchStater)
+	var infos []*fsops.LstatInfo
+	var errs []error
+	if batched {
+		infos, errs = batch.LstatBatch(ctx, paths)
+	}
+
+	var firstErr error
+	next := 0
+	for _, entry := range entries {
+		if entry.fullPath == "" {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
+				firstErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", entry.file.Name)
 			}
 			continue
 		}
-		info, err := backend.Lstat(ctx, fullPath)
+		var info *fsops.LstatInfo
+		var err error
+		if batched {
+			info, err = infos[next], errs[next]
+		} else {
+			info, err = backend.Lstat(ctx, entry.fullPath)
+		}
+		next++
 		if err != nil {
 			// ENOTDIR: a parent of the path is a file, so this file is missing too.
 			if firstErr == nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
@@ -1457,7 +1518,7 @@ func forEachLocalTorrentFile(
 		if !info.Mode.IsRegular() {
 			continue
 		}
-		if !fn(file, fullPath, info) {
+		if !fn(entry.file, entry.fullPath, info) {
 			return firstErr
 		}
 	}
@@ -1493,11 +1554,10 @@ func hasWindowsDrivePrefix(name string) bool {
 		name[1] == ':'
 }
 
-// instanceHasFileIdentity reports whether qui trusts the file identity of the
-// instance with the given ID.
-func instanceHasFileIdentity(instances []*models.Instance, instanceID int) bool {
+// instanceHas reports whether the instance with the given ID has capability.
+func instanceHas(instances []*models.Instance, instanceID int, capability models.FilesystemCapability) bool {
 	if instance := instanceByID(instances, instanceID); instance != nil {
-		return models.FilesystemCapabilitiesOf(instance).Identity
+		return models.FilesystemCapabilitiesOf(instance).Has(capability)
 	}
 	return false
 }
@@ -1520,174 +1580,6 @@ func instanceIsLocal(instances []*models.Instance, instanceID int) bool {
 		}
 	}
 	return false
-}
-
-// determineLocalMatchType checks if a candidate torrent matches the source.
-// Returns the match type ("content_path", "name", "release") or empty string if no match.
-func (s *Service) determineLocalMatchType(
-	source *qbt.Torrent,
-	sourceRelease *rls.Release,
-	candidate *qbittorrent.CrossInstanceTorrentView,
-	normalizedContentPath string,
-	matchCtx *localMatchContext,
-) string {
-	// Strategy 1: Same content path (case-insensitive, cleaned).
-	//
-	// qBittorrent uses the storage directory as content_path for some multi-file torrents
-	// (e.g. "create subfolder" disabled). In that case, many unrelated torrents can share
-	// the same content_path. Avoid treating "content_path == save_path" as a definitive
-	// cross-seed signal.
-	candidateContentPath := normalizePathForComparison(candidate.ContentPath)
-	sourceSavePath := normalizePathForComparison(source.SavePath)
-	candidateSavePath := normalizePathForComparison(candidate.SavePath)
-	if normalizedContentPath != "" && candidateContentPath != "" && normalizedContentPath == candidateContentPath {
-		sourceIsAmbiguousDir := sourceSavePath != "" && normalizedContentPath == sourceSavePath
-		candidateIsAmbiguousDir := candidateSavePath != "" && candidateContentPath == candidateSavePath
-		if !sourceIsAmbiguousDir && !candidateIsAmbiguousDir {
-			return matchTypeContentPath
-		}
-
-		// Ambiguous directory match: verify actual file overlap using file lists.
-		// This prevents false positives when unrelated torrents share the same download directory.
-		if matchCtx != nil {
-			srcFileKeys, srcTotalBytes, err := matchCtx.getSourceFiles()
-			if err == nil && len(srcFileKeys) > 0 {
-				sharesFiles, stats, checkErr := s.candidateSharesSourceFiles(
-					matchCtx.ctx,
-					srcFileKeys, srcTotalBytes,
-					candidate.InstanceID, candidate.Hash,
-				)
-				switch {
-				case checkErr != nil:
-					// Store candidate fetch error (first error wins) so FindLocalMatches can bubble it up.
-					// A failed overlap check should not silently produce "no cross-seeds".
-					if matchCtx.candidateFilesErr == nil {
-						matchCtx.candidateFilesErr = checkErr
-					}
-				case sharesFiles:
-					return matchTypeContentPath
-				case sourceIsAmbiguousDir || candidateIsAmbiguousDir:
-					// Log diagnostics when ambiguous content_path match fails overlap threshold
-					log.Debug().
-						Str("sourceHash", normalizeHash(source.Hash)).
-						Str("candidateHash", normalizeHash(candidate.Hash)).
-						Int("candidateInstanceID", candidate.InstanceID).
-						Str("contentPath", normalizedContentPath).
-						Bool("sourceIsAmbiguousDir", sourceIsAmbiguousDir).
-						Bool("candidateIsAmbiguousDir", candidateIsAmbiguousDir).
-						Int64("srcTotalBytes", srcTotalBytes).
-						Int64("overlapBytes", stats.OverlapBytes).
-						Int64("candTotalBytes", stats.CandTotalBytes).
-						Int64("minTotal", stats.MinTotal).
-						Int64("overlapPercent", stats.OverlapPercent).
-						Msg("[CROSSSEED] Ambiguous content_path match did not meet overlap threshold")
-				}
-			}
-			// On error or no overlap, fall through to other matching strategies
-		}
-	}
-
-	// Strategy 2: Exact name match
-	sourceName := normalizeLowerTrim(source.Name)
-	candidateName := normalizeLowerTrim(candidate.Name)
-	if sourceName != "" && candidateName != "" && sourceName == candidateName {
-		return matchTypeName
-	}
-
-	// Strategy 3: Release metadata match using rls library
-	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, source.Name, candidate.Name, false)
-	// A bare "Title III" can be a movie sequel without a year, so it pairs with a season pack only on a close
-	// size and an equal largest file: one episode is never the size of a whole movie.
-	if matched && (withTitleNumeralSeason(sourceRelease, candidateRelease) != sourceRelease ||
-		withTitleNumeralSeason(candidateRelease, sourceRelease) != candidateRelease) {
-		matched = s.matcher().isSizeWithinTolerance(searchSourceSize(source), searchSourceSize(candidate.Torrent), defaultSizeMismatchTolerancePercent) &&
-			matchCtx.sharesLargestFileSize(candidate)
-	}
-	if matched {
-		return matchTypeRelease
-	}
-
-	// Strategy 4: Retitled upload of the same data. A rescued cross-seed keeps
-	// its own name and its own hardlink directory, so it fails every strategy
-	// above. Pair it on the evidence the search rescue already requires: a
-	// positive exact reported total size and every release field but the title.
-	if mismatchReason == titleMismatchReason &&
-		classifySearchSizeEvidence(searchSourceSize(source), searchSourceSize(candidate.Torrent)).matches() {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
-			return matchTypeRelease
-		}
-	}
-
-	return ""
-}
-
-// overlapStats holds file overlap statistics for diagnostic logging.
-type overlapStats struct {
-	OverlapBytes   int64
-	CandTotalBytes int64
-	MinTotal       int64
-	OverlapPercent int64 // integer percentage (0-100)
-}
-
-// candidateSharesSourceFiles checks if a candidate torrent shares files with the source.
-// Uses precomputed source file keys for efficiency. Returns true if overlap >= 90% of the
-// smaller torrent's total size. Uses integer math to avoid float rounding issues.
-// Also returns overlap statistics for diagnostic logging.
-func (s *Service) candidateSharesSourceFiles(
-	ctx context.Context,
-	srcFileKeys map[string]int64, srcTotalBytes int64,
-	candInstanceID int, candHash string,
-) (bool, overlapStats, error) {
-	if len(srcFileKeys) == 0 || srcTotalBytes == 0 {
-		return false, overlapStats{}, nil
-	}
-
-	// Fetch candidate file list
-	candFiles, err := s.getTorrentFilesCached(ctx, candInstanceID, candHash)
-	if err != nil {
-		return false, overlapStats{}, err
-	}
-
-	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
-	// An empty list could indicate a magnet without metadata, transient API issue, or stale torrent.
-	// Returning an error ensures strict mode can fail-safe instead of silently producing false negatives.
-	if len(candFiles) == 0 {
-		return false, overlapStats{}, fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candHash))
-	}
-
-	// Calculate overlap with candidate files
-	var overlapBytes, candTotalBytes int64
-	for _, f := range candFiles {
-		candTotalBytes += f.Size
-		key := normalizePathForComparison(f.Name) + "|" + strconv.FormatInt(f.Size, 10)
-		if size, ok := srcFileKeys[key]; ok {
-			overlapBytes += size
-		}
-	}
-
-	if candTotalBytes == 0 {
-		return false, overlapStats{}, nil
-	}
-
-	// Use the smaller total as the reference
-	minTotal := min(srcTotalBytes, candTotalBytes)
-
-	// Compute overlap percent for stats (0-100)
-	var overlapPct int64
-	if minTotal > 0 {
-		overlapPct = (overlapBytes * 100) / minTotal
-	}
-	stats := overlapStats{
-		OverlapBytes:   overlapBytes,
-		CandTotalBytes: candTotalBytes,
-		MinTotal:       minTotal,
-		OverlapPercent: overlapPct,
-	}
-
-	// Consider "shares files" if overlap >= 90% of the smaller torrent
-	// Using integer math: overlapBytes * 100 >= minTotal * 90
-	return overlapBytes*100 >= minTotal*90, stats, nil
 }
 
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
@@ -3872,6 +3764,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			continue
 		}
 
+		// Only processed items are skipped. A skipped or size-rejected item is evaluated
+		// again each run until it leaves the feed, on purpose: the local candidate changes
+		// over time (a copy finishes, another instance gets it, reflinks are turned on).
 		alreadyHandled, lastStatus, err := s.automationStore.HasProcessedFeedItem(ctx, result.GUID, result.IndexerID)
 		if err != nil {
 			log.Warn().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to check feed item cache")
@@ -3938,7 +3833,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 }
 
 // sizeMismatchLogLevel returns debug for the first size-mismatch rejection of a
-// (source, matched) pair and trace for repeats: RSS retries the same doomed
+// (source, matched) pair and trace for repeats: RSS retries the same rejected
 // pair every run until it leaves the feed. In-memory and unbounded on purpose.
 func (s *Service) sizeMismatchLogLevel(sourceHash, matchedHash string) zerolog.Level {
 	if _, seen := s.sizeMismatchWarned.LoadOrStore(sourceHash+"|"+matchedHash, struct{}{}); seen {
@@ -4698,17 +4593,22 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 	// identity evidence and must travel with it.
 	targetSide := req.TargetRelease
 	if targetSide.release == nil {
-		targetSide.release = s.releaseCache.Parse(req.TorrentName)
-	}
-	if targetSide.rawName == "" {
-		targetSide.rawName = req.TorrentName
+		targetSide = s.matcher().readName(req.TorrentName)
 	}
 	targetRelease := targetSide.release
+	// The season pack hint and the file keys pair episodes by season, so a
+	// "Title II" pack reads the season that its numeral names there.
+	seasonedTarget := targetRelease
+	if targetSide.seasonNumeral > 0 {
+		withSeason := *targetRelease
+		withSeason.Series = targetSide.seasonNumeral
+		seasonedTarget = &withSeason
+	}
 	searchDecision := req.SearchDecision
 
 	// The season pack hint compares every local episode with these, so read them once.
 	// Only an admitted decision holds aliases, and it describes the pack's show.
-	packTitles := m.normalizedReleaseTitles(targetRelease, targetSide.rawName)
+	packTitles := m.normalizedReleaseTitles(seasonedTarget, targetSide.rawName)
 	packAliasTitles := slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles)
 
 	// Build basic info for response
@@ -4827,7 +4727,6 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			candidateRelease := s.releaseCache.Parse(torrent.Name)
 			hashKey := normalizeHash(torrent.Hash)
 			if hashKey == "" {
 				continue
@@ -4836,17 +4735,19 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			isSearchSource := searchDecision.admitted() &&
 				searchDecision.SourceInstanceID == instanceID &&
 				searchSourceHash != "" && hashKey == searchSourceHash
-			sourceSide := namedRelease{release: candidateRelease, rawName: torrent.Name}
+			var sourceSide namedRelease
 			if isSearchSource {
 				// Search may have used the selected files to recover structure and
-				// group provenance. Replay that view before any release-shape gate.
-				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent, candidateRelease)
+				// group provenance. Replay that reading before any release-shape gate.
+				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent)
+			} else {
+				sourceSide = s.matcher().readName(torrent.Name)
 			}
 
 			// An episode of the same show marks the pack as buildable from local episodes;
 			// the season pack check verifies coverage before apply. No ARR lookup here.
-			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(targetRelease) &&
-				isTVEpisode(sourceSide.release) && sourceSide.release.Series == targetRelease.Series &&
+			if !response.seasonPackEpisodeCandidates && isTVSeasonPack(seasonedTarget) &&
+				isTVEpisode(sourceSide.release) && sourceSide.release.Series == seasonedTarget.Series &&
 				titleSetsMatch(m.normalizedReleaseTitles(sourceSide.release, sourceSide.rawName), packTitles, nil, packAliasTitles) {
 				response.seasonPackEpisodeCandidates = true
 			}
@@ -4905,11 +4806,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					continue
 				}
 			}
-			releasesMatch, mismatchReason := m.releasesMatchWithReasonAndNamesAndTitles(
-				fallbackInput.Source.release,
-				fallbackInput.Candidate.release,
-				fallbackInput.Source.rawName,
-				fallbackInput.Candidate.rawName,
+			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
+				fallbackInput.Source,
+				fallbackInput.Candidate,
 				fallbackInput.SourceTitles,
 				fallbackInput.CandidateTitles,
 				req.FindIndividualEpisodes,
@@ -4945,7 +4844,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
-					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide.release, targetRelease, req.FindIndividualEpisodes); !ok {
+					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide, targetSide, req.FindIndividualEpisodes); !ok {
 						continue
 					}
 					titleRescueHash = hashKey
@@ -5004,8 +4903,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			// The file keys of a local "Title II" pack take their season from the name, which has only the numeral.
-			candidateRelease := withTitleNumeralSeason(s.releaseCache.Parse(torrent.Name), targetRelease)
-			matchType := m.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			candidateRead := s.matcher().readName(torrent.Name)
+			candidateRelease := withTitleNumeralSeason(candidateRead.release, seasonedTarget)
+			matchType := m.getMatchTypeFromTitle(seasonedTarget, candidateRelease, candidateFiles)
 			if matchType == "" && hashKey == structureRelaxedHash {
 				matchType = "size"
 			}
@@ -5102,16 +5002,10 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
 		torrentHash = meta.HashV2
 	}
-	rawSourceRelease := s.releaseCache.Parse(meta.Name)
-	sourceView := namedRelease{release: rawSourceRelease, rawName: meta.Name}
-
-	// Trackers retitle listings but keep the original info.name. Cached search
-	// decisions must replay search's file-derived view even when that raw name
-	// already parses as TV; ordinary/manual apply keeps its long-standing raw TV
+	// Cached search decisions replay search's file-derived reading even when the
+	// raw name already parses as TV; ordinary/manual apply keeps its raw TV
 	// identity. Non-TV names still need file-derived structure in either path.
-	if !isTVRelease(rawSourceRelease) || requestHasSearchDecision(req) {
-		sourceView = s.applyTargetReleaseViewFromFiles(meta.Name, rawSourceRelease, meta.Files, requestHasSearchDecision(req))
-	}
+	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
 	sourceRelease := sourceView.release
 
 	// Carry private search provenance into candidate discovery. Source identity
@@ -5286,6 +5180,8 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		Success:    true,
 		Status:     "added",
 		Message:    fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", resp.MatchedEpisodes, resp.TotalEpisodes),
+		// Name the assembled pack so run results and notification samples show what was added.
+		MatchedTorrent: &MatchedTorrent{Name: torrentName},
 	}
 	for i := range response.Results {
 		if response.Results[i].InstanceID == resp.InstanceID {
@@ -6392,6 +6288,7 @@ func (s *Service) processCrossSeedCandidate(
 		(!req.SkipRecheck || !renameOnlyAlignment)
 	needsRecheck := verifyBeforeSeed || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
+	autoResumeQueued := false
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
@@ -6402,40 +6299,50 @@ func (s *Service) processCrossSeedCandidate(
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
 		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
+		recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
+		recheckPending := recheckErr != nil
+		if recheckPending {
 			log.Warn().
-				Err(err).
+				Err(recheckErr).
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to trigger recheck after add, skipping auto-resume")
-			result.Message += " - recheck failed, manual intervention required"
-		} else if req.SkipAutoResume {
-			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
+				Bool("skipAutoResume", req.SkipAutoResume).
+				Msg("Failed to trigger recheck after add")
+		}
+		switch {
+		case req.SkipAutoResume:
+			result.Message += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Skipping auto-resume per user settings (recheck triggered)")
 			result.Message += " - auto-resume skipped per settings"
-		} else {
+		default:
 			// Queue for background resume. Verification-required, disc-layout, and
 			// link-mode filesystem fallback torrents must reach 100% first.
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Bool("forceRecheck", forceRecheck).
+				Bool("recheckPending", recheckPending).
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
 			switch {
 			case verifyBeforeSeed:
-				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash)
+				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash, recheckPending)
 			case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil, recheckPending)
 			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil, recheckPending)
 			}
-			if queueErr != nil {
+			switch {
+			case queueErr != nil && recheckPending:
+				result.Message += " - recheck failed and auto-resume queue full, manual intervention required"
+			case queueErr != nil:
 				result.Message += " - auto-resume queue full, manual resume required"
+			default:
+				autoResumeQueued = true
 			}
 		}
 	} else if startPaused && alignmentSucceeded {
@@ -6483,7 +6390,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("crossCategory", crossCategory).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasExtraFiles", hasExtraFiles)
-	if needsRecheckAndResume {
+	if autoResumeQueued {
 		logEvent.Msg("Successfully added cross-seed torrent (auto-resume pending)")
 	} else {
 		logEvent.Msg("Successfully added cross-seed torrent")
@@ -6538,44 +6445,48 @@ func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, t
 
 // queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
 // fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
-func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}) error {
+// recheckPending marks an entry whose post-add recheck failed; the worker sends it.
+func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}, recheckPending bool) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:                    instanceID,
 		hash:                          hash,
 		budgetBytes:                   &budgetBytes,
 		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
 		linkedPaths:                   linkedPaths,
+		recheckPending:                recheckPending,
 	})
 }
 
-func (s *Service) queueVerificationRecheckResume(instanceID int, hash string) error {
+func (s *Service) queueVerificationRecheckResume(instanceID int, hash string, recheckPending bool) error {
 	budgetBytes := int64(0)
 	return s.queuePendingResume(&pendingResume{
 		instanceID:           instanceID,
 		hash:                 hash,
 		budgetBytes:          &budgetBytes,
 		verificationRequired: true,
+		recheckPending:       recheckPending,
 	})
 }
 
-func (s *Service) queueTitleRescueMonitor(instanceID int, hash string) error {
-	budgetBytes := int64(0)
-	return s.queuePendingResume(&pendingResume{
+// skipResumeMonitorSuffix queues a monitor for a SkipAutoResume add that is a
+// title rescue or whose recheck failed, and returns a status suffix when the
+// monitor queue is full.
+func (s *Service) skipResumeMonitorSuffix(titleRescue, recheckPending bool, instanceID int, hash string) string {
+	if !titleRescue && !recheckPending {
+		return ""
+	}
+	err := s.queuePendingResume(&pendingResume{
 		instanceID:           instanceID,
 		hash:                 hash,
 		monitorOnly:          true,
-		verificationRequired: true,
-		budgetBytes:          &budgetBytes,
+		verificationRequired: titleRescue,
+		budgetBytes:          new(int64),
+		recheckPending:       recheckPending,
 	})
-}
-
-// titleRescueMonitorSuffix queues the verification monitor for a title-rescue
-// add and returns a status suffix when the monitor queue is full.
-func (s *Service) titleRescueMonitorSuffix(titleRescue bool, instanceID int, hash string) string {
-	if !titleRescue {
-		return ""
-	}
-	if err := s.queueTitleRescueMonitor(instanceID, hash); err != nil {
+	if err != nil {
+		if recheckPending {
+			return " - recheck failed and monitor queue full, manual intervention required"
+		}
 		return " - verification monitor queue full, manual review required"
 	}
 	return ""
@@ -6875,6 +6786,10 @@ func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[strin
 }
 
 func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
+	if req.recheckPending {
+		return s.sendPendingRecheck(instanceID, hash, req, torrent.State)
+	}
+
 	progress := torrent.Progress
 	state := torrent.State
 
@@ -6936,7 +6851,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
-				Msg("Title rescue recheck completed at 100%; torrent left paused per settings")
+				Msg("Monitored recheck completed at 100%; torrent left paused per settings")
 			return false
 		}
 		if progress > 0 || req.sawChecking {
@@ -6945,7 +6860,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Str("hash", hash).
 				Float64("progress", progress).
 				Int64("amountLeft", torrent.AmountLeft).
-				Msg("Title rescue recheck completed below 100%; torrent left paused for manual review")
+				Msg("Monitored recheck completed below 100%; torrent left paused for manual review")
 			return false
 		}
 		return true
@@ -7118,6 +7033,41 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	return true
 }
 
+// sendPendingRecheck retries a post-add recheck that failed. Until it lands the
+// torrent's progress is a skip_checking guess, so the entry is not evaluated.
+func (s *Service) sendPendingRecheck(instanceID int, hash string, req *pendingResume, state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only checking states change the send
+	case qbt.TorrentStateCheckingResumeData:
+		// Same order as the post-add wait: recheck only after resume data is validated.
+		return true
+	case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl:
+		// The failed call reached qBittorrent after all; a second recheck would restart it.
+		// Count it as a seen piece check so a later restart trips the interruption guard.
+		req.recheckPending = false
+		req.sawChecking = true
+		return true
+	}
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "recheck")
+	cancel()
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Deferred post-add recheck failed, will retry")
+		return true
+	}
+	req.recheckPending = false
+	// Verification timing counts from the recheck, not from the failed add.
+	req.addedAt = time.Now()
+	log.Debug().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Msg("Sent deferred post-add recheck")
+	return true
+}
+
 // recordBlockedResume appends the linked-file check verdict to the season pack history.
 func (s *Service) recordBlockedResume(req *pendingResume) {
 	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
@@ -7250,7 +7200,10 @@ func (s *Service) recheckResumeWorker() {
 			for key, req := range pending {
 				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
 					message := "Recheck resume absolute timeout reached, removing from queue"
-					if req.verificationRequired && !req.sawChecking {
+					switch {
+					case req.recheckPending:
+						message = "Deferred post-add recheck was never accepted, torrent left paused for manual review"
+					case req.verificationRequired && !req.sawChecking:
 						message = "Verification recheck transition was not observed, torrent left paused for manual review"
 					}
 					log.Warn().
@@ -7299,6 +7252,11 @@ func (s *Service) recheckResumeWorker() {
 					key := recheckResumeKey(instanceID, hash)
 					req := pending[key]
 					torrent, found := torrentByHash[normalizeHash(hash)]
+					if !found && req.recheckPending {
+						// A stalled qBittorrent can hide a fresh add from the cache;
+						// dropping it here would leave it stopped for good.
+						continue
+					}
 					if !found {
 						log.Debug().
 							Int("instanceID", instanceID).
@@ -7614,12 +7572,17 @@ func (s *Service) selectBestCandidateAddPlan(
 			continue
 		}
 
-		candidateRelease := s.releaseCache.Parse(torrent.Name)
+		// Only the search source reads its files: search read it that way, and
+		// the file keys of every other torrent come from its name.
+		var candidateRead namedRelease
 		if req != nil && req.SearchDecision.admitted() &&
 			candidate.InstanceID == req.SearchDecision.SourceInstanceID &&
 			hashKey == normalizeHash(req.SearchDecision.SourceHash) {
-			candidateRelease = s.searchSourceReleaseViewFromFiles(ctx, &torrent, candidateRelease, files).release
+			candidateRead, _ = s.readSearchSource(ctx, &torrent, files)
+		} else {
+			candidateRead = s.matcher().readName(torrent.Name)
 		}
+		candidateRelease := candidateRead.release
 
 		manualTarget := req != nil && req.ManualTargetHash != "" &&
 			hashKey == normalizeHash(req.ManualTargetHash)
@@ -8697,27 +8660,35 @@ func alternateConnectorQuery(query string) (string, bool) {
 
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
-// renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name, then the parsed subtitle joined to the title, and last
-// the title without its season numeral. A candidate counts only when its
-// normalized form differs from the primary query, so the retry never repeats
-// the query that already returned nothing.
+// renamed forms), then the Title keys of the release other than its main title
+// (the parsed Alt title, "AKA" segments, the sides of a slash title), then the
+// parsed subtitle joined to the title, and last the title without its season
+// numeral. A candidate counts only when its normalized form differs from the
+// primary query, so the retry never repeats the query that already returned
+// nothing.
 // Returns ("", false) when no distinct alternate title exists.
 // Dir Scan has no Service, so it parses through the default parser.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
-	return matcher{}.alternateTitleQuery(primaryQuery, release, arrTitles, releaseName)
+	query, _, ok := matcher{}.alternateTitleQuery(primaryQuery, namedRelease{release: release, rawName: releaseName}, arrTitles)
+	return query, ok
 }
 
-func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
+// alternateTitleQuery reads a Read release. season is the inferred Season
+// numeral when the query is the title without it, so that the retry searches
+// that season, and 0 otherwise.
+func (m matcher) alternateTitleQuery(primaryQuery string, side namedRelease, arrTitles []string) (query string, season int, ok bool) {
+	release := side.release
 	primary := stringutils.NormalizeForMatching(primaryQuery)
-	candidates := make([]string, 0, len(arrTitles)+4)
-	candidates = append(candidates, arrTitles...)
-	candidates = append(candidates, releaseAlt(release))
-	for _, part := range m.rawAKATitleParts(releaseName) {
-		parsed := m.parseReleaseName(part)
-		candidates = append(candidates, parsed.Title, parsed.Alt)
+	candidates := append([]string(nil), arrTitles...)
+	// The primary query already reads the main title, the first one.
+	candidates = append(candidates, m.appendReleaseTitles(nil, release, side.rawName)[1:]...)
+	candidates = append(candidates, subtitleTitleQuery(release))
+	// A movie keeps its numeral: "Rocky III" is not "Rocky".
+	withoutNumeral := ""
+	if release.Series > 0 || side.seasonNumeral > 0 {
+		withoutNumeral = numeralFreeTitle(release)
+		candidates = append(candidates, withoutNumeral)
 	}
-	candidates = append(candidates, subtitleTitleQuery(release), titleWithoutSeasonNumeral(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8726,9 +8697,12 @@ func (m matcher) alternateTitleQuery(primaryQuery string, release *rls.Release, 
 		if normalized := stringutils.NormalizeForMatching(candidate); normalized == "" || normalized == primary {
 			continue
 		}
-		return candidate, true
+		if candidate == withoutNumeral {
+			return candidate, side.seasonNumeral, true
+		}
+		return candidate, 0, true
 	}
-	return "", false
+	return "", 0, false
 }
 
 // subtitleTitleQuery joins a release's title and parsed subtitle into a query.
@@ -8931,7 +8905,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-	searchSource, contentInfo := s.searchSourceReleaseViewAndContentInfo(ctx, sourceTorrent, sourceRelease, sourceFiles)
+	searchSource, contentInfo := s.readSearchSource(ctx, sourceTorrent, sourceFiles)
 	searchRelease := searchSource.release
 	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
 	// so later release matching follows the same search mode.
@@ -9015,12 +8989,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
-	if searchSource.numeralSeason {
-		// The main query stays as on a plain title; matching and the retry use the season.
-		withoutSeason := *searchRelease
-		withoutSeason.Series = 0
-		queryRelease = &withoutSeason
-	}
 	if contentInfo.ContentType == "music" {
 		// Keyed on the content type, not the parsed type: the file-extension signal forces music
 		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
@@ -9414,9 +9382,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	usable := s.searchUsablePredicate(searchBase)
 	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		gatherIn.altTitle, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name)
-		if searchSource.numeralSeason {
-			gatherIn.altTitleSeason = new(searchRelease.Series)
+		var altSeason int
+		gatherIn.altTitle, altSeason, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchSource, arrTitles)
+		if altSeason > 0 {
+			gatherIn.altTitleSeason = new(altSeason)
 		}
 	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
@@ -10748,29 +10717,25 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Parse all torrents and track their releases
 	type torrentWithRelease struct {
-		torrent         qbt.Torrent
-		release         *rls.Release
-		normalizedTitle string
+		torrent   qbt.Torrent
+		read      namedRelease
+		titleKeys []string
 	}
 
 	parsed := make([]torrentWithRelease, 0, len(torrents))
 	for _, torrent := range torrents {
-		release := s.releaseCache.Parse(torrent.Name)
-		normalizedTitle := s.stringNormalizer.Normalize(release.Title)
-		parsed = append(parsed, torrentWithRelease{
-			torrent:         torrent,
-			release:         release,
-			normalizedTitle: normalizedTitle,
-		})
+		read := s.matcher().readName(torrent.Name)
+		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
-	// Pre-group by normalized title for faster lookup
-	titleGroups := make(map[string][]int) // normalized title -> indices in parsed
+	// Index each torrent under every Title key, so that only torrents that can
+	// share a title meet the matcher. A grouping key can be looser than the
+	// matcher, never stricter: the matcher still decides each pair.
+	titleGroups := make(map[string][]int) // Title key -> indices in parsed
 	for i, item := range parsed {
-		if item.normalizedTitle != "" {
-			titleGroups[item.normalizedTitle] = append(titleGroups[item.normalizedTitle], i)
+		for _, key := range item.titleKeys {
+			titleGroups[key] = append(titleGroups[key], i)
 		}
 	}
 
@@ -10801,23 +10766,29 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	for i := range parsed {
 		current := &parsed[i]
 
-		// Try to find an existing group this torrent belongs to
-		// First check only torrents with the same normalized title for efficiency
+		// Try to find an existing group this torrent belongs to. The candidates are
+		// the earlier torrents in any bucket of its Title keys, in list order.
 		foundGroup := -1
-		candidateIndices := titleGroups[current.normalizedTitle]
+		var candidateIndices []int
+		for _, key := range current.titleKeys {
+			for _, idx := range titleGroups[key] {
+				if idx >= i {
+					break
+				}
+				candidateIndices = append(candidateIndices, idx)
+			}
+		}
+		slices.Sort(candidateIndices)
+		candidateIndices = slices.Compact(candidateIndices)
 
 		for _, candidateIdx := range candidateIndices {
-			if candidateIdx >= i {
-				// Only check against previous torrents (already processed)
-				continue
-			}
-
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
 			matches, cached := releasesMatchCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches = s.matcher().releasesMatch(current.release, candidate.release, false)
+				matches, _ = s.matcher().releasesMatchWithReasonAndNames(current.read.release, candidate.read.release,
+					current.read.rawName, candidate.read.rawName, false)
 				releasesMatchCache[cacheKey] = matches
 			}
 
@@ -11028,6 +10999,9 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		deduplicated = specific
 	}
 
+	// Same rule as skipIndividualEpisodes in dirscan/work_selection.go: an episode
+	// that cannot join a season pack search is dropped, never searched alone.
+	// Change both together.
 	searchable := deduplicated
 	if state.opts.SkipIndividualEpisodes {
 		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t qbt.Torrent) bool {
@@ -13246,9 +13220,8 @@ func logReleaseMatchDecision(
 			reason = "release mismatch"
 		}
 	}
-	// TRACE, not DEBUG: the only caller runs this for every source torrent
-	// against every candidate in the same release-key bucket. The key has no
-	// title, so one bucket can hold a full library of episodes.
+	// TRACE, not DEBUG: the only caller runs this for each pair that the
+	// cross-match index selects, on every cross-match build.
 	if evt := log.Trace(); evt.Enabled() {
 		evt.
 			Str("sourceTitle", sourceTitle).
@@ -14489,57 +14462,79 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 	)
 }
 
-// buildHardlinkDestDir constructs the destination directory for hardlink tree
-// based on the configured preset and torrent structure.
-//
-// Hardlink mode always uses contentLayout=Original, so the isolation decision
-// is based purely on whether the torrent has a common root folder:
-//   - Torrents with a root folder (e.g., "Movie/video.mkv") → no isolation needed
-//   - Rootless torrents (e.g., "video.mkv") → isolation folder needed
-//
-// When isolation is needed, a human-readable folder name is used: <torrent-name>--<shortHash>
-// For "flat" preset, isolation is always used to keep torrents separated.
-func (s *Service) buildHardlinkDestDir(
+// linkPresetDir applies the instance's hardlink directory preset to baseDir:
+// baseDir itself for flat, or a tracker or instance folder in it. A link tree
+// goes into this directory through LinkIntoNewFolder.
+func (s *Service) linkPresetDir(
 	ctx context.Context,
 	d fsops.PathDialect,
 	instance *models.Instance,
 	baseDir string,
-	torrentHash, torrentName string,
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
-	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-	// Determine if isolation folder is needed based on torrent structure.
-	// Since hardlink mode always uses contentLayout=Original, we only need
-	// an isolation folder when the torrent doesn't have a common root folder.
-	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
-
-	// Build isolation folder name if needed
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
-	}
-
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
-		// Get tracker display name using incoming torrent's tracker domain
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)), isolationFolder)
-		}
-		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)))
 	case "by-instance":
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)), isolationFolder)
-		}
 		return d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
-
 	default: // "flat" or unknown
-		// For flat layout, always use isolation folder to keep torrents separated
-		return d.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return baseDir
 	}
+}
+
+// linkDestDir returns the folder that the link tree of a torrent adds to
+// presetDir, and the directory the tree goes into when that folder is free.
+// Link mode always uses contentLayout=Original, so a torrent with a root
+// folder brings its own top folder. A rootless torrent gets an isolation
+// folder named after the torrent, and the tree goes into it.
+func linkDestDir(d fsops.PathDialect, presetDir, torrentName string, files []hardlinktree.TorrentFile) (topFolder, destDir string) {
+	if hardlinktree.HasCommonRootFolder(files) {
+		root, _, _ := strings.Cut(files[0].Path, "/")
+		return d.Join(presetDir, root), presetDir
+	}
+	isolation := d.Join(presetDir, pathutil.IsolationFolder(torrentName))
+	return isolation, isolation
+}
+
+// LinkIntoNewFolder calls link with the directory for the link tree of one
+// torrent in presetDir. The folder that the tree adds to presetDir must be
+// new: qui creates it to reserve it, so two adds at the same time cannot
+// share it. When it already exists, the tree goes into the isolation folder
+// <name>--<shortHash>, where the tree create reuses a link to the same file
+// and refuses a different file. The result's Dirs lists the reserved
+// folder, so RemoveTree takes it back after a failed add.
+func LinkIntoNewFolder(
+	ctx context.Context,
+	backend fsops.Backend,
+	presetDir, torrentHash, torrentName string,
+	files []hardlinktree.TorrentFile,
+	link func(destDir string) (*fsops.TreeCreateResult, error),
+) (*fsops.TreeCreateResult, error) {
+	d := backend.Paths()
+	topFolder, destDir := linkDestDir(d, presetDir, torrentName, files)
+	if err := backend.MkdirAll(ctx, presetDir, fsutil.ContentDirMode); err != nil {
+		return nil, fmt.Errorf("create link directory %s: %w", presetDir, err)
+	}
+	if err := backend.Mkdir(ctx, topFolder, fsutil.ContentDirMode); err != nil {
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("create link folder %s: %w", topFolder, err)
+		}
+		return link(d.Join(presetDir, pathutil.HashedIsolationFolder(torrentHash, torrentName)))
+	}
+
+	created, err := link(destDir)
+	if err != nil {
+		// The failed create removed what it made in the folder, so only an
+		// empty folder is left. WithoutCancel: a cancelled run still frees the name.
+		if removeErr := backend.Remove(context.WithoutCancel(ctx), topFolder, fsops.RemoveOptions{}); removeErr != nil {
+			log.Warn().Err(removeErr).Str("folder", topFolder).Msg("failed to remove reserved link folder")
+		}
+		return nil, err
+	}
+	created.Dirs = append(created.Dirs, topFolder)
+	return created, nil
 }
 
 // buildCategorySavePath computes the correct save path for a cross-seed category
@@ -14555,15 +14550,11 @@ func (s *Service) buildCategorySavePath(
 	candidate CrossSeedCandidate,
 	req *CrossSeedRequest,
 ) string {
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
-	case "by-instance":
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
-	default: // "flat" or unknown
+	presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
+	if presetDir == baseDir { // flat
 		return baseDir
 	}
+	return normalizePath(presetDir)
 }
 
 // resolveTrackerDisplayName resolves the display name for the tracker.

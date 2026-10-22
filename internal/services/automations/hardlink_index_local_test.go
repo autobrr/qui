@@ -19,6 +19,7 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -49,9 +50,11 @@ func (r *switchableRow) set(row *models.Instance) {
 	r.mu.Unlock()
 }
 
+// remoteRow is on the exec tier, so it has Identity. The reads need
+// TrustedIdentity, which a remote host never has.
 var (
 	localRow  = &models.Instance{HasLocalFilesystemAccess: true, IsActive: true}
-	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", IsActive: true}
+	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec, IsActive: true}
 )
 
 // remoteSpy stands in for the SSH host and counts the reads that reached it.
@@ -178,7 +181,7 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	fid := createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow},
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
-	deficits := map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(fid, nil): {nlink: 2, uniquePathCount: 1}}
+	deficits := map[fsops.FileKey]*fileIDTracker{testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1}}
 	state := &hardlinkBuildState{seenPaths: map[string]struct{}{}}
 
 	stats := service.scanOtherInstancesForDeficits(t.Context(), instanceID, []int{instanceID + 1}, deficits, state)
@@ -207,7 +210,7 @@ func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
 	id := hardlink.RemoteFileID([]byte{1, 2, 3})
 	index := &HardlinkIndex{buildState: &hardlinkBuildState{
 		instance:        box,
-		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{fsops.FileKeyOf(id, box): {nlink: 2, uniquePathCount: 1}},
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{testFileKey(id, box): {nlink: 2, uniquePathCount: 1}},
 		seenPaths:       map[string]struct{}{},
 		torrentInfoByHash: map[string]*torrentFileInfo{
 			"hash": {fileIDs: []hardlink.FileID{id}, allAccessible: true, hasHardlinks: true},
@@ -217,4 +220,31 @@ func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
 	service.augmentCrossInstanceScope(t.Context(), instanceID, index)
 
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.CrossScopeByHash["hash"])
+}
+
+// The cross-instance scope reads only instances with trusted identity. A
+// remote identity never matches a local file key, so reading an exec-tier
+// remote costs one remote stat per file and resolves nothing.
+func TestCrossScopeInstancesAreTrustedOnly(t *testing.T) {
+	t.Parallel()
+
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "cross-trusted"), sshtest.EncryptionKey())
+	require.NoError(t, err)
+	rule, err := store.Create(t.Context(), "rule", "http://127.0.0.1:1", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	local, err := store.Create(t.Context(), "local", "http://127.0.0.1:2", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	remote, err := store.Create(t.Context(), "remote", "http://127.0.0.1:3", "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	require.NoError(t, store.SetSSHCredentials(t.Context(), remote.ID, "box.example.invalid", 22, "qui", sshtest.PrivateKey("")))
+	require.NoError(t, store.SetHostKeyPin(t.Context(), remote.ID, "box.example.invalid", 22, sshtest.HostKey()))
+	require.NoError(t, store.SetSSHTier(t.Context(), remote.ID, models.SSHTierExec))
+	row, err := store.Get(t.Context(), remote.ID)
+	require.NoError(t, err)
+	require.True(t, models.FilesystemCapabilitiesOf(row).Identity, "the fixture must be an exec-tier remote")
+
+	service := &Service{instanceStore: store}
+	ids, err := service.listCrossScopeInstances(t.Context(), rule.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int{local.ID}, ids)
 }

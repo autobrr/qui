@@ -19,15 +19,14 @@ type trackedFilesIndex struct {
 	byFileID map[fsops.FileKey]*models.DirScanFile
 }
 
-func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) fsops.FileKey {
+func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, nil)
 }
 
 // keyOfStored decodes a dir_scan_files.file_id value. A row from before the
 // tagged form decodes to no identity and is never indexed.
 func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
-	id := hardlink.FileIDFromBytes(stored)
-	return idx.keyOf(id), !id.IsZero()
+	return idx.keyOf(hardlink.FileIDFromBytes(stored))
 }
 
 func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
@@ -207,8 +206,8 @@ func lookupTrackedFile(scanned *ScannedFile, idx *trackedFilesIndex) (*models.Di
 		return nil, ""
 	}
 
-	if !scanned.FileID.IsZero() {
-		if existing := idx.byFileID[idx.keyOf(scanned.FileID)]; existing != nil {
+	if key, ok := idx.keyOf(scanned.FileID); ok {
+		if existing := idx.byFileID[key]; existing != nil {
 			return existing, "file_id"
 		}
 	}

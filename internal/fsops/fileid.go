@@ -24,37 +24,35 @@ type FileKey struct {
 	scope [4]byte
 }
 
-// IsZero reports a key that names no file: a zero ID, or a remote ID with no
-// SSH host to scope it.
-func (k FileKey) IsZero() bool { return k == FileKey{} }
-
 // FileKeyOf binds id to the instance that reported it. Local kinds all live
 // on the qui host, so they share one scope; a remote kind is scoped to the
 // SSH host and port, the same-filesystem rule orphan scan merges by. A nil
-// instance is the qui host itself, so a remote ID with a nil instance or an
-// empty SSH host has no scope and gets the zero key.
-func FileKeyOf(id hardlink.FileID, instance *models.Instance) FileKey {
+// instance is the qui host itself. ok is false when id names no file: a zero
+// ID, or a remote ID with a nil instance or an empty SSH host, which has no
+// scope. Such a key matches nothing, so a caller must not index it.
+func FileKeyOf(id hardlink.FileID, instance *models.Instance) (key FileKey, ok bool) {
 	// Kept to one branch so the local path inlines; orphan scan calls this per file.
 	if id.Kind() != hardlink.KindRemote {
-		return FileKey{id: id}
+		return FileKey{id: id}, !id.IsZero()
 	}
 	return remoteFileKey(id, instance)
 }
 
-func remoteFileKey(id hardlink.FileID, instance *models.Instance) FileKey {
+func remoteFileKey(id hardlink.FileID, instance *models.Instance) (FileKey, bool) {
 	if instance == nil || instance.SSHHost == "" {
-		return FileKey{}
+		return FileKey{}, false
 	}
 	key := FileKey{id: id}
 	binary.LittleEndian.PutUint32(key.scope[:], remoteScope(net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort))))
-	return key
+	return key, true
 }
 
 // SameFile reports whether two IDs name one file. IDs of different kinds
-// never match, and a zero key matches nothing.
+// never match, and an ID with no key matches nothing.
 func SameFile(a hardlink.FileID, aInstance *models.Instance, b hardlink.FileID, bInstance *models.Instance) bool {
-	key := FileKeyOf(a, aInstance)
-	return !key.IsZero() && key == FileKeyOf(b, bInstance)
+	aKey, aOK := FileKeyOf(a, aInstance)
+	bKey, bOK := FileKeyOf(b, bInstance)
+	return aOK && bOK && aKey == bKey
 }
 
 var remoteScopes = struct {

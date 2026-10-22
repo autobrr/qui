@@ -49,6 +49,7 @@ func TestConditionFieldsHasEveryField(t *testing.T) {
 func TestConditionFieldsRequirementsMatchFieldData(t *testing.T) {
 	for field, spec := range ConditionFields {
 		data := conditionFieldData[field]
-		require.Equal(t, data.fileIdentity || data.localAccess, spec.Requires == RequiresLocalAccess, field)
+		require.Equal(t, data.trustedIdentity, spec.Requires == RequiresLocalAccess, field)
+		require.Equal(t, data.read, spec.Requires == RequiresFilesystemAccess, field)
 	}
 }

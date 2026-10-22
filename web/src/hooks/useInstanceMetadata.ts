@@ -6,34 +6,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { AppPreferences, Category } from "@/types"
+import type { Category } from "@/types"
 
 export interface InstanceMetadata {
   categories: Record<string, Category>
   tags: string[]
-  preferences?: AppPreferences
+  // Set only on the entry that holds the place until the torrent list or the fallback loads the metadata.
+  placeholder?: true
 }
 
-const DEFAULT_PREF_FALLBACK_DELAY_MS = 400
+// The flag, not the object identity, marks the placeholder: React Query keeps the old object when
+// the new data is deep-equal, for example an instance with no categories and no tags.
+const EMPTY_METADATA: InstanceMetadata = { categories: {}, tags: [], placeholder: true }
+
+const DEFAULT_FALLBACK_DELAY_MS = 400
 
 interface UseInstanceMetadataOptions {
   fallbackDelayMs?: number
 }
 
 /**
- * Shared hook for fetching instance metadata (categories, tags, preferences)
+ * Shared hook for fetching instance metadata (categories, tags)
  * This prevents duplicate API calls when multiple components need the same data
  * Note: Counts are now included in the torrents response, so we don't fetch them separately
  */
 export function useInstanceMetadata(instanceId: number, options: UseInstanceMetadataOptions = {}) {
   const queryClient = useQueryClient()
   const queryKey = useMemo(() => ["instance-metadata", instanceId] as const, [instanceId])
-  const fallbackDelay = options.fallbackDelayMs ?? DEFAULT_PREF_FALLBACK_DELAY_MS
+  const fallbackDelay = options.fallbackDelayMs ?? DEFAULT_FALLBACK_DELAY_MS
 
   const [error, setError] = useState<Error | null>(null)
-  const [isFetchingFallback, setIsFetchingFallback] = useState(false)
 
-  const emptyMetadataRef = useRef<InstanceMetadata>({ categories: {}, tags: [] })
   const getSnapshot = useCallback(
     () => {
       if (!instanceId) {
@@ -46,9 +49,9 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
 
   const { data: metadata, refetch: refetchMetadata } = useQuery<InstanceMetadata | undefined>({
     queryKey,
-    queryFn: async () => getSnapshot() ?? emptyMetadataRef.current,
-    initialData: () => getSnapshot() ?? emptyMetadataRef.current,
-    placeholderData: previous => previous ?? emptyMetadataRef.current,
+    queryFn: async () => getSnapshot() ?? EMPTY_METADATA,
+    initialData: () => getSnapshot() ?? EMPTY_METADATA,
+    placeholderData: previous => previous ?? EMPTY_METADATA,
     enabled: Boolean(instanceId),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -70,12 +73,14 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
     }
   }, [instanceId])
 
+  const isLoaded = metadata !== undefined && !metadata.placeholder
+
   useEffect(() => {
     if (!instanceId) {
       return
     }
 
-    if (metadata?.preferences) {
+    if (isLoaded) {
       if (fallbackRef.current.timeoutId !== null) {
         (typeof window === "undefined" ? clearTimeout : window.clearTimeout)(fallbackRef.current.timeoutId)
         fallbackRef.current.timeoutId = null
@@ -95,24 +100,21 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
     const timeoutId = (typeof window === "undefined" ? setTimeout : window.setTimeout)(async () => {
       fallbackRef.current.timeoutId = null
       fallbackRef.current.inflight = true
-      setIsFetchingFallback(true)
 
       try {
         // The torrent-list stream normally hydrates this cache. When no stream has
         // populated it (e.g. add-torrent / RSS / workflow / dir-scan opened before
         // the torrents view), fetch categories and tags directly too, otherwise those
         // selectors render permanently empty.
-        const [categories, tags, preferences] = await Promise.all([
+        const [categories, tags] = await Promise.all([
           api.getCategories(instanceId),
           api.getTags(instanceId),
-          api.getInstancePreferences(instanceId),
         ])
 
         const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
         const next: InstanceMetadata = {
           categories: categories ?? cached?.categories ?? metadata?.categories ?? {},
           tags: tags ?? cached?.tags ?? metadata?.tags ?? [],
-          preferences,
         }
         queryClient.setQueryData(queryKey, next)
         setError(null)
@@ -120,11 +122,10 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
         if (err instanceof Error) {
           setError(err)
         } else {
-          setError(new Error("Failed to load instance preferences"))
+          setError(new Error("Failed to load instance metadata"))
         }
       } finally {
         fallbackRef.current.inflight = false
-        setIsFetchingFallback(false)
       }
     }, fallbackDelay)
 
@@ -137,13 +138,9 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
       }
       fallbackRef.current.inflight = false
     }
-  }, [fallbackDelay, instanceId, metadata?.preferences, queryClient, queryKey])
+  }, [fallbackDelay, instanceId, isLoaded, queryClient, queryKey])
 
-  const hasPreferences = Boolean(metadata?.preferences)
-  const isLoading =
-    Boolean(instanceId) &&
-    !hasPreferences &&
-    (isFetchingFallback || metadata === emptyMetadataRef.current || !metadata)
+  const isLoading = Boolean(instanceId) && !isLoaded
 
   return {
     data: instanceId ? metadata : undefined,

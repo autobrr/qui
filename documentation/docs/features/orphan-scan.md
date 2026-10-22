@@ -43,6 +43,8 @@ By default, qui scans a directory only if at least one torrent points to it. If 
 
 The same gap applies one level up. If your torrents all save to `/data/torrents/mydata/`, a stray `/data/torrents/test.txt` is never walked, because no torrent points at `/data/torrents/`.
 
+For a directory outside the default save path and outside each category path, keep one small torrent with its save path in that directory. Orphan scan then walks the directory and all its subdirectories. The save path must match the case of the directory name. On Linux, if the save path is `/data/mtv` and the directory is `/data/MTV`, qBittorrent makes a second, empty `mtv` directory and moves the torrent into it. The scan then walks the new directory and reports it as clean.
+
 ## Scanning the default save path
 
 Turn on **Scan Default Save Path** to close that gap. qui reads the default save path from the instance's own qBittorrent settings and walks it as a scan root, including subdirectories that no torrent uses.
@@ -65,7 +67,7 @@ These paths come from qBittorrent, so they are paths as qBittorrent sees them. I
 
 ## Abandoned directories
 
-Moves and deletions leave empty directories behind. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
+Moves and deletions leave empty directories behind. qui removes the leftover folders of the deletes and moves it makes or proxies itself (see [Deleting and moving torrents](./torrent-management.md#deleting-and-moving-torrents)). Deletes made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that bypasses the proxy still leave them. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
 
 Turn on **Delete Abandoned Directories** to include them. qui reports a directory when this run empties it: either it holds no files at any depth, or every file below it is an orphan the run is about to delete. Each one is listed in the preview alongside the orphan files, marked with a directory icon and no size.
 

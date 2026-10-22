@@ -5,10 +5,12 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
 )
 
 type mockHealthChecker struct {
@@ -43,6 +46,16 @@ func (b *rootIdentityBackend) Lstat(ctx context.Context, path string) (*fsops.Ls
 	}
 	infoCopy := *info
 	return &infoCopy, nil
+}
+
+type walkDirCounter struct {
+	fsops.Backend
+	walks *atomic.Int32
+}
+
+func (b *walkDirCounter) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	b.walks.Add(1)
+	return b.Backend.WalkDir(ctx, root, opts)
 }
 
 func TestReadinessChecks(t *testing.T) {
@@ -162,7 +175,7 @@ func TestBuildFileMapFromTorrents_IgnoresTorrentWithoutMetadataAtSharedRoot(t *t
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(root)}, result.scanRoots)
 	assert.Empty(t, result.skippedRoots)
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(root, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "movie.mkv"))))
 }
 
 func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
@@ -183,7 +196,7 @@ func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(stableRoot)}, result.scanRoots)
 	assert.Equal(t, []string{filepath.Clean(transientRoot)}, result.skippedRoots)
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(stableRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(stableRoot, "movie.mkv"))))
 }
 
 func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(t *testing.T) {
@@ -203,7 +216,7 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 	require.NoError(t, err)
 	assert.Empty(t, result.scanRoots)
 	assert.Equal(t, []string{filepath.Clean(root)}, result.skippedRoots)
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(root, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "movie.mkv"))))
 }
 
 func TestFilterCoveredScanRoots(t *testing.T) {
@@ -313,7 +326,7 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(fsops.HostPaths), got, 0, 100, local.NewBackend(), nil)
 	require.NoError(t, err)
 	assert.False(t, truncated)
-	assert.Equal(t, []string{normalizePath(fsops.HostPaths, orphanFile)}, orphanPaths(orphans))
+	assert.Equal(t, []string{fsops.NormalizePath(fsops.HostPaths, orphanFile)}, orphanPaths(orphans))
 
 	t.Run("distinct case variants", func(t *testing.T) {
 		caseRoot := filepath.Join(base, "case-sensitive")
@@ -362,10 +375,10 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	)
 	require.NoError(t, err)
 
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "My.Torrent", "file1.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "My.Torrent", "file2.srt"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(trackerDir, "My.Torrent", "file1.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(trackerDir, "My.Torrent", "file2.srt"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "My.Torrent", "file2.srt"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(trackerDir, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(trackerDir, "My.Torrent", "file2.srt"))))
 	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
 	assert.Contains(t, result.scanRoots, filepath.Clean(trackerDir))
 }
@@ -392,8 +405,8 @@ func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t 
 	)
 	require.NoError(t, err)
 
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(saveRoot, "movie.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(saveRoot, "subs", "file.srt"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(saveRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(saveRoot, "subs", "file.srt"))))
 	assert.Equal(t, []string{filepath.Clean(saveRoot)}, result.scanRoots)
 	assert.NotContains(t, result.scanRoots, filepath.Dir(saveRoot))
 }
@@ -421,10 +434,10 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	)
 	require.NoError(t, err)
 
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "extras", "poster.jpg"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "movie.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(contentRoot, "extras", "poster.jpg"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(contentRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "extras", "poster.jpg"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(categoryRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(contentRoot, "extras", "poster.jpg"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(contentRoot, "movie.mkv"))))
 	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
 	assert.Contains(t, result.scanRoots, filepath.Clean(contentRoot))
 	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
@@ -453,8 +466,8 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 	require.NoError(t, err)
 
 	// Each file must be found under either spelling of its directory.
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(lower, "Show.S01", "Show.S01E01.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(fsops.HostPaths, filepath.Join(upper, "Movie.2024", "Movie.2024.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(lower, "Show.S01", "Show.S01E01.mkv"))))
+	assert.True(t, result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, filepath.Join(upper, "Movie.2024", "Movie.2024.mkv"))))
 }
 
 func TestDedupeCaseVariantRoots(t *testing.T) {
@@ -507,4 +520,65 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 
 	assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(t.Context(), []string{upper, lower}, backend, nil))
 	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend, nil))
+}
+
+// A remote backend reports no file identity, so only a byte-identical root is
+// dropped; a case variant is kept because nothing confirms it is the same dir.
+func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T) {
+	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
+	root := "/remote/TrackerName"
+	lower := "/remote/trackername"
+	backend := &rootIdentityBackend{
+		Backend: newSlashBackend(nil, root, lower),
+		infos:   map[string]*fsops.LstatInfo{root: noID, lower: noID},
+	}
+
+	// root, lower, root is the no-identity case: Clean does not collapse it.
+	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend, nil))
+}
+
+// Declaring the default save path alongside a torrent at the same root must not
+// walk it twice when the backend cannot confirm file identity.
+func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
+	t.Parallel()
+
+	const root = "/srv/data"
+	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
+	slash := newSlashBackend(map[string]int64{
+		root + "/owned.mkv":  1,
+		root + "/orphan.mkv": 2,
+	}, root)
+	identity := &rootIdentityBackend{
+		Backend: slash,
+		infos: map[string]*fsops.LstatInfo{
+			root:       noID,
+			root + "/": noID,
+		},
+	}
+	walks := &atomic.Int32{}
+	backend := &walkDirCounter{Backend: identity, walks: walks}
+
+	f := newModeFixture(t, "orphanscan-dedupe-exact-roots", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend {
+		return backend
+	})
+	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+	}
+	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+	}
+	stubSync(f.svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: root + "/"}, nil
+	}
+
+	settings, err := f.store.GetSettings(t.Context(), 1)
+	require.NoError(t, err)
+	settings.ScanDefaultSavePath = true
+	_, err = f.store.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	assert.Equal(t, []string{root}, run.ScanPaths)
+	assert.Equal(t, int32(1), walks.Load())
 }

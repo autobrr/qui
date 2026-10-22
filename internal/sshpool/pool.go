@@ -34,18 +34,14 @@ const (
 	keepaliveInterval = 30 * time.Second
 	keepaliveTimeout  = 15 * time.Second
 
-	// idleTimeout closes a connection nobody has used for a while.
-	//
-	// ponytail: "used" means taken from the pool, so one call that alone runs
-	// past the limit is cut and redialed; an in-flight counter is the upgrade
-	// when the exec tier adds calls that long.
+	// idleTimeout closes a connection nobody has used for a while. "Used"
+	// means taken from the pool or running a remote command, so one sftp call
+	// that alone runs past the limit is cut and redialed.
 	idleTimeout = 10 * time.Minute
 )
 
-// Pool keeps one SSH connection with one SFTP session per instance.
-//
-// ponytail: one connection per instance, no bounded session pool; that arrives
-// with the exec tier, which needs more than one channel at a time.
+// Pool keeps one SSH connection per instance, with one SFTP session and at
+// most execSessions exec sessions on it.
 type Pool struct {
 	dialer *Dialer
 
@@ -68,9 +64,14 @@ type entry struct {
 	// sem serialises dial and reconnect for this instance only. It is a channel
 	// rather than a mutex so a caller waiting behind another caller's dial can
 	// give up with its own ctx instead of sitting out that dial.
-	sem     chan struct{}
-	client  *ssh.Client
-	sftp    *sftp.Client
+	sem    chan struct{}
+	client *ssh.Client
+	sftp   *sftp.Client
+	tier   models.SSHTier // what the probe of client found
+	// slots bounds the exec sessions on client. It outlives a reconnect,
+	// which is harmless: a session on a dead client fails and frees its slot.
+	slots   chan struct{}
+	parked  atomic.Int32  // slots kept taken at the host's session limit; see Conn.open
 	err     error         // memoised failure; nil when connected
 	retryAt time.Time     // when a dial may be attempted again; unused for a refusal
 	backoff time.Duration // delay for the next failure, doubling to backoffMax
@@ -86,10 +87,40 @@ func NewPool(dialer *Dialer) *Pool {
 // failed dial is memoised, so a job touching hundreds of paths against a down
 // host pays for one connect attempt, not hundreds.
 func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, error) {
+	live, _, err := p.take(ctx, inst)
+	if err != nil {
+		return nil, err
+	}
+	return live.sftp, nil
+}
+
+// Exec returns the instance's connection for remote commands, dialing like
+// SFTP. It answers ErrNoExec when the probe of the live connection did not
+// find the exec tier, which happens when the key lost its shell after the
+// caller read the stored tier.
+func (p *Pool) Exec(ctx context.Context, inst *models.Instance) (*Conn, error) {
+	live, entry, err := p.take(ctx, inst)
+	if err != nil {
+		return nil, err
+	}
+	if live.tier != models.SSHTierExec {
+		return nil, fmt.Errorf("instance %d: %w", inst.ID, ErrNoExec)
+	}
+	return &Conn{client: live.client, slots: entry.slots, parked: &entry.parked, used: entry.touch}, nil
+}
+
+// live is one connection and what its probe found.
+type live struct {
+	client *ssh.Client
+	sftp   *sftp.Client
+	tier   models.SSHTier
+}
+
+func (p *Pool) take(ctx context.Context, inst *models.Instance) (live, *entry, error) {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
-		return nil, ErrPoolClosed
+		return live{}, nil, ErrPoolClosed
 	}
 	entry := p.conns[inst.ID]
 	if entry == nil {
@@ -99,7 +130,7 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	p.mu.Unlock()
 
 	if err := entry.lock(ctx); err != nil {
-		return nil, err
+		return live{}, nil, err
 	}
 	defer entry.unlock()
 
@@ -109,15 +140,15 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	closed := p.closed
 	p.mu.Unlock()
 	if closed {
-		return nil, ErrPoolClosed
+		return live{}, nil, ErrPoolClosed
 	}
 
 	switch {
 	case entry.sftp != nil:
-		entry.lastUsed.Store(time.Now().UnixNano())
-		return entry.sftp, nil
+		entry.touch()
+		return entry.live(), entry, nil
 	case entry.refused(), entry.err != nil && time.Now().Before(entry.retryAt):
-		return nil, entry.err
+		return live{}, nil, entry.err
 	}
 
 	// The dial reads the row, never the caller's snapshot: a caller built
@@ -129,21 +160,21 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	row, err := p.dialer.creds.Get(ctx, inst.ID)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return live{}, nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("read instance %d for the ssh dial: %w", inst.ID, err)
+		return live{}, nil, fmt.Errorf("read instance %d for the ssh dial: %w", inst.ID, err)
 	}
 	if models.FilesystemAccessMode(row) != models.FilesystemModeRemote {
-		return nil, fmt.Errorf("instance %d: %w", inst.ID, ErrNotRemote)
+		return live{}, nil, fmt.Errorf("instance %d: %w", inst.ID, ErrNotRemote)
 	}
 	client, err := p.dialer.Connect(ctx, row)
 	if err != nil {
 		if ctx.Err() != nil {
 			// One caller giving up says nothing about the host.
-			return nil, ctx.Err()
+			return live{}, nil, ctx.Err()
 		}
 		entry.memoise(inst, err)
-		return nil, err
+		return live{}, nil, err
 	}
 
 	// The subsystem request and the sftp init block inside x/crypto with no
@@ -161,7 +192,7 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 	if err != nil {
 		_ = client.Close()
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return live{}, nil, ctx.Err()
 		}
 		// The memo hands this text to every caller in the backoff window, so
 		// it names the host and, when the subsystem never answered, says so.
@@ -172,13 +203,14 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 			err = fmt.Errorf("open sftp session on %s: %w", addr, err)
 		}
 		entry.memoise(inst, err)
-		return nil, err
+		return live{}, nil, err
 	}
 
 	entry.client = client
 	entry.sftp = sftpClient
+	entry.tier = p.probeTier(ctx, row, client)
 	entry.err = nil
-	entry.lastUsed.Store(time.Now().UnixNano())
+	entry.touch()
 	done := make(chan struct{})
 	log.Debug().Int("instanceID", inst.ID).Msg("sshpool: opened connection")
 
@@ -193,7 +225,7 @@ func (p *Pool) SFTP(ctx context.Context, inst *models.Instance) (*sftp.Client, e
 		_ = client.Close()
 	}()
 
-	return sftpClient, nil
+	return entry.live(), entry, nil
 }
 
 // Invalidate ends the instance's connection and forgets its memo. The
@@ -259,8 +291,16 @@ func (p *Pool) Close() {
 }
 
 func newEntry() *entry {
-	return &entry{sem: make(chan struct{}, 1)}
+	return &entry{sem: make(chan struct{}, 1), slots: make(chan struct{}, execSessions)}
 }
+
+// live is the connection the entry holds. Callers hold the entry.
+func (e *entry) live() live {
+	return live{client: e.client, sftp: e.sftp, tier: e.tier}
+}
+
+// touch marks the connection used, which keeps it from the idle close.
+func (e *entry) touch() { e.lastUsed.Store(time.Now().UnixNano()) }
 
 // lock takes the entry, or returns ctx's error if it is done first.
 func (e *entry) lock(ctx context.Context) error {
@@ -307,9 +347,15 @@ func (e *entry) forget() {
 	}
 	e.client = nil
 	e.sftp = nil
+	e.tier = ""
 	e.err = nil
 	e.retryAt = time.Time{}
 	e.backoff = 0
+	// The next connection can reach another host, with a session limit of its
+	// own, so the slots parked at this host's limit go back.
+	for range e.parked.Swap(0) {
+		<-e.slots
+	}
 }
 
 // watch clears the entry once this client is gone, so the next caller redials.
@@ -343,7 +389,9 @@ func (e *entry) keepalive(instanceID int, client *ssh.Client, done <-chan struct
 		case <-ticker.C:
 		}
 
-		if time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
+		// A command still running is use: a find over a large tree can take
+		// longer than the idle limit.
+		if len(e.slots) == int(e.parked.Load()) && time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
 			log.Debug().Int("instanceID", instanceID).Msg("sshpool: closing idle connection")
 			_ = client.Close()
 			return

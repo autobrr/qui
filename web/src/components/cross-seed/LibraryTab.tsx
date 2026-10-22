@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { RunFooter } from "@/components/cross-seed/RunFooter"
 import { AutoResumeSwitch, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,6 @@ import { MultiSelect } from "@/components/ui/multi-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   CROSS_SEED_SEARCH_SETTINGS_KEY,
   CROSS_SEED_SETTINGS_KEY,
@@ -32,6 +32,7 @@ import {
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
+import { libraryRunState } from "@/lib/run-state"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedSearchSettings,
@@ -199,16 +200,14 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const seededSearchNeedsGazelle = !seededSearchTorznabEnabled && !gazelleSavedConfigured
   const seededSearchGazelleOnlyRun = !seededSearchTorznabEnabled && gazelleSavedConfigured
 
-  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || seededSearchNeedsGazelle || (!hasEnabledIndexers && !gazelleSavedConfigured)
-  const startSearchRunDisabledReason = useMemo(() => {
-    if (seededSearchNeedsGazelle) {
-      return t("toast.enableGazelleDescription")
-    }
-    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
-      return t("toast.configureTorznabOrGazelle")
-    }
-    return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchNeedsGazelle, t])
+  const runState = libraryRunState({
+    hasInstance: Boolean(searchInstanceId),
+    startPending: startSearchRunMutation.isPending,
+    running: searchRunning,
+    cancelPending: cancelSearchRunMutation.isPending,
+    needsGazelle: seededSearchNeedsGazelle,
+    hasSearchSource: hasEnabledIndexers || gazelleSavedConfigured,
+  }, t)
   const seededSearchIntervalMinimum = seededSearchGazelleOnlyRun ? MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS : MIN_SEEDED_SEARCH_INTERVAL_SECONDS
 
   useEffect(() => {
@@ -779,53 +778,19 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
           </div>
         </Collapsible>
       </CardContent>
-      <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          {searchRunning ? (
-            <Button
-              variant="outline"
-              className="min-h-11 md:min-h-9"
-              onClick={() => cancelSearchRunMutation.mutate()}
-              disabled={cancelSearchRunMutation.isPending}
-            >
-              {cancelSearchRunMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("automation.stopping")}
-                </>
-              ) : (
-                <>
-                  <XCircle className="mr-2 h-4 w-4" />
-                  {t("common:actions.cancel")}
-                </>
-              )}
-            </Button>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="min-h-11 md:min-h-9 disabled:cursor-not-allowed disabled:pointer-events-auto"
-                  onClick={handleStartSearchRun}
-                  disabled={startSearchRunDisabled}
-                >
-                  {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
-                  {t("scan.startRun")}
-                </Button>
-              </TooltipTrigger>
-              {startSearchRunDisabledReason && (
-                <TooltipContent align="start" className="max-w-xs text-xs">
-                  {startSearchRunDisabledReason}
-                </TooltipContent>
-              )}
-            </Tooltip>
-          )}
-        </div>
+      <RunFooter
+        state={runState}
+        runLabel={t("scan.startRun")}
+        runIcon={startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+        onRun={handleStartSearchRun}
+        onCancel={() => cancelSearchRunMutation.mutate()}
+        cancelDialog={{ title: t("scan.cancelDialog.title"), description: t("scan.cancelDialog.description") }}
+      >
         <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={saveMutation.isPending}>
           {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {t("rules.saveChanges")}
         </Button>
-      </CardFooter>
+      </RunFooter>
     </Card>
   )
 }
