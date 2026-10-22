@@ -11,9 +11,12 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type stubTorrentNotificationSync struct {
@@ -49,6 +52,8 @@ func (s *stubTorrentNotificationSync) ExtractDomainFromURL(rawURL string) string
 type captureNotifier struct {
 	events chan notifications.Event
 }
+
+func (*captureNotifier) Listens(context.Context, notifications.EventType) bool { return true }
 
 func (n *captureNotifier) Notify(_ context.Context, event notifications.Event) {
 	n.events <- event
@@ -167,4 +172,18 @@ func TestNotifyTorrentsAddedAfterRefreshesBatchInOneRead(t *testing.T) {
 	require.Equal(t, map[string]float64{"AAA111": 0.9, "BBB222": 0.2}, progress)
 	require.Equal(t, 1, syncStub.refreshCalls)
 	require.Equal(t, []string{"AAA111", "BBB222"}, syncStub.lastHashes)
+}
+
+func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
+	t.Parallel()
+
+	store := models.NewNotificationTargetStore(testdb.NewMigratedSQLite(t, "added-no-listener"))
+	notifier := notifications.NewService(store, nil, zerolog.Nop())
+	syncStub := &stubTorrentNotificationSync{}
+
+	start := time.Now()
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 1, []qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
+
+	require.Zero(t, syncStub.refreshCalls)
+	require.Less(t, time.Since(start), 10*time.Second)
 }

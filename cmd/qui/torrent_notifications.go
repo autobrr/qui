@@ -19,6 +19,11 @@ const (
 	torrentAddedRefreshTimeout    = 5 * time.Second
 )
 
+type torrentAddedNotifier interface {
+	notifications.Notifier
+	Listens(ctx context.Context, eventType notifications.EventType) bool
+}
+
 type torrentNotificationSync interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	ExtractDomainFromURL(rawURL string) string
@@ -62,11 +67,14 @@ func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int,
 
 // notifyTorrentsAddedAfter waits for delay, reads the batch again in one sync,
 // and sends one torrent-added event per torrent. It blocks for the delay.
-func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, instanceID int, torrents []qbt.Torrent, delay time.Duration) {
+func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, instanceID int, torrents []qbt.Torrent, delay time.Duration) {
 	if notifier == nil || len(torrents) == 0 {
 		return
 	}
 	ctx = context.WithoutCancel(ctx)
+	if !notifier.Listens(ctx, notifications.EventTorrentAdded) {
+		return
+	}
 
 	time.Sleep(delay)
 
