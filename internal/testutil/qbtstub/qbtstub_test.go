@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,12 +20,13 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 		return resp.StatusCode
 	}
+	inc := &qbt.CategoryDownloadPath{Enabled: true, Path: "/inc"}
 	saveOnly := url.Values{"category": {"c"}, "savePath": {"/new"}}
 
 	t.Run("5.1 replaces every option", func(t *testing.T) {
 		s := New(t, "/data")
 		s.AddCategory("c", "/old")
-		s.SetCategoryDownloadPath("c", "/inc")
+		s.SetCategoryDownloadPath("c", inc)
 		require.Equal(t, http.StatusOK, edit(t, s, saveOnly))
 		require.Nil(t, s.CategoryDownloadPath("c"))
 	})
@@ -38,7 +40,7 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 		s := New(t, "/data")
 		s.WebAPIVersion = "2.15.1"
 		s.AddCategory("c", "/old")
-		s.SetCategoryDownloadPath("c", false)
+		s.SetCategoryDownloadPath("c", &qbt.CategoryDownloadPath{})
 		require.Equal(t, http.StatusOK, edit(t, s, saveOnly))
 		require.Nil(t, s.CategoryDownloadPath("c"))
 	})
@@ -46,9 +48,9 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 		s := New(t, "/data")
 		s.WebAPIVersion = "2.16.1"
 		s.AddCategory("c", "/old")
-		s.SetCategoryDownloadPath("c", "/inc")
+		s.SetCategoryDownloadPath("c", inc)
 		require.Equal(t, http.StatusOK, edit(t, s, saveOnly))
-		require.Equal(t, "/inc", s.CategoryDownloadPath("c"))
+		require.Equal(t, inc, s.CategoryDownloadPath("c"))
 		require.Equal(t, http.StatusOK, edit(t, s, url.Values{"category": {"c"}, "downloadPathEnabled": {""}}))
 		require.Nil(t, s.CategoryDownloadPath("c"))
 	})

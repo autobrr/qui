@@ -16,11 +16,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,9 +69,9 @@ type Server struct {
 	rid        int
 	torrents   map[string]*Torrent
 	categories map[string]string
-	// downloadPaths holds each category's download path option: false when
-	// it is off, the path when it is on, and no entry when it inherits.
-	downloadPaths map[string]any
+	// downloadPaths holds each category's download path option, with no
+	// entry when the category inherits it.
+	downloadPaths map[string]*qbt.CategoryDownloadPath
 	savePath      string
 	// ConflictAfter, when set, makes setCategory change that many torrents
 	// and then answer 409, as qBittorrent does when it throws part way
@@ -105,7 +107,7 @@ type Server struct {
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
-	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]any{},
+	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
 		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
@@ -119,9 +121,9 @@ func (s *Server) AddCategory(name, savePath string) {
 	s.categories[name] = savePath
 }
 
-// SetCategoryDownloadPath sets a category's download path option: false turns
-// it off, a string turns it on with that path, and nil makes it inherit.
-func (s *Server) SetCategoryDownloadPath(name string, option any) {
+// SetCategoryDownloadPath sets a category's download path option, nil to
+// make it inherit.
+func (s *Server) SetCategoryDownloadPath(name string, option *qbt.CategoryDownloadPath) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if option == nil {
@@ -133,7 +135,7 @@ func (s *Server) SetCategoryDownloadPath(name string, option any) {
 
 // CategoryDownloadPath returns a category's download path option, nil when it
 // inherits.
-func (s *Server) CategoryDownloadPath(name string) any {
+func (s *Server) CategoryDownloadPath(name string) *qbt.CategoryDownloadPath {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.downloadPaths[name]
@@ -520,16 +522,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		// Up to qBittorrent 5.2 an edit replaces every option of the category,
 		// so a download path the request leaves out goes back to inherit.
 		if sentOption || !partial {
-			switch param("downloadPathEnabled") {
-			case "true":
-				option = param("downloadPath")
-			case "false":
-				option = false
-			default:
-				option = nil
+			option = nil
+			if enabled := param("downloadPathEnabled"); enabled == "true" || enabled == "false" {
+				option = &qbt.CategoryDownloadPath{Enabled: enabled == "true", Path: param("downloadPath")}
 			}
 		}
-		if !s.webAPIAtLeast("2.15.0") && savePath == s.categories[name] && option == s.downloadPaths[name] {
+		if !s.webAPIAtLeast("2.15.0") && savePath == s.categories[name] && reflect.DeepEqual(option, s.downloadPaths[name]) {
 			s.conflicts[endpoint]++
 			w.WriteHeader(http.StatusConflict)
 			return
