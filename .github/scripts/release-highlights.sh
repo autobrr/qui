@@ -69,7 +69,7 @@ collect_input() {
 	while IFS= read -r subject; do
 		# Merge commits and other commits without a PR number add nothing.
 		[[ $subject =~ \(#([0-9]+)\)$ ]] || continue
-		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body) || {
+		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body,author) || {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
@@ -82,9 +82,13 @@ collect_input() {
 		' <<<"$json" >/dev/null; then
 			continue
 		fi
-		# Dependency PRs give only their title.
-		if [[ $subject =~ ^chore\(deps\)[:\(!] ]] ||
-			jq -e 'any(.labels[]; .name == "dependencies")' <<<"$json" >/dev/null; then
+		# A dependency PR from a bot gives only its title, because its body is
+		# the changelog of the dependency. A person says in the body what the
+		# update changes for users, so that body stays.
+		if jq -e --arg subject "$subject" '
+			.author.is_bot and
+			(any(.labels[]; .name == "dependencies") or ($subject | test("^chore\\(deps\\)[:(!]")))
+		' <<<"$json" >/dev/null; then
 			json=$(jq 'del(.body)' <<<"$json")
 		fi
 		jq -r --arg subject "$subject" '
