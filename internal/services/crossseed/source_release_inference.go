@@ -181,6 +181,10 @@ func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFile
 		}
 	}
 	if largest == nil {
+		// The ignore words also match show names, such as "Trailer Park Boys".
+		largest = FindLargestFile(files)
+	}
+	if largest == nil {
 		return parsed
 	}
 	fileRelease := s.matcher().parseFileRelease(path.Base(largest.Name))
