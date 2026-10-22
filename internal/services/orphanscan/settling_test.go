@@ -279,6 +279,28 @@ func TestFilterCoveredScanRoots(t *testing.T) {
 	}
 }
 
+// A filesystem-root cover matches every descendant. Pruning with it would
+// drop every scan root; the walk must keep them and ignore the files instead.
+func TestFilterCoveredScanRoots_FilesystemRoot(t *testing.T) {
+	t.Parallel()
+
+	scanRoots := []string{"/data/library", "/mnt/staging"}
+	got := filterCoveredScanRoots(fsops.SlashPaths, scanRoots, []string{"/"})
+	assert.Equal(t, []string{"/data/library", "/mnt/staging"}, got)
+
+	win := winRootTestDialect{fsops.HostPaths}
+	driveRoots := []string{`C:\data\library`, `C:\data\staging`}
+	got = filterCoveredScanRoots(win, driveRoots, []string{win.Clean(`C:\`)})
+	assert.Equal(t, []string{win.Clean(`C:\data\library`), win.Clean(`C:\data\staging`)}, got)
+
+	uncRoots := []string{`\\server\share\library`, `\\server\share\staging`}
+	wantUNC := []string{win.Clean(`\\server\share\library`), win.Clean(`\\server\share\staging`)}
+	got = filterCoveredScanRoots(win, uncRoots, []string{win.Clean(`\\server\share`)})
+	assert.Equal(t, wantUNC, got)
+	got = filterCoveredScanRoots(win, uncRoots, []string{win.Clean(`\\server\share\`)})
+	assert.Equal(t, wantUNC, got)
+}
+
 func TestMetadataIgnoreRoots(t *testing.T) {
 	t.Parallel()
 
