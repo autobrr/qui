@@ -5,7 +5,7 @@
 
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import type { ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 
 /** A group without a label shows its sections without a heading. Labels arrive translated. */
 export interface SectionNavGroup<S extends string> {
@@ -23,10 +23,19 @@ interface SectionedPageProps<S extends string> {
 }
 
 export function SectionedPage<S extends string>({ navLabel, groups, activeSection, onSectionChange, children }: SectionedPageProps<S>) {
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // The router resets only the window scroll, and the page scrolls inside <main>.
+  const changeSection = (section: S) => {
+    const main = rootRef.current?.closest("main")
+    if (main) main.scrollTop = 0
+    onSectionChange(section)
+  }
+
   return (
-    <div className="flex flex-col gap-6 md:flex-row md:items-start">
+    <div ref={rootRef} className="flex flex-col gap-6 md:flex-row md:items-start">
       <div className="md:hidden">
-        <Select value={activeSection} onValueChange={(value) => onSectionChange(value as S)}>
+        <Select value={activeSection} onValueChange={(value) => changeSection(value as S)}>
           <SelectTrigger className="w-full min-h-11" aria-label={navLabel}>
             <SelectValue />
           </SelectTrigger>
@@ -43,7 +52,7 @@ export function SectionedPage<S extends string>({ navLabel, groups, activeSectio
         </Select>
       </div>
 
-      <nav className="hidden w-56 shrink-0 space-y-5 md:sticky md:top-4 md:block lg:top-6" aria-label={navLabel}>
+      <nav className="hidden w-56 shrink-0 space-y-5 md:sticky md:top-4 md:block md:max-h-[calc(100dvh-7rem)] md:overflow-y-auto lg:top-6" aria-label={navLabel}>
         {groups.map(group => (
           <div key={group.sections[0].value} className="space-y-1">
             {group.label && <p className="px-3 pb-1 text-sm font-semibold text-foreground">{group.label}</p>}
@@ -51,7 +60,7 @@ export function SectionedPage<S extends string>({ navLabel, groups, activeSectio
               <button
                 key={section.value}
                 type="button"
-                onClick={() => onSectionChange(section.value)}
+                onClick={() => changeSection(section.value)}
                 aria-current={activeSection === section.value ? "page" : undefined}
                 className={cn(
                   "w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors",
