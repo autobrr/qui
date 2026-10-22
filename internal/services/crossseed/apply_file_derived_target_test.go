@@ -649,6 +649,7 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(tt.torrentBytes),
