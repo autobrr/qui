@@ -71,6 +71,9 @@ const STRING_OVERRIDES: Record<string, string> = {
   "torrents:tableColumns.trackerIcon": "Source Icon",
   "torrents:tableColumns.addedOn": "Created",
   "torrents:tableColumns.completedOn": "Finalized",
+  "torrents:tableColumns.unregistered": "Unlinked",
+  "torrents:tableColumns.trackerDown": "Source Offline",
+  "torrents:tableColumns.trackerError": "Source Error",
   "torrents:statusBar.torrentsLoaded": "{{loaded}} of {{total}} records loaded",
   "torrents:filterSidebar.trackers": "Sources",
   "torrents:filterSidebar.states.downloading": "Receiving",
@@ -94,6 +97,7 @@ const STRING_OVERRIDES: Record<string, string> = {
   "torrents:stateLabels.forcedDL": "(F) Receiving",
   "torrents:stateLabels.forcedUP": "(F) Sharing",
   "torrents:stateLabels.metaDL": "Fetching Info",
+  "torrents:stateLabels.forcedMetaDL": "(F) Fetching Info",
 }
 
 function interpolate(template: string, options: Record<string, unknown>): string {

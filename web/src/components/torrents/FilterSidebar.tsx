@@ -33,17 +33,19 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
-import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, trackerGroupKey, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -174,9 +176,9 @@ const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon 
   { value: "errored", labelKey: "filterSidebar.states.errored", icon: XCircle },
   { value: "checking", labelKey: "filterSidebar.states.checking", icon: RotateCw },
   { value: "moving", labelKey: "filterSidebar.states.moving", icon: MoveRight },
-  { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: XCircle },
-  { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: AlertCircle },
-  { value: "tracker_error", labelKey: "filterSidebar.states.trackerError", icon: XCircle },
+  { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: TRACKER_HEALTH_DISPLAY.unregistered.icon },
+  { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: TRACKER_HEALTH_DISPLAY.tracker_down.icon },
+  { value: "tracker_error", labelKey: "filterSidebar.states.trackerError", icon: TRACKER_HEALTH_DISPLAY.tracker_error.icon },
   { value: "cross-seeds", labelKey: "filterSidebar.states.crossSeeds", icon: GitBranch },
 ]
 
@@ -218,14 +220,13 @@ const FilterSidebarComponent = ({
   )
   const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
   const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
-  const supportsSubcategories = isConcreteInstanceScope? (capabilities?.supportsSubcategories ?? false): Boolean(useSubcategories)
-  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const { preferences } = useInstancePreferences(
+  const instanceSubcategoriesEnabled = useSubcategoriesEnabled(
     instanceId,
-    { fetchIfMissing: false, enabled: isConcreteInstanceScope && isInstanceActive }
+    capabilities,
+    useSubcategories,
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
-  const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)
+  const subcategoriesEnabled = isConcreteInstanceScope? instanceSubcategoriesEnabled: Boolean(useSubcategories)
 
   // Match the preference to the layout this sidebar controls.
   const { viewMode, cycleViewMode } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
@@ -302,9 +303,7 @@ const FilterSidebarComponent = ({
   const visibleTorrentStates = useMemo(() => {
     let states = TORRENT_STATES
     if (!supportsTrackerHealth) {
-      states = TORRENT_STATES.filter(
-        state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
-      )
+      states = TORRENT_STATES.filter(state => !Object.hasOwn(TRACKER_HEALTH_DISPLAY, state.value))
     }
 
     // Only show cross-seeds when there's an active cross-seed filter
@@ -799,18 +798,16 @@ const FilterSidebarComponent = ({
       isCustomized: boolean
     }> = []
 
-    const seenDisplayNames = new Set<string>()
+    const seenGroups = new Set<string>()
 
     for (const tracker of trackers) {
-      const lowerTracker = tracker.toLowerCase()
+      const groupKey = trackerGroupKey(tracker, domainToCustomization)
+      if (seenGroups.has(groupKey)) continue
+      seenGroups.add(groupKey)
 
-      const customization = domainToCustomization.get(lowerTracker)
+      const customization = domainToCustomization.get(tracker.toLowerCase())
 
       if (customization) {
-        // Use displayName as uniqueness key for merged trackers
-        const displayKey = customization.displayName.toLowerCase()
-        if (seenDisplayNames.has(displayKey)) continue
-        seenDisplayNames.add(displayKey)
 
         processed.push({
           key: customization.domains[0], // Use primary domain as key
@@ -821,9 +818,6 @@ const FilterSidebarComponent = ({
         })
       } else {
         // No customization - use domain as-is
-        if (seenDisplayNames.has(lowerTracker)) continue
-        seenDisplayNames.add(lowerTracker)
-
         processed.push({
           key: tracker,
           displayName: tracker,
@@ -1687,17 +1681,7 @@ const FilterSidebarComponent = ({
   }, [viewMode])
 
   const clearSidebarFilters = () => {
-    applyFilterChange({
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: undefined,
-    })
+    applyFilterChange(EMPTY_SIDEBAR_FILTERS)
   }
 
   const clearStatusFilter = () => {
@@ -1820,16 +1804,7 @@ const FilterSidebarComponent = ({
     }
   }, [categories, collapsedCategories, incognitoMode, subcategoriesEnabled, setCollapsedCategories])
 
-  const hasActiveFilters =
-    selectedFilters.status.length > 0 ||
-    selectedFilters.excludeStatus.length > 0 ||
-    selectedFilters.categories.length > 0 ||
-    selectedFilters.excludeCategories.length > 0 ||
-    selectedFilters.tags.length > 0 ||
-    selectedFilters.excludeTags.length > 0 ||
-    selectedFilters.trackers.length > 0 ||
-    selectedFilters.excludeTrackers.length > 0 ||
-    Boolean(selectedFilters.expr)
+  const hasActiveFilters = hasSidebarFilters(selectedFilters)
 
   if (isConcreteInstanceScope && !isInstanceActive) {
     return (

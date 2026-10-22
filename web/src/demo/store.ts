@@ -8,7 +8,7 @@
 // behind bulk actions. Built once from a fixed seed, so every visitor sees the
 // same library and a reload resets it.
 
-import type { AppPreferences } from "@/types/app"
+import type { PreferenceField } from "@/types/app"
 import type { InstanceCapabilities, InstanceResponse } from "@/types/instances"
 import type {
   Category,
@@ -293,7 +293,9 @@ function generateTorrent(rng: () => number, now: number, index: number): Torrent
   const active = state === "downloading" || (state === "uploading" && rng() < 0.08)
   const dlspeed = state === "downloading" ? Math.round((0.3 + rng() * 6) * MIB) : 0
   const upspeed = active && state === "uploading" ? Math.round((50 + rng() * 4000) * KIB) : 0
-  const health = rng() < 0.012 ? "unregistered" : rng() < 0.004 ? "tracker_down" : undefined
+  // The second roll splits between down and error, so the draws from rng() stay the same.
+  const healthRoll = rng() < 0.012 ? -1 : rng()
+  const health = healthRoll < 0 ? "unregistered" : healthRoll < 0.004 ? "tracker_down" : healthRoll < 0.008 ? "tracker_error" : undefined
   const savePath = `/data/torrents/${category.split("/")[0]}`
   return {
     added_on: added,
@@ -519,20 +521,21 @@ function computeStats(torrents: readonly Torrent[]): TorrentStats {
   return stats
 }
 
-export const PREFERENCES = {
-  save_path: "/data/torrents",
-  temp_path: "/data/incomplete",
-  temp_path_enabled: false,
-  use_subcategories: true,
-  queueing_enabled: true,
-  auto_tmm_enabled: true,
-  add_trackers_enabled: false,
-  add_trackers: "",
-  excluded_file_names_enabled: false,
-  excluded_file_names: "",
-  torrent_content_layout: "Original",
-  listen_port: 51413,
-}
+// The catalog view that GET /instances/{id}/preferences returns.
+export const PREFERENCE_VIEW: PreferenceField[] = [
+  { key: "torrent_content_layout", value: "Original", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["Original", "Subfolder", "NoSubfolder"] },
+  { key: "auto_tmm_enabled", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "use_subcategories", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "save_path", value: "/data/torrents", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
+  { key: "temp_path_enabled", value: false, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "temp_path", value: "/data/incomplete", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete", dependsOn: "temp_path_enabled" },
+  { key: "excluded_file_names_enabled", value: false, tab: "downloads", section: "excludedFileNames", control: "switch", readOnly: true },
+  { key: "excluded_file_names", value: "", tab: "downloads", section: "excludedFileNames", control: "list", dependsOn: "excluded_file_names_enabled", readOnly: true },
+  { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
+  { key: "queueing_enabled", value: true, tab: "bittorrent", section: "queueing", control: "switch" },
+  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true },
+  { key: "add_trackers", value: "", tab: "bittorrent", section: "autoAddTrackers", control: "list", dependsOn: "add_trackers_enabled", readOnly: true },
+]
 
 export const CAPABILITIES: InstanceCapabilities = {
   supportsTorrentCreation: false,
@@ -549,6 +552,7 @@ export const CAPABILITIES: InstanceCapabilities = {
   subcategoriesAlwaysEnabled: false,
   supportsTorrentTmpPath: true,
   supportsPathAutocomplete: false,
+  supportsTestEmail: false,
   supportsFreeSpacePathSource: false,
   supportsSetRSSFeedURL: false,
   supportsShareLimitsAction: true,
@@ -590,7 +594,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
   }
 
   const domain = trackerDomain(t)
-  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : 2
+  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : t.tracker_health === "tracker_error" ? 5 : 2
   const trackers: TorrentTracker[] = [
     { url: "** [DHT] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
     { url: "** [PeX] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
@@ -602,7 +606,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
       num_seeds: t.num_complete,
       num_leeches: t.num_incomplete,
       num_downloaded: Math.floor(rng() * 5000),
-      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : "",
+      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : t.tracker_health === "tracker_error" ? "Internal tracker error" : "",
     },
   ]
 
@@ -859,7 +863,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         categories: primary ? { ...primary.categories } : {},
         tags: primary ? [...primary.tags].sort() : [],
         serverState: primary ? { ...primary.serverState } : undefined,
-        preferences: PREFERENCES as AppPreferences,
         useSubcategories: true,
         trackerHealthSupported: true,
         cacheMetadata: { source: "fresh", age: 0, isStale: false },
@@ -1066,7 +1069,8 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         username: "admin",
         tlsSkipVerify: false,
         hasLocalFilesystemAccess: false,
-        capabilities: { read: false, identity: false, write: false, content: false },
+        capabilities: { read: false, identity: false, trustedIdentity: false, write: false, content: false },
+        filesystemMode: "none",
         useHardlinks: false,
         hardlinkBaseDir: "",
         hardlinkDirPreset: "flat",

@@ -124,6 +124,41 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 	}
 }
 
+// A pack named only with a Season numeral reads the season that the numeral
+// names, so its seasonless files pair with the seasoned local episodes.
+func TestManualAssembleSeasonNumeralPack(t *testing.T) {
+	const packName = "[PINE] Cedar Harbor II [BD 1080p]"
+	root := t.TempDir()
+	inst := &models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: filepath.Join(root, "links")}
+	contents := map[string][]byte{}
+	files := map[string]qbt.TorrentFiles{}
+	var torrents []qbt.Torrent
+	for i := 1; i <= 2; i++ {
+		data := bytes.Repeat([]byte{byte(i)}, 64)
+		contents[fmt.Sprintf("[PINE] Cedar Harbor II - %02d [BD 1080p].mkv", i)] = data
+		localName := fmt.Sprintf("Cedar.Harbor.S02E%02d.1080p.BluRay.x264-PINE", i)
+		hash := fmt.Sprintf("e%02d", i)
+		source := filepath.Join(root, localName+".mkv")
+		require.NoError(t, os.WriteFile(source, data, 0o600))
+		files[hash] = qbt.TorrentFiles{{Name: localName + ".mkv", Size: int64(len(data))}}
+		torrents = append(torrents, qbt.Torrent{Hash: hash, Name: localName, ContentPath: source, Progress: 1, Size: int64(len(data))})
+	}
+	svc := manualMatchTestService(inst, nil, nil)
+	svc.stringNormalizer = stringutils.DefaultNormalizer
+	svc.syncManager = &seasonPackSyncManager{fakeSyncManager: newFakeSyncManager(inst, torrents, files)}
+	svc.automationSettingsLoader = defaultSettings(false, 1)
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+	preview, err := svc.CheckManualAssemble(t.Context(), &ManualAssembleRequest{
+		InstanceID:   1,
+		TorrentData:  base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents)),
+		TargetHashes: []string{"e01", "e02"},
+	})
+	require.NoError(t, err)
+	require.True(t, preview.Ready, "%+v", preview)
+	require.Equal(t, 2, preview.MatchedEpisodes)
+}
+
 func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	fix := alignedSeasonPackFixture(t)
 	root := t.TempDir()

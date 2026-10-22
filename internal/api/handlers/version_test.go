@@ -69,7 +69,7 @@ func TestVersionHandler_GetVersion_Availability(t *testing.T) {
 		availability update.Availability
 	}{
 		{name: "none", availability: update.Availability{}},
-		{name: "restart only", availability: update.Availability{Restart: true}},
+		{name: "restart only", availability: update.Availability{Restart: true, SelfUpdateUnavailableReason: "disabled"}},
 		{name: "both", availability: update.Availability{SelfUpdate: true, Restart: true}},
 	}
 
@@ -87,6 +87,7 @@ func TestVersionHandler_GetVersion_Availability(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 			require.Equal(t, tt.availability.SelfUpdate, resp["selfUpdate"])
 			require.Equal(t, tt.availability.Restart, resp["restart"])
+			require.Equal(t, tt.availability.SelfUpdateUnavailableReason, resp["selfUpdateUnavailableReason"])
 		})
 	}
 }

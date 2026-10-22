@@ -5,41 +5,11 @@
 
 import type { TFunction } from "i18next"
 
-// Human-friendly labels for qBittorrent torrent states
-const TORRENT_STATE_LABELS: Record<string, string> = {
-  // Downloading related
-  downloading: "Downloading",
-  metaDL: "Fetching Metadata",
-  allocating: "Allocating",
-  stalledDL: "Stalled",
-  queuedDL: "Queued",
-  checkingDL: "Checking",
-  forcedDL: "(F) Downloading",
+export function getStateLabel(state: string, t: TFunction): string {
+  // Backend input in a key path: "." or ":" resolves a fragment and an inherited name resolves a function.
+  if (!/^[a-zA-Z]+$/.test(state) || state in Object.prototype) return t("stateLabelFallback")
 
-  // Uploading / Seeding related
-  uploading: "Seeding",
-  stalledUP: "Seeding",
-  queuedUP: "Queued",
-  checkingUP: "Checking",
-  forcedUP: "(F) Seeding",
-
-  // Paused / Stopped
-  pausedDL: "Paused",
-  pausedUP: "Completed",
-  stoppedDL: "Stopped",
-  stoppedUP: "Completed",
-
-  // Other
-  error: "Error",
-  missingFiles: "Missing Files",
-  checkingResumeData: "Checking Resume Data",
-  moving: "Moving",
-}
-
-export function getStateLabel(state: string, t?: TFunction): string {
-  const fallback = TORRENT_STATE_LABELS[state] ?? state
-  if (t) {
-    return t(`stateLabels.${state}`, { defaultValue: fallback })
-  }
-  return fallback
+  // One t() call: i18next returns the first key it finds, so a miss costs no second pass through the post-processors.
+  // The fallback sits outside stateLabels because "unknown" is itself a qBittorrent state.
+  return t([`stateLabels.${state}`, "stateLabelFallback"])
 }

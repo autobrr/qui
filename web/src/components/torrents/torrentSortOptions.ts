@@ -5,7 +5,8 @@
 
 import { getColumnType } from "@/lib/column-filter-utils"
 
-// labelKey is a key in the torrents namespace.
+// i18n-namespace: torrents
+
 export const TORRENT_SORT_OPTIONS = [
   { value: "added_on", labelKey: "sort.options.addedOn" },
   { value: "name", labelKey: "tableColumns.name" },

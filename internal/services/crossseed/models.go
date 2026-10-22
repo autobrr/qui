@@ -99,7 +99,8 @@ type InstanceCrossSeedResult struct {
 	// Status describes the result (examples: "added", "exists", "no_match", "size_mismatch", "content_mismatch", "error"); this list is not exhaustive and additional statuses may be used.
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
-	// MatchedTorrent is the existing torrent that matched (if any)
+	// MatchedTorrent is the existing torrent that matched (if any).
+	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool

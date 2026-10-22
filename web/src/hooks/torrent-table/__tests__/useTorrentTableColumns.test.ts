@@ -11,7 +11,7 @@ import type { TFunction } from "i18next"
 import type { RefObject } from "react"
 import { describe, expect, it, vi } from "vitest"
 
-const passthroughT = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as unknown as TFunction
+const passthroughT = ((key: string) => key) as unknown as TFunction
 
 function makeParams(overrides: Partial<UseTorrentTableColumnsParams> = {}): UseTorrentTableColumnsParams {
   return {
@@ -28,7 +28,7 @@ function makeParams(overrides: Partial<UseTorrentTableColumnsParams> = {}): UseT
     speedUnit: "bytes",
     trackerIcons: undefined,
     formatTimestamp: (n: number) => String(n),
-    preferences: null,
+    instanceMaxRatio: undefined,
     supportsTrackerHealth: false,
     isUnifiedView: false,
     isCrossInstanceEndpoint: false,

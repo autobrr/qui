@@ -54,6 +54,7 @@
     "externalIPv6": "외부 IPv6",
     "unregisteredTorrents": "등록되지 않은 토렌트",
     "trackerDown": "트래커 다운",
+    "trackerError": "트래커 오류",
     "errors": "오류",
     "reannounceTooltip": "자동 트래커 재요청 활성화됨",
     "altSpeedLimits": "대체 속도 제한: {{status}}",

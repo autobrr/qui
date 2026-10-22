@@ -104,7 +104,18 @@
     "totalSize": "Celková velikost: {{size}}",
     "blockCrossSeeds": "Blokovat křížová sdílení infohashů (zabránit opětovnému přidání)",
     "cancel": "Zrušit",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "titleSelectAll_one": "Smazat {{count}} torrent, který odpovídá filtru?",
+    "titleSelectAll_few": "Smazat {{count}} torrenty, které odpovídají filtru?",
+    "titleSelectAll_other": "Smazat {{count}} torrentů, které odpovídají filtru?",
+    "selectAllNotice": "Výběr všech je zapnutý. Tato akce smaže vybrané torrenty, které odpovídají aktuálnímu filtru.",
+    "notLoaded_one": "{{count}} z nich není načten v tabulce.",
+    "notLoaded_few": "{{count}} z nich nejsou načteny v tabulce.",
+    "notLoaded_other": "{{count}} z nich není načteno v tabulce.",
+    "andMore": "a {{more}} dalších",
+    "deleteCount_one": "Smazat {{count}} torrent",
+    "deleteCount_few": "Smazat {{count}} torrenty",
+    "deleteCount_other": "Smazat {{count}} torrentů"
   },
   "deleteFilesPreference": {
     "label": "Také smazat soubory z disku",
@@ -936,6 +947,11 @@
       "moving": "Přesouvání"
     }
   },
+  "emptyState": {
+    "noTorrents": "Nenalezen žádný torrent",
+    "noFilterMatches": "Aktuálním filtrům neodpovídá žádný torrent",
+    "noSearchMatches": "Aktuálnímu hledání neodpovídá žádný torrent"
+  },
   "filterSidebar": {
     "views": {
       "title": "Pohledy",
@@ -1044,7 +1060,7 @@
       "unregistered": "Neregistrované",
       "trackerDown": "Tracker je nedostupný",
       "crossSeeds": "Křížové sdílení",
-      "trackerError": "Tracker chyba"
+      "trackerError": "Chyba trackeru"
     }
   },
   "statusBar": {
@@ -1394,11 +1410,6 @@
     "matchCount_other": "{{count}} shody",
     "deleteSelected": "Smazat ({{count}})",
     "deleteThis": "Smazat",
-    "statusLabels": {
-      "trackerDown": "Tracker offline",
-      "unregistered": "Neregistrovaný",
-      "trackerError": "Tracker chyba"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Obsah",
@@ -1422,6 +1433,7 @@
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
+    "loadFailed": "Nepodařilo se zkontrolovat shody cross-seedu. Pro nový pokus stránku znovu načtěte.",
     "toast": {
       "savePathCopied": "Složka pro uložení zkopírována",
       "copyFailed": "Kopírování selhalo"
@@ -1672,7 +1684,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
-    "trackerError": "Tracker chyba",
+    "trackerError": "Chyba trackeru",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"
@@ -1680,6 +1692,7 @@
   "stateLabels": {
     "downloading": "Stahování",
     "metaDL": "Načítání metadat",
+    "forcedMetaDL": "(F) Načítání metadat",
     "allocating": "Přidělování",
     "stalledDL": "Pozastavené stahování",
     "queuedDL": "Ve frontě",
@@ -1697,8 +1710,10 @@
     "error": "Chyba",
     "missingFiles": "Chybějící soubory",
     "checkingResumeData": "Kontrola obnovovacích dat",
-    "moving": "Přesouvání"
+    "moving": "Přesouvání",
+    "unknown": "Neznámý"
   },
+  "stateLabelFallback": "Nerozpoznáno",
   "details": {
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",

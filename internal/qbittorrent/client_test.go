@@ -277,22 +277,26 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 // default save path /downloads and categories tv=/media/tv, tv/anime="".
 // 5.0.0beta1 is the only release with WebAPI 2.10.x; it was not run live, but
 // upstream "Follow the parent category options" (a1c78a045) is in it.
-func TestCategorySavePathsNest(t *testing.T) {
+func TestCategoryPathRule(t *testing.T) {
 	t.Parallel()
 
+	nests := CategoryPathRule{Nest: true}
 	tests := []struct {
 		name             string
 		version          string
 		useSubcategories bool
-		want             bool
+		want             CategoryPathRule
 	}{
-		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true, want: false},
-		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true, want: false}, // highest version below the gate
-		{name: "5.0 beta1 with subcategories on", version: "2.10.4", useSubcategories: true, want: true},                        // lowest version at the gate
-		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false, want: false},
-		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: true},
-		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: true},
-		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: true},
+		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true},
+		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true}, // highest version below the gate
+		{name: "5.0 beta1 with subcategories on", version: "2.10.4", useSubcategories: true, want: nests},          // lowest version at the gate
+		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false},
+		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: nests},
+		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: nests},
+		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: nests},
+		// The build platform comes from the cached app info.
+		{name: "5.3 dev build before the file name rule", version: "2.15.3", want: nests},                                                           // highest version below the gate
+		{name: "5.3 names the folder for its platform", version: "2.15.4", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}}, // lowest version at the gate
 	}
 
 	for _, tc := range tests {
@@ -317,15 +321,23 @@ func TestCategorySavePathsNest(t *testing.T) {
 				isHealthy:            true,
 				preferencesCache:     &qbt.AppPreferences{UseSubcategories: tc.useSubcategories},
 				preferencesFetchedAt: time.Now(),
+				appInfoCache:         &AppInfo{BuildInfo: &AppBuildInfo{Platform: "windows"}},
+				appInfoFetchedAt:     time.Now(),
 			}
 			// Stale 4.6 capabilities, as after an in-place upgrade while syncing.
 			client.applyCapabilitiesLocked("2.9.3")
 			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
 
-			got, err := sm.CategorySavePathsNest(t.Context(), 1)
+			got, err := sm.CategoryPathRule(t.Context(), 1)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, int64(1), versionRequests.Load())
+
+			// The folder cleanup reads the same name rule.
+			nesting, err := sm.categoryNesting(t.Context(), 1)
+			require.NoError(t, err)
+			require.Equal(t, tc.want.FileName, nesting.FileName)
+			require.Equal(t, tc.want.Platform, nesting.Platform)
 		})
 	}
 }
@@ -814,7 +826,7 @@ func TestIsDeadlineExpired(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, isDeadlineExpired(tc.err))
+			require.Equal(t, tc.want, IsDeadlineExpired(tc.err))
 		})
 	}
 }
@@ -1209,4 +1221,16 @@ func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("SyncPeers kept waiting for a fetch after its caller went away")
 	}
+}
+
+func TestSyncUpdateMovesCountsGenerationOnlyForCountedChanges(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 1}
+
+	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true}})
+	require.Zero(t, client.countsGen.Load(), "a server-state sync keeps the cached counts")
+
+	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true, Tags: true}})
+	require.Equal(t, uint64(1), client.countsGen.Load(), "a tag change invalidates the cached counts")
 }

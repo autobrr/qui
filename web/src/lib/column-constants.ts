@@ -5,6 +5,8 @@
 
 import type { Torrent } from "@/types"
 
+// i18n-namespace: torrents
+
 export const NUMERIC_COLUMNS = [
   // "size",
   // "total_size",
@@ -119,7 +121,6 @@ export type DurationUnit =
   | "hours"
   | "days"
 
-// labelKey is a key in the torrents namespace.
 export const NUMERIC_OPERATIONS: { value: FilterOperation; labelKey: string }[] = [
   { value: "eq", labelKey: "columnFilter.operations.equalTo" },
   { value: "ne", labelKey: "columnFilter.operations.notEqualTo" },

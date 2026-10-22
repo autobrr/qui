@@ -13,13 +13,13 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestSearchResultUsable covers the per-result usability decision that drives the
+// TestSearchUsablePredicate covers the per-result usability decision that drives the
 // alternate connector pass's indexer scoping: a result is usable only when it
 // would survive the match loop's release/size filtering. Junk hits (different
 // show, or a relabel outside tolerance, or a size mismatch) are NOT usable, so
 // their indexer stays eligible for the alternate-spelling re-query.
-func TestSearchResultUsable(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+func TestSearchUsablePredicate(t *testing.T) {
+	s := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
 		webripDotted  = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"
@@ -37,6 +37,7 @@ func TestSearchResultUsable(t *testing.T) {
 		candidateSize          int64
 		tolerance              float64
 		findIndividualEpisodes bool
+		rescueTitleMismatches  bool
 		want                   bool
 	}{
 		{
@@ -70,10 +71,18 @@ func TestSearchResultUsable(t *testing.T) {
 			want: false,
 		},
 		{
-			name:       "title rescue does not stop safer re-query passes",
+			name:       "title mismatch is not usable with title rescue off",
 			sourceName: webdlDotted, candidateName: "Different.Title.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb",
 			sourceSize: size, candidateSize: size, tolerance: 5,
 			want: false,
+		},
+		{
+			// The main search loop keeps a rescued result, so the indexer needs no re-query.
+			name:       "title rescue at an exact size is usable with title rescue on",
+			sourceName: webdlDotted, candidateName: "Different.Title.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb",
+			sourceSize: size, candidateSize: size, tolerance: 5,
+			rescueTitleMismatches: true,
+			want:                  true,
 		},
 		{
 			// findIndividualEpisodes makes a season-pack source match an individual
@@ -102,12 +111,14 @@ func TestSearchResultUsable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
-			candidate := rls.ParseString(tt.candidateName)
-			got := s.searchResultUsable(
-				namedRelease{release: &source, rawName: tt.sourceName},
-				namedRelease{release: &candidate, rawName: tt.candidateName},
-				tt.sourceSize, tt.candidateSize, nil, nil, tt.tolerance, tt.findIndividualEpisodes,
-			)
+			usable := s.searchUsablePredicate(searchCandidateInput{
+				Source:                 namedRelease{release: &source, rawName: tt.sourceName},
+				SourceSize:             tt.sourceSize,
+				TolerancePercent:       tt.tolerance,
+				FindIndividualEpisodes: tt.findIndividualEpisodes,
+				RescueTitleMismatches:  tt.rescueTitleMismatches,
+			})
+			got := usable(jackett.SearchResult{Title: tt.candidateName, Size: tt.candidateSize})
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -137,7 +148,11 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Indexer 1 returned a raw hit (so the old logic omitted it), but it is junk;
 	// indexer 3 returned nothing. Both must be re-queried; only indexer 2 is done.
-	usable := s.searchUsablePredicate(namedRelease{release: &source, rawName: sourceName}, size, nil, nil, 5, false)
+	usable := s.searchUsablePredicate(searchCandidateInput{
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		SourceSize:       size,
+		TolerancePercent: 5,
+	})
 	require.Equal(t, []int{1, 3}, indexersWithoutUsableResults([]int{1, 2, 3}, results, usable))
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).

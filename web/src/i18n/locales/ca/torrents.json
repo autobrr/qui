@@ -103,7 +103,15 @@
     "totalSize": "Mida total: {{size}}",
     "blockCrossSeeds": "Bloqueja els infohash dels cross-seed (evita que es tornin a afegir)",
     "cancel": "Cancel·la",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Vols eliminar el {{count}} torrent que coincideix amb el filtre?",
+    "titleSelectAll_other": "Vols eliminar els {{count}} torrents que coincideixen amb el filtre?",
+    "selectAllNotice": "Selecciona-ho tot està activat. Això elimina els torrents seleccionats que coincideixen amb el filtre actual.",
+    "notLoaded_one": "{{count}} d'ells no està carregat a la taula.",
+    "notLoaded_other": "{{count}} d'ells no estan carregats a la taula.",
+    "andMore": "i {{more}} més",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Elimina també els fitxers del disc",
@@ -386,6 +394,7 @@
   "stateLabels": {
     "downloading": "Baixant",
     "metaDL": "Obtenint les metadades",
+    "forcedMetaDL": "(F) Obtenint les metadades",
     "allocating": "Assignant espai",
     "stalledDL": "Encallat",
     "queuedDL": "A la cua",
@@ -403,8 +412,10 @@
     "error": "Error",
     "missingFiles": "Falten fitxers",
     "checkingResumeData": "Verificant les dades de represa",
-    "moving": "Movent"
+    "moving": "Movent",
+    "unknown": "Desconegut"
   },
+  "stateLabelFallback": "No reconegut",
   "details": {
     "failedToUpdatePriorities": "No s'han pogut actualitzar les prioritats dels fitxers",
     "failedToRenameFile": "No s'ha pogut reanomenar el fitxer",
@@ -717,11 +728,6 @@
     "matchCount_other": "{{count}} coincidències",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina aquest",
-    "statusLabels": {
-      "trackerDown": "Tracker caigut",
-      "unregistered": "No registrat",
-      "trackerError": "Error del tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contingut",
@@ -745,6 +751,7 @@
       }
     },
     "noMatches": "No s'ha trobat cap torrent coincident a les altres instàncies",
+    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou.",
     "toast": {
       "savePathCopied": "S'ha copiat el camí de desada",
       "copyFailed": "No s'ha pogut copiar"
@@ -923,6 +930,11 @@
       "checking": "Verificant",
       "moving": "Movent"
     }
+  },
+  "emptyState": {
+    "noTorrents": "No s'ha trobat cap torrent",
+    "noFilterMatches": "Cap torrent coincideix amb els filtres actuals",
+    "noSearchMatches": "Cap torrent coincideix amb la cerca actual"
   },
   "tagCategoryManagement": {
     "createTag": {

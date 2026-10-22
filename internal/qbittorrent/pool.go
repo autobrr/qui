@@ -147,6 +147,7 @@ type ClientPool struct {
 	decryptionTracker map[int]*decryptionErrorInfo
 	syncEventSink     SyncEventSink
 	syncEventSinkSeq  uint64
+	completionNotify  TorrentCompletionHandler
 	completionHandler TorrentCompletionHandler
 	addedHandler      TorrentAddedHandler
 	syncManager       *SyncManager  // Reference for starting background tasks
@@ -196,9 +197,10 @@ func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
 	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
 }
 
-// SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
-func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks for new and existing clients when torrents complete.
+func (cp *ClientPool) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	cp.mu.Lock()
+	cp.completionNotify = notify
 	cp.completionHandler = handler
 
 	clients := make([]*Client, 0, len(cp.clients))
@@ -208,7 +210,7 @@ func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandl
 	cp.mu.Unlock()
 
 	for _, client := range clients {
-		client.SetTorrentCompletionHandler(handler)
+		client.SetTorrentCompletionHandler(notify, handler)
 	}
 }
 
@@ -341,11 +343,11 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 		if err := client.HealthCheck(ctx); err != nil {
 			// A caller-cancelled probe (client disconnect / shutdown) is not
 			// evidence the instance is down, and a deadline is treated as slow
-			// by design (ambiguous, see isDeadlineExpired). Only hard failures
+			// by design (ambiguous, see IsDeadlineExpired). Only hard failures
 			// (refused, DNS, EOF, auth) record a failure and advance backoff.
 			// Both helpers match even after go-qbt's retry wrapper flattens the
 			// sentinel into a string.
-			if !isContextStopped(err) && !isDeadlineExpired(err) {
+			if !isContextStopped(err) && !IsDeadlineExpired(err) {
 				cp.trackFailure(instanceID, err)
 			}
 			return nil, errors.Wrap(err, "client healthcheck failed")
@@ -445,13 +447,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
+	completionNotify := cp.completionNotify
 	completionHandler := cp.completionHandler
 	addedHandler := cp.addedHandler
 	cp.mu.Unlock()
 
-	if completionHandler != nil {
-		client.SetTorrentCompletionHandler(completionHandler)
-	}
+	client.SetTorrentCompletionHandler(completionNotify, completionHandler)
 	if addedHandler != nil {
 		client.SetTorrentAddedHandler(addedHandler)
 	}
@@ -566,7 +567,7 @@ func (cp *ClientPool) performHealthChecks() {
 			defer cancel()
 
 			if err := client.HealthCheck(ctx); err != nil {
-				if isDeadlineExpired(err) {
+				if IsDeadlineExpired(err) {
 					// Slow, not down: no backoff, and debug level to keep a
 					// saturated instance from producing a warn every cycle.
 					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Health check timed out against slow instance")

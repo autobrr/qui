@@ -32,7 +32,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const noCapabilities: FilesystemCapabilities = { read: false, identity: false, write: false, content: false }
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
 
 function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: FilesystemCapabilities): Instance {
   return {
@@ -42,6 +42,7 @@ function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: Filesyste
     username: "admin",
     tlsSkipVerify: false,
     hasLocalFilesystemAccess,
+    filesystemMode: hasLocalFilesystemAccess ? "local" : "none",
     capabilities,
     useHardlinks: true,
     hardlinkBaseDir: "/data/links",
@@ -54,21 +55,25 @@ function makeInstance(hasLocalFilesystemAccess: boolean, capabilities: Filesyste
   }
 }
 
+const remote = makeInstance(false, { ...noCapabilities, read: true, write: true })
+remote.filesystemMode = "remote"
+
 const cases = [
-  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, write: true, content: true }), canWrite: true },
-  { name: "a remote instance", instance: makeInstance(false, { ...noCapabilities, read: true }), canWrite: false },
-  // The setting is off here, so only the capability can offer the modes.
-  { name: "a remote instance with the write capability", instance: makeInstance(false, { ...noCapabilities, read: true, write: true }), canWrite: true },
+  { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, trustedIdentity: true, write: true, content: true }), canWrite: true, canReflink: true },
+  { name: "an instance without filesystem access", instance: makeInstance(false, noCapabilities), canWrite: false, canReflink: false },
+  // A remote instance has Write (#2942) but nothing clones files over sftp, so
+  // hardlink mode is offered and reflink mode is not.
+  { name: "a remote instance", instance: remote, canWrite: true, canReflink: false },
 ]
 
 describe("HardlinkModeSettings", () => {
-  it.each(cases)("offers the link modes and saves them from the write capability for $name", ({ instance, canWrite }) => {
+  it.each(cases)("offers the link modes and saves them from the write capability for $name", ({ instance, canWrite, canReflink }) => {
     mocks.instances.instances = [instance]
     render(<HardlinkModeSettings pooledPartialCompletionEnabled={false} onPooledPartialCompletionEnabledChange={() => {}} />)
     fireEvent.click(screen.getByText("qbit"))
 
     expect(screen.getByRole("radio", { name: "rules.hardlink" }).hasAttribute("disabled")).toBe(!canWrite)
-    expect(screen.getByRole("radio", { name: "rules.reflink" }).hasAttribute("disabled")).toBe(!canWrite)
+    expect(screen.getByRole("radio", { name: "rules.reflink" }).hasAttribute("disabled")).toBe(!canReflink)
     expect(screen.queryByText("rules.noLocalAccess") === null).toBe(canWrite)
 
     fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/links2" } })

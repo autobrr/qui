@@ -550,6 +550,7 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 			bytes_reclaimed INTEGER NOT NULL DEFAULT 0,
 			truncated INTEGER NOT NULL DEFAULT 0,
 			partial INTEGER NOT NULL DEFAULT 0,
+			filesystem_mode TEXT NOT NULL DEFAULT 'local',
 			error_message TEXT,
 			started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			completed_at TIMESTAMP

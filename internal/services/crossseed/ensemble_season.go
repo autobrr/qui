@@ -208,7 +208,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 	}
 
 	release := s.releaseCache.Parse(torrent.Name)
-	searchQuery := buildSafeSearchQuery(torrent.Name, release, release.Title)
+	searchQuery := BuildTorznabQuery(torrent.Name, release, false)
 	contentInfo := DetermineContentType(release)
 
 	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, false)

@@ -48,7 +48,8 @@ function makeInstance(overrides: Partial<InstanceResponse> = {}): InstanceRespon
     username: "user",
     tlsSkipVerify: false,
     hasLocalFilesystemAccess: true,
-    capabilities: { read: true, identity: true, write: true, content: true },
+    capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true },
+    filesystemMode: "local",
     useHardlinks: false,
     hardlinkBaseDir: "",
     hardlinkDirPreset: "flat",
@@ -178,6 +179,16 @@ describe("resolveDashboardDataStatusKind", () => {
       isFirstLoad: false,
       streamConnected: true,
     })).toBe("live")
+  })
+
+  it("reports cached stream data as cached instead of live", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: false,
+      cacheMetadata: { source: "cache", age: 30, isStale: true },
+      isFirstLoad: false,
+      streamConnected: true,
+    })).toBe("cached")
   })
 })
 

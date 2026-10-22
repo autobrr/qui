@@ -102,7 +102,12 @@
     "totalSize": "전체 크기: {{size}}",
     "blockCrossSeeds": "cross-seed infohash 차단(재추가 방지)",
     "cancel": "취소",
-    "delete": "삭제"
+    "delete": "삭제",
+    "titleSelectAll_other": "필터와 일치하는 토렌트 {{count}}개를 삭제하시겠습니까?",
+    "selectAllNotice": "전체 선택이 켜져 있습니다. 현재 필터와 일치하는 선택된 토렌트를 삭제합니다.",
+    "notLoaded_other": "그중 {{count}}개는 표에 로드되지 않았습니다.",
+    "andMore": "외 {{more}}개",
+    "deleteCount_other": "토렌트 {{count}}개 삭제"
   },
   "deleteFilesPreference": {
     "label": "디스크에서 파일도 삭제",
@@ -824,6 +829,11 @@
       "moving": "이동 중"
     }
   },
+  "emptyState": {
+    "noTorrents": "토렌트를 찾을 수 없습니다",
+    "noFilterMatches": "현재 필터와 일치하는 토렌트가 없습니다",
+    "noSearchMatches": "현재 검색과 일치하는 토렌트가 없습니다"
+  },
   "filterSidebar": {
     "views": {
       "title": "뷰",
@@ -1260,11 +1270,6 @@
     "matchCount_other": "일치 {{count}}개",
     "deleteSelected": "삭제 ({{count}})",
     "deleteThis": "이 항목 삭제",
-    "statusLabels": {
-      "trackerDown": "트래커 다운",
-      "unregistered": "등록되지 않음",
-      "trackerError": "트래커 오류"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "콘텐츠",
@@ -1288,6 +1293,7 @@
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",
+    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요.",
     "toast": {
       "savePathCopied": "저장 경로가 복사되었습니다",
       "copyFailed": "복사하지 못했습니다"
@@ -1540,6 +1546,7 @@
   "stateLabels": {
     "downloading": "다운로드 중",
     "metaDL": "메타데이터 가져오는 중",
+    "forcedMetaDL": "(강제) 메타데이터 가져오는 중",
     "allocating": "할당 중",
     "stalledDL": "정체됨",
     "queuedDL": "대기 중",
@@ -1557,8 +1564,10 @@
     "error": "오류",
     "missingFiles": "파일 누락",
     "checkingResumeData": "재개 데이터 확인 중",
-    "moving": "이동 중"
+    "moving": "이동 중",
+    "unknown": "알 수 없음"
   },
+  "stateLabelFallback": "인식할 수 없음",
   "details": {
     "failedToUpdatePriorities": "파일 우선순위를 업데이트하지 못했습니다",
     "failedToRenameFile": "파일 이름을 변경하지 못했습니다",
