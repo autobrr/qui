@@ -73,16 +73,17 @@ collect_input() {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
-		# Users cannot reach a "no-ui-yet" PR until its UI ships, so leave it
-		# out, unless it breaks something. The SSH API is reachable already.
+		# CI, test, and docs PRs change nothing in qui. Users cannot reach a
+		# "no-ui-yet" PR until its UI ships. Leave these PRs out, unless they
+		# break something. The SSH API is reachable already.
 		if jq -e --arg subject "$subject" '
-			any(.labels[]; .name == "no-ui-yet") and
+			(any(.labels[]; .name == "no-ui-yet") or ($subject | test("^(ci|test|docs)[:(]"))) and
 			(any(.labels[]; .name == "BREAKING CHANGE") or ($subject | test("^\\w+(\\([^)]*\\))?!:")) | not)
 		' <<<"$json" >/dev/null; then
 			continue
 		fi
-		# Dependency, CI-only, and docs-only PRs give only their title.
-		if [[ $subject =~ ^(chore\(deps\)|ci|docs)[:\(!] ]] ||
+		# Dependency PRs give only their title.
+		if [[ $subject =~ ^chore\(deps\)[:\(!] ]] ||
 			jq -e 'any(.labels[]; .name == "dependencies")' <<<"$json" >/dev/null; then
 			json=$(jq 'del(.body)' <<<"$json")
 		fi
@@ -98,6 +99,8 @@ write_sections() {
 	{
 		cat <<'EOF'
 You write two sections of the GitHub release notes for qui, a web UI that self-hosters use to manage qBittorrent instances. The input after these instructions has two writing skills and the pull requests (PRs) in the release. Write only Markdown, with no text before or after the sections.
+
+Write only about changes that qui users get in the app, the API, the binary, or the Docker image. Leave out changes to CI, the release pipeline, the build, tests, linting, the documentation site, and the repository. A toolchain or dependency update goes in only when it fixes something for users, for example a security fix.
 
 ## Breaking changes
 
