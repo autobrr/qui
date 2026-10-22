@@ -684,5 +684,4 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	require.Contains(t, result.Message, "alignment failed")
 	require.Contains(t, mockSync.bulkActions, "pause:"+newHash)
 	require.NotContains(t, mockSync.bulkActions, "recheck:"+newHash)
-
 }
