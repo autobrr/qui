@@ -182,7 +182,7 @@ func merge[V any](a, b map[string]V) map[string]V {
 // hiddenGocognit reports rule 4: a nolint comment that covers gocognit.
 func hiddenGocognit() ([]string, error) {
 	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint",
-		"--", "*.go", ":!*_test.go", ":!scripts/ratchet/").Output()
+		"--", "*.go", ":!*_test.go").Output()
 	if err != nil {
 		// git grep exits 1 when nothing matches.
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
