@@ -19,7 +19,7 @@ env:
 
 jobs:
   # Builds the issue with Claude Code on the subscription of s0up4200. The open
-  # job makes the pull request as the qui-ratchet app. See
+  # job makes the pull request as the qui-rabbit app. See
   # docs/adr/0021-the-implementer-runs-on-the-maintainers-subscription.md.
   build:
     runs-on: ubuntu-latest
@@ -250,8 +250,8 @@ jobs:
           draft=()
           [[ -s "$OUT/problems.md" ]] && draft=(--draft)
           gh auth setup-git
-          git config user.name 'qui-ratchet[bot]'
-          git config user.email '346308562+qui-ratchet[bot]@users.noreply.github.com'
+          git config user.name 'qui-rabbit[bot]'
+          git config user.email '346308562+qui-rabbit[bot]@users.noreply.github.com'
           git switch -c "$branch"
           git commit -q --allow-empty -m "$title"
           git push -q origin "$branch"

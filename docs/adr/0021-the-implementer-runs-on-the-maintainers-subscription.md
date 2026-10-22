@@ -21,7 +21,7 @@ A token from `claude setup-token` is valid for one year. Code that runs as the r
 - It cannot see the processes of the job, and it gets no environment from the job.
 - The repo is read-only in it, except `web/node_modules`. A command cannot change a file that Claude Code or a later step runs, for example `.git/config` or `.claude/settings.json`.
 
-The workflow installs the script at `/usr/local/bin/qui-sandbox`, outside the repo. The permission rules let the agent read only the repo and its skills, with `/proc` denied, and edit only the repo. The checks after the agent run also run in the sandbox. As in ADR 0020, a second job applies the patch on a new runner and opens the pull request as the `qui-ratchet` app. That job runs no code from the change.
+The workflow installs the script at `/usr/local/bin/qui-sandbox`, outside the repo. The permission rules let the agent read only the repo and its skills, with `/proc` denied, and edit only the repo. The checks after the agent run also run in the sandbox. As in ADR 0020, a second job applies the patch on a new runner and opens the pull request as the `qui-rabbit` app. That job runs no code from the change.
 
 The agent cannot change `.github/`, `.claude/`, `docs/agents/`, the `AGENTS.md` and `CLAUDE.md` files, `go.mod`, `go.sum`, or the `web/` package and lock files. These files steer later agent runs, or they add dependencies. The agent can change `GLOSSARY.md` and `docs/adr/`, because `/implement` writes the Domain Docs of the issue there. Both jobs drop a change that touches a forbidden path.
 
