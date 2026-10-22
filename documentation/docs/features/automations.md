@@ -601,7 +601,7 @@ Options:
 - **Managed / Replace in Client**: `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies them to current matches.
 - **Use tracker name as tag**: Derive the tag from the tracker domain.
 - **Use display name**: Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain.
-- **Include affected cross-seeds**: Apply the tag decision to cross-seeds of each matching torrent (torrents with matching ContentPath AND SavePath). A tag added to or removed from one copy reaches every copy. In `full` mode, a copy that still matches keeps the tag on all its cross-seeds, even when a sibling no longer matches. This option is not available with **Use tracker name as tag**, because cross-seeds sit on different trackers.
+- **Include affected cross-seeds**: Apply the tag decision to the cross-seeds of each matching torrent: the torrents that use any of the same files on disk. A tag added to or removed from one copy reaches every copy. In `full` mode, a copy that still matches keeps the tag on all its cross-seeds, even when a sibling no longer matches. This option is not available with **Use tracker name as tag**, because cross-seeds sit on different trackers.
 
 Behavior reference:
 
@@ -792,9 +792,9 @@ Automations detect cross-seeded torrents (same content and files) and can handle
 
 - **Detection**: Cross-seed condition fields use the same rule as **Filter Cross-Seeds**. A torrent is a cross-seed when it uses one of the same files on disk on the same instance. It is also a cross-seed when its name or release matches and its file sizes pair one to one. A torrent whose name or release matches is also a cross-seed when its files are hardlinks or reflinks of the source files. qui checks links only on an instance where it can read the files. Files that search ignores, such as `.nfo` and `.srt` files, do not count. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload whose file sizes pair one to one. The condition fields do not pair retitled uploads, because a rule can delete torrents and a title is weaker evidence than a shared file.
 - **Read errors**: If qui cannot read the instance list, the torrent list of another instance, or a file list, or cannot complete a filesystem check for a possible linked cross-seed, the cross-seed condition fields are unknown for that run. A condition on these fields does not match, also with **is false** or NOT. Thus a rule for torrents without cross-seeds does not act on a read error. qui tries again on the next run. A confirmed positive existence or seeding result stays known when another candidate cannot be checked. Cross-seed tags and action-group safety stay unknown until the checks complete.
-- **Grouping**: Delete, move, and category actions treat torrents that use any of the same files on disk as one group. This includes subtitles and other files that matching ignores, because deleting those files can break another torrent.
+- **Grouping**: Delete, move, category, and tag actions treat torrents that use any of the same files on disk as one group. This includes subtitles and other files that matching ignores, because deleting those files can break another torrent.
 - **Torrent lookup errors**: If qui cannot load the current torrent snapshot for cross-seed checks, the automation run stops. Previews show an error.
-- **Unknown groups**: A move, or a category action with **Include affected cross-seeds**, skips a group when a file check cannot complete.
+- **Unknown groups**: A move, or a category or tag action with **Include affected cross-seeds**, skips a group when a file check cannot complete.
 - **Nested save folders**: Automatic moves skip a group when its torrents have different save folders. Giving those torrents the same destination can separate their shared files.
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.

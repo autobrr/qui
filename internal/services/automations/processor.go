@@ -490,7 +490,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			continue
 		}
-		matches := processTagAction(rule, tagAction, torrent, state, evalCtx)
+		matches := processTagAction(rule, tagAction, torrent, state, evalCtx, crossSeeds)
 		if stats != nil {
 			if matches {
 				stats.TagConditionMet++
@@ -805,7 +805,7 @@ func containsStringFold(list []string, candidate string) bool {
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
-func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
+func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
 	tagMode := tagAction.Mode
 	if tagMode == "" {
 		tagMode = models.TagModeFull
@@ -831,6 +831,11 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 	resetFromClient := shouldResetTagActionInClient(tagAction)
 	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
 	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
+	// As category: a group whose file check did not complete gets no decision,
+	// so the copies never diverge.
+	if expandCrossSeeds && !crossSeedGroupKnown(torrent, crossSeeds, evalCtx) {
+		return false
+	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules

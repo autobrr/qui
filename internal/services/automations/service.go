@@ -1844,15 +1844,12 @@ func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *mode
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
-	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
+	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
+	states := s.evalTagStatesForPreview(rule, torrents, evalCtx, crossSeeds)
 
 	ownDecision := tagStatesChanging(states)
 
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, t := range torrents {
-		torrentByHash[t.Hash] = t
-	}
-	s.expandTagStatesForCrossSeeds(ctx, instanceID, states, torrents, torrentByHash, map[int]*models.Automation{rule.ID: rule}, evalCtx)
+	expandTagStatesForCrossSeeds(states, map[int]*models.Automation{rule.ID: rule}, crossSeeds)
 
 	directSet, crossSeedSet := splitTagPreviewSets(states, ownDecision)
 
@@ -1892,7 +1889,7 @@ func splitTagPreviewSets(states map[string]*torrentDesiredState, ownDecision map
 // evalTagStatesForPreview runs the rule's tag actions against every
 // tracker-matching torrent, mirroring processor evaluation, and returns the
 // per-torrent desired states that recorded at least one tag decision.
-func (s *Service) evalTagStatesForPreview(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext) map[string]*torrentDesiredState {
+func (s *Service) evalTagStatesForPreview(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) map[string]*torrentDesiredState {
 	states := make(map[string]*torrentDesiredState)
 	tagActions := rule.Conditions.TagActions()
 	if len(tagActions) == 0 {
@@ -1921,7 +1918,7 @@ func (s *Service) evalTagStatesForPreview(rule *models.Automation, torrents []qb
 			if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) && evalCtx.UnregisteredSet == nil {
 				continue
 			}
-			processTagAction(rule, tagAction, torrent, state, evalCtx)
+			processTagAction(rule, tagAction, torrent, state, evalCtx, crossSeeds)
 		}
 		if len(state.tagActions) > 0 || len(state.tagExpandByTag) > 0 {
 			states[torrent.Hash] = state
@@ -2343,7 +2340,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Expand pending tag decisions onto cross-seed siblings before the diff loop
 	// below, so dry-run and live execution see identical tag changes.
-	s.expandTagStatesForCrossSeeds(ctx, instanceID, states, torrents, torrentByHash, ruleByID, evalCtx)
+	expandTagStatesForCrossSeeds(states, ruleByID, crossSeeds)
 
 	// Build batches from desired states
 	shareBatches := make(map[shareKey][]string)
@@ -4911,19 +4908,12 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 }
 
 // expandTagStatesForCrossSeeds propagates pending tag decisions flagged with
-// includeCrossSeeds onto cross-seed siblings (same content + save path group).
-// Siblings get their own state entry (seeded with their current tags) so the
-// tag diff loop computes a correct per-sibling desired set - SetTorrentTags
-// replaces a torrent's whole tag list, so deltas must never be shared.
-func (s *Service) expandTagStatesForCrossSeeds(
-	ctx context.Context,
-	instanceID int,
-	states map[string]*torrentDesiredState,
-	torrents []qbt.Torrent,
-	torrentByHash map[string]qbt.Torrent,
-	ruleByID map[int]*models.Automation,
-	evalCtx *EvalContext,
-) {
+// includeCrossSeeds onto the trigger's cross-seed group: the torrents that
+// share a file with it, as category expansion uses. Siblings get their own
+// state entry (seeded with their current tags) so the tag diff loop computes
+// a correct per-sibling desired set - SetTorrentTags replaces a torrent's
+// whole tag list, so deltas must never be shared.
+func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds crossSeedGroups) {
 	// Deterministic trigger order keeps sibling attribution stable when several
 	// triggers in one group expand the same tag.
 	var triggerHashes []string
@@ -4965,13 +4955,6 @@ func (s *Service) expandTagStatesForCrossSeeds(
 	}
 	injectedPos := make(map[injectionKey]int)
 
-	type groupExpandKey struct {
-		ruleID  int
-		groupID string
-	}
-	groupIndexByKey := make(map[groupExpandKey]*groupIndex)
-	groupEligibilityByKey := make(map[groupExpandKey]map[string]bool)
-
 	for _, hash := range triggerHashes {
 		state := states[hash]
 		tags := make([]string, 0, len(state.tagExpandByTag))
@@ -4981,43 +4964,13 @@ func (s *Service) expandTagStatesForCrossSeeds(
 		sort.Strings(tags)
 		for _, tag := range tags {
 			intent := state.tagExpandByTag[tag]
-			rule := ruleByID[intent.rule.id]
-			if rule == nil {
+			if ruleByID[intent.rule.id] == nil {
 				continue
 			}
 
-			k := groupExpandKey{ruleID: intent.rule.id, groupID: GroupCrossSeedContentSavePath}
-			idx := groupIndexByKey[k]
-			if idx == nil {
-				idx = getOrBuildGroupIndexForRule(evalCtx, rule, k.groupID, torrents, s.syncManager)
-				groupIndexByKey[k] = idx
-			}
-			if idx == nil {
-				continue
-			}
-			groupKey := idx.KeyForHash(hash)
-			if groupKey == "" {
-				continue
-			}
-			// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-			if groupEligibilityByKey[k] == nil {
-				groupEligibilityByKey[k] = make(map[string]bool)
-			}
-			eligible, computed := groupEligibilityByKey[k][groupKey]
-			if !computed {
-				eligible = s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, k.groupID, idx, hash, torrentByHash)
-				groupEligibilityByKey[k][groupKey] = eligible
-			}
-			if !eligible {
-				continue
-			}
-
-			for _, sibHash := range idx.MembersForHash(hash) {
+			for _, sibTorrent := range crossSeeds[hash] {
+				sibHash := sibTorrent.Hash
 				if sibHash == hash {
-					continue
-				}
-				sibTorrent, ok := torrentByHash[sibHash]
-				if !ok {
 					continue
 				}
 				sibState := states[sibHash]

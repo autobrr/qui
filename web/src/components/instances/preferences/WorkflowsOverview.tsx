@@ -665,9 +665,7 @@ export function WorkflowsOverview({
   // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
   const isTagRule = (rule: Automation): boolean => {
     if (isDeleteRule(rule) || isCategoryRule(rule)) return false
-    const conditions = rule.conditions
-    const tagActions = conditions?.tags && conditions.tags.length > 0 ? conditions.tags : conditions?.tag ? [conditions.tag] : []
-    return tagActions.some(action => action?.enabled)
+    return getRuleTagActions(rule).some(action => action?.enabled)
   }
 
   // Handle toggle - show preview when enabling delete or category rules
