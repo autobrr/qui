@@ -1086,9 +1086,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // v9's useTable returns a new table object every render; read it here, never from a dep array.
     table,
     isReadOnly,
-    isAllSelected,
-    selectedRowIds,
-    selectedHashes,
+    effectiveSelectionCount,
     onTorrentSelect,
     handleRowSelection,
     getSelectionIdentity,
@@ -1146,39 +1144,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    // Plain click - open details panel
-    // Re-clicking the currently focused row toggles both details and selection off.
-    if (isSelected && isRowSelected) {
-      if (s.isAllSelected) {
-        s.handleRowSelection(selectionIdentity, false, row.id)
-      } else {
-        s.setRowSelection(prev => {
-          if (!prev[row.id]) {
-            return prev
-          }
-
-          const next = { ...prev }
-          delete next[row.id]
-          return next
-        })
-
-        if (s.selectedRowIds.length <= 1) {
-          lastSelectedIndexRef.current = null
-        }
-      }
-
+    // Plain click - select only this torrent and open details panel.
+    // Re-clicking the focused row when it is the only selection toggles both details and selection off.
+    s.setIsAllSelected(false)
+    s.setExcludedFromSelectAll(new Set())
+    if (isSelected && isRowSelected && s.effectiveSelectionCount <= 1) {
+      s.setRowSelection({})
+      lastSelectedIndexRef.current = null
       s.onTorrentSelect?.(null)
       return
     }
 
-    // If row is not selected, select only this torrent (replace selection).
-    if (!isRowSelected) {
-      s.setIsAllSelected(false)
-      s.setExcludedFromSelectAll(new Set())
-      s.setRowSelection({ [row.id]: true })
-      lastSelectedIndexRef.current = currentIndex
+    s.setRowSelection({ [row.id]: true })
+    lastSelectedIndexRef.current = currentIndex
+    // The page closes the panel when it gets the open torrent again.
+    if (!isSelected) {
+      s.onTorrentSelect?.(torrent)
     }
-    s.onTorrentSelect?.(torrent)
   }, [lastSelectedIndexRef])
 
   const handleRowContextMenu = useCallback((row: TorrentRow, isRowSelected: boolean) => {
@@ -1186,11 +1168,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (s.isReadOnly) {
       return
     }
-    // Only select this row if not already selected and not part of a multi-selection
-    if (!isRowSelected && s.selectedHashes.length <= 1) {
+    // A row outside the selection replaces it, so the menu acts on that row only.
+    if (!isRowSelected) {
+      s.setIsAllSelected(false)
+      s.setExcludedFromSelectAll(new Set())
       s.setRowSelection({ [row.id]: true })
+      lastSelectedIndexRef.current = s.table.getRowModel().rows.findIndex(r => r.id === row.id)
     }
-  }, [])
+  }, [lastSelectedIndexRef])
 
   // One context-menu props bundle shared by every row, memoized so the row memo
   // compares a single reference. A member changing (selection, capabilities,

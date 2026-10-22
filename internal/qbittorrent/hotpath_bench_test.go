@@ -171,7 +171,7 @@ func BenchmarkHotCounts(b *testing.B) {
 	torrents := benchTorrents(benchSize)
 
 	for b.Loop() {
-		_, _, _ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
 	}
 }
 
@@ -200,7 +200,7 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 	client := &Client{instanceID: 1, trackerExclusions: make(map[string]map[string]struct{})}
 
 	for b.Loop() {
-		_, _, _ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, false, false)
 	}
 }
 
@@ -224,7 +224,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
 
 	page := torrents[:300]
 	views := make([]TorrentView, len(page))
@@ -306,7 +306,7 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 				b.StopTimer()
 				copy(work, src)
 				b.StartTimer()
-				sm.sortCrossInstanceTorrents(work, sortKey, false, false)
+				sm.sortCrossInstanceTorrents(work, sortKey, false)
 			}
 		})
 	}

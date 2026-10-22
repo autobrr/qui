@@ -447,8 +447,8 @@ func (sm *SyncManager) lastSync(ctx context.Context, instanceID int) (time.Time,
 	return client.GetLastSyncUpdate(), nil
 }
 
-// categoryNesting is the version half of CategorySavePathsNest, which
-// refreshes qBittorrent's capabilities with a request.
+// categoryNesting is the version half of CategoryPathRule, which refreshes
+// qBittorrent's capabilities with a request.
 func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nestingSupport, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -457,7 +457,16 @@ func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nes
 	if err := client.RefreshCapabilities(ctx); err != nil {
 		return nestingSupport{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
 	}
-	return nestingSupport{Nests: client.NestsCategorySavePaths(), Always: client.SubcategoriesAlwaysEnabled()}, nil
+	platform, err := categoryFolderPlatform(ctx, client)
+	if err != nil {
+		return nestingSupport{}, err
+	}
+	return nestingSupport{
+		Nests:    client.NestsCategorySavePaths(),
+		Always:   client.SubcategoriesAlwaysEnabled(),
+		FileName: client.CategoryFileNames(),
+		Platform: platform,
+	}, nil
 }
 
 // stopFolderInputs reads the preferences from qBittorrent, not from their 30 s

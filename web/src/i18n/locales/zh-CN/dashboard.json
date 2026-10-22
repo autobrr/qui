@@ -54,6 +54,7 @@
     "externalIPv6": "外部 IPv6",
     "unregisteredTorrents": "未注册的种子",
     "trackerDown": "Tracker 离线",
+    "trackerError": "Tracker 错误",
     "errors": "错误",
     "reannounceTooltip": "已启用自动 Tracker 重新汇报",
     "altSpeedLimits": "备用速度限制：{{status}}",

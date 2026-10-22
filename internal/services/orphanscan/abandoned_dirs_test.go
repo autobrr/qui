@@ -14,6 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type directoryReadCounter struct {
@@ -493,7 +494,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 				return tt.categories, nil
 			}
 
-			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, tt.useSubcategories)
+			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, qbittorrent.CategoryPathRule{Nest: tt.useSubcategories})
 			if err != nil {
 				t.Fatalf("categoryPaths: %v", err)
 			}
@@ -552,6 +553,34 @@ func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
 				t.Fatalf("protected = %v, want %q", protected, tc.want)
 			}
 		})
+	}
+}
+
+// TestDeclaredScanRoots_ProtectsTheQBittorrent53CategoryFolder covers a
+// category with reserved characters on a qBittorrent 5.3 Windows build. The
+// scan must protect "tv_uhd", the folder qBittorrent uses, and not "tv uhd",
+// the folder that 5.2 used.
+func TestDeclaredScanRoots_ProtectsTheQBittorrent53CategoryFolder(t *testing.T) {
+	t.Parallel()
+
+	defaultSavePath := filepath.Join(t.TempDir(), "torrents")
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	stubSync(svc).categoryPathRule = func(context.Context, int) (qbittorrent.CategoryPathRule, error) {
+		return qbittorrent.CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}, nil
+	}
+	stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
+	}
+	stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{"tv:uhd": {Name: "tv:uhd"}}, nil
+	}
+
+	_, protected, err := svc.declaredScanRoots(t.Context(), fsops.HostPaths, 1, scanScope{AbandonedDirs: true})
+	if err != nil {
+		t.Fatalf("declaredScanRoots: %v", err)
+	}
+	if want := []string{filepath.Join(defaultSavePath, "tv_uhd")}; !slices.Equal(protected, want) {
+		t.Fatalf("protected = %v, want %v", protected, want)
 	}
 }
 

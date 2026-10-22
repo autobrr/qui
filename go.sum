@@ -21,12 +21,12 @@ github.com/autobrr/go-cache v1.0.0-rc1 h1:xqghz7o+4jvTOlyFq08JflUFps7eF9REdIjGka
 github.com/autobrr/go-cache v1.0.0-rc1/go.mod h1:4dDdnZll98Xuz/ebmGALBeK3DiLXmJd7fwUSEWsw/l0=
 github.com/autobrr/go-mediainfo v0.8.0 h1:XzsjHvBOlGx2BnwYCqwCOIJsmrFy4BJb0jgoB2qKuR0=
 github.com/autobrr/go-mediainfo v0.8.0/go.mod h1:P3LGxIPznO2TLKV/e58YgN0/ozP5pLCAncFzsdxMDcY=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20261020185600-92372302313f h1:b9yY0hFkOA2WE+YT3jCqIYTvVd9GImi8lCpFemLJ8fw=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20261020185600-92372302313f/go.mod h1:eNunf/vU88LR7YI1hgBZz8Mpebz0LmdGLg9kbStsVmU=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20261020212110-ecff3f2464a3 h1:As8Jq9xxEiNm9TNVagcszNly0V1PC+FVeJ0SWBuzvcs=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20261020212110-ecff3f2464a3/go.mod h1:eNunf/vU88LR7YI1hgBZz8Mpebz0LmdGLg9kbStsVmU=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
-github.com/autobrr/rls v0.9.1-0.20261017090740-90d0fdacbbe7 h1:fPu/qZx1Wy1/BKYy9jnyqCsYrxXWuwamz+lUFkN1PXU=
-github.com/autobrr/rls v0.9.1-0.20261017090740-90d0fdacbbe7/go.mod h1:Kg9MouMj3Kdg1ql0r8Hl4bcSyC1QidxiKiip5QWUlBc=
+github.com/autobrr/rls v0.10.0 h1:0coSaXgxpH5mwQQziHqAvxK3NjT2bna2c5a5Y9KqwxI=
+github.com/autobrr/rls v0.10.0/go.mod h1:Kg9MouMj3Kdg1ql0r8Hl4bcSyC1QidxiKiip5QWUlBc=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

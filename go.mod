@@ -1,6 +1,6 @@
 module github.com/autobrr/qui
 
-go 1.27.0
+go 1.27.3
 
 require (
 	code.dny.dev/ssrf v0.3.0
@@ -12,9 +12,9 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.1-0.20261020185600-92372302313f
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20261020212110-ecff3f2464a3
 	github.com/autobrr/go-torrent v1.1.1
-	github.com/autobrr/rls v0.9.1-0.20261017090740-90d0fdacbbe7
+	github.com/autobrr/rls v0.10.0
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.21.0

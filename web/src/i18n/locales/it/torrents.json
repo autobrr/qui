@@ -103,7 +103,15 @@
     "totalSize": "Dimensione totale: {{size}}",
     "blockCrossSeeds": "Blocca gli infohash dei cross-seed (impedisce la ri-aggiunta)",
     "cancel": "Annulla",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "titleSelectAll_one": "Eliminare il {{count}} torrent che corrisponde al filtro?",
+    "titleSelectAll_other": "Eliminare i {{count}} torrent che corrispondono al filtro?",
+    "selectAllNotice": "Seleziona tutto è attivo. Questa azione elimina i torrent selezionati che corrispondono al filtro attuale.",
+    "notLoaded_one": "{{count}} di questi non è caricato nella tabella.",
+    "notLoaded_other": "{{count}} di questi non sono caricati nella tabella.",
+    "andMore": "e altri {{more}}",
+    "deleteCount_one": "Elimina {{count}} torrent",
+    "deleteCount_other": "Elimina {{count}} torrent"
   },
   "deleteFilesPreference": {
     "label": "Elimina anche i file dal disco",
@@ -1336,11 +1344,6 @@
     "matchCount_other": "{{count}} corrispondenze",
     "deleteSelected": "Elimina ({{count}})",
     "deleteThis": "Elimina questo",
-    "statusLabels": {
-      "trackerDown": "Tracker non raggiungibile",
-      "unregistered": "Non registrato",
-      "trackerError": "Errore tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenuto",

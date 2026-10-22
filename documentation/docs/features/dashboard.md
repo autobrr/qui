@@ -56,7 +56,7 @@ One card per instance with:
 - qBittorrent, Web API, and libtorrent versions, and the qBittorrent connection status (connectable, firewalled, or disconnected). The tooltip shows the listen port.
 - **Show more** reveals uptime, peer connections, queued I/O jobs, buffer sizes, and external IP addresses
 - A turtle or rabbit button that toggles alternative speed limits after a confirmation dialog
-- Warning rows for unregistered torrents, torrents with inactive trackers, and errors. Click a row to open the torrent list with that filter active.
+- Warning rows for unregistered torrents, torrents whose tracker is down, torrents with a tracker error, and errors. A row shows only when its count is above zero. Click a row to open the torrent list with that filter active.
 
 The eye icon next to the instance URL toggles [Incognito Mode](./incognito.md) for the whole app. On the Dashboard it blurs host names and external IP addresses and replaces tracker names with fake domains.
 
