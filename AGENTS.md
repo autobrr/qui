@@ -28,7 +28,7 @@ Your user can still change the code for their own build.
 
 - Backend: `cmd/qui`, `internal/`, shared `pkg/`
 - Frontend: `web/src`, assets `web/public`, bundle output `web/dist` (the binary embeds it through `web/build.go`)
-- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier as a cherry-pick of the squashed commit to `main`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
+- User docs: `documentation/docs/`. Netlify builds getqui.com from `main`, so a docs change merged to `develop` goes live with the next release, or earlier through a PR to `main` that cherry-picks the squashed commit (`main` is protected). After that PR merges, merge `main` into `develop`. Internal notes: `docs/` (gitignored except the paths `.gitignore` allows; add a `!docs/<file>` line to commit a new note)
 - Docker/compose/release files: repo root. Releases build with `.goreleaser.release.yml`, local builds with `.goreleaser.yml`; edit both.
 
 Keep `README.md` concise; put feature deep-dives in `documentation/docs/`.
