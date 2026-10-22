@@ -22,6 +22,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"maps"
 	"os"
 	"os/exec"
@@ -177,10 +179,9 @@ func merge[V any](a, b map[string]V) map[string]V {
 	return m
 }
 
-// hiddenGocognit reports rule 4: a nolint comment that names gocognit, or a
-// bare nolint or nolint:all, which hide every linter.
+// hiddenGocognit reports rule 4: a nolint comment that covers gocognit.
 func hiddenGocognit() ([]string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "grep", "-nE", `//[[:space:]]*nolint(:([a-z0-9-]+,)*(gocognit|all)([,[:space:]]|$)|[[:space:]]*($|//))`,
+	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint",
 		"--", "*.go", ":!*_test.go", ":!scripts/ratchet/").Output()
 	if err != nil {
 		// git grep exits 1 when nothing matches.
@@ -190,8 +191,41 @@ func hiddenGocognit() ([]string, error) {
 		return nil, fmt.Errorf("git grep: %w", err)
 	}
 	var problems []string
-	for line := range strings.Lines(strings.TrimSpace(string(out))) {
-		problems = append(problems, strings.TrimSpace(line)+": do not hide gocognit. Split the function.")
+	fset := token.NewFileSet()
+	for path := range strings.SplitSeq(strings.TrimSuffix(string(out), "\x00"), "\x00") {
+		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range f.Comments {
+			for _, c := range group.List {
+				if hidesGocognit(c.Text) {
+					problems = append(problems, fmt.Sprintf("%s: %s: do not hide gocognit. Split the function.", fset.Position(c.Pos()), c.Text))
+				}
+			}
+		}
 	}
 	return problems, nil
+}
+
+// hidesGocognit reports whether golangci-lint reads comment as a nolint
+// directive that covers gocognit. It follows extractInlineRangeFromComment in
+// golangci-lint v2.14.0 pkg/result/processors/nolint_filter.go, where a bare
+// "nolint", "nolint " and any "nolint:all" prefix hide every linter.
+func hidesGocognit(comment string) bool {
+	text := strings.TrimLeft(comment, "/ ")
+	list, ok := strings.CutPrefix(text, "nolint:")
+	switch {
+	case !ok:
+		return text == "nolint" || strings.HasPrefix(text, "nolint ")
+	case strings.HasPrefix(list, "all"):
+		return true
+	}
+	list, _, _ = strings.Cut(list, "//")
+	for item := range strings.SplitSeq(list, ",") {
+		if name := strings.ToLower(strings.TrimSpace(item)); name == "gocognit" || name == "all" {
+			return true
+		}
+	}
+	return false
 }

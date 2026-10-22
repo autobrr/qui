@@ -45,3 +45,37 @@ func TestCompareZeroEntry(t *testing.T) {
 	assert.Equal(t, []string{"a.go: nilerr reports no problems. Delete its entry from scripts/ratchet/allowlist.json."},
 		compare(counts{}, allow, nil))
 }
+
+// Each case matches what golangci-lint v2.14.0 does with the comment above a
+// function that breaks gocognit.
+func TestHidesGocognit(t *testing.T) {
+	tests := []struct {
+		comment string
+		want    bool
+	}{
+		{"//nolint", true},
+		{"//nolint // reason", true},
+		{"//nolint:gocognit", true},
+		{"//nolint:gocognit // reason", true},
+		{"// nolint:gocognit", true},
+		{"//nolint:GOCOGNIT", true},
+		{"//nolint:gosec,all", true},
+		{"//nolint:gosec, all", true},
+		{"//nolint:gosec, gocognit", true},
+		{"//nolint:gosec ,gocognit", true},
+		{"//nolint:gosec,  gocognit // x", true},
+		{"//nolint: gocognit", true},
+		{"//nolint :gocognit", true},
+		{"//nolint:allow", true},
+		{"//nolint:gosec", false},
+		{"//nolint:gosec // gocognit is fine", false},
+		{"//nolint:gosec,allow", false},
+		{"//nolint:gocognitx", false},
+		{"//NOLINT:gocognit", false},
+		{"//nolintx", false},
+		{"// see nolint:gocognit", false},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, hidesGocognit(tt.comment), tt.comment)
+	}
+}
