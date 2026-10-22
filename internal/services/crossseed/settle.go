@@ -271,7 +271,8 @@ type pendingResume struct {
 	threshold float64
 	// budgetBytes switches the entry to byte-budget mode (new cross-seed
 	// additions): resume when missing data fits the budget, or when only
-	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
+	// irrelevant sidecar files are missing (forgiveness). nil for the threshold
+	// and after-recheck gates.
 	budgetBytes        *int64
 	forgivenessGranted bool
 	// forgivenessEvalFailed marks that the LAST forgiveness or linked-file check
@@ -319,7 +320,7 @@ func recheckResumeKey(instanceID int, hash string) string {
 	return fmt.Sprintf("%d:%s", instanceID, normalizeHash(hash))
 }
 
-// pendingResumeBudgetForLog returns the budget for logging, -1 in threshold mode.
+// pendingResumeBudgetForLog returns the budget for logging, -1 when the gate has no budget.
 func pendingResumeBudgetForLog(req *pendingResume) int64 {
 	if req.budgetBytes == nil {
 		return -1
@@ -615,7 +616,8 @@ func observeChecking(req *pendingResume, state qbt.TorrentState) bool {
 		// A checkingResumeData poll with no prior piece check is just normal
 		// forced-recheck startup, which every recheck passes through before hashing.
 		// A fast (100%-overlap) recheck can still finish between polls, so this must
-		// not set recheckInterrupted or the fast path below could never fire.
+		// not set recheckInterrupted or the fast path in processPendingRecheckResume
+		// could never fire.
 		req.sawChecking = false
 		req.recheckInterrupted = true
 		req.awaitingResumeConfirmation = false
@@ -681,6 +683,7 @@ func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash st
 			Float64("progress", progress).
 			Int("attempt", req.missingFilesResumeAttempts).
 			Int("maxAttempts", maxMissingFilesResumeAttempts).
+			Stringer("gate", req.gate).
 			Msg("Failed to resume missingFiles torrent during recheck recovery")
 		return req.missingFilesResumeAttempts < maxMissingFilesResumeAttempts
 	}
@@ -852,6 +855,7 @@ func (s *Settler) resumePendingRecheck(ctx context.Context, instanceID int, hash
 			Str("state", string(state)).
 			Int("attempt", req.resumeAttempts).
 			Int("maxAttempts", maxRecheckResumeAttempts).
+			Stringer("gate", req.gate).
 			Msg("Failed to resume torrent after recheck")
 		return req.resumeAttempts < maxRecheckResumeAttempts
 	}
