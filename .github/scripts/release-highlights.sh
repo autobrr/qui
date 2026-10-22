@@ -157,6 +157,10 @@ After you write the draft, apply the Document rules of the simple-english skill,
 EOF
 		collect_input
 	} >"$work/prompt.md" || return 1
+	if ! grep -q '^### PR #' "$work/prompt.md"; then
+		echo "::notice::release highlights: no PR in $tag changes qui for users, so the release gets no new sections" >&2
+		return 1
+	fi
 
 	# --safe-mode loads no CLAUDE.md, skill, or setting from the repo or the
 	# user, and --tools "" leaves Claude no tools, so only the prompt counts.
@@ -184,7 +188,7 @@ done
 if [[ $nl$body != *"$marker"* ]]; then
 	warn "the release body has no '## Changelog' line"
 elif ! sections=$(write_sections); then
-	: # write_sections printed the warning.
+	: # write_sections printed the reason.
 elif [[ -z ${sections//[[:space:]]/} ]]; then
 	warn "Claude returned no text"
 # A contributor can edit a PR body after the merge. Accept only the two
