@@ -506,23 +506,7 @@ func matchSourceFilesToCandidatesWithPolicy(
 }
 
 func allowMaterializedSizeOnlyMatch(sourcePath, candidatePath string) bool {
-	return !isIgnoredMaterializedSizeOnlyFile(sourcePath) && !isIgnoredMaterializedSizeOnlyFile(candidatePath)
-}
-
-func isIgnoredMaterializedSizeOnlyFile(name string) bool {
-	lower := strings.ToLower(name)
-	ext := strings.ToLower(path.Ext(fileBaseName(name)))
-	if slices.Contains(DefaultIgnoredExtensions, ext) {
-		return true
-	}
-
-	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
-			return true
-		}
-	}
-
-	return false
+	return !shouldIgnoreFile(sourcePath, stringutils.DefaultNormalizer) && !shouldIgnoreFile(candidatePath, stringutils.DefaultNormalizer)
 }
 
 func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {

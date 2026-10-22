@@ -6,6 +6,7 @@ package crossseed
 import (
 	"cmp"
 	"fmt"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -1475,26 +1476,31 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	return &enriched
 }
 
-// shouldIgnoreFile checks if a file should be ignored during matching.
-// Uses hardcoded lists of extensions and path keywords to filter out scene
-// metadata files, subtitles, samples, and other non-content files.
+// shouldIgnoreFile reports whether a file is a sidecar, a sample, or a bonus
+// video. Real titles begin with keywords ("Trailer.Park.Boys.S01E01"), so a
+// keyword at the start of a release name is a title word.
 func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(filename)
-
-	// Check extension matches
-	for _, ext := range DefaultIgnoredExtensions {
-		if strings.HasSuffix(lower, ext) {
-			return true
-		}
+	if slices.Contains(DefaultIgnoredExtensions, path.Ext(lower)) {
+		return true
 	}
 
-	// Check path keyword matches (e.g., "sample", "proof", "extras")
+	dirs := strings.Split(path.Dir(lower), "/")
+	base := path.Base(lower)
+	stem := strings.TrimSuffix(base, path.Ext(base))
 	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
+		if stem == keyword ||
+			strings.HasPrefix(stem, keyword+"-") ||
+			slices.Contains(dirs, keyword) ||
+			slices.Contains(dirs, keyword+"s") {
 			return true
 		}
+		for _, sep := range []string{"-", ".", "_", " "} {
+			if strings.HasSuffix(stem, sep+keyword) {
+				return true
+			}
+		}
 	}
-
 	return false
 }
 
