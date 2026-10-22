@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Save, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Download, FileText, HardDrive, ListChecks, Save, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -28,7 +28,7 @@ import {
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import { FieldHelp } from "@/components/ui/field-help"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -136,6 +137,20 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
   canceled: "outline",
 }
 
+const SETTING_TOGGLES = [
+  { field: "enabled", key: "enableBackups" },
+  { field: "includeCategories", key: "includeCategories" },
+  { field: "includeTags", key: "includeTags" },
+  { field: "includeSavePaths", key: "includeSavePaths" },
+] as const
+
+const SCHEDULE_CADENCES = [
+  { kind: "hourly", enabled: "hourlyEnabled", keep: "keepHourly" },
+  { kind: "daily", enabled: "dailyEnabled", keep: "keepDaily" },
+  { kind: "weekly", enabled: "weeklyEnabled", keep: "keepWeekly" },
+  { kind: "monthly", enabled: "monthlyEnabled", keep: "keepMonthly" },
+] as const
+
 export function InstanceBackups() {
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
@@ -208,8 +223,6 @@ export function InstanceBackups() {
 
     setSelectedInstanceId(parsed)
   }
-
-  const instance = instances?.find(i => i.id === instanceId)
 
   // Only load capabilities when an instance is selected
   const { data: capabilities, isLoading: capabilitiesLoading } = useInstanceCapabilities(instanceId, { enabled: !!instanceId })
@@ -403,7 +416,6 @@ export function InstanceBackups() {
     if (!formState.enabled) {
       return {
         state: "ready",
-        timestamp: "—",
         status: t("backups.summary.automaticBackupsOff"),
       }
     }
@@ -423,7 +435,6 @@ export function InstanceBackups() {
     if (enabledCadences.length === 0) {
       return {
         state: "ready",
-        timestamp: "—",
         status: t("backups.summary.enableCadenceToSchedule"),
       }
     }
@@ -477,7 +488,6 @@ export function InstanceBackups() {
     if (!best) {
       return {
         state: "ready",
-        timestamp: "—",
         status: t("backups.summary.waitingForScheduler"),
       }
     }
@@ -486,7 +496,6 @@ export function InstanceBackups() {
       return {
         state: "ready",
         kind: best.kind,
-        timestamp: "—",
         status: t("backups.summary.waitingForFirstBackup"),
       }
     }
@@ -495,7 +504,6 @@ export function InstanceBackups() {
       return {
         state: "ready",
         kind: best.kind,
-        timestamp: "—",
         status: t("backups.summary.waitingForSchedulerInfo"),
       }
     }
@@ -885,118 +893,47 @@ export function InstanceBackups() {
           }
         />
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr">
-          <Card className="flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("backups.summary.lastBackup")}</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              {runsLoading ? (
-                <p className="text-sm text-muted-foreground">{t("backups.summary.loading")}</p>
-              ) : lastRun ? (
-                <div className="flex flex-col flex-1">
-                  <div className="space-y-2">
-                    <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
-                    <p className="text-sm">
-                      {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
-                    </p>
-                  </div>
-                  <div className="min-h-[44px] flex items-start pt-1 mt-auto">
-                    {lastRun.status === "running" && lastRun.progressTotal && lastRun.progressTotal > 0 ? (
-                      <div className="space-y-1 w-full">
-                        <Progress value={lastRun.progressPercentage ?? 0} className="h-2" />
-                        <p className="text-xs text-muted-foreground">
-                          {t("backups.summary.progress", {
-                            current: lastRun.progressCurrent ?? 0,
-                            total: lastRun.progressTotal,
-                            percentage: (lastRun.progressPercentage ?? 0).toFixed(1),
-                          })}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground capitalize">{t("backups.summary.status", { status: t(`backups.statusLabels.${lastRun.status}`, lastRun.status) })}</p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("backups.summary.noBackupsYet")}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("backups.summary.nextScheduledBackup")}</CardTitle>
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              {nextScheduleInfo.state === "loading" ? (
-                <p className="text-sm text-muted-foreground">{t("backups.summary.loadingSchedule")}</p>
-              ) : nextScheduleInfo.kind ? (
-                <div className="flex flex-col flex-1">
-                  <div className="space-y-2">
-                    <Badge variant="default">{runKindLabels[nextScheduleInfo.kind]}</Badge>
-                    <p className="text-sm">{nextScheduleInfo.timestamp ?? "—"}</p>
-                  </div>
-                  {nextScheduleInfo.status && (
-                    <div className="min-h-[44px] flex items-start pt-1 mt-auto">
-                      <p className="text-xs text-muted-foreground">{nextScheduleInfo.status}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">{nextScheduleInfo.status}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("backups.summary.instance")}</CardTitle>
-              <Download className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm truncate font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
-              <p className="text-xs text-muted-foreground break-all">{instance?.host}</p>
-            </CardContent>
-          </Card>
-        </div>
-
         <Card>
           <CardHeader>
             <CardTitle>{t("backups.settings.title")}</CardTitle>
+            <CardDescription className="flex flex-wrap gap-x-6 gap-y-1">
+              <span>
+                {t("backups.summary.lastBackup")}:{" "}
+                <span className="text-foreground">
+                  {runsLoading ? t("backups.summary.loading") : lastRun ? `${runKindLabels[lastRun.kind]}, ${formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}` : t("backups.summary.noBackupsYet")}
+                </span>
+                {lastRun && lastRun.status !== "success" && (
+                  <Badge variant={statusVariants[lastRun.status]} className="ml-2 capitalize">{t(`backups.statusLabels.${lastRun.status}`, lastRun.status)}</Badge>
+                )}
+              </span>
+              <span>
+                {t("backups.summary.nextScheduledBackup")}:{" "}
+                <span className="text-foreground">
+                  {nextScheduleInfo.kind
+                    ? [runKindLabels[nextScheduleInfo.kind], nextScheduleInfo.timestamp].filter(Boolean).join(", ")
+                    : nextScheduleInfo.status}
+                </span>
+              </span>
+              {nextScheduleInfo.kind && nextScheduleInfo.status && (
+                <span className="basis-full">{nextScheduleInfo.status}</span>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {settingsLoading || !formState ? (
               <p className="text-sm text-muted-foreground">{t("backups.settings.loading")}</p>
             ) : (
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <SettingToggle
-                    label={t("backups.settings.enableBackups")}
-                    description={t("backups.settings.enableBackupsDescription")}
-                    checked={formState.enabled}
-                    onCheckedChange={handleToggle("enabled")}
-                  />
-                  <SettingToggle
-                    label={t("backups.settings.includeCategories")}
-                    description={t("backups.settings.includeCategoriesDescription")}
-                    checked={formState.includeCategories}
-                    onCheckedChange={handleToggle("includeCategories")}
-                  />
-                  <SettingToggle
-                    label={t("backups.settings.includeTags")}
-                    description={t("backups.settings.includeTagsDescription")}
-                    checked={formState.includeTags}
-                    onCheckedChange={handleToggle("includeTags")}
-                  />
-                  <SettingToggle
-                    label={t("backups.settings.includeSavePaths")}
-                    description={t("backups.settings.includeSavePathsDescription")}
-                    checked={formState.includeSavePaths}
-                    onCheckedChange={handleToggle("includeSavePaths")}
-                  />
+              <>
+                <div className="grid gap-x-10 gap-y-4 md:grid-cols-2">
+                  {SETTING_TOGGLES.map(({ field, key }) => (
+                    <div key={field} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor={`backup-${field}`} className="font-medium">{t(`backups.settings.${key}`)}</Label>
+                        <FieldHelp>{t(`backups.settings.${key}Description`)}</FieldHelp>
+                      </div>
+                      <Switch id={`backup-${field}`} checked={formState[field]} onCheckedChange={handleToggle(field)} />
+                    </div>
+                  ))}
                 </div>
 
                 <Separator />
@@ -1004,88 +941,63 @@ export function InstanceBackups() {
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <p className="text-sm font-medium">{t("backups.settings.schedule.title")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t("backups.settings.schedule.description")}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t("backups.settings.schedule.description")}</p>
                   </div>
-                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                    <ScheduleControl
-                      label={t("backups.settings.schedule.hourly")}
-                      checked={formState.hourlyEnabled}
-                      onCheckedChange={handleToggle("hourlyEnabled")}
-                      value={formState.keepHourly}
-                      onValueChange={handleNumberChange("keepHourly")}
-                      description={t("backups.settings.schedule.hourlyDescription")}
-                      tooltip={t("backups.settings.schedule.hourlyTooltip")}
-                    />
-                    <ScheduleControl
-                      label={t("backups.settings.schedule.daily")}
-                      checked={formState.dailyEnabled}
-                      onCheckedChange={handleToggle("dailyEnabled")}
-                      value={formState.keepDaily}
-                      onValueChange={handleNumberChange("keepDaily")}
-                      description={t("backups.settings.schedule.dailyDescription")}
-                      tooltip={t("backups.settings.schedule.dailyTooltip")}
-                    />
-                    <ScheduleControl
-                      label={t("backups.settings.schedule.weekly")}
-                      checked={formState.weeklyEnabled}
-                      onCheckedChange={handleToggle("weeklyEnabled")}
-                      value={formState.keepWeekly}
-                      onValueChange={handleNumberChange("keepWeekly")}
-                      description={t("backups.settings.schedule.weeklyDescription")}
-                      tooltip={t("backups.settings.schedule.weeklyTooltip")}
-                    />
-                    <ScheduleControl
-                      label={t("backups.settings.schedule.monthly")}
-                      checked={formState.monthlyEnabled}
-                      onCheckedChange={handleToggle("monthlyEnabled")}
-                      value={formState.keepMonthly}
-                      onValueChange={handleNumberChange("keepMonthly")}
-                      description={t("backups.settings.schedule.monthlyDescription")}
-                      tooltip={t("backups.settings.schedule.monthlyTooltip")}
-                    />
+                  <div className="grid gap-x-10 gap-y-4 md:grid-cols-2">
+                    {SCHEDULE_CADENCES.map(({ kind, enabled, keep }) => (
+                      <div key={kind} className="flex items-center gap-3">
+                        <div className="flex flex-1 items-center gap-1.5">
+                          <Label htmlFor={`backup-${enabled}`} className="font-medium">{t(`backups.settings.schedule.${kind}`)}</Label>
+                          <FieldHelp>
+                            {t(`backups.settings.schedule.${kind}Tooltip`)} {t(`backups.settings.schedule.${kind}Description`)}
+                          </FieldHelp>
+                        </div>
+                        <Label htmlFor={`backup-${keep}`} className="font-normal text-muted-foreground">
+                          {t("backups.settings.schedule.keep")}
+                        </Label>
+                        <Input
+                          id={`backup-${keep}`}
+                          type="number"
+                          className="h-8 w-20"
+                          min={formState[enabled] ? 1 : 0}
+                          value={formState[keep]}
+                          onChange={handleNumberChange(keep)}
+                          disabled={!formState[enabled]}
+                        />
+                        <Switch id={`backup-${enabled}`} checked={formState[enabled]} onCheckedChange={handleToggle(enabled)} />
+                      </div>
+                    ))}
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                        <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.settings.actions.runManualBackup")}
-                      </Button>
-                      <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                        <FileText className="mr-2 h-4 w-4" /> {t("backups.import.title")}
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={handleSaveAll}
-                        disabled={saveAllDisabled}
-                        title={instanceCapabilitiesPending ? t("backups.settings.actions.waitForCapabilities") : undefined}
-                      >
-                        <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveAll")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={handleSave}
-                        disabled={saveDisabled || savingAll}
-                        title={requiresCadenceSelection ? t("backups.settings.actions.requiresCadence") : undefined}
-                      >
-                        <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveChanges")}
-                      </Button>
-                    </div>
-                  </div>
-                  {requiresCadenceSelection ? (
+                  {requiresCadenceSelection && (
                     <p className="text-xs text-destructive">{t("backups.settings.actions.requiresCadence")}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{t("backups.settings.actions.changesApplyImmediately")}</p>
                   )}
                 </div>
-              </div>
+              </>
             )}
           </CardContent>
+          <CardFooter className="flex flex-col-reverse gap-3 border-t sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                <ArrowDownToLine className="mr-2 h-4 w-4" /> {t("backups.settings.actions.runManualBackup")}
+              </Button>
+              <Button variant="ghost" onClick={() => setImportDialogOpen(true)}>
+                <FileText className="mr-2 h-4 w-4" /> {t("backups.import.title")}
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={handleSaveAll}
+                disabled={saveAllDisabled}
+                title={instanceCapabilitiesPending ? t("backups.settings.actions.waitForCapabilities") : undefined}
+              >
+                {t("backups.settings.actions.saveAll")}
+              </Button>
+              <Button onClick={handleSave} disabled={saveDisabled || savingAll}>
+                <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveChanges")}
+              </Button>
+            </div>
+          </CardFooter>
         </Card>
 
         <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
@@ -2066,71 +1978,6 @@ export function InstanceBackups() {
         </Dialog>
       </div>
     </TooltipProvider>
-  )
-}
-
-function SettingToggle({
-  label,
-  description,
-  checked,
-  onCheckedChange,
-}: {
-  label: string
-  description: string
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
-      <div>
-        <p className="font-medium leading-none mb-1">{label}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
-    </div>
-  )
-}
-
-function ScheduleControl({
-  label,
-  description,
-  checked,
-  onCheckedChange,
-  value,
-  onValueChange,
-  tooltip,
-}: {
-  label: string
-  description: string
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-  value: number
-  onValueChange: (event: ChangeEvent<HTMLInputElement>) => void
-  tooltip?: string
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Label className="font-medium">{label}</Label>
-          {tooltip ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
-                  <CircleHelp className="h-4 w-4" />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent align="start" className="max-w-xs text-xs">
-                {tooltip}
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
-        <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      </div>
-      <Input type="number" min={checked ? 1 : 0} value={value} onChange={onValueChange} disabled={!checked} />
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
   )
 }
 
