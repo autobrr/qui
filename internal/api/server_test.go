@@ -178,6 +178,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	return &Dependencies{

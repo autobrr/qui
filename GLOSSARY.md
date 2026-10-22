@@ -34,6 +34,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Orphan scan
 
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
+- **Protected path**: A path that orphan scan never reports and never deletes: a file in a torrent, a folder that holds a file in a torrent, a path that an ignore path covers, or a folder that holds an ignore path. Folder cleanup uses the ignore path half of this rule. _Avoid_: Owned path, in-use path, safe path.
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
 
 ## Folder cleanup
@@ -81,8 +82,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Cross-seed link tree
 
+- **Isolation folder**: A folder that qui adds in the link directory so that the files of one torrent do not mix with the files of other torrents. _Avoid_: hash folder.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
+- **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
 
 ## Automations
 
@@ -137,3 +140,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Log level**: The server setting, from config, env, or Settings, that decides which lines qui writes to stdout and to the log file. The live log view can only receive lines at or above it. _Avoid_: Log filter, verbosity.
 - **Level filter**: A user's choice in the live log view of which received levels to show. It is remembered across visits and never changes what qui writes. _Avoid_: Log level (for the viewer choice).
+
+## Page layout
+
+- **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
+- **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
+- **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.

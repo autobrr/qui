@@ -46,10 +46,11 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 
 	backend := newTestBackend()
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	tfm.Add(fsops.NormalizePath(fsops.HostPaths, aliasFile))
+	tfm.Add(aliasFile)
+	protected := newTestProtected(t, fsops.HostPaths, nil, tfm)
 
 	t.Run("scan excludes protected junction and finds ordinary orphan", func(t *testing.T) {
-		orphans, truncated, err := walkScanRoot(t.Context(), scanRoot, tfm, nil, 0, 0, backend, nil)
+		orphans, truncated, err := walkScanRoot(t.Context(), scanRoot, protected, 0, 0, backend, nil)
 		require.NoError(t, err)
 		require.False(t, truncated)
 		paths := make([]string, 0, len(orphans))
@@ -60,7 +61,7 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 	})
 
 	t.Run("confirmed deletion preserves the seeded alias", func(t *testing.T) {
-		disposition, err := safeDeleteTarget(t.Context(), scanRoot, junction, tfm, nil, backend)
+		disposition, err := safeDeleteTarget(t.Context(), scanRoot, junction, protected, backend)
 		t.Logf("junction deletion: disposition=%d error=%v", disposition, err)
 		assert.False(t, err == nil && disposition == deleteDispositionDeleted, "a protected junction must not be deleted")
 		for _, path := range []string{aliasFile, targetFile} {
@@ -74,7 +75,7 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 	})
 
 	t.Run("deletion of the containing directory preserves the seeded alias", func(t *testing.T) {
-		disposition, err := safeDeleteTarget(t.Context(), root, scanRoot, tfm, nil, backend)
+		disposition, err := safeDeleteTarget(t.Context(), root, scanRoot, protected, backend)
 		require.NoError(t, err)
 		assert.Equal(t, deleteDispositionSkippedInUse, disposition)
 		got, err := os.ReadFile(aliasFile)
@@ -83,14 +84,14 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 	})
 
 	t.Run("unowned junction cannot be deleted as a regular file", func(t *testing.T) {
-		_, err := safeDeleteFile(t.Context(), scanRoot, unownedJunction, tfm, backend)
+		_, err := safeDeleteFile(t.Context(), scanRoot, unownedJunction, protected, backend)
 		require.Error(t, err)
 		_, err = os.Lstat(unownedJunction)
 		require.NoError(t, err)
 	})
 
 	t.Run("confirmed deletion still removes ordinary orphan", func(t *testing.T) {
-		disposition, err := safeDeleteTarget(t.Context(), scanRoot, orphan, tfm, nil, backend)
+		disposition, err := safeDeleteTarget(t.Context(), scanRoot, orphan, protected, backend)
 		require.NoError(t, err)
 		assert.Equal(t, deleteDispositionDeleted, disposition)
 		_, err = os.Stat(orphan)

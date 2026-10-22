@@ -16,6 +16,11 @@
     "security": "Seguretat",
     "logs": "Registres"
   },
+  "nav": {
+    "general": "General",
+    "connections": "Connexions",
+    "access": "Accés"
+  },
   "language": {
     "cardTitle": "Idioma",
     "cardDescription": "Tria l'idioma en què vols que es mostri tot"

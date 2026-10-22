@@ -118,6 +118,15 @@ func (b *slashBackend) RemoveTree(context.Context, *fsops.TreeCreateResult) erro
 
 func (b *slashBackend) Remove(context.Context, string, fsops.RemoveOptions) error { return nil }
 
+func (b *slashBackend) Mkdir(_ context.Context, p string, _ fs.FileMode) error {
+	_, isDir := b.dirs[p]
+	if _, isFile := b.files[p]; isDir || isFile {
+		return &fs.PathError{Op: "mkdir", Path: p, Err: fs.ErrExist}
+	}
+	b.dirs[p] = struct{}{}
+	return nil
+}
+
 func slashBackendService(instance *models.Instance, backend fsops.Backend) *Service {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}}}
 	// The pool hands a local-mode instance its local backend, so Require(Write)
@@ -135,6 +144,7 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		baseDir      string
 		savePath     string
 		file         string
+		existing     string // a folder another torrent already holds
 		wantRoot     string
 		wantCategory string // "" skips it: pathcmp keys rewrite "\" on every host
 	}{
@@ -144,7 +154,11 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		},
 		{
 			name: "flat isolation folder", preset: "flat", baseDir: "/data/hl", savePath: "/data/torrents",
-			file: "movie.mkv", wantRoot: "/data/hl/TorrentName--hash123", wantCategory: "/data/hl",
+			file: "movie.mkv", wantRoot: "/data/hl/TorrentName", wantCategory: "/data/hl",
+		},
+		{
+			name: "flat isolation folder taken", preset: "flat", baseDir: "/data/hl", savePath: "/data/torrents",
+			file: "movie.mkv", existing: "/data/hl/TorrentName", wantRoot: "/data/hl/TorrentName--hash123", wantCategory: "/data/hl",
 		},
 		{
 			name: "backslash in save path", preset: "by-tracker", baseDir: "/data/hl", savePath: `/data/torrents\old`,
@@ -159,6 +173,9 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := tt.savePath + "/" + tt.file
 			backend := newSlashBackend([]string{"/data"}, source)
+			if tt.existing != "" {
+				backend.dirs[tt.existing] = struct{}{}
+			}
 			sync := &rootlessSavePathSyncManager{}
 			instance := &models.Instance{
 				ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
@@ -297,7 +314,7 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	}
 	s := slashBackendService(instance, backend)
 
-	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "hash123", "Movie", "tracker.example",
+	got := s.manualMatchEffectiveSavePath(t.Context(), instance, "/data/torrents", "Movie", "tracker.example",
 		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}})
 	require.Equal(t, "/links/tracker.example", got)
 }
@@ -408,6 +425,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
 				},
 			}
+			s.settler = idleSettler(s.syncManager)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {

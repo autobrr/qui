@@ -4,6 +4,11 @@
     "description": "Instance-level automation services managed by qui.",
     "noInstances": "No instances configured yet. Add one in Settings to use services."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Reannounce",
+    "orphanScan": "Orphan Scan"
+  },
   "queryBuilder": {
     "noConditions": "No conditions",
     "matchesAllTorrents": "Matches all torrents (subject to tracker selection).",

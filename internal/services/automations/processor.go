@@ -758,7 +758,7 @@ func pathTemplateData(torrent qbt.Torrent, tracker string) map[string]any {
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
 }

@@ -140,9 +140,9 @@ func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) 
 	return err == nil && info.IsDir
 }
 
-// alignAndRecheck renames the just-added torrent to match the on-disk files, then triggers a
-// recheck and resume-when-complete. Returns whether alignment succeeded. The torrent was added
-// force-paused, so if alignment fails it stays paused for inspection; ResumeWhenComplete only
+// alignAndRecheck renames the just-added torrent to match the on-disk files, then settles it
+// with the complete gate. Returns whether alignment succeeded. The torrent was added
+// force-paused, so if alignment fails it stays paused for inspection; the complete gate only
 // resumes at 100%, so bad data is never seeded.
 func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan alignmentPlan) bool {
 	hash := req.ParsedTorrent.InfoHash
@@ -187,14 +187,14 @@ func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan a
 		Msg("dirscan: aligned torrent content paths to on-disk layout")
 
 	// Recheck so qBittorrent validates the now-aligned data, then resume unless the user asked
-	// to keep it paused. If the recheck can't be scheduled the torrent stays force-paused with no
-	// way to resume, so report failure rather than a stranded "success".
+	// to keep it paused. If the settle module cannot take the torrent it stays force-paused with
+	// no way to resume, so report failure rather than a stranded "success".
 	if err := i.triggerRecheckForPausedPartial(req, true); err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", req.InstanceID).
 			Str("hash", hash).
-			Msg("dirscan: aligned torrent but could not trigger recheck; leaving torrent paused for inspection")
+			Msg("dirscan: aligned torrent but could not queue its recheck; leaving torrent paused for inspection")
 		return false
 	}
 	return true

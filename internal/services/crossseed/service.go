@@ -282,17 +282,8 @@ const (
 	crossSeedRenameWaitTimeout            = 15 * time.Second
 	crossSeedRenamePollInterval           = 200 * time.Millisecond
 	automationSettingsQueryTimeout        = 5 * time.Second
-	recheckPollInterval                   = 3 * time.Second  // Batch API calls per instance
-	recheckAbsoluteTimeout                = 60 * time.Minute // Allow time for large recheck queues
 	recheckAPITimeout                     = 30 * time.Second
 	maxRecheckResumeAttempts              = 3
-	recheckResumeStablePolls              = 2
-	maxMissingFilesResumeAttempts         = 3
-	// recheckFastCompleteMinElapsed is how long after queuing a verification-required
-	// entry may resume on a settled 100% that never showed a checking state: long enough
-	// that the recheck qui issued is treated as having run (#2554), well short of
-	// recheckAbsoluteTimeout.
-	recheckFastCompleteMinElapsed = 30 * time.Second
 	// Forgiveness ceiling for byte-budget auto-resume: even when every missing
 	// file is an irrelevant sidecar, never auto-resume above this much missing data.
 	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
@@ -454,10 +445,8 @@ type Service struct {
 	postInjectionHook              func(context.Context, int, string)
 	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
 
-	// Recheck resume worker
-	recheckResumeChan   chan *pendingResume
-	recheckResumeCtx    context.Context
-	recheckResumeCancel context.CancelFunc
+	// settler rechecks and resumes each torrent that this service adds.
+	settler *Settler
 
 	// Durable partial link-mode completion coordinator.
 	partialPoolWake                       chan partialPoolWake
@@ -482,70 +471,6 @@ type Service struct {
 	metadataCredsFingerprint    string
 
 	activityPublisher activity.Publisher
-}
-
-// pendingResume tracks a torrent waiting for recheck to complete before resuming.
-type pendingResume struct {
-	instanceID int
-	hash       string
-	// monitorOnly observes a full recheck without ever resuming the torrent.
-	monitorOnly bool
-	// recheckPending marks a post-add recheck that failed; the worker sends it
-	// once qBittorrent answers again.
-	recheckPending bool
-	// verificationRequired marks an ambiguous search match that must not trust
-	// qBittorrent's optimistic pre-check completion state. The WebUI API exposes
-	// no recheck generation, so the worker observes checking, then a 100% result.
-	// A checking transition missed between polls falls back to a settled 100% once
-	// recheckFastCompleteMinElapsed has passed since queuing; below that it stays paused.
-	verificationRequired bool
-	// threshold is the verified-progress fraction required to resume.
-	// Used by the season-pack flow, whose gate is "linked bytes verified".
-	threshold float64
-	// budgetBytes switches the entry to byte-budget mode (new cross-seed
-	// additions): resume when missing data fits the budget, or when only
-	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
-	budgetBytes        *int64
-	forgivenessGranted bool
-	// forgivenessEvalFailed marks that the LAST forgiveness or linked-file check
-	// evaluation could not load its qBittorrent evidence; terminal branches keep
-	// the entry and retry instead of dropping it on a transient error.
-	forgivenessEvalFailed         bool
-	addedAt                       time.Time
-	recoverMissingFilesWithResume bool
-	missingFilesResumeAttempts    int
-	missingFilesResumeSucceeded   bool
-	// qBittorrent may accept resume before its files-checked stop settles.
-	// Keep watching until running state is stable, and retry if it stops again.
-	resumeAttempts             int
-	awaitingResumeConfirmation bool
-	sawChecking                bool
-	// recheckInterrupted disables the timed fallback after resume-data validation.
-	recheckInterrupted   bool
-	readyPolls           int
-	resumeConfirmedPolls int
-	// linkedPaths holds the torrent paths qui hardlinked before the add; nil for
-	// reflink and regular adds. A linked file that rechecks below 100% blocks the
-	// resume unless every failed piece straddles a pending file: downloading it
-	// would write into the source through the shared inode. Paths, not indexes:
-	// qBittorrent drops pad files from its file list and renumbers.
-	linkedPaths map[string]struct{}
-	// blockedLinkedFile names the linked file that tripped the check on the last
-	// evaluation, with its missing bytes.
-	blockedLinkedFile  string
-	blockedLinkedBytes int64
-	// blockedRun is the season pack history row to append when the check blocks,
-	// since the apply row was written before the recheck ran. nil for cross-seed
-	// adds, whose result already went back to the caller.
-	blockedRun *models.SeasonPackRun
-}
-
-// leftPausedMsg names the linked file that tripped the linked-file check, else fallback.
-func (req *pendingResume) leftPausedMsg(fallback string) string {
-	if req.blockedLinkedFile == "" {
-		return fallback
-	}
-	return fmt.Sprintf("Linked file %s does not match the torrent, left paused to protect the source", req.blockedLinkedFile)
 }
 
 type cachedTorrentSearchResults struct {
@@ -594,6 +519,7 @@ func NewService(
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 	seasonPackRunStore seasonPackRunCreator,
+	settler *Settler,
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error),
 	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
@@ -611,7 +537,6 @@ func NewService(
 	dedupCache := ttlcache.New[string, *dedupCacheEntry](
 		ttlcache.SetDefaultTTL(5 * time.Minute))
 
-	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
 	if !isNilARRLookupService(arrService) {
 		arrLookup = arrService
@@ -647,9 +572,7 @@ func NewService(
 		completionTimeout:             defaultCompletionCheckingTimeout,
 		completionRetryDelay:          defaultCompletionCheckingRetryDelay,
 		completionMaxAttempts:         maxCompletionCheckingAttempts,
-		recheckResumeChan:             make(chan *pendingResume, 100),
-		recheckResumeCtx:              recheckCtx,
-		recheckResumeCancel:           recheckCancel,
+		settler:                       settler,
 		partialPoolWake:               make(chan partialPoolWake, 100),
 		partialPoolCreated:            make(map[int64]*hardlinktree.Created),
 		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
@@ -657,9 +580,6 @@ func NewService(
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 		activityPublisher:             activity.NopPublisher{},
 	}
-
-	// Start the single worker goroutine for processing recheck resumes
-	go svc.recheckResumeWorker()
 
 	return svc
 }
@@ -5613,12 +5533,6 @@ func (s *Service) processCrossSeedCandidate(
 		options["stopped"] = "true"
 	}
 
-	// Force recheck is automatic (no user setting):
-	//  - Disc-layout torrents always trigger a recheck after injection
-	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
-	//  - Title rescues and season/episode/group-relaxed matches always verify before seeding
-	forceRecheck := verifyBeforeSeed || addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
-
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
@@ -6290,61 +6204,27 @@ func (s *Service) processCrossSeedCandidate(
 
 	autoResumeQueued := false
 	if needsRecheck {
-		recheckHashes := []string{torrentHash}
-		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-			recheckHashes = append(recheckHashes, torrentHashV2)
-		}
-
-		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
-		// even when skip_checking is not set. We must explicitly trigger recheck.
-		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-		recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
-		recheckPending := recheckErr != nil
-		if recheckPending {
-			log.Warn().
-				Err(recheckErr).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Bool("skipAutoResume", req.SkipAutoResume).
-				Msg("Failed to trigger recheck after add")
+		// even when skip_checking is not set. Verification-required, disc-layout, and
+		// link-mode filesystem fallback torrents must reach 100% before they resume.
+		added := AddedTorrent{
+			InstanceID:     candidate.InstanceID,
+			Hashes:         dedupeHashes(activeHash, torrentHash, torrentHashV2),
+			SkipAutoResume: req.SkipAutoResume,
 		}
 		switch {
-		case req.SkipAutoResume:
-			result.Message += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, activeHash)
-			// User requested to skip auto-resume - leave paused after recheck
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume per user settings (recheck triggered)")
-			result.Message += " - auto-resume skipped per settings"
+		case req.SkipAutoResume && candidate.titleRescue:
+			added.Gate = GateMonitor
+		case verifyBeforeSeed:
+			added.Gate = GateVerify
+		case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
+			added.Gate = GateComplete
 		default:
-			// Queue for background resume. Verification-required, disc-layout, and
-			// link-mode filesystem fallback torrents must reach 100% first.
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Bool("forceRecheck", forceRecheck).
-				Bool("recheckPending", recheckPending).
-				Msg("Queuing torrent for recheck resume")
-			queueErr := error(nil)
-			switch {
-			case verifyBeforeSeed:
-				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash, recheckPending)
-			case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil, recheckPending)
-			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil, recheckPending)
-			}
-			switch {
-			case queueErr != nil && recheckPending:
-				result.Message += " - recheck failed and auto-resume queue full, manual intervention required"
-			case queueErr != nil:
-				result.Message += " - auto-resume queue full, manual resume required"
-			default:
-				autoResumeQueued = true
-			}
+			added.Budget = s.resumeBudgetBytes(ctx)
 		}
+		outcome := s.settler.Settle(ctx, added)
+		result.Message += outcome.StatusSuffix()
+		autoResumeQueued = !outcome.Skipped && !outcome.QueueFull
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
 		if req.SkipAutoResume {
@@ -6427,267 +6307,6 @@ func normalizeHash(hash string) string {
 	return normalizeLowerTrim(hash)
 }
 
-func recheckResumeKey(instanceID int, hash string) string {
-	return fmt.Sprintf("%d:%s", instanceID, normalizeHash(hash))
-}
-
-// queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
-// verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
-func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}, blockedRun *models.SeasonPackRun) error {
-	return s.queuePendingResume(&pendingResume{
-		instanceID:  instanceID,
-		hash:        hash,
-		threshold:   threshold,
-		linkedPaths: linkedPaths,
-		blockedRun:  blockedRun,
-	})
-}
-
-// queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
-// fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
-// recheckPending marks an entry whose post-add recheck failed; the worker sends it.
-func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}, recheckPending bool) error {
-	return s.queuePendingResume(&pendingResume{
-		instanceID:                    instanceID,
-		hash:                          hash,
-		budgetBytes:                   &budgetBytes,
-		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
-		linkedPaths:                   linkedPaths,
-		recheckPending:                recheckPending,
-	})
-}
-
-func (s *Service) queueVerificationRecheckResume(instanceID int, hash string, recheckPending bool) error {
-	budgetBytes := int64(0)
-	return s.queuePendingResume(&pendingResume{
-		instanceID:           instanceID,
-		hash:                 hash,
-		budgetBytes:          &budgetBytes,
-		verificationRequired: true,
-		recheckPending:       recheckPending,
-	})
-}
-
-// skipResumeMonitorSuffix queues a monitor for a SkipAutoResume add that is a
-// title rescue or whose recheck failed, and returns a status suffix when the
-// monitor queue is full.
-func (s *Service) skipResumeMonitorSuffix(titleRescue, recheckPending bool, instanceID int, hash string) string {
-	if !titleRescue && !recheckPending {
-		return ""
-	}
-	err := s.queuePendingResume(&pendingResume{
-		instanceID:           instanceID,
-		hash:                 hash,
-		monitorOnly:          true,
-		verificationRequired: titleRescue,
-		budgetBytes:          new(int64),
-		recheckPending:       recheckPending,
-	})
-	if err != nil {
-		if recheckPending {
-			return " - recheck failed and monitor queue full, manual intervention required"
-		}
-		return " - verification monitor queue full, manual review required"
-	}
-	return ""
-}
-
-func (s *Service) queuePendingResume(req *pendingResume) error {
-	req.addedAt = time.Now()
-	// Send to worker (non-blocking with buffer)
-	select {
-	case s.recheckResumeChan <- req:
-		log.Debug().
-			Int("instanceID", req.instanceID).
-			Str("hash", req.hash).
-			Float64("threshold", req.threshold).
-			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-			Bool("recoverMissingFilesWithResume", req.recoverMissingFilesWithResume).
-			Int("pendingCount", len(s.recheckResumeChan)+1).
-			Msg("Added torrent to recheck resume queue")
-		return nil
-	default:
-		log.Warn().
-			Int("instanceID", req.instanceID).
-			Str("hash", req.hash).
-			Msg("Recheck resume channel full, skipping queue")
-		return errors.New("recheck resume queue full")
-	}
-}
-
-// pendingResumeBudgetForLog returns the budget for logging, -1 in threshold mode.
-func pendingResumeBudgetForLog(req *pendingResume) int64 {
-	if req.budgetBytes == nil {
-		return -1
-	}
-	return *req.budgetBytes
-}
-
-// pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
-// Threshold mode compares verified progress. Budget mode compares missing bytes against the
-// budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
-// sidecar files. Hardlink entries then pass the linked-file check.
-func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
-	req.forgivenessEvalFailed = false
-	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
-	if !s.thresholdOrBudgetSatisfied(instanceID, req, torrent) {
-		return false
-	}
-	if req.linkedPaths == nil || torrent.AmountLeft <= 0 {
-		return true
-	}
-	return s.hardlinkResumeAllowed(instanceID, req)
-}
-
-// LinkedFileReader is what the ADR 0004 linked-file check reads: the file list
-// and the piece states of one torrent.
-type LinkedFileReader interface {
-	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
-}
-
-// The pin keeps the real sync manager on the check without widening
-// qbittorrentSync for its test doubles.
-var _ LinkedFileReader = (*qbittorrent.SyncManager)(nil)
-
-// hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
-// that no pending file shares. Fetch failures keep the entry for a retry.
-func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
-	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-	defer cancel()
-
-	reader, ok := s.syncManager.(LinkedFileReader)
-	if !ok {
-		req.forgivenessEvalFailed = true
-		return false
-	}
-	name, missing, err := MismatchedLinkedFile(ctx, reader, instanceID, req.hash, req.linkedPaths)
-	if err != nil {
-		req.forgivenessEvalFailed = true
-		return false
-	}
-	if name == "" {
-		return true
-	}
-	req.blockedLinkedFile = name
-	req.blockedLinkedBytes = missing
-	return false
-}
-
-// MismatchedLinkedFile runs the linked-file check before a hardlink add resumes.
-// It returns the first linked file whose failed pieces no pending file shares,
-// with its missing bytes, or "" when the resume is safe. linked holds torrent
-// paths. A failed or empty read returns an error: the caller retries and does
-// not resume. Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
-func MismatchedLinkedFile(ctx context.Context, reader LinkedFileReader, instanceID int, hash string, linked map[string]struct{}) (string, int64, error) {
-	ctx = qbittorrent.WithForceFilesRefresh(ctx)
-
-	filesByHash, err := reader.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
-	if err != nil {
-		return "", 0, fmt.Errorf("read file list: %w", err)
-	}
-	files := filesByHash[normalizeHash(hash)]
-	if len(files) == 0 {
-		return "", 0, errors.New("read file list: empty")
-	}
-	// Empty piece states would make every incomplete linked file look mismatched,
-	// which blocks the boundary packs the check must let through.
-	pieces, err := reader.GetTorrentPieceStates(ctx, instanceID, hash)
-	if err != nil {
-		return "", 0, fmt.Errorf("read piece states: %w", err)
-	}
-	if len(pieces) == 0 {
-		return "", 0, errors.New("read piece states: empty")
-	}
-
-	name, missing := mismatchedLinkedFile(files, pieces, linked)
-	return name, missing, nil
-}
-
-// mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
-// be explained by a piece it shares with a pending file, with its missing bytes.
-// A piece range past the end of the piece list counts as mismatched.
-func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) (string, int64) {
-	// Only a pending file's first and last piece can reach into a neighbour.
-	// An empty file occupies no piece: qBittorrent reports it as [start, start-1].
-	shared := make([]bool, len(pieces))
-	for _, file := range files {
-		if _, ok := linked[file.Name]; ok || file.Size <= 0 || len(file.PieceRange) < 2 {
-			continue
-		}
-		for _, p := range file.PieceRange[:2] {
-			if p < len(shared) {
-				shared[p] = true
-			}
-		}
-	}
-	for _, file := range files {
-		if _, ok := linked[file.Name]; !ok || file.Progress >= 1 {
-			continue
-		}
-		missing := int64((1 - float64(file.Progress)) * float64(file.Size))
-		if len(file.PieceRange) < 2 || file.PieceRange[1] >= len(pieces) {
-			return file.Name, missing
-		}
-		for p := file.PieceRange[0]; p <= file.PieceRange[1]; p++ {
-			if pieces[p] != qbt.PieceStateAlreadyDownloaded && !shared[p] {
-				return file.Name, missing
-			}
-		}
-	}
-	return "", 0
-}
-
-// thresholdOrBudgetSatisfied applies the threshold or budget rule alone.
-func (s *Service) thresholdOrBudgetSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
-	if req.budgetBytes == nil {
-		return torrent.Progress >= req.threshold
-	}
-
-	budget := *req.budgetBytes
-	if req.verificationRequired {
-		return torrent.Progress >= 1 && torrent.AmountLeft <= 0
-	}
-	if budget <= 0 {
-		// The rescue monitor's 100% verdict also requires full reported progress;
-		// other zero-budget resumes keep the pre-rescue missing-bytes rule.
-		if req.monitorOnly {
-			return torrent.Progress >= 1 && torrent.AmountLeft <= 0
-		}
-		return torrent.AmountLeft <= 0
-	}
-	if torrent.AmountLeft <= budget {
-		return true
-	}
-	if torrent.AmountLeft > irrelevantResumeForgivenessCapBytes {
-		return false
-	}
-	// Cache only positive verdicts: a negative one taken before the recheck
-	// finished would otherwise pin the torrent paused forever.
-	if req.forgivenessGranted {
-		return true
-	}
-	granted, evalOK := s.missingRelevantBytesWithinBudget(instanceID, req.hash, budget)
-	if !evalOK {
-		req.forgivenessEvalFailed = true
-		return false
-	}
-	if granted {
-		// Cache only post-check verdicts: a recheck can start and finish between
-		// polls, so a grant earned before one was observed must not pin later polls.
-		if req.sawChecking {
-			req.forgivenessGranted = true
-		}
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", req.hash).
-			Int64("amountLeft", torrent.AmountLeft).
-			Int64("budgetBytes", budget).
-			Msg("Auto-resume budget exceeded but the shortfall beyond it is only irrelevant files, allowing resume")
-	}
-	return granted
-}
-
 // postRecheckBudgetSatisfied applies the shared auto-start byte budget. File
 // progress is required only for the bounded sidecar-forgiveness path.
 func postRecheckBudgetSatisfied(
@@ -6727,32 +6346,6 @@ func relevantMissingFilesWithinBudget(
 	return true
 }
 
-// missingRelevantBytesWithinBudget reports whether the missing bytes inside relevant wanted
-// files fit the budget. Irrelevant sidecars (sample, nfo, subtitle, ...) are excluded from the
-// sum: per-file progress is piece-based, so a fully present file next to a missing sidecar
-// reports slightly under 1 and only its boundary-piece bytes count against the budget.
-// The second return value is false when the file list could not be loaded; the caller keeps
-// the queue entry and retries on the next poll instead of treating the error as a verdict.
-func (s *Service) missingRelevantBytesWithinBudget(instanceID int, hash string, budget int64) (bool, bool) {
-	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-	defer cancel()
-
-	// The files cache can hold a pre-recheck snapshot (alignment warms it);
-	// the verdict must come from post-recheck per-file progress.
-	ctx = qbittorrent.WithForceFilesRefresh(ctx)
-
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
-	if err != nil {
-		return false, false
-	}
-	files := filesByHash[normalizeHash(hash)]
-	if len(files) == 0 {
-		return false, false
-	}
-
-	return relevantMissingFilesWithinBudget(files, budget, normalizerForService(s)), true
-}
-
 // forgivableSidecarFile reports whether a file is a sidecar that forgiveness may
 // auto-download. Stricter than shouldIgnoreFile: an ignore keyword must be the file's
 // stem, an end-of-stem qualifier, a "-"-delimited stem prefix, or a full directory
@@ -6785,346 +6378,6 @@ func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[strin
 	return false
 }
 
-func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
-	if req.recheckPending {
-		return s.sendPendingRecheck(instanceID, hash, req, torrent.State)
-	}
-
-	progress := torrent.Progress
-	state := torrent.State
-
-	// Lazy so the file-list fetch behind forgiveness only happens at a decision point.
-	var satisfiedResult *bool
-	satisfied := func() bool {
-		if satisfiedResult == nil {
-			v := s.pendingResumeSatisfied(instanceID, req, torrent)
-			satisfiedResult = &v
-		}
-		return *satisfiedResult
-	}
-
-	isPieceChecking := state == qbt.TorrentStateCheckingUp ||
-		state == qbt.TorrentStateCheckingDl
-	isChecking := isPieceChecking || state == qbt.TorrentStateCheckingResumeData
-	if isChecking {
-		if isPieceChecking {
-			req.sawChecking = true
-		} else if req.verificationRequired && req.sawChecking {
-			// checkingResumeData validates qBittorrent's saved state during startup.
-			// Seeing it after we already observed a piece hash check means qBittorrent
-			// restarted and re-validated: that breaks continuity with the check we saw,
-			// so the earlier progress no longer proves the requested recheck ran. Block
-			// the fast resume and re-earn confirmation from a fresh piece check.
-			//
-			// A checkingResumeData poll with no prior piece check is just normal
-			// forced-recheck startup, which every recheck passes through before hashing.
-			// A fast (100%-overlap) recheck can still finish between polls, so this must
-			// not set recheckInterrupted or the fast path below could never fire.
-			req.sawChecking = false
-			req.recheckInterrupted = true
-			req.awaitingResumeConfirmation = false
-		}
-		req.readyPolls = 0
-		req.resumeConfirmedPolls = 0
-		// A recheck can reveal missing data a pre-check forgiveness pass never
-		// saw; the verdict must be re-earned from post-check file progress.
-		req.forgivenessGranted = false
-	}
-	if req.verificationRequired && !req.sawChecking && !req.awaitingResumeConfirmation {
-		// A fast (100%-overlap) recheck can finish between polls, so checking is never
-		// observed and this would wait out recheckAbsoluteTimeout. After the heuristic
-		// delay, treat a settled 100% as verified and fall through to the normal resume
-		// path (still gated by recheckResumeStablePolls); monitorOnly never resumes. Once
-		// resume is issued, awaitingResumeConfirmation takes over so the entry is
-		// confirmed and dropped rather than waiting out the timeout while it runs.
-		fastRecheckComplete := !req.monitorOnly && !req.recheckInterrupted && isPausedOrStopped(state) &&
-			satisfied() && time.Since(req.addedAt) >= recheckFastCompleteMinElapsed
-		if !fastRecheckComplete {
-			return true
-		}
-	}
-	if req.monitorOnly {
-		if isChecking {
-			return true
-		}
-		if satisfied() {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Msg("Monitored recheck completed at 100%; torrent left paused per settings")
-			return false
-		}
-		if progress > 0 || req.sawChecking {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Int64("amountLeft", torrent.AmountLeft).
-				Msg("Monitored recheck completed below 100%; torrent left paused for manual review")
-			return false
-		}
-		return true
-	}
-
-	// qBittorrent can leave a newly added reflink-with-extras torrent in
-	// missingFiles until it is started. Nudge after transient failures, then keep watching.
-	if state == qbt.TorrentStateMissingFiles && req.recoverMissingFilesWithResume {
-		if req.missingFilesResumeSucceeded {
-			return true
-		}
-		if req.missingFilesResumeAttempts >= maxMissingFilesResumeAttempts {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Int("attempts", req.missingFilesResumeAttempts).
-				Msg("MissingFiles recheck recovery resume attempts exhausted")
-			return false
-		}
-
-		req.missingFilesResumeAttempts++
-		resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-		err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
-		resumeCancel()
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Int("attempt", req.missingFilesResumeAttempts).
-				Int("maxAttempts", maxMissingFilesResumeAttempts).
-				Msg("Failed to resume missingFiles torrent during recheck recovery")
-			return req.missingFilesResumeAttempts < maxMissingFilesResumeAttempts
-		}
-
-		req.missingFilesResumeSucceeded = true
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Float64("progress", progress).
-			Float64("threshold", req.threshold).
-			Int("attempt", req.missingFilesResumeAttempts).
-			Msg("Resumed missingFiles torrent to continue post-add recheck recovery")
-		return true
-	}
-
-	if req.awaitingResumeConfirmation {
-		if isRecheckResumeConfirmed(state) {
-			req.resumeConfirmedPolls++
-			if req.resumeConfirmedPolls < recheckResumeStablePolls {
-				return true
-			}
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Float64("threshold", req.threshold).
-				Str("state", string(state)).
-				Int("attempts", req.resumeAttempts).
-				Msg("Confirmed torrent resumed after recheck")
-			return false
-		}
-
-		req.resumeConfirmedPolls = 0
-		if isChecking {
-			return true
-		}
-
-		if isPausedOrStopped(state) && !satisfied() {
-			if req.forgivenessEvalFailed {
-				// Could not load the file list - retry on the next poll instead
-				// of dropping the entry on a transient qBittorrent error.
-				return true
-			}
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Float64("threshold", req.threshold).
-				Int64("amountLeft", torrent.AmountLeft).
-				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-				Str("state", string(state)).
-				Str("linkedFile", req.blockedLinkedFile).
-				Int64("linkedMissingBytes", req.blockedLinkedBytes).
-				Msg(req.leftPausedMsg("Recheck resume stopped below threshold, torrent left paused for manual review"))
-			s.recordBlockedResume(req)
-			return false
-		}
-
-		if isPausedOrStopped(state) && satisfied() {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Float64("threshold", req.threshold).
-				Str("state", string(state)).
-				Int("attempts", req.resumeAttempts).
-				Msg("Torrent still stopped after recheck resume, retrying")
-			return s.resumePendingRecheck(instanceID, hash, req, progress, state)
-		}
-
-		return true
-	}
-
-	// A missingFiles recovery nudge can leave an over-budget torrent downloading.
-	// The check is cheap arithmetic on purpose: fetching the file list for a
-	// forgiveness verdict can stall for recheckAPITimeout while the torrent keeps
-	// downloading, so pause first. The paused flow then evaluates forgiveness and
-	// resumes when it passes.
-	if req.budgetBytes != nil && req.missingFilesResumeSucceeded &&
-		isDownloadingOrQueued(state) &&
-		torrent.AmountLeft > *req.budgetBytes && !req.forgivenessGranted {
-		pauseCtx, pauseCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-		err := s.syncManager.BulkAction(pauseCtx, instanceID, []string{hash}, "pause")
-		pauseCancel()
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Int64("amountLeft", torrent.AmountLeft).
-				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-				Msg("Failed to pause over-budget torrent after missingFiles recovery")
-		}
-		return true
-	}
-
-	// Resume if the recheck outcome allows it and the torrent is not checking
-	if !isChecking && satisfied() {
-		req.readyPolls++
-		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
-			return true
-		}
-		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
-	}
-
-	// Below-threshold torrents that are still queued/downloading can improve.
-	// Keep watching until they reach threshold or timeout.
-	if isDownloadingOrQueued(state) {
-		return true
-	}
-
-	// If recheck completed (not checking) with some progress but the outcome does not
-	// allow resuming, the torrent won't improve - remove it from queue.
-	// Note: We can't do this for 0% progress since we can't distinguish
-	// "queued for recheck" from "recheck completed with 0 matches".
-	if !isChecking && progress > 0 && !satisfied() {
-		if req.forgivenessEvalFailed {
-			// Could not load the file list - retry on the next poll instead of
-			// dropping the entry on a transient qBittorrent error.
-			return true
-		}
-		log.Warn().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Float64("progress", progress).
-			Float64("threshold", req.threshold).
-			Int64("amountLeft", torrent.AmountLeft).
-			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-			Str("linkedFile", req.blockedLinkedFile).
-			Int64("linkedMissingBytes", req.blockedLinkedBytes).
-			Msg(req.leftPausedMsg("Recheck completed below threshold, torrent left paused for manual review"))
-		s.recordBlockedResume(req)
-		return false
-	}
-
-	// Torrent not ready yet - either still checking or queued for recheck (0% progress).
-	// Keep in queue until absolute timeout.
-	return true
-}
-
-// sendPendingRecheck retries a post-add recheck that failed. Until it lands the
-// torrent's progress is a skip_checking guess, so the entry is not evaluated.
-func (s *Service) sendPendingRecheck(instanceID int, hash string, req *pendingResume, state qbt.TorrentState) bool {
-	switch state { //nolint:exhaustive // only checking states change the send
-	case qbt.TorrentStateCheckingResumeData:
-		// Same order as the post-add wait: recheck only after resume data is validated.
-		return true
-	case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl:
-		// The failed call reached qBittorrent after all; a second recheck would restart it.
-		// Count it as a seen piece check so a later restart trips the interruption guard.
-		req.recheckPending = false
-		req.sawChecking = true
-		return true
-	}
-	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-	err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "recheck")
-	cancel()
-	if err != nil {
-		log.Debug().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("Deferred post-add recheck failed, will retry")
-		return true
-	}
-	req.recheckPending = false
-	// Verification timing counts from the recheck, not from the failed add.
-	req.addedAt = time.Now()
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", hash).
-		Msg("Sent deferred post-add recheck")
-	return true
-}
-
-// recordBlockedResume appends the linked-file check verdict to the season pack history.
-func (s *Service) recordBlockedResume(req *pendingResume) {
-	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
-		return
-	}
-	run := req.blockedRun
-	run.Status, run.Reason, run.Message = "failed", "linked_file_mismatch", req.leftPausedMsg("")
-	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-	defer cancel()
-	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {
-		log.Warn().Err(err).Str("hash", req.hash).Msg("failed to record blocked season pack resume")
-	}
-}
-
-func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {
-	if req.resumeAttempts >= maxRecheckResumeAttempts {
-		log.Warn().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Float64("progress", progress).
-			Float64("threshold", req.threshold).
-			Str("state", string(state)).
-			Int("attempts", req.resumeAttempts).
-			Msg("Recheck resume attempts exhausted, torrent left for manual review")
-		return false
-	}
-
-	req.resumeAttempts++
-	resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-	err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
-	resumeCancel()
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Float64("progress", progress).
-			Float64("threshold", req.threshold).
-			Str("state", string(state)).
-			Int("attempt", req.resumeAttempts).
-			Int("maxAttempts", maxRecheckResumeAttempts).
-			Msg("Failed to resume torrent after recheck")
-		return req.resumeAttempts < maxRecheckResumeAttempts
-	}
-
-	req.awaitingResumeConfirmation = true
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", hash).
-		Float64("progress", progress).
-		Float64("threshold", req.threshold).
-		Str("state", string(state)).
-		Int("attempt", req.resumeAttempts).
-		Msg("Resumed torrent after recheck completed, awaiting confirmation")
-	return true
-}
-
 func isRecheckResumeConfirmed(state qbt.TorrentState) bool {
 	switch state { //nolint:exhaustive // only running states confirm resume
 	case qbt.TorrentStateUploading,
@@ -7152,13 +6405,6 @@ func isPausedOrStopped(state qbt.TorrentState) bool {
 	return false
 }
 
-func (s *Service) recheckResumeBaseCtx() context.Context {
-	if s.recheckResumeCtx != nil {
-		return s.recheckResumeCtx
-	}
-	return context.Background()
-}
-
 func isDownloadingOrQueued(state qbt.TorrentState) bool {
 	return state == qbt.TorrentStateDownloading ||
 		state == qbt.TorrentStateStalledDl ||
@@ -7166,171 +6412,6 @@ func isDownloadingOrQueued(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateQueuedDl ||
 		state == qbt.TorrentStateAllocating ||
 		state == qbt.TorrentStateForcedDl
-}
-
-// recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
-// Instead of spawning a goroutine per torrent, this worker manages all pending torrents
-// in a map and checks them periodically, avoiding goroutine accumulation.
-func (s *Service) recheckResumeWorker() {
-	pending := make(map[string]*pendingResume)
-	ticker := time.NewTicker(recheckPollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case req := <-s.recheckResumeChan:
-			// Add new pending resume request
-			pending[recheckResumeKey(req.instanceID, req.hash)] = req
-			log.Debug().
-				Int("instanceID", req.instanceID).
-				Str("hash", req.hash).
-				Float64("threshold", req.threshold).
-				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-				Bool("recoverMissingFilesWithResume", req.recoverMissingFilesWithResume).
-				Int("pendingCount", len(pending)).
-				Msg("Added torrent to recheck resume queue")
-
-		case <-ticker.C:
-			if len(pending) == 0 {
-				continue
-			}
-
-			// First pass: check timeouts and group by instance for batched API calls
-			byInstance := make(map[int][]string)
-			for key, req := range pending {
-				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
-					message := "Recheck resume absolute timeout reached, removing from queue"
-					switch {
-					case req.recheckPending:
-						message = "Deferred post-add recheck was never accepted, torrent left paused for manual review"
-					case req.verificationRequired && !req.sawChecking:
-						message = "Verification recheck transition was not observed, torrent left paused for manual review"
-					}
-					log.Warn().
-						Int("instanceID", req.instanceID).
-						Str("hash", req.hash).
-						Dur("elapsed", time.Since(req.addedAt)).
-						Msg(message)
-					delete(pending, key)
-					continue
-				}
-				byInstance[req.instanceID] = append(byInstance[req.instanceID], req.hash)
-			}
-
-			// Second pass: one API call per instance with all pending hashes
-			for instanceID, hashes := range byInstance {
-				apiCtx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-				torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
-				cancel()
-				if err != nil {
-					log.Debug().
-						Err(err).
-						Int("instanceID", instanceID).
-						Int("hashCount", len(hashes)).
-						Msg("Failed to get torrent states during recheck resume, will retry")
-					continue
-				}
-
-				torrentByHash := buildTorrentVariantLookup(torrents)
-				if missingVariantLookupHash(torrentByHash, hashes) {
-					allCtx, allCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-					allTorrents, allErr := s.syncManager.GetTorrents(allCtx, instanceID, qbt.TorrentFilterOptions{})
-					allCancel()
-					if allErr != nil {
-						log.Debug().
-							Err(allErr).
-							Int("instanceID", instanceID).
-							Int("hashCount", len(hashes)).
-							Msg("Failed to get full torrent state map during recheck resume, using exact hash results")
-					} else {
-						torrentByHash = buildTorrentVariantLookup(allTorrents)
-					}
-				}
-
-				// Process each pending torrent for this instance
-				for _, hash := range hashes {
-					key := recheckResumeKey(instanceID, hash)
-					req := pending[key]
-					torrent, found := torrentByHash[normalizeHash(hash)]
-					if !found && req.recheckPending {
-						// A stalled qBittorrent can hide a fresh add from the cache;
-						// dropping it here would leave it stopped for good.
-						continue
-					}
-					if !found {
-						log.Debug().
-							Int("instanceID", instanceID).
-							Str("hash", hash).
-							Msg("Torrent not found during recheck resume, removing from queue")
-						delete(pending, key)
-						continue
-					}
-
-					canonicalHash, canonicalKey := rekeyPendingRecheckResume(pending, instanceID, hash, req, torrent)
-
-					if !s.processPendingRecheckResume(instanceID, canonicalHash, req, torrent) {
-						delete(pending, key)
-						delete(pending, canonicalKey)
-						continue
-					}
-				}
-			}
-
-		case <-s.recheckResumeCtx.Done():
-			log.Debug().
-				Int("pendingCount", len(pending)).
-				Msg("Recheck resume worker shutting down")
-			return
-		}
-	}
-}
-
-func rekeyPendingRecheckResume(
-	pending map[string]*pendingResume,
-	instanceID int,
-	queuedHash string,
-	req *pendingResume,
-	torrent qbt.Torrent,
-) (string, string) {
-	canonicalHash := canonicalRecheckResumeHash(queuedHash, torrent)
-	canonicalKey := recheckResumeKey(instanceID, canonicalHash)
-	key := recheckResumeKey(instanceID, queuedHash)
-	if canonicalKey != key {
-		delete(pending, key)
-		pending[canonicalKey] = req
-	}
-	req.hash = canonicalHash
-	return canonicalHash, canonicalKey
-}
-
-func canonicalRecheckResumeHash(queuedHash string, torrent qbt.Torrent) string {
-	if canonicalHash := normalizeHash(torrent.Hash); canonicalHash != "" {
-		return canonicalHash
-	}
-	return normalizeHash(queuedHash)
-}
-
-func buildTorrentVariantLookup(torrents []qbt.Torrent) map[string]qbt.Torrent {
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, torrent := range torrents {
-		for _, hash := range []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
-			normalized := normalizeHash(hash)
-			if normalized == "" {
-				continue
-			}
-			torrentByHash[normalized] = torrent
-		}
-	}
-	return torrentByHash
-}
-
-func missingVariantLookupHash(torrentByHash map[string]qbt.Torrent, hashes []string) bool {
-	for _, hash := range hashes {
-		if _, found := torrentByHash[normalizeHash(hash)]; !found {
-			return true
-		}
-	}
-	return false
 }
 
 func cacheKeyForTorrentFiles(instanceID int, hash string) string {
@@ -14455,57 +13536,79 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 	)
 }
 
-// buildHardlinkDestDir constructs the destination directory for hardlink tree
-// based on the configured preset and torrent structure.
-//
-// Hardlink mode always uses contentLayout=Original, so the isolation decision
-// is based purely on whether the torrent has a common root folder:
-//   - Torrents with a root folder (e.g., "Movie/video.mkv") → no isolation needed
-//   - Rootless torrents (e.g., "video.mkv") → isolation folder needed
-//
-// When isolation is needed, a human-readable folder name is used: <torrent-name>--<shortHash>
-// For "flat" preset, isolation is always used to keep torrents separated.
-func (s *Service) buildHardlinkDestDir(
+// linkPresetDir applies the instance's hardlink directory preset to baseDir:
+// baseDir itself for flat, or a tracker or instance folder in it. A link tree
+// goes into this directory through LinkIntoNewFolder.
+func (s *Service) linkPresetDir(
 	ctx context.Context,
 	d fsops.PathDialect,
 	instance *models.Instance,
 	baseDir string,
-	torrentHash, torrentName string,
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
-	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-	// Determine if isolation folder is needed based on torrent structure.
-	// Since hardlink mode always uses contentLayout=Original, we only need
-	// an isolation folder when the torrent doesn't have a common root folder.
-	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
-
-	// Build isolation folder name if needed
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
-	}
-
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
-		// Get tracker display name using incoming torrent's tracker domain
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)), isolationFolder)
-		}
-		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)))
 	case "by-instance":
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)), isolationFolder)
-		}
 		return d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
-
 	default: // "flat" or unknown
-		// For flat layout, always use isolation folder to keep torrents separated
-		return d.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return baseDir
 	}
+}
+
+// linkDestDir returns the folder that the link tree of a torrent adds to
+// presetDir, and the directory the tree goes into when that folder is free.
+// Link mode always uses contentLayout=Original, so a torrent with a root
+// folder brings its own top folder. A rootless torrent gets an isolation
+// folder named after the torrent, and the tree goes into it.
+func linkDestDir(d fsops.PathDialect, presetDir, torrentName string, files []hardlinktree.TorrentFile) (topFolder, destDir string) {
+	if hardlinktree.HasCommonRootFolder(files) {
+		root, _, _ := strings.Cut(files[0].Path, "/")
+		return d.Join(presetDir, root), presetDir
+	}
+	isolation := d.Join(presetDir, pathutil.IsolationFolder(torrentName))
+	return isolation, isolation
+}
+
+// LinkIntoNewFolder calls link with the directory for the link tree of one
+// torrent in presetDir. The folder that the tree adds to presetDir must be
+// new: qui creates it to reserve it, so two adds at the same time cannot
+// share it. When it already exists, the tree goes into the isolation folder
+// <name>--<shortHash>, where the tree create reuses a link to the same file
+// and refuses a different file. The result's Dirs lists the reserved
+// folder, so RemoveTree takes it back after a failed add.
+func LinkIntoNewFolder(
+	ctx context.Context,
+	backend fsops.Backend,
+	presetDir, torrentHash, torrentName string,
+	files []hardlinktree.TorrentFile,
+	link func(destDir string) (*fsops.TreeCreateResult, error),
+) (*fsops.TreeCreateResult, error) {
+	d := backend.Paths()
+	topFolder, destDir := linkDestDir(d, presetDir, torrentName, files)
+	if err := backend.MkdirAll(ctx, presetDir, fsutil.ContentDirMode); err != nil {
+		return nil, fmt.Errorf("create link directory %s: %w", presetDir, err)
+	}
+	if err := backend.Mkdir(ctx, topFolder, fsutil.ContentDirMode); err != nil {
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("create link folder %s: %w", topFolder, err)
+		}
+		return link(d.Join(presetDir, pathutil.HashedIsolationFolder(torrentHash, torrentName)))
+	}
+
+	created, err := link(destDir)
+	if err != nil {
+		// The failed create removed what it made in the folder, so only an
+		// empty folder is left. WithoutCancel: a cancelled run still frees the name.
+		if removeErr := backend.Remove(context.WithoutCancel(ctx), topFolder, fsops.RemoveOptions{}); removeErr != nil {
+			log.Warn().Err(removeErr).Str("folder", topFolder).Msg("failed to remove reserved link folder")
+		}
+		return nil, err
+	}
+	created.Dirs = append(created.Dirs, topFolder)
+	return created, nil
 }
 
 // buildCategorySavePath computes the correct save path for a cross-seed category
@@ -14521,15 +13624,11 @@ func (s *Service) buildCategorySavePath(
 	candidate CrossSeedCandidate,
 	req *CrossSeedRequest,
 ) string {
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
-	case "by-instance":
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
-	default: // "flat" or unknown
+	presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
+	if presetDir == baseDir { // flat
 		return baseDir
 	}
+	return normalizePath(presetDir)
 }
 
 // resolveTrackerDisplayName resolves the display name for the tracker.

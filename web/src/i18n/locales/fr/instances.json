@@ -1773,11 +1773,9 @@
       "lastBackup": "Dernière sauvegarde",
       "loading": "Chargement...",
       "progress": "{{current}} sur {{total}} torrents ({{percentage}}%)",
-      "status": "Statut : {{status}}",
       "noBackupsYet": "Aucune sauvegarde",
       "nextScheduledBackup": "Prochaine sauvegarde programmée",
       "loadingSchedule": "Chargement du programme...",
-      "instance": "Instance",
       "automaticBackupsOff": "Les sauvegardes automatiques sont désactivées pour cette instance.",
       "enableCadenceToSchedule": "Activez au moins une cadence automatique pour programmer des sauvegardes.",
       "currentlyRunning": "La sauvegarde est en cours d'exécution.",
@@ -1801,6 +1799,7 @@
       "schedule": {
         "title": "Cadences automatiques",
         "description": "Les exécutions horaires, quotidiennes, hebdomadaires et mensuelles commencent après la fin de la sauvegarde précédente et que leur intervalle s'est écoulé. Laissez-les toutes désactivées si vous ne déclenchez les sauvegardes que manuellement.",
+        "keep": "Conserver",
         "hourly": "Horaire",
         "hourlyDescription": "Combien de snapshots horaires conserver avant que les plus anciens ne soient élagués.",
         "hourlyTooltip": "S'exécute environ une fois par heure lorsque les sauvegardes sont activées et qu'au moins une heure s'est écoulée depuis la dernière exécution.",
@@ -1819,8 +1818,7 @@
         "saveChanges": "Enregistrer les modifications",
         "saveAll": "Enregistrer les modifications pour toutes les instances",
         "requiresCadence": "Sélectionnez au moins une cadence (horaire, quotidienne, hebdomadaire ou mensuelle) avant d'enregistrer.",
-        "waitForCapabilities": "Attendez la fin des vérifications de capacités de l'instance avant d'enregistrer pour toutes les instances.",
-        "changesApplyImmediately": "Les modifications s'appliquent aux futures sauvegardes dès que vous enregistrez."
+        "waitForCapabilities": "Attendez la fin des vérifications de capacités de l'instance avant d'enregistrer pour toutes les instances."
       }
     },
     "restore": {

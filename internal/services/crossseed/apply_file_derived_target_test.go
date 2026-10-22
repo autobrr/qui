@@ -366,6 +366,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	startPaused := true
 	result := service.processCrossSeedCandidate(
 		context.Background(),
@@ -450,6 +451,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	incomingView := service.readApplyTarget(rawEpisode, incomingFiles, true)
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
@@ -525,6 +527,148 @@ func TestReadReleaseReadsSeasonFromTitleNumeral(t *testing.T) {
 	}
 }
 
+const (
+	seasonFolderName = "Season 2"
+	seasonFolderPack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"
+)
+
+// seasonFolderEpisodes are the files of a pack whose info.name is only its
+// season folder. format takes the episode number.
+func seasonFolderEpisodes(format string) []string {
+	return []string{
+		fmt.Sprintf(format, 1),
+		fmt.Sprintf(format, 2),
+		fmt.Sprintf(format, 3),
+	}
+}
+
+func TestReadReleaseReadsSeasonFolderNameFromFiles(t *testing.T) {
+	t.Parallel()
+
+	sizedFiles := func(names []string) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, len(names))
+		for i, name := range names {
+			files = append(files, qbt.TorrentFile{Name: seasonFolderName + "/" + name, Size: int64(1_000_000 + i)})
+		}
+		return files
+	}
+	sameSeason := sizedFiles(seasonFolderEpisodes("Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv"))
+	otherSeason := sizedFiles(seasonFolderEpisodes("Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv"))
+	service := &Service{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	parsed := service.releaseCache.Parse(seasonFolderName)
+	require.Empty(t, parsed.Title, "a season folder name must parse without a title for this test to mean anything")
+	require.Equal(t, 2, parsed.Series)
+
+	// Apply without a search replay drops the files of a TV name, so the borrow
+	// runs before the drop.
+	for _, tt := range []struct {
+		name string
+		read func(qbt.TorrentFiles) namedRelease
+	}{
+		{name: "search source", read: func(files qbt.TorrentFiles) namedRelease {
+			read, _ := service.readRelease(seasonFolderName, files, readPolicy{})
+			return read
+		}},
+		{name: "apply target with replay", read: func(files qbt.TorrentFiles) namedRelease {
+			return service.readApplyTarget(seasonFolderName, files, true)
+		}},
+		{name: "apply target without replay", read: func(files qbt.TorrentFiles) namedRelease {
+			return service.readApplyTarget(seasonFolderName, files, false)
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			read := tt.read(sameSeason)
+			require.Equal(t, seasonFolderName, read.rawName)
+			require.Equal(t, "Kaiju Squad", read.release.Title)
+			require.Equal(t, 2020, read.release.Year)
+			require.Equal(t, "1080p", read.release.Resolution)
+			require.Equal(t, "GRP", read.release.Group)
+			require.Equal(t, rls.Series, read.release.Type)
+			require.Equal(t, 2, read.release.Series)
+			require.Zero(t, read.release.Episode)
+
+			read = tt.read(otherSeason)
+			require.Empty(t, read.release.Title, "a file of another season lends no identity")
+			require.Zero(t, read.release.Year)
+			require.Empty(t, read.release.Resolution)
+			require.Empty(t, read.release.Group)
+		})
+	}
+}
+
+// The tracker lists the pack under its full title, but the .torrent keeps the
+// season folder as its info.name.
+func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "c6d7f67e4726bc80b43cad4a471f36a8de32d456"
+		pieceSize  = 256 * 1024
+	)
+	localTorrent := createTestTorrent(t, seasonFolderName,
+		seasonFolderEpisodes("Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv"), pieceSize)
+	localMeta, err := ParseTorrentMetadataWithInfo(localTorrent)
+	require.NoError(t, err)
+	localFiles := slices.Clone(localMeta.Files)
+	for i := range localFiles {
+		localFiles[i].Name = strings.Replace(localFiles[i].Name, seasonFolderName, seasonFolderPack, 1)
+	}
+
+	decision := searchDecisionProvenance{
+		Class:               searchCandidateClassStrict,
+		SourceInstanceID:    instanceID,
+		SourceHash:          sourceHash,
+		SearchCandidateName: seasonFolderPack,
+	}
+	tests := []struct {
+		name         string
+		torrentBytes []byte
+		decision     searchDecisionProvenance
+		wantSuccess  bool
+	}{
+		{name: "files of the local show", torrentBytes: localTorrent, decision: decision, wantSuccess: true},
+		{name: "files of the local show without a search decision", torrentBytes: localTorrent, wantSuccess: true},
+		{
+			name: "files of another show",
+			torrentBytes: createTestTorrent(t, seasonFolderName,
+				seasonFolderEpisodes("Harbor Lights (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP).mkv"), pieceSize),
+			decision: decision,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{Hash: sourceHash, Name: seasonFolderPack, SavePath: "/downloads", Progress: 1}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: localFiles,
+				})},
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			service.settler = idleSettler(service.syncManager)
+
+			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
+				TorrentData:                  base64.StdEncoding.EncodeToString(tt.torrentBytes),
+				TargetInstanceIDs:            []int{instanceID},
+				SkipPieceBoundarySafetyCheck: true,
+				SearchDecision:               tt.decision,
+			})
+			require.NoError(t, err)
+			if tt.wantSuccess {
+				require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+				return
+			}
+			require.False(t, resp.Success)
+			require.Len(t, resp.Results, 1)
+			require.Equal(t, "no_match", resp.Results[0].Status)
+		})
+	}
+}
+
 // Only the "II" carries the season of these packs. The downloaded torrent keeps
 // its original root folder; the local copy can sit in a renamed "Season 02" one.
 func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
@@ -577,6 +721,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			service.settler = idleSettler(service.syncManager)
 			decision := tt.decision
 			decision.SourceInstanceID = instanceID
 			decision.SourceHash = sourceHash

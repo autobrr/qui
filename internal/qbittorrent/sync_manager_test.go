@@ -3466,7 +3466,7 @@ func TestSetTagsFallbackRemovesTagsAddedSinceTheLastSync(t *testing.T) {
 	}
 }
 
-// Directory scan starts one ResumeWhenComplete poller per injected torrent.
+// Each ResumeWhenComplete call starts its own poller, for example one per backup restore.
 // The pollers must share the sync instead of each fetching maindata on its own
 // schedule.
 func TestResumeWhenCompletePollersShareSync(t *testing.T) {

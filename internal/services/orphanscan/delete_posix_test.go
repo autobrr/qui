@@ -37,7 +37,7 @@ func TestSafeDeleteTarget_ProtectsSymlinkedTorrentDescendant(t *testing.T) {
 			tfm := NewTorrentFileMap(fsops.HostPaths)
 			tfm.Add(aliasFile)
 			backend := local.NewBackend()
-			disposition, err := safeDeleteTarget(t.Context(), root, selected, tfm, nil, backend)
+			disposition, err := safeDeleteTarget(t.Context(), root, selected, newTestProtected(t, fsops.HostPaths, nil, tfm), backend)
 			require.NoError(t, err)
 			require.Equal(t, deleteDispositionSkippedInUse, disposition)
 			for _, path := range []string{aliasFile, targetFile} {
@@ -46,7 +46,7 @@ func TestSafeDeleteTarget_ProtectsSymlinkedTorrentDescendant(t *testing.T) {
 				require.Equal(t, payload, got)
 			}
 
-			disposition, err = safeDeleteTarget(t.Context(), root, selected, NewTorrentFileMap(fsops.HostPaths), nil, backend)
+			disposition, err = safeDeleteTarget(t.Context(), root, selected, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), backend)
 			require.NoError(t, err)
 			require.Equal(t, deleteDispositionDeleted, disposition, "unowned links remain removable")
 			_, err = os.Lstat(selected)

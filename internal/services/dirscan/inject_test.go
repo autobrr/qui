@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -46,13 +46,6 @@ type failingTorrentAdder struct {
 func (a *failingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
 	a.called = true
 	return nil, a.err
-}
-
-func (a *failingTorrentAdder) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
-	return nil
-}
-
-func (a *failingTorrentAdder) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
 }
 
 func (a *failingTorrentAdder) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
@@ -144,7 +137,7 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 	fx := newInjectFixture(t)
 
 	adder := &failingTorrentAdder{err: errors.New("add failed")}
-	injector := NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
+	injector := NewInjector(nil, adder, (&settleFake{}).idle(), nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
 
 	_, err := injector.Inject(context.Background(), fx.req)
 	if err == nil {
@@ -193,7 +186,7 @@ func TestInjector_Inject_RollsBackLinkTreeWhenAddFailsUnderCancelledContext(t *t
 		cancel:              cancel,
 		watchDir:            fx.hardlinkBase,
 	}
-	injector := NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
+	injector := NewInjector(nil, adder, (&settleFake{}).idle(), nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
 
 	_, err := injector.Inject(ctx, fx.req)
 	if err == nil {
@@ -291,41 +284,11 @@ func TestBuildLinkTreeMatchedFiles_UsesTorrentFileSize(t *testing.T) {
 
 type recordingTorrentManager struct {
 	addOptions map[string]string
-
-	bulkCalls []struct {
-		instanceID int
-		hashes     []string
-		action     string
-		ctxErr     error
-	}
-	resumeCalls []struct {
-		instanceID int
-		hashes     []string
-		opts       qbsync.ResumeWhenCompleteOptions
-	}
 }
 
 func (m *recordingTorrentManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addOptions = options
 	return nil, nil
-}
-
-func (m *recordingTorrentManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
-	m.bulkCalls = append(m.bulkCalls, struct {
-		instanceID int
-		hashes     []string
-		action     string
-		ctxErr     error
-	}{instanceID: instanceID, hashes: hashes, action: action, ctxErr: ctx.Err()})
-	return nil
-}
-
-func (m *recordingTorrentManager) ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions) {
-	m.resumeCalls = append(m.resumeCalls, struct {
-		instanceID int
-		hashes     []string
-		opts       qbsync.ResumeWhenCompleteOptions
-	}{instanceID: instanceID, hashes: hashes, opts: opts})
 }
 
 func (m *recordingTorrentManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
@@ -340,7 +303,7 @@ func (m *recordingTorrentManager) GetTorrentFilesBatch(_ context.Context, _ int,
 	return nil, nil
 }
 
-func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(t *testing.T) {
+func TestInjector_Inject_PausedPartial_RechecksWithoutResume(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -348,7 +311,8 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -392,18 +356,9 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	if len(manager.bulkCalls) != 1 {
-		t.Fatalf("expected 1 bulk call, got %d", len(manager.bulkCalls))
-	}
-	if manager.bulkCalls[0].action != "recheck" {
-		t.Fatalf("expected action recheck, got %q", manager.bulkCalls[0].action)
-	}
-	if len(manager.bulkCalls[0].hashes) != 1 || manager.bulkCalls[0].hashes[0] != "deadbeef" {
-		t.Fatalf("expected hash deadbeef, got %+v", manager.bulkCalls[0].hashes)
-	}
-
-	if len(manager.resumeCalls) != 0 {
-		t.Fatalf("expected no resume call, got %d", len(manager.resumeCalls))
+	// StartPaused leaves nothing to watch, so the module only sends the recheck.
+	if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
+		t.Fatalf("settle calls = %v, want recheck:deadbeef", got)
 	}
 }
 
@@ -416,7 +371,7 @@ type crossDeviceBackend struct {
 
 func (b crossDeviceBackend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	for _, dir := range b.crossDevice {
-		if strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
+		if plan.RootDir == dir || strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
 			return nil, &os.LinkError{Op: "link", Old: "src", New: plan.RootDir, Err: syscall.EXDEV}
 		}
 	}
@@ -460,7 +415,7 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 
 			manager := &recordingTorrentManager{}
 			pool := fsops.NewPool(&fakeInstanceStore{instance: instance}, crossDeviceBackend{local.NewBackend(), tt.crossDevice})
-			injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, pool)
+			injector := NewInjector(nil, manager, (&settleFake{}).idle(), nil, &fakeInstanceStore{instance: instance}, nil, pool)
 
 			req := &InjectRequest{
 				InstanceID:   1,
@@ -504,8 +459,10 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 			if strings.Contains(res.SavePath, ",") {
 				t.Fatalf("save path should use one base dir, got %q", res.SavePath)
 			}
-			if !strings.HasPrefix(res.SavePath, tt.wantBase+string(os.PathSeparator)) {
-				t.Fatalf("expected save path under base dir %q, got %q", tt.wantBase, res.SavePath)
+			// The torrent's root folder is free, so it goes into the base dir
+			// with no isolation folder.
+			if res.SavePath != tt.wantBase {
+				t.Fatalf("expected save path %q, got %q", tt.wantBase, res.SavePath)
 			}
 			if got := manager.addOptions["savepath"]; got != res.SavePath {
 				t.Fatalf("expected add savepath %q, got %q", res.SavePath, got)
@@ -522,7 +479,8 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -564,15 +522,50 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	if len(manager.bulkCalls) != 0 || len(manager.resumeCalls) != 0 {
-		t.Fatalf("expected no recheck/resume calls, got bulk=%d resume=%d", len(manager.bulkCalls), len(manager.resumeCalls))
+	if got := settle.calls(); len(got) != 0 {
+		t.Fatalf("expected no recheck/resume calls, got %v", got)
 	}
 	if manager.addOptions["skip_checking"] != "true" {
 		t.Fatalf("expected skip_checking=true, got %q", manager.addOptions["skip_checking"])
 	}
 }
 
-func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T) {
+	instance, req := discLayoutRequest(t)
+	manager := &recordingTorrentManager{}
+
+	synctest.Test(t, func(t *testing.T) {
+		// The recheck ends 1 MiB short: a disc layout resumes only when nothing is left.
+		settle := &settleFake{polls: []*qbt.Torrent{
+			{Hash: "deadbeef", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.99, Completed: 4, AmountLeft: 1 << 20},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
+		}}
+		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+		res, err := injector.Inject(t.Context(), req)
+		if err != nil {
+			t.Fatalf("inject: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got %+v", res)
+		}
+		if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
+			t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
+				manager.addOptions["paused"], manager.addOptions["stopped"])
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
+			t.Fatalf("settle calls = %v, want only the recheck of deadbeef", got)
+		}
+	})
+}
+
+// discLayoutRequest is a perfect match of a disc layout, which the add policy force-pauses.
+func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
+	t.Helper()
 	sourceDir := t.TempDir()
 	sourceFile := filepath.Join(sourceDir, "Movie", "BDMV", "index.bdmv")
 	if err := os.MkdirAll(filepath.Dir(sourceFile), 0o755); err != nil {
@@ -587,9 +580,6 @@ func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(
 		Name:                     "test",
 		HasLocalFilesystemAccess: true,
 	}
-
-	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -623,72 +613,13 @@ func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(
 		SearchResult: &jackett.SearchResult{Indexer: "Test"},
 	}
 
-	res, err := injector.Inject(context.Background(), req)
-	if err != nil {
-		t.Fatalf("inject: %v", err)
-	}
-	if !res.Success {
-		t.Fatalf("expected success, got %+v", res)
-	}
-	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
-		t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
-			manager.addOptions["paused"], manager.addOptions["stopped"])
-	}
-	if len(manager.bulkCalls) != 1 || manager.bulkCalls[0].action != "recheck" {
-		t.Fatalf("expected one recheck call, got %+v", manager.bulkCalls)
-	}
-	if len(manager.resumeCalls) != 1 || len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
-		t.Fatalf("expected ResumeWhenComplete for deadbeef, got %+v", manager.resumeCalls)
-	}
+	return instance, req
 }
 
-// fakeTorrentChecker simulates state transitions. It returns states from the
-// list in order, staying on the last state once exhausted. This lets tests
-// model the recheck flow: checking -> paused/downloading.
-type fakeTorrentChecker struct {
-	mu        sync.Mutex
-	hash      string
-	states    []qbt.TorrentState
-	completed []int64 // parallel to states; if shorter, defaults to 0
-	idx       int
-}
-
-func (c *fakeTorrentChecker) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if len(c.states) == 0 {
-		return nil, false, nil
-	}
-	state := c.states[c.idx]
-	var comp int64
-	if c.idx < len(c.completed) {
-		comp = c.completed[c.idx]
-	}
-	if c.idx < len(c.states)-1 {
-		c.idx++
-	}
-	return &qbt.Torrent{Hash: c.hash, State: state, Completed: comp}, true, nil
-}
-
-// safeRecordingManager is a thread-safe version of recordingTorrentManager for tests
-// involving async goroutines (resumeAfterRecheck).
+// safeRecordingManager records the add options under a lock.
 type safeRecordingManager struct {
 	mu         sync.Mutex
 	addOptions map[string]string
-	// files and pieces answer the linked-file check; the first pieceFailures
-	// piece state reads fail.
-	files         qbt.TorrentFiles
-	pieces        []qbt.PieceState
-	pieceFailures int
-	pieceReads    int
-	// qbitHash, when set, is the only hash the file and piece reads accept,
-	// like qBittorrent's exact-ID lookup for a hybrid torrent.
-	qbitHash  string
-	bulkCalls []struct {
-		instanceID int
-		hashes     []string
-		action     string
-	}
 }
 
 func (m *safeRecordingManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -696,20 +627,6 @@ func (m *safeRecordingManager) AddTorrent(_ context.Context, _ int, _ []byte, op
 	defer m.mu.Unlock()
 	m.addOptions = options
 	return nil, nil
-}
-
-func (m *safeRecordingManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.bulkCalls = append(m.bulkCalls, struct {
-		instanceID int
-		hashes     []string
-		action     string
-	}{instanceID: instanceID, hashes: hashes, action: action})
-	return nil
-}
-
-func (m *safeRecordingManager) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
 }
 
 func (m *safeRecordingManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
@@ -720,49 +637,8 @@ func (m *safeRecordingManager) RenameTorrentFolder(_ context.Context, _ int, _, 
 	return nil
 }
 
-func (m *safeRecordingManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.qbitHash != "" && hashes[0] != m.qbitHash {
-		return nil, errors.New("torrent not found")
-	}
-	return map[string]qbt.TorrentFiles{hashes[0]: m.files}, nil
-}
-
-func (m *safeRecordingManager) GetTorrentPieceStates(_ context.Context, _ int, hash string) ([]qbt.PieceState, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.qbitHash != "" && hash != m.qbitHash {
-		return nil, errors.New("torrent not found")
-	}
-	m.pieceReads++
-	if m.pieceFailures > 0 {
-		m.pieceFailures--
-		return nil, errors.New("piece states unavailable")
-	}
-	return m.pieces, nil
-}
-
-func (m *safeRecordingManager) getPieceReads() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.pieceReads
-}
-
-func (m *safeRecordingManager) getBulkCalls() []struct {
-	instanceID int
-	hashes     []string
-	action     string
-} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cp := make([]struct {
-		instanceID int
-		hashes     []string
-		action     string
-	}, len(m.bulkCalls))
-	copy(cp, m.bulkCalls)
-	return cp
+func (m *safeRecordingManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return nil, nil
 }
 
 func (m *safeRecordingManager) getAddOptions() map[string]string {
@@ -794,23 +670,6 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 		UseHardlinks:             true,
 		HardlinkBaseDir:          hardlinkBase,
 	}
-
-	checker := &fakeTorrentChecker{
-		hash: "deadbeef",
-		// Return non-checking state with Completed > 0: simulates recheck
-		// completing quickly (data already verified on disk).
-		states:    []qbt.TorrentState{qbt.TorrentStatePausedDl},
-		completed: []int64{4},
-	}
-
-	manager := &safeRecordingManager{
-		files: qbt.TorrentFiles{
-			{Name: "Example.Release/file.mkv", Size: 4, PieceRange: []int{0, 0}, Progress: 1},
-			{Name: "Example.Release/extras.nfo", Size: 1, PieceRange: []int{0, 0}},
-		},
-		pieces: []qbt.PieceState{qbt.PieceStateNotDownloadYet},
-	}
-	injector := NewInjector(nil, manager, manager, checker, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -847,44 +706,48 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 		DownloadMissingFiles: true,
 	}
 
-	res, err := injector.Inject(context.Background(), req)
-	if err != nil {
-		t.Fatalf("inject: %v", err)
-	}
-	if !res.Success {
-		t.Fatalf("expected success, got %+v", res)
-	}
-	if res.Mode != injectModeHardlink {
-		t.Fatalf("expected hardlink mode, got %q", res.Mode)
-	}
-
-	// Torrent must be forced paused for the recheck, even though StartPaused=false.
-	opts := manager.getAddOptions()
-	if opts["paused"] != "true" || opts["stopped"] != "true" {
-		t.Fatalf("expected forced paused/stopped for partial link tree, got paused=%q stopped=%q",
-			opts["paused"], opts["stopped"])
-	}
-
-	// Wait for the async resume goroutine: first poll at 5s interval.
-	deadline := time.After(15 * time.Second)
-	for {
-		calls := manager.getBulkCalls()
-		if len(calls) >= 2 {
-			if calls[0].action != "recheck" {
-				t.Fatalf("first bulk call should be recheck, got %q", calls[0].action)
-			}
-			if calls[1].action != "resume" {
-				t.Fatalf("second bulk call should be resume, got %q", calls[1].action)
-			}
-			break
+	manager := &safeRecordingManager{}
+	synctest.Test(t, func(t *testing.T) {
+		// A fast recheck finishes between polls; completed bytes prove it ran.
+		partial := &qbt.Torrent{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.8, Completed: 4, AmountLeft: 1}
+		settle := &settleFake{
+			polls: []*qbt.Torrent{
+				partial, partial,
+				{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
+				{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
+			},
+			files: qbt.TorrentFiles{
+				{Name: "Example.Release/file.mkv", Size: 4, PieceRange: []int{0, 0}, Progress: 1},
+				{Name: "Example.Release/extras.nfo", Size: 1, PieceRange: []int{0, 0}},
+			},
+			pieces: []qbt.PieceState{qbt.PieceStateNotDownloadYet},
 		}
-		select {
-		case <-deadline:
-			t.Fatalf("timed out waiting for resume bulk call, got %d calls", len(calls))
-		default:
-			time.Sleep(100 * time.Millisecond)
+		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+		res, err := injector.Inject(t.Context(), req)
+		if err != nil {
+			t.Fatalf("inject: %v", err)
 		}
-	}
+		if !res.Success {
+			t.Fatalf("expected success, got %+v", res)
+		}
+		if res.Mode != injectModeHardlink {
+			t.Fatalf("expected hardlink mode, got %q", res.Mode)
+		}
+
+		// Torrent must be forced paused for the recheck, even though StartPaused=false.
+		opts := manager.getAddOptions()
+		if opts["paused"] != "true" || opts["stopped"] != "true" {
+			t.Fatalf("expected forced paused/stopped for partial link tree, got paused=%q stopped=%q",
+				opts["paused"], opts["stopped"])
+		}
+
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := settle.calls(); !slices.Equal(got, []string{"recheck", "resume"}) {
+			t.Fatalf("settle calls = %v, want recheck then resume", got)
+		}
+	})
 }
 
 func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
@@ -910,7 +773,8 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -955,12 +819,8 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	calls := manager.getBulkCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected exactly 1 bulk call (recheck only, no resume), got %d", len(calls))
-	}
-	if calls[0].action != "recheck" {
-		t.Fatalf("expected recheck, got %q", calls[0].action)
+	if got := settle.calls(); !slices.Equal(got, []string{"recheck"}) {
+		t.Fatalf("expected the recheck only, no resume, got %v", got)
 	}
 }
 
@@ -969,7 +829,8 @@ func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
 	fx.req.DownloadMissingFiles = false
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
 
 	_, err := injector.Inject(context.Background(), fx.req)
 	if err == nil {
@@ -980,7 +841,7 @@ func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
 	}
 
 	// No torrent should have been added.
-	calls := manager.getBulkCalls()
+	calls := settle.calls()
 	if len(calls) != 0 {
 		t.Fatalf("expected no bulk calls, got %d", len(calls))
 	}
@@ -1018,7 +879,8 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	settle := &settleFake{}
+	injector := NewInjector(nil, manager, settle.idle(), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -1068,13 +930,13 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 		t.Fatalf("expected skip_checking=true for perfect match, got %q", opts["skip_checking"])
 	}
 
-	calls := manager.getBulkCalls()
+	calls := settle.calls()
 	if len(calls) != 0 {
 		t.Fatalf("expected no bulk calls for perfect match, got %d", len(calls))
 	}
 }
 
-func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+func TestInjector_Inject_RunningPartial_RechecksAndResumesWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -1082,7 +944,6 @@ func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -1118,35 +979,37 @@ func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *
 		StartPaused:  false,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	synctest.Test(t, func(t *testing.T) {
+		settle := &settleFake{polls: []*qbt.Torrent{
+			{Hash: "deadbeef", State: qbt.TorrentStateCheckingDl, Progress: 0.5, AmountLeft: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.9, AmountLeft: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
+		}}
+		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
-	res, err := injector.Inject(ctx, req)
-	if err != nil {
-		t.Fatalf("inject: %v", err)
-	}
-	if !res.Success {
-		t.Fatalf("expected success, got %+v", res)
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
 
-	if len(manager.bulkCalls) != 1 {
-		t.Fatalf("expected 1 bulk call, got %d", len(manager.bulkCalls))
-	}
-	if manager.bulkCalls[0].action != "recheck" {
-		t.Fatalf("expected action recheck, got %q", manager.bulkCalls[0].action)
-	}
-	if manager.bulkCalls[0].ctxErr != nil {
-		t.Fatalf("expected background recheck context, got ctx err %v", manager.bulkCalls[0].ctxErr)
-	}
-	if len(manager.resumeCalls) != 1 {
-		t.Fatalf("expected 1 resume call, got %d", len(manager.resumeCalls))
-	}
-	if len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
-		t.Fatalf("expected hash deadbeef, got %+v", manager.resumeCalls[0].hashes)
-	}
-	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
-		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
-	}
+		res, err := injector.Inject(ctx, req)
+		if err != nil {
+			t.Fatalf("inject: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got %+v", res)
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+
+		if settle.recheckCtxErr != nil {
+			t.Fatalf("expected background recheck context, got ctx err %v", settle.recheckCtxErr)
+		}
+		// The torrent downloads its missing file and resumes once nothing is left.
+		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef", "resume:deadbeef"}) {
+			t.Fatalf("settle calls = %v, want recheck then resume of deadbeef", got)
+		}
+	})
 }
 
 // partialLinkTreeRequest returns a partial match of file.mkv, with extras.nfo
@@ -1196,14 +1059,19 @@ func partialLinkTreeRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 	return instance, req
 }
 
-func countBulkActions(m *safeRecordingManager, action string) int {
-	n := 0
-	for _, call := range m.getBulkCalls() {
-		if call.action == action {
-			n++
+// TestInjector_PartialHardlinkResumeLinkedFileCheck covers the ADR 0004 check
+// before a partial hardlink add resumes after its recheck.
+// partialSettle lists a partial link tree add under its v2 hash, as qBittorrent
+// lists a hybrid torrent, with the parsed v1 hash as a variant.
+func partialSettle(states ...qbt.TorrentState) []*qbt.Torrent {
+	polls := make([]*qbt.Torrent, len(states))
+	for i, state := range states {
+		polls[i] = &qbt.Torrent{
+			Hash: "cafef00d", InfohashV1: "deadbeef", InfohashV2: "cafef00d",
+			State: state, Progress: 0.8, Completed: 4, AmountLeft: 1,
 		}
 	}
-	return n
+	return polls
 }
 
 // TestInjector_PartialHardlinkResumeLinkedFileCheck covers the ADR 0004 check
@@ -1228,7 +1096,7 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 				{Name: "Example.Release/extras.nfo", Size: 1, PieceRange: []int{2, 2}},
 			},
 			pieces: []qbt.PieceState{missing, have, missing},
-			// One read, then the poller stops: a failed read would retry.
+			// One read, then the torrent stays paused: a failed read would retry.
 			wantReads: 1,
 		},
 		{
@@ -1239,7 +1107,8 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 			},
 			pieces:     []qbt.PieceState{have, missing},
 			wantResume: true,
-			// The check runs before each of the three resume attempts.
+			// The check runs on each poll that can resume: the stable poll, the
+			// resume, and the retry while qBittorrent still shows it paused.
 			wantReads: 3,
 		},
 		{
@@ -1251,36 +1120,37 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 			pieces:        []qbt.PieceState{have, missing},
 			pieceFailures: 1,
 			wantResume:    true,
-			wantReads:     4,
+			wantReads:     3,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			instance, req := partialLinkTreeRequest(t)
 			synctest.Test(t, func(t *testing.T) {
-				instance, req := partialLinkTreeRequest(t)
-				// qBittorrent lists the torrent under another hash than the parsed
-				// one, as it does with the v2 hash of a hybrid torrent.
-				checker := &fakeTorrentChecker{
-					hash:      "cafef00d",
-					states:    []qbt.TorrentState{qbt.TorrentStatePausedDl},
-					completed: []int64{4},
+				settle := &settleFake{
+					polls: partialSettle(
+						qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl,
+						qbt.TorrentStateDownloading, qbt.TorrentStateDownloading,
+					),
+					qbitHash:      "cafef00d",
+					files:         tt.files,
+					pieces:        tt.pieces,
+					pieceFailures: tt.pieceFailures,
 				}
-				manager := &safeRecordingManager{files: tt.files, pieces: tt.pieces, pieceFailures: tt.pieceFailures, qbitHash: "cafef00d"}
-				injector := NewInjector(nil, manager, manager, checker, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+				injector := NewInjector(nil, &safeRecordingManager{}, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 				res, err := injector.Inject(t.Context(), req)
 				if err != nil || !res.Success || res.Mode != injectModeHardlink {
 					t.Fatalf("inject: res=%+v err=%v", res, err)
 				}
-				// Past the poller's 10-minute timeout, so its goroutine has exited.
-				time.Sleep(11 * time.Minute)
+				time.Sleep(time.Minute)
 				synctest.Wait()
 
-				resumes := countBulkActions(manager, "resume")
-				if got := resumes > 0; got != tt.wantResume {
-					t.Fatalf("resumed = %v (%d calls), want %v", got, resumes, tt.wantResume)
+				resumed := slices.Contains(settle.calls(), "resume")
+				if resumed != tt.wantResume {
+					t.Fatalf("resumed = %v (calls %v), want %v", resumed, settle.calls(), tt.wantResume)
 				}
-				if reads := manager.getPieceReads(); reads != tt.wantReads {
+				if reads := settle.reads(); reads != tt.wantReads {
 					t.Fatalf("piece state reads = %d, want %d", reads, tt.wantReads)
 				}
 			})
@@ -1291,25 +1161,23 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 func TestInjector_PartialReflinkResumeSkipsLinkedFileCheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, req := partialLinkTreeRequest(t)
-		checker := &fakeTorrentChecker{
-			hash:      "deadbeef",
-			states:    []qbt.TorrentState{qbt.TorrentStatePausedDl},
-			completed: []int64{4},
-		}
 		// Every piece state read fails, so only a skipped check resumes.
-		manager := &safeRecordingManager{pieceFailures: 1 << 30}
-		injector := NewInjector(nil, manager, manager, checker, nil, nil, nil)
+		settle := &settleFake{
+			polls:         partialSettle(qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl, qbt.TorrentStateDownloading, qbt.TorrentStateDownloading),
+			pieceFailures: 1 << 30,
+		}
+		injector := NewInjector(nil, &safeRecordingManager{}, settle.start(t), nil, nil, nil, nil)
 
 		if err := injector.triggerRecheckForPartialLinkTree(req, injectModeReflink); err != nil {
 			t.Fatalf("trigger recheck: %v", err)
 		}
-		time.Sleep(11 * time.Minute)
+		time.Sleep(time.Minute)
 		synctest.Wait()
 
-		if countBulkActions(manager, "resume") == 0 {
+		if !slices.Contains(settle.calls(), "resume") {
 			t.Fatal("expected the reflink add to resume")
 		}
-		if reads := manager.getPieceReads(); reads != 0 {
+		if reads := settle.reads(); reads != 0 {
 			t.Fatalf("piece state reads = %d, want 0", reads)
 		}
 	})

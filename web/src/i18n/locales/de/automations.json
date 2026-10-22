@@ -4,6 +4,11 @@
     "description": "Automatisierungsdienste auf Instanz-Ebene, verwaltet von qui.",
     "noInstances": "Noch keine Instanzen konfiguriert. Füge in den Einstellungen eine hinzu, um Dienste zu nutzen."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Reannounce",
+    "orphanScan": "Orphan-Scan"
+  },
   "queryBuilder": {
     "noConditions": "Keine Bedingungen",
     "matchesAllTorrents": "Trifft auf alle Torrents zu (abhängig von der Tracker-Auswahl).",

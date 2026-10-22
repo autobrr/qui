@@ -4,6 +4,11 @@
     "description": "qui가 관리하는 인스턴스 수준 자동화 서비스입니다.",
     "noInstances": "아직 구성된 인스턴스가 없습니다. 서비스를 사용하려면 설정에서 인스턴스를 추가하세요."
   },
+  "tabs": {
+    "workflows": "워크플로",
+    "reannounce": "재요청",
+    "orphanScan": "고아 항목 스캔"
+  },
   "queryBuilder": {
     "noConditions": "조건 없음",
     "matchesAllTorrents": "모든 토렌트와 일치합니다(트래커 선택에 따름).",

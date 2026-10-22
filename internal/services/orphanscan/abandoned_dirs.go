@@ -54,7 +54,8 @@ func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
 	deleted []OrphanFile,
-	scanRoots, ignorePaths, categoryPaths []string,
+	scanRoots, categoryPaths []string,
+	protected *protectedPaths,
 	gracePeriod time.Duration,
 	backend fsops.Backend,
 ) []OrphanFile {
@@ -85,7 +86,7 @@ func abandonedDirCandidates(
 		if slices.Contains(normRoots, normDir) {
 			continue
 		}
-		if isIgnoredPath(d, dir.Path, ignorePaths) {
+		if protected.ignored(dir.Path) {
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategories) {

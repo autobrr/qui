@@ -44,7 +44,7 @@ func newDirScanTestService(t *testing.T) (*Service, *models.DirScanStore, *model
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
-	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil, nil)
+	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	dirPath := t.TempDir()
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{

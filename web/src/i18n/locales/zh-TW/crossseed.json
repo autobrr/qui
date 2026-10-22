@@ -82,14 +82,12 @@
     "cancel": "取消",
     "runNow": "立即執行",
     "saveSettings": "儲存 RSS 自動化設定",
-    "reset": "重置",
     "requiresTorznabIndexer": "RSS 自動化執行需要至少一個 Torznab 索引器。",
     "items": "{{count}} 個項目",
     "failedCount": "{{count}} 個失敗",
     "runError": "錯誤：{{message}}",
     "runSummary": "{{runs}} 次執行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次執行 - +{{added}} - {{failed}} 次失敗",
-    "runDisabledAlreadyRunning": "自動化執行已在進行中。",
     "runDisabledCooldown": "手動執行的間隔限制為 {{minutes}} 分鐘。請在 {{remaining}} 後重試。"
   },
   "webhook": {
@@ -190,7 +188,11 @@
       "enabledRedMissingOps": "Gazelle：已啟用（已設定 RED 金鑰，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已啟用（缺少金鑰）"
     },
-    "noMessageProvided": "未提供訊息"
+    "noMessageProvided": "未提供訊息",
+    "cancelDialog": {
+      "title": "取消做種庫掃描？",
+      "description": "這會停止目前的做種庫掃描。已加入的交叉做種會保留，但不會再搜尋更多種子。"
+    }
   },
   "rules": {
     "hardlinkReflink": "硬連結 / 引用連結模式",
@@ -356,6 +358,9 @@
       "matching": "決定 qui 為所有來源加入哪些候選的規則。",
       "categories": "qui 為每個新交叉做種設定的分類和標籤。"
     }
+  },
+  "run": {
+    "starting": "正在啟動執行。"
   },
   "seasonPackRuns": {
     "title": "最近的季度包執行",

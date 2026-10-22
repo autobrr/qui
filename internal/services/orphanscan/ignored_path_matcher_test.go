@@ -32,7 +32,7 @@ func TestIgnoredPathMatcher(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ignored(keep), "an instance without settings ignores nothing")
 
-	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+	settings := &models.OrphanScanSettings{
 		InstanceID:          instance.ID,
 		Enabled:             false,
 		IgnorePaths:         []string{keep},
@@ -40,20 +40,22 @@ func TestIgnoredPathMatcher(t *testing.T) {
 		PreviewSort:         "size_desc",
 		MaxFilesPerRun:      1000,
 		AutoCleanupMaxFiles: 100,
-	})
+	}
+	_, err = store.UpsertSettings(t.Context(), settings)
 	require.NoError(t, err)
 
+	// TestProtectedPaths holds the matching rules. This only checks that the
+	// matcher reads the settings and protects a folder that holds an ignore path.
 	ignored, err = svc.IgnoredPathMatcher(t.Context(), instance.ID, fsops.HostPaths)
 	require.NoError(t, err)
-	for p, want := range map[string]bool{
-		keep:                                     true,
-		filepath.Join(keep, "Sub"):               true,
-		filepath.Join(root, "torrents"):          true, // holds an ignored path
-		filepath.Join(root, "torrents", "Kee"):   false,
-		filepath.Join(root, "torrents", "Other"): false,
-	} {
-		require.Equal(t, want, ignored(p), p)
-	}
+	require.True(t, ignored(keep))
+	require.True(t, ignored(filepath.Join(root, "torrents")), "a folder that holds an ignore path is protected")
+
+	settings.IgnorePaths = []string{"torrents/Keep"}
+	_, err = store.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+	_, err = svc.IgnoredPathMatcher(t.Context(), instance.ID, fsops.HostPaths)
+	require.Error(t, err, "an ignore path that is not valid must not read as an empty list")
 
 	svc.store = models.NewOrphanScanStore(settingsFailingQuerier{Querier: db})
 	_, err = svc.IgnoredPathMatcher(t.Context(), instance.ID, fsops.HostPaths)

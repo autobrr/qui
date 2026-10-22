@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -54,7 +55,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			svc := &Service{
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{1: inst}},
 				syncManager:   sm, releaseCache: NewReleaseCache(), stringNormalizer: stringutils.DefaultNormalizer,
-				seasonPackRunStore: runs, recheckResumeChan: make(chan *pendingResume, 1),
+				seasonPackRunStore: runs,
 				// Manual assemble is a deliberate user action and overrides the blocklist.
 				blocklistStore: blocklistWithPack(t, torrentData),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -97,29 +98,41 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.True(t, boundaryPreview.Ready)
 			}
 
-			// A moved file must not discard the two remaining selected episodes.
-			require.NoError(t, os.Remove(torrents[1].ContentPath))
-			applied, err := svc.ApplyManualAssemble(t.Context(), req)
-			require.NoError(t, err)
-			require.True(t, applied.Applied, "%+v", applied)
-			require.Equal(t, 2, applied.MatchedEpisodes)
-			require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
-			require.Equal(t, "e02", applied.Targets[1].Hash)
-			require.Len(t, sm.addCalls, 1)
-			require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
-			require.Equal(t, "true", sm.addCalls[0].options["paused"])
-			require.Equal(t, "true", sm.addCalls[0].options["stopped"])
-			require.Equal(t, "chosen", sm.addCalls[0].options["category"])
-			require.Equal(t, "chosen", sm.addCalls[0].options["tags"])
-			require.Equal(t, "recheck", sm.bulkCalls[0].action)
-			require.InDelta(t, 256.0/640.0*seasonPackResumeSlack, (<-svc.recheckResumeChan).threshold, 0.00001)
-			require.Len(t, runs.runs, 1)
-			require.Equal(t, 2, runs.runs[0].MatchedEpisodes)
-			require.InDelta(t, 0.5, runs.runs[0].Coverage, 0.00001)
-			require.Equal(t, mode, runs.runs[0].LinkMode)
-			linked, err := os.ReadFile(filepath.Join(preview.Destination, packName, "Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"))
-			require.NoError(t, err)
-			require.Equal(t, contents["Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"], linked)
+			// The blocklist database runs outside the bubble; the apply and the
+			// settle worker run inside it.
+			synctest.Test(t, func(t *testing.T) {
+				// The resume gate is the linked byte fraction: 256 of 640 bytes, with
+				// the slack. No bytes left keeps the linked-file check, which
+				// TestSettle covers, out of this test.
+				script := startSettleScript(t, svc,
+					&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
+					&qbt.Torrent{State: qbt.TorrentStatePausedDl, Progress: 256.0 / 640.0 * seasonPackResumeSlack},
+				)
+				// A moved file must not discard the two remaining selected episodes.
+				require.NoError(t, os.Remove(torrents[1].ContentPath))
+				applied, err := svc.ApplyManualAssemble(t.Context(), req)
+				require.NoError(t, err)
+				require.True(t, applied.Applied, "%+v", applied)
+				require.Equal(t, 2, applied.MatchedEpisodes)
+				require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
+				require.Equal(t, "e02", applied.Targets[1].Hash)
+				require.Len(t, sm.addCalls, 1)
+				require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
+				require.Equal(t, "true", sm.addCalls[0].options["paused"])
+				require.Equal(t, "true", sm.addCalls[0].options["stopped"])
+				require.Equal(t, "chosen", sm.addCalls[0].options["category"])
+				require.Equal(t, "chosen", sm.addCalls[0].options["tags"])
+				require.Equal(t, "recheck", sm.bulkCalls[0].action)
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
+				require.Len(t, runs.runs, 1)
+				require.Equal(t, 2, runs.runs[0].MatchedEpisodes)
+				require.InDelta(t, 0.5, runs.runs[0].Coverage, 0.00001)
+				require.Equal(t, mode, runs.runs[0].LinkMode)
+				linked, err := os.ReadFile(filepath.Join(preview.Destination, packName, "Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"))
+				require.NoError(t, err)
+				require.Equal(t, contents["Cedar.Harbor.S02E03.1080p.WEB.x264-PINE.mkv"], linked)
+			})
 		})
 	}
 }
@@ -175,7 +188,6 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	svc.stringNormalizer = stringutils.DefaultNormalizer
 	svc.syncManager = sm
 	svc.automationSettingsLoader = defaultSettings(false, 1)
-	svc.recheckResumeChan = make(chan *pendingResume, 1)
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	req := &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData}
 	preview, err := svc.CheckManualAssemble(t.Context(), req)
@@ -183,15 +195,25 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Len(t, preview.Targets, 4)
 	require.True(t, preview.Ready)
 
-	req.TargetHashes = []string{"e01", "e02", "e03", "e04"}
-	result, err := svc.ApplyManualAssemble(t.Context(), req)
-	require.NoError(t, err)
-	require.True(t, result.Applied)
-	require.Zero(t, result.MissingBytes)
-	require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
-	require.Equal(t, "true", sm.addCalls[0].options["paused"])
-	require.Len(t, sm.bulkCalls, 1)
-	require.InDelta(t, seasonPackResumeSlack, (<-svc.recheckResumeChan).threshold, 0.00001)
+	// The fixture caches run outside the bubble; the apply and the settle
+	// worker run inside it.
+	synctest.Test(t, func(t *testing.T) {
+		// A complete pack resumes at the full fraction with the slack.
+		script := startSettleScript(t, svc,
+			&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
+			&qbt.Torrent{State: qbt.TorrentStatePausedUp, Progress: seasonPackResumeSlack},
+		)
+		req.TargetHashes = []string{"e01", "e02", "e03", "e04"}
+		result, err := svc.ApplyManualAssemble(t.Context(), req)
+		require.NoError(t, err)
+		require.True(t, result.Applied)
+		require.Zero(t, result.MissingBytes)
+		require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
+		require.Equal(t, "true", sm.addCalls[0].options["paused"])
+		require.Len(t, sm.bulkCalls, 1)
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
+	})
 
 	sm.files["e02"][0].Size++
 	req.TargetHashes = []string{"e01", "e02", "another-instance-hash"}

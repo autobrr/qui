@@ -47,20 +47,18 @@ Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then ex
 
 - **Base directories**: paths where qui creates link trees, on the host that holds the instance's files. For an instance with local filesystem access that is the qui host; for a remote instance it is the remote host, so enter the paths as that host sees them. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory organization** preset:
-  - `flat`: `base/TorrentName--shortHash/...`
-  - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
-  - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
+  - `flat`: `base/TorrentName/...`
+  - `by-tracker`: `base/<tracker>/TorrentName/...`
+  - `by-instance`: `base/<instance>/TorrentName/...`
 
 ### Isolation folders
 
-For the `by-tracker` and `by-instance` presets, qui inspects the torrent file structure to decide whether it needs an isolation folder:
+An isolation folder keeps the files of one torrent apart from the files of other torrents. For each preset, qui reads the file structure of the torrent to decide whether it needs one:
 
-- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level directory, so qui adds no isolation folder.
-- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder to prevent file conflicts.
+- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level folder, so qui adds no isolation folder.
+- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder with the torrent name, for example `My.Movie.2024.1080p.BluRay`.
 
-When qui needs an isolation folder, it uses the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`).
-
-For the `flat` preset, qui always uses an isolation folder to keep each torrent's files separate.
+The folder that qui adds to the preset directory must be new. If a folder with that name already exists, qui uses an isolation folder with the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`). The short hash is the first 8 characters of the info hash.
 
 ## How to enable
 

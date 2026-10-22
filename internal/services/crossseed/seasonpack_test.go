@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
@@ -1311,7 +1312,6 @@ func TestApplySeasonPackWebhook_LoadsPersistedAutomationSettingsWithoutLoader(t 
 		releaseCache:       NewReleaseCache(),
 		automationStore:    automationStore,
 		seasonPackRunStore: &stubSeasonPackRunStore{},
-		recheckResumeChan:  make(chan *pendingResume, 1),
 	}
 
 	var resp *SeasonPackApplyResponse
@@ -1850,6 +1850,7 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 			return &fsops.TreeCreateResult{}, nil
 		},
 	}
+	svc.settler = idleSettler(svc.syncManager)
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -2146,26 +2147,32 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			return &fsops.TreeCreateResult{}, nil
 		},
-		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
-	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
-		TorrentName: packName,
-		TorrentData: torrentData,
-		InstanceIDs: []int{inst.ID},
-	})
+	// The resume gate is the linked byte fraction with the slack. No bytes left
+	// keeps the linked-file check, which TestSettle covers, out of this test.
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, svc,
+			&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
+			&qbt.Torrent{State: qbt.TorrentStatePausedDl, Progress: 53.0 / 64.0 * seasonPackResumeSlack},
+		)
+		resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+			TorrentName: packName,
+			TorrentData: torrentData,
+			InstanceIDs: []int{inst.ID},
+		})
 
-	require.NoError(t, err)
-	require.True(t, resp.Applied)
-	require.Len(t, sm.addCalls, 1)
-	require.Equal(t, "true", sm.addCalls[0].options["paused"])
-	require.Equal(t, "true", sm.addCalls[0].options["stopped"])
-	require.Len(t, sm.bulkCalls, 1)
-	require.Equal(t, "recheck", sm.bulkCalls[0].action)
-	req := <-svc.recheckResumeChan
-	// Resume gate = linked byte fraction (53-byte episode of a 64-byte pack), with slack.
-	require.InDelta(t, 53.0/64.0*seasonPackResumeSlack, req.threshold, 0.0001)
+		require.NoError(t, err)
+		require.True(t, resp.Applied)
+		require.Len(t, sm.addCalls, 1)
+		require.Equal(t, "true", sm.addCalls[0].options["paused"])
+		require.Equal(t, "true", sm.addCalls[0].options["stopped"])
+		require.Len(t, sm.bulkCalls, 1)
+		require.Equal(t, "recheck", sm.bulkCalls[0].action)
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
+	})
 }
 
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
@@ -2266,42 +2273,42 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			return &fsops.TreeCreateResult{}, nil
 		},
-		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
-	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
-		TorrentName: packName,
-		TorrentData: torrentData,
-		InstanceIDs: []int{inst.ID},
+	// The resume gate is the linked byte fraction with the slack. No bytes left
+	// keeps the linked-file check, which TestSettle covers, out of this test.
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, svc,
+			&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
+			&qbt.Torrent{State: qbt.TorrentStatePausedDl, Progress: 0.75 * seasonPackResumeSlack},
+		)
+		resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+			TorrentName: packName,
+			TorrentData: torrentData,
+			InstanceIDs: []int{inst.ID},
+		})
+
+		require.NoError(t, err)
+		require.True(t, resp.Applied)
+		require.Equal(t, 3, resp.MatchedEpisodes)
+		require.Equal(t, 4, resp.TotalEpisodes)
+		require.InDelta(t, 0.75, resp.Coverage, 0.001)
+		require.Len(t, sm.addCalls, 1)
+		require.Equal(t, "true", sm.addCalls[0].options["skip_checking"])
+		require.Equal(t, "true", sm.addCalls[0].options["paused"])
+		require.Equal(t, "true", sm.addCalls[0].options["stopped"])
+		require.Len(t, sm.bulkCalls, 1)
+		require.Equal(t, "recheck", sm.bulkCalls[0].action)
+		require.Len(t, store.runs, 1)
+		require.Equal(t, "applied", store.runs[0].Status)
+
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
 	})
-
-	require.NoError(t, err)
-	require.True(t, resp.Applied)
-	require.Equal(t, 3, resp.MatchedEpisodes)
-	require.Equal(t, 4, resp.TotalEpisodes)
-	require.InDelta(t, 0.75, resp.Coverage, 0.001)
-	require.Len(t, sm.addCalls, 1)
-	require.Equal(t, "true", sm.addCalls[0].options["skip_checking"])
-	require.Equal(t, "true", sm.addCalls[0].options["paused"])
-	require.Equal(t, "true", sm.addCalls[0].options["stopped"])
-	require.Len(t, sm.bulkCalls, 1)
-	require.Equal(t, "recheck", sm.bulkCalls[0].action)
-	require.Len(t, store.runs, 1)
-	require.Equal(t, "applied", store.runs[0].Status)
-
-	select {
-	case pending := <-svc.recheckResumeChan:
-		require.Equal(t, inst.ID, pending.instanceID)
-		// Resume gate = linked byte fraction (3 of 4 equal episodes), with slack.
-		require.InDelta(t, 0.75*seasonPackResumeSlack, pending.threshold, 0.001)
-	default:
-		t.Fatal("expected season pack apply to queue recheck resume")
-	}
 }
 
 func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T) {
-	mediaDir := t.TempDir()
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	main := bytes.Repeat([]byte("M"), 64)
 	extra := bytes.Repeat([]byte("E"), 11)
@@ -2310,62 +2317,101 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 		"zzz-extra.nfo": extra,
 	})
 	torrentData := base64.StdEncoding.EncodeToString(torrentBytes)
+	// The resume gate is the linked byte fraction (64-byte episode of a 75-byte
+	// pack) with the slack. No bytes left keeps the linked-file check, which
+	// TestSettle covers, out of this test.
+	gate := 64.0 / 75.0 * seasonPackResumeSlack
+	checking := &qbt.Torrent{State: qbt.TorrentStateCheckingDl}
 
-	inst := &models.Instance{
-		ID: 1, Name: "Test", IsActive: true,
-		HasLocalFilesystemAccess: true,
-		UseHardlinks:             true,
-		HardlinkBaseDir:          t.TempDir(),
-	}
-
-	episodeTorrents := []qbt.Torrent{
-		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
-	}
-
-	baseSM := newMultiFakeSyncManager(
-		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
-		map[int]*models.Instance{inst.ID: inst},
-	)
-	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
-	sm.files = map[string]qbt.TorrentFiles{
-		normalizeHash("e01"): {
-			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
+	tests := []struct {
+		name            string
+		recheckFailures int
+		polls           []*qbt.Torrent
+		wantMessage     string
+		wantActions     []string
+	}{
+		{
+			name:        "resumes at the linked fraction with the slack",
+			polls:       []*qbt.Torrent{checking, {State: qbt.TorrentStatePausedDl, Progress: gate}},
+			wantMessage: "torrent added paused; recheck queued",
+			wantActions: []string{"recheck", "resume"},
+		},
+		{
+			name: "stays paused just below the linked fraction with the slack",
+			polls: []*qbt.Torrent{
+				checking,
+				{State: qbt.TorrentStatePausedDl, Progress: gate - 0.001},
+				{State: qbt.TorrentStatePausedDl, Progress: 1},
+				{State: qbt.TorrentStatePausedDl, Progress: 1},
+			},
+			wantMessage: "torrent added paused; recheck queued",
+			wantActions: []string{"recheck"},
+		},
+		{
+			name:            "failed recheck is sent again from the queue",
+			recheckFailures: 1,
+			polls: []*qbt.Torrent{
+				{State: qbt.TorrentStatePausedDl},
+				checking,
+				{State: qbt.TorrentStatePausedDl, Progress: gate},
+			},
+			wantMessage: "torrent added paused; automatic recheck failed, retry queued",
+			wantActions: []string{"recheck", "recheck", "resume"},
 		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mediaDir := t.TempDir()
+			inst := &models.Instance{
+				ID: 1, Name: "Test", IsActive: true,
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          t.TempDir(),
+			}
+			episodeTorrents := []qbt.Torrent{
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: filepath.Join(mediaDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), Progress: 1.0},
+			}
+			baseSM := newMultiFakeSyncManager(
+				map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+				map[int]*models.Instance{inst.ID: inst},
+			)
+			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+			sm.files = map[string]qbt.TorrentFiles{
+				normalizeHash("e01"): {
+					{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
+				},
+			}
+			svc := &Service{
+				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:              sm,
+				releaseCache:             NewReleaseCache(),
+				automationSettingsLoader: defaultSettings(true, 0.75),
+				seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					return &fsops.TreeCreateResult{}, nil
+				},
+			}
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
-	svc := &Service{
-		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
-		syncManager:              sm,
-		releaseCache:             NewReleaseCache(),
-		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			return &fsops.TreeCreateResult{}, nil
-		},
-		recheckResumeChan: make(chan *pendingResume, 1),
-	}
+			synctest.Test(t, func(t *testing.T) {
+				script := startSettleScript(t, svc, tt.polls...)
+				script.recheckFailures = tt.recheckFailures
+				resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+					TorrentName: packName,
+					TorrentData: torrentData,
+					InstanceIDs: []int{inst.ID},
+				})
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
-	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
-		TorrentName: packName,
-		TorrentData: torrentData,
-		InstanceIDs: []int{inst.ID},
-	})
+				require.NoError(t, err)
+				require.True(t, resp.Applied)
+				require.Equal(t, tt.wantMessage, resp.Message)
+				require.Len(t, sm.addCalls, 1)
+				require.Equal(t, "true", sm.addCalls[0].options["paused"])
+				require.Equal(t, "true", sm.addCalls[0].options["stopped"])
 
-	require.NoError(t, err)
-	require.True(t, resp.Applied)
-	require.Len(t, sm.addCalls, 1)
-	require.Equal(t, "true", sm.addCalls[0].options["paused"])
-	require.Equal(t, "true", sm.addCalls[0].options["stopped"])
-	require.Len(t, sm.bulkCalls, 1)
-	require.Equal(t, "recheck", sm.bulkCalls[0].action)
-
-	select {
-	case pending := <-svc.recheckResumeChan:
-		require.Equal(t, inst.ID, pending.instanceID)
-		// Resume gate = linked byte fraction (64-byte episode of a 75-byte pack), with slack.
-		require.InDelta(t, 64.0/75.0*seasonPackResumeSlack, pending.threshold, 0.0001)
-	default:
-		t.Fatal("expected safe extras flow to queue recheck resume")
+				actions, _ := script.wait()
+				require.Equal(t, tt.wantActions, actionNames(actions))
+			})
+		})
 	}
 }
 

@@ -82,14 +82,12 @@
     "cancel": "취소",
     "runNow": "지금 실행",
     "saveSettings": "RSS 자동화 설정 저장",
-    "reset": "재설정",
     "requiresTorznabIndexer": "RSS 자동화 실행에는 Torznab 인덱서가 하나 이상 필요합니다.",
     "items": "항목 {{count}}개",
     "failedCount": "실패 {{count}}개",
     "runError": "오류: {{message}}",
     "runSummary": "실행 {{runs}}회 • +{{added}}",
     "runSummaryWithFailures": "실행 {{runs}}회 • +{{added}} • 실패 {{failed}}개",
-    "runDisabledAlreadyRunning": "자동화 실행이 이미 진행 중입니다.",
     "runDisabledCooldown": "수동 실행은 {{minutes}}분 간격으로 제한됩니다. {{remaining}} 후에 다시 시도하세요."
   },
   "webhook": {
@@ -190,7 +188,11 @@
       "enabledRedMissingOps": "Gazelle: 활성화됨(RED 키 설정됨, OPS 없음)",
       "enabledKeysMissing": "Gazelle: 활성화됨(키 없음)"
     },
-    "noMessageProvided": "제공된 메시지 없음"
+    "noMessageProvided": "제공된 메시지 없음",
+    "cancelDialog": {
+      "title": "라이브러리 스캔을 취소하시겠습니까?",
+      "description": "현재 라이브러리 스캔을 중지합니다. 이미 추가된 크로스 시드는 유지되지만 더 이상 토렌트를 검색하지 않습니다."
+    }
   },
   "rules": {
     "hardlinkReflink": "하드링크 / 리플링크 모드",
@@ -356,6 +358,9 @@
       "matching": "모든 소스에 대해 qui가 어떤 후보를 추가할지 결정하는 규칙입니다.",
       "categories": "qui가 새 크로스시드마다 지정하는 카테고리와 태그입니다."
     }
+  },
+  "run": {
+    "starting": "실행을 시작하는 중입니다."
   },
   "seasonPackRuns": {
     "title": "최근 시즌 팩 실행",
