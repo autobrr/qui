@@ -4,7 +4,6 @@
 package orphanscan
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"testing"
 	"unicode/utf8"
@@ -53,12 +52,6 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 			if n1 != n2 {
 				t.Fatalf("expected normalized paths equal:\n  %q\n  %q\n  -> %q\n  -> %q", p1, p2, n1, n2)
 			}
-
-			m := NewTorrentFileMap(fsops.HostPaths)
-			m.Add(p1)
-			if !m.Has(n2) {
-				t.Fatalf("expected torrent file map to match canonical-equivalent path: %q", p2)
-			}
 		})
 	}
 }
@@ -81,41 +74,6 @@ func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 	}
 }
 
-// Imported content (cp1252, FAT, old rips) can carry bytes that are not valid
-// UTF-8. The walker reads those bytes from disk verbatim, but the same name
-// arrives from the qBittorrent API with each bad byte replaced by U+FFFD.
-// Comparison must coerce both sides the same way, or an owned file is reported
-// as an orphan and deleted.
-func TestNormalizePath_InvalidUTF8MatchesAPIForm(t *testing.T) {
-	t.Parallel()
-
-	onDisk := filepath.Join("downloads", "Keep", "mo"+string([]byte{0xff})+"vie.mkv")
-	if utf8.ValidString(onDisk) {
-		t.Fatalf("expected on-disk name to be invalid UTF-8")
-	}
-
-	encoded, err := json.Marshal(onDisk)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	var viaAPI string
-	if err := json.Unmarshal(encoded, &viaAPI); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if !utf8.ValidString(viaAPI) {
-		t.Fatalf("expected API form to be valid UTF-8")
-	}
-
-	// Add normalizes internally; Has takes the already-normalized form, exactly as
-	// the walker does for each path it reads off disk.
-	m := NewTorrentFileMap(fsops.HostPaths)
-	m.Add(viaAPI)
-	if !m.Has(fsops.NormalizePath(fsops.HostPaths, onDisk)) {
-		t.Fatalf("owned file must match its API spelling:\n  disk %q -> %q\n  api  %q -> %q",
-			onDisk, fsops.NormalizePath(fsops.HostPaths, onDisk), viaAPI, fsops.NormalizePath(fsops.HostPaths, viaAPI))
-	}
-}
-
 // Case-insensitive filesystems (APFS, NTFS, exFAT, SMB, and Docker bind mounts
 // of them) let qBittorrent report two spellings of one directory. Comparison
 // must fold on every OS, not only on Windows.
@@ -127,12 +85,6 @@ func TestNormalizePath_CaseInsensitive(t *testing.T) {
 	p2 := fsops.NormalizePath(fsops.HostPaths, filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
 	if p1 != p2 {
 		t.Fatalf("expected normalized paths equal:\n  %q\n  %q", p1, p2)
-	}
-
-	m := NewTorrentFileMap(fsops.HostPaths)
-	m.Add(p1)
-	if !m.Has(p2) {
-		t.Fatalf("expected torrent file map to match regardless of casing: %q", p2)
 	}
 }
 

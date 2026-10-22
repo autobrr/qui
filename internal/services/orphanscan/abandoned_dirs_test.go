@@ -58,12 +58,12 @@ func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
 			backdate(t, dir)
 
 			backend := &directoryReadCounter{Backend: newTestBackend()}
-			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(fsops.HostPaths), nil, time.Hour, backend, nil)
+			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), time.Hour, backend, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			backend.reads = 0
-			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, time.Hour, backend)
+			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), time.Hour, backend)
 			if len(got) != tt.wantDirs || backend.reads != tt.wantReads {
 				t.Fatalf("directories = %v, reads = %d; want %d directories and %d reads", got, backend.reads, tt.wantDirs, tt.wantReads)
 			}
@@ -98,12 +98,12 @@ func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePat
 	t.Helper()
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), ignorePaths, 0, backend, nil)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, ignorePaths, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, ignorePaths, categoryPaths, 0, backend)
+	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, categoryPaths, newTestProtected(t, fsops.HostPaths, ignorePaths, nil), 0, backend)
 	paths := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		if !c.IsAbandonedDir {
@@ -178,13 +178,13 @@ func TestAbandonedDirs_DirectoryHoldingAKeptFileIsKept(t *testing.T) {
 	tfm := NewTorrentFileMap(fsops.HostPaths)
 	tfm.Add(fsops.NormalizePath(fsops.HostPaths, owned))
 
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend, nil)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
 	got := make([]string, 0, len(dirs))
-	for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+	for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend) {
 		got = append(got, c.Path)
 	}
 
@@ -229,13 +229,13 @@ func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
 			}
 
 			backend := newTestBackend()
-			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend, nil)
+			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 			if err != nil {
 				t.Fatalf("walk: %v", err)
 			}
 
 			got := make([]string, 0, len(dirs))
-			for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+			for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend) {
 				got = append(got, c.Path)
 			}
 			if slices.Contains(got, backup) != tt.wantBackup {
@@ -263,12 +263,12 @@ func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
 	writeFile(t, filepath.Join(nested, "stale.mkv"))
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root, nested}, nil, nil, 0, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root, nested}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend)
 	if len(got) != 0 {
 		t.Fatalf("a nested scan root must be kept even when it holds only orphans, got %v", got)
 	}
@@ -295,12 +295,12 @@ func TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks(t *testing.T) {
 	}
 
 	backend := newTestBackend()
-	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), 0, backend)
 	if len(got) != 0 {
 		t.Fatalf("a directory still holding the symlink must be kept, got %v", got)
 	}
@@ -370,12 +370,12 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	root := mkdirs(t, t.TempDir(), "fresh")
 	backend := newTestBackend()
 
-	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(fsops.HostPaths), nil, 0, backend, nil)
+	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), nil, []string{root}, nil, nil, time.Hour, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), nil, []string{root}, nil, newTestProtected(t, fsops.HostPaths, nil, nil), time.Hour, backend)
 	if len(got) != 0 {
 		t.Fatalf("a directory younger than the grace period must be held, got %v", got)
 	}
