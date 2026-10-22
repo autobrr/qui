@@ -6,7 +6,10 @@ package automations
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 var nestRule = qbittorrent.CategoryPathRule{Nest: true}
@@ -304,4 +308,42 @@ func TestNeedsForSavePaths(t *testing.T) {
 			require.Equal(t, tt.want, NeedsFor([]*models.Automation{tt.rule}).SavePaths)
 		})
 	}
+}
+
+func TestLoadCategorySavePaths_UsesInstanceFolderNameRule(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.15.4"))
+		case "/api/v2/app/version":
+			_, _ = w.Write([]byte("v5.3.0"))
+		case "/api/v2/app/buildInfo":
+			_, _ = w.Write([]byte(`{"platform":"windows"}`))
+		case "/api/v2/app/preferences":
+			_, _ = w.Write([]byte(`{"save_path":"C:\\Downloads"}`))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"categories":{"tv":{"name":"tv","savePath":"D:\\media\\tv"},"tv/a:b":{"name":"tv/a:b","savePath":""}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(t.Context(), "windows", server.URL, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+	svc := &Service{syncManager: qbittorrent.NewSyncManager(clientPool, nil)}
+
+	require.Equal(t, map[string]string{
+		"":       `C:\Downloads`,
+		"tv":     `D:\media\tv`,
+		"tv/a:b": `D:\media\tv\a_b`,
+	}, svc.loadCategorySavePaths(t.Context(), instance.ID))
 }
