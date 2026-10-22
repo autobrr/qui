@@ -185,6 +185,35 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	require.FileExists(t, f.strayFile, "nothing may be deleted when the scope cannot be determined")
 }
 
+// TestExecuteDeletion_FailsOnAnInvalidIgnorePath covers an ignore path that is
+// not absolute when the user confirms. The scan refuses such a path, so the
+// delete must refuse it too and not run under a rule the scan never accepted.
+func TestExecuteDeletion_FailsOnAnInvalidIgnorePath(t *testing.T) {
+	f := newDeletionFixture(t, "orphanscan-delete-invalid-ignore")
+
+	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID:          1,
+		IgnorePaths:         []string{"relative/keep"},
+		ScanIntervalHours:   24,
+		PreviewSort:         "size_desc",
+		MaxFilesPerRun:      1000,
+		AutoCleanupMaxFiles: 100,
+		ScanDefaultSavePath: true,
+		DeleteAbandonedDirs: true,
+	})
+	require.NoError(t, err)
+
+	f.svc.executeDeletion(context.Background(), 1, f.runID)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", run.Status)
+	require.Contains(t, run.ErrorMessage, "invalid ignore paths")
+	require.FileExists(t, f.strayFile, "nothing may be deleted under an invalid ignore path")
+	require.FileExists(t, f.orphanInCategory, "nothing may be deleted under an invalid ignore path")
+	require.DirExists(t, f.abandoned, "nothing may be deleted under an invalid ignore path")
+}
+
 // TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun covers a category
 // folder the run empties by deleting the orphan inside it. It was previewed
 // while no category pointed at it, so the re-check at deletion time is what

@@ -89,6 +89,9 @@ linters:
         - pattern: ^(releases\.(DefaultParser|NewDefaultParser|NewParser)|rls\.(DefaultParser|NewDefaultParser|NewTagParser|NewReleaseScanner|NewScanner|Parse|ParseString|ParseTags|ParseTagsString))$
           pkg: ^github\.com/autobrr/(qui/pkg/releases|rls)$
           msg: cross-seed code parses release names through the release cache or matcher.parseReleaseName (ADR 0008)
+        - pattern: ^orphanscan\.(isIgnoredPath|isPathProtectedByIgnorePaths|TorrentFileMap\.(Has|HasAnyInDir))$
+          pkg: ^github\.com/autobrr/qui/internal/services/orphanscan$
+          msg: ask the protected path module in internal/services/orphanscan/protected.go
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -136,6 +139,12 @@ linters:
         linters:
           - forbidigo
         text: ADR 0008
+
+      # Only the Protected path module looks up torrent files and ignore paths.
+      - path: internal/services/orphanscan/protected(_test)?\.go$
+        linters:
+          - forbidigo
+        text: protected path module
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.

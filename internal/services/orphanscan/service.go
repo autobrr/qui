@@ -159,14 +159,14 @@ func validDefaultSavePath(d fsops.PathDialect, reported string) (string, error) 
 
 // walkForScope walks one root, collecting directory candidates only when the
 // run will actually use them.
-func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
+func walkForScope(ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool,
 ) ([]OrphanFile, []AbandonedDir, error) {
 	if !collectDirs {
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend, instance)
+		orphans, _, err := walkScanRoot(ctx, root, protected, gracePeriod, 0, backend, instance)
 		return orphans, nil, err
 	}
-	return walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, backend, instance)
+	return walkScanRootCollectingDirs(ctx, root, protected, gracePeriod, backend, instance)
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -770,8 +770,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	allIgnorePaths := scanIgnorePaths(ctx, settings.IgnorePaths, scanRoots, result, backend, instance)
 
-	// Normalize ignore paths
-	ignorePaths, err := NormalizeIgnorePaths(d, allIgnorePaths)
+	protected, err := newProtectedPaths(d, allIgnorePaths, tfm)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
@@ -807,7 +806,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, dirs, err := walkForScope(ctx, root, tfm, ignorePaths, gracePeriod, backend, instance, scope.AbandonedDirs)
+		orphans, dirs, err := walkForScope(ctx, root, protected, gracePeriod, backend, instance, scope.AbandonedDirs)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -839,7 +838,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// Files rank first. If they already exceed the cap, no directory can enter
 	// the preview. At the cap, still check directories to set Truncated correctly.
 	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, result.categoryPaths, protected, gracePeriod, backend)
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
 		allOrphans = dedupeOrphans(d, append(allOrphans, abandoned...))
 	}
@@ -1242,13 +1241,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
 	}
-	tfm := fileMapResult.fileMap
 
 	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend, instance)
-	ignorePaths, err := NormalizeIgnorePaths(d, rawIgnorePaths)
+	// The scan refuses an ignore path that is not valid, so the delete refuses it
+	// too rather than run under a rule the preview never accepted.
+	protected, err := newProtectedPaths(d, rawIgnorePaths, fileMapResult.fileMap)
 	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
-		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
+		return
 	}
 
 	var filesDeleted int
@@ -1275,7 +1275,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, protected, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -1328,7 +1328,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			failedDeletes++
 			continue
 		}
-		if isIgnoredPath(d, dir.FilePath, ignorePaths) {
+		if protected.ignored(dir.FilePath) {
 			s.updateFileStatus(ctx, dir.ID, "skipped", "path is protected by ignore paths")
 			continue
 		}
@@ -1347,7 +1347,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 		// A torrent that has not written its payload yet still owns its save
 		// path, and that directory is empty on disk right now.
-		if tfm.HasAnyInDir(normDir) {
+		if protected.torrentFileIn(dir.FilePath) {
 			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now used by a torrent")
 			continue
 		}
@@ -1590,6 +1590,11 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 		}
 	}
 	return filtered
+}
+
+// canonicalizeHash matches SyncManager's internal hash normalization.
+func canonicalizeHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
 }
 
 // isAbsoluteFilesystemRoot reports whether p is "/", a drive root ("C:\"), or a

@@ -263,13 +263,14 @@ func TestPathDialect_FileMapKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"/srv/data"}, result.scanRoots)
-	require.True(t, result.fileMap.Has("/srv/data/show/e01.mkv"))
-	require.True(t, result.fileMap.Has("/srv/data/a\\b.mkv"))
-	require.False(t, result.fileMap.Has("/srv/data/a/b.mkv"))
-	require.True(t, result.fileMap.HasAnyInDir("/srv/data/show"))
-	require.True(t, result.fileMap.HasAnyInDir("/srv"))
-	require.False(t, result.fileMap.HasAnyInDir("/"))
-	require.False(t, result.fileMap.HasAnyInDir("/srv/data/a"))
+	protected := newTestProtected(t, fsops.SlashPaths, nil, result.fileMap)
+	require.True(t, protected.torrentFile("/srv/data/show/e01.mkv"))
+	require.True(t, protected.torrentFile("/srv/data/a\\b.mkv"))
+	require.False(t, protected.torrentFile("/srv/data/a/b.mkv"))
+	require.True(t, protected.torrentFileIn("/srv/data/show"))
+	require.True(t, protected.torrentFileIn("/srv"))
+	require.False(t, protected.torrentFileIn("/"))
+	require.False(t, protected.torrentFileIn("/srv/data/a"))
 }
 
 func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
@@ -285,18 +286,19 @@ func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
 	tfm := NewTorrentFileMap(fsops.SlashPaths)
 	tfm.Add("/data/Owned/extra.mkv")
 	tfm.Add("/data/Owned/sub/x.mkv")
+	protected := newTestProtected(t, fsops.SlashPaths, nil, tfm)
 	cache := map[string]discUnitDecision{}
 
-	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", tfm, cache, nil, b)
+	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", protected, cache, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Movie", unit)
 
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", tfm, cache, nil, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", protected, cache, b)
 	require.False(t, isDisc)
 	require.Equal(t, "/data/d/f.mkv", unit)
 
 	// A disc parent holding owned files is not a disc root, so the unit stays at BDMV.
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", tfm, cache, nil, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Owned/BDMV", unit)
 
@@ -313,7 +315,7 @@ func TestPathDialect_AbandonedDirs(t *testing.T) {
 	dirs := []AbandonedDir{{Path: "/data/old/sub"}, {Path: "/data/old"}, {Path: "/data/empty"}}
 	deleted := []OrphanFile{{Path: "/data/old/sub/x.mkv"}}
 
-	got := abandonedDirCandidates(t.Context(), dirs, deleted, []string{"/data"}, nil, nil, 0, b)
+	got := abandonedDirCandidates(t.Context(), dirs, deleted, []string{"/data"}, nil, newTestProtected(t, fsops.SlashPaths, nil, nil), 0, b)
 	paths := make([]string, 0, len(got))
 	for _, o := range got {
 		paths = append(paths, o.Path)
@@ -335,26 +337,13 @@ func TestPathDialect_ScanRootLookup(t *testing.T) {
 	require.Error(t, withinScanRoot(fsops.SlashPaths, "/data/a", "/data/a\\x.mkv"))
 }
 
-func TestPathDialect_IgnorePathMatching(t *testing.T) {
-	t.Parallel()
-
-	ignore := []string{"/data/skip"}
-	require.True(t, isIgnoredPath(fsops.SlashPaths, "/data/skip/x.mkv", ignore))
-	require.False(t, isIgnoredPath(fsops.SlashPaths, "/data/skip\\x.mkv", ignore))
-	require.True(t, isPathProtectedByIgnorePaths(fsops.SlashPaths, "/data", ignore))
-	require.False(t, isPathProtectedByIgnorePaths(fsops.SlashPaths, "/data/skip\\x", ignore))
-	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/a\\b", "/data/a"))
-}
-
 func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
 	t.Parallel()
 
 	ignore := []string{"/"}
 	require.True(t, isPathUnderNormalized(fsops.SlashPaths, "/data/x.mkv", "/"))
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/", "/"))
-	require.True(t, isIgnoredPath(fsops.SlashPaths, "/data/x.mkv", ignore))
-	require.True(t, isIgnoredPath(fsops.SlashPaths, "/", ignore))
-	require.True(t, isPathProtectedByIgnorePaths(fsops.SlashPaths, "/data/x.mkv", ignore))
+	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/a\\b", "/data/a"))
 
 	// A parent that does not end in the separator keeps the boundary rule.
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foobar", "/data/foo"))
@@ -365,19 +354,12 @@ func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
 	require.True(t, isPathUnderNormalized(win, `C:\data\x.mkv`, driveRoot))
 	require.True(t, isPathUnderNormalized(win, win.Clean(`C:\data\x.mkv`), win.Clean(`C:/`)))
 	require.False(t, isPathUnderNormalized(win, driveRoot, driveRoot))
-	driveIgnore := []string{driveRoot}
-	require.True(t, isIgnoredPath(win, `C:\data\x.mkv`, driveIgnore))
-	require.True(t, isIgnoredPath(win, driveRoot, driveIgnore))
-	require.True(t, isPathProtectedByIgnorePaths(win, `C:\data\x.mkv`, driveIgnore))
 
 	uncRoot := win.Clean(`\\server\share`)
 	require.True(t, isPathUnderNormalized(win, `\\server\share\orphan.mkv`, uncRoot))
-	uncIgnore := []string{uncRoot}
-	require.True(t, isIgnoredPath(win, `\\server\share\orphan.mkv`, uncIgnore))
-	require.True(t, isPathProtectedByIgnorePaths(win, `\\server\share\orphan.mkv`, uncIgnore))
 
 	b := newSlashBackend(map[string]int64{"/data/orphan.mkv": 1})
-	orphans, _, err := walkScanRoot(t.Context(), "/data", NewTorrentFileMap(fsops.SlashPaths), ignore, 0, 100, b, nil)
+	orphans, _, err := walkScanRoot(t.Context(), "/data", newTestProtected(t, fsops.SlashPaths, ignore, NewTorrentFileMap(fsops.SlashPaths)), 0, 100, b, nil)
 	require.NoError(t, err)
 	require.Empty(t, orphans)
 }

@@ -148,7 +148,7 @@ func TestExecuteScan_RootIgnorePathKeepsScanRoots(t *testing.T) {
 	t.Parallel()
 
 	svc, store, presentRoot, missingRoot := newScanTestService(t)
-	if !isIgnoredPath(fsops.HostPaths, presentRoot, []string{"/"}) {
+	if protected, err := newProtectedPaths(fsops.HostPaths, []string{"/"}, nil); err != nil || !protected.ignored(presentRoot) {
 		t.Skip("ignore / does not cover host scan roots")
 	}
 	require.NoError(t, os.MkdirAll(missingRoot, 0o755))
