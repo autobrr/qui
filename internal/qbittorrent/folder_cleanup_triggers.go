@@ -471,9 +471,11 @@ func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nes
 
 // stopFolderInputs reads the preferences from qBittorrent, not from their 30 s
 // cache, so a default save path changed in its WebUI is a stop folder on the
-// next check. The categories come from the cache.
+// next check. The categories are read too: before WebAPI 2.11.10 a partial
+// maindata update never reports a category going back to inherit its
+// download path, so the cache can name a folder qBittorrent no longer uses.
 func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error) {
-	client, syncManager, err := sm.syncedMainData(ctx, instanceID)
+	client, _, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return stopInputs{}, err
 	}
@@ -481,11 +483,15 @@ func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (st
 	if err != nil {
 		return stopInputs{}, err
 	}
+	categories, err := client.GetCategoriesCtx(ctx)
+	if err != nil {
+		return stopInputs{}, err
+	}
 	return stopInputs{
 		DefaultSavePath:  prefs.SavePath,
 		TempPath:         prefs.TempPath,
 		TempPathEnabled:  prefs.TempPathEnabled,
-		Categories:       syncManager.GetCategoriesUnchecked(),
+		Categories:       categories,
 		UseSubcategories: prefs.UseSubcategories,
 		ScanDirs:         prefs.ScanDirs,
 	}, nil

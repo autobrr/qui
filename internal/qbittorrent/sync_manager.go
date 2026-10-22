@@ -5145,14 +5145,14 @@ func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (Ca
 		if err != nil {
 			return CategoryPathRule{}, fmt.Errorf("failed to get app preferences: %w", err)
 		}
-		return CategoryPathRule{Nest: prefs.UseSubcategories}, nil
+		return CategoryPathRule{Nest: prefs.UseSubcategories, InheritsDownloadPath: true}, nil
 	}
 
 	platform, err := categoryFolderPlatform(ctx, client)
 	if err != nil {
 		return CategoryPathRule{}, err
 	}
-	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform}, nil
+	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform, InheritsDownloadPath: true}, nil
 }
 
 // categoryFolderPlatform returns the build platform when it changes the folder
