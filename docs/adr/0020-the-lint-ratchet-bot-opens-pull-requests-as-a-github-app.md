@@ -11,7 +11,7 @@ GitHub starts no workflow for a push or a pull request made with `GITHUB_TOKEN`.
 
 The agent never holds the app token. The workflow makes the token after the agent finishes, in the step that commits. The agent uses the same Console workspace, federation rule, and $5 stop per run as triage. The checkout leaves no token in `.git/config`.
 
-The bot opens no pull request while a ratchet pull request is open. A maintainer who closes a ratchet pull request without merging it makes the bot skip that linter in that file for good. The branch name, `ratchet/<linter>/<file>/<run id>`, records the skip, so the bot needs no other state.
+The bot opens no pull request while a ratchet pull request is open. A maintainer who closes a ratchet pull request without merging it makes the bot skip that linter in that file for good. A closed draft does not skip the file, because a failed run opens a draft, and a failure from the spend limit or an outage says nothing about the file. To skip a file after a failed run, mark the draft ready for review, then close it. The branch name, `ratchet/<linter>/<file>/<run id>`, records the skip, so the bot needs no other state.
 
 ## Considered options
 

@@ -43,8 +43,9 @@ jobs:
           persist-credentials: false
 
       # One pull request at a time. Linters go in order, and the file with the
-      # fewest problems comes first. A closed, unmerged ratchet pull request
-      # skips its linter and file for good. Its branch is
+      # fewest problems comes first. A ratchet pull request that is closed
+      # without a merge skips its linter and file for good, unless it was a
+      # draft: a closed draft means try again later. Its branch is
       # ratchet/<linter>/<file>/<run id>.
       - name: Pick the next file
         id: pick
@@ -57,7 +58,7 @@ jobs:
             exit 0
           fi
           skip=$(gh pr list --repo "$GITHUB_REPOSITORY" --label ratchet --state closed --limit 1000 \
-            --json headRefName,mergedAt --jq '[.[] | select(.mergedAt == null) | .headRefName]')
+            --json headRefName,mergedAt,isDraft --jq '[.[] | select(.mergedAt == null and (.isDraft | not)) | .headRefName]')
           pick=$(jq -r --argjson skip "$skip" '
             . as $allow
             | [("nilerr", "errchkjson", "gocognit", "contextcheck") as $l
@@ -206,7 +207,7 @@ jobs:
             cat "$RUNNER_TEMP/report.md" 2>/dev/null || echo "The agent wrote no report."
             echo
             echo "---"
-            echo "Close this pull request without merging it, and the bot skips \`$LINTER\` in this file for good. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Close this pull request without merging it, and the bot skips \`$LINTER\` in this file for good. Close it as a draft, and the bot tries the file again later. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$RUNNER_TEMP/body.md"
           # shellcheck disable=SC2086 # DRAFT is empty or one flag
           gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" $DRAFT \
