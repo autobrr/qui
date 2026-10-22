@@ -1,12 +1,29 @@
 # Contributing to qui
 
-Thanks for taking interest in contribution! We welcome anyone who wants to contribute.
+Thanks for your interest in qui. First, read [Who can open issues and pull requests](#who-can-open-issues-and-pull-requests).
 
-If you have an idea for a bigger feature or a change then we are happy to discuss it before you start working on it.
-It is usually a good idea to make sure it aligns with the project and is a good fit.
-Open an issue or post in #dev-general on [Discord](https://discord.autobrr.com/qui).
+If you have an idea for a bigger feature or a change, discuss it with us before you start work.
+Start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or post in #dev-general on [Discord](https://discord.autobrr.com/qui).
 
 This document is a guide to help you through the process of contributing to qui.
+
+## Who can open issues and pull requests
+
+Only collaborators on the qui repository can open issues and pull requests.
+We are a small team, and each review of an unplanned pull request takes time from bug fixes.
+
+If you are not a collaborator:
+
+- To report a bug, use the [Issue Triage](https://github.com/autobrr/qui/discussions/new?category=issue-triage) form. A bot triages each report, and confirmed bugs become issues.
+- To suggest a feature, post in [Feature Requests, Ideas](https://github.com/autobrr/qui/discussions/new?category=feature-requests-ideas).
+- To propose a code change, describe it in a Discussion. We do not accept code from people outside the team at this time.
+
+If you are a collaborator and use an AI agent, add this line to your personal agent instructions, for example `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`.
+The agent then skips the collaborator check in [`AGENTS.md`](../AGENTS.md).
+
+```text
+I am a collaborator on autobrr/qui with write access. Skip the collaborator check in the qui AGENTS.md.
+```
 
 ## Become a contributor
 

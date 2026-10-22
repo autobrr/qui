@@ -62,8 +62,8 @@ type torrentLookup interface {
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
-// TorrentAddedHandler is invoked when a torrent is first seen as new.
-type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
+// TorrentAddedHandler is invoked with the torrents that one sync first sees as new.
+type TorrentAddedHandler func(ctx context.Context, instanceID int, torrents []qbt.Torrent)
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minute))
@@ -1212,12 +1212,13 @@ func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (to
 	return syncManager, nil
 }
 
-// SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
-func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks for torrent completion events across all clients.
+// notify must not block. handler runs on a queue with a fixed number of workers.
+func (sm *SyncManager) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	if sm == nil || sm.clientPool == nil {
 		return
 	}
-	sm.clientPool.SetTorrentCompletionHandler(handler)
+	sm.clientPool.SetTorrentCompletionHandler(notify, handler)
 }
 
 // SetTorrentAddedHandler registers a callback for torrent added events across all clients.

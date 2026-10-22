@@ -5,8 +5,6 @@ body:
       value: |
         > [!IMPORTANT]
         > Before opening a discussion, please check the [documentation](https://getqui.com) and search existing [Discussions](https://github.com/autobrr/qui/discussions) and [Issues](https://github.com/autobrr/qui/issues).
-        >
-        > Code contributions: for a large change, start here (or open an Issue) to coordinate before you write code.
 
   - type: textarea
     attributes:
