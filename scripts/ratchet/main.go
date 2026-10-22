@@ -53,6 +53,11 @@ func main() {
 	if err != nil {
 		fail(fmt.Errorf("%s: %w", allowlistPath, err))
 	}
+	// A wrong ref must fail, not skip the growth check.
+	//nolint:gosec // the developer or CI picks -base
+	if err := exec.CommandContext(context.Background(), "git", "rev-parse", "--verify", "--quiet", *base+"^{commit}").Run(); err != nil {
+		fail(fmt.Errorf("-base %s is not a commit: %w", *base, err))
+	}
 	var baseAllow counts
 	//nolint:gosec // the developer or CI picks -base
 	if raw, err := exec.CommandContext(context.Background(), "git", "show", *base+":"+allowlistPath).Output(); err == nil {
@@ -138,10 +143,11 @@ func compare(got, allow, base counts) []string {
 	for _, linter := range slices.Sorted(maps.Keys(merge(got, allow))) {
 		for _, file := range slices.Sorted(maps.Keys(merge(got[linter], allow[linter]))) {
 			n, want := got[linter][file], allow[linter][file]
+			_, listed := allow[linter][file]
 			switch {
 			case n > want:
 				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.", file, linter, n, want))
-			case n < want && n == 0:
+			case n == 0 && listed:
 				problems = append(problems, fmt.Sprintf("%s: %s reports no problems. Delete its entry from %s.", file, linter, allowlistPath))
 			case n < want:
 				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems. Lower its entry in %s from %d to %d.", file, linter, n, allowlistPath, want, n))
@@ -172,9 +178,9 @@ func merge[V any](a, b map[string]V) map[string]V {
 }
 
 // hiddenGocognit reports rule 4: a nolint comment that names gocognit, or a
-// bare nolint, which hides every linter.
+// bare nolint or nolint:all, which hide every linter.
 func hiddenGocognit() ([]string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "grep", "-nE", `//[[:space:]]*nolint(:[a-z,-]*gocognit|[[:space:]]*($|//))`,
+	out, err := exec.CommandContext(context.Background(), "git", "grep", "-nE", `//[[:space:]]*nolint(:([a-z0-9-]+,)*(gocognit|all)([,[:space:]]|$)|[[:space:]]*($|//))`,
 		"--", "*.go", ":!*_test.go", ":!scripts/ratchet/").Output()
 	if err != nil {
 		// git grep exits 1 when nothing matches.

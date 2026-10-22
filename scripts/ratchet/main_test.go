@@ -39,3 +39,9 @@ func TestCompare(t *testing.T) {
 		})
 	}
 }
+
+func TestCompareZeroEntry(t *testing.T) {
+	allow := counts{"nilerr": {"a.go": 0}}
+	assert.Equal(t, []string{"a.go: nilerr reports no problems. Delete its entry from scripts/ratchet/allowlist.json."},
+		compare(counts{}, allow, nil))
+}
