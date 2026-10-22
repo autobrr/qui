@@ -62,8 +62,8 @@ type torrentLookup interface {
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
-// TorrentAddedHandler is invoked when a torrent is first seen as new.
-type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
+// TorrentAddedHandler is invoked with the torrents that one sync first sees as new.
+type TorrentAddedHandler func(ctx context.Context, instanceID int, torrents []qbt.Torrent)
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minute))
@@ -1212,12 +1212,13 @@ func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (to
 	return syncManager, nil
 }
 
-// SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
-func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks for torrent completion events across all clients.
+// notify must not block. handler runs on a queue with a fixed number of workers.
+func (sm *SyncManager) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	if sm == nil || sm.clientPool == nil {
 		return
 	}
-	sm.clientPool.SetTorrentCompletionHandler(handler)
+	sm.clientPool.SetTorrentCompletionHandler(notify, handler)
 }
 
 // SetTorrentAddedHandler registers a callback for torrent added events across all clients.
@@ -5806,18 +5807,46 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 
 // EditCategory edits an existing category.
 //
-// qBittorrent before 5.3 builds the category from these params alone, so each
-// edit resets its share limits to the global default and clears its download
-// path (qbittorrent#24787). go-qbittorrent's Category carries only the name and
-// the save path, so qui cannot send the other options back.
+// Before 5.3 qBittorrent builds the category from these params alone, so the
+// edit sends the download path option the category has, read from
+// qBittorrent rather than the cache, because before WebAPI 2.11.10 a partial
+// maindata update never reports a category going back to inherit. A failed
+// read fails the edit. On 5.2 the edit still resets the share limits to the
+// global default (qbittorrent#24787), which the WebAPI of 5.2 cannot set.
+// From 5.3 the edit keeps what it leaves out, so it sends the save path alone.
 func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name string, path string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
+	// A client that keeps syncing skips health checks, so after an in-place
+	// downgrade from 5.3 its cached capabilities would still say partial.
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		return fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
+	}
+
+	edit := func() error { return client.EditCategoryCtx(ctx, name, path) }
+	existed := false
+	if !client.EditsCategoriesPartially() {
+		categories, err := client.GetCategoriesCtx(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to read category %q before editing it: %w", name, err)
+		}
+		var category qbt.Category
+		category, existed = categories[name]
+		opts := qbt.CategoryOptions{SavePath: path, DownloadPath: category.DownloadPath}
+		edit = func() error { return client.EditCategoryWithOptionsCtx(ctx, name, opts) }
+	}
 
 	folders := sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupEditCategory, EditedCategory: name, Path: path})
-	if err := client.EditCategoryCtx(ctx, name, path); err != nil {
+	if err := edit(); err != nil {
+		// With the download path kept, an edit to the same save path changes
+		// nothing. Up to 5.1 qBittorrent answers that with 409, as it does a
+		// missing category, so for one that was just read it means nothing to
+		// do, and nothing moves.
+		if existed && errors.Is(err, qbt.ErrCategoryEditingFailed) {
+			return nil
+		}
 		return err
 	}
 	folders.Queue()

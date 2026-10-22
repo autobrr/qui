@@ -164,6 +164,12 @@ jobs:
           # accumulating unnoticed again — see #2380.
           only-new-issues: false
 
+      # The lint action put golangci-lint on PATH. The ratchet holds the
+      # linters that existing code does not pass yet to a shrink-only
+      # allowlist. See scripts/ratchet/main.go.
+      - name: Check the lint ratchet
+        run: go run ./scripts/ratchet -base "origin/${{ github.base_ref }}"
+
       - name: Fail if gofix drift was found
         if: steps.gofix.outcome == 'failure'
         run: |

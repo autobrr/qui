@@ -64,6 +64,7 @@ import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
@@ -707,6 +708,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
+  const [movePathServerError, setMovePathServerError] = useState<string | null>(null)
+  const [movePathDryRunAttempted, setMovePathDryRunAttempted] = useState(false)
+  const movePathInputRef = useRef<HTMLInputElement>(null)
   const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
   const [newGroupId, setNewGroupId] = useState("")
   const [newGroupKeys, setNewGroupKeys] = useState<string[]>([])
@@ -1299,6 +1303,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
       setActivityRunDialog(null)
+      setMovePathServerError(null)
+      setMovePathDryRunAttempted(false)
       return
     }
     if (!rule) {
@@ -1794,6 +1800,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     loadMorePreview.mutate()
   }
 
+  const movePathClientError = isVisiblyRelativeMovePath(formState.exprMovePath)? t("preferences.workflowDialog.move.errors.mustBeAbsolute"): null
+  const movePathCheckError = formState.moveEnabled ? movePathClientError ?? movePathServerError : null
+  // Saving checks only an enabled rule, like the server; a dry run always runs the rule, so its error shows either way.
+  const movePathError = formState.enabled || movePathDryRunAttempted ? movePathCheckError : null
+  const movePathBlocksSave = formState.enabled && Boolean(movePathCheckError)
+
+  // Show the server's move path error under the field, not in a toast.
+  const showMovePathServerError = (error: unknown): boolean => {
+    if (!(error instanceof Error) || !isMovePathServerError(error.message)) {
+      return false
+    }
+    setMovePathServerError(error.message)
+    movePathInputRef.current?.focus()
+    return true
+  }
+
   const dryRunNowMutation = useMutation({
     mutationFn: async (input: FormState) => {
       const payload = buildPayload(input)
@@ -1838,6 +1860,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setLatestDryRunEvents([])
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
+      if (showMovePathServerError(error)) {
+        setMovePathDryRunAttempted(true)
+        return
+      }
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.dryRunFailed"))
     },
   })
@@ -1937,6 +1963,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
+      return
+    }
+    if (dryRunInput.moveEnabled && isVisiblyRelativeMovePath(dryRunInput.exprMovePath)) {
+      setMovePathDryRunAttempted(true)
+      movePathInputRef.current?.focus()
       return
     }
     if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
@@ -2102,6 +2133,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       onSuccess?.()
     },
     onError: (error) => {
+      if (showMovePathServerError(error)) {
+        return
+      }
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.saveFailed"))
     },
   })
@@ -2211,6 +2245,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
     if (submitState.moveEnabled && !trimmedSubmitMovePath) {
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
+      return
+    }
+    if (submitState.enabled && submitState.moveEnabled && isVisiblyRelativeMovePath(submitState.exprMovePath)) {
+      movePathInputRef.current?.focus()
       return
     }
 
@@ -3876,11 +3914,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
                           </Label>
                           <Input
+                            ref={movePathInputRef}
                             type="text"
                             value={formState.exprMovePath}
-                            onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
+                            onChange={(e) => {
+                              setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))
+                              setMovePathServerError(null)
+                            }}
                             placeholder={t("preferences.workflowDialog.move.placeholder")}
+                            aria-invalid={movePathError ? true : undefined}
+                            className={cn(movePathError && "border-destructive/50")}
                           />
+                          {movePathError && (
+                            <p className="text-xs text-destructive">{movePathError}</p>
+                          )}
                         </div>
                         <div className="flex items-start gap-2">
                           <Switch
@@ -4230,12 +4277,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   size="sm"
                   className="flex-1 sm:flex-initial h-10 sm:h-8"
                   onClick={handleRunDryRunNow}
-                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending}
+                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending || Boolean(movePathError)}
                 >
                   {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {t("preferences.workflowDialog.runDryRunNow")}
                 </Button>
-                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
+                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending || movePathBlocksSave}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {rule ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.create")}
                 </Button>

@@ -69,21 +69,26 @@ collect_input() {
 	while IFS= read -r subject; do
 		# Merge commits and other commits without a PR number add nothing.
 		[[ $subject =~ \(#([0-9]+)\)$ ]] || continue
-		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body) || {
+		json=$(gh pr view "${BASH_REMATCH[1]}" -R "$repo" --json number,title,labels,body,author) || {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
-		# Users cannot reach a "no-ui-yet" PR until its UI ships, so leave it
-		# out, unless it breaks something. The SSH API is reachable already.
+		# CI, test, and docs PRs change nothing in qui. Users cannot reach a
+		# "no-ui-yet" PR until its UI ships. Leave these PRs out, unless they
+		# break something. The SSH API is reachable already.
 		if jq -e --arg subject "$subject" '
-			any(.labels[]; .name == "no-ui-yet") and
+			(any(.labels[]; .name == "no-ui-yet") or ($subject | test("^(ci|test|docs)[:(]"))) and
 			(any(.labels[]; .name == "BREAKING CHANGE") or ($subject | test("^\\w+(\\([^)]*\\))?!:")) | not)
 		' <<<"$json" >/dev/null; then
 			continue
 		fi
-		# Dependency, CI-only, and docs-only PRs give only their title.
-		if [[ $subject =~ ^(chore\(deps\)|ci|docs)[:\(!] ]] ||
-			jq -e 'any(.labels[]; .name == "dependencies")' <<<"$json" >/dev/null; then
+		# A dependency PR from a bot gives only its title, because its body is
+		# the changelog of the dependency. A person says in the body what the
+		# update changes for users, so that body stays.
+		if jq -e --arg subject "$subject" '
+			.author.is_bot and
+			(any(.labels[]; .name == "dependencies") or ($subject | test("^chore\\(deps\\)[:(!]")))
+		' <<<"$json" >/dev/null; then
 			json=$(jq 'del(.body)' <<<"$json")
 		fi
 		jq -r --arg subject "$subject" '
@@ -98,6 +103,8 @@ write_sections() {
 	{
 		cat <<'EOF'
 You write two sections of the GitHub release notes for qui, a web UI that self-hosters use to manage qBittorrent instances. The input after these instructions has two writing skills and the pull requests (PRs) in the release. Write only Markdown, with no text before or after the sections.
+
+Write only about changes that qui users get in the app, the API, the binary, or the Docker image. Leave out changes to CI, the release pipeline, the build, tests, linting, the documentation site, and the repository. A toolchain or dependency update goes in only when it fixes something for users, for example a security fix.
 
 ## Breaking changes
 
@@ -154,6 +161,10 @@ After you write the draft, apply the Document rules of the simple-english skill,
 EOF
 		collect_input
 	} >"$work/prompt.md" || return 1
+	if ! grep -q '^### PR #' "$work/prompt.md"; then
+		echo "::notice::release highlights: no PR in $tag changes qui for users, so the release gets no new sections" >&2
+		return 1
+	fi
 
 	# --safe-mode loads no CLAUDE.md, skill, or setting from the repo or the
 	# user, and --tools "" leaves Claude no tools, so only the prompt counts.
@@ -181,7 +192,7 @@ done
 if [[ $nl$body != *"$marker"* ]]; then
 	warn "the release body has no '## Changelog' line"
 elif ! sections=$(write_sections); then
-	: # write_sections printed the warning.
+	: # write_sections printed the reason.
 elif [[ -z ${sections//[[:space:]]/} ]]; then
 	warn "Claude returned no text"
 # A contributor can edit a PR body after the merge. Accept only the two

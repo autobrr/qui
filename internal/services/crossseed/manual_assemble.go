@@ -103,7 +103,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
-		return resp, nil
+		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
 	// A cross-device retry may have moved the tree to another base dir.
 	resp.Destination = planned.build.plan.RootDir

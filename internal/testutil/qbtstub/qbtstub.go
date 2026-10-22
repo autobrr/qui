@@ -16,10 +16,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/Masterminds/semver/v3"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +69,10 @@ type Server struct {
 	rid        int
 	torrents   map[string]*Torrent
 	categories map[string]string
-	savePath   string
+	// downloadPaths holds each category's download path option, with no
+	// entry when the category inherits it.
+	downloadPaths map[string]*qbt.CategoryDownloadPath
+	savePath      string
 	// ConflictAfter, when set, makes setCategory change that many torrents
 	// and then answer 409, as qBittorrent does when it throws part way
 	// through the list.
@@ -81,16 +87,28 @@ type Server struct {
 	// ScanDirs is reported as the scan_dirs preference: each monitored
 	// folder maps to 0 (save there), 1 (the default save path) or a path.
 	ScanDirs map[string]any
+	// CategoriesStatus, when set, makes torrents/categories answer with it.
+	CategoriesStatus int
+	// WebAPIVersion, when set, replaces the reported 2.11.4 (qBittorrent
+	// 5.1). Category edits follow it: up to 5.1 an edit that changes nothing
+	// or names a missing category answers 409 (404 later), up to 5.2 an edit
+	// replaces every option, and from 2.16.1 (5.3) it keeps the options it
+	// leaves out.
+	WebAPIVersion string
+	// WebAPIVersionStatus, when set, makes app/webapiVersion answer with it.
+	WebAPIVersionStatus int
 
-	writes   map[string]int
-	bodies   map[string]string
-	requests int
-	syncs    int
+	writes    map[string]int
+	conflicts map[string]int
+	bodies    map[string]string
+	requests  int
+	syncs     int
 }
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
-	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, savePath: savePath, writes: map[string]int{}, bodies: map[string]string{}}
+	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
+		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -101,6 +119,36 @@ func (s *Server) AddCategory(name, savePath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.categories[name] = savePath
+}
+
+// SetCategoryDownloadPath sets a category's download path option, nil to
+// make it inherit.
+func (s *Server) SetCategoryDownloadPath(name string, option *qbt.CategoryDownloadPath) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if option == nil {
+		delete(s.downloadPaths, name)
+		return
+	}
+	s.downloadPaths[name] = option
+}
+
+// CategoryDownloadPath returns a category's download path option, nil when it
+// inherits.
+func (s *Server) CategoryDownloadPath(name string) *qbt.CategoryDownloadPath {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.downloadPaths[name]
+}
+
+// categoryJSON is a category as qBittorrent 5.1 sends it, which leaves
+// download_path out when the category inherits it.
+func (s *Server) categoryJSON(name string) map[string]any {
+	c := map[string]any{"name": name, "savePath": s.categories[name]}
+	if option, ok := s.downloadPaths[name]; ok {
+		c["download_path"] = option
+	}
+	return c
 }
 
 // SetDefaultSavePath changes the default save path, as an edit in
@@ -139,6 +187,13 @@ func (s *Server) Writes(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writes[endpoint]
+}
+
+// Conflicts counts the writes to endpoint that answered 409.
+func (s *Server) Conflicts(endpoint string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conflicts[endpoint]
 }
 
 // Requests counts every request qBittorrent received.
@@ -332,7 +387,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "auth/login":
 		_, _ = io.WriteString(w, "Ok.")
 	case "app/webapiVersion":
-		_, _ = io.WriteString(w, "2.11.4")
+		if s.WebAPIVersionStatus != 0 {
+			w.WriteHeader(s.WebAPIVersionStatus)
+			return
+		}
+		_, _ = io.WriteString(w, s.webAPIVersion())
 	case "app/version":
 		_, _ = io.WriteString(w, "v5.1.0")
 	case "app/preferences":
@@ -357,8 +416,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2}
 		}
 		categories := map[string]any{}
-		for name, p := range s.categories {
-			categories[name] = map[string]any{"name": name, "savePath": p}
+		for name := range s.categories {
+			categories[name] = s.categoryJSON(name)
 		}
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": true, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected"}})
@@ -428,9 +487,57 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				t.AutoTMM = strings.EqualFold(param("enable"), "true")
 			}
 		}
+	case "torrents/categories":
+		if s.CategoriesStatus != 0 {
+			w.WriteHeader(s.CategoriesStatus)
+			return
+		}
+		categories := map[string]any{}
+		for name := range s.categories {
+			categories[name] = s.categoryJSON(name)
+		}
+		writeJSON(w, categories)
 	case "torrents/editCategory":
 		name := param("category")
-		s.categories[name] = param("savePath")
+		if _, ok := s.categories[name]; !ok {
+			if s.webAPIAtLeast("2.15.0") {
+				w.WriteHeader(http.StatusNotFound)
+			} else {
+				s.conflicts[endpoint]++
+				w.WriteHeader(http.StatusConflict)
+			}
+			return
+		}
+		savePath, option := s.categories[name], s.downloadPaths[name]
+		_, sentSavePath := params["savePath"]
+		_, sentOption := params["downloadPathEnabled"]
+		partial := s.webAPIAtLeast("2.16.1")
+		if sentSavePath || !partial {
+			// qBittorrent stores a cleaned path.
+			savePath = param("savePath")
+			if savePath != "" {
+				savePath = path.Clean(savePath)
+			}
+		}
+		// Up to qBittorrent 5.2 an edit replaces every option of the category,
+		// so a download path the request leaves out goes back to inherit.
+		if sentOption || !partial {
+			option = nil
+			if enabled := param("downloadPathEnabled"); enabled == "true" || enabled == "false" {
+				option = &qbt.CategoryDownloadPath{Enabled: enabled == "true", Path: param("downloadPath")}
+			}
+		}
+		if !s.webAPIAtLeast("2.15.0") && savePath == s.categories[name] && reflect.DeepEqual(option, s.downloadPaths[name]) {
+			s.conflicts[endpoint]++
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		s.categories[name] = savePath
+		if option == nil {
+			delete(s.downloadPaths, name)
+		} else {
+			s.downloadPaths[name] = option
+		}
 		for _, t := range s.torrents {
 			if t.AutoTMM && t.Category == name {
 				s.moveATM(t, s.categoryPath(name))
@@ -439,6 +546,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (s *Server) webAPIVersion() string {
+	if s.WebAPIVersion != "" {
+		return s.WebAPIVersion
+	}
+	return "2.11.4"
+}
+
+func (s *Server) webAPIAtLeast(version string) bool {
+	return !semver.MustParse(s.webAPIVersion()).LessThan(semver.MustParse(version))
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
