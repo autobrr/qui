@@ -138,3 +138,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Log level**: The server setting, from config, env, or Settings, that decides which lines qui writes to stdout and to the log file. The live log view can only receive lines at or above it. _Avoid_: Log filter, verbosity.
 - **Level filter**: A user's choice in the live log view of which received levels to show. It is remembered across visits and never changes what qui writes. _Avoid_: Log level (for the viewer choice).
+
+## Page layout
+
+- **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
+- **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
+- **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.

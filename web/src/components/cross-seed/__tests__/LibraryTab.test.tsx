@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
@@ -59,9 +59,19 @@ vi.mock("@/lib/api", () => ({
 import type { CrossSeedAutomationSettings } from "@/types"
 import { LibraryTab } from "../LibraryTab"
 
+beforeEach(() => {
+  // Clicking Start opens its tooltip, and Radix measures the tooltip through ResizeObserver, which jsdom lacks.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
   Object.assign(mocks.settings, { gazelleEnabled: false, orpheusApiKey: "", redactedApiKey: "" })
   mocks.searchSettings.indexerIds = []
   mocks.indexers = []

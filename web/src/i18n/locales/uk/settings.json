@@ -16,6 +16,11 @@
     "security": "Безпека",
     "logs": "Журнали"
   },
+  "nav": {
+    "general": "Загальні",
+    "connections": "Підключення",
+    "access": "Доступ"
+  },
   "language": {
     "cardTitle": "Мова",
     "cardDescription": "Виберіть потрібну мову відображення"

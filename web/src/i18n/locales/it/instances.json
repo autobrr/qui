@@ -1766,11 +1766,9 @@
       "lastBackup": "Ultimo backup",
       "loading": "Caricamento...",
       "progress": "{{current}} di {{total}} torrent ({{percentage}}%)",
-      "status": "Stato: {{status}}",
       "noBackupsYet": "Nessun backup",
       "nextScheduledBackup": "Prossimo backup pianificato",
       "loadingSchedule": "Caricamento della pianificazione...",
-      "instance": "Istanza",
       "automaticBackupsOff": "I backup automatici sono disattivati per questa istanza.",
       "enableCadenceToSchedule": "Abilita almeno una cadenza automatica per pianificare i backup.",
       "currentlyRunning": "Il backup è attualmente in esecuzione.",
@@ -1794,6 +1792,7 @@
       "schedule": {
         "title": "Cadenze automatiche",
         "description": "Le esecuzioni orarie, giornaliere, settimanali e mensili iniziano dopo che il backup precedente è terminato e il loro intervallo è trascorso. Lasciale tutte disattivate se attivi i backup solo manualmente.",
+        "keep": "Mantieni",
         "hourly": "Ogni ora",
         "hourlyDescription": "Quanti snapshot orari conservare prima che i più vecchi vengano eliminati.",
         "hourlyTooltip": "Viene eseguito circa una volta all'ora quando i backup sono abilitati ed è trascorsa almeno un'ora dall'ultima esecuzione.",
@@ -1812,8 +1811,7 @@
         "saveChanges": "Salva modifiche",
         "saveAll": "Salva le modifiche su tutte le istanze",
         "requiresCadence": "Seleziona almeno una cadenza (oraria, giornaliera, settimanale o mensile) prima di salvare.",
-        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze.",
-        "changesApplyImmediately": "Le modifiche si applicano ai backup futuri non appena salvi."
+        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze."
       }
     },
     "restore": {

@@ -174,7 +174,7 @@ export function LicenseManager({
         <CardHeader className="px-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CardTitle className="flex items-center gap-2">
                 <Key className="h-4 w-4 sm:h-5 sm:w-5" />
                 {t("themes.license.managementTitle")}
               </CardTitle>
