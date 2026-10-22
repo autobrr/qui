@@ -87,6 +87,12 @@ type waitKey struct {
 	hash       string
 }
 
+// Slot ownership and dispatch reporting differ for GUI programs and shell wrappers.
+type executionPolicy struct {
+	releaseOnStart  bool
+	reportAfterExit bool
+}
+
 // ExecuteRequest contains all parameters needed to execute an external program.
 type ExecuteRequest struct {
 	// ProgramID is used to fetch the program from the store.
@@ -203,7 +209,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Build and execute command
 	// Use background context since the command runs async and parent context may be cancelled
-	cmd, launcher := s.buildCommand(context.Background(), program, args)
+	cmd, policy := s.buildCommand(context.Background(), program, args)
 
 	key := waitKey{programID: program.ID, instanceID: req.InstanceID, hash: req.Torrent.Hash}
 	if _, waiting := s.waiting.LoadOrStore(key, struct{}{}); waiting {
@@ -237,7 +243,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	// Execute in goroutine (fire-and-forget)
 	// Activity logging happens inside executeAsync after cmd.Start() succeeds
-	go s.executeAsync(cmd, launcher, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
+	go s.executeAsync(cmd, policy, key, program, req, time.Now().Add(s.waitTimeout)) //nolint:gosec // G118: external program runs past the request that queued it
 
 	message := "Program execution initiated"
 	if program.UseTerminal {
@@ -248,12 +254,12 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 }
 
 // executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
-// Terminal and Windows batch wrappers release their slot after startup;
-// direct programs retain it until exit. Every process is reaped with Wait.
+// Windows GUI programs, terminals and Windows batch wrappers release their slot after startup;
+// owned console programs retain it until exit. Every process is reaped with Wait.
 // Windows wrappers report activity after exit so shell failures remain visible.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
-	launcher bool,
+	policy executionPolicy,
 	key waitKey,
 	program *models.ExternalProgram,
 	req ExecuteRequest,
@@ -282,7 +288,6 @@ func (s *Service) executeAsync(
 	})
 	defer release()
 
-	// Start the owned process or launcher.
 	execErr := cmd.Start()
 	if execErr != nil {
 		log.Error().
@@ -296,18 +301,18 @@ func (s *Service) executeAsync(
 		return
 	}
 
-	if launcher {
+	if policy.releaseOnStart {
 		release()
 	}
 
 	// Windows wrappers must also successfully dispatch their command.
-	if runtime.GOOS != "windows" || !launcher {
+	if !policy.reportAfterExit {
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	}
 
 	// Wait for the process to prevent zombie processes
 	waitErr := cmd.Wait()
-	if runtime.GOOS == "windows" && launcher {
+	if policy.reportAfterExit {
 		if waitErr != nil {
 			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed: %v", waitErr))
 		} else {
@@ -331,8 +336,8 @@ func (s *Service) executeAsync(
 }
 
 // buildCommand creates the appropriate exec.Cmd based on platform and settings.
-// launcher reports a terminal or batch wrapper that releases its slot after startup.
-func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (cmd *exec.Cmd, launcher bool) {
+// The policy controls slot lifetime and when dispatch activity can be reported.
+func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
 	if program.UseTerminal {
 		return s.buildTerminalCommand(ctx, program, args)
 	}
@@ -340,18 +345,19 @@ func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProg
 }
 
 // buildTerminalCommand creates a command that opens in a terminal window.
-func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
+func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
 	if runtime.GOOS == "windows" {
 		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 		cmdArgs := make([]string, 0, 6+len(args))
 		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), true //nolint:gosec // intentional external program execution
+		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...), executionPolicy{releaseOnStart: true, reportAfterExit: true} //nolint:gosec // intentional external program execution
 	}
 
 	// Unix/Linux: Build command string and spawn in a terminal
 	allArgs := append([]string{program.Path}, args...)
-	return s.createTerminalCommand(ctx, shellJoin(allArgs))
+	cmd, launcher := s.createTerminalCommand(ctx, shellJoin(allArgs))
+	return cmd, executionPolicy{releaseOnStart: launcher}
 }
 
 // shellJoin single-quotes each argument for a POSIX shell and joins them with spaces.

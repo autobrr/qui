@@ -1372,7 +1372,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, launcher := service.buildCommand(ctx, program, []string{"arg1"})
 		assert.Equal(t, program.Path, cmd.Path)
 		assert.Equal(t, []string{program.Path, "arg1"}, cmd.Args)
-		assert.False(t, launcher, "the service owns the directly launched process")
+		assert.False(t, launcher.releaseOnStart, "the service owns an unclassified process")
 	})
 
 	t.Run("arguments are passed correctly", func(t *testing.T) {
@@ -1695,7 +1695,7 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}", UseTerminal: true}
 
 	_, launcher := s.buildCommand(t.Context(), program, nil)
-	require.False(t, launcher, "no terminal emulator, so qui runs the program with sh -c")
+	require.False(t, launcher.releaseOnStart, "no terminal emulator, so qui runs the program with sh -c")
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)

@@ -12,6 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, bool) {
-	return exec.CommandContext(ctx, program.Path, args...), false //nolint:gosec // intentional external program execution
+func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) (*exec.Cmd, executionPolicy) {
+	return exec.CommandContext(ctx, program.Path, args...), executionPolicy{} //nolint:gosec // intentional external program execution
 }
