@@ -11,20 +11,25 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type stubTorrentNotificationSync struct {
 	torrents       []qbt.Torrent
 	err            error
 	lastHashes     []string
+	refreshCalls   int
 	extractDomain  string
 	extractInvoked bool
 }
 
 func (s *stubTorrentNotificationSync) GetTorrentsFresh(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	s.refreshCalls++
 	s.lastHashes = append([]string(nil), filter.Hashes...)
 	if s.err != nil {
 		return nil, s.err
@@ -48,6 +53,8 @@ type captureNotifier struct {
 	events chan notifications.Event
 }
 
+func (*captureNotifier) Listens(context.Context, notifications.EventType) bool { return true }
+
 func (n *captureNotifier) Notify(_ context.Context, event notifications.Event) {
 	n.events <- event
 }
@@ -59,7 +66,7 @@ func TestParseTorrentTags(t *testing.T) {
 	require.Equal(t, []string{"alpha", "beta", "gamma"}, got)
 }
 
-func TestNotifyTorrentAddedWithDelayAfterRefreshesSnapshot(t *testing.T) {
+func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 	t.Parallel()
 
 	initial := qbt.Torrent{
@@ -87,7 +94,7 @@ func TestNotifyTorrentAddedWithDelayAfterRefreshesSnapshot(t *testing.T) {
 	}
 	notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-	notifyTorrentAddedWithDelayAfter(context.Background(), syncStub, notifier, 7, initial, 5*time.Millisecond)
+	notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []qbt.Torrent{initial}, 5*time.Millisecond)
 
 	select {
 	case event := <-notifier.events:
@@ -108,7 +115,7 @@ func TestNotifyTorrentAddedWithDelayAfterRefreshesSnapshot(t *testing.T) {
 	require.Equal(t, []string{"ABC123"}, syncStub.lastHashes)
 }
 
-func TestNotifyTorrentAddedWithDelayAfterFallsBackToInitialSnapshot(t *testing.T) {
+func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 	t.Parallel()
 
 	initial := qbt.Torrent{
@@ -128,7 +135,7 @@ func TestNotifyTorrentAddedWithDelayAfterFallsBackToInitialSnapshot(t *testing.T
 	}
 	notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-	notifyTorrentAddedWithDelayAfter(context.Background(), syncStub, notifier, 2, initial, 5*time.Millisecond)
+	notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []qbt.Torrent{initial}, 5*time.Millisecond)
 
 	select {
 	case event := <-notifier.events:
@@ -142,4 +149,41 @@ func TestNotifyTorrentAddedWithDelayAfterFallsBackToInitialSnapshot(t *testing.T
 	case <-time.After(time.Second):
 		t.Fatal("expected delayed torrent_added notification")
 	}
+}
+
+func TestNotifyTorrentsAddedAfterRefreshesBatchInOneRead(t *testing.T) {
+	t.Parallel()
+
+	first := qbt.Torrent{Name: "First.Release", Hash: "AAA111", Progress: 0}
+	second := qbt.Torrent{Name: "Second.Release", Hash: "BBB222", Progress: 0.2}
+	refreshedFirst := first
+	refreshedFirst.Progress = 0.9
+
+	syncStub := &stubTorrentNotificationSync{torrents: []qbt.Torrent{refreshedFirst}}
+	notifier := &captureNotifier{events: make(chan notifications.Event, 2)}
+
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 3, []qbt.Torrent{first, second}, 0)
+
+	progress := map[string]float64{}
+	for range 2 {
+		event := <-notifier.events
+		progress[event.TorrentHash] = event.TorrentProgress
+	}
+	require.Equal(t, map[string]float64{"AAA111": 0.9, "BBB222": 0.2}, progress)
+	require.Equal(t, 1, syncStub.refreshCalls)
+	require.Equal(t, []string{"AAA111", "BBB222"}, syncStub.lastHashes)
+}
+
+func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
+	t.Parallel()
+
+	store := models.NewNotificationTargetStore(testdb.NewMigratedSQLite(t, "added-no-listener"))
+	notifier := notifications.NewService(store, nil, zerolog.Nop())
+	syncStub := &stubTorrentNotificationSync{}
+
+	start := time.Now()
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 1, []qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
+
+	require.Zero(t, syncStub.refreshCalls)
+	require.Less(t, time.Since(start), 10*time.Second)
 }
