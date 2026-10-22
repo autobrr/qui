@@ -140,7 +140,7 @@ func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 // and the steps it dispatches to the background by the rows they record at dispatch.
 func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
-	svc, db, instanceIDs := newStubService(t, stub)
+	svc, db, instanceIDs := newStubService(t, nil, stub)
 
 	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), false)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 // A dry run reports its actions in actionRunOrder.
 func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
-	svc, _, instanceIDs := newStubService(t, stub)
+	svc, _, instanceIDs := newStubService(t, nil, stub)
 
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), true)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 // A torrent a rule chooses for delete loses the actions earlier rules chose for it.
 func TestApplyRules_DeleteDropsTheTorrentsOwnActions(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
-	svc, _, instanceIDs := newStubService(t, stub)
+	svc, _, instanceIDs := newStubService(t, nil, stub)
 	rules := []*models.Automation{
 		{
 			ID: 1, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 0,
@@ -220,7 +220,7 @@ const snapshotTorrent = `{"` + runningHash + `":{"name":"running","state":"stall
 // rule changed it.
 func TestApplyRulesDryRun_RulesSeeStartOfRunTorrent(t *testing.T) {
 	stub := newStubQbt(t, snapshotTorrent)
-	svc, _, instanceIDs := newStubService(t, stub)
+	svc, _, instanceIDs := newStubService(t, nil, stub)
 	categoryIs := func(category string) *models.RuleCondition {
 		return &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: category}
 	}
@@ -261,7 +261,7 @@ func TestApplyRules_ExportSeesStartOfRunTorrent(t *testing.T) {
 	source := newStubQbt(t, snapshotTorrent)
 	target := newStubQbt(t, `{}`)
 	target.torrentsAfterAdd = `{"` + runningHash + `":{"name":"running","state":"stalledUP","progress":1,"size":10,"save_path":"/target/old"}}`
-	svc, _, instanceIDs := newStubService(t, source, target)
+	svc, _, instanceIDs := newStubService(t, nil, source, target)
 	rules := []*models.Automation{{
 		ID: 1, Name: "recategorise and export", TrackerPattern: "*", Enabled: true,
 		Conditions: &models.ActionConditions{

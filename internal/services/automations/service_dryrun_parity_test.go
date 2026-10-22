@@ -31,7 +31,7 @@ func newDryRunParityService(t *testing.T) (*Service, int) {
 	t.Helper()
 
 	stub := newStubQbt(t, `{"`+parityHash+`":{"name":"parity","ratio":2,"progress":1,"size":10,"state":"stalledUP","save_path":"/data","content_path":"/data/parity"}}`)
-	svc, _, instanceIDs := newStubService(t, stub)
+	svc, _, instanceIDs := newStubService(t, nil, stub)
 	return svc, instanceIDs[0]
 }
 
@@ -46,7 +46,8 @@ type stubQbt struct {
 	url string
 
 	mu       sync.Mutex
-	torrents string // JSON object keyed by hash, as in sync/maindata
+	torrents string            // JSON object keyed by hash, as in sync/maindata
+	files    map[string]string // torrents/files answer by hash; other hashes get no files
 	writes   []stubWrite
 	// torrentsAfterAdd replaces torrents on torrents/add, so an export's verification finds the torrent.
 	torrentsAfterAdd string
@@ -74,7 +75,13 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + `}`))
 	case "/api/v2/torrents/files":
-		_, _ = w.Write([]byte(`[]`))
+		s.mu.Lock()
+		files, ok := s.files[r.URL.Query().Get("hash")]
+		s.mu.Unlock()
+		if !ok {
+			files = `[]`
+		}
+		_, _ = w.Write([]byte(files))
 	case "/api/v2/torrents/export":
 		_, _ = w.Write([]byte("d4:infod4:name6:paritye"))
 	default:
@@ -104,7 +111,7 @@ func (s *stubQbt) recordedWrites() []stubWrite {
 }
 
 // newStubService boots a Service with one instance per stub, in order, and returns the activity database.
-func newStubService(t *testing.T, stubs ...*stubQbt) (*Service, *database.DB, []int) {
+func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, t.Name())
@@ -122,7 +129,7 @@ func newStubService(t *testing.T, stubs ...*stubQbt) (*Service, *database.DB, []
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, db, instanceIDs
 }
 
