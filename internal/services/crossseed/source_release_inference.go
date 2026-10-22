@@ -165,14 +165,21 @@ func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPo
 }
 
 // seasonFolderRelease reads a name that holds only a season, such as
-// "Season 2", with the identity of its largest file: the files carry the
-// title, year, and tags that the folder name lacks. The name keeps its season
+// "Season 2", with the identity of its largest content file: the files carry
+// the title, year, and tags that the folder name lacks. A sample or a bonus
+// video is not content, because it names no episode. The name keeps its season
 // pack shape, and a largest file of another season lends nothing.
 func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
 	if parsed.Title != "" || parsed.Series == 0 || parsed.Episode != 0 {
 		return parsed
 	}
-	largest := FindLargestFile(files)
+	normalizer := s.matcher().normalizer()
+	var largest *qbt.TorrentFile
+	for i := range files {
+		if !shouldIgnoreFile(files[i].Name, normalizer) && (largest == nil || files[i].Size > largest.Size) {
+			largest = &files[i]
+		}
+	}
 	if largest == nil {
 		return parsed
 	}

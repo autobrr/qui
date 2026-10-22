@@ -121,6 +121,13 @@ func corpusPackFiles(dir, episodeName string) qbt.TorrentFiles {
 	return files
 }
 
+// corpusPackWithBonus is a pack of ten episodes and a bonus video that is
+// larger than each episode.
+func corpusPackWithBonus(dir string) qbt.TorrentFiles {
+	files := corpusPackFiles(dir, "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
+	return append(files, qbt.TorrentFile{Name: dir + "/Extras/Behind the Scenes (1080p).mkv", Size: 2 * corpusEpisodeSize})
+}
+
 // corpusEpisodeWithNFO is an episode with an NFO file, so its total size is not
 // equal to the bare episode. Local matches then cannot rescue the title, and
 // the name rules alone decide.
@@ -783,6 +790,24 @@ var corpusRows = []corpusRow{
 			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
 			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
 			pathWebhook:      knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+		},
+	},
+	{
+		// The bonus video is the largest file, and it names no season, so the Read
+		// release takes its identity from the largest episode.
+		name:           "season folder pack with a large bonus video against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize + 2*corpusEpisodeSize,
+		candidateSize:  corpusPackSize + 2*corpusEpisodeSize,
+		sourceFiles:    corpusPackWithBonus("Season 2"),
+		candidateFiles: corpusPackWithBonus("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
 		},
 	},
 	{
