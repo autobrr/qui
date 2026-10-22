@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -235,6 +235,10 @@ lint-full:
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
+# Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
+lint-ratchet:
+	go run ./scripts/ratchet -base $$(git merge-base HEAD develop)
+
 # Lint with JSON output (for AI agent consumption)
 lint-json:
 	@echo "Generating lint report..."
@@ -294,6 +298,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
+	@echo "  make lint-ratchet   - Check that the lint ratchet allowlist only shrinks"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
