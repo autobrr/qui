@@ -1823,7 +1823,10 @@ func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *mode
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
