@@ -473,7 +473,11 @@ func (s *cleanupScope) belowLink(ctx context.Context, anchor, dir string, plain 
 			ok = errors.Is(err, fs.ErrNotExist) || err == nil && info.IsDir
 			plain[p] = ok
 			if !ok {
-				log.Debug().Err(err).Str("dir", dir).Str("above", p).Msg("folder cleanup: kept folder below one that is not a plain folder")
+				if err != nil {
+					s.failed(ctx, err, p)
+				} else {
+					log.Debug().Str("dir", dir).Str("above", p).Msg("folder cleanup: kept folder below one that is not a plain folder")
+				}
 			}
 		}
 		if !ok {
