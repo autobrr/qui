@@ -428,7 +428,7 @@ function InstanceOrphanScanItem({
             </div>
           </div>
 
-          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits />}
+          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits hasIdentity={instance.capabilities.identity} />}
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (

@@ -1,0 +1,47 @@
+name: GoReleaser changelog
+
+# goreleaser check and a snapshot build do not render changelog.format.
+# This job renders it for the commits on develop since the latest tag, so a bad
+# template fails here and not on the release tag.
+on:
+  pull_request:
+    paths:
+      - ".goreleaser.yml"
+      - ".goreleaser.release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Render changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The changelog command does not need GORELEASER_KEY, so fork PRs work.
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7.2.3
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          install-only: true
+
+      # With use: github, the range is the latest tag to the head of develop,
+      # not the PR. An empty range renders no line and tests nothing, so the
+      # step fails. Right after a release, run the job again later.
+      - name: Render changelog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for config in .goreleaser.yml .goreleaser.release.yml; do
+            out=$(goreleaser changelog --config "$config")
+            echo "$out"
+            if ! grep -q '^\* ' <<<"$out"; then
+              echo "::error::$config: no commits on develop since the latest tag, so no changelog line was rendered"
+              exit 1
+            fi
+          done

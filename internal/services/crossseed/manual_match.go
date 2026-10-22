@@ -14,6 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -142,12 +143,17 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	sourceRelease := s.releaseCache.Parse(meta.Name)
-	packMode := isTVSeasonPack(sourceRelease)
+	// A pack named only with a Season numeral parses as a movie. Its episode
+	// files make it a pack, so a movie sequel stays a movie.
+	packRelease := s.matcher().parseSeasonPackName(meta.Name)
 	packEpisodeCount := 0
+	if isTVSeasonPack(packRelease) {
+		packEpisodeCount = len(s.matcher().extractPackEpisodes(meta.Files, packRelease))
+	}
+	packMode := isTVSeasonPack(sourceRelease) || packEpisodeCount > 0
 	proposalLimit := manualMatchProposalLimit
 	assemblyUnavailable := ""
 	if packMode {
-		packEpisodeCount = len(extractPackEpisodes(meta.Files, sourceRelease))
 		proposalLimit = min(manualMatchCoarseLimit, packEpisodeCount+manualMatchProposalLimit)
 		assemblyUnavailable = manualAssemblyUnavailableReason(instance)
 		if packEpisodeCount == 0 {
@@ -346,7 +352,7 @@ func (s *Service) manualMatchEffectiveSavePath(
 	if instance == nil || (!instance.UseReflinks && !instance.UseHardlinks) {
 		return targetSavePath
 	}
-	baseDir := s.previewLinkBaseDir(ctx, instance, targetSavePath)
+	baseDir, d := s.previewLinkBaseDir(ctx, instance, targetSavePath)
 	if baseDir == "" {
 		return targetSavePath
 	}
@@ -355,29 +361,31 @@ func (s *Service) manualMatchEffectiveSavePath(
 		treeFiles = append(treeFiles, hardlinktree.TorrentFile{Path: f.Name, Size: f.Size})
 	}
 	candidate := CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name}
-	return s.buildHardlinkDestDir(ctx, instance, baseDir, torrentHash, torrentName, candidate, trackerDomain, &CrossSeedRequest{}, treeFiles)
+	return s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, trackerDomain, &CrossSeedRequest{}, treeFiles)
 }
 
 // previewLinkBaseDir picks the configured link base directory on the same
-// filesystem as samplePath, without the MkdirAll side effect of
-// FindMatchingBaseDir. Falls back to the first configured directory.
-func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) string {
-	first := ""
+// filesystem as samplePath, in LinkIntoMatchingBaseDir order but without its
+// MkdirAll side effect. Falls back to the best-ranked directory. The dialect
+// is the backend's, or the host's when the backend cannot be read.
+func (s *Service) previewLinkBaseDir(ctx context.Context, instance *models.Instance, samplePath string) (string, fsops.PathDialect) {
+	dirs := splitBaseDirs(instance.HardlinkBaseDir)
+	if len(dirs) == 0 {
+		return "", fsops.HostPaths
+	}
+	d := fsops.HostPaths
 	backend, backendErr := s.getBackendForInstance(ctx, instance.ID, models.CapabilityWrite)
-	for dir := range strings.SplitSeq(instance.HardlinkBaseDir, ",") {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-		if first == "" {
-			first = dir
-		}
-		if backendErr != nil || backend == nil || samplePath == "" {
-			continue
-		}
-		if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
-			return dir
+	haveBackend := backendErr == nil && backend != nil
+	if haveBackend {
+		d = backend.Paths()
+	}
+	dirs = rankBaseDirs(d, dirs, samplePath)
+	if haveBackend && samplePath != "" {
+		for _, dir := range dirs {
+			if same, err := backend.SameFilesystem(ctx, samplePath, dir); err == nil && same {
+				return dir, d
+			}
 		}
 	}
-	return first
+	return dirs[0], d
 }

@@ -49,11 +49,18 @@ body:
     validations:
       required: true
 
+  - type: input
+    attributes:
+      label: Log link
+      description: |
+        For long logs, sign in with GitHub at https://bin.getqui.com, add the logs, select a Lifetime of 90 days, and paste the Paste link here. Only qui maintainers can read a Paste. Before you upload the logs, make sure that they contain no passkeys or API keys.
+      placeholder: https://bin.getqui.com/p/...
+
   - type: textarea
     attributes:
       label: Relevant logs
       description: |
-        If applicable, include logs from qui. You can capture logs from:
+        If applicable, include a short excerpt of the logs from qui. You can capture logs from:
         - **Settings > Logs** - Click any entry to copy it
         - **Log file** - If `logPath` is set in config.toml
         - **Docker** - `docker logs qui`

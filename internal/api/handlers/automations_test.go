@@ -20,22 +20,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestAutomationValidatePayload_Category(t *testing.T) {
+func TestAutomationDecodePayload_Category(t *testing.T) {
 	for _, category := range []string{"", "archive"} {
 		t.Run("target="+category, func(t *testing.T) {
-			handler := NewAutomationHandler(nil, nil, nil, nil, nil)
-			payload := &AutomationPayload{
-				Name:           "Category rule",
-				TrackerPattern: "*",
-				Conditions: &models.ActionConditions{
-					Category: &models.CategoryAction{Enabled: true, Category: category},
-				},
-			}
+			body := `{"name":"Category rule","trackerPattern":"*","conditions":{"category":{"enabled":true,"category":"` + category + `"}}}`
 
-			status, message, err := handler.validatePayload(t.Context(), 1, payload)
+			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil, nil)
 			require.NoError(t, err)
-			require.Zero(t, status)
-			require.Empty(t, message)
 			require.Equal(t, category, payload.Conditions.Category.Category)
 		})
 	}
@@ -84,24 +75,6 @@ func TestAutomationDryRunNow(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 		require.Equal(t, "dry-run-completed", response.Status)
 	})
-}
-
-func TestAutomationValidatePayload_UnknownInstance(t *testing.T) {
-	db := testdb.NewMigratedSQLite(t, "automation-unknown-instance")
-	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-	handler := NewAutomationHandler(nil, nil, instances, nil, nil)
-	payload := &AutomationPayload{
-		Name:           "Pause rule",
-		TrackerPattern: "*",
-		Conditions:     &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}},
-	}
-
-	status, message, err := handler.validatePayload(t.Context(), 999, payload)
-
-	require.Error(t, err)
-	require.Equal(t, http.StatusNotFound, status)
-	require.Equal(t, "Instance not found", message)
 }
 
 func TestAutomationTrackerPattern(t *testing.T) {

@@ -53,16 +53,22 @@ The web interface is available at http://localhost:7476. To change the port or o
 
 ## Updating
 
+On Windows, follow [Updating](./windows.md#updating) in the Windows guide.
+
 ### Update from the web UI
 
 When a new release is available, click **Install update** in the update banner or in the **Update Status** row of **Settings → Application**. The dialog shows the current version, the new version, and a link to the release notes. After you confirm, qui downloads the release, checks its signature, replaces its binary, and restarts. The page reloads when qui is back.
 
-qui shows the **Install update** button only when it can replace its own binary:
+When a new release is available, qui shows **Install update** for every setup. If automatic installation is unavailable, the dialog explains why. It gives manual update steps and a link to the relevant guide.
+
+Automatic installation requires all of these conditions:
 
 - qui does not run in a container. To update a container, pull a new image.
 - The running version is a release build, not a local or develop build.
 - qui can write to the directory of its binary. If root owns that directory and qui runs as another user, use `sudo qui update`.
 - Update checks are on (`checkForUpdates`), and `disableSelfUpdate` is not `true`. See the [configuration reference](../configuration/reference.md).
+
+While qui checks update support, **Install update** is disabled. If the support check fails, open the dialog and click **Retry**. No update starts until the check succeeds and you confirm installation.
 
 If the update fails before qui replaces its binary, the dialog shows the error and qui keeps running on the old version.
 

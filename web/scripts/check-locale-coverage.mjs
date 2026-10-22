@@ -39,19 +39,19 @@ const namespaces = [
 
 // These technical terms, brand names, and abbreviations can stay untranslated.
 const passthroughTerms = new Set([
-  "qBittorrent", "BitTorrent", "autobrr", "qui", "GitHub",
+  "qBittorrent", "BitTorrent", "libtorrent", "autobrr", "qui", "GitHub", "WebUI",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
   "OpenID Connect", "OIDC", "OpenID",
   "DHT", "PEX", "UPnP", "NAT-PMP", "RSS", "SSE", "PWA",
   "TMM", "AutoTMM", "IPv4", "IPv6", "TCP", "UDP", "UTP",
-  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS5",
+  "SSL", "TLS", "HTTP", "HTTPS", "SOCKS4", "SOCKS5", "SMTP", "SMTPS", "STARTTLS",
   "API", "JSON", "CSV", "URL", "IMDb", "TVDb",
   "Torznab", "Gazelle", "OPS", "RED",
   "FLAC", "MP3", "MKV", "REPACK", "PROPER",
   "Freeleech", "cross-seed",
   "KB/s", "MB/s", "KiB", "MiB", "GiB", "TiB",
   "KB", "MB", "GB", "TB", "B/s",
-  "AM", "PM", "N/A", "I/O",
+  "AM", "PM", "N/A", "I/O", "Pread/pwrite",
   "GPL-2.0-or-later",
 ])
 
@@ -271,6 +271,9 @@ function classifyUntranslated(key, value) {
   if (/^[\w+.-]+:\/\//.test(value)) return "url"
   if (/^[*?[\]{}|\\^$.,;:!@#%&()=<>_+\-\w\s]+$/.test(value) && /[*?|\\]/.test(value)) return "pattern"
   if (/placeholder/i.test(key) || /example/i.test(key)) return "example"
+  // A rate suffix such as "{{unit}}/s" is the same string in most locales; a locale that does
+  // write its own (uk "{{unit}}/с") differs from English and never reaches this classifier.
+  if (/^\s*\/\s*(s|min|h|d)\s*$/.test(value.replace(/\{\{[^}]*\}\}/g, ""))) return "rate"
   if (passthroughTerms.has(value)) return "technical"
 
   // Check if composed of technical terms + connectors
@@ -287,6 +290,7 @@ const untranslatedReasons = {
   pattern: "glob / regex / filter pattern",
   example: "example value / placeholder",
   technical: "technical term",
+  rate: "rate suffix",
 }
 
 function checkUntranslated(enFlat, localeFlat, namespace) {

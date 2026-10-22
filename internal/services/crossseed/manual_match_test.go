@@ -58,6 +58,39 @@ func TestManualMatchPackProposalLimit(t *testing.T) {
 	}
 }
 
+// A name with only a Season numeral is a pack when its files are episodes,
+// and a movie sequel with one file stays a movie.
+func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
+	tests := []struct {
+		name         string
+		torrentName  string
+		files        []string
+		wantPackMode bool
+	}{
+		{
+			name:         "numeral pack",
+			torrentName:  "[PINE] Cedar Harbor II [BD 1080p]",
+			files:        []string{"[PINE] Cedar Harbor II - 01 [BD 1080p].mkv", "[PINE] Cedar Harbor II - 02 [BD 1080p].mkv"},
+			wantPackMode: true,
+		},
+		{
+			name:         "movie sequel",
+			torrentName:  "Cedar Harbor II 1080p BluRay x264-PINE",
+			files:        []string{"Cedar.Harbor.II.1080p.BluRay.x264-PINE.mkv"},
+			wantPackMode: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
+			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, nil, nil)
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPackMode, resp.PackMode)
+		})
+	}
+}
+
 func TestFindCandidatesManualTarget(t *testing.T) {
 	t.Parallel()
 

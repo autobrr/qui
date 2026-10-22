@@ -54,6 +54,7 @@
     "externalIPv6": "Зовнішній IPv6",
     "unregisteredTorrents": "Незареєстровані торенти",
     "trackerDown": "Трекер недоступний",
+    "trackerError": "Помилка трекера",
     "errors": "Помилки",
     "reannounceTooltip": "Автоматичне повторне оголошення трекера увімкнено",
     "altSpeedLimits": "Альтернативні ліміти швидкості: {{status}}",

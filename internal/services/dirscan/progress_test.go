@@ -11,7 +11,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
@@ -28,7 +30,7 @@ func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
 	}
 	idx := &trackedFilesIndex{
 		byPath:   map[string]*models.DirScanFile{existing.FilePath: existing},
-		byFileID: map[string]*models.DirScanFile{},
+		byFileID: map[fsops.FileKey]*models.DirScanFile{},
 	}
 
 	t.Run("unchanged file carries the search set forward", func(t *testing.T) {
@@ -48,4 +50,26 @@ func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
 		require.Equal(t, models.DirScanFileStatusPending, fileModel.Status)
 		require.Nil(t, fileModel.SearchedIndexerIDs)
 	})
+}
+
+// A tracked row keeps the tagged bytes; a rescan finds it by identity after a rename.
+func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
+	t.Parallel()
+
+	id := hardlink.UnixFileID(7, 42)
+	tracked := &models.DirScanFile{FilePath: "/data/old.mkv", FileID: id.Bytes()}
+	idx := &trackedFilesIndex{
+		byPath:   map[string]*models.DirScanFile{tracked.FilePath: tracked},
+		byFileID: map[fsops.FileKey]*models.DirScanFile{},
+	}
+	key, ok := idx.keyOfStored(tracked.FileID)
+	require.True(t, ok)
+	idx.byFileID[key] = tracked
+
+	existing, matchedBy := lookupTrackedFile(&ScannedFile{Path: "/data/new.mkv", FileID: id}, idx)
+	require.Same(t, tracked, existing)
+	require.Equal(t, "file_id", matchedBy)
+
+	_, ok = idx.keyOfStored(make([]byte, 16))
+	require.False(t, ok, "a pre-tag width decodes to no identity and is never indexed")
 }

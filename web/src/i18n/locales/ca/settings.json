@@ -440,7 +440,7 @@
       "managementTitle": "Gestió de llicències",
       "managementDescription": "Gestiona la llicència dels temes i l'accés premium",
       "providers": {
-        "dodoPortal": "Portal de Dodo"
+        "licensePortal": "portal de llicències"
       },
       "status": {
         "unlockTitle": "Desbloqueja els temes premium",
@@ -473,7 +473,23 @@
         "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}"
       },
       "invalid": {
-        "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa ara mateix."
+        "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, ves a <portal>licenses.getqui.com</portal>, registra't o inicia la sessió amb el correu que vas fer servir per comprar la llicència i desactiva una màquina que ja no facis servir a Machine Instances."
+      },
+      "errors": {
+        "expired": "La teva clau de llicència ha caducat.",
+        "notActive": "Aquesta clau de llicència ja no està activa.",
+        "invalid": "Aquesta clau de llicència no és vàlida.",
+        "notFound": "La clau de llicència que has introduït no és vàlida.",
+        "databaseCopied": "Aquesta llicència es va activar en una altra màquina. Sembla que s'ha copiat la base de dades.",
+        "conditionsMismatch": "La clau de llicència no compleix les condicions requerides.",
+        "activationLimit": "S'ha arribat al límit d'activacions de la llicència. Ves a <portal>licenses.getqui.com</portal> i registra't o inicia la sessió amb el correu que vas fer servir per comprar la llicència. Obre Machine Instances, desactiva una màquina que ja no facis servir i torna-ho a provar.",
+        "limitReached": "S'ha arribat al límit d'activacions de la llicència.",
+        "usageLimit": "S'ha superat el límit d'ús de la llicència.",
+        "unreachable": "No es pot connectar amb el servei de llicències. Torna-ho a provar d'aquí a una estona.",
+        "tooManyAttempts": "Massa intents. Espera un moment i torna-ho a provar.",
+        "rateLimited": "Espera abans de tornar-ho a provar.",
+        "generic": "No s'ha pogut validar la clau de llicència. Torna-ho a provar.",
+        "deleteFailed": "No s'ha pogut eliminar la llicència. Torna-ho a provar."
       },
       "actions": {
         "addLicense": "Afegeix una llicència",
@@ -486,7 +502,7 @@
         "activate": "Activa la llicència",
         "validating": "S'està validant...",
         "openDodoCheckout": "Obre la pàgina de pagament de DodoPayments",
-        "openDodoPortal": "Obre el portal de Dodo"
+        "openLicensePortal": "Obre el portal de llicències"
       },
       "deleteDialog": {
         "title": "Vols suprimir la llicència?",
@@ -526,7 +542,7 @@
           },
           "findLicenseKey": {
             "title": "Troba la teva clau de llicència",
-            "description": "La clau de llicència es mostra després del pagament. També la pots recuperar més endavant des del portal de clients de Dodo."
+            "description": "La clau de llicència es mostra després del pagament. També la pots recuperar més endavant des del portal de llicències."
           },
           "activateLicense": {
             "title": "Activa la teva llicència",
@@ -557,6 +573,17 @@
       "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
       "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
       "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+    },
+    "layout": {
+      "mobileSplit": "Tema separat per a la disposició mòbil",
+      "mobileSplitHelp": "La disposició mòbil (una finestra de menys de 768 px d'amplada) i la disposició d'escriptori mantenen cadascuna el seu tema, mode i variació. Aquesta opció s'aplica a tots els navegadors.",
+      "localOnly": "Mantén local el tema d'aquest navegador",
+      "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
+      "changesMobile": "Canvia el tema mòbil",
+      "changesDesktop": "Canvia el tema d'escriptori",
+      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
+      "saveError": "No s'ha pogut desar l'opció del tema",
+      "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }
   },
   "arrInstances": {
@@ -993,6 +1020,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Comprovant la compatibilitat",
+        "checkingDescription": "Comprovant si qui pot instal·lar aquesta actualització.",
+        "failedTitle": "No s’ha pogut comprovar la compatibilitat de l’actualització",
+        "failedDescription": "No s’ha pogut comprovar si l’actualització automàtica està disponible.",
+        "retryDescription": "Torneu a comprovar la compatibilitat abans d’instal·lar l’actualització.",
+        "retry": "Torna-ho a provar"
+      },
+      "unavailable": {
+        "description": "La instal·lació automàtica no està disponible per a aquesta configuració.",
+        "nextStep": "Com actualitzar",
+        "guide": "Guia d’actualització",
+        "container": {
+          "reason": "qui s’executa en un contenidor. Les actualitzacions provenen de la imatge del contenidor.",
+          "step": "Baixeu la nova imatge de qui i torneu a crear el contenidor amb la configuració i els volums de dades existents."
+        },
+        "disabled": {
+          "reason": "L’actualització automàtica està desactivada a la configuració de qui.",
+          "step": "Actualitzeu qui amb el gestor de paquets o el mètode que vau utilitzar per instal·lar-lo."
+        },
+        "development": {
+          "reason": "Aquesta compilació de qui no és una versió publicada. La instal·lació automàtica requereix una versió publicada.",
+          "step": "Atureu qui, substituïu el binari per una versió oficial o una compilació nova i torneu a iniciar qui."
+        },
+        "directory": {
+          "reason": "qui no pot accedir al directori del seu binari o escriure-hi.",
+          "step": "Atureu qui, substituïu el binari per la versió nova amb un compte amb accés d’escriptura i torneu a iniciar qui."
+        }
+      },
       "button": "Instal·la l'actualització",
       "confirmTitle": "Voleu instal·lar l'actualització?",
       "confirmDescription": "qui baixa la nova versió, en comprova la signatura i conserva el binari actual com a còpia de seguretat. Després qui es reinicia. La pàgina es recarrega quan qui torna.",

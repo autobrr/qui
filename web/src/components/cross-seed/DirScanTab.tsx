@@ -357,10 +357,10 @@ function DirectoryCard({
     [instances, directory.targetInstanceId]
   )
 
-  const isActive = useMemo(() => {
-    if (!status || ("status" in status && status.status === "idle")) return false
-    return isRunActive(status as DirScanRun)
-  }, [status])
+  const runs = useMemo(() => status?.runs ?? [], [status])
+  const activeRuns = useMemo(() => runs.filter(isRunActive), [runs])
+  // A webhook scan runs beside a full scan, so the card can show Scan and Pause at once.
+  const fullScanActive = activeRuns.some((run) => run.triggeredBy !== "webhook")
 
   const handleTrigger = useCallback(() => {
     triggerScan.mutate(undefined, {
@@ -401,12 +401,12 @@ function DirectoryCard({
               <span>{t("dirScan.lastScan", { time: formatRelativeTime(directory.lastScanAt) })}</span>
             )}
           </div>
-          {status && !("status" in status && status.status === "idle") && (
-            <DirectoryStatusBadge run={status as DirScanRun} />
-          )}
+          {runs.map((run) => (
+            <DirectoryStatusBadge key={run.id} run={run} />
+          ))}
         </div>
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {isActive ? (
+          {activeRuns.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -419,7 +419,8 @@ function DirectoryCard({
                 <Pause className="size-4" />
               )}
             </Button>
-          ) : (
+          )}
+          {!fullScanActive && (
             <Button
               variant="outline"
               size="sm"
@@ -472,7 +473,9 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   return (
     <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
       {config.icon}
-      <span>{config.label}</span>
+      <span>
+        {run.triggeredBy === "webhook" ? t("dirScan.webhookScanStatus", { status: config.label }) : config.label}
+      </span>
       {hasStats && (
         <span className="inline-flex items-center gap-1">
           <span className="text-muted-foreground">(</span>
@@ -851,14 +854,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   const metadataQueries = useQueries({
     queries: instanceIds.map((instanceId) => ({
-      queryKey: ["instance-metadata", instanceId],
+      queryKey: ["dir-scan-instance-metadata", instanceId],
       queryFn: async () => {
-        const [categories, tags, preferences] = await Promise.all([
+        const [categories, tags] = await Promise.all([
           api.getCategories(instanceId),
           api.getTags(instanceId),
-          api.getInstancePreferences(instanceId),
         ])
-        return { categories, tags, preferences }
+        return { categories, tags }
       },
       staleTime: 60_000,
       gcTime: 1_800_000,

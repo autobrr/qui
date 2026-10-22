@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -195,6 +196,17 @@ func (c sftpCreds) Get(ctx context.Context, id int) (*models.Instance, error) {
 func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
+// SetSSHTier keeps the fixture on the sftp tier, which these tests cover.
+func (sftpCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+
+// sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
+func sftpPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return "/" + filepath.ToSlash(p)
+	}
+	return p
+}
+
 func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	t.Parallel()
 
@@ -214,6 +226,13 @@ func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	f.instance.mu.Lock()
 	f.instance.inst.SSHHost, f.instance.inst.SSHPort, f.instance.inst.SSHUsername = host, port, "qui"
 	f.instance.mu.Unlock()
+	root := sftpPath(filepath.Dir(f.orphan))
+	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+	}
+	stubSync(f.svc).getAppPreferences = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: root}, nil
+	}
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
@@ -223,7 +242,7 @@ func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
 	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
-	require.Equal(t, f.orphan, files[0].FilePath)
+	require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
 }
 
 // flippingBackend calls flip once root has handed out enough entries that the
@@ -305,15 +324,16 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 
 			// Made after the fixture's root so it sorts after it, and a two-root
 			// scan has finished that root before the mode changes.
-			bigRoot = filepath.Join(t.TempDir(), "zbig")
+			hostBigRoot := filepath.Join(t.TempDir(), "zbig")
+			bigRoot = sftpPath(hostBigRoot)
 			for i := range 300 {
-				dir := filepath.Join(bigRoot, fmt.Sprintf("d%03d", i))
+				dir := filepath.Join(hostBigRoot, fmt.Sprintf("d%03d", i))
 				require.NoError(t, os.MkdirAll(dir, 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "orphan.bin"), []byte("x"), 0o600))
 			}
 			torrents := []qbt.Torrent{{Hash: "big", SavePath: bigRoot, State: qbt.TorrentStatePausedUp}}
 			if tc.twoRoots {
-				torrents = append([]qbt.Torrent{{Hash: "owned", SavePath: filepath.Dir(f.orphan), State: qbt.TorrentStatePausedUp}}, torrents...)
+				torrents = append([]qbt.Torrent{{Hash: "owned", SavePath: sftpPath(filepath.Dir(f.orphan)), State: qbt.TorrentStatePausedUp}}, torrents...)
 			}
 			stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) { return torrents, nil }
 			stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
@@ -858,5 +878,27 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	run := f.scan(t, "manual")
 	require.Equal(t, "failed", run.Status)
 	require.Contains(t, run.ErrorMessage, "remote instance on the same host")
+	f.requireNothingDeleted(t)
+}
+
+// With Write (#2942) and the exec tier's Identity, canDeleteOrphans passes on a
+// remote instance, so the recorded-mode gate is what keeps remote deletes off
+// until #3236 turns them on. A remote run on an exec-tier instance is still
+// refused at confirm and keeps its preview.
+func TestConfirmDeletion_RemoteExecTierRunIsStillRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-remote-exec-refuse", models.FilesystemModeRemote, nil)
+	f.instance.mu.Lock()
+	f.instance.inst.SSHTier = models.SSHTierExec
+	f.instance.mu.Unlock()
+	require.True(t, canDeleteOrphans(models.FilesystemCapabilitiesOf(&f.instance.inst)), "the capability gate alone would admit this instance")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
 	f.requireNothingDeleted(t)
 }

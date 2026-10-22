@@ -210,7 +210,7 @@
     "reflinkDescription": "Reflinked Klone erstellen. Sicherer bei zusätzlichen/fehlenden Dateien, beste Absicherung gegen Beschädigung.",
     "baseDirectories": "Basisverzeichnisse",
     "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
-    "baseDirectoriesDescription": "Kommagetrennte Pfade. Verwendet wird das erste Verzeichnis auf demselben Dateisystem wie die Quelle.",
+    "baseDirectoriesDescription": "Kommagetrennte Pfade. qui verwendet ein Verzeichnis auf demselben Dateisystem wie die Quelle und probiert zuerst das Verzeichnis, das mit ihr das längste gemeinsame Pfadpräfix hat. Nach einem Cross-Device-Link-Fehler probiert qui das nächste.",
     "directoryOrganization": "Verzeichnisorganisation",
     "flat": "Flach (alles im Basisverzeichnis)",
     "byTracker": "Nach Tracker",
@@ -283,7 +283,7 @@
       "rescueTitleMismatches": "Abweichende Titel retten",
       "rescueTitleMismatchesDescription": "Versuche pro Quellsuche insgesamt bis zu drei Ergebnisse mit exakt gleicher Größe aus allen Indexern. qui prüft alle Daten, bevor der Torrent startet. Recheck überspringen schaltet diese Regel aus.",
       "skipRecheck": "Matches überspringen, die eine Neuprüfung erfordern",
-      "skipRecheckDescription": "Matches überspringen, die wegen umbenannter Pfade, zusätzlicher oder fehlender Dateien, eines Fallbacks aus dem Hardlink-/Reflink-Modus oder Disc-Layouts (BDMV/VIDEO_TS) eine Neuprüfung benötigen. Dies gilt auch für Matches mit exakt gleicher Größe, die auf abweichenden Season-, Episoden- oder Release-Group-Angaben beruhen. Ist diese Option deaktiviert, fügt qui diese Matches pausiert hinzu und prüft sie erneut.",
+      "skipRecheckDescription": "Matches überspringen, die wegen umbenannter Pfade, zusätzlicher oder fehlender Dateien, eines Fallbacks aus dem Hardlink-/Reflink-Modus oder Disc-Layouts (BDMV/VIDEO_TS) eine Neuprüfung benötigen. Dies gilt auch für Matches mit exakt gleicher Größe, die auf abweichenden Season-, Episoden- oder Release-Group-Angaben beruhen. Ein vollständiger Match, bei dem jede Datei eine Datei gleicher Größe hat, keine zusätzlichen Dateien vorliegen und höchstens die Pfade abweichen, wird trotzdem ohne Neuprüfung hinzugefügt. Eine Episode aus einem Season-Pack, ein Disc-Layout, ein Match mit exakt gleicher Größe und abweichenden Angaben, gleich große Dateien mit unklaren Namen und eine umbenannte .nfo- oder Untertiteldatei sind nie vollständige Matches. Ist diese Option deaktiviert, fügt qui diese Matches pausiert hinzu und prüft sie erneut.",
       "pieceBoundaryDisabled": "Piece-Grenzen-Sicherheitsprüfung derzeit deaktiviert",
       "pieceBoundaryEnabled": "Piece-Grenzen-Sicherheitsprüfung aktiviert",
       "pieceBoundaryDisabledDescription": "Matches auch dann zulassen, wenn zusätzliche Dateien Pieces mit Inhalten teilen. Kann vorhandene geseedete Dateien beschädigen, falls sich Inhalte unterscheiden. Ziehe stattdessen den Reflink-Modus in Betracht.",
@@ -555,6 +555,7 @@
       "requeueFailed": "Erneuter Versuch für Dateien ohne Treffer fehlgeschlagen: {{error}}",
       "resetFailed": "Dateien konnten nicht zurückgesetzt werden: {{error}}"
     },
+    "webhookScanStatus": "Webhook-Scan · {{status}}",
     "statusLabels": {
       "queued": "In Warteschlange",
       "scanning": "Wird gescannt",
