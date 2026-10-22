@@ -168,23 +168,25 @@ jobs:
           git add -A
           forbidden=$(git diff --cached --no-renames --name-only -z | grep -zE "$FORBIDDEN" | tr '\0' '\n' || true)
           if [[ -n "$forbidden" ]]; then
-            problems+=("The agent changed files that it cannot change, so this pull request drops its change: ${forbidden//$'\n'/, }")
+            problems+=("The agent changed files that it cannot change, so the run drops its change: ${forbidden//$'\n'/, }")
             git reset -q --hard
             git clean -fdq
           fi
           git diff --cached --binary > "$RUNNER_TEMP/pr/change.patch"
+          # A run with no change opens no pull request. The failed run sends
+          # s0up4200 an email, and the issue stays free for the next run.
           if [[ ! -s "$RUNNER_TEMP/pr/change.patch" ]]; then
-            problems+=("The run made no change.")
-          else
-            qui-sandbox go build ./... || problems+=("\`go build ./...\` failed.")
-            mapfile -t pkgs < <(git diff --cached --name-only -- '*.go' | xargs -r -n1 dirname | sort -u | while read -r d; do [[ -d "$d" ]] && echo "./$d"; done)
-            if (( ${#pkgs[@]} )); then
-              qui-sandbox go vet "${pkgs[@]}" || problems+=("\`go vet\` failed.")
-              qui-sandbox go test -count=1 "${pkgs[@]}" || problems+=("\`go test\` failed in the changed packages.")
-            fi
-            if ! git diff --cached --quiet -- web; then
-              qui-sandbox sh -c 'cd web && pnpm lint && pnpm exec tsc -b && pnpm test' || problems+=("The web checks failed.")
-            fi
+            for p in "${problems[@]}" "The run made no change."; do echo "::error::$p"; done
+            exit 1
+          fi
+          qui-sandbox go build ./... || problems+=("\`go build ./...\` failed.")
+          mapfile -t pkgs < <(git diff --cached --name-only -- '*.go' | xargs -r -n1 dirname | sort -u | while read -r d; do [[ -d "$d" ]] && echo "./$d"; done)
+          if (( ${#pkgs[@]} )); then
+            qui-sandbox go vet "${pkgs[@]}" || problems+=("\`go vet\` failed.")
+            qui-sandbox go test -count=1 "${pkgs[@]}" || problems+=("\`go test\` failed in the changed packages.")
+          fi
+          if ! git diff --cached --quiet -- web; then
+            qui-sandbox sh -c 'cd web && pnpm lint && pnpm exec tsc -b && pnpm test' || problems+=("The web checks failed.")
           fi
           for p in "${problems[@]}"; do echo "- $p"; done > "$RUNNER_TEMP/pr/problems.md"
 
@@ -223,9 +225,7 @@ jobs:
 
       - name: Apply the change
         run: |
-          if [[ -s "$RUNNER_TEMP/pr/change.patch" ]]; then
-            git apply --index "$RUNNER_TEMP/pr/change.patch"
-          fi
+          git apply --index "$RUNNER_TEMP/pr/change.patch"
           forbidden=$(git diff --cached --no-renames --name-only -z | grep -zE "$FORBIDDEN" | tr '\0' '\n' || true)
           if [[ -n "$forbidden" ]]; then
             echo "::error::The patch changes files that the agent cannot change: ${forbidden//$'\n'/, }"
