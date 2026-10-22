@@ -10,6 +10,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 var errNotStubbed = errors.New("orphanscan test: call not stubbed")
@@ -25,6 +26,8 @@ type fakeSync struct {
 	getAppPreferences    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	getCategories        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	subcategoriesEnabled func(ctx context.Context, instanceID int) (bool, error)
+	// categoryPathRule, when set, replaces subcategoriesEnabled with a full rule.
+	categoryPathRule func(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
 }
 
 // stubSync installs a fakeSync on svc the first time it is called and returns
@@ -41,7 +44,7 @@ func stubSync(svc *Service) *fakeSync {
 	return f
 }
 
-func (f *fakeSync) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *fakeSync) GetTorrentsFresh(ctx context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	if f.getAllTorrents == nil {
 		return nil, errNotStubbed
 	}
@@ -104,9 +107,13 @@ func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[strin
 	return f.getCategories(ctx, instanceID)
 }
 
-func (f *fakeSync) CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error) {
-	if f.subcategoriesEnabled == nil {
-		return false, errNotStubbed
+func (f *fakeSync) CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error) {
+	if f.categoryPathRule != nil {
+		return f.categoryPathRule(ctx, instanceID)
 	}
-	return f.subcategoriesEnabled(ctx, instanceID)
+	if f.subcategoriesEnabled == nil {
+		return qbittorrent.CategoryPathRule{}, errNotStubbed
+	}
+	nest, err := f.subcategoriesEnabled(ctx, instanceID)
+	return qbittorrent.CategoryPathRule{Nest: nest}, err
 }

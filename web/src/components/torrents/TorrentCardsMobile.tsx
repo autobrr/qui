@@ -48,6 +48,7 @@ import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
+import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
@@ -90,11 +91,11 @@ import {
   Trash2,
   X
 } from "lucide-react"
-import type { TFunction } from "i18next"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import {
   buildSpeedLimitInitialState,
   LocationWarningDialog,
@@ -119,7 +120,7 @@ import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -473,57 +474,6 @@ function formatEta(seconds: number): string {
   }
 
   return `${minutes}m`
-}
-
-function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case "downloading":
-      return "default"
-    case "stalledDL":
-      return "secondary"
-    case "uploading":
-      return "default"
-    case "stalledUP":
-      return "secondary"
-    case "pausedDL":
-    case "pausedUP":
-      return "secondary"
-    case "error":
-    case "missingFiles":
-      return "destructive"
-    default:
-      return "outline"
-  }
-}
-
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
-  variant: "default" | "secondary" | "destructive" | "outline"
-  label: string
-  className: string
-} {
-  const baseVariant = getStatusBadgeVariant(torrent.state)
-  let variant = baseVariant
-  let label = getStateLabel(torrent.state, t)
-  let className = ""
-
-  if (supportsTrackerHealth) {
-    const trackerHealth = torrent.tracker_health ?? null
-    if (trackerHealth === "tracker_down") {
-      label = t("tableColumns.trackerDown")
-      variant = "outline"
-      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-    } else if (trackerHealth === "tracker_error") {
-      label = t("tableColumns.trackerError")
-      variant = "outline"
-      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-    } else if (trackerHealth === "unregistered") {
-      label = t("tableColumns.unregistered")
-      variant = "outline"
-      className = "text-destructive border-destructive/40 bg-destructive/10"
-    }
-  }
-
-  return { variant, label, className }
 }
 
 function shallowEqualTrackerIcons(
@@ -2109,6 +2059,15 @@ export function TorrentCardsMobile({
           paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
         }}
       >
+        {torrents.length === 0 && !isLoading && (
+          <div className="flex h-full items-center justify-center px-4">
+            <TorrentListEmptyState
+              hasFilters={hasSidebarFilters(filters)}
+              hasSearch={Boolean(effectiveSearch)}
+              onClearFilters={onFilterChange ? () => onFilterChange(EMPTY_SIDEBAR_FILTERS) : undefined}
+            />
+          </div>
+        )}
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -2559,6 +2518,8 @@ export function TorrentCardsMobile({
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={crossSeedWarning}
         onConfirm={handleDeleteWrapper}
+        isAllSelected={!torrentToDelete && isAllSelected}
+        previewTorrents={showDeleteDialog && !torrentToDelete && isAllSelected? torrents.filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent))): deleteTorrents}
       />
 
       {/* Tags dialog */}

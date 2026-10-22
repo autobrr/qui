@@ -79,18 +79,35 @@ non-link strategies, which is the safe degradation.
 | `RemoveTree` | `REMOVE` over the recorded handle | same |
 | `SupportsReflink` | false | false |
 
-Batch stat is the optional `fsops.BatchStater`. It is not on
-`fsops.Backend`. A caller that knows all its paths calls `fsops.LstatAll`,
-which uses `LstatBatch` when the backend has it and one `Lstat` per path
-when it does not. The remote backend has `LstatBatch` since #2726. On the exec tier, one `find -maxdepth 0 -printf` reads up to
-1,000 paths with their identity in two round trips. `Lstat` answers each
-path that `find` did not print, such as a missing one, so the errors are
-the same. On the sftp tier, `Lstat` answers each path. Cross-seed hardlink
-matching uses it: a 20-file pack takes about 200 ms at 100 ms of delay, not
-about 6 s. `StatBatch` and `fsops.StatAll`, which follow links, pipelined
-sftp requests, and the hardlink index and missing-files callers come in
-#2971. The exec tier uses `find` and not `xargs -0 stat`, because `find`
-prints the same record as the walk, so one parser reads both.
+Batch stat is the optional `fsops.BatchStater`, with `StatBatch` and
+`LstatBatch`. It is not on `fsops.Backend`. A caller that knows all its paths
+calls `fsops.StatAll` or `fsops.LstatAll`. Each helper uses the batch when the
+backend has it, and one `Stat` or `Lstat` per path when it does not. The local
+backend has no batch. `StatAll` follows symlinks and `LstatAll` does not.
+
+On the exec tier, one `find -maxdepth 0 -printf` reads up to 1,000 paths with
+their identity in two round trips. `StatBatch` adds `-L`. A single `Stat` or
+`Lstat` answers each path that `find` did not print, such as a missing path,
+so the errors are the same as for one path. `find -L` prints a broken link as
+the link itself, so `StatBatch` sends that path to `Stat` too. On the sftp
+tier, a single call answers each path.
+
+The single calls of a batch run 32 at a time on the one sftp client, so they
+share round trips. In the tests, 64 paths at 25 ms of delay take about 50 ms,
+not 1.6 s. The same pipeline answers the files of a completed torrent after the user moved
+them away. On the exec tier, that torrent costs one `find`, plus about one
+round trip for each 32 missing files. After a lost connection, the batches
+stop, and at most one single call dials the host again. If the host is back,
+the single calls answer. If not, each path that is left gets its own
+`fsops.ErrConnectionLost` at once, because the pool remembers the failed dial.
+
+The exec tier uses `find` and not `xargs -0 stat`, because `find` prints the
+same record as the walk, so one parser reads both. Cross-seed hardlink
+matching uses `LstatBatch` since #2726. A 20-file pack takes about 200 ms at
+100 ms of delay, not about 6 s. The missing-files condition (#2933) will be the
+first caller of `StatAll`. The hardlink index keeps one `Lstat` per file. It
+needs trusted identity, which only a local instance has, and a local backend
+has no batch.
 
 ## File Identity Over the Wire — DECIDED
 

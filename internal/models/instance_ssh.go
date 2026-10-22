@@ -131,6 +131,18 @@ func normalizeSSHHost(host string) (string, error) {
 	return host, nil
 }
 
+// SSHEndpointChanged reports whether host and port name a different endpoint
+// than the one inst stores, which is what SetSSHCredentials drops the pin for.
+// An unusable host counts as changed: SetSSHCredentials refuses it anyway, with
+// the reason.
+func SSHEndpointChanged(inst *Instance, host string, port int) bool {
+	normalized, err := normalizeSSHHost(host)
+	if err != nil {
+		return true
+	}
+	return normalized != inst.SSHHost || port != inst.SSHPort
+}
+
 // ClearSSHCredentials removes the credentials but keeps the pin: the pin
 // belongs to the host, not to whoever last authenticated against it.
 func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int) error {

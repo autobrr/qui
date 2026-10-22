@@ -251,9 +251,11 @@ func TestExecCapabilities(t *testing.T) {
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
 		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
 		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
-		// The GNU tools are there, but the login shell reads '\'' as an
-		// escape, so a quoted path could break out: no exec tier.
+		// The GNU tools are there, but the login shell quotes like fish,
+		// nushell or tcsh, so a quoted path could break out: no exec tier.
 		{name: "non-posix login shell", mode: sshtest.ExecNonPOSIX, exec: true},
+		{name: "split-quote login shell", mode: sshtest.ExecSplitQuote, exec: true},
+		{name: "csh login shell", mode: sshtest.ExecCsh, exec: true},
 		// A pooled connection keeps sftp open, so a host with MaxSessions 1
 		// has no channel left for a command.
 		{name: "one session at a time", mode: sshtest.ExecOneSession},

@@ -80,3 +80,26 @@ func shellWords(line string) []string {
 	}
 	return words
 }
+
+// quotedAny reports whether match holds for the text of any single-quoted part
+// of a command line, read the POSIX way, so a mode can model a shell that
+// reads that text differently. It knows only single quotes and backslash
+// escapes, not double quotes, which shellQuote never writes.
+func quotedAny(line string, match func(string) bool) bool {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			i++
+		case '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				return match(line[i+1:])
+			}
+			if match(line[i+1 : i+1+end]) {
+				return true
+			}
+			i += 1 + end
+		}
+	}
+	return false
+}

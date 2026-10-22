@@ -146,7 +146,7 @@ System Day and System Year do not wrap. A month boundary depends on the length o
 
 If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboard → **Tracker Breakdown**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
 
-On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the tracker that qBittorrent reports as working. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
+On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the one tracker in the qBittorrent tracker field. That is the last tracker that answered, also when that tracker is down now. If no tracker answered yet, the field is empty. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
 :::note
 Any tracker condition (**Tracker**, **Trackers (All)**, **Tracker status**, or **Tracker message**) makes qui read the tracker list of every torrent. qui sends one request for each instance and keeps the result for 5 minutes. Rules without a tracker condition, and rules that are turned off, send no extra request.
@@ -358,6 +358,7 @@ To run a dry-run immediately without waiting for interval execution:
 
 A dry-run executes the current workflow configuration as a simulation and writes results to automation activity.
 A dry-run reports the same torrents as the live impact preview, because it deletes nothing.
+Dry-run rules and live rules run in separate passes, so a dry run does not see what live rules do in the same cycle.
 
 No-match behavior:
 
@@ -426,6 +427,7 @@ Group expansion uses strict semantics:
 - Every member in the expanded group must satisfy the action condition checks for that rule.
 - If any member fails or qui cannot resolve the group, qui skips the entire grouped action.
 - If `groupId` is set, there is no "trigger-only fallback".
+- qui leaves out a member that the same run deletes, and applies the action to the other members. The deleted member still counts for the strict check.
 
 Built-in group IDs:
 
@@ -547,6 +549,8 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFilesPreserveCrossSeeds` | Remove files, but keep them if qui detects cross-seeds |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
+In a live run, if a delete depends on hardlink data and the hardlinks changed or can't be read when qui checks them again, qui skips the delete for that run and decides again on the next one. A dry run does not check them again. See [Unknown scope and safety behavior](#unknown-scope-and-safety-behavior).
+
 **Optional grouping (advanced):**
 
 Delete actions can specify a `groupId` to expand the deletion to all torrents in that group.
@@ -622,6 +626,7 @@ Options:
 - **Include affected cross-seeds**: Also move the torrents that use any of the same files on disk.
 - **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include affected cross-seeds".
 - **Strict grouped matching**: If you set `groupId`, category expansion applies only when all group members satisfy the category rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seed exists in categories**: If another cross-seed is in a protected category, prevent the move.
 
 ### Move
@@ -631,6 +636,7 @@ Move torrents to a different path on disk. If AutoTMM is off, use this action to
 Options:
 - **Group ID (advanced)**: Expand moves to all torrents in the specified group (see [Grouping](#grouping)). qui resolves the move path for the matched torrent and applies it to the whole group. If a torrent outside the group shares a file with a group member, qui skips the move.
 - **Strict grouped matching**: If you set `groupId`, move expansion is all-or-none. Every member must satisfy the move rule checks.
+- **Torrents the run deletes**: Cross-seed and group expansion leave out a torrent that the same run deletes.
 - **Skip if cross-seeds don't match the rule's conditions**: If the torrent has cross-seeds that do not match the rule's conditions, skip the move. If **Group ID** is set, qui ignores this option.
 
 #### Move path templates
@@ -1112,7 +1118,7 @@ qui sends an API call only when the torrent's current setting differs from the t
 
 ### Processing order
 
-- **First match wins** for delete actions. A delete ends processing for that torrent, and qui evaluates no further rules.
+- **Delete wins.** When a rule chooses delete for a torrent, qui evaluates no further rules for it and drops the actions earlier rules chose. A torrent qui deletes gets nothing else in the run: cross-seed and group expansion of category and move leave it out, and a torrent the delete pulls in (for example a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode) gets none of its own actions.
 - **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions.
 - **Accumulative** for tag actions. qui combines tags across matching rules.
 

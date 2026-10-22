@@ -116,6 +116,37 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 	}, response.Values)
 }
 
+// TestGetTorrentField_FullPathReturnsContentPath covers a renamed torrent (issue #3179).
+func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Renamed Show", Hash: "aaa", SavePath: "/data/tv", ContentPath: "/data/tv/Show.S01.1080p.WEB-GRP"},
+			{Name: "Pending", Hash: "bbb", SavePath: "/data/tv"},
+		},
+	})
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+
+	for name, body := range map[string]map[string]any{
+		"select all":      {"field": "full_path", "sort": "name", "order": "asc"},
+		"explicit hashes": {"field": "full_path", "hashes": []string{"aaa", "bbb"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+			handler.GetTorrentField(rec, newTorrentFieldRequest(t, instanceIDs["alpha"], body))
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+			var response quiqbt.TorrentFieldResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			require.Equal(t, []string{"/data/tv/Show.S01.1080p.WEB-GRP"}, response.Values)
+		})
+	}
+}
+
 // TestGetTorrentField_MagnetURIExplicitHashes pins magnet values through the
 // explicit-hash field path. List payloads no longer carry magnet_uri (issue
 // #2328), so this endpoint is the only source for the copy-magnet action.

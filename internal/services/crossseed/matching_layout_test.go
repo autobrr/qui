@@ -357,18 +357,16 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	targetName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
-	candidateName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
-	targetRelease := rls.Release{Title: "Example Show"}
-	candidateRelease := rls.Release{Title: "Example Show"}
+	targetRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
+	candidateRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
 
 	// Use a filename that won't produce any usable release keys when parsed.
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "random_data_file.bin", Size: 1024},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
-	require.Equal(t, "partial-in-pack", match, "fallback should treat matching titles as candidates when parsing fails")
+	match := svc.matcher().getMatchTypeFromTitle(targetRelease, candidateRelease, candidateFiles)
+	require.Equal(t, "partial-in-pack", match, "fallback should match the same absolute episode when the files give no release keys")
 }
 
 func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.T) {
@@ -381,13 +379,11 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 
 	// Non-episodic content with different years should not match purely because
 	// candidate files have some parsed metadata.
-	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
 	targetRelease := rls.Release{
 		Title: "Movie 2020",
 		Year:  2020,
 	}
 
-	candidateName := "Completely.Different.Movie.2012.1080p.BluRay.x264-OTHER"
 	candidateRelease := rls.Release{
 		Title: "Different Movie 2012",
 		Year:  2012,
@@ -397,7 +393,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 		{Name: "Different.Movie.2012.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Empty(t, match, "non-episodic candidates with mismatched release keys should not match")
 }
 
@@ -409,13 +405,11 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
 	targetRelease := rls.Release{
 		Title: "Movie 2020",
 		Year:  2020,
 	}
 
-	candidateName := "Another.Movie.2020.1080p.BluRay.x264-OTHER"
 	candidateRelease := rls.Release{
 		Title: "Another Movie 2020",
 		Year:  2020,
@@ -425,7 +419,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 		{Name: "Another.Movie.2020.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
 }
 
@@ -439,14 +433,12 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 
 	// Game scene releases have RAR files with group prefixes, no year, no episode info.
 	// These should match based on title alone when the titles match.
-	targetName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
 	targetRelease := rls.Release{
 		Title: "Oddsparks An Automation Adventure Coaster Rush",
 		Group: "RUNE",
 		Type:  rls.Game,
 	}
 
-	candidateName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
 	candidateRelease := rls.Release{
 		Title: "Oddsparks An Automation Adventure Coaster Rush",
 		Group: "RUNE",
@@ -462,7 +454,7 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 		{Name: "rune-oddsparks.nfo", Size: 4096},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "release-match", match, "game scene releases with RAR files should match when titles match")
 }
 
@@ -519,8 +511,41 @@ func TestGetMatchTypeFromTitle_SeasonlessBatchAgainstSeasonPack(t *testing.T) {
 			t.Parallel()
 			target := svc.releaseCache.Parse(test.target)
 			local := svc.releaseCache.Parse(localName)
-			match := svc.matcher().getMatchTypeFromTitle(test.target, localName, target, local, test.files)
+			match := svc.matcher().getMatchTypeFromTitle(target, local, test.files)
 			require.Equal(t, test.want, match)
+		})
+	}
+}
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchRanges(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[GRP] Kaiju Squad - 04 - 06 (1080p)"
+	files := qbt.TorrentFiles{
+		{Name: localName + "/[GRP] Kaiju Squad - 04 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 05 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 06 (1080p).mkv", Size: 1 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "same batch", target: localName, want: "release-match"},
+		{name: "other batch", target: "[GRP] Kaiju Squad - 01 - 03 (1080p)", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			require.Equal(t, test.want, svc.matcher().getMatchTypeFromTitle(target, local, files))
 		})
 	}
 }

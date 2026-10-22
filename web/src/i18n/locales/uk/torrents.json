@@ -105,7 +105,21 @@
     "totalSize": "Загальний розмір: {{size}}",
     "blockCrossSeeds": "Блокувати інфохеші крос-сідів (запобігти повторному додаванню)",
     "cancel": "Скасувати",
-    "delete": "Видалити"
+    "delete": "Видалити",
+    "titleSelectAll_one": "Видалити {{count}} торент, що відповідає фільтру?",
+    "titleSelectAll_few": "Видалити {{count}} торенти, що відповідають фільтру?",
+    "titleSelectAll_many": "Видалити {{count}} торентів, що відповідають фільтру?",
+    "titleSelectAll_other": "Видалити {{count}} торента, що відповідають фільтру?",
+    "selectAllNotice": "Вибір усіх увімкнено. Це видалить вибрані торенти, що відповідають поточному фільтру.",
+    "notLoaded_one": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_few": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_many": "{{count}} з них не завантажено в таблицю.",
+    "notLoaded_other": "{{count}} з них не завантажено в таблицю.",
+    "andMore": "і ще {{more}}",
+    "deleteCount_one": "Видалити {{count}} торент",
+    "deleteCount_few": "Видалити {{count}} торенти",
+    "deleteCount_many": "Видалити {{count}} торентів",
+    "deleteCount_other": "Видалити {{count}} торента"
   },
   "deleteFilesPreference": {
     "label": "Також видалити файли з диска",
@@ -992,6 +1006,11 @@
       "moving": "Переміщення"
     }
   },
+  "emptyState": {
+    "noTorrents": "Торенти не знайдено",
+    "noFilterMatches": "Жоден торент не відповідає поточним фільтрам",
+    "noSearchMatches": "Жоден торент не відповідає поточному пошуку"
+  },
   "filterSidebar": {
     "views": {
       "title": "Подання",
@@ -1463,11 +1482,6 @@
     "matchCount_other": "{{count}} збігів",
     "deleteSelected": "Видалити ({{count}})",
     "deleteThis": "Видалити це",
-    "statusLabels": {
-      "trackerDown": "Трекер вимкнено",
-      "unregistered": "Незареєстрований",
-      "trackerError": "Помилка трекера"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Зміст",

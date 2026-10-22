@@ -32,10 +32,18 @@ const (
 	ExecGNU ExecMode = iota
 	// ExecBSD answers --version without any GNU banner.
 	ExecBSD
-	// ExecNonPOSIX is a login shell that runs commands and has the GNU tools
-	// but does not quote like a POSIX shell: the printf probe fails the way
-	// fish fails on an unbalanced quote.
+	// ExecNonPOSIX is a login shell with the GNU tools that quotes like fish:
+	// a backslash before the closing quote escapes it, so the quote stays
+	// open and the command fails on an unbalanced quote.
 	ExecNonPOSIX
+	// ExecSplitQuote is a login shell with the GNU tools that quotes like
+	// nushell: it fails on the '\'' that closes a quote, escapes one and
+	// opens another.
+	ExecSplitQuote
+	// ExecCsh is a login shell with the GNU tools that quotes like tcsh: it
+	// fails on a newline in single quotes, which it reads as an unmatched
+	// quote whatever its history settings.
+	ExecCsh
 	// ExecSFTPOnly is a key restricted to sftp: every command is refused with
 	// a message and a non-zero exit status, the way a seedbox does it.
 	ExecSFTPOnly
@@ -465,9 +473,15 @@ func (s *Server) runCommand(channel ssh.Channel, command string) uint32 {
 	// writes its own output to stdout, so both streams are busy at once.
 	_, _ = io.WriteString(channel.Stderr(), strings.Repeat("welcome to the test host\n", 64))
 	switch {
-	case strings.HasPrefix(command, "printf") && mode == ExecNonPOSIX:
+	case mode == ExecNonPOSIX && quotedAny(command, func(q string) bool { return strings.HasSuffix(q, `\`) }):
 		_, _ = io.WriteString(channel.Stderr(), "fish: Unexpected end of string, quotes are not balanced\n")
 		return 127
+	case mode == ExecSplitQuote && strings.Contains(command, `'\''`):
+		_, _ = io.WriteString(channel.Stderr(), "Error: nu::parser::unexpected_eof\n")
+		return 1
+	case mode == ExecCsh && quotedAny(command, func(q string) bool { return strings.Contains(q, "\n") }):
+		_, _ = io.WriteString(channel.Stderr(), "Unmatched '''.\n")
+		return 1
 	case strings.Contains(command, "--version") && mode != ExecBSD:
 		_, _ = io.WriteString(channel, versionBannerGNU)
 	case strings.Contains(command, "--version"):

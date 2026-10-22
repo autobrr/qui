@@ -40,8 +40,8 @@ func withinScanRoot(d fsops.PathDialect, scanRoot, target string) error {
 		return fmt.Errorf("refusing non-absolute path: %s", target)
 	}
 
-	normRoot := normalizePath(d, scanRoot)
-	normTarget := normalizePath(d, target)
+	normRoot := fsops.NormalizePath(d, scanRoot)
+	normTarget := fsops.NormalizePath(d, target)
 
 	if normTarget == normRoot {
 		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
@@ -62,7 +62,7 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFi
 	}
 
 	// Re-check: torrent may have been added since scan (skip)
-	if tfm.Has(normalizePath(d, target)) {
+	if tfm.Has(fsops.NormalizePath(d, target)) {
 		return deleteDispositionSkippedInUse, nil
 	}
 
@@ -135,7 +135,7 @@ func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentF
 }
 
 func checkFileInUse(d fsops.PathDialect, path string, tfm *TorrentFileMap) error {
-	if tfm.Has(normalizePath(d, path)) {
+	if tfm.Has(fsops.NormalizePath(d, path)) {
 		return fmt.Errorf("%w: %s", ErrInUse, path)
 	}
 	return nil
@@ -172,7 +172,7 @@ func safeDeleteTarget(ctx context.Context, scanRoot, target string, tfm *Torrent
 }
 
 func safeDeleteSymlink(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
-	if tfm.Has(normalizePath(backend.Paths(), target)) {
+	if tfm.Has(fsops.NormalizePath(backend.Paths(), target)) {
 		return deleteDispositionSkippedInUse, nil
 	}
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {

@@ -22,14 +22,15 @@ type RuleNeeds struct {
 	SeasonPackAnyInstance bool
 	FreeSpace             bool
 	TrackerNames          bool
-	TrackerEntries        bool // the per-torrent tracker list
+	TrackerURLs           bool // the URL of each tracker, from MainData
+	TrackerEntries        bool // the per-torrent tracker list with status and message
 }
 
 // fieldData is the prepared data one condition field reads. A field without a
 // row reads only the torrent and is always known.
 type fieldData struct {
 	trustedIdentity bool // needs models.FilesystemCapabilitiesOf(instance).TrustedIdentity
-	localAccess     bool // needs instance.HasLocalFilesystemAccess
+	read            bool // needs models.FilesystemCapabilitiesOf(instance).Read
 	// need marks the data in RuleNeeds.
 	need func(n *RuleNeeds)
 	// known reports whether ctx holds the field's data for the torrent. A row
@@ -55,8 +56,8 @@ var conditionFieldData = map[ConditionField]fieldData{
 		},
 	},
 	FieldHasMissingFiles: {
-		localAccess: true,
-		need:        func(n *RuleNeeds) { n.MissingFiles = true },
+		read: true,
+		need: func(n *RuleNeeds) { n.MissingFiles = true },
 		known: func(ctx *EvalContext, hash string) bool {
 			_, ok := ctx.HasMissingFilesByHash[hash]
 			return ok
@@ -77,8 +78,8 @@ var conditionFieldData = map[ConditionField]fieldData{
 	FieldExistsOnOtherInstance:  {need: func(n *RuleNeeds) { n.CrossMatch.OtherExists = true }, known: otherInstanceCrossSeedKnown},
 	FieldSeedingOnOtherInstance: {need: func(n *RuleNeeds) { n.CrossMatch.OtherSeeding = true }, known: otherInstanceCrossSeedKnown},
 	FieldFreeSpace:              {need: func(n *RuleNeeds) { n.FreeSpace = true }},
-	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
-	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerEntries = true, true }},
+	FieldTracker:                {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
+	FieldTrackers:               {need: func(n *RuleNeeds) { n.TrackerNames, n.TrackerURLs = true, true }},
 	FieldTrackerStatus:          {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 	FieldTrackerMessage:         {need: func(n *RuleNeeds) { n.TrackerEntries = true }},
 }
@@ -110,7 +111,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	}
 	if ctx == nil ||
 		data.trustedIdentity && !ctx.InstanceHasTrustedIdentity ||
-		data.localAccess && !ctx.InstanceHasLocalAccess {
+		data.read && !ctx.InstanceCanRead {
 		return false
 	}
 	if data.known(ctx, hash) {
@@ -118,7 +119,7 @@ func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) boo
 	}
 	// An unread extra candidate cannot undo a confirmed positive match.
 	var confirmed map[string]struct{}
-	switch field {
+	switch field { //nolint:exhaustive // Only these fields have a set of confirmed hashes.
 	case FieldExistsOnSameInstance:
 		confirmed = ctx.SameInstanceCrossSeedHashSet
 	case FieldSeedingOnSameInstance:

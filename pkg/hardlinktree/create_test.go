@@ -4,6 +4,7 @@
 package hardlinktree
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -387,6 +388,86 @@ func TestIsDirNotEmpty(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isDirNotEmpty(tt.err); got != tt.want {
 				t.Errorf("isDirNotEmpty(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src", "a.mkv")
+	target := filepath.Join(dir, "links", "a.mkv")
+	for p, body := range map[string]string{src: "a", target: "stranger"} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := Create(&TreePlan{RootDir: filepath.Join(dir, "links"), Files: []FilePlan{{SourcePath: src, TargetPath: target}}})
+	if !errors.Is(err, ErrTargetExists) {
+		t.Fatalf("got %v, want ErrTargetExists", err)
+	}
+}
+
+// targetSatisfiesPlan decides both the pre-Link check and the EEXIST branch, so
+// the racing-collision classification turns on these three answers.
+func TestTargetSatisfiesPlan(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.mkv")
+	if err := os.WriteFile(src, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.mkv")
+	if err := os.Link(src, link); err != nil {
+		t.Fatal(err)
+	}
+	stranger := filepath.Join(dir, "stranger.mkv")
+	if err := os.WriteFile(stranger, []byte("b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	symlinkAtTarget := filepath.Join(dir, "planted.mkv")
+	if err := os.Symlink(src, symlinkAtTarget); err != nil {
+		t.Fatal(err)
+	}
+	// A symlinked source: the link an earlier run made follows it on macOS
+	// and not on Linux, and both forms must read as already done.
+	viaSymlink := filepath.Join(dir, "src.via-symlink.mkv")
+	if err := os.Symlink(src, viaSymlink); err != nil {
+		t.Fatal(err)
+	}
+	linkOfSymlinked := filepath.Join(dir, "link-of-symlinked.mkv")
+	if err := os.Link(viaSymlink, linkOfSymlinked); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name          string
+		source        string
+		target        string
+		wantSatisfied bool
+		wantErr       error
+	}{
+		{name: "link to the source is already done", source: src, target: link, wantSatisfied: true},
+		{name: "missing target is ours to create", source: src, target: filepath.Join(dir, "absent.mkv")},
+		{name: "another file is the collision", source: src, target: stranger, wantErr: ErrTargetExists},
+		{name: "a symlink planted at the target is the collision", source: src, target: symlinkAtTarget, wantErr: ErrTargetExists},
+		{name: "the link an earlier run made from a symlinked source is already done", source: viaSymlink, target: linkOfSymlinked, wantSatisfied: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: tt.source, TargetPath: tt.target})
+			if satisfied != tt.wantSatisfied {
+				t.Errorf("satisfied = %v, want %v", satisfied, tt.wantSatisfied)
+			}
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else if !errors.Is(err, tt.wantErr) {
+				t.Errorf("got %v, want %v", err, tt.wantErr)
 			}
 		})
 	}

@@ -231,6 +231,8 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	require.Equal(t, 1, response.Results[1].InstanceID)
 	require.Equal(t, "main", response.Results[1].InstanceName)
 	require.Equal(t, "added", response.Results[1].Status)
+	require.NotNil(t, response.Results[1].MatchedTorrent)
+	require.Equal(t, "Show.Title.S01.1080p.WEB.H264-GRP", response.Results[1].MatchedTorrent.Name)
 }
 
 // TestProcessAutomationCandidate_DownloadsPackForDiversion covers the RSS flow:

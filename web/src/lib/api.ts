@@ -58,6 +58,7 @@ import type {
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
+  DirScanStatus,
   DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
@@ -934,6 +935,7 @@ class ApiClient {
       order: "asc" | "desc"
       search?: string
       filters?: TorrentFilters | null
+      summary?: boolean
     }>,
     options: { activity?: boolean } = {}
   ): string {
@@ -950,6 +952,7 @@ class ApiClient {
         order: stream.order,
         search: stream.search ?? "",
         filters: serializeFilters(stream.filters) ?? null,
+        summary: stream.summary ?? false,
       }))
       params.set("streams", JSON.stringify(normalized))
     }
@@ -2806,10 +2809,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
   }
 
-  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
-    return this.request<DirScanRun | { status: "idle" }>(
-      `/dir-scan/directories/${directoryId}/status`
-    )
+  async getDirScanStatus(directoryId: number): Promise<DirScanStatus> {
+    return this.request<DirScanStatus>(`/dir-scan/directories/${directoryId}/status`)
   }
 
   async listDirScanRuns(

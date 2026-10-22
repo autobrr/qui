@@ -970,8 +970,7 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "This file condition is not available on remote instances."},
 		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,
 			wantMsg: "This file condition is not available on remote instances."},
-		{name: "missing files on a remote instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: remote,
-			wantMsg: "This file condition is not available on remote instances."},
+		{name: "missing files on a remote instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: remote},
 		{name: "hardlink scope with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: local},
 		{name: "file field in a disabled action", edit: withConditions(&models.ActionConditions{
 			Pause:  &models.PauseAction{Enabled: true},

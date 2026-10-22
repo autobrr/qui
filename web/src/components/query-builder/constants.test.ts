@@ -20,7 +20,8 @@ describe("getCapabilityReason", () => {
     await changeLanguage("de")
 
     expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
-    expect(getCapabilityReason("localFilesystemAccess", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    // An instance without Read has no filesystem access, local or remote.
+    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
     // Trusted identity needs local access, so a remote instance can never get it.
     expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
     expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
@@ -33,7 +34,7 @@ describe("FIELD_REQUIREMENTS", () => {
       IS_UNREGISTERED: "trackerHealth",
       TRACKER_STATUS: "trackerHealth",
       TRACKER_MESSAGE: "trackerHealth",
-      HAS_MISSING_FILES: "localFilesystemAccess",
+      HAS_MISSING_FILES: "read",
       HARDLINK_SCOPE: "trustedIdentity",
       HARDLINK_SCOPE_CROSS: "trustedIdentity",
     })
@@ -45,9 +46,9 @@ describe("FIELD_REQUIREMENTS", () => {
 describe("query-builder translation keys", () => {
   it("every label the helpers look up has an English key", () => {
     const requested = new Set<string>()
-    const recordingT = ((key: string, options?: { defaultValue?: string }) => {
+    const recordingT = ((key: string) => {
       requested.add(key)
-      return options?.defaultValue ?? key
+      return key
     }) as TFunction
 
     const fields = Object.keys(constants.CONDITION_FIELDS)
