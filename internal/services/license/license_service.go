@@ -451,7 +451,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	// Invalid state has priority over transient backend failures: report
 	// deterministic invalid result and suppress soft-fail errors.
 	if !allValid && transientErr != nil {
-		return allValid, nil
+		return allValid, nil //nolint:nilerr // an invalid license has priority over a transient error
 	}
 
 	return allValid, transientErr
