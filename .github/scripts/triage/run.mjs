@@ -1,6 +1,8 @@
-// Runs one discussion triage session with the Claude Agent SDK. The workflow
-// calls this script instead of claude-code-action, so the run counts as Agent
-// SDK usage. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
+// Runs one agent session with the Claude Agent SDK: a discussion triage, or a
+// lint ratchet fix when AGENT_PROFILE is ratchet. The workflows call this
+// script instead of claude-code-action, so the run counts as Agent SDK usage.
+// See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md
+// and docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -38,32 +40,62 @@ if (oauth) {
   refresh = setInterval(() => writeToken().catch((err) => console.warn(err.message)), 4 * 60 * 1000);
 }
 
+// The built-in tools that exist in the run, and the calls that need no
+// permission. Some tools, such as Agent, need no permission, so allowedTools
+// alone does not remove them.
+const profiles = {
+  triage: {
+    prompt: env.TRIAGE_PROMPT,
+    tools: ["Read", "Grep", "Glob", "Bash"],
+    allowedTools: [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(gh label list:*)",
+      "Bash(gh release list:*)",
+      "Bash(gh search:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh discussion list:*)",
+      "Bash(gh discussion view:*)",
+      "Bash(./.github/scripts/discussion-write.sh:*)",
+    ],
+  },
+  // The ratchet edits one file, its test and the allowlist. It has no GitHub
+  // token: the workflow commits and opens the pull request.
+  ratchet: {
+    prompt: env.RATCHET_PROMPT,
+    tools: ["Read", "Grep", "Glob", "Edit", "Bash"],
+    allowedTools: [
+      "Read",
+      "Grep",
+      "Glob",
+      `Edit(./${env.RATCHET_FILE})`,
+      `Edit(./${env.RATCHET_FILE?.replace(/\.go$/, "_test.go")})`,
+      "Edit(./scripts/ratchet/allowlist.json)",
+      "Bash(go run ./scripts/ratchet:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(gofmt:*)",
+      "Bash(golangci-lint run:*)",
+    ],
+  },
+};
+const profile = profiles[env.AGENT_PROFILE ?? "triage"];
+
 let result;
 try {
   for await (const message of query({
-    prompt: env.TRIAGE_PROMPT,
+    prompt: profile.prompt,
     options: {
       model: "claude-opus-5-5",
       systemPrompt: { type: "preset", preset: "claude_code" },
       // Loads AGENTS.md, which holds the privacy rules for public comments.
       settingSources: ["project"],
       permissionMode: "dontAsk",
-      // The only built-in tools that exist in the run. Some tools, such as
-      // Agent, need no permission, so allowedTools alone does not remove them.
-      tools: ["Read", "Grep", "Glob", "Bash"],
-      allowedTools: [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash(gh label list:*)",
-        "Bash(gh release list:*)",
-        "Bash(gh search:*)",
-        "Bash(gh issue list:*)",
-        "Bash(gh issue view:*)",
-        "Bash(gh discussion list:*)",
-        "Bash(gh discussion view:*)",
-        "Bash(./.github/scripts/discussion-write.sh:*)",
-      ],
+      tools: profile.tools,
+      allowedTools: profile.allowedTools,
       // A prompt injection could make Claude post a credential in a comment.
       // Hide the GitHub OIDC token and the Anthropic token that Claude Code
       // caches after the exchange. Read rules also apply to Grep and Glob.
@@ -83,6 +115,7 @@ try {
       result = message;
       // Write the output at once: the SDK can throw after an error result.
       appendFileSync(env.GITHUB_OUTPUT, `subtype=${result.subtype}\n`);
+      if (env.REPORT_FILE) writeFileSync(env.REPORT_FILE, result.result ?? "The agent wrote no report.");
     }
   }
 } catch (err) {

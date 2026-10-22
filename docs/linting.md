@@ -41,6 +41,8 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - Do not hide `gocognit` with a `nolint` comment. Split the function.
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and opens a pull request with the `ratchet` label. ADR 0020 describes it.
+
 ## Policy
 
 - Prefer `make precommit` during implementation for fast feedback.
