@@ -16,6 +16,11 @@
     "security": "Sicurezza",
     "logs": "Log"
   },
+  "nav": {
+    "general": "Generale",
+    "connections": "Connessioni",
+    "access": "Accesso"
+  },
   "language": {
     "cardTitle": "Lingua",
     "cardDescription": "Scegli la lingua di visualizzazione preferita"

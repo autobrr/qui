@@ -82,14 +82,12 @@
     "cancel": "Cancel",
     "runNow": "Run now",
     "saveSettings": "Save RSS automation settings",
-    "reset": "Reset",
     "requiresTorznabIndexer": "RSS automation runs require at least one Torznab indexer.",
     "items": "{{count}} items",
     "failedCount": "{{count}} failed",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} runs • +{{added}}",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
-    "runDisabledAlreadyRunning": "Automation run is already in progress.",
     "runDisabledCooldown": "Manual runs are limited to every {{minutes}}-minute interval. Try again in {{remaining}}."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: enabled (RED key set, OPS missing)",
       "enabledKeysMissing": "Gazelle: enabled (keys missing)"
     },
-    "noMessageProvided": "No message provided"
+    "noMessageProvided": "No message provided",
+    "cancelDialog": {
+      "title": "Cancel Library Scan?",
+      "description": "This stops the current library scan. Cross-seeds that were already added stay, but no more torrents are searched."
+    }
   },
   "rules": {
     "hardlinkReflink": "Hardlink / Reflink Mode",
@@ -359,6 +361,9 @@
       "matching": "Rules that decide which candidates qui adds, for every source.",
       "categories": "The category and the tags qui gives to every new cross-seed."
     }
+  },
+  "run": {
+    "starting": "The run is starting."
   },
   "seasonPackRuns": {
     "title": "Recent season pack runs",

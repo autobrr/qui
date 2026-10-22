@@ -82,14 +82,12 @@
     "cancel": "Annulla",
     "runNow": "Esegui ora",
     "saveSettings": "Salva le impostazioni di automazione RSS",
-    "reset": "Reimposta",
     "requiresTorznabIndexer": "Le esecuzioni dell'automazione RSS richiedono almeno un indexer Torznab.",
     "items": "{{count}} elementi",
     "failedCount": "{{count}} non riusciti",
     "runError": "Errore: {{message}}",
     "runSummary": "{{runs}} esecuzioni • +{{added}}",
     "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} • {{failed}} non riusciti",
-    "runDisabledAlreadyRunning": "Un'esecuzione dell'automazione è già in corso.",
     "runDisabledCooldown": "Le esecuzioni manuali sono limitate a un intervallo di {{minutes}} minuti. Riprova tra {{remaining}}."
   },
   "webhook": {
@@ -193,7 +191,11 @@
       "enabledRedMissingOps": "Gazelle: abilitato (chiave RED impostata, OPS mancante)",
       "enabledKeysMissing": "Gazelle: abilitato (chiavi mancanti)"
     },
-    "noMessageProvided": "Nessun messaggio disponibile"
+    "noMessageProvided": "Nessun messaggio disponibile",
+    "cancelDialog": {
+      "title": "Annullare la scansione della libreria?",
+      "description": "Questo interrompe la scansione corrente della libreria. I cross-seed già aggiunti restano, ma non vengono cercati altri torrent."
+    }
   },
   "rules": {
     "hardlinkReflink": "Modalità Hardlink / Reflink",
@@ -359,6 +361,9 @@
       "matching": "Regole che decidono quali candidati qui aggiunge, per tutte le sorgenti.",
       "categories": "La categoria e i tag che qui assegna a ogni nuovo cross-seed."
     }
+  },
+  "run": {
+    "starting": "L'esecuzione è in fase di avvio."
   },
   "seasonPackRuns": {
     "title": "Esecuzioni recenti dei pacchetti stagionali",

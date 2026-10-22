@@ -4,6 +4,11 @@
     "description": "Servizi di automazione a livello di istanza gestiti da qui.",
     "noInstances": "Nessuna istanza configurata. Aggiungine una in Impostazioni per usare i servizi."
   },
+  "tabs": {
+    "workflows": "Workflow",
+    "reannounce": "Riannuncia",
+    "orphanScan": "Scansione orfani"
+  },
   "queryBuilder": {
     "noConditions": "Nessuna condizione",
     "matchesAllTorrents": "Corrisponde a tutti i torrent (in base alla selezione del tracker).",

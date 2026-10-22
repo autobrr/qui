@@ -8,6 +8,7 @@ Frontend rules for work under `web/`. i18n and translation rules live in `web/sr
 - Organize React modules by feature within `web/src/{pages,routes,components}`.
 - Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
 - A user preference that must follow the user to other browsers uses `useClientSetting` from `web/src/lib/client-settings.ts`. A plain `localStorage` write stays in one browser. `SYNCED_KEYS` and `SYNCED_PREFIXES` only control which local values the first boot copies to the server.
+- Before you add or change a page, read "Page layout" in `docs/standards/frontend-review.md`. Pages use `PageHeader` and `SectionedPage` from `web/src/components/layout/`.
 - A new worktree has no `web/node_modules`. Run `pnpm install --frozen-lockfile` in `web/` before `pnpm exec tsc`, `eslint`, or `pnpm check:i18n`. `npx tsc` without it does not run the TypeScript compiler.
 
 ## Frontend Tests

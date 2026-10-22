@@ -4,6 +4,11 @@
     "description": "Automatizace služeb spravovaných qui na úrovni instance.",
     "noInstances": "Žádné instance nejsou nakonfigurovány. Přidejte jednu v Nastavení pro použití služeb."
   },
+  "tabs": {
+    "workflows": "Postupy automatizace",
+    "reannounce": "Opakované hlášení",
+    "orphanScan": "Vyhledání sirotků"
+  },
   "queryBuilder": {
     "noConditions": "Žádné podmínky",
     "matchesAllTorrents": "Shoduje se se všemi torrenty (podle výběru trackeru).",

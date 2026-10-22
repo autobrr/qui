@@ -26,8 +26,6 @@ import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
-  expandedInstances?: string[]
-  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 interface InstanceStats {
@@ -63,8 +61,6 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
 
 export function ReannounceOverview({
   onConfigureInstance,
-  expandedInstances: controlledExpanded,
-  onExpandedInstancesChange,
 }: ReannounceOverviewProps) {
   const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
@@ -87,12 +83,7 @@ export function ReannounceOverview({
     return reason
   }
 
-  // Internal state for standalone usage
-  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
-
-  // Use controlled props if provided, otherwise internal state
-  const expandedInstances = controlledExpanded ?? internalExpanded
-  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
   const [pendingEnableInstance, setPendingEnableInstance] = useState<Instance | null>(null)
@@ -185,7 +176,7 @@ export function ReannounceOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.reannounceOverview.noInstancesDescription")}
           </CardDescription>
@@ -199,7 +190,7 @@ export function ReannounceOverview({
       <Card>
         <CardHeader className="space-y-2">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
+            <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 text-muted-foreground cursor-help" />

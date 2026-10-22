@@ -16,6 +16,11 @@
     "security": "Sicherheit",
     "logs": "Protokolle"
   },
+  "nav": {
+    "general": "Allgemein",
+    "connections": "Verbindungen",
+    "access": "Zugriff"
+  },
   "language": {
     "cardTitle": "Sprache",
     "cardDescription": "Wähle deine bevorzugte Anzeigesprache"

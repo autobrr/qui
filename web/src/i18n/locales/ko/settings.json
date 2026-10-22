@@ -16,6 +16,11 @@
     "security": "보안",
     "logs": "로그"
   },
+  "nav": {
+    "general": "일반",
+    "connections": "연결",
+    "access": "접근"
+  },
   "language": {
     "cardTitle": "언어",
     "cardDescription": "선호하는 표시 언어를 선택하세요"

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { PageHeader } from "@/components/layout/PageHeader"
 import { SearchResultCard } from "@/components/search/SearchResultCard"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 import { ColumnFilterPopover } from "@/components/torrents/ColumnFilterPopover"
@@ -1000,13 +1001,71 @@ export function Search() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 p-4 lg:p-6">
-        <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("pageDescription")}
-          </p>
-        </div>
+      <div className="space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader
+          title={t("pageTitle")}
+          description={t("pageDescription")}
+          actions={
+            <>
+              <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingInstances || !instancesAvailable}
+                    className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start"
+                  >
+                    <span className="text-sm">{instanceSelectorLabel}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {instancesAvailable ? (
+                    <>
+                      {instances?.map(instance => (
+                        <DropdownMenuItem
+                          key={instance.id}
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            handleInstanceSelection(instance.id)
+                          }}
+                        >
+                          <Check
+                            className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? "opacity-100" : "opacity-0"}`}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">{instance.name}</span>
+                            {!instance.connected && (
+                              <span className="text-xs text-muted-foreground">{t("instanceSelector.offline")}</span>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          handleInstanceSelection(null)
+                        }}
+                        disabled={!targetInstance}
+                      >
+                        {t("instanceSelector.clearSelection")}
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem disabled>{t("instanceSelector.noInstancesConfigured")}</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {!instancesAvailable && !loadingInstances && (
+                <p className="text-xs text-muted-foreground">
+                  {t("instanceSelector.addInstanceNote")}
+                </p>
+              )}
+            </>
+          }
+        />
 
         <div className="rounded-lg border bg-muted/40 px-4 py-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -1097,64 +1156,6 @@ export function Search() {
               </SheetContent>
             </Sheet>
 
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={loadingInstances || !instancesAvailable}
-                    className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start"
-                  >
-                    <span className="text-sm">{instanceSelectorLabel}</span>
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  {instancesAvailable ? (
-                    <>
-                      {instances?.map(instance => (
-                        <DropdownMenuItem
-                          key={instance.id}
-                          onSelect={(event) => {
-                            event.preventDefault()
-                            handleInstanceSelection(instance.id)
-                          }}
-                        >
-                          <Check
-                            className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? "opacity-100" : "opacity-0"}`}
-                          />
-                          <div className="flex flex-col">
-                            <span className="font-medium">{instance.name}</span>
-                            {!instance.connected && (
-                              <span className="text-xs text-muted-foreground">{t("instanceSelector.offline")}</span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={(event) => {
-                          event.preventDefault()
-                          handleInstanceSelection(null)
-                        }}
-                        disabled={!targetInstance}
-                      >
-                        {t("instanceSelector.clearSelection")}
-                      </DropdownMenuItem>
-                    </>
-                  ) : (
-                    <DropdownMenuItem disabled>{t("instanceSelector.noInstancesConfigured")}</DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {!instancesAvailable && !loadingInstances && (
-                <p className="text-xs text-muted-foreground">
-                  {t("instanceSelector.addInstanceNote")}
-                </p>
-              )}
-            </div>
           </div>
         </div>
 

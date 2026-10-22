@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from "@/components/ui/alert-dialog"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -778,6 +779,36 @@ export function InstanceBackups() {
     executeRestore.reset()
   }
 
+  const instancePicker = hasSupportedInstances && (
+    <Select
+      value={instanceId !== undefined ? instanceId.toString() : undefined}
+      onValueChange={handleInstanceSelection}
+    >
+      <SelectTrigger className="!w-[240px] !max-w-[240px]">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <HardDrive className="h-4 w-4 flex-shrink-0" />
+          <span className="truncate">
+            <SelectValue placeholder={t("backups.selectInstancePlaceholder")} />
+          </span>
+        </div>
+      </SelectTrigger>
+      <SelectContent>
+        {supportedInstances.map((inst) => (
+          <SelectItem key={inst.id} value={inst.id.toString()}>
+            <div className="flex items-center max-w-40 gap-2">
+              <span className="truncate">{inst.name}</span>
+              <span
+                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
+                  inst.connected ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+
   // Show instance selector when no instance is selected
   if (!instanceId) {
     const selectionHeading = instanceCapabilitiesPending? t("backups.selection.checkingHeading"): hasSupportedInstances? t("backups.selection.selectHeading"): hasInstances? t("backups.selection.noCompatibleHeading"): t("backups.selection.connectHeading")
@@ -786,46 +817,8 @@ export function InstanceBackups() {
 
     return (
       <TooltipProvider>
-        <div className="space-y-6 p-4 lg:p-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex-1 space-y-2">
-              <h1 className="text-2xl font-semibold">{t("backups.pageTitle")}</h1>
-              <p className="text-sm text-muted-foreground">
-                {t("backups.pageDescription")}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {hasSupportedInstances && (
-                <Select
-                  value={instanceId !== undefined ? instanceId.toString() : undefined}
-                  onValueChange={handleInstanceSelection}
-                >
-                  <SelectTrigger className="!w-[240px] !max-w-[240px]">
-                    <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                      <HardDrive className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        <SelectValue placeholder={t("backups.selectInstancePlaceholder")} />
-                      </span>
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supportedInstances.map((inst) => (
-                      <SelectItem key={inst.id} value={inst.id.toString()}>
-                        <div className="flex items-center max-w-40 gap-2">
-                          <span className="truncate">{inst.name}</span>
-                          <span
-                            className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
-                              inst.connected ? "bg-green-500" : "bg-red-500"
-                            }`}
-                          />
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
+        <div className="space-y-6 p-4 lg:p-6 pb-16">
+          <PageHeader title={t("backups.pageTitle")} description={t("backups.pageDescription")} actions={instancePicker} />
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
               <HardDrive className="h-16 w-16 text-muted-foreground/40" />
@@ -876,54 +869,21 @@ export function InstanceBackups() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 p-4 lg:p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex-1 space-y-2">
-            <h1 className="text-2xl font-semibold">{t("backups.pageTitle")}</h1>
-            <p className="text-sm text-muted-foreground">
-              {t("backups.pageDescription")}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Instance selector */}
-            {hasSupportedInstances && (
-              <Select
-                value={instanceId !== undefined ? instanceId.toString() : undefined}
-                onValueChange={handleInstanceSelection}
-              >
-                <SelectTrigger className="!w-[240px] !max-w-[240px]">
-                  <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">
-                      <SelectValue placeholder={t("backups.selectInstancePlaceholder")} />
-                    </span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {supportedInstances.map((inst) => (
-                    <SelectItem key={inst.id} value={inst.id.toString()}>
-                      <div className="flex items-center max-w-40 gap-2">
-                        <span className="truncate">{inst.name}</span>
-                        <span
-                          className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
-                            inst.connected ? "bg-green-500" : "bg-red-500"
-                          }`}
-                        />
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {instanceId && (
+      <div className="space-y-6 p-4 lg:p-6 pb-16">
+        <PageHeader
+          title={t("backups.pageTitle")}
+          description={t("backups.pageDescription")}
+          actions={
+            <>
+              {instancePicker}
               <Button variant="outline" asChild>
                 <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
                   {t("backups.navigation.backToTorrents")}
                 </Link>
               </Button>
-            )}
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr">
           <Card className="flex flex-col">
@@ -1097,6 +1057,16 @@ export function InstanceBackups() {
                       <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
                         <FileText className="mr-2 h-4 w-4" /> {t("backups.import.title")}
                       </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleSaveAll}
+                        disabled={saveAllDisabled}
+                        title={instanceCapabilitiesPending ? t("backups.settings.actions.waitForCapabilities") : undefined}
+                      >
+                        <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveAll")}
+                      </Button>
                       <Button
                         variant="outline"
                         onClick={handleSave}
@@ -1106,14 +1076,6 @@ export function InstanceBackups() {
                         <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveChanges")}
                       </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={handleSaveAll}
-                      disabled={saveAllDisabled}
-                      title={instanceCapabilitiesPending ? t("backups.settings.actions.waitForCapabilities") : undefined}
-                    >
-                      <Save className="mr-2 h-4 w-4" /> {t("backups.settings.actions.saveAll")}
-                    </Button>
                   </div>
                   {requiresCadenceSelection ? (
                     <p className="text-xs text-destructive">{t("backups.settings.actions.requiresCadence")}</p>

@@ -82,14 +82,12 @@
     "cancel": "Скасувати",
     "runNow": "Запустити зараз",
     "saveSettings": "Зберегти налаштування RSS автоматизації",
-    "reset": "Скинути",
     "requiresTorznabIndexer": "Запуски RSS автоматизації потребують принаймні одного Torznab індексатора.",
     "items": "{{count}} елементів",
     "failedCount": "{{count}} невдалих",
     "runError": "Помилка: {{message}}",
     "runSummary": "{{runs}} запусків • +{{added}}",
     "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих",
-    "runDisabledAlreadyRunning": "Запуск автоматизації вже виконується.",
     "runDisabledCooldown": "Ручні запуски обмежені інтервалом у {{minutes}} хвилин. Спробуйте знову через {{remaining}}."
   },
   "webhook": {
@@ -199,7 +197,11 @@
       "enabledRedMissingOps": "Gazelle: увімкнено (налаштовано ключ RED, немає OPS)",
       "enabledKeysMissing": "Gazelle: увімкнено (немає ключів)"
     },
-    "noMessageProvided": "Повідомлення не надано"
+    "noMessageProvided": "Повідомлення не надано",
+    "cancelDialog": {
+      "title": "Скасувати сканування бібліотеки?",
+      "description": "Це зупинить поточне сканування бібліотеки. Уже додані крос-сіди залишаться, але інші торренти більше не шукатимуться."
+    }
   },
   "rules": {
     "hardlinkReflink": "Режим жорстких/рефлінк посилань",
@@ -365,6 +367,9 @@
       "matching": "Правила, які визначають, які кандидати qui додає, для всіх джерел.",
       "categories": "Категорія та теги, які qui призначає кожному новому cross-seed."
     }
+  },
+  "run": {
+    "starting": "Запуск розпочинається."
   },
   "seasonPackRuns": {
     "title": "Останні запуски сезонних паків",

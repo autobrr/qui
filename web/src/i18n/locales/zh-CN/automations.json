@@ -4,6 +4,11 @@
     "description": "由 qui 管理的实例级自动化服务。",
     "noInstances": "尚未配置任何实例。请在设置中添加一个实例以使用服务。"
   },
+  "tabs": {
+    "workflows": "工作流",
+    "reannounce": "重新汇报",
+    "orphanScan": "孤立项目扫描"
+  },
   "queryBuilder": {
     "noConditions": "无条件",
     "matchesAllTorrents": "匹配所有种子（受 Tracker 选择限制）。",
