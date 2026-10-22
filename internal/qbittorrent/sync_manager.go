@@ -1212,12 +1212,13 @@ func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (to
 	return syncManager, nil
 }
 
-// SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
-func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks for torrent completion events across all clients.
+// notify must not block. handler runs on a queue with a fixed number of workers.
+func (sm *SyncManager) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	if sm == nil || sm.clientPool == nil {
 		return
 	}
-	sm.clientPool.SetTorrentCompletionHandler(handler)
+	sm.clientPool.SetTorrentCompletionHandler(notify, handler)
 }
 
 // SetTorrentAddedHandler registers a callback for torrent added events across all clients.

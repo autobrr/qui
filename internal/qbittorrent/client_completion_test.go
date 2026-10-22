@@ -121,7 +121,7 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 
 	seen := make(chan qbt.Torrent, 1)
 	wrongID := make(chan int, 1)
-	client.SetTorrentCompletionHandler(func(_ context.Context, instanceID int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
 		if instanceID != 7 {
 			select {
 			case wrongID <- instanceID:
@@ -175,7 +175,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 
 	seen := make(chan qbt.Torrent, 2)
 	wrongID := make(chan int, 1)
-	client.SetTorrentCompletionHandler(func(_ context.Context, instanceID int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
 		if instanceID != 9 {
 			select {
 			case wrongID <- instanceID:
@@ -245,7 +245,7 @@ func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 	client := &Client{instanceID: 3}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -300,7 +300,7 @@ func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
 	client := &Client{instanceID: 4}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -343,7 +343,7 @@ func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 	client := &Client{instanceID: 5}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -395,7 +395,7 @@ func TestHandleCompletionUpdatesCheckingStatesKeepPriorState(t *testing.T) {
 	client := &Client{instanceID: 6}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -443,7 +443,7 @@ func TestHandleCompletionUpdatesZeroWantedFinishFiresOnce(t *testing.T) {
 	client := &Client{instanceID: 8}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -513,7 +513,7 @@ func TestHandleCompletionUpdatesStartupAfterFailedRecheckFires(t *testing.T) {
 	client := &Client{instanceID: 10}
 
 	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 		seen <- torrent
 	})
 
@@ -566,6 +566,22 @@ func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
 	}
 }
 
+// completeBurst sends one sync with n downloading torrents, then one with all n complete.
+func completeBurst(client *Client, n int) {
+	for _, complete := range []bool{false, true} {
+		torrents := make(map[string]qbt.Torrent, n)
+		for i := range n {
+			hash := fmt.Sprintf("%040x", i)
+			torrent := qbt.Torrent{Hash: hash, State: qbt.TorrentStateDownloading, Progress: 0.5, AmountLeft: 1, CompletionOn: -1}
+			if complete {
+				torrent = qbt.Torrent{Hash: hash, State: qbt.TorrentStateUploading, Progress: 1, CompletionOn: 1700000000}
+			}
+			torrents[hash] = torrent
+		}
+		client.handleCompletionUpdates(&qbt.MainData{Torrents: torrents})
+	}
+}
+
 func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
 	t.Parallel()
 
@@ -574,7 +590,7 @@ func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
 
 	var running, maxRunning, calls atomic.Int64
 	release := make(chan struct{})
-	client.SetTorrentCompletionHandler(func(context.Context, int, qbt.Torrent) {
+	client.SetTorrentCompletionHandler(nil, func(context.Context, int, qbt.Torrent) {
 		n := running.Add(1)
 		for {
 			prev := maxRunning.Load()
@@ -587,20 +603,7 @@ func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
 		calls.Add(1)
 	})
 
-	update := func(complete bool) {
-		torrents := make(map[string]qbt.Torrent, burst)
-		for i := range burst {
-			hash := fmt.Sprintf("%040x", i)
-			torrent := qbt.Torrent{Hash: hash, State: qbt.TorrentStateDownloading, Progress: 0.5, AmountLeft: 1, CompletionOn: -1}
-			if complete {
-				torrent = qbt.Torrent{Hash: hash, State: qbt.TorrentStateUploading, Progress: 1, CompletionOn: 1700000000}
-			}
-			torrents[hash] = torrent
-		}
-		client.handleCompletionUpdates(&qbt.MainData{Torrents: torrents})
-	}
-	update(false)
-	update(true)
+	completeBurst(client, burst)
 
 	time.Sleep(100 * time.Millisecond)
 	if got := maxRunning.Load(); got == 0 || got > handlerQueueWorkers {
@@ -614,6 +617,27 @@ func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
 	}
 	if got := calls.Load(); got != burst {
 		t.Fatalf("handler calls = %d, want %d", got, burst)
+	}
+}
+
+func TestHandleCompletionUpdatesNotifiesWhileSearchesWait(t *testing.T) {
+	t.Parallel()
+
+	const burst = handlerQueueWorkers + 1
+	client := &Client{instanceID: 14}
+
+	var notified atomic.Int64
+	lane := make(chan struct{})
+	defer close(lane)
+	client.SetTorrentCompletionHandler(
+		func(context.Context, int, qbt.Torrent) { notified.Add(1) },
+		func(context.Context, int, qbt.Torrent) { <-lane },
+	)
+
+	completeBurst(client, burst)
+
+	if got := notified.Load(); got != burst {
+		t.Fatalf("notified = %d while every search worker waits, want %d", got, burst)
 	}
 }
 

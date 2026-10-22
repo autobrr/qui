@@ -132,6 +132,7 @@ type Client struct {
 
 	completionMu      sync.Mutex
 	completionState   map[string]bool
+	completionNotify  TorrentCompletionHandler
 	completionHandler TorrentCompletionHandler
 	completionInit    bool
 	addedMu           sync.Mutex
@@ -750,9 +751,12 @@ func (c *Client) dispatchSyncError(err error) {
 	}
 }
 
-// SetTorrentCompletionHandler registers a callback to be invoked when torrents finish downloading.
-func (c *Client) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks to be invoked when torrents
+// finish downloading. notify runs in the sync callback and must not block.
+// handler runs on the completion queue.
+func (c *Client) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	c.completionMu.Lock()
+	c.completionNotify = notify
 	c.completionHandler = handler
 	if c.completionState == nil {
 		c.completionState = make(map[string]bool)
@@ -836,6 +840,7 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		c.completionState = make(map[string]bool)
 	}
 
+	notify := c.completionNotify
 	handler := c.completionHandler
 
 	pruneRemovedTorrents(c.completionState, data.Torrents)
@@ -890,6 +895,12 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	}
 	c.completionMu.Unlock()
 
+	// Notify outside the queue: a handler can wait minutes for its search lane.
+	if notify != nil {
+		for _, torrent := range ready {
+			notify(context.Background(), c.instanceID, torrent)
+		}
+	}
 	if handler == nil || len(ready) == 0 {
 		return
 	}
