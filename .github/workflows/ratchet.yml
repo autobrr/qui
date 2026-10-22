@@ -27,7 +27,7 @@ jobs:
         run: gh workflow run ratchet.yml --repo ${{ github.repository }} --ref ${{ github.event.repository.default_branch }}
 
   # Takes the next file off scripts/ratchet/allowlist.json and fixes up to 5
-  # of its problems. The open job makes the pull request as the qui-ratchet
+  # of its problems. The open job makes the pull request as the qui-rabbit
   # app. See
   # docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
   fix:
@@ -96,7 +96,9 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          # The tests run code from the agent and write to GOCACHE. A saved cache
+          # would reach later runs on develop, release builds included.
+          cache: false
 
       - name: Install golangci-lint
         if: steps.pick.outputs.file
@@ -237,6 +239,8 @@ jobs:
         with:
           app-id: ${{ vars.RATCHET_APP_ID }}
           private-key: ${{ secrets.RATCHET_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       # The app token pushes, so CI and the review bots run on the pull
       # request. A push with GITHUB_TOKEN starts no workflow.
@@ -252,8 +256,8 @@ jobs:
           draft=()
           [[ -s "$OUT/problems.md" ]] && draft=(--draft)
           gh auth setup-git
-          git config user.name 'qui-ratchet[bot]'
-          git config user.email '346308562+qui-ratchet[bot]@users.noreply.github.com'
+          git config user.name 'qui-rabbit[bot]'
+          git config user.email '346308562+qui-rabbit[bot]@users.noreply.github.com'
           git switch -c "$branch"
           git commit -q --allow-empty -m "refactor(lint): fix $LINTER in $(basename "$FILE")"
           git push -q origin "$branch"

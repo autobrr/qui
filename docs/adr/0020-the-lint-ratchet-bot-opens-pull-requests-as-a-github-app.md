@@ -5,7 +5,7 @@ date: 2026-10-22
 
 # The lint ratchet bot opens pull requests as a GitHub App
 
-Each day, `.github/workflows/ratchet.yml` takes one file off `scripts/ratchet/allowlist.json`. An agent fixes up to 5 lint problems in it, and the workflow opens one pull request with the `ratchet` label. The workflow commits and pushes as the `qui-ratchet` GitHub App. The app can write contents and pull requests in qui and nothing else.
+Each day, `.github/workflows/ratchet.yml` takes one file off `scripts/ratchet/allowlist.json`. An agent fixes up to 5 lint problems in it, and the workflow opens one pull request with the `ratchet` label. The workflow commits and pushes as the `qui-rabbit` GitHub App. The app can write contents and pull requests in qui and nothing else.
 
 GitHub starts no workflow for a push or a pull request made with `GITHUB_TOKEN`. A ratchet pull request made with that token gets no CI, so a maintainer cannot see if the fix builds and passes the tests. A push with an app token starts CI as usual. ADR 0017 rejected an app for triage because triage only labels and comments, and needs no CI. The ratchet needs CI on each pull request, so here the app is worth its private key.
 
