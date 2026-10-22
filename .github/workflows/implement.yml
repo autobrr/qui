@@ -149,12 +149,19 @@ jobs:
             --disallowedTools 'Read(//proc/**)' 'Edit(./.github/**)' 'Edit(./.claude/**)' 'Edit(./.git/**)' \
               'Edit(./docs/agents/**)' 'Edit(**/AGENTS.md)' 'Edit(**/CLAUDE.md)' 'Edit(./go.mod)' 'Edit(./go.sum)' \
               'Edit(./web/package.json)' 'Edit(./web/pnpm-lock.yaml)' 'Edit(./web/pnpm-workspace.yaml)' \
+            --settings '{"attribution":{"commit":"","pr":""}}' \
+            --json-schema '{"type":"object","properties":{"title":{"type":"string","maxLength":64},"body":{"type":"string"}},"required":["title","body"]}' \
             --output-format stream-json --verbose \
+          | tee "$RUNNER_TEMP/stream.jsonl" \
           | jq -r --unbuffered '
               if .type == "assistant" then .message.content[]
                 | if .type == "text" then .text elif .type == "tool_use" then "> \(.name) \(.input | tostring)" else empty end
-              elif .type == "result" then "result: \(.subtype), \(.num_turns) turns"
+              elif .type == "result" then "result: \(.subtype), \(.num_turns) turns", (.permission_denials[]? | "denied: \(tostring)")
               else empty end'
+          # The agent gives the title and body as structured output, so it
+          # needs no write permission for them.
+          jq -j 'select(.type == "result") | .structured_output.title // empty' "$RUNNER_TEMP/stream.jsonl" > .implement/title.txt
+          jq -j 'select(.type == "result") | .structured_output.body // empty' "$RUNNER_TEMP/stream.jsonl" > .implement/body.md
 
       # Runs the checks in the sandbox and saves the change as a patch. The
       # open job applies it on a new runner.
@@ -267,7 +274,7 @@ jobs:
               cat "$OUT/problems.md"
               echo
             fi
-            cat "$OUT/body.md" 2>/dev/null || printf 'Closes #%s\n\nThe agent wrote no pull request body.\n' "$ISSUE"
+            if [[ -s "$OUT/body.md" ]]; then cat "$OUT/body.md"; else printf 'Closes #%s\n\nThe agent wrote no pull request body.\n' "$ISSUE"; fi
             echo
             echo "---"
             echo "Implementer run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Skills: s0up4200/skills@$SKILLS."
