@@ -120,7 +120,6 @@
   },
   "nilerr": {
     "internal/backups/service.go": 4,
-    "internal/services/arr/service.go": 1,
     "internal/services/crossseed/manual_assemble.go": 1,
     "internal/services/crossseed/seasonpack.go": 2,
     "internal/services/jackett/service.go": 1,
