@@ -6,3 +6,4 @@
 web/src/components/query-builder/fields.generated.ts text eol=lf
 documentation/docs/_partials/_automations-json-reference.mdx text eol=lf
 internal/qbittorrent/testdata/single_instance_sort.golden text eol=lf
+web/src/lib/preference-catalog-keys.json text eol=lf

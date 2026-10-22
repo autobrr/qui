@@ -110,6 +110,8 @@ const (
 	SFTPRefuseRemove
 	// SFTPStatVFS serves deterministic filesystem statistics without host statvfs support.
 	SFTPStatVFS
+	// SFTPRefuseLinkAndLstat injects permission errors without host directory modes.
+	SFTPRefuseLinkAndLstat
 )
 
 const hardlinkExtension = "hardlink@openssh.com"
@@ -365,7 +367,7 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 			switch mode {
 			case SFTPStall:
 				<-stalled
-			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove, SFTPStatVFS:
+			case SFTPStallReadDir, SFTPStatEOF, SFTPRefuseRemove, SFTPStatVFS, SFTPRefuseLinkAndLstat:
 				s.serveInMemSFTP(channel, mode)
 			default:
 				s.serveSFTP(conn, channel)
@@ -410,6 +412,9 @@ func (s *Server) serveInMemSFTP(channel ssh.Channel, mode SFTPMode) {
 	if mode == SFTPRefuseRemove {
 		handlers.FileCmd = removeRefuser{handlers.FileCmd}
 	}
+	if mode == SFTPRefuseLinkAndLstat {
+		handlers.FileCmd = linkRefuser{handlers.FileCmd}
+	}
 	if mode == SFTPStatVFS {
 		handlers.FileCmd = statVFSCmd{handlers.FileCmd}
 	}
@@ -453,10 +458,22 @@ func (l inMemLister) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 // Lstat keeps the in-memory tree's own lstat: without it pkg/sftp answers an
 // lstat as a link-following stat.
 func (l inMemLister) Lstat(r *sftp.Request) (sftp.ListerAt, error) {
+	if l.mode == SFTPRefuseLinkAndLstat {
+		return nil, sftp.ErrSSHFxPermissionDenied
+	}
 	if l.mode == SFTPStatEOF {
 		return nil, io.EOF
 	}
 	return l.inner.(sftp.LstatFileLister).Lstat(r)
+}
+
+type linkRefuser struct{ sftp.FileCmder }
+
+func (c linkRefuser) Filecmd(r *sftp.Request) error {
+	if r.Method == "Link" {
+		return sftp.ErrSSHFxPermissionDenied
+	}
+	return c.FileCmder.Filecmd(r)
 }
 
 // removeRefuser implements SFTPRefuseRemove.
