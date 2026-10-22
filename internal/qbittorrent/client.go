@@ -138,6 +138,8 @@ type Client struct {
 	addedState        map[string]struct{}
 	addedHandler      TorrentAddedHandler
 	addedInit         bool
+	completionQueue   handlerQueue
+	addedQueue        handlerQueue
 
 	// activeTaskCount caches the number of running/queued torrent-creation tasks.
 	// It is refreshed at most once per activeTaskCountTTL with single-flight, so the
@@ -782,6 +784,48 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 
 const torrentAddedGraceWindow = 60 * time.Second
 
+// handlerQueueWorkers caps the goroutines each handlerQueue runs, so a burst
+// of 10k events opens at most this many SQLite readers at once.
+// ponytail: fixed cap, so a completion delay runs for 16 torrents at a time;
+// count the delay from detection if bursts with a delay get slow.
+const handlerQueueWorkers = 16
+
+// handlerQueue runs queued handler calls in order on at most
+// handlerQueueWorkers goroutines. A worker exits when the queue is empty.
+// push runs in the sync callback and returns at once; a semaphore would park
+// one goroutine per waiting event.
+type handlerQueue struct {
+	mu      sync.Mutex
+	pending []func()
+	workers int
+}
+
+func (q *handlerQueue) push(fns ...func()) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.pending = append(q.pending, fns...)
+	for range min(len(fns), handlerQueueWorkers-q.workers) {
+		q.workers++
+		go q.run()
+	}
+}
+
+func (q *handlerQueue) run() {
+	for {
+		q.mu.Lock()
+		if len(q.pending) == 0 {
+			q.workers--
+			q.mu.Unlock()
+			return
+		}
+		fn := q.pending[0]
+		q.pending[0] = nil
+		q.pending = q.pending[1:]
+		q.mu.Unlock()
+		fn()
+	}
+}
+
 func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	if data == nil {
 		return
@@ -850,10 +894,11 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		return
 	}
 
+	calls := make([]func(), 0, len(ready))
 	for _, torrent := range ready {
-		torrentCopy := torrent
-		go handler(context.Background(), c.instanceID, torrentCopy)
+		calls = append(calls, func() { handler(context.Background(), c.instanceID, torrent) })
 	}
+	c.completionQueue.push(calls...)
 }
 
 // pruneRemovedTorrents drops hashes missing from the merged torrent map.
@@ -907,16 +952,13 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 
 	now := time.Now()
-	for _, torrent := range ready {
-		if torrent.AddedOn > 0 {
-			addedAt := time.Unix(torrent.AddedOn, 0)
-			if now.Sub(addedAt) > torrentAddedGraceWindow {
-				continue
-			}
-		}
-		torrentCopy := torrent
-		go handler(context.Background(), c.instanceID, torrentCopy)
+	ready = slices.DeleteFunc(ready, func(torrent qbt.Torrent) bool {
+		return torrent.AddedOn > 0 && now.Sub(time.Unix(torrent.AddedOn, 0)) > torrentAddedGraceWindow
+	})
+	if len(ready) == 0 {
+		return
 	}
+	c.addedQueue.push(func() { handler(context.Background(), c.instanceID, ready) })
 }
 
 // NormalizeCompletionTimestamp returns ts when it holds a real completion

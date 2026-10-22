@@ -782,12 +782,13 @@ func (app *Application) runServer() {
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
+		// Notify first: the completion search can wait minutes for its lane.
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
+		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
 	})
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())

@@ -126,6 +126,15 @@ func (s *Service) Notify(ctx context.Context, event Event) {
 		ctx = context.Background()
 	}
 
+	// An event that no target listens for would only fill the queue. On a read
+	// error, queue it and let dispatch read again.
+	targets, err := s.store.ListEnabled(ctx)
+	if err == nil && !slices.ContainsFunc(targets, func(target *models.NotificationTarget) bool {
+		return allowsEvent(target.EventTypes, event.Type)
+	}) {
+		return
+	}
+
 	if s.queue == nil {
 		go s.dispatch(ctx, event)
 		return

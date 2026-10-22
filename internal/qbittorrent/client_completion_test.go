@@ -5,6 +5,9 @@ package qbittorrent
 
 import (
 	"context"
+	"fmt"
+	"maps"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -560,5 +563,139 @@ func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
 	}
 	if _, ok := client.addedState["abc"]; ok || len(client.addedState) != 1 {
 		t.Fatalf("addedState kept removed torrent: %v", client.addedState)
+	}
+}
+
+func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
+	t.Parallel()
+
+	const burst = 10_000
+	client := &Client{instanceID: 12}
+
+	var running, maxRunning, calls atomic.Int64
+	release := make(chan struct{})
+	client.SetTorrentCompletionHandler(func(context.Context, int, qbt.Torrent) {
+		n := running.Add(1)
+		for {
+			prev := maxRunning.Load()
+			if n <= prev || maxRunning.CompareAndSwap(prev, n) {
+				break
+			}
+		}
+		<-release
+		running.Add(-1)
+		calls.Add(1)
+	})
+
+	update := func(complete bool) {
+		torrents := make(map[string]qbt.Torrent, burst)
+		for i := range burst {
+			hash := fmt.Sprintf("%040x", i)
+			torrent := qbt.Torrent{Hash: hash, State: qbt.TorrentStateDownloading, Progress: 0.5, AmountLeft: 1, CompletionOn: -1}
+			if complete {
+				torrent = qbt.Torrent{Hash: hash, State: qbt.TorrentStateUploading, Progress: 1, CompletionOn: 1700000000}
+			}
+			torrents[hash] = torrent
+		}
+		client.handleCompletionUpdates(&qbt.MainData{Torrents: torrents})
+	}
+	update(false)
+	update(true)
+
+	time.Sleep(100 * time.Millisecond)
+	if got := maxRunning.Load(); got == 0 || got > handlerQueueWorkers {
+		t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
+	}
+	close(release)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for calls.Load() < burst && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := calls.Load(); got != burst {
+		t.Fatalf("handler calls = %d, want %d", got, burst)
+	}
+}
+
+func TestHandleAddedUpdatesBurstCallsHandlerOncePerSync(t *testing.T) {
+	t.Parallel()
+
+	const burst = 10_000
+	client := &Client{instanceID: 13}
+
+	batches := make(chan []qbt.Torrent, burst)
+	client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []qbt.Torrent) {
+		batches <- torrents
+	})
+
+	client.handleAddedUpdates(&qbt.MainData{Torrents: map[string]qbt.Torrent{"seed": {Hash: "seed"}}})
+
+	now := time.Now().Unix()
+	torrents := map[string]qbt.Torrent{
+		"seed": {Hash: "seed"},
+		"old":  {Hash: "old", AddedOn: now - 3600},
+	}
+	for i := range burst {
+		hash := fmt.Sprintf("%040x", i)
+		torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: now}
+	}
+	client.handleAddedUpdates(&qbt.MainData{Torrents: torrents})
+
+	select {
+	case batch := <-batches:
+		if len(batch) != burst {
+			t.Fatalf("batch size = %d, want %d", len(batch), burst)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected one torrent-added batch")
+	}
+	select {
+	case batch := <-batches:
+		t.Fatalf("unexpected second batch of %d torrents", len(batch))
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestHandleAddedUpdatesRunsOnBoundedGoroutines(t *testing.T) {
+	t.Parallel()
+
+	const syncs = 40
+	client := &Client{instanceID: 14}
+
+	var running, maxRunning, calls atomic.Int64
+	release := make(chan struct{})
+	client.SetTorrentAddedHandler(func(context.Context, int, []qbt.Torrent) {
+		n := running.Add(1)
+		for {
+			prev := maxRunning.Load()
+			if n <= prev || maxRunning.CompareAndSwap(prev, n) {
+				break
+			}
+		}
+		<-release
+		running.Add(-1)
+		calls.Add(1)
+	})
+
+	torrents := map[string]qbt.Torrent{"seed": {Hash: "seed"}}
+	client.handleAddedUpdates(&qbt.MainData{Torrents: torrents})
+	for i := range syncs {
+		hash := fmt.Sprintf("%040x", i)
+		torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: time.Now().Unix()}
+		client.handleAddedUpdates(&qbt.MainData{Torrents: maps.Clone(torrents)})
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if got := maxRunning.Load(); got == 0 || got > handlerQueueWorkers {
+		t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
+	}
+	close(release)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for calls.Load() < syncs && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := calls.Load(); got != syncs {
+		t.Fatalf("handler calls = %d, want %d", got, syncs)
 	}
 }

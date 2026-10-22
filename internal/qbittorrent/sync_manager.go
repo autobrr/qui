@@ -62,8 +62,8 @@ type torrentLookup interface {
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
-// TorrentAddedHandler is invoked when a torrent is first seen as new.
-type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
+// TorrentAddedHandler is invoked with the torrents that one sync first sees as new.
+type TorrentAddedHandler func(ctx context.Context, instanceID int, torrents []qbt.Torrent)
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minute))
