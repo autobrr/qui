@@ -503,7 +503,7 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 // A remote backend reports no file identity, so only a byte-identical root is
 // dropped; a case variant is kept because nothing confirms it is the same dir.
 func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T) {
-	noID := &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}, FileIDErr: errors.New("no identity")}
+	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
 	root := "/remote/TrackerName"
 	lower := "/remote/trackername"
 	backend := &rootIdentityBackend{
@@ -521,7 +521,7 @@ func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 	t.Parallel()
 
 	const root = "/srv/data"
-	noID := &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}, FileIDErr: errors.New("no identity")}
+	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
 	slash := newSlashBackend(map[string]int64{
 		root + "/owned.mkv":  1,
 		root + "/orphan.mkv": 2,
