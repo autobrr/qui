@@ -538,7 +538,8 @@ export function InstanceBackups() {
 
   const requiresCadenceSelection = Boolean(formState?.enabled && !hasActiveCadence)
 
-  const saveDisabled = !formState || updateSettings.isPending || requiresCadenceSelection
+  // formState keeps the previous instance's values until the new instance's settings load.
+  const saveDisabled = !settings || !formState || updateSettings.isPending || requiresCadenceSelection
 
   const handleToggle = (key: SettingsToggleKey) => (checked: boolean) => {
     setFormState(prev => {
