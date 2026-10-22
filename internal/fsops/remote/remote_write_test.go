@@ -83,6 +83,26 @@ func TestMkdirAll_FileInTheWay(t *testing.T) {
 	require.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
+func TestMkdir_SecondCallSeesExist(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	target := remotePath(dir, "Movie")
+
+	require.NoError(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode))
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	// The server answers SSH_FX_FAILURE for an existing path. A caller that
+	// reserves a folder name needs fs.ErrExist.
+	require.ErrorIs(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode), fs.ErrExist)
+
+	require.NoError(t, os.WriteFile(remotePath(dir, "file"), nil, 0o600))
+	require.ErrorIs(t, b.Mkdir(t.Context(), remotePath(dir, "file"), fsutil.ContentDirMode), fs.ErrExist)
+}
+
 func TestRemove_File(t *testing.T) {
 	t.Parallel()
 
