@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Mise à jour disponible",
     "versionAvailable": "La version {{version}} est maintenant disponible",
-    "viewRelease": "Voir la version",
     "dismiss": "Fermer"
   },
   "pwaUpdate": {
@@ -192,8 +191,7 @@
     "trigger": "Plus d'informations"
   },
   "numberInput": {
-    "unlimited": "Illimité",
-    "useUnlimited": " (utiliser -1 pour illimité)"
+    "unlimited": "Illimité"
   },
   "dateTime": {
     "na": "N/D",
@@ -218,6 +216,25 @@
       "year_one": "{{count}} an",
       "year_other": "{{count}} ans"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "o",
+      "KiB": "Kio",
+      "MiB": "Mio",
+      "GiB": "Gio",
+      "TiB": "Tio",
+      "PiB": "Pio"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Soutenir qui",

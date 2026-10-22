@@ -4,9 +4,13 @@
 
 Fixes # (issue)
 
+## Breaking change
+
+<!--- Write "No breaking change." unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Otherwise say what they must do. A maintainer then adds the BREAKING CHANGE label and puts ! in the title, for example feat(api)!: ... The PR title check fails until the PR has both. --->
+
 ## Behaviour change
 
-<!--- Name each change existing users get without doing anything: a saved rule, setting, or API value that now matches or means something else. Say what they must do. Delete this section if there is none. --->
+<!--- Changes that existing users notice after they update but need no action for, for example a new sort order or label. Write "No behaviour change." if there is none. --->
 
 ## How has this been tested?
 
@@ -14,7 +18,7 @@ Fixes # (issue)
 
 ## Performance
 
-<!--- Follow AGENTS.md#mandatory-performance-checks.
+<!--- Follow docs/agents/performance-checks.md.
       Include before/after measurements and a conclusion for changes that can affect performance.
       Describe the workload and measurement method, or link to the results.
       If no performance risk applies, explain why. Keep this section. --->
@@ -22,14 +26,17 @@ Fixes # (issue)
 ## Screenshots (for UI changes)
 
 <!--- Delete this section if your change has no visible UI.
-      Do not show private tracker names, tracker URLs, torrent names, or save paths.
-      Use synthetic torrents, or blur these columns. --->
+      Screenshots and recordings on GitHub are public. Do not show private tracker names,
+      tracker URLs, torrent names, or save paths in them.
+      Turn on incognito mode before you capture, or blur these columns.
+      Mask passkeys, announce URLs, and API keys in every capture.
+      To keep real torrent data private, link a Paste from https://bin.getqui.com. --->
 
 ## Checklist
 
 - [ ] My PR title follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) format (it becomes the squashed commit message)
 - [ ] If this changes the database schema, I have added migrations for both SQLite and PostgreSQL
-- [ ] I completed the [mandatory performance checks](https://github.com/autobrr/qui/blob/develop/AGENTS.md#mandatory-performance-checks) and recorded the outcome in Performance
+- [ ] I completed the [mandatory performance checks](https://github.com/autobrr/qui/blob/develop/docs/agents/performance-checks.md) and recorded the outcome in Performance
 
 ## AI disclosure
 

@@ -238,6 +238,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 
 			result := s.buildHardlinkDestDir(
 				context.Background(),
+				fsops.HostPaths,
 				instance,
 				tt.baseDir,
 				tt.torrentHash,
@@ -288,6 +289,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 
 	result := s.buildHardlinkDestDir(
 		context.Background(),
+		fsops.HostPaths,
 		instance,
 		instance.HardlinkBaseDir,
 		"abcdef1234567890",
@@ -501,7 +503,7 @@ func TestRankBaseDirs(t *testing.T) {
 			for i, dir := range tt.dirs {
 				dirs[i] = filepath.FromSlash(dir)
 			}
-			got := rankBaseDirs(dirs, filepath.FromSlash(tt.source))
+			got := rankBaseDirs(fsops.HostPaths, dirs, filepath.FromSlash(tt.source))
 			for i := range got {
 				got[i] = filepath.ToSlash(got[i])
 			}
@@ -658,7 +660,8 @@ func TestPreviewLinkBaseDir_UsesRankedOrder(t *testing.T) {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}}}
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
-	assert.Equal(t, dirB, s.previewLinkBaseDir(t.Context(), instance, savePath))
+	got, _ := s.previewLinkBaseDir(t.Context(), instance, savePath)
+	assert.Equal(t, dirB, got)
 }
 
 func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
@@ -967,6 +970,69 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 		require.True(t, pending.monitorOnly)
 	default:
 		require.Fail(t, "expected hardlink title rescue to wait for a full recheck")
+	}
+}
+
+func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
+	for _, skipAutoResume := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skipAutoResume=%v", skipAutoResume), func(t *testing.T) {
+			tempDir := t.TempDir()
+			downloadsDir := filepath.Join(tempDir, "downloads")
+			require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Original"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
+
+			service := &Service{
+				instanceStore: &mockInstanceStore{
+					instances: map[int]*models.Instance{
+						1: {
+							ID:                       1,
+							Name:                     "qbt1",
+							HasLocalFilesystemAccess: true,
+							UseHardlinks:             true,
+							HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+						},
+					},
+				},
+				syncManager: &failingRecheckSyncManager{
+					qbittorrentSync: &rootlessSavePathSyncManager{},
+					recheckErr:      context.DeadlineExceeded,
+				},
+				recheckResumeChan: make(chan *pendingResume, 1),
+				recheckResumeCtx:  t.Context(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return models.DefaultCrossSeedAutomationSettings(), nil
+				},
+			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+
+			result := service.processHardlinkMode(
+				t.Context(),
+				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+				[]byte("torrent"),
+				"hash123",
+				"",
+				"Renamed",
+				&CrossSeedRequest{SkipAutoResume: skipAutoResume},
+				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+				"size",
+				qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+				qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+				&qbt.TorrentProperties{SavePath: downloadsDir},
+				"",
+				"",
+			)
+
+			require.True(t, result.Success, result.Result.Message)
+			require.NotContains(t, result.Result.Message, "manual intervention required")
+			select {
+			case pending := <-service.recheckResumeChan:
+				require.True(t, pending.recheckPending)
+				require.True(t, pending.verificationRequired)
+				require.Equal(t, skipAutoResume, pending.monitorOnly)
+			default:
+				require.Fail(t, "expected the failed recheck to be queued")
+			}
+		})
 	}
 }
 
@@ -2080,4 +2146,46 @@ func TestShouldWarnForReflinkCreateError(t *testing.T) {
 			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
 		})
 	}
+}
+
+// An existing target means the tree is half made in the target dir, so link
+// mode reports the error instead of adding in regular mode (#2942 decision 5).
+// A stranger's file sits where the link would go; both backends answer that
+// with hardlinktree.ErrTargetExists.
+func TestProcessHardlinkMode_ExistingTargetRefusesInsteadOfFallingBack(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	linksDir := filepath.Join(tempDir, "links")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+	stranger := filepath.Join(linksDir, "TorrentName--hash123", "Movie", "movie.mkv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
+	require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: {
+			ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+			HardlinkBaseDir: linksDir, FallbackToRegularMode: true,
+		}}},
+		syncManager: sync,
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+	result := s.processHardlinkMode(
+		t.Context(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact", files, files,
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category", "category.cross",
+	)
+
+	require.False(t, result.Success, "result: %+v", result)
+	assert.Equal(t, "hardlink_error", result.Result.Status, "the refusal is reported as a hardlink error")
+	assert.False(t, result.FallbackToRegular, "an existing target must not become a regular add")
+	assert.False(t, result.RequiresFullRecheck)
+	assert.Empty(t, sync.addedOptions, "nothing is added")
 }

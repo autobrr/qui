@@ -37,6 +37,10 @@ type liveCreds struct {
 
 func (c liveCreds) Get(context.Context, int) (*models.Instance, error)  { return c.inst, nil }
 func (c liveCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
+func (c liveCreds) SetSSHTier(_ context.Context, _ int, tier models.SSHTier) error {
+	c.inst.SSHTier = tier
+	return nil
+}
 func (c liveCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 	if c.pin == nil {
 		return nil, models.ErrSSHHostKeyNotPinned

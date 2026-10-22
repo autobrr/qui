@@ -226,10 +226,28 @@ code {
   border-radius: 0.25rem;
 }
 
-/* Tables */
+/* Tables: the table draws the rounded outline, because the radius clips the borders of the corner cells */
 table {
+  border: var(--ifm-table-border-width) solid var(--ifm-table-border-color);
+  border-collapse: separate;
+  border-spacing: 0;
   border-radius: var(--ifm-global-radius);
-  overflow: hidden;
+  overflow: auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+table th,
+table td {
+  border-width: 0 0 var(--ifm-table-border-width) var(--ifm-table-border-width);
+}
+
+table tr > :first-child {
+  border-left: 0;
+}
+
+table tr:last-child > td {
+  border-bottom: 0;
 }
 
 th {

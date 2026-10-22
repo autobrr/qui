@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -339,6 +338,7 @@ func (s *Service) processLinkMode(
 	if err != nil {
 		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
+	d := backend.Paths()
 
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the link base directory.
@@ -374,7 +374,7 @@ func (s *Service) processLinkMode(
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
 		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
-			AbsPath: filepath.Join(props.SavePath, filepath.FromSlash(f.Name)),
+			AbsPath: d.Join(props.SavePath, d.FromSlash(f.Name)),
 			RelPath: f.Name,
 			Size:    f.Size,
 		})
@@ -401,9 +401,9 @@ func (s *Service) processLinkMode(
 	err = LinkIntoMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend, func(baseDir string) error {
 		selectedBaseDir = baseDir
 		// Build destination directory based on preset and torrent structure
-		destDir = s.buildHardlinkDestDir(ctx, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+		destDir = s.buildHardlinkDestDir(ctx, d, instance, baseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 		// Build link tree plan with only the linkable files
-		plan, planErr = hardlinktree.BuildPlan(candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+		plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
 		if planErr != nil {
 			return planErr
 		}
@@ -448,14 +448,22 @@ func (s *Service) processLinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg(logPrefix + "failed to create link tree, aborting")
-		return handleCreateError(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
+		handle := handleCreateError
+		if errors.Is(err, hardlinktree.ErrTargetExists) {
+			// The target dir already holds a file: a crashed earlier run or a
+			// second tracker sharing the link path. Falling back would add the
+			// torrent in regular mode inside the matched torrent's path and leave
+			// the partial tree, so refuse and let the user clean up (#2942).
+			handle = handleMaterializationError
+		}
+		return handle(fmt.Sprintf("Failed to create %s tree: %v", mode.name, err))
 	}
 
 	// Ensure cross-seed category exists with the correct save path derived from
 	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
-		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		categorySavePath := s.buildCategorySavePath(ctx, d, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
 		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
@@ -471,6 +479,7 @@ func (s *Service) processLinkMode(
 		Str("torrentName", torrentName).
 		Str("destDir", destDir).
 		Int("fileCount", len(plan.Files)).
+		Int("skippedExists", created.SkippedExists).
 		Msg(logPrefix + "created link tree")
 
 	if pooledCompletion && poolDescriptorErr == nil && mode.poolReplaceable {
@@ -635,16 +644,18 @@ func (s *Service) processLinkMode(
 			// and which are missing (extras to download)
 			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
 			recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
-			switch {
-			case recheckErr != nil:
+			recheckPending := recheckErr != nil
+			if recheckPending {
 				log.Warn().
 					Err(recheckErr).
 					Int("instanceID", candidate.InstanceID).
 					Str("torrentHash", torrentHash).
+					Bool("skipAutoResume", req.SkipAutoResume).
 					Msg(logPrefix + "failed to trigger recheck after add")
-				statusMsg += " - recheck failed, manual intervention required"
+			}
+			switch {
 			case req.SkipAutoResume:
-				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
+				statusMsg += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, torrentHash)
 				// User requested to skip auto-resume - leave paused after recheck
 				log.Debug().
 					Int("instanceID", candidate.InstanceID).
@@ -657,6 +668,7 @@ func (s *Service) processLinkMode(
 					Int("instanceID", candidate.InstanceID).
 					Str("torrentHash", torrentHash).
 					Int("extraFiles", totalFiles-linkedFiles).
+					Bool("recheckPending", recheckPending).
 					Msg(logPrefix + "queuing torrent for recheck resume")
 				var linkedPaths map[string]struct{}
 				if mode.linkedPathsForResume {
@@ -665,13 +677,16 @@ func (s *Service) processLinkMode(
 				queueErr := error(nil)
 				switch {
 				case verifyBeforeSeed:
-					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
+					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash, recheckPending)
 				case recheckPolicy.requireComplete:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths, recheckPending)
 				default:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, mode.recoverMissingFilesWithResume, linkedPaths)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, mode.recoverMissingFilesWithResume, linkedPaths, recheckPending)
 				}
-				if queueErr != nil {
+				switch {
+				case queueErr != nil && recheckPending:
+					statusMsg += " - recheck failed and auto-resume queue full, manual intervention required"
+				case queueErr != nil:
 					statusMsg += " - auto-resume queue full, manual resume required"
 				}
 			}

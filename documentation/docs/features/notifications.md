@@ -64,5 +64,13 @@ Use any Shoutrrr-supported URL scheme. Examples:
 
 Notifiarr also accepts optional parameters such as `channel` and `name`, for example `notifiarr://apikey?name=qui&channel=123456789`.
 
+### Services without a Shoutrrr scheme
+
+If Shoutrrr has no scheme for your service, but the service accepts a JSON webhook, use the generic webhook service. This example is for a service that reads the message from a `content` field:
+
+- `generic://chat.example.com/api/webhooks/<id>/<token>?template=json&messagekey=content`
+
+The generic service uses HTTPS. If the host uses plain HTTP, add `disabletls=yes`. To send a header, add `@Header=value`, for example `@Authorization=Bearer%20token`. For all options, see the [generic service documentation](https://shoutrrr.nickfedor.com/latest/services/specialized/generic/).
+
 See the Shoutrrr documentation for the full list of services and URL formats:
 https://github.com/nicholas-fedor/shoutrrr

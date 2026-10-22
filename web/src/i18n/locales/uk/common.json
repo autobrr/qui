@@ -158,7 +158,6 @@
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",
     "versionAvailable": "Версія {{version}} тепер доступна",
-    "viewRelease": "Переглянути реліз",
     "dismiss": "Закрити"
   },
   "pwaUpdate": {
@@ -192,8 +191,7 @@
     "trigger": "Докладніше"
   },
   "numberInput": {
-    "unlimited": "Без обмежень",
-    "useUnlimited": " (використовуйте -1 для необмеженого)"
+    "unlimited": "Без обмежень"
   },
   "dateTime": {
     "na": "Н/Д",
@@ -232,6 +230,25 @@
       "year_few": "{{count}} роки",
       "year_many": "{{count}} років"
     }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "Б",
+      "KiB": "КіБ",
+      "MiB": "МіБ",
+      "GiB": "ГіБ",
+      "TiB": "ТіБ",
+      "PiB": "ПіБ"
+    },
+    "bit": {
+      "b": "біт",
+      "Kb": "кбіт",
+      "Mb": "Мбіт",
+      "Gb": "Гбіт",
+      "Tb": "Тбіт"
+    },
+    "perSecond": "{{unit}}/с",
+    "valueWithUnit": "{{value}} {{unit}}"
   },
   "support": {
     "title": "Підтримати qui",

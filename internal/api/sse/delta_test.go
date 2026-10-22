@@ -68,40 +68,6 @@ func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 	require.Nil(t, changed.Delta.Order, "order is omitted when only values change")
 }
 
-func TestBuildUpdatePayloadSendsPreferencesOnlyWhenTheyChange(t *testing.T) {
-	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
-
-	withPrefs := func(prefs string) *qbittorrent.TorrentResponse {
-		resp := singleResp(tv("a", "A"))
-		resp.AppPreferences = json.RawMessage(prefs)
-		return resp
-	}
-
-	full := g.buildUpdatePayload(opts, withPrefs(`{"dht":true}`), &StreamMeta{})
-	require.JSONEq(t, `{"dht":true}`, string(full.Data.AppPreferences), "the seeding snapshot always carries preferences")
-
-	steady := g.buildUpdatePayload(opts, withPrefs(`{"dht":true}`), &StreamMeta{})
-	require.Nil(t, steady.Data.AppPreferences, "unchanged preferences are dropped from the delta")
-
-	edited := g.buildUpdatePayload(opts, withPrefs(`{"dht":false}`), &StreamMeta{})
-	require.JSONEq(t, `{"dht":false}`, string(edited.Data.AppPreferences), "an edit is sent")
-
-	again := g.buildUpdatePayload(opts, withPrefs(`{"dht":false}`), &StreamMeta{})
-	require.Nil(t, again.Data.AppPreferences, "the baseline advanced to the edited value")
-
-	// Explicit null is the tri-state that clears the client's cached copy, so it
-	// must survive the dedup even though the previous value was a real object.
-	cleared := g.buildUpdatePayload(opts, withPrefs(`null`), &StreamMeta{})
-	require.Equal(t, "null", string(cleared.Data.AppPreferences), "an explicit null still goes out")
-
-	// The response the caller handed us must not be mutated: it is shared with
-	// other subscribers and with the REST cache.
-	shared := withPrefs(`null`)
-	_ = g.buildUpdatePayload(opts, shared, &StreamMeta{})
-	require.Equal(t, "null", string(shared.AppPreferences), "dedup only edits the delta copy")
-}
-
 func TestBuildUpdatePayloadAddSendsOrderAndRow(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{InstanceID: 1}
@@ -300,13 +266,11 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 // diverge from it; every init identifies the exact retained frame version.
 func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 1}, Total: 1}
-	prefs := json.RawMessage(`{"max_ratio":2}`)
 	opts := StreamOptions{InstanceIDs: []int{1}}
 	g := &subscriptionGroup{version: StreamVersion{Major: 7}}
 
 	seeded := singleResp(tv("a", "A"))
 	seeded.Counts = counts
-	seeded.AppPreferences = prefs
 	first := g.buildInitPayload(opts, seeded, &StreamMeta{})
 	require.Equal(t, seeded, first.Data)
 	require.Equal(t, &StreamVersion{Major: 7, Minor: 1}, first.Version)
@@ -329,7 +293,6 @@ func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	require.Equal(t, &StreamVersion{Major: 7, Minor: 2}, late.Version)
 	require.Equal(t, "A", late.Data.Torrents[0].Name)
 	require.Equal(t, counts, late.Data.Counts)
-	require.Equal(t, prefs, late.Data.AppPreferences)
 }
 
 func TestCountsEqual(t *testing.T) {
@@ -375,4 +338,20 @@ func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
 	mutated := []qbittorrent.TorrentView{tv("a", "A"), tv("b", "B-new")}
 	_, changedIdx3, _ := computeRowDelta(mutated, singleRowKey, singleRowFingerprint, fp)
 	require.Equal(t, []int{1}, changedIdx3)
+}
+
+func TestServerStatePayloadRebuildsWhenSubcategoryModeChanges(t *testing.T) {
+	g := &subscriptionGroup{}
+	opts := StreamOptions{InstanceID: 1}
+	seed := singleResp(tv("a", "A"))
+	seed.ServerState = &qbt.ServerState{DlInfoSpeed: 1}
+	g.buildUpdatePayload(opts, seed, &StreamMeta{})
+
+	same := g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 2}, nil, 0, &StreamMeta{})
+	require.NotNil(t, same)
+	require.Equal(t, int64(2), same.Data.ServerState.DlInfoSpeed)
+	require.Equal(t, int64(2), g.baselineSnapshot.ServerState.DlInfoSpeed, "a joiner must get the new server state")
+	require.Equal(t, same.Delta.BaseVersion.Minor+1, same.Version.Minor)
+
+	require.Nil(t, g.buildServerStatePayload(&qbt.ServerState{DlInfoSpeed: 3, UseSubcategories: true}, nil, 0, &StreamMeta{}))
 }

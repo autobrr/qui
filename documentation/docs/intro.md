@@ -15,7 +15,7 @@ Most people run qui with one qBittorrent instance. Multi-instance support is opt
 
 qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
 
-If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode or hardlink mode.
 
 ## Features
 
@@ -52,6 +52,8 @@ To register qui as your browser handler for magnet links, open **Settings → Se
 ## Languages
 
 qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan. The interface detects your browser language on first load and remembers your choice after that.
+
+Sizes and speeds follow the language: French shows `1,5 Gio` where English shows `1.5 GiB`. If a unit reads wrong in yours, say so in a Discussion.
 
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 

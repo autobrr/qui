@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,9 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCompletionStore {
@@ -888,4 +891,34 @@ func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaitersDuringRetryB
 	}
 
 	require.Equal(t, 4, syncMock.hitCount(hash))
+}
+
+type countingCompletionQuerier struct {
+	dbinterface.Querier
+	settingsReads atomic.Int64
+}
+
+func (q *countingCompletionQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if strings.Contains(query, "FROM instance_crossseed_completion_settings") {
+		q.settingsReads.Add(1)
+	}
+	return q.Querier.QueryRowContext(ctx, query, args...)
+}
+
+func TestHandleTorrentCompletion_BurstReadsSettingsOncePerInstance(t *testing.T) {
+	q := &countingCompletionQuerier{Querier: testdb.NewMigratedSQLite(t, "completion-burst")}
+	svc := &Service{completionStore: models.NewInstanceCrossSeedCompletionStore(q)}
+
+	var wg sync.WaitGroup
+	for i := range 10_000 {
+		wg.Go(func() {
+			svc.HandleTorrentCompletion(t.Context(), 1+i%2, qbt.Torrent{
+				Hash:     fmt.Sprintf("%040x", i),
+				Progress: 1.0,
+			})
+		})
+	}
+	wg.Wait()
+
+	assert.Equal(t, int64(2), q.settingsReads.Load())
 }

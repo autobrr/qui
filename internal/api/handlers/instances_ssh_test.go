@@ -526,15 +526,72 @@ func TestInstanceResponsesCarryCapabilities(t *testing.T) {
 
 	f.putCredentials()
 	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
-	assert.Equal(t, models.FilesystemCapabilities{Read: true}, f.listInstance().Capabilities, "remote")
+	assert.Equal(t, models.FilesystemCapabilities{Read: true, Identity: true, Write: true}, f.listInstance().Capabilities, "remote on the exec tier")
 
 	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","hasLocalFilesystemAccess":true}`)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var updated InstanceResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &updated))
-	local := models.FilesystemCapabilities{Read: true, Identity: true, Write: true, Content: true}
+	local := models.FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true}
 	assert.Equal(t, local, updated.Capabilities, "local, update response")
 	assert.Equal(t, local, f.listInstance().Capabilities, "local, list response")
+}
+
+// The test route and the pin routes write the tier their probe found, up and
+// down, so the capabilities follow the key without waiting for a connect.
+func TestSSHRoutesWriteTheTier(t *testing.T) {
+	f := newSSHFixture(t, "ssh-tier")
+	f.putCredentials()
+	tier := func() models.SSHTier {
+		t.Helper()
+		stored, err := f.store.Get(t.Context(), f.instance.ID)
+		require.NoError(t, err)
+		return stored.SSHTier
+	}
+	require.Equal(t, models.SSHTierSFTP, tier(), "a new instance starts on sftp")
+
+	f.sshTest()
+	assert.Equal(t, models.SSHTierExec, tier(), "test, up")
+
+	f.server.SetExec(sshtest.ExecSFTPOnly)
+	f.sshTest()
+	assert.Equal(t, models.SSHTierSFTP, tier(), "test, down")
+
+	f.server.SetExec(sshtest.ExecGNU)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	assert.Equal(t, models.SSHTierExec, tier(), "pin, up")
+
+	f.server.SetExec(sshtest.ExecBSD)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key/replace", hostKeyBody(f.server.HostKey)).Code)
+	assert.Equal(t, models.SSHTierSFTP, tier(), "replace, down")
+}
+
+// A pooled connection keeps the tier its probe found, and that probe may
+// have got no answer while the row kept its tier. A test ends the connection
+// whatever it finds, so the next operation runs on a connection whose tier
+// matches the row.
+func TestSSHTestRenewsTheConnection(t *testing.T) {
+	f := newSSHFixture(t, "ssh-test-tier-renews")
+	f.putCredentials()
+	f.server.SetExec(sshtest.ExecSFTPOnly)
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	client, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	_, err = f.sshPool.Exec(t.Context(), stored)
+	require.ErrorIs(t, err, sshpool.ErrNoExec)
+
+	f.sshTest()
+	again, err := f.sshPool.SFTP(t.Context(), stored)
+	require.NoError(t, err)
+	assert.NotSame(t, client, again, "a test ends the connection even when the tier is unchanged")
+
+	f.server.SetExec(sshtest.ExecGNU)
+	f.sshTest()
+	_, err = f.sshPool.Exec(t.Context(), stored)
+	require.NoError(t, err, "the next connection has the tier the test found")
 }
 
 func (f *sshFixture) listBody() string {
@@ -553,4 +610,59 @@ func (f *sshFixture) listInstance() InstanceResponse {
 	require.NoError(f.t, json.Unmarshal([]byte(f.listBody()), &listed))
 	require.Len(f.t, listed, 1)
 	return listed[0]
+}
+
+// A remote instance has Write (#2942) but no reflink: the remote backend
+// cannot clone files, so the reflink save must still refuse where hardlink
+// mode is accepted.
+func TestUpdateInstanceRefusesReflinkOnRemote(t *testing.T) {
+	f := newSSHFixture(t, "reflink-remote")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useReflinks":true,"hardlinkBaseDir":"/links"}`)
+	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"useReflinks":false,"hardlinkBaseDir":"/links"}`)
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+}
+
+// Turning off local access with a link mode on is refused by UpdateInstance;
+// removing the SSH credentials of a remote instance takes its Write away the
+// same way (#2942), so it is refused until the link mode is off.
+func TestDeleteSSHCredentialsRefusesWhileALinkModeIsOn(t *testing.T) {
+	f := newSSHFixture(t, "delete-credentials-link-mode")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":false,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodDelete, "/ssh-credentials", "").Code)
+}
+
+func TestUpdateSSHCredentialsRefusesANewEndpointWhileALinkModeIsOn(t *testing.T) {
+	f := newSSHFixture(t, "update-credentials-link-mode")
+	f.putCredentials()
+	require.Equal(t, http.StatusNoContent, f.do(http.MethodPost, "/ssh-host-key", hostKeyBody(f.server.HostKey)).Code)
+	response := f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":true,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	host, port := splitAddr(t, f.server.Addr)
+	elsewhere, err := json.Marshal(SSHCredentialsRequest{Host: "moved.example.invalid", Port: port, Username: "qui", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code,
+		"a new endpoint drops the pin, so a link mode would have no filesystem access")
+
+	// The same endpoint keeps the pin, so rotating the key stays allowed.
+	sameEndpoint, err := json.Marshal(SSHCredentialsRequest{Host: host, Port: port, Username: "qui2", PrivateKey: f.clientKey})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(sameEndpoint)).Code)
+
+	response = f.do(http.MethodPut, "", `{"name":"remote","host":"http://127.0.0.1:1","username":"admin","useHardlinks":false,"hardlinkBaseDir":"/links"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, http.StatusNoContent, f.do(http.MethodPut, "/ssh-credentials", string(elsewhere)).Code)
 }

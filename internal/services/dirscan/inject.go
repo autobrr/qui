@@ -825,7 +825,7 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		destDir := buildLinkDestDir(baseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
 		var err error
-		plan, err = hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+		plan, err = hardlinktree.BuildPlan(backend.Paths(), linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 		if err != nil {
 			// Debug: dump file data so we can diagnose BuildPlan mismatches.
 			for idx, lf := range linkableFiles {
@@ -906,7 +906,10 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	if !models.FilesystemCapabilitiesOf(instance).Write {
+	// Dirscan builds its link destinations with host filepath and walks through
+	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
+	// until #2919 moves it to the backend path dialect.
+	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
 	if instance.HardlinkBaseDir == "" {
