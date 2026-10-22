@@ -175,12 +175,12 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 		torrentBytes, decErr = decodeBase64Variants(torrentData)
 	}
 	if decErr != nil {
-		return nil, "invalid_torrent", "failed to decode torrent data", nil
+		return nil, "invalid_torrent", "failed to decode torrent data", nil //nolint:nilerr // a torrent that does not decode is a rejected request, not an error
 	}
 
 	meta, parseErr := ParseTorrentMetadataWithInfo(torrentBytes)
 	if parseErr != nil {
-		return nil, "invalid_torrent", "failed to parse torrent metadata", nil
+		return nil, "invalid_torrent", "failed to parse torrent metadata", nil //nolint:nilerr // a torrent that does not parse is a rejected request, not an error
 	}
 
 	packEpisodes := s.matcher().extractPackEpisodes(meta.Files, packRelease)

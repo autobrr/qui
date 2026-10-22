@@ -117,12 +117,5 @@
     "internal/testutil/qbtstub/qbtstub.go": 1,
     "pkg/hardlinktree/plan.go": 1,
     "pkg/redact/redact.go": 1
-  },
-  "nilerr": {
-    "internal/backups/service.go": 4,
-    "internal/services/crossseed/manual_assemble.go": 1,
-    "internal/services/crossseed/seasonpack.go": 2,
-    "internal/services/jackett/service.go": 1,
-    "internal/services/license/license_service.go": 1
   }
 }
