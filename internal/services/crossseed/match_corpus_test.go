@@ -155,6 +155,7 @@ const (
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
 	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
+	reasonSeasonFolderName  = "This path reads the local torrent names without their files. A season folder name has no title, so it pairs with no release."
 )
 
 var corpusRows = []corpusRow{
@@ -745,6 +746,45 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.II.S02.1080p.WEB.H264-GRP", "Kaiju.Squad.II.S02E%02d.1080p.WEB.H264-GRP"),
 		want:           corpusMatch,
 		differences:    packFromEpisodes(nil),
+	},
+	{
+		// The season folder name has no title, so the Read release takes it from the files.
+		// The sizes are equal, so the webhook check reads the local files too.
+		name:           "season folder pack against its season pack listing",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+		},
+	},
+	{
+		name:           "season folder pack of another show",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "Harbor Lights (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusNoMatch,
+	},
+	{
+		// Files of another season lend the season folder name nothing.
+		name:           "season folder pack whose files hold another season",
+		source:         "Season 2",
+		candidate:      "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize + 500,
+		sourceFiles:    corpusPackFiles("Season 2", "Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
+		want:           corpusNoMatch,
 	},
 }
 

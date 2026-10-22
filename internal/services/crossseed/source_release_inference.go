@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"path"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -125,6 +126,9 @@ type readPolicy struct {
 // content.
 func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPolicy) (namedRelease, ContentTypeInfo) {
 	read := s.matcher().readName(name)
+	// Before the apply target drops its files: a season folder name has no
+	// identity of its own to keep.
+	read.release = s.seasonFolderRelease(read.release, files)
 	parsed := read.release
 	if policy.applyTarget && isTVRelease(parsed) && !policy.replaySearch {
 		files = nil
@@ -158,6 +162,28 @@ func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPo
 		read.release = &preservedIdentity
 	}
 	return read, contentInfo
+}
+
+// seasonFolderRelease reads a name that holds only a season, such as
+// "Season 2", with the identity of its largest file: the files carry the
+// title, year, and tags that the folder name lacks. The name keeps its season
+// pack shape, and a largest file of another season lends nothing.
+func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
+	if parsed.Title != "" || parsed.Series == 0 || parsed.Episode != 0 {
+		return parsed
+	}
+	largest := FindLargestFile(files)
+	if largest == nil {
+		return parsed
+	}
+	fileRelease := s.matcher().parseFileRelease(path.Base(largest.Name))
+	if fileRelease.Title == "" || fileRelease.Series != parsed.Series {
+		return parsed
+	}
+	borrowed := *fileRelease
+	borrowed.Type = rls.Series
+	borrowed.Episode = 0
+	return &borrowed
 }
 
 // readName reads a release name without its files.
