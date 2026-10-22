@@ -13543,57 +13543,79 @@ func belowThresholdMessage(mode string, coverage, threshold float64, materialize
 	)
 }
 
-// buildHardlinkDestDir constructs the destination directory for hardlink tree
-// based on the configured preset and torrent structure.
-//
-// Hardlink mode always uses contentLayout=Original, so the isolation decision
-// is based purely on whether the torrent has a common root folder:
-//   - Torrents with a root folder (e.g., "Movie/video.mkv") → no isolation needed
-//   - Rootless torrents (e.g., "video.mkv") → isolation folder needed
-//
-// When isolation is needed, a human-readable folder name is used: <torrent-name>--<shortHash>
-// For "flat" preset, isolation is always used to keep torrents separated.
-func (s *Service) buildHardlinkDestDir(
+// linkPresetDir applies the instance's hardlink directory preset to baseDir:
+// baseDir itself for flat, or a tracker or instance folder in it. A link tree
+// goes into this directory through LinkIntoNewFolder.
+func (s *Service) linkPresetDir(
 	ctx context.Context,
 	d fsops.PathDialect,
 	instance *models.Instance,
 	baseDir string,
-	torrentHash, torrentName string,
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
-	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-	// Determine if isolation folder is needed based on torrent structure.
-	// Since hardlink mode always uses contentLayout=Original, we only need
-	// an isolation folder when the torrent doesn't have a common root folder.
-	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
-
-	// Build isolation folder name if needed
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
-	}
-
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
-		// Get tracker display name using incoming torrent's tracker domain
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)), isolationFolder)
-		}
-		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
-
+		return d.Join(baseDir, pathutil.SanitizePathSegment(s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)))
 	case "by-instance":
-		if isolationFolder != "" {
-			return d.Join(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)), isolationFolder)
-		}
 		return d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
-
 	default: // "flat" or unknown
-		// For flat layout, always use isolation folder to keep torrents separated
-		return d.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return baseDir
 	}
+}
+
+// linkDestDir returns the folder that the link tree of a torrent adds to
+// presetDir, and the directory the tree goes into when that folder is free.
+// Link mode always uses contentLayout=Original, so a torrent with a root
+// folder brings its own top folder. A rootless torrent gets an isolation
+// folder named after the torrent, and the tree goes into it.
+func linkDestDir(d fsops.PathDialect, presetDir, torrentName string, files []hardlinktree.TorrentFile) (topFolder, destDir string) {
+	if hardlinktree.HasCommonRootFolder(files) {
+		root, _, _ := strings.Cut(files[0].Path, "/")
+		return d.Join(presetDir, root), presetDir
+	}
+	isolation := d.Join(presetDir, pathutil.IsolationFolder(torrentName))
+	return isolation, isolation
+}
+
+// LinkIntoNewFolder calls link with the directory for the link tree of one
+// torrent in presetDir. The folder that the tree adds to presetDir must be
+// new: qui creates it to reserve it, so two adds at the same time cannot
+// share it. When it already exists, the tree goes into the isolation folder
+// <name>--<shortHash>, where the tree create reuses a link to the same file
+// and refuses a different file. The result's Dirs lists the reserved
+// folder, so RemoveTree takes it back after a failed add.
+func LinkIntoNewFolder(
+	ctx context.Context,
+	backend fsops.Backend,
+	presetDir, torrentHash, torrentName string,
+	files []hardlinktree.TorrentFile,
+	link func(destDir string) (*fsops.TreeCreateResult, error),
+) (*fsops.TreeCreateResult, error) {
+	d := backend.Paths()
+	topFolder, destDir := linkDestDir(d, presetDir, torrentName, files)
+	if err := backend.MkdirAll(ctx, presetDir, fsutil.ContentDirMode); err != nil {
+		return nil, fmt.Errorf("create link directory %s: %w", presetDir, err)
+	}
+	if err := backend.Mkdir(ctx, topFolder, fsutil.ContentDirMode); err != nil {
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("create link folder %s: %w", topFolder, err)
+		}
+		return link(d.Join(presetDir, pathutil.HashedIsolationFolder(torrentHash, torrentName)))
+	}
+
+	created, err := link(destDir)
+	if err != nil {
+		// The failed create removed what it made in the folder, so only an
+		// empty folder is left. WithoutCancel: a cancelled run still frees the name.
+		if removeErr := backend.Remove(context.WithoutCancel(ctx), topFolder, fsops.RemoveOptions{}); removeErr != nil {
+			log.Warn().Err(removeErr).Str("folder", topFolder).Msg("failed to remove reserved link folder")
+		}
+		return nil, err
+	}
+	created.Dirs = append(created.Dirs, topFolder)
+	return created, nil
 }
 
 // buildCategorySavePath computes the correct save path for a cross-seed category
@@ -13609,15 +13631,11 @@ func (s *Service) buildCategorySavePath(
 	candidate CrossSeedCandidate,
 	req *CrossSeedRequest,
 ) string {
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
-	case "by-instance":
-		return normalizePath(d.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
-	default: // "flat" or unknown
+	presetDir := s.linkPresetDir(ctx, d, instance, baseDir, candidate, incomingTrackerDomain, req)
+	if presetDir == baseDir { // flat
 		return baseDir
 	}
+	return normalizePath(presetDir)
 }
 
 // resolveTrackerDisplayName resolves the display name for the tracker.

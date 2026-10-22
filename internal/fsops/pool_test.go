@@ -49,6 +49,7 @@ func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, erro
 	return false, nil
 }
 func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Mkdir(context.Context, string, fs.FileMode) error    { return nil }
 func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
 	return nil
 }

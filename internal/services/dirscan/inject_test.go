@@ -371,7 +371,7 @@ type crossDeviceBackend struct {
 
 func (b crossDeviceBackend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	for _, dir := range b.crossDevice {
-		if strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
+		if plan.RootDir == dir || strings.HasPrefix(plan.RootDir, dir+string(filepath.Separator)) {
 			return nil, &os.LinkError{Op: "link", Old: "src", New: plan.RootDir, Err: syscall.EXDEV}
 		}
 	}
@@ -459,8 +459,10 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 			if strings.Contains(res.SavePath, ",") {
 				t.Fatalf("save path should use one base dir, got %q", res.SavePath)
 			}
-			if !strings.HasPrefix(res.SavePath, tt.wantBase+string(os.PathSeparator)) {
-				t.Fatalf("expected save path under base dir %q, got %q", tt.wantBase, res.SavePath)
+			// The torrent's root folder is free, so it goes into the base dir
+			// with no isolation folder.
+			if res.SavePath != tt.wantBase {
+				t.Fatalf("expected save path %q, got %q", tt.wantBase, res.SavePath)
 			}
 			if got := manager.addOptions["savepath"]; got != res.SavePath {
 				t.Fatalf("expected add savepath %q, got %q", res.SavePath, got)

@@ -183,6 +183,13 @@ func (b *Backend) MkdirAll(ctx context.Context, path string, perm fs.FileMode) e
 	return os.MkdirAll(path, perm)
 }
 
+func (b *Backend) Mkdir(ctx context.Context, path string, perm fs.FileMode) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return os.Mkdir(path, perm)
+}
+
 func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err

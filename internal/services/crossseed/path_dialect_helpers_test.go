@@ -40,11 +40,11 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 		hostToo      bool
 	}{
 		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", files: common, wantDest: "/data/hl/Tracker", wantCategory: "/data/hl/Tracker", hostToo: true},
-		{name: "by-tracker isolation", preset: "by-tracker", baseDir: "/data/hl", files: rootless, wantDest: "/data/hl/Tracker/Name--abcdef12", wantCategory: "/data/hl/Tracker", hostToo: true},
+		{name: "by-tracker isolation", preset: "by-tracker", baseDir: "/data/hl", files: rootless, wantDest: "/data/hl/Tracker/Name", wantCategory: "/data/hl/Tracker", hostToo: true},
 		{name: "by-instance", preset: "by-instance", baseDir: "/data/hl", files: common, wantDest: "/data/hl/qbt1", wantCategory: "/data/hl/qbt1", hostToo: true},
-		{name: "by-instance isolation", preset: "by-instance", baseDir: "/data/hl", files: rootless, wantDest: "/data/hl/qbt1/Name--abcdef12", wantCategory: "/data/hl/qbt1", hostToo: true},
-		{name: "flat", preset: "flat", baseDir: "/data/hl", files: common, wantDest: "/data/hl/Name--abcdef12", wantCategory: "/data/hl", hostToo: true},
-		{name: "flat backslash base", preset: "flat", baseDir: `/data/hl\x`, files: common, wantDest: `/data/hl\x/Name--abcdef12`, wantCategory: `/data/hl\x`},
+		{name: "by-instance isolation", preset: "by-instance", baseDir: "/data/hl", files: rootless, wantDest: "/data/hl/qbt1/Name", wantCategory: "/data/hl/qbt1", hostToo: true},
+		{name: "flat", preset: "flat", baseDir: "/data/hl", files: common, wantDest: "/data/hl", wantCategory: "/data/hl", hostToo: true},
+		{name: "flat backslash base", preset: "flat", baseDir: `/data/hl\x`, files: rootless, wantDest: `/data/hl\x/Name`, wantCategory: `/data/hl\x`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 				candidate := CrossSeedCandidate{InstanceName: "qbt1"}
 				req := &CrossSeedRequest{IndexerName: "Tracker"}
 
-				got := s.buildHardlinkDestDir(t.Context(), d, instance, conv(tt.baseDir), "abcdef1234567890", "Name", candidate, "", req, tt.files)
+				_, got := linkDestDir(d, s.linkPresetDir(t.Context(), d, instance, conv(tt.baseDir), candidate, "", req), "Name", tt.files)
 				require.Equal(t, conv(tt.wantDest), got)
 
 				// pathcmp keys the category path with "/" on every host.
