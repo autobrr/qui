@@ -529,6 +529,41 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 }
 
 func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T) {
+	instance, req := discLayoutRequest(t)
+	manager := &recordingTorrentManager{}
+
+	synctest.Test(t, func(t *testing.T) {
+		// The recheck ends 1 MiB short: a disc layout resumes only when nothing is left.
+		settle := &settleFake{polls: []*qbt.Torrent{
+			{Hash: "deadbeef", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.99, Completed: 4, AmountLeft: 1 << 20},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
+			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
+		}}
+		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+		res, err := injector.Inject(t.Context(), req)
+		if err != nil {
+			t.Fatalf("inject: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got %+v", res)
+		}
+		if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
+			t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
+				manager.addOptions["paused"], manager.addOptions["stopped"])
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
+			t.Fatalf("settle calls = %v, want only the recheck of deadbeef", got)
+		}
+	})
+}
+
+// discLayoutRequest is a perfect match of a disc layout, which the add policy force-pauses.
+func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
+	t.Helper()
 	sourceDir := t.TempDir()
 	sourceFile := filepath.Join(sourceDir, "Movie", "BDMV", "index.bdmv")
 	if err := os.MkdirAll(filepath.Dir(sourceFile), 0o755); err != nil {
@@ -543,8 +578,6 @@ func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T
 		Name:                     "test",
 		HasLocalFilesystemAccess: true,
 	}
-
-	manager := &recordingTorrentManager{}
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -578,33 +611,7 @@ func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T
 		SearchResult: &jackett.SearchResult{Indexer: "Test"},
 	}
 
-	synctest.Test(t, func(t *testing.T) {
-		// The recheck ends 1 MiB short: a disc layout resumes only when nothing is left.
-		settle := &settleFake{polls: []*qbt.Torrent{
-			{Hash: "deadbeef", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.99, Completed: 4, AmountLeft: 1 << 20},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
-		}}
-		injector := NewInjector(nil, manager, settle.start(t), nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
-
-		res, err := injector.Inject(t.Context(), req)
-		if err != nil {
-			t.Fatalf("inject: %v", err)
-		}
-		if !res.Success {
-			t.Fatalf("expected success, got %+v", res)
-		}
-		if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
-			t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
-				manager.addOptions["paused"], manager.addOptions["stopped"])
-		}
-		time.Sleep(time.Minute)
-		synctest.Wait()
-		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
-			t.Fatalf("settle calls = %v, want only the recheck of deadbeef", got)
-		}
-	})
+	return instance, req
 }
 
 // safeRecordingManager records the add options under a lock.

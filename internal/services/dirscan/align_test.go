@@ -637,6 +637,58 @@ func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	}
 }
 
+// A regular add whose settle queue is full fails only when it was added paused:
+// nothing would recheck or resume it. A running partial add downloads without the module.
+func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
+	runningPartial := func(t *testing.T) (*models.Instance, *InjectRequest) {
+		t.Helper()
+		instance, req := discLayoutRequest(t)
+		req.ParsedTorrent.Files = []TorrentFile{
+			{Path: "Movie/movie.mkv", Size: 4},
+			{Path: "Movie/extras.nfo", Size: 1, Offset: 4},
+		}
+		req.Searchee.Files = []*ScannedFile{{Path: "/tmp/movie.mkv", RelPath: "movie.mkv", Size: 4}}
+		req.MatchResult = &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: "/tmp/movie.mkv", RelPath: "movie.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Movie/movie.mkv", Size: 4},
+			}},
+			UnmatchedTorrentFiles: []TorrentFile{{Path: "Movie/extras.nfo", Size: 1}},
+			IsMatch:               true,
+			IsPartialMatch:        true,
+		}
+		return instance, req
+	}
+
+	tests := []struct {
+		name        string
+		request     func(*testing.T) (*models.Instance, *InjectRequest)
+		wantSuccess bool
+	}{
+		{name: "disc layout added paused reports failure", request: discLayoutRequest},
+		{name: "running partial succeeds", request: runningPartial, wantSuccess: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance, req := tt.request(t)
+			settle := &settleFake{}
+			settler := settle.idle()
+			for full := false; !full; {
+				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+			}
+			injector := NewInjector(nil, &recordingTorrentManager{}, settler, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+
+			res, err := injector.Inject(t.Context(), req)
+			if err != nil {
+				t.Fatalf("inject returned error: %v", err)
+			}
+			if res.Success != tt.wantSuccess || res.Success == (res.ErrorMessage != "") {
+				t.Fatalf("result = %+v, want success %v", res, tt.wantSuccess)
+			}
+		})
+	}
+}
+
 func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 	// Both the top-level folder and the file name differ from the on-disk layout, so alignment must
 	// rename the file (within the still-nonexistent source root) BEFORE renaming the root folder,

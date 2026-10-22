@@ -306,9 +306,12 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 			return result, nil
 		}
 	default:
-		// Regular (non-aligned) adds are not force-paused, so a full settle queue is non-fatal
-		// here: the settle module logs it and the injection continues.
-		_ = i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
+		// A full settle queue strands only an add that the policy force-paused (a disc
+		// layout). Other regular adds run, so the settle module logs it and the injection continues.
+		if err := i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck); err != nil && addPolicy.ForcePaused {
+			result.ErrorMessage = "torrent added paused: " + err.Error()
+			return result, nil
+		}
 	}
 
 	result.Success = true

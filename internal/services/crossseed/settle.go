@@ -355,11 +355,15 @@ func (s *Settler) hardlinkResumeAllowed(ctx context.Context, instanceID int, req
 	filesByHash, err := s.sync.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
 	files := filesByHash[normalizeHash(req.hash)]
 	if err != nil || len(files) == 0 {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", req.hash).
+			Msg("Linked-file check could not read the file list, will retry")
 		req.forgivenessEvalFailed = true
 		return false
 	}
 	pieces, err := s.sync.GetTorrentPieceStates(ctx, instanceID, req.hash)
 	if err != nil || len(pieces) == 0 {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", req.hash).
+			Msg("Linked-file check could not read the piece states, will retry")
 		req.forgivenessEvalFailed = true
 		return false
 	}
