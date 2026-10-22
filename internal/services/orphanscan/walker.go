@@ -199,6 +199,12 @@ func outermostDiscUnit(d fsops.PathDialect, normUnit string, discRoots map[strin
 
 func (w *scanWalker) resolveDiscUnits() {
 	// A disc unit with an in-use file stays whole and hides nothing beside it.
+	// A torrent file that is not on disk yet also puts the unit in use.
+	for du := range w.discUnitsWithOrphan {
+		if w.protected.torrentFileIn(du) {
+			w.discUnitsInUse[du] = struct{}{}
+		}
+	}
 	for du := range w.discUnitsInUse {
 		delete(w.orphanUnits, du)
 	}

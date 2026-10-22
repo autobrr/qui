@@ -185,6 +185,11 @@ func safeDeleteSymlink(ctx context.Context, target string, protected *protectedP
 }
 
 func safeDeleteDirectory(ctx context.Context, target string, protected *protectedPaths, backend fsops.Backend) (deleteDisposition, error) {
+	// The walk below sees only files on disk. A torrent that has not written a
+	// file yet still owns the folder.
+	if protected.torrentFileIn(target) {
+		return deleteDispositionSkippedInUse, nil
+	}
 	if err := checkDirContainsInUseFile(ctx, target, protected, backend); err != nil {
 		if errors.Is(err, ErrInUse) {
 			return deleteDispositionSkippedInUse, nil

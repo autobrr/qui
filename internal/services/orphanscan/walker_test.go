@@ -166,6 +166,35 @@ func TestWalkScanRoot_DiscUnitSuppressedWhenAnyContainedFileInUse(t *testing.T) 
 	}
 }
 
+func TestWalkScanRoot_DiscUnitSuppressedWhenOwnedFileIsNotOnDiskYet(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	streamDir := filepath.Join(root, "Movie.2024", "BDMV", "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// qBittorrent names an unfinished file with ".!qB" when that option is on.
+	for _, p := range []string{filepath.Join(streamDir, "00001.m2ts.!qB"), filepath.Join(streamDir, "00002.m2ts")} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(filepath.Join(streamDir, "00001.m2ts"))
+
+	orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans when a torrent owns a file in the disc unit, got %v", orphans)
+	}
+}
+
 func TestWalkScanRoot_DiscUnitSuppressedWhenOwnedFileMetadataFails(t *testing.T) {
 	root := t.TempDir()
 	movieDir := filepath.Join(root, "Movie.2024")

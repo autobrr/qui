@@ -154,6 +154,35 @@ func TestSafeDeleteTarget_DeletesDirectoryRecursively(t *testing.T) {
 	}
 }
 
+func TestSafeDeleteTarget_SkipsDirectoryWhenAnOwnedFileIsNotOnDiskYet(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	streamDir := filepath.Join(root, "Movie.2024", "BDMV", "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	partial := filepath.Join(streamDir, "00001.m2ts.!qB")
+	if err := os.WriteFile(partial, []byte("partial"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(filepath.Join(streamDir, "00001.m2ts"))
+
+	unit := filepath.Join(root, "Movie.2024")
+	disp, err := safeDeleteTarget(t.Context(), root, unit, newTestProtected(t, fsops.HostPaths, nil, tfm), local.NewBackend())
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped in use, got %v", disp)
+	}
+	if _, err := os.Stat(partial); err != nil {
+		t.Fatalf("expected the unfinished file to stay, stat err=%v", err)
+	}
+}
+
 func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
 	t.Parallel()
 
