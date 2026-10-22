@@ -75,7 +75,7 @@ jobs:
             echo "::error::Issue #$ISSUE has open sub-issues: $children. Start a run on one of them."
             exit 1
           fi
-          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName,url \
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json headRefName,url \
             --jq "[.[] | select(.headRefName | startswith(\"implement/$ISSUE/\")) | .url] | join(\", \")")
           if [[ -n "$open" ]]; then
             echo "::error::An implementer pull request for #$ISSUE is open: $open"
