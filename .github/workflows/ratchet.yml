@@ -132,7 +132,7 @@ jobs:
             2. List the problems with `golangci-lint run -c scripts/ratchet/golangci.yml --enable-only ${{ steps.pick.outputs.linter }} ./<package dir>/`.
             3. Fix up to 5 of them. Keep the behaviour the same. For gocognit, split the function into smaller functions. For the other linters, if the code is correct on purpose, add `//nolint:<linter> // <reason>` instead.
             4. Lower the entry of the file in scripts/ratchet/allowlist.json to the new count. Delete the entry at 0, and delete the linter key when it has no entries left.
-            5. Run `go run ./scripts/ratchet`, `go build ./...`, and `go test -count=1 ./<package dir>/`. All three must pass.
+            5. Run `go run ./scripts/ratchet -base HEAD`, `go build ./...`, and `go test -count=1 ./<package dir>/`. All three must pass.
 
             You can edit only the target file, its `_test.go` file, and scripts/ratchet/allowlist.json. If a fix needs another file, leave that problem and say so in your report.
 
@@ -159,7 +159,8 @@ jobs:
           if [[ -z "$(git status --porcelain)" ]]; then
             problems+=("The run made no change.")
           else
-            go run ./scripts/ratchet || problems+=("\`go run ./scripts/ratchet\` failed.")
+            # HEAD is the develop commit that the agent started from.
+            go run ./scripts/ratchet -base HEAD || problems+=("\`go run ./scripts/ratchet\` failed.")
             go build ./... || problems+=("\`go build ./...\` failed.")
             go test -count=1 "./$(dirname "$FILE")/" || problems+=("\`go test\` failed in $(dirname "$FILE").")
           fi
