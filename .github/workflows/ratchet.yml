@@ -6,6 +6,12 @@ on:
     - cron: '41 4 * * *'
   workflow_dispatch:
 
+# One dispatched run at a time, from the pick until the pull request exists.
+# A lock on the fix job alone lets the next run pick the same file before
+# the open job makes the pull request.
+concurrency:
+  group: ratchet-${{ github.event_name }}
+
 jobs:
   # The Console federation rule accepts only workflow_dispatch, so the
   # schedule dispatches the fix job. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
@@ -32,8 +38,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     environment: claude
     timeout-minutes: 30
-    concurrency:
-      group: ratchet
     permissions:
       contents: read
       pull-requests: read
