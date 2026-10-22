@@ -20,8 +20,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run ratchet.yml --repo ${{ github.repository }} --ref ${{ github.event.repository.default_branch }}
 
-  # Takes the next file off scripts/ratchet/allowlist.json, fixes up to 5 of
-  # its problems, and opens one pull request as the qui-ratchet app. See
+  # Takes the next file off scripts/ratchet/allowlist.json and fixes up to 5
+  # of its problems. The open job makes the pull request as the qui-ratchet
+  # app. See
   # docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
   fix:
     runs-on: ubuntu-latest
@@ -34,6 +35,11 @@ jobs:
       contents: read
       pull-requests: read
       id-token: write
+    # Set in the pick step, before any code from the agent runs.
+    outputs:
+      linter: ${{ steps.pick.outputs.linter }}
+      file: ${{ steps.pick.outputs.file }}
+      count: ${{ steps.pick.outputs.count }}
 
     steps:
       - name: Checkout repository
@@ -140,9 +146,10 @@ jobs:
         run: node .github/scripts/triage/run.mjs
 
       # The permission rules keep the agent to three files. This step makes
-      # sure of it, because the commit below takes every change in the tree.
+      # sure of it, saves the change as a patch, and then runs the checks.
+      # The checks run code that the agent wrote, so this runner never gets
+      # the app token.
       - name: Check the change
-        id: check
         if: steps.pick.outputs.file
         env:
           FILE: ${{ steps.pick.outputs.file }}
@@ -156,7 +163,9 @@ jobs:
             git checkout -- .
             git clean -fdq
           fi
-          if [[ -z "$(git status --porcelain)" ]]; then
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/change.patch"
+          if [[ ! -s "$RUNNER_TEMP/change.patch" ]]; then
             problems+=("The run made no change.")
           else
             # HEAD is the develop commit that the agent started from.
@@ -165,11 +174,58 @@ jobs:
             go test -count=1 "./$(dirname "$FILE")/" || problems+=("\`go test\` failed in $(dirname "$FILE").")
           fi
           for p in "${problems[@]}"; do echo "- $p"; done > "$RUNNER_TEMP/problems.md"
-          if (( ${#problems[@]} )); then echo "draft=--draft" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Upload the change
+        if: steps.pick.outputs.file
+        uses: actions/upload-artifact@v7
+        with:
+          name: ratchet
+          path: |
+            ${{ runner.temp }}/change.patch
+            ${{ runner.temp }}/problems.md
+            ${{ runner.temp }}/report.md
+          retention-days: 7
+
+  # Commits the change and opens the pull request on a new runner, which runs
+  # no code from the change. The fix job could have left anything on its
+  # runner, so this job takes only the patch, problems.md and report.md, and
+  # checks the paths in the patch again.
+  open:
+    needs: fix
+    if: needs.fix.outputs.file
+    runs-on: ubuntu-latest
+    environment: claude
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the change
+        uses: actions/download-artifact@v8
+        with:
+          name: ratchet
+          path: ${{ runner.temp }}/ratchet
+
+      - name: Apply the change
+        env:
+          FILE: ${{ needs.fix.outputs.file }}
+        run: |
+          if [[ -s "$RUNNER_TEMP/ratchet/change.patch" ]]; then
+            git apply --index "$RUNNER_TEMP/ratchet/change.patch"
+          fi
+          others=$(git diff --cached --name-only | grep -vxF -e "$FILE" -e "${FILE%.go}_test.go" -e scripts/ratchet/allowlist.json || true)
+          if [[ -n "$others" ]]; then
+            echo "::error::The patch changes other files: ${others//$'\n'/, }"
+            exit 1
+          fi
 
       - name: Create the app token
         id: app-token
-        if: steps.pick.outputs.file
         uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ vars.RATCHET_APP_ID }}
@@ -178,39 +234,38 @@ jobs:
       # The app token pushes, so CI and the review bots run on the pull
       # request. A push with GITHUB_TOKEN starts no workflow.
       - name: Open the pull request
-        if: steps.pick.outputs.file
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          LINTER: ${{ steps.pick.outputs.linter }}
-          FILE: ${{ steps.pick.outputs.file }}
-          COUNT: ${{ steps.pick.outputs.count }}
-          DRAFT: ${{ steps.check.outputs.draft }}
+          LINTER: ${{ needs.fix.outputs.linter }}
+          FILE: ${{ needs.fix.outputs.file }}
+          COUNT: ${{ needs.fix.outputs.count }}
+          OUT: ${{ runner.temp }}/ratchet
         run: |
           branch="ratchet/$LINTER/$FILE/$GITHUB_RUN_ID"
+          draft=()
+          [[ -s "$OUT/problems.md" ]] && draft=(--draft)
           gh auth setup-git
           git config user.name 'qui-ratchet[bot]'
           git config user.email '346308562+qui-ratchet[bot]@users.noreply.github.com'
           git switch -c "$branch"
-          git add -A
           git commit -q --allow-empty -m "refactor(lint): fix $LINTER in $(basename "$FILE")"
           git push -q origin "$branch"
           {
             echo "Fixes up to 5 \`$LINTER\` problems in \`$FILE\`. Its allowlist entry was $COUNT."
             echo
-            if [[ -s "$RUNNER_TEMP/problems.md" ]]; then
+            if (( ${#draft[@]} )); then
               echo "This pull request is a draft because:"
               echo
-              cat "$RUNNER_TEMP/problems.md"
+              cat "$OUT/problems.md"
               echo
             fi
             echo "## Report"
             echo
-            cat "$RUNNER_TEMP/report.md" 2>/dev/null || echo "The agent wrote no report."
+            cat "$OUT/report.md" 2>/dev/null || echo "The agent wrote no report."
             echo
             echo "---"
             echo "Close this pull request without merging it, and the bot skips \`$LINTER\` in this file for good. Close it as a draft, and the bot tries the file again later. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$RUNNER_TEMP/body.md"
-          # shellcheck disable=SC2086 # DRAFT is empty or one flag
-          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" $DRAFT \
+          gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
             --title "refactor(lint): fix $LINTER in $(basename "$FILE")" \
             --body-file "$RUNNER_TEMP/body.md" --label ratchet
