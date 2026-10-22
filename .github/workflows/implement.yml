@@ -14,7 +14,9 @@ concurrency:
 env:
   ISSUE: ${{ inputs.issue }}
   # The paths that the agent cannot change. Both jobs drop a change that
-  # touches one of them.
+  # touches one of them. The checks list names with -z, because git quotes
+  # a path with special characters, and with --no-renames, so that the old
+  # path of a rename counts too.
   FORBIDDEN: '^(\.github/|\.claude/|docs/agents/|go\.(mod|sum)$|web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$)|(^|/)(AGENTS|CLAUDE)\.md$'
 
 jobs:
@@ -87,7 +89,9 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          # The sandbox writes agent-built output to GOCACHE. A saved cache
+          # would reach later runs on develop, release builds included.
+          cache: false
 
       - name: Set up Node
         uses: actions/setup-node@v7.1.0
@@ -163,7 +167,7 @@ jobs:
           [[ "$AGENT_OUTCOME" == success ]] || problems+=("The agent run failed. The workflow log has its output.")
           mv .implement "$RUNNER_TEMP/pr"
           git add -A
-          forbidden=$(git diff --cached --name-only | grep -E "$FORBIDDEN" || true)
+          forbidden=$(git diff --cached --no-renames --name-only -z | grep -zE "$FORBIDDEN" | tr '\0' '\n' || true)
           if [[ -n "$forbidden" ]]; then
             problems+=("The agent changed files that it cannot change, so this pull request drops its change: ${forbidden//$'\n'/, }")
             git reset -q --hard
@@ -223,7 +227,7 @@ jobs:
           if [[ -s "$RUNNER_TEMP/pr/change.patch" ]]; then
             git apply --index "$RUNNER_TEMP/pr/change.patch"
           fi
-          forbidden=$(git diff --cached --name-only | grep -E "$FORBIDDEN" || true)
+          forbidden=$(git diff --cached --no-renames --name-only -z | grep -zE "$FORBIDDEN" | tr '\0' '\n' || true)
           if [[ -n "$forbidden" ]]; then
             echo "::error::The patch changes files that the agent cannot change: ${forbidden//$'\n'/, }"
             exit 1
@@ -235,6 +239,8 @@ jobs:
         with:
           app-id: ${{ vars.RATCHET_APP_ID }}
           private-key: ${{ secrets.RATCHET_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       # The app token pushes, so CI and the review bots run on the pull
       # request. A push with GITHUB_TOKEN starts no workflow.
