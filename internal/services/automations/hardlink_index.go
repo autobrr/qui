@@ -714,7 +714,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 // buildHardlinkIndex constructs a fresh hardlink index by scanning all torrent files once.
 // The complexity is inherent to the single-pass algorithm that avoids multiple filesystem scans.
 //
-//nolint:gocognit,gocyclo,funlen,revive // complexity is inherent to the single-pass design
+//nolint:gocyclo,funlen,revive // complexity is inherent to the single-pass design
 func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
@@ -1126,8 +1126,6 @@ const maxCrossInstanceLstatCalls = 500_000
 
 // scanOtherInstancesForDeficits Lstats files from other instances to resolve deficit FileIDs.
 // It raises the trackers in deficitSet and removes the resolved ones. It does not change state.
-//
-//nolint:gocognit // early-exit checks at multiple loop levels are inherent to the scanning pattern
 func (s *Service) scanOtherInstancesForDeficits(
 	ctx context.Context,
 	instanceID int,
