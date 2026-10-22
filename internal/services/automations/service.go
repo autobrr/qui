@@ -4927,99 +4927,99 @@ func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleBy
 	}
 	sort.Strings(triggerHashes)
 
-	// Rule evaluation order ((sort_order, id), the store's ordering) resolves
-	// conflicting expansions injected by different rules: the later rule wins,
-	// independent of trigger hash order.
-	orderedRules := make([]*models.Automation, 0, len(ruleByID))
-	for _, rule := range ruleByID {
-		orderedRules = append(orderedRules, rule)
-	}
-	sort.Slice(orderedRules, func(i, j int) bool {
-		if orderedRules[i].SortOrder != orderedRules[j].SortOrder {
-			return orderedRules[i].SortOrder < orderedRules[j].SortOrder
-		}
-		return orderedRules[i].ID < orderedRules[j].ID
-	})
-	rulePos := make(map[int]int, len(orderedRules))
-	for i, rule := range orderedRules {
-		rulePos[rule.ID] = i
-	}
-
-	// Sibling tag decisions injected (or canceled as no-ops) by expansion,
-	// recorded with the injecting rule's position. Distinguishes them from a
-	// sibling's own evaluated decisions, which a different rule's expansion
-	// never overrides.
-	type injectionKey struct {
-		hash string
-		tag  string
-	}
-	injectedPos := make(map[injectionKey]int)
-
+	exp := tagExpansion{states: states, rulePos: rulePositions(ruleByID), injectedPos: make(map[tagInjectionKey]int)}
 	for _, hash := range triggerHashes {
 		state := states[hash]
-		tags := make([]string, 0, len(state.tagExpandByTag))
-		for tag := range state.tagExpandByTag {
-			tags = append(tags, tag)
-		}
-		sort.Strings(tags)
-		for _, tag := range tags {
+		for _, tag := range slices.Sorted(maps.Keys(state.tagExpandByTag)) {
 			intent := state.tagExpandByTag[tag]
 			if ruleByID[intent.rule.id] == nil {
 				continue
 			}
-
 			for _, sibTorrent := range crossSeeds[hash] {
-				sibHash := sibTorrent.Hash
-				if sibHash == hash {
-					continue
+				if sibTorrent.Hash != hash {
+					exp.inject(sibTorrent, tag, intent)
 				}
-				sibState := states[sibHash]
-				if sibState == nil {
-					sibState = &torrentDesiredState{
-						hash:         sibHash,
-						name:         sibTorrent.Name,
-						currentTags:  parseTorrentTags(sibTorrent.Tags),
-						tagActions:   make(map[string]string),
-						tagRuleByTag: make(map[string]ruleRef),
-					}
-					states[sibHash] = sibState
-				}
-				key := injectionKey{hash: sibHash, tag: tag}
-				pos, wasInjected := injectedPos[key]
-				if wasInjected && rulePos[intent.rule.id] < pos {
-					continue // a later rule's expansion already decided this tag
-				}
-				if existing, hasOwn := sibState.tagActions[tag]; hasOwn && !wasInjected {
-					if sibState.tagRuleByTag[tag].id != intent.rule.id {
-						continue // sibling's own decision from another rule wins
-					}
-					if existing == intent.action || intent.action == "remove" {
-						continue // same-rule conflicts resolve add-over-remove
-					}
-				}
-				injectedPos[key] = rulePos[intent.rule.id]
-
-				// Skip changes the sibling's current tags already satisfy, so
-				// no-op siblings don't land in tagChanges and inflate activity
-				// counts. Managed reset is the exception: the tag is
-				// wholesale-deleted in the client first, so its re-adds are
-				// real changes. A canceled entry stays canceled — the winning
-				// decision is "leave as is".
-				_, sibHasTag := sibState.currentTags[tag]
-				if intent.resetFromClient {
-					sibHasTag = false
-				}
-				if (intent.action == "add") == sibHasTag {
-					delete(sibState.tagActions, tag)
-					delete(sibState.tagRuleByTag, tag)
-					continue
-				}
-				sibState.tagActions[tag] = intent.action
-				sibState.tagRuleByTag[tag] = intent.rule
-				markTagReset(sibState, tag, intent.resetFromClient && intent.action == "add")
 			}
 		}
 	}
+}
+
+// rulePositions maps each rule to its evaluation order ((sort_order, id), the
+// store's ordering). It resolves conflicting expansions injected by different
+// rules: the later rule wins, independent of trigger hash order.
+func rulePositions(ruleByID map[int]*models.Automation) map[int]int {
+	ordered := slices.SortedFunc(maps.Values(ruleByID), func(a, b *models.Automation) int {
+		if a.SortOrder != b.SortOrder {
+			return a.SortOrder - b.SortOrder
+		}
+		return a.ID - b.ID
+	})
+	pos := make(map[int]int, len(ordered))
+	for i, rule := range ordered {
+		pos[rule.ID] = i
+	}
+	return pos
+}
+
+type tagInjectionKey struct {
+	hash string
+	tag  string
+}
+
+// tagExpansion injects tag decisions into sibling states. injectedPos holds
+// the sibling tag decisions injected (or canceled as no-ops) by expansion,
+// with the injecting rule's position. It distinguishes them from a sibling's
+// own evaluated decisions, which a different rule's expansion never overrides.
+type tagExpansion struct {
+	states      map[string]*torrentDesiredState
+	rulePos     map[int]int
+	injectedPos map[tagInjectionKey]int
+}
+
+func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpandIntent) {
+	sibState := e.states[sibTorrent.Hash]
+	if sibState == nil {
+		sibState = &torrentDesiredState{
+			hash:         sibTorrent.Hash,
+			name:         sibTorrent.Name,
+			currentTags:  parseTorrentTags(sibTorrent.Tags),
+			tagActions:   make(map[string]string),
+			tagRuleByTag: make(map[string]ruleRef),
+		}
+		e.states[sibTorrent.Hash] = sibState
+	}
+	key := tagInjectionKey{hash: sibTorrent.Hash, tag: tag}
+	pos, wasInjected := e.injectedPos[key]
+	if wasInjected && e.rulePos[intent.rule.id] < pos {
+		return // a later rule's expansion already decided this tag
+	}
+	if existing, hasOwn := sibState.tagActions[tag]; hasOwn && !wasInjected {
+		if sibState.tagRuleByTag[tag].id != intent.rule.id {
+			return // sibling's own decision from another rule wins
+		}
+		if existing == intent.action || intent.action == "remove" {
+			return // same-rule conflicts resolve add-over-remove
+		}
+	}
+	e.injectedPos[key] = e.rulePos[intent.rule.id]
+
+	// Skip changes the sibling's current tags already satisfy, so no-op
+	// siblings don't land in tagChanges and inflate activity counts. Managed
+	// reset is the exception: the tag is wholesale-deleted in the client
+	// first, so its re-adds are real changes. A canceled entry stays canceled:
+	// the winning decision is "leave as is".
+	_, sibHasTag := sibState.currentTags[tag]
+	if intent.resetFromClient {
+		sibHasTag = false
+	}
+	if (intent.action == "add") == sibHasTag {
+		delete(sibState.tagActions, tag)
+		delete(sibState.tagRuleByTag, tag)
+		return
+	}
+	sibState.tagActions[tag] = intent.action
+	sibState.tagRuleByTag[tag] = intent.rule
+	markTagReset(sibState, tag, intent.resetFromClient && intent.action == "add")
 }
 
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
