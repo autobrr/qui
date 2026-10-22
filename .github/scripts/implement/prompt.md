@@ -22,7 +22,7 @@ You can run only `qui-sandbox <command>`. It runs the command at the repo root i
 - `qui-sandbox go build ./...`
 - `qui-sandbox sh -c 'cd web && pnpm lint && pnpm exec tsc -b && pnpm test'`
 
-The container has no golangci-lint and no Postgres binary, and a test cannot write into the repo. CI runs the lint and the Postgres tests on the pull request. If a test must write a file, use `t.TempDir()`.
+The container has no golangci-lint and no Postgres binary, and a test cannot write into the repo. You cannot delete a file, so put a temporary probe in an existing `_test.go` file and take it out with Edit when you are done. CI runs the lint and the Postgres tests on the pull request. If a test must write a file, use `t.TempDir()`.
 
 ## Files that you cannot change
 
@@ -30,9 +30,9 @@ You cannot change `.github/`, `.claude/`, `docs/agents/`, an `AGENTS.md` or `CLA
 
 ## The pull request
 
-Before you stop, write two files:
+End the run with the title and the body as your structured output:
 
-1. `.implement/title.txt`: one line, a Conventional Commits title of 64 characters or less.
-2. `.implement/body.md`: the pull request body. Follow the `pr` skill and `.github/pull_request_template.md`. Replace `Fixes # (issue)` with `Closes #<issue number>`. Under "How has this been tested?", write that the run did no live test. Under "AI disclosure", write that Claude Code (claude-opus-5-5) wrote the code in the implementer workflow. Add a last section, `## Departures`. List each departure from the spec in the question format that `/implement` gives, with the answer that you built. If there are none, write "None."
+- `title`: a Conventional Commits title of 64 characters or less.
+- `body`: the pull request body. Follow the `pr` skill and `.github/pull_request_template.md`. Replace `Fixes # (issue)` with `Closes #<issue number>`. Under "How has this been tested?", write that the run did no live test. Under "AI disclosure", write that Claude Code (claude-opus-5-5) wrote the code in the implementer workflow. Add a last section, `## Departures`. List each departure from the spec in the question format that `/implement` gives, with the answer that you built. If there are none, write "None."
 
 The workflow adds the run link to the body.
