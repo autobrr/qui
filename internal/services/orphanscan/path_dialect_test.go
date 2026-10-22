@@ -95,7 +95,7 @@ type dialectLstatBackend struct {
 func (b *dialectLstatBackend) Paths() fsops.PathDialect { return b.d }
 
 func (b *dialectLstatBackend) Lstat(context.Context, string) (*fsops.LstatInfo, error) {
-	return &fsops.LstatInfo{FileInfo: fsops.FileInfo{IsDir: true}}, nil
+	return &fsops.LstatInfo{IsDir: true}, nil
 }
 
 // slashBackend is a remote as orphan scan sees it on any host: the slash dialect
