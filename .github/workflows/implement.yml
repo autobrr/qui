@@ -79,12 +79,14 @@ jobs:
             exit 1
           fi
           # A "blocked by" link can name only an issue, so a body line
-          # "Blocked by #N" names a blocking pull request.
+          # "Blocked by #N" or "Blocked by: #N, #M" names a blocking pull request.
+          # A failed request stops the run.
+          set -o pipefail
           blockers=$({
             gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/dependencies/blocked_by" --paginate \
-              --jq '.[] | select(.state == "open") | .html_url'
-            jq -r '.body' .implement/issue.json | grep -oiE 'blocked by #[0-9]+' | grep -oE '[0-9]+' | sort -u |
-              while read -r n; do gh api "repos/$GITHUB_REPOSITORY/issues/$n" --jq 'select(.state == "open") | .html_url'; done
+              --jq '.[] | select(.state == "open") | .html_url' &&
+            jq -r '.body // "" | [scan("(?m)^\\s*blocked by:?(.*)"; "i")[0] | scan("#([0-9]+)")[0]] | unique[]' .implement/issue.json |
+              while read -r n; do gh api "repos/$GITHUB_REPOSITORY/issues/$n" --jq 'select(.state == "open") | .html_url' || exit 1; done
           } | sort -u | paste -sd, -)
           if [[ -n "$blockers" ]]; then
             echo "::error::Issue #$ISSUE is blocked by open work: $blockers"
