@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -934,43 +935,43 @@ func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
 				},
 			},
 		},
-		syncManager:       syncManager,
-		recheckResumeChan: make(chan *pendingResume, 1),
-		recheckResumeCtx:  context.Background(),
+		syncManager: syncManager,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service,
+			scripted("hash123", qbt.TorrentStateCheckingUp, 0.5, 0),
+			scripted("hash123", qbt.TorrentStatePausedUp, 1, 0),
+		)
 
-	result := service.processHardlinkMode(
-		context.Background(),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"Renamed",
-		&CrossSeedRequest{SkipAutoResume: true},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-		"size",
-		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"",
-		"",
-	)
+		result := service.processHardlinkMode(
+			context.Background(),
+			CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+			[]byte("torrent"),
+			"hash123",
+			"",
+			"Renamed",
+			&CrossSeedRequest{SkipAutoResume: true},
+			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+			"size",
+			qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+			qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+			&qbt.TorrentProperties{SavePath: downloadsDir},
+			"",
+			"",
+		)
 
-	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "true", syncManager.addedOptions["paused"])
-	require.Equal(t, "true", syncManager.addedOptions["stopped"])
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes)
-		require.True(t, pending.monitorOnly)
-	default:
-		require.Fail(t, "expected hardlink title rescue to wait for a full recheck")
-	}
+		require.True(t, result.Success, result.Result.Message)
+		require.Equal(t, "true", syncManager.addedOptions["paused"])
+		require.Equal(t, "true", syncManager.addedOptions["stopped"])
+		require.Contains(t, result.Result.Message, "auto-resume skipped per settings")
+		actions, polled := script.wait()
+		require.Equal(t, []string{"recheck:hash123"}, actions, "a skipped title rescue is never resumed")
+		require.Equal(t, 2, polled, "the title rescue recheck is monitored")
+	})
 }
 
 func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
@@ -997,41 +998,38 @@ func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
 					qbittorrentSync: &rootlessSavePathSyncManager{},
 					recheckErr:      context.DeadlineExceeded,
 				},
-				recheckResumeChan: make(chan *pendingResume, 1),
-				recheckResumeCtx:  t.Context(),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return models.DefaultCrossSeedAutomationSettings(), nil
 				},
 			}
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+			stopped := scripted("hash123", qbt.TorrentStateStoppedUp, 1, 0)
+			synctest.Test(t, func(t *testing.T) {
+				script := startSettleScript(t, service, stopped, stopped)
 
-			result := service.processHardlinkMode(
-				t.Context(),
-				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
-				[]byte("torrent"),
-				"hash123",
-				"",
-				"Renamed",
-				&CrossSeedRequest{SkipAutoResume: skipAutoResume},
-				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-				"size",
-				qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-				qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-				&qbt.TorrentProperties{SavePath: downloadsDir},
-				"",
-				"",
-			)
+				result := service.processHardlinkMode(
+					t.Context(),
+					CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+					[]byte("torrent"),
+					"hash123",
+					"",
+					"Renamed",
+					&CrossSeedRequest{SkipAutoResume: skipAutoResume},
+					&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+					"size",
+					qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+					qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+					&qbt.TorrentProperties{SavePath: downloadsDir},
+					"",
+					"",
+				)
 
-			require.True(t, result.Success, result.Result.Message)
-			require.NotContains(t, result.Result.Message, "manual intervention required")
-			select {
-			case pending := <-service.recheckResumeChan:
-				require.True(t, pending.recheckPending)
-				require.True(t, pending.verificationRequired)
-				require.Equal(t, skipAutoResume, pending.monitorOnly)
-			default:
-				require.Fail(t, "expected the failed recheck to be queued")
-			}
+				require.True(t, result.Success, result.Result.Message)
+				require.NotContains(t, result.Result.Message, "manual intervention required")
+				// qBittorrent still fails the recheck, so each poll sends it again.
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck:hash123", "recheck:hash123", "recheck:hash123"}, actions)
+			})
 		})
 	}
 }
@@ -1067,51 +1065,47 @@ func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 						},
 					},
 				},
-				syncManager:       syncManager,
-				recheckResumeChan: make(chan *pendingResume, 1),
-				recheckResumeCtx:  context.Background(),
+				syncManager: syncManager,
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return models.DefaultCrossSeedAutomationSettings(), nil
 				},
 			}
 
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+			synctest.Test(t, func(t *testing.T) {
+				script := startSettleScript(t, service, verifyScript("hash123")...)
 
-			result := service.processHardlinkMode(
-				context.Background(),
-				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"),
-				"hash123",
-				"",
-				"Renamed",
-				&CrossSeedRequest{
-					SearchDecision: searchDecisionProvenance{
-						Class:                searchCandidateClassExactSizeFallback,
-						SourceInstanceID:     1,
-						SourceHash:           "matched",
-						StrictMismatchReason: tt.reason,
-						RelaxedDifferences:   []string{tt.difference},
+				result := service.processHardlinkMode(
+					context.Background(),
+					CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"),
+					"hash123",
+					"",
+					"Renamed",
+					&CrossSeedRequest{
+						SearchDecision: searchDecisionProvenance{
+							Class:                searchCandidateClassExactSizeFallback,
+							SourceInstanceID:     1,
+							SourceHash:           "matched",
+							StrictMismatchReason: tt.reason,
+							RelaxedDifferences:   []string{tt.difference},
+						},
 					},
-				},
-				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-				"size",
-				qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-				qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-				&qbt.TorrentProperties{SavePath: downloadsDir},
-				"",
-				"",
-			)
+					&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+					"size",
+					qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+					qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+					&qbt.TorrentProperties{SavePath: downloadsDir},
+					"",
+					"",
+				)
 
-			require.True(t, result.Success, result.Result.Message)
-			require.Equal(t, "true", syncManager.addedOptions["paused"])
-			select {
-			case pending := <-service.recheckResumeChan:
-				require.NotNil(t, pending.budgetBytes)
-				require.Zero(t, *pending.budgetBytes, "a relaxed match must resume only after a full recheck")
-				requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
-			default:
-				require.Fail(t, "expected the relaxed pairing to wait for a full recheck")
-			}
+				require.True(t, result.Success, result.Result.Message)
+				require.Equal(t, "true", syncManager.addedOptions["paused"])
+				actions, _ := script.wait()
+				require.Equal(t, []string{"recheck:hash123", "resume:hash123"}, actions,
+					"a relaxed match resumes only after an observed full recheck")
+			})
 		})
 	}
 }
@@ -1240,9 +1234,7 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 				},
 			},
 		},
-		syncManager:       syncManager,
-		recheckResumeChan: make(chan *pendingResume, 1),
-		recheckResumeCtx:  context.Background(),
+		syncManager: syncManager,
 		reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			materialized = true
 			return &fsops.TreeCreateResult{}, nil
@@ -1253,44 +1245,42 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 	}
 
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
+	synctest.Test(t, func(t *testing.T) {
+		script := startSettleScript(t, service, verifyScript("hash123")...)
 
-	result := service.processReflinkMode(
-		context.Background(),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"Renamed",
-		&CrossSeedRequest{
-			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "matched",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+		result := service.processReflinkMode(
+			context.Background(),
+			CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+			[]byte("torrent"),
+			"hash123",
+			"",
+			"Renamed",
+			&CrossSeedRequest{
+				SearchDecision: searchDecisionProvenance{
+					Class:                searchCandidateClassExactSizeFallback,
+					SourceInstanceID:     1,
+					SourceHash:           "matched",
+					StrictMismatchReason: groupMismatchReason,
+					RelaxedDifferences:   []string{"group"},
+				},
 			},
-		},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
-		"size",
-		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"",
-		"",
-	)
+			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+			"size",
+			qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+			qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+			&qbt.TorrentProperties{SavePath: downloadsDir},
+			"",
+			"",
+		)
 
-	require.True(t, materialized, "reflink materialization seam must be exercised")
-	require.True(t, result.Success, result.Result.Message)
-	require.Equal(t, "true", syncManager.addedOptions["paused"])
-	require.Equal(t, "true", syncManager.addedOptions["stopped"])
-	select {
-	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending.budgetBytes)
-		require.Zero(t, *pending.budgetBytes, "a relaxed match must resume only after a full recheck")
-		requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
-	default:
-		require.Fail(t, "expected the relaxed reflink pairing to wait for a full recheck")
-	}
+		require.True(t, materialized, "reflink materialization seam must be exercised")
+		require.True(t, result.Success, result.Result.Message)
+		require.Equal(t, "true", syncManager.addedOptions["paused"])
+		require.Equal(t, "true", syncManager.addedOptions["stopped"])
+		actions, _ := script.wait()
+		require.Equal(t, []string{"recheck:hash123", "resume:hash123"}, actions,
+			"a relaxed reflink match resumes only after an observed full recheck")
+	})
 }
 
 func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {

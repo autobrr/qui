@@ -166,6 +166,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 		nil,
+		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -225,6 +226,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 		nil,
+		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -272,6 +274,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		nil,
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
+		nil,
 		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
@@ -321,6 +324,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		nil,
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
+		nil,
 		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
@@ -400,6 +404,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 		nil,
+		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -462,6 +467,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 		nil,
+		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -522,6 +528,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		nil,
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
+		nil,
 		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
@@ -591,6 +598,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		nil,
 		nil,
 		fsops.NewPool(instanceStore, localbackend.NewBackend()),
+		nil,
 		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)

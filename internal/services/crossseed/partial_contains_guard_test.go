@@ -245,6 +245,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{

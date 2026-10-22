@@ -14,7 +14,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
@@ -635,61 +634,28 @@ func (s *Service) processLinkMode(
 			s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
 			statusMsg += " - pooled completion pending"
 		default:
-			recheckHashes := []string{torrentHash}
-			if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-				recheckHashes = append(recheckHashes, torrentHashV2)
+			// Recheck so qBittorrent finds which pieces are present (linked) and
+			// which are missing (extras to download).
+			added := AddedTorrent{
+				InstanceID:     candidate.InstanceID,
+				Hashes:         dedupeHashes(torrentHash, torrentHashV2),
+				SkipAutoResume: req.SkipAutoResume,
 			}
-
-			// Trigger recheck so qBittorrent discovers which pieces are present (linked)
-			// and which are missing (extras to download)
-			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-			recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
-			recheckPending := recheckErr != nil
-			if recheckPending {
-				log.Warn().
-					Err(recheckErr).
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Bool("skipAutoResume", req.SkipAutoResume).
-					Msg(logPrefix + "failed to trigger recheck after add")
+			if mode.linkedPathsForResume {
+				added.LinkedPaths = linkedTreePaths(candidateTorrentFilesToLink)
 			}
 			switch {
-			case req.SkipAutoResume:
-				statusMsg += s.skipResumeMonitorSuffix(candidate.titleRescue, recheckPending, candidate.InstanceID, torrentHash)
-				// User requested to skip auto-resume - leave paused after recheck
-				log.Debug().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg(logPrefix + "skipping auto-resume per user settings")
-				statusMsg += " - auto-resume skipped per settings"
+			case req.SkipAutoResume && candidate.titleRescue:
+				added.Gate = GateMonitor
+			case verifyBeforeSeed:
+				added.Gate = GateVerify
+			case recheckPolicy.requireComplete:
+				added.Gate = GateComplete
 			default:
-				// Queue for background resume - worker will resume when recheck completes within budget
-				log.Debug().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Int("extraFiles", totalFiles-linkedFiles).
-					Bool("recheckPending", recheckPending).
-					Msg(logPrefix + "queuing torrent for recheck resume")
-				var linkedPaths map[string]struct{}
-				if mode.linkedPathsForResume {
-					linkedPaths = linkedTreePaths(candidateTorrentFilesToLink)
-				}
-				queueErr := error(nil)
-				switch {
-				case verifyBeforeSeed:
-					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash, recheckPending)
-				case recheckPolicy.requireComplete:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths, recheckPending)
-				default:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, mode.recoverMissingFilesWithResume, linkedPaths, recheckPending)
-				}
-				switch {
-				case queueErr != nil && recheckPending:
-					statusMsg += " - recheck failed and auto-resume queue full, manual intervention required"
-				case queueErr != nil:
-					statusMsg += " - auto-resume queue full, manual resume required"
-				}
+				added.Budget = resumeBudget
+				added.RecoverMissingFiles = mode.recoverMissingFilesWithResume
 			}
+			statusMsg += s.settler.Settle(ctx, added).StatusSuffix()
 		}
 	}
 	// Add note about low completion behavior

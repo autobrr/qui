@@ -20,12 +20,14 @@ import (
 )
 
 func manualMatchTestService(instance *models.Instance, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) *Service {
-	return &Service{
+	svc := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, torrents, files)},
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
+	svc.settler = idleSettler(svc.syncManager)
+	return svc
 }
 
 func TestManualMatchPackProposalLimit(t *testing.T) {
@@ -274,6 +276,7 @@ func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	}
 	svc := manualMatchTestService(instance, nil, nil)
 	svc.syncManager = recorder
+	svc.settler = idleSettler(recorder)
 
 	startPaused := false
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
