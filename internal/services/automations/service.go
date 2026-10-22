@@ -2239,10 +2239,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// to avoid double-processing
 	includedCrossSeedHashes := make(map[string]struct{})
 
+	// Settle the delete set before any other batch, so no action or expansion reaches a torrent the run deletes.
 	for hash, state := range states {
 		torrent := torrentByHash[hash]
 
-		// If torrent is marked for deletion, skip all other actions
 		if state.shouldDelete {
 			deleteMode := state.deleteMode
 			var actualMode string
@@ -2436,8 +2436,49 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					s.mu.Unlock()
 				}
 			}
+		}
+	}
+
+	// A blocked candidate leaves the delete set, so expansion still keeps it with its cross-seeds.
+	if !dryRun {
+		recheckCtx, cancelRecheck := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
+		blocked := s.blockedDeleteCandidates(recheckCtx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID)
+		cancelRecheck()
+		if len(blocked) > 0 {
+			for mode, hashes := range deleteHashesByMode {
+				kept := hashes[:0]
+				for _, hash := range hashes {
+					reason, isBlocked := blocked[hash]
+					if !isBlocked {
+						kept = append(kept, hash)
+						continue
+					}
+
+					pending := pendingByHash[hash]
+					delete(pendingByHash, hash)
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("name", pending.torrentName).
+						Str("ruleName", pending.ruleName).
+						Str("reason", reason).
+						Msg("automations: skipped delete, hardlink state changed since the rule decided")
+				}
+				deleteHashesByMode[mode] = kept
+			}
+		}
+	}
+
+	for hash, state := range states {
+		// A delete trigger gets no other action, even when its delete was skipped or blocked.
+		if state.shouldDelete {
 			continue
 		}
+		// Another torrent's delete expansion pulled this one in.
+		if _, deleting := pendingByHash[hash]; deleting {
+			continue
+		}
+		torrent := torrentByHash[hash]
 
 		// Speed limits - only add to batch if current doesn't match desired
 		if state.uploadLimitKiB != nil {
@@ -2629,7 +2670,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			default:
 				resolvedPath := state.exportToInstance.SavePath
 				if resolvedPath != "" {
-					if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
+					if resolved, ok := renderPathTemplate(resolvedPath, torrent, state, evalCtx); ok {
 						resolvedPath = resolved
 					} else {
 						log.Warn().
@@ -3332,6 +3373,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				if t.Category == category {
 					continue // Already in target category
 				}
+				if _, deleting := pendingByHash[t.Hash]; deleting {
+					continue
+				}
 				if _, exists := expandedSet[t.Hash]; exists {
 					continue // Already in batch
 				}
@@ -3371,7 +3415,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 		}
 
-		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds) {
+		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
 			expandedHashes = append(expandedHashes, added.hash)
 			if _, exists := categoryRuleByHash[added.hash]; !exists {
 				if ref, ok := categoryRuleByHash[added.trigger]; ok {
@@ -3569,6 +3613,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						if _, exists := movedHashes[memberHash]; exists {
 							continue
 						}
+						if _, deleting := pendingByHash[memberHash]; deleting {
+							continue
+						}
 						memberTorrent, ok := torrentByHash[memberHash]
 						if !ok {
 							continue
@@ -3599,6 +3646,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 				if _, exists := movedHashes[t.Hash]; exists {
 					continue // Already moved
+				}
+				if _, deleting := pendingByHash[t.Hash]; deleting {
+					continue
 				}
 				key := crossSeeds.key(t)
 				if _, matched := legacyKeysToExpand[key]; matched {
@@ -3705,34 +3755,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
-	//
-	// Candidates chosen with hardlink data are re-read off disk first. The index may be
-	// up to hardlinkIndexTTL behind for link changes no torrent reported, which is fine
-	// for tagging and not fine here.
-	if blocked := s.blockedDeleteCandidates(ctx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID); len(blocked) > 0 {
-		for mode, hashes := range deleteHashesByMode {
-			kept := hashes[:0]
-			for _, hash := range hashes {
-				reason, isBlocked := blocked[hash]
-				if !isBlocked {
-					kept = append(kept, hash)
-					continue
-				}
-
-				pending := pendingByHash[hash]
-				delete(pendingByHash, hash)
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Str("name", pending.torrentName).
-					Str("ruleName", pending.ruleName).
-					Str("reason", reason).
-					Msg("automations: skipped delete, hardlink state changed since the rule decided")
-			}
-			deleteHashesByMode[mode] = kept
-		}
-	}
-
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {
 			continue
@@ -4530,9 +4552,9 @@ type categoryExpansion struct {
 // categoryCrossSeedExpansion returns the torrents that a category change takes
 // along for the triggers in batch whose winning rule includes cross-seeds: the
 // other members of each trigger's cross-seed group. A torrent already in the
-// category or in the batch, or one whose own rule chose another category, stays
-// out.
-func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups) []categoryExpansion {
+// category or in the batch, one whose own rule chose another category, or one
+// the run deletes stays out.
+func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups, deleting map[string]pendingDeletion) []categoryExpansion {
 	taken := make(map[string]struct{}, len(batch))
 	for _, hash := range batch {
 		taken[hash] = struct{}{}
@@ -4545,6 +4567,9 @@ func categoryCrossSeedExpansion(category string, batch []string, states map[stri
 		}
 		for _, member := range crossSeeds[hash] {
 			if _, ok := taken[member.Hash]; ok || member.Category == category {
+				continue
+			}
+			if _, ok := deleting[member.Hash]; ok {
 				continue
 			}
 			if own := states[member.Hash]; own != nil && own.category != nil && *own.category != category {
@@ -4974,12 +4999,12 @@ func (s *Service) loadCategorySavePaths(ctx context.Context, instanceID int) map
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load default save path for category save paths")
 		return nil
 	}
-	nest, err := s.syncManager.CategorySavePathsNest(ctx, instanceID)
+	rule, err := s.syncManager.CategoryPathRule(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to check subcategory paths for category save paths")
 		return nil
 	}
-	return buildCategorySavePaths(categories, prefs.SavePath, nest)
+	return buildCategorySavePaths(categories, prefs.SavePath, rule.Nest)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) ([]qbt.Torrent, error) {
@@ -5511,6 +5536,9 @@ func (s *Service) recordDryRunActivities(
 					if _, exists := expandedSet[t.Hash]; exists {
 						continue
 					}
+					if _, deleting := pendingByHash[t.Hash]; deleting {
+						continue
+					}
 					if state, hasState := states[t.Hash]; hasState && state.category != nil {
 						if *state.category != category {
 							continue
@@ -5539,7 +5567,7 @@ func (s *Service) recordDryRunActivities(
 				}
 			}
 
-			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds) {
+			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
 				expandedHashes = append(expandedHashes, added.hash)
 			}
 
@@ -5687,6 +5715,9 @@ func (s *Service) recordDryRunActivities(
 							if _, exists := movedHashes[memberHash]; exists {
 								continue
 							}
+							if _, deleting := pendingByHash[memberHash]; deleting {
+								continue
+							}
 							memberTorrent, ok := torrentByHash[memberHash]
 							if !ok {
 								continue
@@ -5714,6 +5745,9 @@ func (s *Service) recordDryRunActivities(
 						continue
 					}
 					if _, exists := movedHashes[t.Hash]; exists {
+						continue
+					}
+					if _, deleting := pendingByHash[t.Hash]; deleting {
 						continue
 					}
 					key := crossSeeds.key(t)

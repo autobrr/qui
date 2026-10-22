@@ -157,7 +157,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 		"movies": "/media/movies",
 		"music":  "/data/music",
 	} {
-		require.Equal(t, want, qbittorrent.CategorySavePath(fsops.SlashPaths, name, categories, "/data", true), name)
+		require.Equal(t, want, qbittorrent.CategorySavePath(fsops.SlashPaths, name, categories, "/data", qbittorrent.CategoryPathRule{Nest: true}), name)
 	}
 
 	files := qbt.TorrentFiles{{Name: "Show/e1.mkv"}, {Name: "Show/e2.mkv"}}

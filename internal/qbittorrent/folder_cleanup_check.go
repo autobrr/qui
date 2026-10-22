@@ -191,10 +191,14 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 	if err != nil {
 		return nil, nil, err
 	}
-	// CategorySavePathsNest's rule. The preference comes from this check's
-	// read, so a toggle is seen on the next check.
-	in.UseSubcategories = nesting.Nests && (nesting.Always || in.UseSubcategories)
-	stops, kept, err := stopFolders(d, in, instance.HardlinkBaseDir)
+	// SyncManager.CategoryPathRule's rule. The preference comes from this
+	// check's read, so a toggle is seen on the next check.
+	rule := CategoryPathRule{
+		Nest:     nesting.Nests && (nesting.Always || in.UseSubcategories),
+		FileName: nesting.FileName,
+		Platform: nesting.Platform,
+	}
+	stops, kept, err := stopFolders(d, in, rule, instance.HardlinkBaseDir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -241,7 +245,7 @@ func (c *FolderCleanup) cachedNesting(ctx context.Context, instanceID int) (nest
 // folders, which are never removed but set no limit. It fails rather than
 // return a short list: without the default save path no inheriting category
 // resolves, and a missing stop folder can be removed.
-func stopFolders(d fsops.PathDialect, in stopInputs, hardlinkBaseDirs string) (stops, kept []string, err error) {
+func stopFolders(d fsops.PathDialect, in stopInputs, rule CategoryPathRule, hardlinkBaseDirs string) (stops, kept []string, err error) {
 	defaultSavePath := d.Clean(in.DefaultSavePath)
 	if !d.IsAbs(defaultSavePath) {
 		return nil, nil, fmt.Errorf("default save path %q is not absolute", in.DefaultSavePath)
@@ -256,11 +260,11 @@ func stopFolders(d fsops.PathDialect, in stopInputs, hardlinkBaseDirs string) (s
 		stops = append(stops, tempPath)
 	}
 	for name := range in.Categories {
-		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, in.UseSubcategories))
+		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, rule))
 		if tempPath != "" {
 			// qBittorrent's categoryDownloadPath: <download path>/<category>. A
 			// category's own download path is not in go-qbittorrent's Category.
-			stops = append(stops, CategorySavePath(d, name, nil, tempPath, in.UseSubcategories))
+			stops = append(stops, CategorySavePath(d, name, nil, tempPath, rule))
 		}
 	}
 	// qBittorrent stops watching a removed monitored folder until it restarts.
@@ -417,11 +421,19 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 			Msg("folder cleanup: save and content paths do not fit together, skipped")
 		return
 	}
+	// Below a symlink, folder and everything under it lie in the folder the
+	// symlink points to. anchor and the path above it are the user's setting,
+	// and remove() never follows a symlink at dir itself.
+	plain := make(map[string]bool)
+	if s.belowLink(ctx, anchor, folder, plain) {
+		return
+	}
 
 	switch {
 	case item.snap.Layout == layoutNoRootFolder:
 		for _, rel := range item.relDirs {
-			if dir := d.Join(anchor, d.FromSlash(rel)); !s.protected(dir) && !s.insideSealed(anchor, dir) {
+			dir := d.Join(anchor, d.FromSlash(rel))
+			if !s.protected(dir) && !s.insideSealed(anchor, dir) && !s.belowLink(ctx, anchor, dir, plain) {
 				s.remove(ctx, dir)
 			}
 		}
@@ -446,6 +458,37 @@ func (s *cleanupScope) clean(ctx context.Context, item *pendingFolder) {
 			return
 		}
 	}
+}
+
+// belowLink reports whether a folder between anchor and dir is not a plain
+// folder, such as a symlink that replaced one of the torrent's folders. An
+// Lstat of dir follows it, and dir is then in the folder the symlink points
+// to. A folder whose Lstat fails counts the same. anchor itself may be a
+// symlink, since it is the save or download path the user set. A folder that
+// is gone counts as plain, so the clean goes on past it.
+//
+// plain keeps each folder's answer for the rest of the clean, so the check
+// reads a folder once however many of the torrent's folders sit below it.
+func (s *cleanupScope) belowLink(ctx context.Context, anchor, dir string, plain map[string]bool) bool {
+	for p := s.d.Dir(dir); pathUnder(s.d, p, anchor); p = s.d.Dir(p) {
+		ok, known := plain[p]
+		if !known {
+			info, err := s.backend.Lstat(ctx, p)
+			ok = errors.Is(err, fs.ErrNotExist) || err == nil && info.IsDir
+			plain[p] = ok
+			if !ok {
+				if err != nil {
+					s.failed(ctx, err, p)
+				} else {
+					log.Debug().Str("dir", dir).Str("above", p).Msg("folder cleanup: kept folder below one that is not a plain folder")
+				}
+			}
+		}
+		if !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // walkDown removes the empty folders below a torrent's root folder, deepest
@@ -530,14 +573,17 @@ func (s *cleanupScope) failed(ctx context.Context, err error, p string) bool {
 
 // pathUnder reports whether child is strictly below parent; both are cleaned
 // paths or both keys from fsops.NormalizePath. A root parent already ends in the separator.
+// A share root is the exception on Windows: Clean leaves `\\nas\share` bare,
+// and Dir of a path below it returns `\\nas\share\`, the same folder.
 func pathUnder(d fsops.PathDialect, child, parent string) bool {
 	if len(child) <= len(parent) || !strings.HasPrefix(child, parent) {
 		return false
 	}
 	sep := d.Separator()
-	return strings.HasSuffix(parent, sep) || strings.HasPrefix(child[len(parent):], sep)
+	rest := child[len(parent):]
+	return strings.HasSuffix(parent, sep) || (strings.HasPrefix(rest, sep) && rest != sep)
 }
 
 func pathAtOrUnder(d fsops.PathDialect, child, parent string) bool {
-	return child == parent || pathUnder(d, child, parent)
+	return child == parent || child == parent+d.Separator() || pathUnder(d, child, parent)
 }

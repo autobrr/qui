@@ -165,7 +165,7 @@ func TestResolveMovePath_TrailingSeparatorSavePaths(t *testing.T) {
 		"{{.DefaultSavePath}}/x":  "/downloads/x",
 		"{{.CategorySavePath}}/x": "/media/tv/x",
 	} {
-		got, ok := resolveMovePath(path, qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: "tvs"}, nil, evalCtx)
+		got, ok := renderPathTemplate(path, qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: "tvs"}, nil, evalCtx)
 		require.True(t, ok, path)
 		require.Equal(t, want, got, path)
 	}
@@ -196,7 +196,7 @@ func TestResolveMovePath_CategorySavePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: tt.category}
-			got, ok := resolveMovePath("{{.CategorySavePath}}/done", torrent, nil, tt.evalCtx)
+			got, ok := renderPathTemplate("{{.CategorySavePath}}/done", torrent, nil, tt.evalCtx)
 			require.Equal(t, tt.wantOK, ok)
 			require.Equal(t, tt.want, got)
 		})
@@ -210,12 +210,12 @@ func TestResolveMovePath_DefaultSavePath(t *testing.T) {
 
 	for _, category := range []string{"", "tv", "gone"} {
 		torrent := qbt.Torrent{Hash: "abc", Name: "Show.S01", Category: category}
-		got, ok := resolveMovePath("{{.DefaultSavePath}}/archive", torrent, nil, evalCtx)
+		got, ok := renderPathTemplate("{{.DefaultSavePath}}/archive", torrent, nil, evalCtx)
 		require.True(t, ok, category)
 		require.Equal(t, "/downloads/archive", got, category)
 	}
 
-	_, ok := resolveMovePath("{{.DefaultSavePath}}/archive", qbt.Torrent{Hash: "abc"}, nil, &EvalContext{})
+	_, ok := renderPathTemplate("{{.DefaultSavePath}}/archive", qbt.Torrent{Hash: "abc"}, nil, &EvalContext{})
 	require.False(t, ok, "map not loaded skips the move")
 }
 

@@ -429,18 +429,36 @@ func TestTargetSatisfiesPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	symlinkAtTarget := filepath.Join(dir, "planted.mkv")
+	if err := os.Symlink(src, symlinkAtTarget); err != nil {
+		t.Fatal(err)
+	}
+	// A symlinked source: the link an earlier run made follows it on macOS
+	// and not on Linux, and both forms must read as already done.
+	viaSymlink := filepath.Join(dir, "src.via-symlink.mkv")
+	if err := os.Symlink(src, viaSymlink); err != nil {
+		t.Fatal(err)
+	}
+	linkOfSymlinked := filepath.Join(dir, "link-of-symlinked.mkv")
+	if err := os.Link(viaSymlink, linkOfSymlinked); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, tt := range []struct {
 		name          string
+		source        string
 		target        string
 		wantSatisfied bool
 		wantErr       error
 	}{
-		{name: "link to the source is already done", target: link, wantSatisfied: true},
-		{name: "missing target is ours to create", target: filepath.Join(dir, "absent.mkv")},
-		{name: "another file is the collision", target: stranger, wantErr: ErrTargetExists},
+		{name: "link to the source is already done", source: src, target: link, wantSatisfied: true},
+		{name: "missing target is ours to create", source: src, target: filepath.Join(dir, "absent.mkv")},
+		{name: "another file is the collision", source: src, target: stranger, wantErr: ErrTargetExists},
+		{name: "a symlink planted at the target is the collision", source: src, target: symlinkAtTarget, wantErr: ErrTargetExists},
+		{name: "the link an earlier run made from a symlinked source is already done", source: viaSymlink, target: linkOfSymlinked, wantSatisfied: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: src, TargetPath: tt.target})
+			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: tt.source, TargetPath: tt.target})
 			if satisfied != tt.wantSatisfied {
 				t.Errorf("satisfied = %v, want %v", satisfied, tt.wantSatisfied)
 			}

@@ -39,12 +39,14 @@ var (
 	subcategoriesMinVersion              = semver.MustParse("2.9.0")
 	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
 	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
+	categoryFileNameMinVersion           = semver.MustParse("2.15.4") // qBittorrent 5.3; 5.2.x is 2.15.1, and dev builds at 2.15.3 predate the rule
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	testEmailMinVersion                  = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
+	partialCategoryEditMinVersion        = semver.MustParse("2.16.1") // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 )
 
 // splitHostUserinfo strips userinfo credentials from a host URL, returning the
@@ -91,6 +93,7 @@ type Client struct {
 	supportsSubcategories      bool
 	subcategoriesAlwaysEnabled bool
 	nestsCategorySavePaths     bool
+	categoryFileNames          bool
 	supportsTorrentTmpPath     bool
 	supportsPathAutocomplete   bool
 	supportsTestEmail          bool
@@ -99,6 +102,7 @@ type Client struct {
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
+	partialCategoryEdit        bool
 	lastHealthCheck            time.Time
 	isHealthy                  bool
 	syncManager                *qbt.SyncManager
@@ -130,12 +134,15 @@ type Client struct {
 
 	completionMu      sync.Mutex
 	completionState   map[string]bool
+	completionNotify  TorrentCompletionHandler
 	completionHandler TorrentCompletionHandler
 	completionInit    bool
 	addedMu           sync.Mutex
 	addedState        map[string]struct{}
 	addedHandler      TorrentAddedHandler
 	addedInit         bool
+	completionQueue   handlerQueue
+	addedQueue        handlerQueue
 
 	// activeTaskCount caches the number of running/queued torrent-creation tasks.
 	// It is refreshed at most once per activeTaskCountTTL with single-flight, so the
@@ -479,12 +486,22 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
 	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
+	c.categoryFileNames = !v.LessThan(categoryFileNameMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsTestEmail = !v.LessThan(testEmailMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
+	c.partialCategoryEdit = !v.LessThan(partialCategoryEditMinVersion)
+}
+
+// EditsCategoriesPartially reports whether an editCategory keeps the options
+// it leaves out (qBittorrent 5.3+). Before that, an edit replaces them all.
+func (c *Client) EditsCategoriesPartially() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.partialCategoryEdit
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -562,6 +579,14 @@ func (c *Client) NestsCategorySavePaths() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.nestsCategorySavePaths
+}
+
+// CategoryFileNames reports whether this qBittorrent names the folder of a
+// category with no save path with toValidFileName, not toValidPath.
+func (c *Client) CategoryFileNames() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.categoryFileNames
 }
 
 func (c *Client) SupportsTorrentTmpPath() bool {
@@ -737,9 +762,12 @@ func (c *Client) dispatchSyncError(err error) {
 	}
 }
 
-// SetTorrentCompletionHandler registers a callback to be invoked when torrents finish downloading.
-func (c *Client) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+// SetTorrentCompletionHandler registers the callbacks to be invoked when torrents
+// finish downloading. notify runs in the sync callback and must not block.
+// handler runs on the completion queue.
+func (c *Client) SetTorrentCompletionHandler(notify, handler TorrentCompletionHandler) {
 	c.completionMu.Lock()
+	c.completionNotify = notify
 	c.completionHandler = handler
 	if c.completionState == nil {
 		c.completionState = make(map[string]bool)
@@ -771,6 +799,48 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 
 const torrentAddedGraceWindow = 60 * time.Second
 
+// handlerQueueWorkers caps the goroutines each handlerQueue runs, so a burst
+// of 10k events opens at most this many SQLite readers at once.
+// ponytail: fixed cap, so a completion delay runs for 16 torrents at a time;
+// count the delay from detection if bursts with a delay get slow.
+const handlerQueueWorkers = 16
+
+// handlerQueue runs queued handler calls in order on at most
+// handlerQueueWorkers goroutines. A worker exits when the queue is empty.
+// push runs in the sync callback and returns at once; a semaphore would park
+// one goroutine per waiting event.
+type handlerQueue struct {
+	mu      sync.Mutex
+	pending []func()
+	workers int
+}
+
+func (q *handlerQueue) push(fns ...func()) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.pending = append(q.pending, fns...)
+	for range min(len(fns), handlerQueueWorkers-q.workers) {
+		q.workers++
+		go q.run()
+	}
+}
+
+func (q *handlerQueue) run() {
+	for {
+		q.mu.Lock()
+		if len(q.pending) == 0 {
+			q.workers--
+			q.mu.Unlock()
+			return
+		}
+		fn := q.pending[0]
+		q.pending[0] = nil
+		q.pending = q.pending[1:]
+		q.mu.Unlock()
+		fn()
+	}
+}
+
 func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	if data == nil {
 		return
@@ -781,6 +851,7 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		c.completionState = make(map[string]bool)
 	}
 
+	notify := c.completionNotify
 	handler := c.completionHandler
 
 	pruneRemovedTorrents(c.completionState, data.Torrents)
@@ -835,14 +906,21 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	}
 	c.completionMu.Unlock()
 
+	// Notify outside the queue: a handler can wait minutes for its search lane.
+	if notify != nil {
+		for _, torrent := range ready {
+			notify(context.Background(), c.instanceID, torrent)
+		}
+	}
 	if handler == nil || len(ready) == 0 {
 		return
 	}
 
+	calls := make([]func(), 0, len(ready))
 	for _, torrent := range ready {
-		torrentCopy := torrent
-		go handler(context.Background(), c.instanceID, torrentCopy)
+		calls = append(calls, func() { handler(context.Background(), c.instanceID, torrent) })
 	}
+	c.completionQueue.push(calls...)
 }
 
 // pruneRemovedTorrents drops hashes missing from the merged torrent map.
@@ -896,16 +974,13 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 
 	now := time.Now()
-	for _, torrent := range ready {
-		if torrent.AddedOn > 0 {
-			addedAt := time.Unix(torrent.AddedOn, 0)
-			if now.Sub(addedAt) > torrentAddedGraceWindow {
-				continue
-			}
-		}
-		torrentCopy := torrent
-		go handler(context.Background(), c.instanceID, torrentCopy)
+	ready = slices.DeleteFunc(ready, func(torrent qbt.Torrent) bool {
+		return torrent.AddedOn > 0 && now.Sub(time.Unix(torrent.AddedOn, 0)) > torrentAddedGraceWindow
+	})
+	if len(ready) == 0 {
+		return
 	}
+	c.addedQueue.push(func() { handler(context.Background(), c.instanceID, ready) })
 }
 
 // NormalizeCompletionTimestamp returns ts when it holds a real completion

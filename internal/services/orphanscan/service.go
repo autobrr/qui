@@ -40,7 +40,7 @@ type syncReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	CategorySavePathsNest(ctx context.Context, instanceID int) (bool, error)
+	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
 }
 
 type clientReadiness interface {
@@ -1642,6 +1642,8 @@ func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result
 // silently stop scanning a second, genuinely different directory on a
 // case-sensitive filesystem.
 // Roots are compared in the given order; the first spelling wins.
+// A root whose cleaned path equals an earlier root is always dropped, even on a
+// backend that cannot report file identity (SFTP), since it is the same path.
 //
 // Backend.Lstat, never Stat: a symlink that differs from its target only by
 // case would look like the same directory through Stat, and dropping the real
@@ -1654,7 +1656,15 @@ func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.B
 	d := backend.Paths()
 	kept := make([]string, 0, len(roots))
 	seen := make(map[string]*fsops.LstatInfo, len(roots))
+	exact := make(map[string]struct{}, len(roots))
 	for _, root := range roots {
+		cleaned := d.Clean(root)
+		if _, ok := exact[cleaned]; ok {
+			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that repeats an earlier root")
+			continue
+		}
+		exact[cleaned] = struct{}{}
+
 		norm := fsops.NormalizePath(d, root)
 		info, _ := backend.Lstat(ctx, root) // nil info on error
 
