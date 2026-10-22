@@ -149,6 +149,7 @@ jobs:
             --disallowedTools 'Read(//proc/**)' 'Edit(./.github/**)' 'Edit(./.claude/**)' 'Edit(./.git/**)' \
               'Edit(./docs/agents/**)' 'Edit(**/AGENTS.md)' 'Edit(**/CLAUDE.md)' 'Edit(./go.mod)' 'Edit(./go.sum)' \
               'Edit(./web/package.json)' 'Edit(./web/pnpm-lock.yaml)' 'Edit(./web/pnpm-workspace.yaml)' \
+            --settings '{"attribution":{"commit":"","pr":""}}' \
             --json-schema '{"type":"object","properties":{"title":{"type":"string","maxLength":64},"body":{"type":"string"}},"required":["title","body"]}' \
             --output-format stream-json --verbose \
           | tee "$RUNNER_TEMP/stream.jsonl" \
