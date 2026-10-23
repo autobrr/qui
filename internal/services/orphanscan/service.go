@@ -250,7 +250,9 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 					covered = false
 					break
 				}
-				if dir == cleaned[j] {
+				// Dir of \\host\share\x is \\host\share\, but a root given as
+				// \\host\share keeps no separator through Clean.
+				if dir == cleaned[j] || dir == cleaned[j]+d.Separator() {
 					break
 				}
 				// Dir of \\host\share never reaches a share-less \\host\.
