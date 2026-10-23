@@ -782,8 +782,8 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 			},
 		},
 		syncManager: &rootlessSavePathSyncManager{},
-		postInjectionHook: func(_ context.Context, instanceID int, torrentHash string) {
-			if instanceID == 1 && torrentHash == "hash123" {
+		postInjectionHook: func(_ context.Context, instanceID int, hashes []string) {
+			if instanceID == 1 && strings.Join(hashes, ",") == "hash123" {
 				hookCallCount++
 			}
 		},

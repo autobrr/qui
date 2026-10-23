@@ -442,7 +442,7 @@ type Service struct {
 	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
 	partialPoolPropagationRollback func(*hardlinktree.Created) error
 	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
-	postInjectionHook              func(context.Context, int, string)
+	postInjectionHook              func(context.Context, int, []string)
 	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
 
 	// settler rechecks and resumes each torrent that this service adds.
@@ -6254,7 +6254,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Execute external program if configured (async, non-blocking)
-	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	s.RunExternalProgram(ctx, candidate.InstanceID, dedupeHashes(torrentHash, torrentHashV2))
 
 	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
@@ -13027,13 +13027,30 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, torrentHash string) {
+// RunExternalProgram sends the Execution Request for the External Program
+// that After injection selects, if any, for one added cross-seed. hashes are
+// the v1 and v2 hashes of that torrent.
+func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
 	if s.postInjectionHook != nil {
-		s.postInjectionHook(ctx, instanceID, torrentHash)
+		s.postInjectionHook(ctx, instanceID, hashes)
 		return
 	}
 
-	s.executeExternalProgram(ctx, instanceID, torrentHash)
+	s.executeExternalProgram(ctx, instanceID, hashes)
+}
+
+// findAddedTorrent waits until an added torrent is in the sync cache and returns it.
+// qBittorrent lists a torrent that has a v2 hash under the first 40 characters of
+// that hash, so the lookup also tries that form.
+func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	lookup := slices.Clone(hashes)
+	for _, hash := range hashes {
+		if len(hash) == 64 {
+			lookup = append(lookup, hash[:40])
+		}
+	}
+	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
+	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, lookup)
 }
 
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
@@ -13041,7 +13058,7 @@ func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, tor
 // WARNING: externalprograms limits how many programs run at the same time, but a launcher run
 // (a terminal emulator, or any run on Windows) releases its slot after the start, so rapid
 // injections can still start many concurrent processes.
-func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
+func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, hashes []string) {
 	if s.externalProgramService == nil {
 		return
 	}
@@ -13067,21 +13084,20 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 
 	// Execute in a separate goroutine to avoid blocking the cross-seed operation
 	go func() {
-		// Get torrent data from sync manager
-		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
+		targetTorrent, found, err := s.findAddedTorrent(ctx, instanceID, hashes)
 		if err != nil {
-			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
+			log.Error().Err(err).Int("instanceId", instanceID).Strs("torrentHashes", hashes).Msg("Failed to get torrent for external program execution")
 			return
 		}
 
 		if !found || targetTorrent == nil {
-			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
+			log.Error().Strs("torrentHashes", hashes).Msg("Torrent not found for external program execution")
 			return
 		}
 
 		log.Debug().
 			Int("instanceId", instanceID).
-			Str("torrentHash", torrentHash).
+			Strs("torrentHashes", hashes).
 			Int("programId", programID).
 			Msg("Executing external program for cross-seed injection")
 
@@ -13096,13 +13112,13 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			log.Error().
 				Err(result.Error).
 				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
+				Strs("torrentHashes", hashes).
 				Int("programId", programID).
 				Msg("External program failed for cross-seed injection")
 		} else {
 			log.Debug().
 				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
+				Strs("torrentHashes", hashes).
 				Int("programId", programID).
 				Str("message", result.Message).
 				Msg("External program executed for cross-seed injection")

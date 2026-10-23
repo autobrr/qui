@@ -532,6 +532,7 @@ func (s *Service) addSeasonPack(
 	matched := len(episodes)
 	coverage := float64(matched) / float64(prep.totalEpisodes)
 	s.recordApplyRun(ctx, torrentName, "applied", message, inst.ID, matched, prep.totalEpisodes, coverage, linkMode)
+	s.RunExternalProgram(ctx, inst.ID, collectHashes(prep.meta))
 
 	return &SeasonPackApplyResponse{
 		Applied:         true,
