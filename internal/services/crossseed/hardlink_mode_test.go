@@ -942,11 +942,10 @@ func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
 func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
-		reason     string
-		difference string
+		difference matchDifference
 	}{
-		{name: "relaxed season", reason: "season mismatch", difference: "season"},
-		{name: "relaxed group", reason: groupMismatchReason, difference: "group"},
+		{name: "relaxed season", difference: differenceSeason},
+		{name: "relaxed group", difference: differenceGroup},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -987,11 +986,11 @@ func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 					"Renamed",
 					&CrossSeedRequest{
 						SearchDecision: searchDecisionProvenance{
-							Class:                searchCandidateClassExactSizeFallback,
-							SourceInstanceID:     1,
-							SourceHash:           "matched",
-							StrictMismatchReason: tt.reason,
-							RelaxedDifferences:   []string{tt.difference},
+							Class:              searchCandidateClassExactSizeFallback,
+							SourceInstanceID:   1,
+							SourceHash:         "matched",
+							RelaxedDifferences: []string{matchDifferenceText[tt.difference].field},
+							Relaxed:            differencesOf(tt.difference),
 						},
 					},
 					&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
@@ -1045,11 +1044,11 @@ func TestProcessHardlinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "bound",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   1,
+				SourceHash:         "bound",
+				RelaxedDifferences: []string{"group"},
+				Relaxed:            differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "strict", ContentPath: filepath.Join(downloadsDir, "Original")},
@@ -1096,11 +1095,11 @@ func TestProcessReflinkMode_RelaxedGroupSkipRecheck(t *testing.T) {
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "matched",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   1,
+				SourceHash:         "matched",
+				RelaxedDifferences: []string{"group"},
+				Relaxed:            differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
@@ -1161,11 +1160,11 @@ func TestProcessReflinkMode_RelaxedGroupWaitsForFullRecheck(t *testing.T) {
 			"Renamed",
 			&CrossSeedRequest{
 				SearchDecision: searchDecisionProvenance{
-					Class:                searchCandidateClassExactSizeFallback,
-					SourceInstanceID:     1,
-					SourceHash:           "matched",
-					StrictMismatchReason: groupMismatchReason,
-					RelaxedDifferences:   []string{"group"},
+					Class:              searchCandidateClassExactSizeFallback,
+					SourceInstanceID:   1,
+					SourceHash:         "matched",
+					RelaxedDifferences: []string{"group"},
+					Relaxed:            differencesOf(differenceGroup),
 				},
 			},
 			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
@@ -1223,11 +1222,11 @@ func TestProcessReflinkMode_UnboundRelaxationKeepsFastPath(t *testing.T) {
 		&CrossSeedRequest{
 			SkipRecheck: true,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "bound",
-				StrictMismatchReason: groupMismatchReason,
-				RelaxedDifferences:   []string{"group"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   1,
+				SourceHash:         "bound",
+				RelaxedDifferences: []string{"group"},
+				Relaxed:            differencesOf(differenceGroup),
 			},
 		},
 		&qbt.Torrent{Hash: "strict", ContentPath: filepath.Join(downloadsDir, "Original")},

@@ -25,18 +25,18 @@ func TestCandidateRequiresVerification(t *testing.T) {
 		selectedHash   string
 		sourceInstance int
 		sourceHash     string
-		reason         string
+		relaxed        matchDifferences
 		want           bool
 	}{
 		{name: "title rescue", candidate: CrossSeedCandidate{titleRescue: true}, want: true},
-		{name: "bound relaxed season", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: seasonMismatchReason, want: true},
-		{name: "bound relaxed episode", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: episodeMismatchReason, want: true},
-		{name: "bound relaxed group", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: groupMismatchReason, want: true},
-		{name: "bound relaxed group with odd spacing and case", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: "  Group Mismatch ", want: true},
-		{name: "strict alternative hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "strict", sourceInstance: 1, sourceHash: "bound", reason: groupMismatchReason},
-		{name: "same hash on another instance", candidate: CrossSeedCandidate{InstanceID: 2}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: groupMismatchReason},
-		{name: "empty bound hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, reason: groupMismatchReason},
-		{name: "bound relaxed codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", reason: "codec mismatch"},
+		{name: "bound relaxed season", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceSeason), want: true},
+		{name: "bound relaxed episode", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceEpisode), want: true},
+		{name: "bound relaxed group", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup), want: true},
+		{name: "bound relaxed group and codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup, differenceCodec), want: true},
+		{name: "strict alternative hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "strict", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup)},
+		{name: "same hash on another instance", candidate: CrossSeedCandidate{InstanceID: 2}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup)},
+		{name: "empty bound hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, relaxed: differencesOf(differenceGroup)},
+		{name: "bound relaxed codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceCodec)},
 		{name: "no relaxation", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,9 +45,9 @@ func TestCandidateRequiresVerification(t *testing.T) {
 				tt.selectedHash,
 				&CrossSeedRequest{
 					SearchDecision: searchDecisionProvenance{
-						SourceInstanceID:     tt.sourceInstance,
-						SourceHash:           tt.sourceHash,
-						StrictMismatchReason: tt.reason,
+						SourceInstanceID: tt.sourceInstance,
+						SourceHash:       tt.sourceHash,
+						Relaxed:          tt.relaxed,
 					},
 				},
 			))
@@ -73,11 +73,11 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		return &CrossSeedRequest{
 			StartPaused: &startPaused,
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     1,
-				SourceHash:           "matchedhash",
-				StrictMismatchReason: "season mismatch",
-				RelaxedDifferences:   []string{"season"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   1,
+				SourceHash:         "matchedhash",
+				RelaxedDifferences: []string{"season"},
+				Relaxed:            differencesOf(differenceSeason),
 			},
 		}
 	}
@@ -103,8 +103,8 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed episode is dropped when rechecks are disabled", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.StrictMismatchReason = "episode mismatch"
 		req.SearchDecision.RelaxedDifferences = []string{"episode"}
+		req.SearchDecision.Relaxed = differencesOf(differenceEpisode)
 		req.SkipRecheck = true
 
 		result, sync := run(t, req)
@@ -116,8 +116,8 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed group forces a paused add and a recheck", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.StrictMismatchReason = groupMismatchReason
 		req.SearchDecision.RelaxedDifferences = []string{"group"}
+		req.SearchDecision.Relaxed = differencesOf(differenceGroup)
 
 		result, sync := run(t, req)
 
@@ -127,8 +127,8 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 
 	t.Run("relaxed group is dropped when rechecks are disabled", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.StrictMismatchReason = groupMismatchReason
 		req.SearchDecision.RelaxedDifferences = []string{"group"}
+		req.SearchDecision.Relaxed = differencesOf(differenceGroup)
 		req.SkipRecheck = true
 
 		result, sync := run(t, req)
@@ -138,12 +138,10 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
 	})
 
-	// An episode-from-pack pairing records an episode delta strict matching never
-	// objected to. Only the causal rejection may demand a hash check.
 	t.Run("soft relaxations keep the unverified fast path", func(t *testing.T) {
 		req := newRequest()
-		req.SearchDecision.StrictMismatchReason = "codec mismatch"
-		req.SearchDecision.RelaxedDifferences = []string{"codec", "episode"}
+		req.SearchDecision.RelaxedDifferences = []string{"codec"}
+		req.SearchDecision.Relaxed = differencesOf(differenceCodec)
 
 		result, sync := run(t, req)
 
@@ -209,11 +207,11 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 					StartPaused: &startPaused,
 					SkipRecheck: true,
 					SearchDecision: searchDecisionProvenance{
-						Class:                searchCandidateClassExactSizeFallback,
-						SourceInstanceID:     1,
-						SourceHash:           boundHash,
-						StrictMismatchReason: groupMismatchReason,
-						RelaxedDifferences:   []string{"group"},
+						Class:              searchCandidateClassExactSizeFallback,
+						SourceInstanceID:   1,
+						SourceHash:         boundHash,
+						RelaxedDifferences: []string{"group"},
+						Relaxed:            differencesOf(differenceGroup),
 					},
 				},
 				service.releaseCache.Parse(renameOnlySourceFile),

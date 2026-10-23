@@ -58,11 +58,11 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "season mismatch",
-			RelaxedDifferences:   []string{"season"},
+			Class:              searchCandidateClassExactSizeFallback,
+			SourceInstanceID:   instanceID,
+			SourceHash:         sourceHash,
+			RelaxedDifferences: []string{"season"},
+			Relaxed:            differencesOf(differenceSeason),
 		},
 	})
 	require.NoError(t, err)
@@ -191,11 +191,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   instanceID,
+				SourceHash:         sourceHash,
+				RelaxedDifferences: []string{"codec", "hdr"},
+				Relaxed:            differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -218,11 +218,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   instanceID,
+				SourceHash:         sourceHash,
+				RelaxedDifferences: []string{"codec", "hdr"},
+				Relaxed:            differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -1638,33 +1638,29 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
 		Title: "candidate",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "secret mismatch",
-			RelaxedDifferences:   []string{"secret difference"},
-			SourceTitles:         []string{"ARR secret result alias"},
+			Class:              searchCandidateClassTitleRescue,
+			RelaxedDifferences: []string{"secret difference"},
+			SourceTitles:       []string{"ARR secret result alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "title-rescue")
-	require.NotContains(t, string(resultBytes), "secret mismatch")
 	require.NotContains(t, string(resultBytes), "secret difference")
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     12345,
-			SourceHash:           "secret source hash",
-			StrictMismatchReason: "secret request mismatch",
-			RelaxedDifferences:   []string{"secret request difference"},
-			SourceTitles:         []string{"ARR secret request alias"},
+			Class:              searchCandidateClassTitleRescue,
+			SourceInstanceID:   12345,
+			SourceHash:         "secret source hash",
+			RelaxedDifferences: []string{"secret request difference"},
+			SourceTitles:       []string{"ARR secret request alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "title-rescue")
 	require.NotContains(t, string(requestBytes), "12345")
 	require.NotContains(t, string(requestBytes), "secret source hash")
-	require.NotContains(t, string(requestBytes), "secret request mismatch")
 	require.NotContains(t, string(requestBytes), "secret request difference")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 
@@ -1797,8 +1793,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	duplicate := result
@@ -1884,8 +1879,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{result})
@@ -2000,10 +1994,10 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		Size:        size,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         sourceTitles,
+			Class:              searchCandidateClassExactSizeFallback,
+			RelaxedDifferences: []string{"collection"},
+			Relaxed:            differencesOf(differenceCollection),
+			SourceTitles:       sourceTitles,
 		},
 	}
 
@@ -2021,7 +2015,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, 1, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, "source", captured.SearchDecision.SourceHash)
-	require.Equal(t, "collection mismatch", captured.SearchDecision.StrictMismatchReason)
+	require.Equal(t, differencesOf(differenceCollection), captured.SearchDecision.Relaxed)
 	require.Equal(t, []string{"collection"}, captured.SearchDecision.RelaxedDifferences)
 	require.Equal(t, sourceTitles, captured.SearchDecision.SourceTitles)
 }
@@ -2047,8 +2041,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 			Title:       "candidate",
 			DownloadURL: "https://example.invalid/candidate.torrent",
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassTitleRescue,
-				StrictMismatchReason: "title mismatch",
+				Class: searchCandidateClassTitleRescue,
 			},
 		},
 		time.Now(),
@@ -2091,10 +2084,9 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "title mismatch",
+			Class:            searchCandidateClassTitleRescue,
+			SourceInstanceID: instanceID,
+			SourceHash:       sourceHash,
 		},
 	}
 	rescued, err := service.FindCandidates(context.Background(), request)
@@ -2210,11 +2202,11 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                decision.Class,
-				SourceInstanceID:     instanceID,
-				SourceHash:           existingHash,
-				StrictMismatchReason: decision.StrictMismatchReason,
-				RelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+				Class:              decision.Class,
+				SourceInstanceID:   instanceID,
+				SourceHash:         existingHash,
+				Relaxed:            decision.Relaxed,
+				RelaxedDifferences: append([]string(nil), decision.RelaxedDifferences...),
 			},
 		}
 	}

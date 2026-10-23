@@ -4764,7 +4764,6 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				}
 
 				isTitleRescueSource := searchDecision.Class == searchCandidateClassTitleRescue &&
-					searchDecision.StrictMismatchReason == titleMismatchReason &&
 					mismatchReason == titleMismatchReason
 				switch {
 				case isTitleRescueSource:
@@ -4773,7 +4772,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					}
 					titleRescueHash = hashKey
 				case searchDecision.Class == searchCandidateClassExactSizeFallback:
-					if !searchRelaxationAuthorizesCurrentReason(searchDecision.StrictMismatchReason, mismatchReason) {
+					if !searchRelaxationAuthorizesCurrentReason(searchDecision.Relaxed, mismatchReason) {
 						continue
 					}
 					if _, ok, _ := m.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
@@ -4789,7 +4788,6 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					Str("targetTitle", req.TorrentName).
 					Str("existingTorrent", torrent.Name).
 					Str("sourceHash", hashKey).
-					Str("searchMismatchReason", searchDecision.StrictMismatchReason).
 					Str("applyMismatchReason", mismatchReason).
 					Strs("relaxedDifferences", searchDecision.RelaxedDifferences).
 					Msg("[CROSSSEED] Search-origin decision relaxed release prefilter")
@@ -5331,7 +5329,7 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 // candidate remain eligible, so a strict alternative can supply the add plan.
 func filterRecheckBlockedSource(candidate CrossSeedCandidate, req *CrossSeedRequest) (CrossSeedCandidate, bool) {
 	if req == nil || !req.SkipRecheck || candidate.InstanceID != req.SearchDecision.SourceInstanceID ||
-		!searchRelaxationRequiresVerification(req.SearchDecision.StrictMismatchReason) {
+		!req.SearchDecision.Relaxed.needsVerification() {
 		return candidate, false
 	}
 	boundHash := normalizeHash(req.SearchDecision.SourceHash)
