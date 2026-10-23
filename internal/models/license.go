@@ -44,6 +44,9 @@ type LicenseInfo struct {
 const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
+	// LicenseStatusOffline marks a license that the server has not confirmed within the offline grace period.
+	// It gives no premium access, and the background check makes it active again when the server confirms it.
+	LicenseStatusOffline = "offline"
 )
 
 // LicenseProvider constants

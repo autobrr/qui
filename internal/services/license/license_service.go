@@ -354,6 +354,21 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	allValid := true
 	var transientErr error
 	handleTransient := func(license *models.ProductLicense, err error) {
+		if license.Status == models.LicenseStatusActive && time.Since(license.LastValidated) > offlineGracePeriod {
+			log.Warn().
+				Err(err).
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Time("lastValidated", license.LastValidated).
+				Msg("License server unreachable beyond the offline grace period, marking license offline")
+			if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusOffline); updateErr != nil {
+				log.Error().
+					Err(updateErr).
+					Int("licenseId", license.ID).
+					Msg("Failed to update license status to offline")
+			}
+			allValid = false
+			return
+		}
 		log.Warn().
 			Err(err).
 			Str("licenseKey", maskLicenseKey(license.LicenseKey)).
@@ -367,10 +382,10 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	}
 
 	for _, license := range licenses {
-		// Only validate active licenses in the background. Invalid licenses
-		// require an explicit user action (re-activate) and should not be
-		// auto-activated in the checker.
-		if license.Status != models.LicenseStatusActive {
+		// Only validate active and offline licenses in the background. Invalid
+		// licenses require an explicit user action (re-activate) and should not
+		// be auto-activated in the checker.
+		if license.Status != models.LicenseStatusActive && license.Status != models.LicenseStatusOffline {
 			allValid = false
 			continue
 		}
