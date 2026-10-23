@@ -255,8 +255,8 @@ func TestSeasonPackAdds_RunExternalProgramOnSuccessOnly(t *testing.T) {
 			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 			require.NoError(t, err)
 			var runs []string
-			f.svc.postInjectionHook = func(_ context.Context, instanceID int, torrentHash string) {
-				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, torrentHash))
+			f.svc.postInjectionHook = func(_ context.Context, instanceID int, hashes []string) {
+				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, strings.Join(hashes, ",")))
 			}
 
 			require.NoError(t, tt.run(f))

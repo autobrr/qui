@@ -1234,8 +1234,8 @@ func TestInjector_Inject_RunsExternalProgramOnSuccessOnly(t *testing.T) {
 				manager = &failingTorrentAdder{err: tt.addErr}
 			}
 			var runs []string
-			runner := func(_ context.Context, instanceID int, torrentHash string) {
-				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, torrentHash))
+			runner := func(_ context.Context, instanceID int, hashes []string) {
+				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, strings.Join(hashes, ",")))
 			}
 			injector := NewInjector(nil, manager, (&settleFake{}).idle(), nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance), runner)
 

@@ -443,7 +443,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 				automationStore: store,
 				syncManager:     sync,
-				postInjectionHook: func(context.Context, int, string) {
+				postInjectionHook: func(context.Context, int, []string) {
 					hookCalls++
 				},
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -494,7 +494,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			require.Contains(t, result.Message, "pooled registration failed")
 			require.Contains(t, result.Message, "remains stopped for manual intervention")
 			require.Contains(t, result.Message, fetchErr.Error())
-			require.Equal(t, 1, hookCalls)
+			require.Zero(t, hookCalls, "a failed add runs no External Program")
 			require.NotNil(t, sync.addedOptions, "qBittorrent add must remain intact")
 			require.Equal(t, "true", sync.addedOptions["stopped"])
 			require.Equal(t, "true", sync.addedOptions["paused"])

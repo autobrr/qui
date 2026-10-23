@@ -669,10 +669,11 @@ func (s *Service) processLinkMode(
 		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
 	}
 
-	s.RunExternalProgram(ctx, candidate.InstanceID, torrentHash)
 	success := poolRegistrationErr == nil
 	status := "added_" + mode.name
-	if !success {
+	if success {
+		s.RunExternalProgram(ctx, candidate.InstanceID, dedupeHashes(torrentHash, torrentHashV2))
+	} else {
 		status = partialPoolRegistrationErrorStatus
 	}
 

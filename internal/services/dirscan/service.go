@@ -145,7 +145,7 @@ func NewService(
 	backendPool *fsops.Pool,
 	blocklistStore *models.CrossSeedBlocklistStore,
 	settler *crossseed.Settler,
-	runExternalProgram func(ctx context.Context, instanceID int, torrentHash string),
+	runExternalProgram func(ctx context.Context, instanceID int, hashes []string),
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval

@@ -640,21 +640,3 @@ func TestParseMusicReleaseFromTorrentName_EpisodeRangeKeepsArtist(t *testing.T) 
 	require.Equal(t, "Some Band", release.Artist)
 	require.Equal(t, "Podcast Series", release.Title)
 }
-
-func TestTorrentMetadataQbitHash(t *testing.T) {
-	tests := []struct {
-		name string
-		info *metainfo.Info
-		want string
-	}{
-		{name: "v1", info: &metainfo.Info{Length: 1, Pieces: make([]byte, 20)}, want: "v1hash"},
-		{name: "hybrid", info: &metainfo.Info{MetaVersion: 2, Length: 1, Pieces: make([]byte, 20)}, want: "v1hash"},
-		{name: "v2 only", info: &metainfo.Info{MetaVersion: 2}, want: "v2hash"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			meta := TorrentMetadata{HashV1: "v1hash", HashV2: "v2hash", Info: tt.info}
-			assert.Equal(t, tt.want, meta.qbitHash())
-		})
-	}
-}

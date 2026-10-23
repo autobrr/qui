@@ -67,8 +67,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				},
 			}
 			var hookRuns []string
-			svc.postInjectionHook = func(_ context.Context, _ int, torrentHash string) {
-				hookRuns = append(hookRuns, torrentHash)
+			svc.postInjectionHook = func(_ context.Context, _ int, hashes []string) {
+				hookRuns = append(hookRuns, strings.Join(hashes, ","))
 			}
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			if mode == "reflink" {
