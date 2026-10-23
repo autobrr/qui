@@ -306,8 +306,8 @@ func TestService_FetchIconBytes_BlocksRedirectToLocalServer(t *testing.T) {
 
 	// The proxy answers the first request with a redirect, so qui sends the
 	// second request to the local server without a proxy.
-	t.Setenv("HTTP_PROXY", redirector.URL)
 	t.Setenv("http_proxy", "")
+	t.Setenv("HTTP_PROXY", redirector.URL)
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 
@@ -329,8 +329,8 @@ func TestService_FetchIconBytes_AllowsConfiguredLocalProxy(t *testing.T) {
 	}))
 	defer proxy.Close()
 
-	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("http_proxy", "")
+	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 
@@ -349,8 +349,8 @@ func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
 	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
 	defer proxy.Close()
 
-	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("http_proxy", "")
+	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 
@@ -369,8 +369,8 @@ func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
 	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
 	defer proxy.Close()
 
-	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("http_proxy", "")
+	t.Setenv("HTTP_PROXY", proxy.URL)
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 

@@ -26,7 +26,7 @@ describe("rssRunState", () => {
   it.each([
     [{ hasEnabledIndexers: false }, "automation.requiresTorznabIndexer"],
     [{ hasTargets: false }, "toast.selectAtLeastOneInstance"],
-    [{ cooldown: { active: true, minutes: 120, remaining: "5m" } }, 'automation.runDisabledCooldown {"minutes":120,"remaining":"5m"}'],
+    [{ cooldown: { active: true, minutes: 120, remaining: "5m" } }, "automation.runDisabledCooldown {\"minutes\":120,\"remaining\":\"5m\"}"],
     [{ startPending: true }, "run.starting"],
   ] satisfies [Partial<RssRunInput>, string][])("blocks with a reason for %j", (change, reason) => {
     expect(rssRunState({ ...readyRss, ...change }, t)).toEqual({ kind: "blocked", reason })

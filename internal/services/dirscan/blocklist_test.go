@@ -5,18 +5,21 @@ package dirscan
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -103,10 +106,11 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			manager := &failingTorrentAdder{err: errors.New("add stopped by test")}
 			adder := crossseed.NewAdder(adderQbit{torrentAdder: manager, existing: existing}, blocklist, nil,
 				func(context.Context) int64 { return 0 }, func(context.Context, int, []string) {})
+			cacheDB := &cacheTouchDB{DB: db, done: make(chan struct{})}
 			svc := &Service{
 				store:          models.NewDirScanStore(db),
 				adder:          adder,
-				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(cache)),
+				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
 				injector:       NewInjector(nil, manager, adder, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
 			}
 
@@ -114,6 +118,12 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			dir := &models.DirScanDirectory{ID: 1, TargetInstanceID: instance.ID}
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 			match := svc.tryMatchAndInject(ctx, dir, searchee, nil, result, "movie", settings, NewMatcher(MatchModeStrict, 0), 0, &l)
+			// Fetch starts a detached cache touch; join it before SQLite and TempDir cleanup.
+			select {
+			case <-cacheDB.done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("torrent cache touch did not finish")
+			}
 
 			cleared := tt.blockHash == nil && !tt.blocklistErr && !tt.existing
 			require.Equal(t, cleared, manager.called, "AddTorrent must run only for a torrent that the Pre-add check clears")
@@ -126,4 +136,14 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+type cacheTouchDB struct {
+	*database.DB
+	done chan struct{}
+}
+
+func (db *cacheTouchDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	defer close(db.done)
+	return db.DB.ExecContext(ctx, query, args...)
 }
