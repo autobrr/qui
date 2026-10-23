@@ -200,7 +200,7 @@ qui treats folders that contain `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures 
 - **Files with permission errors** (qui continues the scan and skips the file)
 - **Non-media files** outside disc layouts
 
-On Windows, recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible when their metadata is accessible. WOF supports compressed files. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
+On Windows, recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible when their metadata is accessible. Other files with unknown reparse tags remain excluded. [Orphan Scan](../orphan-scan.md#abandoned-directories) explains these Windows terms.
 
 ## Settings (Global)
 
