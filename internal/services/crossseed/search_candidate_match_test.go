@@ -727,7 +727,7 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
-		SourceTitles:  []string{"Money Heist"},
+		SourceTitles:  []string{"Money Heist", "La Casa de Papel"},
 		SourceSize:    size,
 		CandidateSize: size,
 	})
@@ -2403,7 +2403,7 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	// The aliases stay bound to the decision's source torrent.
 	require.Equal(t, "no_match", apply([]string{"La Casa de Papel"}, "different-hash").Results[0].Status)
 
-	aliased := apply([]string{"La Casa de Papel"}, existingHash)
+	aliased := apply([]string{"Money Heist", "La Casa de Papel"}, existingHash)
 	require.NotEqual(t, "no_match", aliased.Results[0].Status)
 	require.Contains(t, aliased.Results[0].Message, "torrent properties")
 }
@@ -2566,6 +2566,7 @@ func TestDownloadReadsAsListing(t *testing.T) {
 		class    searchCandidateClass
 		listing  string
 		download string
+		titles   []string
 		want     bool
 	}{
 		{
@@ -2607,9 +2608,24 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			listing:  "[KaijuSubs] Kaiju Squad - 81 (1080p) [ABCD1234]",
 			download: "[KaijuSubs] Kaiju Squad - 81 (1080p) [EF567890]",
 		},
+		{
+			name:     "the download names another title of the resolved show",
+			class:    searchCandidateClassStrict,
+			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
+			download: "Luces.del.Puerto.S01E05.1080p.WEB.H264-GRP",
+			titles:   []string{"Luces del Puerto", "Harbor Lights"},
+			want:     true,
+		},
+		{
+			name:     "an alias of the listing does not admit another show",
+			class:    searchCandidateClassStrict,
+			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
+			download: "Unrelated.Show.S01E05.1080p.WEB.H264-GRP",
+			titles:   []string{"Luces del Puerto", "Harbor Lights"},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			decision := searchDecisionProvenance{Class: tt.class, SearchCandidateName: tt.listing}
+			decision := searchDecisionProvenance{Class: tt.class, SearchCandidateName: tt.listing, SourceTitles: tt.titles}
 			require.Equal(t, tt.want, m.downloadReadsAsListing(decision, m.readName(tt.download), false))
 		})
 	}

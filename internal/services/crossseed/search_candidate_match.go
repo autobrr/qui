@@ -394,9 +394,11 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, downl
 	}
 	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
 	listed := decision.listedDifferences()
-	// The listing title and info.name can differ by exactly the resolved alias.
+	// The download can name another title of the show that search resolved. Only
+	// the download is held against those titles, so a listing that matches its
+	// own alias cannot admit a download of another show.
 	titles := slices.Concat(decision.SourceTitles, decision.CandidateTitles)
-	comparison := m.compareReleases(listing, download, titles, titles, findIndividualEpisodes, false)
+	comparison := m.compareReleases(listing, download, titles, nil, findIndividualEpisodes, false)
 	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
 		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
 	}
