@@ -79,7 +79,11 @@ These are never reported, even when empty:
 - A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's directory the same way qBittorrent does, including one that inherits from a parent category.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
-- A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
+- A directory holding anything qui did not itself list for removal, such as an ignored subdirectory, a symbolic link or a Windows junction.
+
+On every platform, orphan file scans skip symbolic links and other non-regular entries, including sockets, FIFOs (named pipes) and devices. On Windows, this also excludes junctions. Recognized cloud-placeholder files and Windows Overlay Filter (WOF) data files remain eligible for file scanning and deletion. WOF supports compressed files. Normal access permissions still apply. Windows uses reparse tags to identify files that need special filesystem handling. Unknown reparse tags remain excluded.
+
+On every platform, confirmed deletion also keeps a symbolic link or containing directory when a torrent references a file beneath that path. This preserves the path the torrent uses, even when removing the link would leave the target's bytes intact.
 
 Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 
