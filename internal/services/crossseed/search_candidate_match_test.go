@@ -263,6 +263,53 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "relaxed hdr")
 }
 
+// A Season numeral is a second season marker. Exact size does not relax a
+// season that the numeral of the candidate confirms, and title rescue does not
+// read the numeral of another title as a season.
+func TestClassifySearchCandidateSeasonNumeral(t *testing.T) {
+	m := matcher{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	for _, tt := range []struct {
+		name      string
+		source    string
+		candidate string
+		rescue    bool
+		// reason is "" for an accepted pair.
+		reason string
+	}{
+		{
+			name:      "exact size relaxes the season of two packs",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor S03 1080p BluRay x264-GRP",
+		},
+		{
+			name:      "exact size keeps a season that the numeral confirms",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor III S03 1080p BluRay x264-GRP",
+			reason:    seasonMismatchReason,
+		},
+		{
+			name:      "title rescue reads no numeral season of another title",
+			source:    "Kaiju Squad Zero S02 1080p WEB H264-GRP",
+			candidate: "Kaiju.Squad.II.1080p.WEB.H264-GRP",
+			rescue:    true,
+			reason:    "candidate not recognized as TV",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := m.classifySearchCandidate(searchCandidateInput{
+				Source:                namedRelease{release: m.parseReleaseName(tt.source), rawName: tt.source},
+				Candidate:             namedRelease{release: m.parseReleaseName(tt.candidate), rawName: tt.candidate},
+				SourceSize:            corpusPackSize,
+				CandidateSize:         corpusPackSize,
+				TolerancePercent:      5,
+				RescueTitleMismatches: tt.rescue,
+			})
+			require.Equal(t, tt.reason == "", decision.Accepted, "reject reason: %s", decision.RejectReason)
+			require.Equal(t, tt.reason, decision.RejectReason)
+		})
+	}
+}
+
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -861,7 +908,8 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		Candidate: namedRelease{release: &searched},
 	}
 
-	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
 	require.ElementsMatch(t, []string{"collection", "variant"}, observed)
 	used, ok, reason := service.matcher().validateExactSizeFallback(input, "collection mismatch", observed)
 	require.True(t, ok, reason)
@@ -877,7 +925,7 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		"apply may spend the variant authority that search independently established")
 }
 
-func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) {
+func TestSearchRecordsStrictCollectionMismatch(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := &rls.Release{
 		Title:      "Example Show",
@@ -900,9 +948,10 @@ func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) 
 	require.False(t, strict)
 	require.Equal(t, "collection mismatch", reason)
 
-	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
 	require.Contains(t, observed, "collection",
-		"the observation key must use the same Collection field as strict matching")
+		"search must record the Collection field that strict matching rejects")
 	used, ok, reason := service.matcher().validateExactSizeFallback(input, reason, observed)
 	require.True(t, ok, reason)
 	require.Equal(t, []string{"collection"}, used)
@@ -1045,7 +1094,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 }
 
 // The checksum tolerance belongs to the exact-size fallback alone. This fails if
-// it is ever widened into validateGroupSiteAndChecksum, where strict matching
+// it is ever widened into compareGroupSiteAndChecksum, where strict matching
 // would inherit it.
 func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -1140,7 +1189,7 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	}
 }
 
-// validateTVStructure reports a season mismatch before it compares pack against
+// compareTVStructure reports a season mismatch before it compares pack against
 // episode, so a differing season would otherwise skip the shape check. Only a
 // like-for-like shape may retire a season or episode number.
 func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) {
@@ -1249,9 +1298,10 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 
-	ok, reason := service.matcher().validateGroupSiteAndChecksum(input.Source, input.Candidate, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing group")
-	require.Equal(t, "group mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, input.Source, input.Candidate)
+	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing group")
+	require.Equal(t, "group mismatch", comparison.reason())
 }
 
 func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
@@ -1269,9 +1319,10 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, "checksum mismatch", reason)
 
-	ok, reason = service.matcher().validateGroupSiteAndChecksum(namedRelease{release: &source}, namedRelease{release: &bare}, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
-	require.Equal(t, "checksum mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: &source}, namedRelease{release: &bare})
+	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing checksum")
+	require.Equal(t, "checksum mismatch", comparison.reason())
 }
 
 func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {

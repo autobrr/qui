@@ -194,36 +194,58 @@ func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls
 // namedReleasesMatchWithReasonAndTitles is the strict match on full identity
 // views, so the group check can read the selected-file tags too.
 func (m matcher) namedReleasesMatchWithReasonAndTitles(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
-	source, candidate := sourceSide.release, candidateSide.release
-	sourceName, candidateName := sourceSide.rawName, candidateSide.rawName
-	if source == candidate {
-		return true, ""
+	comparison := m.compareReleases(sourceSide, candidateSide, sourceTitles, candidateTitles, findIndividualEpisodes, true)
+	return comparison.matched(), comparison.reason()
+}
+
+// compareReleases runs the release rules on a pair and records each field
+// that differs. It returns after a title difference, because no rule relaxes
+// one over the rest of the set: title rescue runs its own compare. With
+// stopAtFirst it returns after the first group of rules that finds a
+// difference, which is enough for a caller that reads only the first reason.
+func (m matcher) compareReleases(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes, stopAtFirst bool) releaseComparison {
+	var comparison releaseComparison
+	if sourceSide.release == candidateSide.release {
+		return comparison
 	}
 	// rls reads a bare "Title III" as a movie, so only the other side can say that its numeral is a season.
-	source, candidate = withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source)
+	source, candidate := withTitleNumeralSeason(sourceSide.release, candidateSide.release), withTitleNumeralSeason(candidateSide.release, sourceSide.release)
 	sourceSide.release, candidateSide.release = source, candidate
 
-	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := m.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
-		return false, reason
+	if m.compareTitles(&comparison, source, candidate, sourceSide.rawName, candidateSide.rawName, sourceTitles, candidateTitles); !comparison.matched() {
+		return comparison
 	}
-	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, false); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateMetadataFlags(source, candidate); !ok {
-		return false, reason
-	}
-	if ok, reason := validateReleaseVariants(source, candidate); !ok {
-		return false, reason
-	}
+	return m.compareExceptTitle(comparison, sourceSide, candidateSide, findIndividualEpisodes, stopAtFirst, false)
+}
 
-	return true, ""
+// compareExceptTitle runs every release rule after the title rule, in the
+// order of the strict compare.
+func (m matcher) compareExceptTitle(comparison releaseComparison, sourceSide, candidateSide namedRelease, findIndividualEpisodes, stopAtFirst, tolerateMissingCandidateTags bool) releaseComparison {
+	source, candidate := sourceSide.release, candidateSide.release
+	isTV := isTVRelease(source) || isTVRelease(candidate)
+	stop := func() bool { return stopAtFirst && !comparison.matched() }
+
+	if m.compareArtistAndDates(&comparison, source, candidate, isTV); stop() {
+		return comparison
+	}
+	if compareTVStructure(&comparison, source, candidate, findIndividualEpisodes, isTV); stop() {
+		return comparison
+	}
+	m.compareGroupSiteAndChecksum(&comparison, sourceSide, candidateSide)
+	if tolerateMissingCandidateTags {
+		comparison.differences = comparison.differences.without(differenceGroupMissing, differenceChecksumMissing)
+	}
+	if stop() {
+		return comparison
+	}
+	if m.compareFormatAndCodec(&comparison, source, candidate); stop() {
+		return comparison
+	}
+	if m.compareMetadataFlags(&comparison, source, candidate); stop() {
+		return comparison
+	}
+	compareReleaseVariants(&comparison, source, candidate)
+	return comparison
 }
 
 // titleMismatchReason is the rejection reason emitted when two releases differ
@@ -241,21 +263,19 @@ const (
 	checksumMismatchReason = "checksum mismatch"
 )
 
-func (m matcher) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
+func (m matcher) compareTitles(comparison *releaseComparison, source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
 	sourceTitles := m.normalizedReleaseTitles(source, sourceName)
 	candidateTitles := m.normalizedReleaseTitles(candidate, candidateName)
-	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
-		return false, "empty normalized title"
-	}
-	if !titleSetsMatch(sourceTitles, candidateTitles, sourceExtraTitles, candidateExtraTitles) {
+	switch {
+	case len(sourceTitles) == 0 || len(candidateTitles) == 0:
+		comparison.add(differenceEmptyTitle)
+	case !titleSetsMatch(sourceTitles, candidateTitles, sourceExtraTitles, candidateExtraTitles):
 		// Title mismatches are expected for most candidates - don't log to avoid noise
-		return false, titleMismatchReason
+		comparison.add(differenceTitle)
 	}
-
-	return m.validateArtistAndDates(source, candidate, isTV)
 }
 
 // titleSetsMatch reports whether two sets of normalized release titles name the
@@ -278,7 +298,7 @@ func titleSetsMatch(sourceTitles, candidateTitles map[string]struct{}, sourceExt
 		normalizedTitleSetContainsAny(candidateTitles, sourceExtraTitles)
 }
 
-func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
+func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, candidate *rls.Release, isTV bool) {
 	normalizer := m.normalizer()
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
@@ -287,13 +307,13 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 		sourceArtist := normalizer.Normalize(source.Artist)
 		candidateArtist := normalizer.Normalize(candidate.Artist)
 		if sourceArtist != candidateArtist {
-			return false, "artist mismatch"
+			comparison.add(differenceArtist)
 		}
 	}
 
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
-		return false, "year mismatch"
+		comparison.add(differenceYear)
 	}
 
 	// For date-based releases (0day scene), require exact date match including month and day.
@@ -301,7 +321,7 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
 		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
 		if source.Month != candidate.Month || source.Day != candidate.Day {
-			return false, "date mismatch"
+			comparison.add(differenceDate)
 		}
 	}
 
@@ -309,10 +329,8 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 	// audiobook, etc.), require the types to match. This prevents, for example,
 	// music releases from matching audiobooks with similar titles.
 	if !isTV && source.Type != 0 && candidate.Type != 0 && source.Type != candidate.Type {
-		return false, "content type mismatch"
+		comparison.add(differenceContentType)
 	}
-
-	return true, ""
 }
 
 // releasesMatchExceptTitleWithReason keeps every normal release rule except title.
@@ -325,24 +343,8 @@ func (m matcher) validateArtistAndDates(source, candidate *rls.Release, isTV boo
 // existing pairings (local match detection) do not, so their false positives
 // must stay confined to display.
 func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
-	source, candidate := sourceSide.release, candidateSide.release
-	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := m.validateArtistAndDates(source, candidate, isTV); !ok {
-		return false, reason
-	}
-	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateGroupSiteAndChecksum(sourceSide, candidateSide, true); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateFormatAndCodec(source, candidate); !ok {
-		return false, reason
-	}
-	if ok, reason := m.validateMetadataFlags(source, candidate); !ok {
-		return false, reason
-	}
-	return validateReleaseVariants(source, candidate)
+	comparison := m.compareExceptTitle(releaseComparison{}, sourceSide, candidateSide, findIndividualEpisodes, true, true)
+	return comparison.matched(), comparison.reason()
 }
 
 func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
@@ -517,9 +519,9 @@ func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{
 	return false
 }
 
-func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes, isTV bool) (bool, string) {
+func compareTVStructure(comparison *releaseComparison, source, candidate *rls.Release, findIndividualEpisodes, isTV bool) {
 	if !isTV {
-		return true, ""
+		return
 	}
 
 	// For TV shows, season and episode structure must match based on settings.
@@ -529,39 +531,29 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	candidateIsPack := isTVSeasonPack(candidate)
 
 	if sourceIsTV && !candidateIsTV {
-		return false, "candidate not recognized as TV"
+		comparison.add(differenceCandidateNotTV)
 	}
 	if candidateIsTV && !sourceIsTV {
-		return false, "source not recognized as TV"
+		comparison.add(differenceSourceNotTV)
 	}
 
 	if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
-		return false, seasonMismatchReason
+		comparison.add(differenceSeason)
 	}
 
-	if !findIndividualEpisodes {
-		// Strict matching: season packs only match season packs, episodes only match episodes
-		if sourceIsPack != candidateIsPack {
-			return false, "season pack versus episode mismatch"
-		}
-
-		// If both are individual episodes, episodes must match
-		if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-			return false, episodeMismatchReason
-		}
-		return true, ""
+	// Strict matching: season packs only match season packs. Flexible matching
+	// lets a season pack match an individual episode.
+	if !findIndividualEpisodes && sourceIsPack != candidateIsPack {
+		comparison.add(differencePackVersusEpisode)
 	}
 
-	// Flexible matching: allow season packs to match individual episodes.
-	// But individual episodes still need exact episode matching.
+	// Individual episodes always need exact episode matching.
 	if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-		return false, episodeMismatchReason
+		comparison.add(differenceEpisode)
 	}
-
-	return true, ""
 }
 
-func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRelease, tolerateMissingCandidateTags bool) (bool, string) {
+func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sourceSide, candidateSide namedRelease) {
 	source, candidate := sourceSide.release, candidateSide.release
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
@@ -589,11 +581,9 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 		}
 		switch {
 		case candidateGroupIdentity == "":
-			if !tolerateMissingCandidateTags {
-				return false, groupMismatchReason
-			}
+			comparison.add(differenceGroupMissing)
 		case sourceGroup != candidateGroupIdentity:
-			return false, groupMismatchReason
+			comparison.add(differenceGroup)
 		}
 	}
 	// If source has no group, we don't care about candidate's group
@@ -609,7 +599,7 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 			candidateSiteIdentity = candidateGroup
 		}
 		if candidateSiteIdentity != "" && sourceSite != candidateSiteIdentity {
-			return false, "site mismatch"
+			comparison.add(differenceSite)
 		}
 	}
 
@@ -620,15 +610,11 @@ func (m matcher) validateGroupSiteAndChecksum(sourceSide, candidateSide namedRel
 	if sourceSum != "" {
 		switch {
 		case candidateSum == "":
-			if !tolerateMissingCandidateTags {
-				return false, checksumMismatchReason
-			}
+			comparison.add(differenceChecksumMissing)
 		case sourceSum != candidateSum:
-			return false, checksumMismatchReason
+			comparison.add(differenceChecksum)
 		}
 	}
-
-	return true, ""
 }
 
 // spaceJoinedGroupSite reports whether one name writes the group and the
@@ -649,13 +635,11 @@ func (m matcher) spaceJoinedGroupSite(source, candidate *rls.Release) bool {
 	return joined(source, candidate) || joined(candidate, source)
 }
 
-// sourceMismatchReason is the rejection reason emitted when two releases differ
-// only by an incompatible source (e.g. WEBRip vs WEB-DL). Callers key off this
-// exact value to apply cross-tracker relabel tolerance, so it is a named constant
-// rather than an inline literal.
+// sourceMismatchReason is the rejection reason for an incompatible source, such
+// as WEBRip against WEB-DL.
 const sourceMismatchReason = "source mismatch"
 
-func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, string) {
+func (m matcher) compareFormatAndCodec(comparison *releaseComparison, source, candidate *rls.Release) {
 	normalizer := m.normalizer()
 
 	// Source must be compatible if both are present.
@@ -665,7 +649,7 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 	sourceSource := normalizeSource(source.Source)
 	candidateSource := normalizeSource(candidate.Source)
 	if !sourcesCompatible(sourceSource, candidateSource) {
-		return false, sourceMismatchReason
+		comparison.add(differenceSource)
 	}
 
 	// Resolution must match (1080p vs 2160p are different files).
@@ -686,7 +670,7 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 
 		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
 		if !sdFallbackAllowed {
-			return false, "resolution mismatch"
+			comparison.add(differenceResolution)
 		}
 	}
 
@@ -698,7 +682,7 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 	sourceCollection := normalizer.Normalize(source.Collection)
 	candidateCollection := normalizer.Normalize(candidate.Collection)
 	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
-		return false, "collection mismatch"
+		comparison.add(differenceCollection)
 	}
 
 	// Codec must match if both are present (AVC vs HEVC produce different files).
@@ -707,7 +691,7 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 		sourceCodec := joinNormalizedCodecSlice(source.Codec)
 		candidateCodec := joinNormalizedCodecSlice(candidate.Codec)
 		if sourceCodec != candidateCodec {
-			return false, "codec mismatch"
+			comparison.add(differenceCodec)
 		}
 	}
 
@@ -719,7 +703,7 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 	sourceHDR := joinNormalizedHDRSlice(source.HDR)
 	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
 	if sourceHDR != "" && candidateHDR != "" && sourceHDR != candidateHDR {
-		return false, "hdr mismatch"
+		comparison.add(differenceHDR)
 	}
 
 	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
@@ -727,13 +711,11 @@ func (m matcher) validateFormatAndCodec(source, candidate *rls.Release) (bool, s
 	sourceBitDepth := normalizer.Normalize(source.BitDepth)
 	candidateBitDepth := normalizer.Normalize(candidate.BitDepth)
 	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
-		return false, "bit depth mismatch"
+		comparison.add(differenceBitDepth)
 	}
-
-	return true, ""
 }
 
-func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, string) {
+func (m matcher) compareMetadataFlags(comparison *releaseComparison, source, candidate *rls.Release) {
 	normalizer := m.normalizer()
 
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
@@ -747,7 +729,7 @@ func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, st
 		sourceCut := joinNormalizedSlice(source.Cut)
 		candidateCut := joinNormalizedSlice(candidate.Cut)
 		if sourceCut != candidateCut {
-			return false, "cut mismatch"
+			comparison.add(differenceCut)
 		}
 	}
 
@@ -756,7 +738,7 @@ func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, st
 		sourceEdition := joinNormalizedSlice(source.Edition)
 		candidateEdition := joinNormalizedSlice(candidate.Edition)
 		if sourceEdition != candidateEdition {
-			return false, "edition mismatch"
+			comparison.add(differenceEdition)
 		}
 	}
 
@@ -767,7 +749,7 @@ func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, st
 	// caught downstream by the exact per-file size comparison before anything is injected.
 	if len(source.Language) > 0 && len(candidate.Language) > 0 {
 		if joinNormalizedSlice(source.Language) != joinNormalizedSlice(candidate.Language) {
-			return false, "language mismatch"
+			comparison.add(differenceLanguage)
 		}
 	}
 
@@ -775,46 +757,40 @@ func (m matcher) validateMetadataFlags(source, candidate *rls.Release) (bool, st
 	sourceVersion := normalizer.Normalize(source.Version)
 	candidateVersion := normalizer.Normalize(candidate.Version)
 	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
-		return false, "version mismatch"
+		comparison.add(differenceVersion)
 	}
 
 	// Disc must match if both are present (Disc1 vs Disc2 are different content)
 	sourceDisc := normalizer.Normalize(source.Disc)
 	candidateDisc := normalizer.Normalize(candidate.Disc)
 	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
-		return false, "disc mismatch"
+		comparison.add(differenceDisc)
 	}
 
 	// Platform must match if both are present (Windows vs macOS are different binaries)
 	sourcePlatform := normalizer.Normalize(source.Platform)
 	candidatePlatform := normalizer.Normalize(candidate.Platform)
 	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
-		return false, "platform mismatch"
+		comparison.add(differencePlatform)
 	}
 
 	// Architecture must match if both are present (x64 vs x86 are different binaries)
 	sourceArch := normalizer.Normalize(source.Arch)
 	candidateArch := normalizer.Normalize(candidate.Arch)
 	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
-		return false, "architecture mismatch"
+		comparison.add(differenceArchitecture)
 	}
-
-	return true, ""
 }
 
-func validateReleaseVariants(source, candidate *rls.Release) (bool, string) {
+func compareReleaseVariants(comparison *releaseComparison, source, candidate *rls.Release) {
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs
 	// are exempt since a pack might contain a REPACK of just one episode.
 	if compatible, reason := checkVariantsCompatible(source, candidate); !compatible {
-		if reason == "" {
-			reason = "variant mismatch"
-		}
-		return false, reason
+		comparison.add(differenceVariant)
+		comparison.variantReason = cmp.Or(reason, "variant mismatch")
 	}
-
-	return true, ""
 }
 
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
@@ -916,52 +892,6 @@ func sourcesCompatible(source, candidate string) bool {
 	// At this point both are web sources, but they differ.
 	// WEBDL and WEBRIP are explicitly different and do not match each other.
 	return source == "WEB" || candidate == "WEB"
-}
-
-// isWebSourceRelabel reports whether candidate is the same release as source with
-// only its web-source label changed (e.g. WEBRip vs WEB-DL). The identical web
-// encode is frequently relabeled across trackers, so when nothing but the web
-// source differs we let the candidate reach the apply-stage file verification and
-// qBittorrent recheck instead of dropping it on the label alone. Callers must
-// still confirm the candidate size is within tolerance before trusting this.
-func (m matcher) isWebSourceRelabel(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) bool {
-	if source == nil || candidate == nil {
-		return false
-	}
-	if !isWebSource(normalizeSource(source.Source)) || !isWebSource(normalizeSource(candidate.Source)) {
-		return false
-	}
-
-	// Equalize the web-source label and re-run the full match. If it now matches,
-	// the source label was the only difference between the two releases.
-	probe := *candidate
-	probe.Source = source.Source
-	match, _ := m.releasesMatchWithReasonAndNamesAndTitles(source, &probe, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
-	return match
-}
-
-// shouldAcceptWebSourceRelabel reports whether a candidate that the release match
-// rejected solely on source mismatch should still be accepted as a cross-tracker
-// web-source relabel (WEBRip<->WEB-DL). ignoreSizeCheck mirrors the main size gate:
-// a single episode of a season-pack source is legitimately much smaller than its
-// pack, so the full-size tolerance is bypassed in that case and the apply-stage
-// file verification makes the final call.
-func (m matcher) shouldAcceptWebSourceRelabel(
-	source, candidate *rls.Release,
-	sourceName, candidateName string,
-	sourceTitles, candidateTitles []string,
-	findIndividualEpisodes, ignoreSizeCheck bool,
-	sourceSize, candidateSize int64,
-	tolerancePercent float64,
-	mismatchReason string,
-) bool {
-	if mismatchReason != sourceMismatchReason {
-		return false
-	}
-	if !ignoreSizeCheck && !m.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent) {
-		return false
-	}
-	return m.isWebSourceRelabel(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
 }
 
 // joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
