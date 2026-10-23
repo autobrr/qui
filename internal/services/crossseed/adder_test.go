@@ -30,20 +30,27 @@ func withAdder(svc *Service) {
 
 // adderFake is the qBittorrent seam of the Adder.
 type adderFake struct {
-	addedIDs []string
-	existing *qbt.Torrent
-	findErr  error
-	addErr   error
-	added    []map[string]string
-	actions  []string
+	addedIDs    []string
+	instanceIDs []int
+	existing    *qbt.Torrent
+	// existingOn limits existing to one instance when it is set.
+	existingOn int
+	findErr    error
+	addErr     error
+	added      []map[string]string
+	actions    []string
 }
 
-func (f *adderFake) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+func (f *adderFake) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+	f.instanceIDs = append(f.instanceIDs, instanceID)
 	f.added = append(f.added, options)
 	return &qbt.TorrentAddResponse{AddedTorrentIds: f.addedIDs}, f.addErr
 }
 
-func (f *adderFake) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
+func (f *adderFake) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+	if f.existingOn != 0 && instanceID != f.existingOn {
+		return nil, false, f.findErr
+	}
 	return f.existing, f.existing != nil, f.findErr
 }
 
@@ -59,11 +66,12 @@ func linkCheck(instanceID int, hashes ...string) PreAddCheck {
 	return PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 }
 
-// withLinkAdder gives svc the real Adder over the three-method qBittorrent fake.
-// Call it after startSettleScript, which replaces the Settler.
+// withLinkAdder gives svc the real Adder over the three-method qBittorrent fake
+// and the blocklist store of svc. Call it after startSettleScript, which
+// replaces the Settler.
 func withLinkAdder(svc *Service) *adderFake {
 	sync := &adderFake{}
-	svc.adder = NewAdder(sync, nil, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	svc.adder = NewAdder(sync, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	return sync
 }
 
@@ -116,6 +124,7 @@ func TestAdderAdd(t *testing.T) {
 	t.Parallel()
 
 	settle := func(gate SettleGate) *SettleGate { return &gate }
+	packRun := &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume"}
 	tests := []struct {
 		name          string
 		facts         AddFacts
@@ -276,6 +285,37 @@ func TestAdderAdd(t *testing.T) {
 			wantOutcome:   AddLeftPaused,
 			wantOptions:   addOptions(true, true),
 		},
+		{name: "skip recheck refuses season pack with pending files", facts: AddFacts{SkipRecheck: true, LinkTree: true, PendingFiles: true, SeasonPackLinked: 0.5}, wantStatus: "skipped_recheck"},
+		{
+			name:        "complete season pack starts at once",
+			facts:       AddFacts{LinkTree: true, SeasonPackLinked: 1},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(false, true),
+		},
+		{
+			name: "season pack with pending files waits for its linked fraction",
+			facts: AddFacts{
+				LinkTree: true, PendingFiles: true, SeasonPackLinked: 0.5,
+				LinkedPaths: map[string]struct{}{"Show.S01/e01.mkv": {}}, SeasonPackRun: packRun,
+			},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateThreshold),
+		},
+		{
+			name:        "complete manual assembly is checked on add and waits for its linked fraction",
+			facts:       AddFacts{LinkTree: true, ManualAssembly: true, SeasonPackLinked: 1},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, false),
+			wantGate:    settle(GateThreshold),
+		},
+		{
+			name:        "skip recheck adds manual assembly with pending files",
+			facts:       AddFacts{SkipRecheck: true, LinkTree: true, PendingFiles: true, ManualAssembly: true, SeasonPackLinked: 0.5},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, false),
+			wantGate:    settle(GateThreshold),
+		},
 		{
 			name:          "failed alignment pauses a running add",
 			facts:         AddFacts{StartRunning: true, Align: true},
@@ -291,7 +331,7 @@ func TestAdderAdd(t *testing.T) {
 			t.Parallel()
 
 			rig := newAdderRig(t, &adderFake{}, nil)
-			check, refusal := rig.adder.Check(t.Context(), 1, adderV1, adderV2)
+			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1, adderV2)
 			require.Nil(t, refusal)
 
 			result := rig.adder.Add(t.Context(), AddRequest{
@@ -326,9 +366,11 @@ func TestAdderAdd(t *testing.T) {
 				require.Equal(t, adderV1, queued.hash)
 				require.Equal(t, tt.facts.LinkedPaths, queued.linkedPaths)
 				require.Equal(t, tt.facts.RecoverMissingFiles, queued.recoverMissingFilesWithResume)
+				require.Equal(t, tt.facts.SeasonPackRun, queued.blockedRun)
 				if *tt.wantGate == GateBudget {
 					require.Equal(t, adderBudget, *queued.budgetBytes)
 				}
+				require.InDelta(t, tt.facts.SeasonPackLinked*seasonPackResumeSlack, queued.threshold, 1e-9)
 			}
 			if tt.wantOutcome == AddLeftPaused {
 				require.Empty(t, rig.programs)
@@ -343,7 +385,7 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	t.Parallel()
 
 	rig := newAdderRig(t, &adderFake{addErr: errors.New("boom")}, nil)
-	check, refusal := rig.adder.Check(t.Context(), 1, adderV1)
+	check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1)
 	require.Nil(t, refusal)
 
 	result := rig.adder.Add(t.Context(), AddRequest{Check: check, Placement: AddPlacement{SavePath: "/data"}})
@@ -351,6 +393,7 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	require.Equal(t, AddRefused, result.Outcome)
 	require.Equal(t, "error", result.Status)
 	require.Equal(t, "Failed to add torrent: boom", result.Message)
+	require.EqualError(t, result.Err, "boom")
 	require.Len(t, rig.sync.added, 1)
 	require.Empty(t, rig.programs)
 }
@@ -361,6 +404,7 @@ func TestAdderCheck(t *testing.T) {
 	existing := &qbt.Torrent{Hash: adderV1, Name: "Existing"}
 	tests := []struct {
 		name         string
+		facts        AddFacts
 		blocked      string
 		blocklistErr bool
 		existing     *qbt.Torrent
@@ -373,6 +417,9 @@ func TestAdderCheck(t *testing.T) {
 		{name: "blocked v1 hash", blocked: adderV1, wantStatus: "blocked", wantMessage: "Blocked by cross-seed blocklist"},
 		{name: "blocked v2 hash", blocked: adderV2, wantStatus: "blocked", wantMessage: "Blocked by cross-seed blocklist"},
 		{name: "existing torrent", existing: existing, wantStatus: "exists", wantMessage: "Torrent already exists in this instance", wantExisting: existing},
+		{name: "blocked existing torrent", blocked: adderV1, existing: existing, wantStatus: "exists", wantMessage: "Torrent already exists in this instance", wantExisting: existing},
+		{name: "manual assembly skips the blocklist", facts: AddFacts{ManualAssembly: true}, blocked: adderV1},
+		{name: "manual assembly refuses an existing torrent", facts: AddFacts{ManualAssembly: true}, existing: existing, wantStatus: "exists", wantMessage: "Torrent already exists in this instance", wantExisting: existing},
 		{name: "blocklist read fails", blocklistErr: true, wantStatus: "error", wantMessage: "Failed to check cross-seed blocklist: sql: database is closed"},
 		{name: "existing torrent read fails", findErr: errors.New("boom"), wantStatus: "error", wantMessage: "Failed to check existing torrents: boom"},
 	}
@@ -386,7 +433,7 @@ func TestAdderCheck(t *testing.T) {
 				blocklist = models.NewCrossSeedBlocklistStore(closedDB(t))
 			}
 			rig := newAdderRig(t, &adderFake{existing: tt.existing, findErr: tt.findErr}, blocklist)
-			check, refusal := rig.adder.Check(t.Context(), 1, adderV1, adderV2)
+			check, refusal := rig.adder.Check(t.Context(), 1, tt.facts, adderV1, adderV2)
 
 			if tt.wantStatus == "" {
 				require.Nil(t, refusal)
@@ -398,6 +445,7 @@ func TestAdderCheck(t *testing.T) {
 			require.Equal(t, tt.wantStatus, refusal.Status)
 			require.Equal(t, tt.wantMessage, refusal.Message)
 			require.Equal(t, tt.wantExisting, refusal.Existing)
+			require.Equal(t, tt.wantStatus == "error", refusal.Err != nil)
 		})
 	}
 }
