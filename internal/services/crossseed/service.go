@@ -4687,7 +4687,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			if isSearchSource {
 				// Apply keeps the verdict that search stored for this torrent and
 				// does not decide the pair again.
-				if !m.downloadReadsAsListing(searchDecision, seasonedSide, req.FindIndividualEpisodes) {
+				if !m.downloadReadsAsListing(searchDecision, sourceSide, seasonedSide, req.FindIndividualEpisodes) {
 					log.Debug().
 						Str("targetTitle", req.TorrentName).
 						Str("listing", searchDecision.SearchCandidateName).

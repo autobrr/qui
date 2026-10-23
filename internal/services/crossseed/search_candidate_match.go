@@ -388,16 +388,16 @@ func (provenance searchDecisionProvenance) listedDifferences() matchDifferences 
 // verdict lists as different. Apply keeps that verdict for the local torrent
 // that search compared, so the download must not bring a new difference. A CRC
 // tag on one name only does not count, because indexer titles drop it.
-func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, download namedRelease, findIndividualEpisodes bool) bool {
+func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local, download namedRelease, findIndividualEpisodes bool) bool {
 	if decision.SearchCandidateName == "" {
 		return true
 	}
 	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
 	listed := decision.listedDifferences()
-	// The download can name another title of the show that search resolved. Only
-	// the download is held against those titles, so a listing that matches its
-	// own alias cannot admit a download of another show.
-	titles := slices.Concat(decision.SourceTitles, decision.CandidateTitles)
+	// The download can name the local torrent or another title of the show that
+	// search resolved. Only the download is held against those titles, so a
+	// listing that matches its own alias cannot admit a download of another show.
+	titles := m.appendReleaseTitles(slices.Concat(decision.SourceTitles, decision.CandidateTitles), local.release, local.rawName)
 	comparison := m.compareReleases(listing, download, titles, nil, findIndividualEpisodes, false)
 	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
 		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
