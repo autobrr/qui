@@ -331,7 +331,7 @@ func (s *Service) processLinkMode(
 			Msg(logPrefix + "skipping below-threshold match before add")
 		return failure("below_threshold", message)
 	}
-	resumeBudget := s.resumeBudgetBytes(ctx)
+	resumeBudget := s.ResumeBudgetBytes(ctx)
 
 	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID, models.CapabilityWrite)
 	if err != nil {

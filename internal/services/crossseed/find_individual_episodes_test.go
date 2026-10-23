@@ -172,6 +172,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		FindIndividualEpisodes: true,
 	}
 
+	withAdder(service)
 	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)

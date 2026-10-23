@@ -1475,7 +1475,7 @@ func TestResumeBudgetBytes(t *testing.T) {
 				},
 			}
 
-			assert.Equal(t, tt.want, s.resumeBudgetBytes(context.Background()))
+			assert.Equal(t, tt.want, s.ResumeBudgetBytes(context.Background()))
 		})
 	}
 }

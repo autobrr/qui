@@ -50,6 +50,7 @@ func TestAutobrrApplyNotifiesAfterAddingTorrent(t *testing.T) {
 		},
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -91,6 +92,7 @@ func TestAutobrrApplyDoesNotNotifyWhenTorrentExists(t *testing.T) {
 		notifier:         notifier,
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -141,6 +143,7 @@ func TestAutobrrApplyNotifiesWhenAddFails(t *testing.T) {
 		},
 	}
 
+	withAdder(service)
 	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 		InstanceIDs: []int{instanceID},
@@ -859,6 +862,7 @@ func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 				service.arrService = tt.spy
 			}
 
+			withAdder(service)
 			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
 				TorrentData: base64.StdEncoding.EncodeToString(torrentData),
 				TorrentName: announcedName,

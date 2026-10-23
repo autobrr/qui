@@ -80,6 +80,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -161,6 +162,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -254,6 +256,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -337,6 +340,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
