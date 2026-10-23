@@ -688,6 +688,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 		name      string
 		localRoot string
 		decision  searchDecisionProvenance
+		rejected  bool
 	}{
 		{
 			name:      "local copy in a renamed season folder",
@@ -702,6 +703,21 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			name:      "local copy in the original folder",
 			localRoot: name,
 			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+		},
+		{
+			// The listing name has no season, but the download reads one from its files.
+			name:      "listing named as the download",
+			localRoot: "Season 02 [BD]",
+			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name},
+		},
+		{
+			name:      "listing of the next season",
+			localRoot: "Season 02 [BD]",
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 III [BDRip 1080p HEVC FLAC]",
+			},
+			rejected: true,
 		},
 	}
 	for _, tt := range tests {
@@ -740,7 +756,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 				SearchDecision:               decision,
 			})
 			require.NoError(t, err)
-			require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
+			require.Equal(t, !tt.rejected, resp.Success, "results: %+v", resp.Results)
 		})
 	}
 }

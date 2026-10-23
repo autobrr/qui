@@ -4527,6 +4527,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		withSeason.Series = targetSide.seasonNumeral
 		seasonedTarget = &withSeason
 	}
+	// The listing check also gets the numeral season. A listing named as the
+	// download has only "Title II", which reads as a movie.
+	seasonedSide := targetSide
+	seasonedSide.release = seasonedTarget
 	searchDecision := req.SearchDecision
 
 	// The season pack hint compares every local episode with these, so read them once.
@@ -4683,7 +4687,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			if isSearchSource {
 				// Apply keeps the verdict that search stored for this torrent and
 				// does not decide the pair again.
-				if !m.downloadReadsAsListing(searchDecision, targetSide, req.FindIndividualEpisodes) {
+				if !m.downloadReadsAsListing(searchDecision, seasonedSide, req.FindIndividualEpisodes) {
 					log.Debug().
 						Str("targetTitle", req.TorrentName).
 						Str("listing", searchDecision.SearchCandidateName).
