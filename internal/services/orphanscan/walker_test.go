@@ -326,6 +326,116 @@ func TestWalkScanRoot_DiscUnitUsesParentWhenSiblingContentNotInUse(t *testing.T)
 	}
 }
 
+// A nested scan root is walked inside the outer one, so it is never the disc
+// unit: its delete would be refused, and the loose orphans in it would go
+// unlisted. The result matches a walk of the nested root on its own.
+func TestWalkScanRoot_NestedScanRootIsNeverADiscUnit(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		nested string // relative to the walked root, "" for none
+		ignore string // relative to the walked root, "" for none
+		want   []string
+	}{
+		{name: "nested scan root", nested: "Movie.2024", want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "nested scan root in another case", nested: "MOVIE.2024", want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "ignored content in the marker", nested: "Movie.2024", ignore: "Movie.2024/BDMV/keep", want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "marker that is a scan root", nested: "Movie.2024/BDMV", want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "ordinary folder", want: []string{"Movie.2024"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			movieDir := filepath.Join(root, "Movie.2024")
+			writeOldFile(t, filepath.Join(movieDir, "BDMV", "index.bdmv"))
+			writeOldFile(t, filepath.Join(movieDir, "BDMV", "STREAM", "00000.m2ts"))
+			writeOldFile(t, filepath.Join(movieDir, "readme.txt"))
+
+			var ignore []string
+			if tc.ignore != "" {
+				ignore = []string{filepath.Join(root, filepath.FromSlash(tc.ignore))}
+				writeOldFile(t, filepath.Join(ignore[0], "keep.txt"))
+			}
+			protected := newTestProtected(t, fsops.HostPaths, ignore, NewTorrentFileMap(fsops.HostPaths))
+			roots := []string{root}
+			if tc.nested != "" {
+				roots = append(roots, filepath.Join(root, filepath.FromSlash(tc.nested)))
+			}
+			if tc.nested == "Movie.2024/BDMV" {
+				// The marker's parent is a scan root too, so the walk meets both.
+				roots = append(roots, movieDir)
+			}
+			protected.setScanRoots(roots)
+			orphans, _, err := walkScanRoot(t.Context(), root, protected, 0, 100, local.NewBackend(), nil)
+			if err != nil {
+				t.Fatalf("walkScanRoot: %v", err)
+			}
+			got := make([]string, 0, len(orphans))
+			for _, o := range orphans {
+				rel, err := filepath.Rel(root, o.Path)
+				if err != nil {
+					t.Fatalf("rel: %v", err)
+				}
+				got = append(got, filepath.ToSlash(rel))
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("orphans = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The scan root answer is remembered per folder, so two discs in one walk get
+// their own answers in either order.
+func TestWalkScanRoot_ScanRootAnswerIsPerFolder(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		nested string
+		want   []string
+	}{
+		{name: "nested root first", nested: "A.Movie", want: []string{"A.Movie/BDMV", "A.Movie/readme.txt", "B.Movie"}},
+		{name: "ordinary folder first", nested: "B.Movie", want: []string{"A.Movie", "B.Movie/BDMV", "B.Movie/readme.txt"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			for _, movie := range []string{"A.Movie", "B.Movie"} {
+				writeOldFile(t, filepath.Join(root, movie, "BDMV", "index.bdmv"))
+				writeOldFile(t, filepath.Join(root, movie, "BDMV", "STREAM", "00000.m2ts"))
+				writeOldFile(t, filepath.Join(root, movie, "readme.txt"))
+			}
+			protected := newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths))
+			protected.setScanRoots([]string{root, filepath.Join(root, tc.nested)})
+			orphans, _, err := walkScanRoot(t.Context(), root, protected, 0, 100, local.NewBackend(), nil)
+			if err != nil {
+				t.Fatalf("walkScanRoot: %v", err)
+			}
+			got := make([]string, 0, len(orphans))
+			for _, o := range orphans {
+				rel, err := filepath.Rel(root, o.Path)
+				if err != nil {
+					t.Fatalf("rel: %v", err)
+				}
+				got = append(got, filepath.ToSlash(rel))
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("orphans = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *testing.T) {
 	t.Parallel()
 

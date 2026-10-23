@@ -779,6 +779,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
+	protected.setScanRoots(scanRoots)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
