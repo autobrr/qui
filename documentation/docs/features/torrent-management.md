@@ -17,7 +17,7 @@ qBittorrent removes a torrent's own folder when you delete it with its files, bu
 
 qui removes a folder only when it is empty, or holds nothing but `Thumbs.db`, `desktop.ini`, `.directory`, `.DS_Store`, or files whose names end in `~`. It starts at the torrent's own folder and works up, one empty folder at a time. It stops at:
 
-- the default save path, the download path, a category folder, a category's download folder, and the hardlink base directory. A category's download folder is the one qBittorrent works out for it: its own download path, the one it takes from its parent category, or its folder in its parent category's download folder or in the download path. qui never removes these;
+- the default save path, the download path, a category folder, a category's download folder, and the hardlink base directory. A category's download folder is the folder that qBittorrent downloads the category into. It is the category's own download path or the download path of its parent category. If neither sets a path, it is a folder named after the category, in the parent's download folder or in the download path. qui never removes these;
 - a folder qBittorrent monitors for `.torrent` files, and the save path set for it. qui never removes these either;
 - a folder that holds any other file, such as subtitles or an `.nfo` you added. A symlink, a Windows junction, or another special file counts as a file even when its name is on the list above;
 - a folder under your [orphan scan ignore paths](./orphan-scan.md), even with orphan scan off;
