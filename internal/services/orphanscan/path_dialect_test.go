@@ -289,16 +289,16 @@ func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
 	protected := newTestProtected(t, fsops.SlashPaths, nil, tfm)
 	cache := map[string]discUnitDecision{}
 
-	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", protected, cache, b)
+	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", protected, cache, nil, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Movie", unit)
 
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", protected, cache, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", protected, cache, nil, b)
 	require.False(t, isDisc)
 	require.Equal(t, "/data/d/f.mkv", unit)
 
 	// A disc parent holding owned files is not a disc root, so the unit stays at BDMV.
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, nil, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Owned/BDMV", unit)
 
