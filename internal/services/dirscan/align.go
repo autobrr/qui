@@ -140,17 +140,16 @@ func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) 
 	return err == nil && info.IsDir
 }
 
-// alignAndRecheck renames the just-added torrent to match the on-disk files, then settles it
-// with the complete gate. Returns whether alignment succeeded. The torrent was added
-// force-paused, so if alignment fails it stays paused for inspection; the complete gate only
-// resumes at 100%, so bad data is never seeded.
-func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan alignmentPlan) bool {
+// alignContentPaths renames the just-added torrent to match the on-disk files. Returns whether
+// alignment succeeded. The torrent was added paused, so if alignment fails it stays paused for
+// inspection. After a success, Settle rechecks it and resumes it only at 100%, so bad data is
+// never seeded.
+func (i *Injector) alignContentPaths(req *InjectRequest, plan alignmentPlan) bool {
 	hash := req.ParsedTorrent.InfoHash
 
 	// Detach from the run context: once the torrent is added, the rename sequence must finish as a
 	// unit. A mid-sequence cancel (user Stop / scheduler) would leave a half-renamed torrent that
-	// TorrentExists skips on the next run, stranding it paused forever. The sibling
-	// triggerRecheckForPartialLinkTree detaches for the same reason.
+	// the Pre-add check skips on the next run, stranding it paused forever.
 	ctx, cancel := context.WithTimeout(context.Background(), alignmentTimeout)
 	defer cancel()
 
@@ -185,18 +184,6 @@ func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan a
 		Int("fileRenames", len(plan.fileRenames)).
 		Bool("folderRenamed", plan.renameFolder).
 		Msg("dirscan: aligned torrent content paths to on-disk layout")
-
-	// Recheck so qBittorrent validates the now-aligned data, then resume unless the user asked
-	// to keep it paused. If the settle module cannot take the torrent it stays force-paused with
-	// no way to resume, so report failure rather than a stranded "success".
-	if err := i.triggerRecheckForPausedPartial(req, true); err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", req.InstanceID).
-			Str("hash", hash).
-			Msg("dirscan: aligned torrent but could not queue its recheck; leaving torrent paused for inspection")
-		return false
-	}
 	return true
 }
 
