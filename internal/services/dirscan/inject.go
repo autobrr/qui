@@ -254,9 +254,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		}
 	}
 
-	// Once qBittorrent has the torrent, the renames and the hand-off to Settle
-	// must finish also when the run stops.
-	added := i.adder.Add(context.WithoutCancel(ctx), crossseed.AddRequest{
+	added := i.adder.Add(ctx, crossseed.AddRequest{
 		Check:   req.Check,
 		Torrent: req.TorrentBytes,
 		Facts: crossseed.AddFacts{

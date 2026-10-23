@@ -336,6 +336,9 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			Msg("Failed to add cross-seed torrent")
 		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err), Err: err}
 	}
+	// qBittorrent has the torrent, so the renames, the recheck and the External
+	// Program run also when the run stops now.
+	ctx = context.WithoutCancel(ctx)
 
 	var message string
 	if req.Facts.DiscMarker != "" {

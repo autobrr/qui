@@ -206,18 +206,21 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 // cancellingTorrentAdder cancels the run's context from inside AddTorrent, so
 // the rollback that follows sees a cancelled ctx. It records how many entries
 // the link base held at that moment, which keeps the "tree is gone" assertion
-// non-vacuous. Every other method is failingTorrentAdder's no-op.
+// non-vacuous. It also records whether the add saw the cancel. Every other
+// method is failingTorrentAdder's no-op.
 type cancellingTorrentAdder struct {
 	*failingTorrentAdder
 	cancel       context.CancelFunc
 	watchDir     string
 	entriesAtAdd int
+	addCtxErr    error
 }
 
-func (a *cancellingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+func (a *cancellingTorrentAdder) AddTorrent(ctx context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
 	entries, _ := os.ReadDir(a.watchDir)
 	a.entriesAtAdd = len(entries)
 	a.cancel()
+	a.addCtxErr = ctx.Err()
 	return nil, a.err
 }
 
@@ -241,6 +244,10 @@ func TestInjector_Inject_RollsBackLinkTreeWhenAddFailsUnderCancelledContext(t *t
 	}
 	if !errors.Is(err, addErr) {
 		t.Fatalf("expected the add failure to surface, got %v", err)
+	}
+	// A paused or stopped scan must stop an add that qBittorrent has not taken yet.
+	if !errors.Is(adder.addCtxErr, context.Canceled) {
+		t.Fatalf("expected AddTorrent to see the cancelled run, got %v", adder.addCtxErr)
 	}
 	// One entry: the tree root the injector created under the base dir.
 	if adder.entriesAtAdd != 1 {
