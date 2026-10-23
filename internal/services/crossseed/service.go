@@ -12787,6 +12787,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
+// Adder returns the Adder of the cross-seed service, which Dir Scan shares.
+func (s *Service) Adder() *Adder {
+	return s.adder
+}
+
 // RunExternalProgram sends the Execution Request for the External Program
 // that After injection selects, if any, for one added cross-seed. hashes are
 // the v1 and v2 hashes of that torrent.

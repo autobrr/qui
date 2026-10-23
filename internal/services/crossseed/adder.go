@@ -105,6 +105,10 @@ type AddFacts struct {
 	SkipRecheck    bool
 	SkipAutoResume bool
 	StartRunning   bool
+	// DirScan is set for a Dir Scan add. Dir Scan has no Max auto-start download
+	// budget: it adds an alignment paused, resumes a link tree with Pending files
+	// after its recheck, and resumes each other add in Settle at 100%.
+	DirScan bool
 }
 
 // AddVerdict is the decision for one cross-seed add: refuse with a status,
@@ -137,6 +141,7 @@ func (f AddFacts) Verdict() AddVerdict {
 	}
 	alignRecheck := (f.Align || f.PendingFiles) && (!f.SkipRecheck || !f.RenameOnly)
 	verify := f.Verify != VerifyNone
+	dirScanPendingTree := f.DirScan && f.LinkTree && f.PendingFiles
 
 	if f.SkipRecheck && !f.ManualAssembly && (verify || alignRecheck || disc || linkRecheck) {
 		return AddVerdict{Refused: true, Status: "skipped_recheck", Message: skippedRecheckMessage}
@@ -144,7 +149,8 @@ func (f AddFacts) Verdict() AddVerdict {
 
 	v := AddVerdict{
 		// A rename-only add with Skip recheck on must not run before its renames land.
-		paused: !f.StartRunning || verify || disc || linkRecheck || (f.SkipRecheck && f.RenameOnly),
+		// Dir Scan renames the paths of an alignment before qBittorrent uses them.
+		paused: !f.StartRunning || verify || disc || linkRecheck || (f.SkipRecheck && f.RenameOnly) || (f.DirScan && f.Align),
 		// qBittorrent blocks renames while it checks a torrent, so an add that aligns
 		// skips the check and Settle rechecks after the renames.
 		skipChecking: !f.PendingFiles || f.Align,
@@ -155,7 +161,9 @@ func (f AddFacts) Verdict() AddVerdict {
 		// Every linked file is in place, so qBittorrent skips its check and Settle
 		// rechecks for the Pending files. A link-mode add ignores Start paused.
 		// qBittorrent checks a manual assembly on add.
-		v.skipChecking = !f.ManualAssembly
+		// The after-recheck gate of Dir Scan reads the completed bytes, which
+		// skip_checking reports as done before the recheck runs.
+		v.skipChecking = !f.ManualAssembly && !dirScanPendingTree
 		v.paused = f.SkipAutoResume || v.settle
 	}
 	if f.PoolMember {
@@ -169,7 +177,10 @@ func (f AddFacts) Verdict() AddVerdict {
 		v.gate = GateMonitor
 	case verify:
 		v.gate = GateVerify
-	case disc || linkRecheck:
+	case dirScanPendingTree:
+		// Download missing files lets the tree fetch its Pending files, also for a disc layout.
+		v.gate = GateAfterRecheck
+	case disc || linkRecheck || f.DirScan:
 		v.gate = GateComplete
 	default:
 		v.gate = GateBudget
@@ -213,6 +224,8 @@ type AddResult struct {
 	Err error
 	// Settled is what Settle reported for an AddSettling torrent.
 	Settled SettleOutcome
+	// Paused is set when qui added the torrent paused.
+	Paused bool
 }
 
 // blocklistCheckFailed starts the message of a failed blocklist read.
@@ -323,6 +336,9 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			Msg("Failed to add cross-seed torrent")
 		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err), Err: err}
 	}
+	// qBittorrent has the torrent, so the renames, the recheck and the External
+	// Program run also when the run stops now.
+	ctx = context.WithoutCancel(ctx)
 
 	var message string
 	if req.Facts.DiscMarker != "" {
@@ -341,7 +357,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		activeHash, ok := req.AfterAdd(ctx, addedIDs)
 		hash = cmp.Or(activeHash, hash)
 		if !ok {
-			result := AddResult{Outcome: AddLeftPaused, Message: message}
+			result := AddResult{Outcome: AddLeftPaused, Message: message, Paused: v.paused}
 			if !v.paused {
 				result.PauseErr = a.sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), instanceID, []string{hash}, "pause")
 			}
@@ -389,5 +405,5 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	}
 
 	a.runExternalProgram(ctx, instanceID, req.Check.hashes)
-	return AddResult{Outcome: outcome, Message: message, Settled: settled}
+	return AddResult{Outcome: outcome, Message: message, Settled: settled, Paused: v.paused}
 }

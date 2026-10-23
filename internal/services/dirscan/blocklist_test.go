@@ -14,27 +14,33 @@ import (
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
+func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 	t.Parallel()
 
 	// A hybrid torrent carries both hashes, so one fixture covers a v1 and a v2 entry.
 	tests := []struct {
-		name      string
-		blockHash func(*ParsedTorrent) string
+		name         string
+		blockHash    func(*ParsedTorrent) string
+		blocklistErr bool
+		existing     bool
 	}{
 		{name: "not blocked"},
 		{name: "v1 blocked", blockHash: func(p *ParsedTorrent) string { return p.InfoHash }},
 		{name: "v2 blocked", blockHash: func(p *ParsedTorrent) string { return p.InfoHashV2 }},
+		{name: "blocklist read fails", blocklistErr: true},
+		{name: "already in qBittorrent", existing: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,10 +84,18 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			}))
 
 			blocklist := models.NewCrossSeedBlocklistStore(db)
-			blocked := tt.blockHash != nil
-			if blocked {
+			if tt.blockHash != nil {
 				_, err = blocklist.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: tt.blockHash(parsed)})
 				require.NoError(t, err)
+			}
+			if tt.blocklistErr {
+				closed := testdb.NewMigratedSQLite(t, "dirscan-blocklist-closed")
+				require.NoError(t, closed.Close())
+				blocklist = models.NewCrossSeedBlocklistStore(closed)
+			}
+			var existing *qbt.Torrent
+			if tt.existing {
+				existing = &qbt.Torrent{Hash: parsed.InfoHash, Name: name}
 			}
 
 			sourceDir := t.TempDir()
@@ -89,13 +103,15 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 			require.NoError(t, os.WriteFile(sourceFile, []byte("data"), 0o600))
 			searchee := &Searchee{Name: name, Path: sourceFile, Files: []*ScannedFile{{Path: sourceFile, RelPath: name, Size: 4}}}
 
-			adder := &failingTorrentAdder{err: errors.New("add stopped by test")}
+			manager := &failingTorrentAdder{err: errors.New("add stopped by test")}
+			adder := crossseed.NewAdder(adderQbit{torrentAdder: manager, existing: existing}, blocklist, nil,
+				func(context.Context) int64 { return 0 }, func(context.Context, int, []string) {})
 			cacheDB := &cacheTouchDB{DB: db, done: make(chan struct{})}
 			svc := &Service{
 				store:          models.NewDirScanStore(db),
-				blocklistStore: blocklist,
+				adder:          adder,
 				jackettService: jackett.NewService(nil, jackett.WithTorrentCache(models.NewTorznabTorrentCacheStore(cacheDB))),
-				injector:       NewInjector(nil, adder, nil, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance), nil),
+				injector:       NewInjector(nil, manager, adder, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance)),
 			}
 
 			l := zerolog.New(io.Discard)
@@ -109,8 +125,13 @@ func TestTryMatchAndInject_SkipsBlocklistedInfohash(t *testing.T) {
 				t.Fatal("torrent cache touch did not finish")
 			}
 
-			require.Equal(t, !blocked, adder.called, "AddTorrent must run only for an infohash that is not blocklisted")
-			if blocked {
+			cleared := tt.blockHash == nil && !tt.blocklistErr && !tt.existing
+			require.Equal(t, cleared, manager.called, "AddTorrent must run only for a torrent that the Pre-add check clears")
+			switch {
+			case tt.existing:
+				require.NotNil(t, match)
+				require.True(t, match.inQBittorrent)
+			case !cleared:
 				require.Nil(t, match)
 			}
 		})
