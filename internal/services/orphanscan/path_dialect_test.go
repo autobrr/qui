@@ -289,16 +289,16 @@ func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
 	protected := newTestProtected(t, fsops.SlashPaths, nil, tfm)
 	cache := map[string]discUnitDecision{}
 
-	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", protected, cache, b)
+	unit, isDisc := discOrphanUnitWithContext(t.Context(), "/data", "/data/Movie/BDMV/STREAM/00000.m2ts", protected, cache, nil, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Movie", unit)
 
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", protected, cache, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/d/f.mkv", protected, cache, nil, b)
 	require.False(t, isDisc)
 	require.Equal(t, "/data/d/f.mkv", unit)
 
 	// A disc parent holding owned files is not a disc root, so the unit stays at BDMV.
-	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, b)
+	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, nil, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Owned/BDMV", unit)
 
@@ -385,6 +385,66 @@ func TestPathDialect_FilesystemRootDeletesRefused(t *testing.T) {
 	}
 	require.Equal(t, `\\server\share\library`, findScanRoot(win, `\\server\share\library\orphan.mkv`, []string{`\\server\share`, `\\server\share\library`}))
 	require.NoError(t, withinScanRoot(win, `\\server\share\library`, `\\server\share\library\orphan.mkv`))
+}
+
+// winShareTestDialect adds Windows Dir to winRootTestDialect: Dir of a path
+// below a UNC share root is the root with its separator.
+type winShareTestDialect struct{ winRootTestDialect }
+
+func (w winShareTestDialect) Dir(p string) string {
+	p = w.Clean(p)
+	rest := strings.TrimPrefix(p, `\\`)
+	server, after, _ := strings.Cut(rest, `\`)
+	share, below, found := strings.Cut(after, `\`)
+	vol := `\\` + server + `\` + share
+	if !found {
+		return vol
+	}
+	i := strings.LastIndex(below, `\`)
+	if i <= 0 {
+		return vol + `\`
+	}
+	return vol + `\` + below[:i]
+}
+
+// Windows Clean leaves \\host\share without a separator, while Dir of a path
+// below it returns \\host\share\, so the share root must still cover it.
+func TestPruneNestedScanRoots_ShareRoot(t *testing.T) {
+	t.Parallel()
+
+	d := winShareTestDialect{winRootTestDialect{fsops.HostPaths}}
+	require.Equal(t, `\\host\share\`, d.Dir(`\\host\share\movies`))
+	require.Equal(t, `\\host\share\movies`, d.Dir(`\\host\share\movies\hd`))
+	b := &dialectLstatBackend{Backend: newTestBackend(), d: d}
+	for _, tc := range []struct {
+		roots, want []string
+	}{
+		{[]string{`\\host\share`, `\\host\share\movies`}, []string{`\\host\share`}},
+		{[]string{`\\host\share\movies`, `\\host\share`}, []string{`\\host\share`}},
+		{[]string{`\\host\share`, `\\host\share\movies\hd`}, []string{`\\host\share`}},
+		{[]string{`\\host\share\`, `\\host\share\movies`}, []string{`\\host\share\`}},
+		{[]string{`\\host\share`, `\\host\share\`}, []string{`\\host\share`}},
+		{[]string{`\\host\share`, `\\host\shared\movies`}, []string{`\\host\share`, `\\host\shared\movies`}},
+	} {
+		require.Equal(t, tc.want, pruneNestedScanRoots(t.Context(), tc.roots, b), "%v", tc.roots)
+	}
+
+	// The share root is checked like any other folder on the way up.
+	gone := &missingLstatBackend{dialectLstatBackend: b, missing: `\\host\share\`}
+	roots := []string{`\\host\share`, `\\host\share\movies`}
+	require.Equal(t, roots, pruneNestedScanRoots(t.Context(), roots, gone))
+}
+
+type missingLstatBackend struct {
+	*dialectLstatBackend
+	missing string
+}
+
+func (b *missingLstatBackend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
+	if p == b.missing {
+		return nil, fs.ErrNotExist
+	}
+	return b.dialectLstatBackend.Lstat(ctx, p)
 }
 
 func TestPruneNestedScanRoots_SharelessHostRootDoesNotLoop(t *testing.T) {

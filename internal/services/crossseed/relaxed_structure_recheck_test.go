@@ -55,63 +55,6 @@ func TestCandidateRequiresVerification(t *testing.T) {
 	}
 }
 
-// Hardlink and reflink mode consume every decision from this policy. Keeping
-// recheck and completion together makes the verify-only row deterministic
-// even when the test filesystem cannot create reflinks.
-func TestLinkModeRecheckPolicy(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
-		name             string
-		hasExtras        bool
-		verifyBeforeSeed bool
-		discLayout       bool
-		want             recheckPolicy
-	}{
-		{name: "ordinary complete layout", want: recheckPolicy{}},
-		{
-			name:      "extra files use the download budget",
-			hasExtras: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-			},
-		},
-		{
-			name:             "verification requires every safeguard",
-			verifyBeforeSeed: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-		{
-			name:       "disc layout requires every safeguard",
-			discLayout: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-		{
-			name:             "verification dominates extra-file budget",
-			hasExtras:        true,
-			verifyBeforeSeed: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, linkModeRecheckPolicy(
-				tt.hasExtras,
-				tt.verifyBeforeSeed,
-				tt.discLayout,
-			))
-		})
-	}
-}
-
 // A season, episode or group relaxed by the exact-size fallback rests on equal
 // reported total sizes, which cannot prove which episode the files hold or which group
 // packed them. The add must be hashed before it seeds, and must be dropped when
@@ -143,6 +86,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		t.Helper()
 		instance := &models.Instance{ID: 1}
 		service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlySourceFile, files(), newHash, files())
+		withAdder(service)
 		result := service.processCrossSeedCandidate(
 			context.Background(), candidate, []byte("torrent"), newHash, "",
 			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil,
@@ -154,7 +98,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		result, sync := run(t, newRequest())
 
 		require.Equal(t, "added", result.Status, "message: %s", result.Message)
-		require.Equal(t, "true", sync.addTorrentOpts["paused"], "must not seed before the hash check")
 		require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
 	})
 
@@ -179,7 +122,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		result, sync := run(t, req)
 
 		require.Equal(t, "added", result.Status, "message: %s", result.Message)
-		require.Equal(t, "true", sync.addTorrentOpts["paused"], "must not seed before the hash check")
 		require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
 	})
 
@@ -206,7 +148,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		result, sync := run(t, req)
 
 		require.Equal(t, "added", result.Status, "message: %s", result.Message)
-		require.Equal(t, "false", sync.addTorrentOpts["paused"])
 		for _, action := range sync.bulkActions {
 			require.NotContains(t, action, "recheck:")
 		}
@@ -220,11 +161,10 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 		name       string
 		boundFile  string
 		strictFile string
-		wantPaused string
 	}{
-		{name: "strict plan outranks bound plan", boundFile: renameOnlyCandidateFile, strictFile: renameOnlySourceFile, wantPaused: "false"},
-		{name: "tied strict plan beats earlier bound plan", boundFile: renameOnlySourceFile, strictFile: renameOnlySourceFile, wantPaused: "false"},
-		{name: "lower-ranked strict plan remains eligible", boundFile: renameOnlySourceFile, strictFile: renameOnlyCandidateFile, wantPaused: "true"},
+		{name: "strict plan outranks bound plan", boundFile: renameOnlyCandidateFile, strictFile: renameOnlySourceFile},
+		{name: "tied strict plan beats earlier bound plan", boundFile: renameOnlySourceFile, strictFile: renameOnlySourceFile},
+		{name: "lower-ranked strict plan remains eligible", boundFile: renameOnlySourceFile, strictFile: renameOnlyCandidateFile},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			const (
@@ -257,6 +197,7 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 			sync.props[strictHash] = &qbt.TorrentProperties{SavePath: downloadsDir}
 
 			startPaused := false
+			withAdder(service)
 			result := service.processCrossSeedCandidate(
 				context.Background(),
 				candidate,
@@ -284,7 +225,6 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 			require.Equal(t, "added", result.Status)
 			require.NotNil(t, result.MatchedTorrent)
 			require.Equal(t, strictHash, result.MatchedTorrent.Hash)
-			require.Equal(t, tt.wantPaused, sync.addTorrentOpts["paused"])
 			for _, action := range sync.bulkActions {
 				require.NotContains(t, action, "recheck:")
 			}

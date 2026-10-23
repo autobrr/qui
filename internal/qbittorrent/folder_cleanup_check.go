@@ -162,7 +162,8 @@ const (
 )
 
 // cleanupScope is what one check of one instance judges folders against. It
-// costs a full read of the cached torrents and a preferences request.
+// costs a full read of the cached torrents, a preferences request and a
+// categories request.
 type cleanupScope struct {
 	backend fsops.Backend
 	d       fsops.PathDialect
@@ -194,9 +195,10 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 	// SyncManager.CategoryPathRule's rule. The preference comes from this
 	// check's read, so a toggle is seen on the next check.
 	rule := CategoryPathRule{
-		Nest:     nesting.Nests && (nesting.Always || in.UseSubcategories),
-		FileName: nesting.FileName,
-		Platform: nesting.Platform,
+		Nest:                 nesting.Nests && (nesting.Always || in.UseSubcategories),
+		FileName:             nesting.FileName,
+		Platform:             nesting.Platform,
+		InheritsDownloadPath: nesting.Nests,
 	}
 	stops, kept, err := stopFolders(d, in, rule, instance.HardlinkBaseDir)
 	if err != nil {
@@ -261,11 +263,16 @@ func stopFolders(d fsops.PathDialect, in stopInputs, rule CategoryPathRule, hard
 	}
 	for name := range in.Categories {
 		stops = append(stops, CategorySavePath(d, name, in.Categories, defaultSavePath, rule))
-		if tempPath != "" {
-			// qBittorrent's categoryDownloadPath: <download path>/<category>. A
-			// category's own download path is not in go-qbittorrent's Category.
-			stops = append(stops, CategorySavePath(d, name, nil, tempPath, rule))
+		// A category can have its own download path, or one under the
+		// global download path even when that is turned off.
+		p, ok := CategoryDownloadPath(d, name, in.Categories, in.TempPath, in.TempPathEnabled, rule)
+		if !ok {
+			continue
 		}
+		if p == "" {
+			return nil, nil, fmt.Errorf("download path of category %q rests on the download path %q, which is not absolute", name, in.TempPath)
+		}
+		stops = append(stops, p)
 	}
 	// qBittorrent stops watching a removed monitored folder until it restarts.
 	// Neither it nor its custom save path sets the climb limit: a recursive

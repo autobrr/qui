@@ -185,10 +185,12 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			s.syncManager = sync
 
 			files := qbt.TorrentFiles{{Name: tt.file, Size: 5}}
+			adds := withLinkAdder(s)
 			result := s.processHardlinkMode(
 				t.Context(),
+				linkCheck(1, "hash123"),
 				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
+				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
 				&qbt.Torrent{Hash: "matched", ContentPath: path.Dir(source)},
 				"exact", files, files,
 				&qbt.TorrentProperties{SavePath: tt.savePath},
@@ -201,7 +203,8 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 				RootDir: tt.wantRoot,
 				Files:   []hardlinktree.FilePlan{{SourcePath: source, TargetPath: tt.wantRoot + "/" + tt.file}},
 			}, backend.plans[0])
-			require.Equal(t, tt.wantRoot, sync.addedOptions["savepath"])
+			require.Len(t, adds.added, 1)
+			require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			if tt.wantCategory != "" {
 				categorySavePath, ok := s.createdCategories.Load("1:category.cross")
 				require.True(t, ok)
@@ -426,6 +429,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				},
 			}
 			s.settler = idleSettler(s.syncManager)
+			adds := withLinkAdder(s)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {
@@ -451,10 +455,10 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			require.Equal(t, tt.wantRoots, roots)
 			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
 			if tt.wantApplied {
-				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], adds.added[0]["savepath"])
 			} else {
 				require.Equal(t, "link_failed", resp.Reason)
-				require.Empty(t, sm.addCalls)
+				require.Empty(t, adds.added)
 			}
 		})
 	}
@@ -504,6 +508,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			}
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
+			adds := withLinkAdder(s)
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -520,7 +525,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			require.ElementsMatch(t, want, backend.plans[0].Files)
 			if tt.wantRoot != "" {
 				require.Equal(t, tt.wantRoot, backend.plans[0].RootDir)
-				require.Equal(t, tt.wantRoot, sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			}
 		})
 	}

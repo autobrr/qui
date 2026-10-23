@@ -91,11 +91,11 @@ func (p AddPolicy) ApplyToAddOptions(options map[string]string) {
 	}
 }
 
-// StatusSuffix returns a message suffix for result status when policy constraints applied.
-// Returns empty string if no policy constraints are active.
-func (p AddPolicy) StatusSuffix() string {
-	if p.DiscLayout {
-		return " - disc layout detected (" + p.DiscMarker + "), full recheck required"
+// KeepAtSavePath turns off the download path ("Keep incomplete torrents in") of an
+// add that sets an explicit save path. Without it, qBittorrent moves a torrent that
+// a recheck finds incomplete out of its save path into the download path.
+func KeepAtSavePath(options map[string]string) {
+	if options["savepath"] != "" {
+		options["useDownloadPath"] = "false"
 	}
-	return ""
 }

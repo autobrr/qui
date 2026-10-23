@@ -731,6 +731,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -808,6 +809,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -886,6 +888,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -1061,6 +1064,7 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},

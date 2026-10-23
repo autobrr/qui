@@ -105,6 +105,7 @@ type scanWalker struct {
 	discUnitsInUse      map[string]struct{}
 	discUnitsWithOrphan map[string]struct{}
 	discUnitCache       map[string]discUnitDecision
+	scanRootCache       map[string]bool
 	seenFileIDs         map[fsops.FileKey]struct{}
 	truncated           bool
 }
@@ -128,6 +129,7 @@ func newScanWalker(
 		orphanUnits:         make(map[string]*OrphanFile),
 		discUnitsInUse:      make(map[string]struct{}),
 		discUnitCache:       make(map[string]discUnitDecision),
+		scanRootCache:       make(map[string]bool),
 		discUnitsWithOrphan: make(map[string]struct{}),
 		seenFileIDs:         make(map[fsops.FileKey]struct{}),
 		collectDirs:         collectDirs,
@@ -330,7 +332,7 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 
-		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.protected, w.discUnitCache, w.backend)
+		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.protected, w.discUnitCache, w.scanRootCache, w.backend)
 		if w.protected.torrentFile(path) {
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
@@ -476,7 +478,7 @@ func discUnitFromParentMarker(
 
 // discOrphanUnitWithContext groups disc files without including ignored content.
 // Sibling orphans are suppressed after the walk if it selects a parent disc unit.
-func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, protected *protectedPaths, unitCache map[string]discUnitDecision, backend fsops.Backend) (unitPath string, ok bool) {
+func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, protected *protectedPaths, unitCache map[string]discUnitDecision, rootCache map[string]bool, backend fsops.Backend) (unitPath string, ok bool) {
 	d := backend.Paths()
 	root := d.Clean(scanRoot)
 	path := d.Clean(filePath)
@@ -492,7 +494,13 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, p
 	}
 
 	candidateAbs, markerAbs := buildDiscCandidatePaths(d, root, strings.Split(relDir, d.Separator()), markerIndex, markerSegment)
-	if candidateAbs == root {
+	// A disc unit never is or holds a nested scan root: the delete would refuse
+	// it, or remove the root with it. The marker is the unit instead, under the
+	// ignore check a walk of that root applies, or else its files one by one.
+	if cachedHoldsScanRoot(protected, rootCache, candidateAbs) {
+		if cachedHoldsScanRoot(protected, rootCache, markerAbs) || protected.ignoredOrHoldsIgnored(markerAbs) {
+			return path, false
+		}
 		return markerAbs, true
 	}
 
@@ -505,6 +513,19 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, p
 	}
 
 	return markerAbs, true
+}
+
+// cachedHoldsScanRoot remembers protected.holdsScanRoot per folder: it
+// normalizes the path, and it runs for every file below a disc marker.
+func cachedHoldsScanRoot(protected *protectedPaths, cache map[string]bool, dir string) bool {
+	if is, ok := cache[dir]; ok {
+		return is
+	}
+	is := protected.holdsScanRoot(dir)
+	if cache != nil {
+		cache[dir] = is
+	}
+	return is
 }
 
 // isPathUnderNormalized checks if child is strictly under parent.

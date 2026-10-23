@@ -1157,3 +1157,17 @@ func (m matcher) observedReleaseDifferences(sourceSide, candidateSide namedRelea
 
 	return differences
 }
+
+// verifyReason is why the selected match must pass a full recheck before it
+// seeds, or VerifyNone.
+func verifyReason(candidate CrossSeedCandidate, selectedHash string, req *CrossSeedRequest) VerifyReason {
+	switch {
+	case candidate.titleRescue:
+		return VerifyTitleRescue
+	case req != nil && req.ManualTargetHash != "":
+		return VerifyManual
+	case candidateRequiresVerification(candidate, selectedHash, req):
+		return VerifyRelaxed
+	}
+	return VerifyNone
+}

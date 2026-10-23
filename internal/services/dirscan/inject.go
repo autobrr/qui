@@ -50,6 +50,7 @@ type Injector struct {
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
 	backendPool               *fsops.Pool
+	runExternalProgram        func(ctx context.Context, instanceID int, hashes []string)
 }
 
 // JackettDownloader is the interface for downloading torrent files.
@@ -99,6 +100,7 @@ func NewInjector(
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
 	backendPool *fsops.Pool,
+	runExternalProgram func(ctx context.Context, instanceID int, hashes []string),
 ) *Injector {
 	return &Injector{
 		jackettService:            jackettService,
@@ -108,6 +110,7 @@ func NewInjector(
 		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		backendPool:               backendPool,
+		runExternalProgram:        runExternalProgram,
 	}
 }
 
@@ -315,6 +318,13 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	}
 
 	result.Success = true
+	if i.runExternalProgram != nil {
+		hashes := []string{result.TorrentHash}
+		if req.ParsedTorrent.InfoHashV2 != "" {
+			hashes = append(hashes, req.ParsedTorrent.InfoHashV2)
+		}
+		i.runExternalProgram(ctx, req.InstanceID, hashes)
+	}
 	return result, nil
 }
 
@@ -561,6 +571,7 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 		options["stopped"] = qbitBoolTrue
 	}
 
+	crossseed.KeepAtSavePath(options)
 	return options
 }
 

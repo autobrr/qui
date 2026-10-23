@@ -41,6 +41,7 @@ type orphanOnlyOptions struct {
 	// path that can auto-clean; autoCleanupMaxFiles turns auto-cleanup on.
 	scheduled           bool
 	autoCleanupMaxFiles int
+	scanCategoryPaths   bool
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -110,6 +111,7 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 		AutoCleanupEnabled:  opts.autoCleanupMaxFiles > 0,
 		AutoCleanupMaxFiles: autoCleanupMaxFiles,
 		ScanDefaultSavePath: true,
+		ScanCategoryPaths:   opts.scanCategoryPaths,
 		DeleteAbandonedDirs: true,
 	})
 	require.NoError(t, err)
@@ -199,6 +201,41 @@ func TestExecuteScan_PreviewsParentOfDiscWithMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, run.FilesDeleted)
 	require.Equal(t, 1, run.FoldersDeleted)
+}
+
+// A category folder no torrent uses yet is a scan root of its own inside the
+// default save path. The outer walk must not take it as a disc unit, whose
+// delete is refused: its disc and loose orphans are listed and removed, and
+// the folder stays.
+func TestExecuteScan_DeletesTheDiscInsideANestedScanRoot(t *testing.T) {
+	var movies, disc, loose string
+	opts := orphanOnlyOptions{
+		scanCategoryPaths: true,
+		categories: func(defaultSavePath string) map[string]qbt.Category {
+			return map[string]qbt.Category{"movies": {Name: "movies", SavePath: filepath.Join(defaultSavePath, "movies")}}
+		},
+	}
+	f := newOrphanOnlyFixture(t, "orphanscan-disc-in-nested-root", opts, func(defaultSavePath string) {
+		movies = filepath.Join(defaultSavePath, "movies")
+		disc = filepath.Join(movies, "BDMV")
+		loose = filepath.Join(movies, "readme.txt")
+		writeFile(t, filepath.Join(disc, "STREAM", "00001.m2ts"))
+		writeFile(t, filepath.Join(disc, "index.bdmv"))
+		writeFile(t, loose)
+	})
+
+	files, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
+	require.NoError(t, err)
+	listed := make([]string, 0, len(files))
+	for _, file := range files {
+		listed = append(listed, file.FilePath)
+	}
+	require.ElementsMatch(t, []string{disc, loose}, listed)
+
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.NoDirExists(t, disc)
+	require.NoFileExists(t, loose)
+	require.DirExists(t, movies)
 }
 
 func TestExecuteScan_DirectoryBeyondExactFileCapMarksRunTruncated(t *testing.T) {

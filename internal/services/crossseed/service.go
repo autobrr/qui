@@ -442,11 +442,13 @@ type Service struct {
 	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
 	partialPoolPropagationRollback func(*hardlinktree.Created) error
 	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
-	postInjectionHook              func(context.Context, int, string)
+	postInjectionHook              func(context.Context, int, []string)
 	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
 
 	// settler rechecks and resumes each torrent that this service adds.
 	settler *Settler
+	// adder does the regular cross-seed add.
+	adder *Adder
 
 	// Durable partial link-mode completion coordinator.
 	partialPoolWake                       chan partialPoolWake
@@ -580,6 +582,7 @@ func NewService(
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 		activityPublisher:             activity.NopPublisher{},
 	}
+	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 
 	return svc
 }
@@ -5362,75 +5365,43 @@ func (s *Service) processCrossSeedCandidate(
 		Status:       "error",
 	}
 
-	// Check if torrent already exists
-	hashes := make([]string, 0, 2)
-	seenHashes := make(map[string]struct{}, 2)
-	for _, hash := range []string{torrentHash, torrentHashV2} {
-		trimmed := strings.TrimSpace(hash)
-		if trimmed == "" {
-			continue
+	check, refusal := s.adder.Check(ctx, candidate.InstanceID, AddFacts{}, torrentHash, torrentHashV2)
+	if refusal != nil {
+		result.Status = refusal.Status
+		result.Message = refusal.Message
+		if refusal.Existing != nil {
+			result.MatchedTorrent = &MatchedTorrent{
+				Hash:     refusal.Existing.Hash,
+				Name:     refusal.Existing.Name,
+				Progress: refusal.Existing.Progress,
+				Size:     refusal.Existing.Size,
+			}
 		}
-		canonical := normalizeHash(trimmed)
-		if _, ok := seenHashes[canonical]; ok {
-			continue
-		}
-		seenHashes[canonical] = struct{}{}
-		hashes = append(hashes, trimmed)
-	}
-
-	if s.blocklistStore != nil {
-		blockedHash, blocked, err := s.blocklistStore.FindBlocked(ctx, candidate.InstanceID, hashes)
-		if err != nil {
-			result.Message = fmt.Sprintf("Failed to check cross-seed blocklist: %v", err)
-			return result
-		}
-		if blocked {
-			result.Status = "blocked"
-			result.Message = "Blocked by cross-seed blocklist"
-			log.Info().
-				Int("instanceID", candidate.InstanceID).
-				Str("instanceName", candidate.InstanceName).
-				Str("torrentHash", torrentHash).
-				Str("blockedHash", blockedHash).
-				Msg("Cross-seed apply skipped: infohash is blocked")
-			return result
-		}
-	}
-
-	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
-	if err != nil {
-		result.Message = fmt.Sprintf("Failed to check existing torrents: %v", err)
 		return result
 	}
 
-	if exists && existingTorrent != nil {
-		result.Success = false
-		result.Status = "exists"
-		result.Message = "Torrent already exists in this instance"
-		result.MatchedTorrent = &MatchedTorrent{
-			Hash:     existingTorrent.Hash,
-			Name:     existingTorrent.Name,
-			Progress: existingTorrent.Progress,
-			Size:     existingTorrent.Size,
-		}
-
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("instanceName", candidate.InstanceName).
-			Str("torrentHash", torrentHash).
-			Str("existingHash", existingTorrent.Hash).
-			Str("existingName", existingTorrent.Name).
-			Msg("Cross-seed apply skipped: torrent already exists in instance")
-
-		return result
+	facts := AddFacts{
+		SkipRecheck:    req.SkipRecheck,
+		SkipAutoResume: req.SkipAutoResume,
+		StartRunning:   req.StartPaused != nil && !*req.StartPaused,
 	}
+	refused := func(f AddFacts) bool {
+		v := f.Verdict()
+		if v.Refused {
+			result.Status = v.Status
+			result.Message = v.Message
+		}
+		return v.Refused
+	}
+
 	// Title rescue candidates cannot coexist with a strict alternative, so keep
 	// their SkipRecheck rejection before file loading. Exact-size relaxations can
 	// coexist and are scoped to the selected plan below.
-	if candidate.titleRescue && req.SkipRecheck {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
-		return result
+	if candidate.titleRescue {
+		facts.Verify = VerifyTitleRescue
+		if refused(facts) {
+			return result
+		}
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
@@ -5439,10 +5410,12 @@ func (s *Service) processCrossSeedCandidate(
 	addPlan, rejectReason := s.selectBestCandidateAddPlan(ctx, planCandidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent, req)
 	if addPlan == nil && verificationSourceExcluded {
 		blockedPlan, blockedReason := s.selectBestCandidateAddPlan(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent, req)
-		if blockedPlan != nil && candidateRequiresVerification(candidate, blockedPlan.torrent.Hash, req) {
-			result.Status = "skipped_recheck"
-			result.Message = skippedRecheckMessage
-			return result
+		if blockedPlan != nil {
+			blockedFacts := facts
+			blockedFacts.Verify = verifyReason(candidate, blockedPlan.torrent.Hash, req)
+			if refused(blockedFacts) {
+				return result
+			}
 		}
 		if rejectReason == "" {
 			rejectReason = blockedReason
@@ -5465,10 +5438,9 @@ func (s *Service) processCrossSeedCandidate(
 	candidateFiles := addPlan.files
 	matchType := addPlan.matchType
 	manualUnvalidated := matchType == manualMatchType
-	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req)
-	if verifyBeforeSeed && req.SkipRecheck {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
+	facts.Verify = verifyReason(candidate, matchedTorrent.Hash, req)
+	facts.ExactMatch = matchType == "exact"
+	if refused(facts) {
 		return result
 	}
 
@@ -5479,27 +5451,9 @@ func (s *Service) processCrossSeedCandidate(
 		return result
 	}
 
-	// Build options for adding the torrent
-	options := make(map[string]string)
-
-	startPaused := true
-	if req.StartPaused != nil {
-		startPaused = *req.StartPaused
-	}
-	if verifyBeforeSeed {
-		startPaused = true
-	}
-	if startPaused {
-		options["paused"] = "true"
-		options["stopped"] = "true"
-	} else {
-		options["paused"] = "false"
-		options["stopped"] = "false"
-	}
-
 	// Compute add policy from source files (e.g., disc layout detection)
 	addPolicy := PolicyForSourceFiles(sourceFiles)
-	addPolicy.ApplyToAddOptions(options)
+	facts.DiscMarker = addPolicy.DiscMarker
 
 	if addPolicy.DiscLayout {
 		log.Info().
@@ -5525,13 +5479,9 @@ func (s *Service) processCrossSeedCandidate(
 	// recheck, so SkipRecheck need not block it (#2272).
 	renameOnlyAlignment := requiresAlignment && !hasExtraFiles &&
 		shouldAlignFilesWithCandidate(sourceRelease, matchedRelease)
-	if req.SkipRecheck && renameOnlyAlignment && !startPaused {
-		// The rename must land before qBittorrent starts serving the torrent; with
-		// no recheck gating resumption, add paused and resume right after alignment.
-		startPaused = true
-		options["paused"] = "true"
-		options["stopped"] = "true"
-	}
+	facts.Align = requiresAlignment
+	facts.RenameOnly = renameOnlyAlignment
+	facts.PendingFiles = hasExtraFiles
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
@@ -5628,37 +5578,15 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) && !renameOnlyAlignment {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
+	if refused(facts) {
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
-			Bool("discLayout", addPolicy.DiscLayout).
+			Str("discMarker", addPolicy.DiscMarker).
 			Bool("requiresAlignment", requiresAlignment).
 			Bool("hasExtraFiles", hasExtraFiles).
 			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
 		return result
-	}
-
-	if req.SkipRecheck && addPolicy.DiscLayout {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Bool("discLayout", addPolicy.DiscLayout).
-			Str("discMarker", addPolicy.DiscMarker).
-			Msg("Cross-seed skipped because disc layout requires recheck and skip recheck is enabled")
-		return result
-	}
-
-	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
-	// We MUST use skip_checking when alignment (renames) is required, because qBittorrent blocks
-	// file rename operations while a torrent is being verified. The manual recheck triggered
-	// after alignment handles verification for both alignment and hasExtraFiles cases.
-	if !hasExtraFiles || requiresAlignment {
-		options["skip_checking"] = "true"
 	}
 
 	// Detect folder structure for contentLayout decisions
@@ -5742,11 +5670,9 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
-	linkFallbackToRegular := false
-	linkFallbackRequiresFullRecheck := false
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -5754,12 +5680,8 @@ func (s *Service) processCrossSeedCandidate(
 			// Reflink mode was attempted (regardless of success/failure)
 			return rlResult.Result
 		}
-		if rlResult.RequiresFullRecheck {
-			linkFallbackRequiresFullRecheck = true
-		}
-		if rlResult.FallbackToRegular {
-			linkFallbackToRegular = true
-		}
+		facts.LinkFallbackRecheck = facts.LinkFallbackRecheck || rlResult.RequiresFullRecheck
+		facts.LinkFallback = facts.LinkFallback || rlResult.FallbackToRegular
 
 		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
 		// before continuing into hardlink/regular modes.
@@ -5771,7 +5693,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Try hardlink mode if enabled - this bypasses the regular reuse+rename alignment
 	if useHardlinkMode {
 		hlResult := s.processHardlinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -5779,12 +5701,8 @@ func (s *Service) processCrossSeedCandidate(
 			// Hardlink mode was attempted (regardless of success/failure)
 			return hlResult.Result
 		}
-		if hlResult.RequiresFullRecheck {
-			linkFallbackRequiresFullRecheck = true
-		}
-		if hlResult.FallbackToRegular {
-			linkFallbackToRegular = true
-		}
+		facts.LinkFallbackRecheck = facts.LinkFallbackRecheck || hlResult.RequiresFullRecheck
+		facts.LinkFallback = facts.LinkFallback || hlResult.FallbackToRegular
 	}
 
 	// If link mode fell through (Used=false), a category may already have been created
@@ -5800,8 +5718,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	exactInPlace := matchType == "exact" && !requiresAlignment && !hasExtraFiles
-	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular && !exactInPlace
-	if linkFallbackNeedsBoundaryProtection {
+	if facts.LinkFallback && !exactInPlace {
 		if torrentInfo != nil {
 			unsafe, safetyResult := HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
 			if unsafe {
@@ -5833,31 +5750,14 @@ func (s *Service) processCrossSeedCandidate(
 				Str("matchType", matchType).
 				Msg("[CROSSSEED] Link-mode fallback piece boundary check skipped because torrent metadata is unavailable")
 		}
-
-		linkFallbackRequiresFullRecheck = true
 	}
 
-	// A byte-complete pair needs no post-fallback recheck: every file already
-	// exists at the matched size, and a rename-only pair's renames are verified.
-	// Without this, any link-mode bail-out would turn into skipped_recheck for a
-	// pair that link mode itself would have accepted without a recheck (#2272, #3028).
-	if linkFallbackRequiresFullRecheck && req.SkipRecheck && (renameOnlyAlignment || exactInPlace) {
-		linkFallbackRequiresFullRecheck = false
-	}
-
-	if linkFallbackRequiresFullRecheck {
-		if req.SkipRecheck {
-			result.Status = "skipped_recheck"
-			result.Message = skippedRecheckMessage
-			log.Info().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
-			return result
-		}
-
-		options["paused"] = "true"
-		options["stopped"] = "true"
+	if refused(facts) {
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
+		return result
 	}
 
 	// Regular mode: continue with reuse+rename alignment
@@ -5886,13 +5786,12 @@ func (s *Service) processCrossSeedCandidate(
 		return result
 	}
 
-	if crossCategory != "" {
-		options["category"] = crossCategory
-	}
-
-	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags)
-	if len(finalTags) > 0 {
-		options["tags"] = strings.Join(finalTags, ",")
+	placement := AddPlacement{
+		Category: crossCategory,
+		Tags:     buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags),
+		// An explicit Original stops qBittorrent from wrapping bare files in a folder
+		// when its "Create subfolder" default is on.
+		ContentLayout: addPlan.contentLayout,
 	}
 
 	// Cross-seed add strategy:
@@ -5914,7 +5813,6 @@ func (s *Service) processCrossSeedCandidate(
 	// - Same layout: use Original to preserve structure
 	switch addPlan.contentLayout {
 	case "Subfolder":
-		options["contentLayout"] = addPlan.contentLayout
 		log.Debug().
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
@@ -5922,16 +5820,11 @@ func (s *Service) processCrossSeedCandidate(
 			Str("contentLayout", addPlan.contentLayout).
 			Msg("[CROSSSEED] Layout mismatch: bare file source, folder candidate - wrapping in subfolder")
 	case "NoSubfolder":
-		options["contentLayout"] = addPlan.contentLayout
 		log.Debug().
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
 			Str("contentLayout", addPlan.contentLayout).
 			Msg("[CROSSSEED] Layout mismatch: folder source, bare file candidate - stripping folder")
-	default:
-		// Same layout - explicitly set Original to override qBittorrent's default preference
-		// (prevents qBittorrent from wrapping bare files in folders if user has "Create subfolder" as default)
-		options["contentLayout"] = addPlan.contentLayout
 	}
 
 	// Check if UseCategoryFromIndexer or UseCustomCategory is enabled (affects TMM decision)
@@ -5970,8 +5863,7 @@ func (s *Service) processCrossSeedCandidate(
 		// Episode into season pack: use the season pack's ContentPath explicitly.
 		// ContentPath points to the season pack folder (e.g., /downloads/tv/Show.Name/Season.01/)
 		// whereas SavePath only points to the parent directory (e.g., /downloads/tv/Show.Name/)
-		options["autoTMM"] = "false"
-		options["savepath"] = matchedTorrent.ContentPath
+		placement.SavePath = matchedTorrent.ContentPath
 		hasValidSavePath = true
 	} else {
 		// Use the matched torrent's SavePath (base storage directory)
@@ -6038,14 +5930,11 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] autoTMM decision factors")
 
 		if tmmDecision.Enabled {
-			options["autoTMM"] = "true"
+			placement.AutoTMM = true
 			hasValidSavePath = true
-		} else {
-			options["autoTMM"] = "false"
-			if savePath != "" {
-				options["savepath"] = savePath
-				hasValidSavePath = true
-			}
+		} else if savePath != "" {
+			placement.SavePath = savePath
+			hasValidSavePath = true
 		}
 	}
 
@@ -6072,183 +5961,42 @@ func (s *Service) processCrossSeedCandidate(
 		Str("torrentName", torrentName).
 		Str("baseCategory", baseCategory).
 		Str("crossCategory", crossCategory).
-		Str("savePath", options["savepath"]).
-		Str("autoTMM", options["autoTMM"]).
+		Str("savePath", placement.SavePath).
+		Bool("autoTMM", placement.AutoTMM).
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasValidSavePath", hasValidSavePath).
 		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
-	// Keep rechecks on the explicit save path instead of the incomplete download path.
-	if options["savepath"] != "" {
-		options["useDownloadPath"] = "false"
-	}
-
-	// Add the torrent
-	_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
-	if err != nil {
-		if req.SkipRecheck {
-			result.Status = "error"
-			result.Message = fmt.Sprintf("Failed to add torrent (recheck fallback disabled): %v", err)
-			log.Error().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Failed to add cross-seed torrent and skip recheck is enabled")
-			return result
-		}
-		// If adding fails, try with recheck enabled (skip_checking=false)
-		log.Warn().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Msg("Failed to add cross-seed torrent, retrying with recheck enabled")
-
-		// Remove skip_checking and add with recheck
-		delete(options, "skip_checking")
-		_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
-		if err != nil {
-			result.Message = fmt.Sprintf("Failed to add torrent even with recheck: %v", err)
-			log.Error().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Failed to add cross-seed torrent after retry")
-			return result
-		}
-
-		if categoryCreationFailed {
-			result.Message = fmt.Sprintf("Added torrent with recheck WITHOUT category isolation (match: %s)", matchType)
-		} else {
-			result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
-		}
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("instanceName", candidate.InstanceName).
-			Str("torrentName", torrentName).
-			Msg("Successfully added cross-seed torrent with recheck")
-	} else {
-		if categoryCreationFailed {
-			result.Message = fmt.Sprintf("Added torrent paused WITHOUT category isolation (match: %s)", matchType)
-		} else {
-			result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
-		}
-	}
-
-	if addPolicy.DiscLayout {
-		result.Message += addPolicy.StatusSuffix()
-	}
-	if linkFallbackRequiresFullRecheck {
-		result.Message += " - link-mode filesystem fallback, full recheck required"
-	}
-
-	// Attempt to align the new torrent's naming and file layout with the matched
-	// torrent. An unvalidated Manual match has no mapping to align.
-	alignmentSucceeded, activeHash := true, torrentHash
+	var afterAdd func(context.Context, []string) (string, bool)
+	// An unvalidated Manual match has no mapping to align.
 	if !manualUnvalidated {
-		alignmentSucceeded, activeHash = s.alignCrossSeedContentPaths(
-			ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan,
-		)
-	}
-	if activeHash == "" {
-		activeHash = torrentHash
-	}
-
-	if !alignmentSucceeded {
-		// Alignment failed - pause torrent to prevent unwanted downloads
-		if !startPaused {
-			// Torrent was added running - need to actually pause it
-			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("Failed to pause misaligned cross-seed torrent")
-				result.Message += fmt.Sprintf(" - alignment failed and failed to pause torrent: %v", err)
-				result.Success = false
-				result.Status = "pause_failed"
-				result.MatchedTorrent = &MatchedTorrent{
-					Hash:     matchedTorrent.Hash,
-					Name:     matchedTorrent.Name,
-					Progress: matchedTorrent.Progress,
-					Size:     matchedTorrent.Size,
-				}
-				return result
-			}
+		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
+			// Align the new torrent's naming and file layout with the matched torrent.
+			ok, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan)
+			return activeHash, ok
 		}
-		result.Message += " - alignment failed, left paused"
-		result.Success = false
-		result.Status = "alignment_failed"
-		result.MatchedTorrent = &MatchedTorrent{
-			Hash:     matchedTorrent.Hash,
-			Name:     matchedTorrent.Name,
-			Progress: matchedTorrent.Progress,
-			Size:     matchedTorrent.Size,
-		}
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
+	}
+	added := s.adder.Add(ctx, AddRequest{
+		Check:     check,
+		Torrent:   torrentBytes,
+		Facts:     facts,
+		Placement: placement,
+		AfterAdd:  afterAdd,
+	})
+	if added.Outcome == AddRefused {
+		result.Status = added.Status
+		result.Message = added.Message
 		return result
 	}
 
-	// Determine if we need to wait for verification and resume at threshold:
-	// - verifyBeforeSeed: a title rescue or a relaxed season/episode/group must be hashed first
-	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
-	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
-	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
-	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded &&
-		(!req.SkipRecheck || !renameOnlyAlignment)
-	needsRecheck := verifyBeforeSeed || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
-
-	autoResumeQueued := false
-	if needsRecheck {
-		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
-		// even when skip_checking is not set. Verification-required, disc-layout, and
-		// link-mode filesystem fallback torrents must reach 100% before they resume.
-		added := AddedTorrent{
-			InstanceID:     candidate.InstanceID,
-			Hashes:         dedupeHashes(activeHash, torrentHash, torrentHashV2),
-			SkipAutoResume: req.SkipAutoResume,
-		}
-		switch {
-		case req.SkipAutoResume && candidate.titleRescue:
-			added.Gate = GateMonitor
-		case verifyBeforeSeed:
-			added.Gate = GateVerify
-		case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
-			added.Gate = GateComplete
-		default:
-			added.Budget = s.resumeBudgetBytes(ctx)
-		}
-		outcome := s.settler.Settle(ctx, added)
-		result.Message += outcome.StatusSuffix()
-		autoResumeQueued = !outcome.Skipped && !outcome.QueueFull
-	} else if startPaused && alignmentSucceeded {
-		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
-		if req.SkipAutoResume {
-			// User requested to skip auto-resume - leave paused
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume for perfect match per user settings")
-			result.Message += " - auto-resume skipped per settings"
-		} else {
-			// Resume immediately since there's nothing to wait for
-			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "resume"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("Failed to resume cross-seed torrent after add")
-				// Update message to indicate manual resume needed
-				result.Message += " - auto-resume failed, manual resume required"
-			}
-		}
+	if categoryCreationFailed {
+		result.Message = fmt.Sprintf("Added torrent paused WITHOUT category isolation (match: %s)", matchType)
+	} else {
+		result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
 	}
-	result.Success = true
-	result.Status = "added"
+	result.Message += added.Message
 	result.MatchedTorrent = &MatchedTorrent{
 		Hash:     matchedTorrent.Hash,
 		Name:     matchedTorrent.Name,
@@ -6256,10 +6004,29 @@ func (s *Service) processCrossSeedCandidate(
 		Size:     matchedTorrent.Size,
 	}
 
-	// Execute external program if configured (async, non-blocking)
-	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	if added.Outcome == AddLeftPaused {
+		if added.PauseErr != nil {
+			log.Warn().
+				Err(added.PauseErr).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to pause misaligned cross-seed torrent")
+			result.Message += fmt.Sprintf(" - alignment failed and failed to pause torrent: %v", added.PauseErr)
+			result.Status = "pause_failed"
+			return result
+		}
+		result.Message += " - alignment failed, left paused"
+		result.Status = "alignment_failed"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
+		return result
+	}
 
-	logEvent := log.Info().
+	result.Success = true
+	result.Status = "added"
+	log.Info().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentName", torrentName).
@@ -6269,12 +6036,9 @@ func (s *Service) processCrossSeedCandidate(
 		Str("baseCategory", baseCategory).
 		Str("crossCategory", crossCategory).
 		Bool("isEpisodeInPack", isEpisodeInPack).
-		Bool("hasExtraFiles", hasExtraFiles)
-	if autoResumeQueued {
-		logEvent.Msg("Successfully added cross-seed torrent (auto-resume pending)")
-	} else {
-		logEvent.Msg("Successfully added cross-seed torrent")
-	}
+		Bool("hasExtraFiles", hasExtraFiles).
+		Bool("settling", added.Outcome == AddSettling).
+		Msg("Successfully added cross-seed torrent")
 
 	return result
 }
@@ -13023,13 +12787,30 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, torrentHash string) {
+// RunExternalProgram sends the Execution Request for the External Program
+// that After injection selects, if any, for one added cross-seed. hashes are
+// the v1 and v2 hashes of that torrent.
+func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
 	if s.postInjectionHook != nil {
-		s.postInjectionHook(ctx, instanceID, torrentHash)
+		s.postInjectionHook(ctx, instanceID, hashes)
 		return
 	}
 
-	s.executeExternalProgram(ctx, instanceID, torrentHash)
+	s.executeExternalProgram(ctx, instanceID, hashes)
+}
+
+// findAddedTorrent waits until an added torrent is in the sync cache and returns it.
+// qBittorrent lists a torrent that has a v2 hash under the first 40 characters of
+// that hash, so the lookup also tries that form.
+func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	lookup := slices.Clone(hashes)
+	for _, hash := range hashes {
+		if len(hash) == 64 {
+			lookup = append(lookup, hash[:40])
+		}
+	}
+	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
+	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, lookup)
 }
 
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
@@ -13037,7 +12818,7 @@ func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, tor
 // WARNING: externalprograms limits how many programs run at the same time, but a launcher run
 // (a terminal emulator, or any run on Windows) releases its slot after the start, so rapid
 // injections can still start many concurrent processes.
-func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
+func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, hashes []string) {
 	if s.externalProgramService == nil {
 		return
 	}
@@ -13063,21 +12844,20 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 
 	// Execute in a separate goroutine to avoid blocking the cross-seed operation
 	go func() {
-		// Get torrent data from sync manager
-		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
+		targetTorrent, found, err := s.findAddedTorrent(ctx, instanceID, hashes)
 		if err != nil {
-			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
+			log.Error().Err(err).Int("instanceId", instanceID).Strs("torrentHashes", hashes).Msg("Failed to get torrent for external program execution")
 			return
 		}
 
 		if !found || targetTorrent == nil {
-			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
+			log.Error().Strs("torrentHashes", hashes).Msg("Torrent not found for external program execution")
 			return
 		}
 
 		log.Debug().
 			Int("instanceId", instanceID).
-			Str("torrentHash", torrentHash).
+			Strs("torrentHashes", hashes).
 			Int("programId", programID).
 			Msg("Executing external program for cross-seed injection")
 
@@ -13092,13 +12872,13 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			log.Error().
 				Err(result.Error).
 				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
+				Strs("torrentHashes", hashes).
 				Int("programId", programID).
 				Msg("External program failed for cross-seed injection")
 		} else {
 			log.Debug().
 				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
+				Strs("torrentHashes", hashes).
 				Int("programId", programID).
 				Str("message", result.Message).
 				Msg("External program executed for cross-seed injection")
@@ -13507,9 +13287,9 @@ func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	return 1.0 - (tolerancePercent / 100.0)
 }
 
-// resumeBudgetBytes returns the auto-resume download budget for new cross-seed additions:
+// ResumeBudgetBytes returns the auto-resume download budget for new cross-seed additions:
 // the most missing data a torrent may still auto-resume with after its recheck.
-func (s *Service) resumeBudgetBytes(ctx context.Context) int64 {
+func (s *Service) ResumeBudgetBytes(ctx context.Context) int64 {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil || settings == nil {
 		if err != nil {

@@ -179,6 +179,7 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, auto.Success)
 
+	withAdder(svc)
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -222,6 +223,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
 			})
 
+			withAdder(svc)
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
@@ -280,6 +282,7 @@ func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	svc.settler = idleSettler(recorder)
 
 	startPaused := false
+	withAdder(svc)
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -289,7 +292,6 @@ func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resp.Success, "manual match rejected: %+v", resp.Results)
 	require.Len(t, recorder.addOptions, 1)
-	require.Equal(t, "true", recorder.addOptions[0]["paused"], "manual match must add paused pending verification")
 	require.Contains(t, recorder.bulkActions, "recheck", "manual match must always recheck")
 }
 

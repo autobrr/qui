@@ -1768,6 +1768,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		DownloadURL: duplicate.DownloadURL,
 	}
 
+	withAdder(service)
 	response, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{duplicateSelection, selection, selection, selection, selection},
 	})
@@ -1792,6 +1793,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 	require.Equal(t, 1, limitErrors)
 	require.Equal(t, 1, existsErrors)
 
+	withAdder(service)
 	repeated, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1843,6 +1845,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		DownloadURL: result.DownloadURL,
 	}
 
+	withAdder(service)
 	blocked, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1855,6 +1858,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	// The block must not consume a rescue slot: with Skip recheck off again,
 	// all three attempts remain available.
 	settings = models.DefaultCrossSeedAutomationSettings()
+	withAdder(service)
 	allowed, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection, selection, selection},
 	})
@@ -2070,6 +2074,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: instance.Name, Torrents: []qbt.Torrent{existing}, titleRescue: true},
@@ -2317,6 +2322,7 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	}
 
 	apply := func(sourceTitles []string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
@@ -2374,6 +2380,7 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	}
 
 	apply := func(candidateTitles []string, sourceHash string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
@@ -2504,6 +2511,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	require.Equal(t, aliases, match.SearchDecision.SourceTitles)
 
 	t.Run("manual apply", func(t *testing.T) {
+		withAdder(service)
 		applyResponse, applyErr := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 			Selections: []TorrentSearchSelection{
 				{

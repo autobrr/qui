@@ -250,7 +250,9 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 					covered = false
 					break
 				}
-				if dir == cleaned[j] {
+				// Dir of \\host\share\x is \\host\share\, but a root given as
+				// \\host\share keeps no separator through Clean.
+				if dir == cleaned[j] || dir == cleaned[j]+d.Separator() {
 					break
 				}
 				// Dir of \\host\share never reaches a share-less \\host\.
@@ -779,6 +781,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
+	protected.setScanRoots(scanRoots)
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 

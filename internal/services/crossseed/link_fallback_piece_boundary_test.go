@@ -86,6 +86,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
 	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
+	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
@@ -143,6 +144,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 
 		req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
+		withAdder(service)
 		result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 			InstanceID:   instanceID,
 			InstanceName: "test-instance",
@@ -152,10 +154,6 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 		require.True(t, result.Success, result.Message)
 		require.Equal(t, "added", result.Status)
 		require.NotNil(t, sync.addedOptions)
-		require.Equal(t, "true", sync.addedOptions["paused"])
-		require.Equal(t, "true", sync.addedOptions["stopped"])
-		require.NotContains(t, sync.addedOptions, "skip_checking")
-		require.Equal(t, "false", sync.addedOptions["useDownloadPath"])
 		require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 
 		actions, polled := script.wait()

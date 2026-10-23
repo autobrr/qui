@@ -66,6 +66,10 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 					}, nil
 				},
 			}
+			var hookRuns []string
+			svc.postInjectionHook = func(_ context.Context, _ int, hashes []string) {
+				hookRuns = append(hookRuns, strings.Join(hashes, ","))
+			}
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			if mode == "reflink" {
 				// Exercise the same tree on hosts without reflink support.
@@ -83,8 +87,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			require.Equal(t, "automatic", preview.DefaultCategory)
 			_, err = os.Stat(inst.HardlinkBaseDir)
 			require.True(t, os.IsNotExist(err), "check must not create a tree")
-			require.Empty(t, sm.addCalls)
 			require.Empty(t, runs.runs)
+			require.Empty(t, hookRuns, "check must not run the External Program")
 
 			unalignedReq := *req
 			unalignedReq.TorrentData = base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 1024, contents))
@@ -110,18 +114,20 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				)
 				// A moved file must not discard the two remaining selected episodes.
 				require.NoError(t, os.Remove(torrents[1].ContentPath))
+				adds := withLinkAdder(svc)
 				applied, err := svc.ApplyManualAssemble(t.Context(), req)
 				require.NoError(t, err)
 				require.True(t, applied.Applied, "%+v", applied)
 				require.Equal(t, 2, applied.MatchedEpisodes)
 				require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
 				require.Equal(t, "e02", applied.Targets[1].Hash)
-				require.Len(t, sm.addCalls, 1)
-				require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
-				require.Equal(t, "true", sm.addCalls[0].options["paused"])
-				require.Equal(t, "true", sm.addCalls[0].options["stopped"])
-				require.Equal(t, "chosen", sm.addCalls[0].options["category"])
-				require.Equal(t, "chosen", sm.addCalls[0].options["tags"])
+				require.Len(t, adds.added, 1)
+				require.Len(t, hookRuns, 1, "apply runs the External Program once")
+				require.NotContains(t, adds.added[0], "skip_checking")
+				require.Equal(t, "true", adds.added[0]["paused"])
+				require.Equal(t, "true", adds.added[0]["stopped"])
+				require.Equal(t, "chosen", adds.added[0]["category"])
+				require.Equal(t, "chosen", adds.added[0]["tags"])
 				require.Equal(t, "recheck", sm.bulkCalls[0].action)
 				actions, _ := script.wait()
 				require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
@@ -204,12 +210,13 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 			&qbt.Torrent{State: qbt.TorrentStatePausedUp, Progress: seasonPackResumeSlack},
 		)
 		req.TargetHashes = []string{"e01", "e02", "e03", "e04"}
+		adds := withLinkAdder(svc)
 		result, err := svc.ApplyManualAssemble(t.Context(), req)
 		require.NoError(t, err)
 		require.True(t, result.Applied)
 		require.Zero(t, result.MissingBytes)
-		require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
-		require.Equal(t, "true", sm.addCalls[0].options["paused"])
+		require.NotContains(t, adds.added[0], "skip_checking")
+		require.Equal(t, "true", adds.added[0]["paused"])
 		require.Len(t, sm.bulkCalls, 1)
 		actions, _ := script.wait()
 		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
