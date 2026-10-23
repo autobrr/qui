@@ -5365,7 +5365,7 @@ func (s *Service) processCrossSeedCandidate(
 		Status:       "error",
 	}
 
-	check, refusal := s.adder.Check(ctx, candidate.InstanceID, torrentHash, torrentHashV2)
+	check, refusal := s.adder.Check(ctx, candidate.InstanceID, AddFacts{}, torrentHash, torrentHashV2)
 	if refusal != nil {
 		result.Status = refusal.Status
 		result.Message = refusal.Message

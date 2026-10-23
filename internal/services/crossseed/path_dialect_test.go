@@ -429,6 +429,7 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				},
 			}
 			s.settler = idleSettler(s.syncManager)
+			adds := withLinkAdder(s)
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {
@@ -454,10 +455,10 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			require.Equal(t, tt.wantRoots, roots)
 			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
 			if tt.wantApplied {
-				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], adds.added[0]["savepath"])
 			} else {
 				require.Equal(t, "link_failed", resp.Reason)
-				require.Empty(t, sm.addCalls)
+				require.Empty(t, adds.added)
 			}
 		})
 	}
@@ -507,6 +508,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			}
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
+			adds := withLinkAdder(s)
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -523,7 +525,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 			require.ElementsMatch(t, want, backend.plans[0].Files)
 			if tt.wantRoot != "" {
 				require.Equal(t, tt.wantRoot, backend.plans[0].RootDir)
-				require.Equal(t, tt.wantRoot, sm.addCalls[0].options["savepath"])
+				require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			}
 		})
 	}

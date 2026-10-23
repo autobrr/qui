@@ -29,7 +29,6 @@ import (
 type seasonPackRegressionSyncManager struct {
 	*seasonPackSyncManager
 	filesErr error
-	hashErr  error
 	cacheErr error
 }
 
@@ -45,13 +44,6 @@ func (s *seasonPackRegressionSyncManager) GetTorrentFilesBatch(ctx context.Conte
 		return nil, s.filesErr
 	}
 	return s.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-}
-
-func (s *seasonPackRegressionSyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
-	if s.hashErr != nil {
-		return nil, false, s.hashErr
-	}
-	return s.fakeSyncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
 }
 
 func TestFilterLinkEligible_RequiresConfiguredBaseDirs(t *testing.T) {
@@ -308,6 +300,7 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	adds := withLinkAdder(svc)
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -318,7 +311,7 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 	require.True(t, resp.Applied)
 	require.NotNil(t, capturedPlan)
 	require.Equal(t, selectedBaseDir, capturedPlan.RootDir)
-	require.Equal(t, capturedPlan.RootDir, sm.addCalls[0].options["savepath"])
+	require.Equal(t, capturedPlan.RootDir, adds.added[0]["savepath"])
 	require.Equal(t, filepath.Join(selectedBaseDir, fix.packName), filepath.Dir(capturedPlan.Files[0].TargetPath))
 }
 
@@ -346,10 +339,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 		map[int]*models.Instance{inst.ID: inst},
 	)
 	baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
-	sm := &seasonPackRegressionSyncManager{
-		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
-		hashErr:               errors.New("qb hash lookup failed"),
-	}
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
@@ -360,6 +350,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	withLinkAdder(svc).findErr = errors.New("qb hash lookup failed")
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -369,7 +360,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "existing_check_failed", resp.Reason)
-	require.Contains(t, resp.Message, "qb hash lookup failed")
+	require.Equal(t, "failed to check existing torrents on instance 1: qb hash lookup failed", resp.Message)
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "failed", store.runs[0].Status)
 	require.Equal(t, "existing_check_failed", store.runs[0].Reason)
@@ -442,6 +433,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenCoverageLookupFails
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	withLinkAdder(svc)
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -492,6 +484,7 @@ func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	withLinkAdder(svc)
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -550,6 +543,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	withLinkAdder(svc)
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -563,24 +557,24 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
-// cancelOnAddSeasonPackSyncManager cancels the run's context from inside
+// cancelOnAddAdderFake cancels the run's context from inside
 // AddTorrent and then fails the add, so the rollback that follows runs under a
 // cancelled context. It records how many entries the base dir held at that
 // moment, which keeps the "pack dir is gone" assertion non-vacuous.
-type cancelOnAddSeasonPackSyncManager struct {
-	*seasonPackSyncManager
+type cancelOnAddAdderFake struct {
+	*adderFake
 	cancel       context.CancelFunc
 	poolStore    *offlineAfterAddInstanceStore
 	watchDir     string
 	entriesAtAdd int
 }
 
-func (s *cancelOnAddSeasonPackSyncManager) AddTorrent(ctx context.Context, instanceID int, data []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+func (s *cancelOnAddAdderFake) AddTorrent(ctx context.Context, instanceID int, data []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	entries, _ := os.ReadDir(s.watchDir)
 	s.entriesAtAdd = len(entries)
 	s.cancel()
 	s.poolStore.offline = true
-	return s.seasonPackSyncManager.AddTorrent(ctx, instanceID, data, options)
+	return s.adderFake.AddTorrent(ctx, instanceID, data, options)
 }
 
 // offlineAfterAddInstanceStore serves instance lookups until the run's add
@@ -651,11 +645,8 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	defer cancel()
 
 	poolStore := &offlineAfterAddInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
-	sm := &cancelOnAddSeasonPackSyncManager{
-		seasonPackSyncManager: &seasonPackSyncManager{
-			fakeSyncManager: baseSM,
-			addErr:          errors.New("add failed"),
-		},
+	adds := &cancelOnAddAdderFake{
+		adderFake: &adderFake{addErr: errors.New("add failed")},
 		cancel:    cancel,
 		poolStore: poolStore,
 		watchDir:  baseDir,
@@ -663,11 +654,12 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
-		syncManager:              sm,
+		syncManager:              &seasonPackSyncManager{fakeSyncManager: baseSM},
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
 		seasonPackRunStore:       store,
 	}
+	svc.adder = NewAdder(adds, nil, nil, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 
 	svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(ctx, &SeasonPackApplyRequest{
@@ -679,8 +671,10 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "add_failed", resp.Reason)
+	require.Len(t, store.runs, 1)
+	require.Equal(t, "add failed", store.runs[0].Message)
 	// One entry: the pack tree root the apply path created under the base dir.
-	require.Equal(t, 1, sm.entriesAtAdd, "the link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
+	require.Equal(t, 1, adds.entriesAtAdd, "the link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
 
 	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
 	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
@@ -782,6 +776,7 @@ func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) 
 		svc.settler = idleSettler(svc.syncManager)
 		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 
+		withLinkAdder(svc)
 		resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 			TorrentName: fix.packName,
 			TorrentData: fix.torrentData,
@@ -827,6 +822,7 @@ func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) 
 		svc.settler = idleSettler(svc.syncManager)
 		svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 
+		withLinkAdder(svc)
 		resp, err := svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: inst.ID, TorrentData: torrentData, TargetHashes: hashes})
 
 		require.NoError(t, err)

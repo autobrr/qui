@@ -164,6 +164,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				},
 			}
 
+			withLinkAdder(svc)
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:            packB64,
 				TargetInstanceIDs:      []int{instance.ID},

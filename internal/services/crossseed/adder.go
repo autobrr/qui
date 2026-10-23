@@ -91,6 +91,15 @@ type AddFacts struct {
 	LinkedPaths map[string]struct{}
 	// RecoverMissingFiles lets Settle resume a torrent that reports missing files.
 	RecoverMissingFiles bool
+	// ManualAssembly is set for a season pack that the user assembles from
+	// selected episodes. It skips the blocklist and always waits for a recheck.
+	ManualAssembly bool
+	// SeasonPackLinked is the byte fraction that a season-pack plan linked.
+	// Settle resumes the pack when the recheck reaches it.
+	SeasonPackLinked float64
+	// SeasonPackRun is the season pack history row that Settle writes when the
+	// linked-file check blocks the resume.
+	SeasonPackRun *models.SeasonPackRun
 
 	// The settings of the Trigger.
 	SkipRecheck    bool
@@ -129,7 +138,7 @@ func (f AddFacts) Verdict() AddVerdict {
 	alignRecheck := (f.Align || f.PendingFiles) && (!f.SkipRecheck || !f.RenameOnly)
 	verify := f.Verify != VerifyNone
 
-	if f.SkipRecheck && (verify || alignRecheck || disc || linkRecheck) {
+	if f.SkipRecheck && !f.ManualAssembly && (verify || alignRecheck || disc || linkRecheck) {
 		return AddVerdict{Refused: true, Status: "skipped_recheck", Message: skippedRecheckMessage}
 	}
 
@@ -139,13 +148,14 @@ func (f AddFacts) Verdict() AddVerdict {
 		// qBittorrent blocks renames while it checks a torrent, so an add that aligns
 		// skips the check and Settle rechecks after the renames.
 		skipChecking: !f.PendingFiles || f.Align,
-		settle:       verify || disc || linkRecheck || alignRecheck,
+		settle:       verify || disc || linkRecheck || alignRecheck || f.ManualAssembly,
 		linkRecheck:  linkRecheck,
 	}
 	if f.LinkTree {
 		// Every linked file is in place, so qBittorrent skips its check and Settle
 		// rechecks for the Pending files. A link-mode add ignores Start paused.
-		v.skipChecking = true
+		// qBittorrent checks a manual assembly on add.
+		v.skipChecking = !f.ManualAssembly
 		v.paused = f.SkipAutoResume || v.settle
 	}
 	if f.PoolMember {
@@ -153,6 +163,8 @@ func (f AddFacts) Verdict() AddVerdict {
 		v.paused, v.settle = true, false
 	}
 	switch {
+	case f.SeasonPackLinked > 0:
+		v.gate = GateThreshold
 	case f.SkipAutoResume && f.Verify == VerifyTitleRescue:
 		v.gate = GateMonitor
 	case verify:
@@ -197,31 +209,26 @@ type AddResult struct {
 	Existing *qbt.Torrent
 	// PauseErr is set when AddLeftPaused could not pause a running torrent.
 	PauseErr error
+	// Err is the cause of a refusal with the status error.
+	Err error
+	// Settled is what Settle reported for an AddSettling torrent.
+	Settled SettleOutcome
 }
 
-// Check runs the Pre-add check for the v1 and v2 hashes of a torrent. A
-// non-nil result is a refusal, and the check it returns then is empty.
-func (a *Adder) Check(ctx context.Context, instanceID int, hashes ...string) (PreAddCheck, *AddResult) {
+// blocklistCheckFailed starts the message of a failed blocklist read.
+const blocklistCheckFailed = "Failed to check cross-seed blocklist"
+
+// Check runs the Pre-add check for the v1 and v2 hashes of a torrent. Only
+// facts.ManualAssembly applies here: it skips the blocklist. A non-nil result is
+// a refusal, and the check it returns then is empty.
+func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...string) (PreAddCheck, *AddResult) {
 	check := PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 
-	if a.blocklist != nil {
-		blockedHash, blocked, err := a.blocklist.FindBlocked(ctx, instanceID, check.hashes)
-		if err != nil {
-			return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("Failed to check cross-seed blocklist: %v", err)}
-		}
-		if blocked {
-			log.Info().
-				Int("instanceID", instanceID).
-				Strs("torrentHashes", check.hashes).
-				Str("blockedHash", blockedHash).
-				Msg("Cross-seed apply skipped: infohash is blocked")
-			return PreAddCheck{}, &AddResult{Status: "blocked", Message: "Blocked by cross-seed blocklist"}
-		}
-	}
-
+	// The existing torrents come first, so a torrent that is in qBittorrent is
+	// refused as exists also when it is on the blocklist.
 	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, check.hashes)
 	if err != nil {
-		return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("Failed to check existing torrents: %v", err)}
+		return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("Failed to check existing torrents: %v", err), Err: err}
 	}
 	if exists && existing != nil {
 		log.Debug().
@@ -231,6 +238,21 @@ func (a *Adder) Check(ctx context.Context, instanceID int, hashes ...string) (Pr
 			Str("existingName", existing.Name).
 			Msg("Cross-seed apply skipped: torrent already exists in instance")
 		return PreAddCheck{}, &AddResult{Status: "exists", Message: "Torrent already exists in this instance", Existing: existing}
+	}
+
+	if a.blocklist != nil && !facts.ManualAssembly {
+		blockedHash, blocked, err := a.blocklist.FindBlocked(ctx, instanceID, check.hashes)
+		if err != nil {
+			return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("%s: %v", blocklistCheckFailed, err), Err: err}
+		}
+		if blocked {
+			log.Info().
+				Int("instanceID", instanceID).
+				Strs("torrentHashes", check.hashes).
+				Str("blockedHash", blockedHash).
+				Msg("Cross-seed apply skipped: infohash is blocked")
+			return PreAddCheck{}, &AddResult{Status: "blocked", Message: "Blocked by cross-seed blocklist"}
+		}
 	}
 	return check, nil
 }
@@ -299,7 +321,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			Int("instanceID", instanceID).
 			Strs("torrentHashes", req.Check.hashes).
 			Msg("Failed to add cross-seed torrent")
-		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err)}
+		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err), Err: err}
 	}
 
 	var message string
@@ -328,6 +350,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	}
 
 	outcome := AddAdded
+	var settled SettleOutcome
 	switch {
 	case v.settle:
 		// qBittorrent does not recheck a torrent that it adds paused, so Settle
@@ -339,11 +362,14 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			Gate:                v.gate,
 			SkipAutoResume:      req.Facts.SkipAutoResume,
 			RecoverMissingFiles: req.Facts.RecoverMissingFiles,
+			Threshold:           req.Facts.SeasonPackLinked * seasonPackResumeSlack,
+			SeasonPackRun:       req.Facts.SeasonPackRun,
 		}
 		if v.gate == GateBudget {
 			added.Budget = a.resumeBudget(ctx)
 		}
-		message += a.settler.Settle(ctx, added).StatusSuffix()
+		settled = a.settler.Settle(ctx, added)
+		message += settled.StatusSuffix()
 		outcome = AddSettling
 	case req.Facts.PoolMember:
 		// The caller wakes the pool, which resumes the torrent.
@@ -363,5 +389,5 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	}
 
 	a.runExternalProgram(ctx, instanceID, req.Check.hashes)
-	return AddResult{Outcome: outcome, Message: message}
+	return AddResult{Outcome: outcome, Message: message, Settled: settled}
 }
