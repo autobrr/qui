@@ -31,6 +31,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Layout**: The form of the UI that qui shows for the current viewport width: the *mobile layout* when the viewport is less than 768 px wide, or the *desktop layout*. It is not the device type. _Avoid_: device, platform.
 - **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
 
+## Client settings
+
+- **Client setting**: A UI preference that qui stores for the user on the server, so it follows the user to every browser and tab, for example the sidebar state, filters, and column layout. _Avoid_: local setting.
+
 ## Orphan scan
 
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
