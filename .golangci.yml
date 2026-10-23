@@ -92,6 +92,9 @@ linters:
         - pattern: ^orphanscan\.(isIgnoredPath|isPathProtectedByIgnorePaths|TorrentFileMap\.(Has|HasAnyInDir))$
           pkg: ^github\.com/autobrr/qui/internal/services/orphanscan$
           msg: ask the protected path module in internal/services/orphanscan/protected.go
+        # No pkg: a call through a local interface expands to the package of the caller.
+        - pattern: ^\w+\.\w+\.AddTorrent$
+          msg: use crossseed.Adder
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -145,6 +148,16 @@ linters:
         linters:
           - forbidigo
         text: protected path module
+
+      # Only the Adder adds a torrent in the cross-seed and Dir Scan packages (ADR 0022).
+      - path-except: ^internal/services/(crossseed|dirscan)/
+        linters:
+          - forbidigo
+        text: use crossseed\.Adder
+      - path: internal/services/crossseed/adder\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: use crossseed\.Adder
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.
