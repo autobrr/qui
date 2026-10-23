@@ -742,7 +742,7 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 
 // A torrent's own row decides that it waits, so a check that finds every
 // item waiting builds no scope: no full read of the cached torrents and no
-// preferences request. It still asks for a sync.
+// preferences or categories request. It still asks for a sync.
 func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 	for _, move := range []bool{false, true} {
 		t.Run(fmt.Sprint("move=", move), func(t *testing.T) {

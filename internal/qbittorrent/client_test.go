@@ -280,7 +280,7 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 func TestCategoryPathRule(t *testing.T) {
 	t.Parallel()
 
-	nests := CategoryPathRule{Nest: true, InheritsDownloadPath: true}
+	nests := CategoryPathRule{Nest: true}
 	tests := []struct {
 		name             string
 		version          string
@@ -290,13 +290,13 @@ func TestCategoryPathRule(t *testing.T) {
 		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true},
 		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true}, // highest version below the gate
 		{name: "5.0 beta1 with subcategories on", version: "2.10.4", useSubcategories: true, want: nests},          // lowest version at the gate
-		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false, want: CategoryPathRule{InheritsDownloadPath: true}},
+		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false},
 		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: nests},
 		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: nests},
 		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: nests},
 		// The build platform comes from the cached app info.
-		{name: "5.3 dev build before the file name rule", version: "2.15.3", want: nests},                                                                                       // highest version below the gate
-		{name: "5.3 names the folder for its platform", version: "2.15.4", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows", InheritsDownloadPath: true}}, // lowest version at the gate
+		{name: "5.3 dev build before the file name rule", version: "2.15.3", want: nests},                                                           // highest version below the gate
+		{name: "5.3 names the folder for its platform", version: "2.15.4", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}}, // lowest version at the gate
 	}
 
 	for _, tc := range tests {

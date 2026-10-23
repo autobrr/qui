@@ -162,7 +162,8 @@ const (
 )
 
 // cleanupScope is what one check of one instance judges folders against. It
-// costs a full read of the cached torrents and a preferences request.
+// costs a full read of the cached torrents, a preferences request and a
+// categories request.
 type cleanupScope struct {
 	backend fsops.Backend
 	d       fsops.PathDialect
