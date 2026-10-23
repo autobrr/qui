@@ -54,6 +54,7 @@ func TestProcessCrossSeedCandidate_WindowsUNCSavePath(t *testing.T) {
 					ContentPath: tc.contentPath,
 				}},
 			}
+			withAdder(service)
 			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", name,
 				&CrossSeedRequest{StartPaused: new(true)}, service.releaseCache.Parse(name), tc.files, nil)
 			require.True(t, result.Success, "candidate must reach AddTorrent: %+v", result)
