@@ -582,6 +582,7 @@ func NewService(
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 		activityPublisher:             activity.NopPublisher{},
 	}
+	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 
 	return svc
 }
@@ -593,11 +594,6 @@ func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Serv
 		partialPoolWake:    make(chan partialPoolWake, 100),
 		partialPoolCreated: make(map[int64]*hardlinktree.Created),
 	}
-}
-
-// SetAdder sets the Adder that does the regular cross-seed add.
-func (s *Service) SetAdder(adder *Adder) {
-	s.adder = adder
 }
 
 // SetMediaIDCacheStore wires the media_id_cache store that backs the
