@@ -6080,10 +6080,7 @@ func (s *Service) processCrossSeedCandidate(
 		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
-	// Keep rechecks on the explicit save path instead of the incomplete download path.
-	if options["savepath"] != "" {
-		options["useDownloadPath"] = "false"
-	}
+	KeepAtSavePath(options)
 
 	// Add the torrent
 	_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)

@@ -498,6 +498,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			require.NotNil(t, sync.addedOptions, "qBittorrent add must remain intact")
 			require.Equal(t, "true", sync.addedOptions["stopped"])
 			require.Equal(t, "true", sync.addedOptions["paused"])
+			require.Equal(t, "false", sync.addedOptions["useDownloadPath"], "the recheck must keep the Pending files in the Isolation folder")
 			require.Empty(t, sync.bulkActions, "terminal registration failure must not recheck or resume")
 			_, statErr := os.Stat(filepath.Join(sync.addedOptions["savepath"], descriptors[0].RelativePath))
 			require.NoError(t, statErr, "materialized tree must remain intact")

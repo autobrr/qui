@@ -561,6 +561,7 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 		options["stopped"] = qbitBoolTrue
 	}
 
+	crossseed.KeepAtSavePath(options)
 	return options
 }
 

@@ -355,6 +355,9 @@ func TestInjector_Inject_PausedPartial_RechecksWithoutResume(t *testing.T) {
 	if !res.Success {
 		t.Fatalf("expected success, got %+v", res)
 	}
+	if got := manager.addOptions["useDownloadPath"]; got != "false" {
+		t.Fatalf("useDownloadPath = %q, want false so the recheck keeps the files at the save path", got)
+	}
 
 	// StartPaused leaves nothing to watch, so the module only sends the recheck.
 	if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
@@ -817,6 +820,9 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 	}
 	if !res.Success {
 		t.Fatalf("expected success, got %+v", res)
+	}
+	if got := manager.getAddOptions()["useDownloadPath"]; got != "false" {
+		t.Fatalf("useDownloadPath = %q, want false so the recheck keeps the link tree at the save path", got)
 	}
 
 	if got := settle.calls(); !slices.Equal(got, []string{"recheck"}) {

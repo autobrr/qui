@@ -531,6 +531,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	require.Equal(t, "true", sync.addedOptions["autoTMM"])
 	_, hasSavePath := sync.addedOptions["savepath"]
 	require.False(t, hasSavePath)
+	require.NotContains(t, sync.addedOptions, "useDownloadPath", "autoTMM places the torrent, so qui sends no download path")
 	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
 	require.Equal(t, "true", sync.addedOptions["skip_checking"])
 }
