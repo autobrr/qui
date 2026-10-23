@@ -624,6 +624,38 @@ func (m matcher) searchCandidateMetadataConsistent(
 	return ok, reason
 }
 
+// strictMatchWithoutTargetSite reports whether a strict search decision still
+// holds when the target's site tag is the only apply-time difference. A local
+// torrent with its own site tag is a conflicting fansub identity and stays
+// rejected. So does one with its own group when the target has none, because
+// clearing the site would leave nothing for that group to be compared against.
+func (m matcher) strictMatchWithoutTargetSite(input searchCandidateInput, decision searchDecisionProvenance) bool {
+	target := input.Source.release
+	if target == nil || input.Candidate.release == nil || input.Candidate.release.Site != "" || decision.SearchCandidateName == "" {
+		return false
+	}
+	if target.Group == "" && input.Candidate.release.Group != "" {
+		return false
+	}
+	findIndividualEpisodes := input.FindIndividualEpisodes
+	actualTitles := slices.Concat(decision.SourceTitles, decision.CandidateTitles)
+	if ok, _ := m.searchCandidateMetadataConsistent(decision.SearchCandidateName, input.Source, nil, actualTitles, decision.EpisodeMap, findIndividualEpisodes); !ok {
+		return false
+	}
+	unprefixed := *target
+	unprefixed.Site = ""
+	ok, _ := m.releasesMatchWithReasonAndNamesAndTitles(
+		&unprefixed,
+		input.Candidate.release,
+		input.Source.rawName,
+		input.Candidate.rawName,
+		input.SourceTitles,
+		input.CandidateTitles,
+		findIndividualEpisodes,
+	)
+	return ok
+}
+
 // withRelaxedDifferenceNeutralized removes one release-field rejection so the
 // strict matcher can expose the next one. Callers iterate until strict matching
 // succeeds or an unrecorded difference appears.

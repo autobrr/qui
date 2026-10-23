@@ -229,6 +229,98 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 	require.True(t, resp.Success, "apply rejected the pack: %+v", resp.Results)
 }
 
+func TestCrossSeedStrictSearchDecisionIgnoresBracketTitlePrefix(t *testing.T) {
+	const (
+		instanceID   = 1
+		sourceHash   = "source"
+		prefix       = "[港灯]."
+		sourceName   = "Harbor.Lights.2022.S01.Complete.1080p.WEB-DL.HEVC.DDP5.1-GRP"
+		listingTitle = "Harbor Lights 2022 S01 Complete 1080p WEB-DL HEVC DDP5.1-GRP"
+	)
+	// The tracker lists the release without the alternate title, but the
+	// metainfo name and files carry it.
+	build := func(t *testing.T, title, group string) ([]byte, qbt.TorrentFiles) {
+		t.Helper()
+		torrentBytes := createTestTorrent(t, prefix+title+".2022.S01.Complete.1080p.WEB-DL.HEVC.DDP5.1"+group, []string{
+			prefix + title + ".2022.S01E01.1080p.WEB-DL.HEVC.DDP5.1" + group + ".mkv",
+			prefix + title + ".2022.S01E02.1080p.WEB-DL.HEVC.DDP5.1" + group + ".mkv",
+		}, 256*1024)
+		meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+		require.NoError(t, err)
+		files := make(qbt.TorrentFiles, len(meta.Files))
+		for i, file := range meta.Files {
+			file.Name = strings.ReplaceAll(file.Name, prefix, "")
+			files[i] = file
+		}
+		return torrentBytes, files
+	}
+	torrentBytes, localFiles := build(t, "Harbor.Lights", "-GRP")
+	resizedFiles := slices.Clone(localFiles)
+	resizedFiles[0].Size++
+
+	for _, tt := range []struct {
+		name          string
+		localName     string
+		localFiles    qbt.TorrentFiles
+		decisionClass searchCandidateClass
+		listingTitle  string
+		incomingTitle string
+		incomingGroup string
+		aliases       []string
+		wantStatus    string
+	}{
+		{name: "strict search decision", localName: sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "added"},
+		{name: "plain apply", localName: sourceName, localFiles: localFiles, wantStatus: "no_match"},
+		{name: "local torrent from another fansub", localName: "[AnoZu]." + sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "no_match"},
+		{name: "different group", localName: strings.Replace(sourceName, "-GRP", "-OTHER", 1), localFiles: localFiles, decisionClass: searchCandidateClassStrict, wantStatus: "no_match"},
+		{name: "different file sizes", localName: sourceName, localFiles: resizedFiles, decisionClass: searchCandidateClassStrict, wantStatus: "rejected"},
+		{name: "listing for another season", localName: sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, listingTitle: strings.Replace(listingTitle, "S01", "S02", 1), wantStatus: "no_match"},
+		// The incoming torrent has only the bracket tag as its identity, and the local
+		// torrent is from a different group. Nothing can compare the two groups.
+		{name: "local group against bracket-only target", incomingTitle: "Harbor.Lights", incomingGroup: "none", localName: "Harbor.Lights.2022.S01.Complete.1080p.WEB-DL.HEVC.DDP5.1-AnoZu", localFiles: localFiles, decisionClass: searchCandidateClassStrict, listingTitle: "Harbor Lights 2022 S01 Complete 1080p WEB-DL HEVC DDP5.1", wantStatus: "no_match"},
+		{name: "listing uses an alias title", incomingTitle: "Harbor.Lights", localName: sourceName, localFiles: localFiles, decisionClass: searchCandidateClassStrict, listingTitle: "Harbour Nights 2022 S01 Complete 1080p WEB-DL HEVC DDP5.1-GRP", aliases: []string{"Harbour Nights", "Harbor Lights"}, wantStatus: "added"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.listingTitle == "" {
+				tt.listingTitle = listingTitle
+			}
+			incoming := torrentBytes
+			if tt.incomingGroup != "" {
+				group := tt.incomingGroup
+				if group == "none" {
+					group = ""
+				}
+				incoming, _ = build(t, tt.incomingTitle, group)
+			}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{Hash: sourceHash, Name: tt.localName, Progress: 1}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: tt.localFiles,
+				})},
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+
+			resp, err := service.CrossSeed(context.Background(), &CrossSeedRequest{
+				TorrentData:       base64.StdEncoding.EncodeToString(incoming),
+				TargetInstanceIDs: []int{instanceID},
+				SearchDecision: searchDecisionProvenance{
+					Class:               tt.decisionClass,
+					SourceInstanceID:    instanceID,
+					SourceHash:          sourceHash,
+					SearchCandidateName: tt.listingTitle,
+					SourceTitles:        tt.aliases,
+				},
+			})
+			require.NoError(t, err)
+			require.Len(t, resp.Results, 1)
+			require.Equal(t, tt.wantStatus, resp.Results[0].Status, resp.Results[0].Message)
+		})
+	}
+}
+
 func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 	const (
 		instanceID   = 1
