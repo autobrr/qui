@@ -210,7 +210,7 @@ func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 			sourceSide := namedRelease{release: source, rawName: tt.source}
 			targetSide := namedRelease{release: target, rawName: tt.target}
 			require.False(t, svc.matcher().crossFieldGroupSiteFallback(sourceSide, targetSide))
-			require.NotContains(t, svc.matcher().observedReleaseDifferences(sourceSide, targetSide), "group")
+			require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, sourceSide, targetSide, matchEvidence{}))
 
 			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
 			require.False(t, decision.Accepted, "class: %s", decision.Class)
@@ -288,11 +288,12 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	))
 
 	// Strict matching tolerates the missing candidate tag exactly as before.
-	ok, reason := svc.matcher().validateGroupSiteAndChecksum(namedRelease{release: siteOnly}, namedRelease{release: bare}, false)
-	require.True(t, ok, "unexpected rejection: %s", reason)
+	var comparison releaseComparison
+	svc.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: siteOnly}, namedRelease{release: bare})
+	require.True(t, comparison.matched(), "unexpected rejection: %s", comparison.reason())
 
 	// An empty identity still cannot buy exact-size permission.
-	ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 		Source:        namedRelease{release: siteOnly, rawName: bareFansubEpisode},
 		Candidate:     namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 		SourceSize:    fansubPackSize,
@@ -351,7 +352,7 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	repeatedSide := namedRelease{release: repeated, rawName: fansubRepeatedTag}
 	taggedSide := namedRelease{release: tagged, rawName: fansubTaggedPack}
 	require.False(t, svc.matcher().crossFieldGroupSiteFallback(repeatedSide, taggedSide))
-	require.NotContains(t, svc.matcher().observedReleaseDifferences(repeatedSide, taggedSide), "group")
+	require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, repeatedSide, taggedSide, matchEvidence{}))
 
 	// The pairing still matches, on the codec the two names actually differ by.
 	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)

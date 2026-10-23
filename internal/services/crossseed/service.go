@@ -4698,14 +4698,15 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				targetAliasTitles = searchDecision.CandidateTitles
 				episodeMap = searchDecision.EpisodeMap
 			}
-			fallbackInput, mappedEpisode := applyEpisodeMap(searchCandidateInput{
-				Source:                 targetSide,
-				Candidate:              sourceSide,
+			mappedTarget, mappedSource, mappedEpisode := applyEpisodeMap(targetSide, sourceSide, episodeMap)
+			fallbackInput := searchCandidateInput{
+				Source:                 mappedTarget,
+				Candidate:              mappedSource,
 				SourceTitles:           targetAliasTitles,
 				CandidateTitles:        candidateAliasTitles,
 				EpisodeMap:             episodeMap,
 				FindIndividualEpisodes: req.FindIndividualEpisodes,
-			})
+			}
 			if mappedEpisode != "" {
 				// The file names still carry the other scheme, so the name-derived
 				// episode keys cannot line up; file sizes decide at apply.
