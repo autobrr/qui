@@ -100,7 +100,7 @@ func (f *fakeSync) GetAppPreferences(ctx context.Context, instanceID int) (qbt.A
 	return f.getAppPreferences(ctx, instanceID)
 }
 
-func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
+func (f *fakeSync) GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
 	if f.getCategories == nil {
 		return nil, errNotStubbed
 	}

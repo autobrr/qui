@@ -3589,3 +3589,22 @@ func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
 	require.Eventually(t, func() bool { return callsAtResume.Load() >= 0 }, 3*time.Second, 10*time.Millisecond)
 	require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
 }
+
+// The cache can still hold a download path the category no longer has, so
+// GetCategoriesFresh asks qBittorrent.
+func TestGetCategoriesFreshReadsQBittorrent(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/archive"))
+	r.stub.SetCategoryDownloadPath("archive", &qbt.CategoryDownloadPath{Enabled: true, Path: r.p("fast/archive")})
+	r.add()
+	r.stub.SetCategoryDownloadPath("archive", nil)
+
+	cached, err := r.sm.GetCategories(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.NotNil(t, cached["archive"].DownloadPath, "the cache should still hold the old path")
+	fresh, err := r.sm.GetCategoriesFresh(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.Contains(t, fresh, "archive")
+	require.Nil(t, fresh["archive"].DownloadPath)
+}
