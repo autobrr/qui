@@ -858,6 +858,7 @@ func seasonPackAddOptions(plan *hardlinktree.TreePlan, category string, paused b
 	if category != "" {
 		options["category"] = category
 	}
+	KeepAtSavePath(options)
 	return options
 }
 

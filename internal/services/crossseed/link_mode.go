@@ -545,6 +545,7 @@ func (s *Service) processLinkMode(
 
 	// Apply add policy (e.g., disc layout forces paused)
 	addPolicy.ApplyToAddOptions(options)
+	KeepAtSavePath(options)
 
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
