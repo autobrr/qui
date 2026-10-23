@@ -360,8 +360,8 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	require.NotEqual(t, groupMismatchReason, decision.StrictMismatchReason)
 }
 
-// Apply re-derives the predicate and the recorded relaxation instead of
-// trusting the request, and only for the torrent that supplied the size.
+// Apply keeps the stored verdict only for the torrent that supplied the size,
+// and only for a download that reads as the listing.
 func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 	t.Parallel()
 
@@ -384,9 +384,9 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
 				Class:                 searchCandidateClassExactSizeFallback,
+				SearchCandidateName:   fansubTaggedPack,
 				SourceInstanceID:      instanceID,
 				SourceHash:            sourceHash,
-				RelaxedDifferences:    []string{"group"},
 				Relaxed:               differencesOf(differenceGroup),
 				GroupFallbackIdentity: "kiri",
 			},
@@ -425,18 +425,11 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.SourceInstanceID = instanceID + 1 },
 		},
 		{
-			name: "a stored codec rejection cannot authorize a group mismatch",
-			mutate: func(req *FindCandidatesRequest) {
-				req.SearchDecision.RelaxedDifferences = []string{"codec"}
-				req.SearchDecision.Relaxed = differencesOf(differenceCodec)
-			},
-		},
-		{
 			name:   "the search never admitted this pairing",
 			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.Class = searchCandidateClassRejected },
 		},
 		{
-			name: "a claimed group relaxation the names do not support",
+			name: "a download whose group the listing does not name",
 			mutate: func(req *FindCandidatesRequest) {
 				req.TorrentName = otherFansubTagged
 			},
@@ -450,10 +443,9 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 	}
 }
 
-// Verification is decided from the differences the search stored. A soft search
-// cause cannot authorize a hard apply cause, while independently recorded hard
-// causes and hard-to-soft drift can compose behind the same full-check gate.
-func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
+// Apply keeps the differences that the search stored, so a stored season
+// relaxation also lets the season pack through the file keys.
+func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -487,7 +479,7 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 		return response
 	}
 
-	newRequest := func(differences ...string) *FindCandidatesRequest {
+	newRequest := func(relaxed ...matchDifference) *FindCandidatesRequest {
 		return &FindCandidatesRequest{
 			TorrentName:       fansubTaggedPack,
 			TargetInstanceIDs: []int{instanceID},
@@ -495,51 +487,28 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 				Class:                 searchCandidateClassExactSizeFallback,
 				SourceInstanceID:      instanceID,
 				SourceHash:            sourceHash,
-				RelaxedDifferences:    differences,
-				Relaxed:               differencesOf(differenceCodec),
+				Relaxed:               differencesOf(relaxed...),
 				GroupFallbackIdentity: "kiri",
 			},
 		}
 	}
 
-	// A retitled listing parses Group and Site as the same fansub tag, so the
-	// search recorded a group difference it was never rejected for. Apply then
-	// reads the real pack name, rejects on the group, and would otherwise spend
-	// that incidental token while verification still reads the stored codec.
-	t.Run("a stored codec rejection cannot spend an incidental group token", func(t *testing.T) {
-		require.False(t, differencesOf(differenceCodec).needsVerification(),
-			"the premise: a stored codec rejection seeds without a hash check")
-		require.Empty(t, run(t, fansubBracketPack, newRequest("codec", "group")).Candidates)
-	})
-
-	t.Run("a stored codec rejection cannot spend an incidental season token", func(t *testing.T) {
-		require.Empty(t, run(t, otherSeason, newRequest("codec", "season")).Candidates)
-	})
-
-	t.Run("a stored group rejection may spend a recorded codec behind verification", func(t *testing.T) {
-		req := newRequest("group", "codec")
-		req.SearchDecision.Relaxed = differencesOf(differenceGroup, differenceCodec)
+	t.Run("a stored group and codec relaxation", func(t *testing.T) {
+		req := newRequest(differenceGroup, differenceCodec)
 		existingName := strings.Replace(fansubTaggedPack, "H.264", "H.265", 1)
 
 		require.Len(t, run(t, existingName, req).Candidates, 1)
 	})
 
-	t.Run("two independently recorded verification causes may compose", func(t *testing.T) {
-		req := newRequest("season", "group")
-		req.SearchDecision.Relaxed = differencesOf(differenceSeason, differenceGroup)
-
-		response := run(t, fansubBracketPack, req)
-		require.Len(t, response.Candidates, 1,
-			"search recorded both hard relaxations, so apply may rederive either one behind the same full-check gate")
+	t.Run("a stored season and group relaxation", func(t *testing.T) {
+		response := run(t, fansubBracketPack, newRequest(differenceSeason, differenceGroup))
+		require.Len(t, response.Candidates, 1)
 	})
 
-	t.Run("group search cause may replay a recorded season cause", func(t *testing.T) {
-		req := newRequest("group", "season")
-		req.SearchDecision.Relaxed = differencesOf(differenceGroup, differenceSeason)
-
-		response := run(t, otherSeason, req)
+	t.Run("a stored season relaxation passes the file keys of another season", func(t *testing.T) {
+		response := run(t, otherSeason, newRequest(differenceGroup, differenceSeason))
 		require.Len(t, response.Candidates, 1,
-			"the accepted apply-time season cause must carry its own match-type bypass")
+			"the stored season relaxation must carry its own match-type bypass")
 	})
 }
 
@@ -732,11 +701,10 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		TorrentName:       rawS01,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:              decision.Class,
-			SourceInstanceID:   instanceID,
-			SourceHash:         sourceHash,
-			RelaxedDifferences: decision.RelaxedDifferences,
-			Relaxed:            decision.Relaxed,
+			Class:            decision.Class,
+			SourceInstanceID: instanceID,
+			SourceHash:       sourceHash,
+			Relaxed:          decision.Relaxed,
 		},
 	})
 	require.NoError(t, err)
@@ -914,19 +882,17 @@ func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *te
 	)
 
 	for _, tt := range []struct {
-		name          string
-		fileGroup     string
-		wantResults   int
-		wantDecision  searchCandidateClass
-		wantRelaxedBy string
+		name         string
+		fileGroup    string
+		wantResults  int
+		wantDecision searchCandidateClass
 	}{
 		{name: "conflicting file group vetoes rescue", fileGroup: "FoV"},
 		{
-			name:          "corroborating file group keeps rescue",
-			fileGroup:     "KIRI",
-			wantResults:   1,
-			wantDecision:  searchCandidateClassExactSizeFallback,
-			wantRelaxedBy: "group",
+			name:         "corroborating file group keeps rescue",
+			fileGroup:    "KIRI",
+			wantResults:  1,
+			wantDecision: searchCandidateClassExactSizeFallback,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -998,7 +964,6 @@ func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *te
 			}
 			require.Equal(t, tt.wantDecision, response.Results[0].SearchDecision.Class)
 			require.True(t, response.Results[0].SearchDecision.Relaxed.has(differenceGroup))
-			require.Contains(t, response.Results[0].SearchDecision.RelaxedDifferences, tt.wantRelaxedBy)
 			require.Equal(t, "kiri", response.Results[0].SearchDecision.GroupFallbackIdentity)
 		})
 	}
@@ -1058,10 +1023,10 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					TargetRelease:     target,
 					TargetInstanceIDs: []int{instanceID},
 					SearchDecision: searchDecisionProvenance{
+						SearchCandidateName:   fansubBracketPack,
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
 						SourceHash:            sourceHash,
-						RelaxedDifferences:    []string{"group"},
 						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
@@ -1072,48 +1037,7 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 		}
 	})
 
-	t.Run("existing selected-file conflict vetoes rescue", func(t *testing.T) {
-		for _, tt := range []struct {
-			name        string
-			fileGroup   string
-			wantMatches int
-		}{
-			{name: "conflicting group", fileGroup: "FoV"},
-			{name: "corroborating group", fileGroup: "KIRI", wantMatches: 1},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				sourceFiles := qbt.TorrentFiles{
-					{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize/2 + 1},
-					{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
-				}
-				svc := &Service{
-					instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-					syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
-						Hash: sourceHash, Name: fansubBracketPack, Size: fansubPackSize, Progress: 1,
-					}}, map[string]qbt.TorrentFiles{sourceHash: sourceFiles}),
-					releaseCache:     NewReleaseCache(),
-					stringNormalizer: stringutils.NewDefaultNormalizer(),
-				}
-
-				response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
-					TorrentName:       fansubTaggedPack,
-					TargetInstanceIDs: []int{instanceID},
-					SearchDecision: searchDecisionProvenance{
-						Class:                 searchCandidateClassExactSizeFallback,
-						SourceInstanceID:      instanceID,
-						SourceHash:            sourceHash,
-						RelaxedDifferences:    []string{"group"},
-						Relaxed:               differencesOf(differenceGroup),
-						GroupFallbackIdentity: "kiri",
-					},
-				})
-				require.NoError(t, err)
-				require.Len(t, response.Candidates, tt.wantMatches)
-			})
-		}
-	})
-
-	t.Run("strict raw replay still checks selected-file conflicts", func(t *testing.T) {
+	t.Run("the split download name still checks selected-file conflicts", func(t *testing.T) {
 		existingFiles := qbt.TorrentFiles{
 			{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
 			{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
@@ -1151,10 +1075,10 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					TargetRelease:     target,
 					TargetInstanceIDs: []int{instanceID},
 					SearchDecision: searchDecisionProvenance{
+						SearchCandidateName:   fansubBracketPack,
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
 						SourceHash:            sourceHash,
-						RelaxedDifferences:    []string{"group"},
 						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
@@ -1204,11 +1128,11 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					TargetRelease:     target,
 					TargetInstanceIDs: []int{instanceID},
 					SearchDecision: searchDecisionProvenance{
-						Class:              searchCandidateClassExactSizeFallback,
-						SourceInstanceID:   instanceID,
-						SourceHash:         sourceHash,
-						RelaxedDifferences: []string{"source"},
-						Relaxed:            differencesOf(differenceSource),
+						SearchCandidateName: targetName,
+						Class:               searchCandidateClassExactSizeFallback,
+						SourceInstanceID:    instanceID,
+						SourceHash:          sourceHash,
+						Relaxed:             differencesOf(differenceSource),
 					},
 				})
 				require.NoError(t, err)

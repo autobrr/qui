@@ -4627,10 +4627,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		titleRescueHash := ""
 
 		// getMatchTypeFromTitle builds season and episode keys from the existing
-		// torrent's file names. Record only the bound source whose accepted apply-time
-		// mismatch actually changed that structure, or whose episode map equated two
-		// numbering schemes; another stored hard cause must not grant this bypass by
-		// itself.
+		// torrent's file names. Record only the search source whose stored verdict
+		// relaxed that structure, or whose episode map equated two numbering
+		// schemes.
 		structureRelaxedHash := ""
 
 		// Pre-filter torrents before loading files to reduce downstream work
@@ -4661,7 +4660,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			var sourceSide namedRelease
 			if isSearchSource {
 				// Search may have used the selected files to recover structure and
-				// group provenance. Replay that reading before any release-shape gate.
+				// group provenance. Read the torrent as search did.
 				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, &torrent)
 			} else {
 				sourceSide = s.matcher().readName(torrent.Name)
@@ -4675,122 +4674,38 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				response.seasonPackEpisodeCandidates = true
 			}
 
-			// Reject forbidden pairing: season pack (new) vs single episode (existing).
-			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release, req.FindIndividualEpisodes); reject {
+			// A new season pack never pairs with one local episode here, whatever the
+			// individual episodes setting. Only a Manual match skips this rule.
+			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release, true); reject {
 				continue
 			}
 
-			// Check if releases are related (quick filter). Search-origin ARR aliases
-			// describe ONE existing torrent: the search source whose lookup produced
-			// them. Handing them to every candidate would let the new torrent's own
-			// alias set satisfy the title overlap for unrelated torrents, so the
-			// aliases ride along only for the search-source torrent itself, mirroring
-			// the exact-size relaxation below. Exact-size provenance relaxes only
-			// for the specific torrent whose qBittorrent size supplied the search
-			// evidence. File matching and later safety checks still run.
-			var candidateAliasTitles []string
-			var targetAliasTitles []string
-			var episodeMap *models.EpisodeMap
 			if isSearchSource {
-				candidateAliasTitles = searchDecision.SourceTitles
-				// Announce-origin decisions resolve aliases for the incoming
-				// release, which is the target side here.
-				targetAliasTitles = searchDecision.CandidateTitles
-				episodeMap = searchDecision.EpisodeMap
-			}
-			mappedTarget, mappedSource, mappedEpisode := applyEpisodeMap(targetSide, sourceSide, episodeMap)
-			fallbackInput := searchCandidateInput{
-				Source:                 mappedTarget,
-				Candidate:              mappedSource,
-				SourceTitles:           targetAliasTitles,
-				CandidateTitles:        candidateAliasTitles,
-				EpisodeMap:             episodeMap,
-				FindIndividualEpisodes: req.FindIndividualEpisodes,
-			}
-			if mappedEpisode != "" {
-				// The file names still carry the other scheme, so the name-derived
-				// episode keys cannot line up; file sizes decide at apply.
-				structureRelaxedHash = hashKey
-			}
-			replaysExactDecision := isSearchSource &&
-				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
-					searchDecision.StrictChecksumReplay)
-			if replaysExactDecision {
-				// The listing title and info.name can differ by exactly the
-				// resolved alias, so both alias sets count; only one is ever
-				// non-empty per decision origin.
-				if ok, _ := m.searchCandidateMetadataConsistent(
-					searchDecision.SearchCandidateName,
-					targetSide,
-					searchDecision.RelaxedDifferences,
-					slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles),
-					searchDecision.EpisodeMap,
-					req.FindIndividualEpisodes,
-				); !ok {
+				// Apply keeps the verdict that search stored for this torrent and
+				// does not decide the pair again.
+				if !m.downloadReadsAsListing(searchDecision, targetSide, req.FindIndividualEpisodes) {
+					log.Debug().
+						Str("targetTitle", req.TorrentName).
+						Str("listing", searchDecision.SearchCandidateName).
+						Str("existingTorrent", torrent.Name).
+						Msg("[CROSSSEED] Downloaded torrent does not read as the listing that search judged")
 					continue
 				}
-			}
-			releasesMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
-				fallbackInput.Source,
-				fallbackInput.Candidate,
-				fallbackInput.SourceTitles,
-				fallbackInput.CandidateTitles,
-				req.FindIndividualEpisodes,
-			)
-			replaysStrictChecksum := isSearchSource &&
-				searchDecision.Class == searchCandidateClassStrict &&
-				searchDecision.StrictChecksumReplay
-			if !releasesMatch && replaysStrictChecksum && m.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
-				releasesMatch = true
-				mismatchReason = ""
-			}
-			replaysGroupFallback := isSearchSource &&
-				searchDecision.Class == searchCandidateClassExactSizeFallback &&
-				slices.Contains(searchDecision.RelaxedDifferences, "group")
-			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
-				(searchDecision.Class == searchCandidateClassTitleRescue ||
-					searchDecision.Class == searchCandidateClassWebSourceRelabel)
-			if replaysRelaxedDecision && !m.explicitGroupsAgree(sourceSide, targetSide) {
-				continue
-			}
-			if replaysGroupFallback &&
-				(!m.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
-					!m.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
-				continue
-			}
-			if !releasesMatch {
-				if !isSearchSource {
-					continue
+				// The file names still carry the season or episode that the verdict
+				// relaxed or mapped, so the name-derived keys cannot line up and
+				// file sizes decide.
+				_, _, mappedEpisode := applyEpisodeMap(sourceSide, targetSide, searchDecision.EpisodeMap)
+				if mappedEpisode != "" || searchDecision.Relaxed.has(differenceSeason) || searchDecision.Relaxed.has(differenceEpisode) {
+					structureRelaxedHash = hashKey
 				}
-
-				isTitleRescueSource := searchDecision.Class == searchCandidateClassTitleRescue &&
-					mismatchReason == titleMismatchReason
-				switch {
-				case isTitleRescueSource:
-					if ok, _ := m.releasesMatchExceptTitleWithReason(sourceSide, targetSide, req.FindIndividualEpisodes); !ok {
-						continue
-					}
+				if searchDecision.Class == searchCandidateClassTitleRescue {
 					titleRescueHash = hashKey
-				case searchDecision.Class == searchCandidateClassExactSizeFallback:
-					if !searchRelaxationAuthorizesCurrentReason(searchDecision.Relaxed, mismatchReason) {
-						continue
-					}
-					if _, ok, _ := m.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
-						continue
-					}
-					if searchRelaxedStructure(mismatchReason) {
-						structureRelaxedHash = hashKey
-					}
-				default:
-					continue
 				}
-				log.Debug().
-					Str("targetTitle", req.TorrentName).
-					Str("existingTorrent", torrent.Name).
-					Str("sourceHash", hashKey).
-					Str("applyMismatchReason", mismatchReason).
-					Strs("relaxedDifferences", searchDecision.RelaxedDifferences).
-					Msg("[CROSSSEED] Search-origin decision relaxed release prefilter")
+			} else if !m.matchVerdict(sourceSide, targetSide, matchEvidence{}, matchPolicy{IndividualEpisodes: req.FindIndividualEpisodes}).Matched {
+				// Each other local torrent gets a new verdict. Apply has no sizes
+				// for it, so exact size, title rescue, and the web source relabel do
+				// not admit it.
+				continue
 			}
 
 			if _, exists := torrentByHash[hashKey]; exists {
@@ -4924,15 +4839,15 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
 		torrentHash = meta.HashV2
 	}
-	// Cached search decisions replay search's file-derived reading even when the
-	// raw name already parses as TV; ordinary/manual apply keeps its raw TV
-	// identity. Non-TV names still need file-derived structure in either path.
+	// With a cached search decision, apply reads the files as search did, also
+	// when the raw name already parses as TV. Ordinary and Manual apply keep the
+	// raw TV identity. Non-TV names still need file-derived structure in either path.
 	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
 	sourceRelease := sourceView.release
 
-	// Carry private search provenance into candidate discovery. Source identity
-	// and the strict rejection that was overridden constrain the release-prefilter
-	// relaxation; existing file and apply safety checks still run normally.
+	// Carry the private search decision into candidate discovery. Apply keeps
+	// its verdict only for the torrent that search compared. The file checks and
+	// the apply safety checks still run.
 	findReq := &FindCandidatesRequest{
 		TorrentName:            meta.Name,
 		TargetRelease:          sourceView,

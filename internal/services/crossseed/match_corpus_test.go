@@ -46,7 +46,7 @@ type matchPath string
 const (
 	pathSearch       matchPath = "search classifier"
 	pathRetry        matchPath = "retry step"
-	pathApply        matchPath = "apply replay"
+	pathApply        matchPath = "apply"
 	pathSeasonPack   matchPath = "season pack check"
 	pathLocalMatches matchPath = "Local matches"
 	pathPrefilter    matchPath = "content prefilter"
@@ -95,11 +95,15 @@ type corpusRow struct {
 	candidateFiles qbt.TorrentFiles
 	// titles are the Sonarr alternate titles of the show. Only the paths that look
 	// the show up hold them.
-	titles      []string
-	episodeMap  *models.EpisodeMap
-	rescue      bool
-	want        corpusVerdict
-	differences map[matchPath]corpusDifference
+	titles     []string
+	episodeMap *models.EpisodeMap
+	rescue     bool
+	// searchSource seeds a second local torrent for apply: the one that search
+	// compared, a local copy of the candidate. Apply keeps the stored verdict
+	// for it, and the source gets a new Match verdict.
+	searchSource string
+	want         corpusVerdict
+	differences  map[matchPath]corpusDifference
 }
 
 const (
@@ -179,6 +183,7 @@ var corpusRows = []corpusRow{
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
+		searchSource:  "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		want:          corpusMatch,
 	},
 	{
@@ -592,7 +597,6 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
 			pathWebhook: allowedDifference(corpusMatch, "IRC (the chat that announces releases to autobrr) rounds sizes, so the webhook check cannot reach the exact-size checksum relaxation that apply uses. So it accepts a CRC tag on one name, and apply checks the pair again with the downloaded torrent."),
-			pathApply:   allowedDifference(corpusMatch, "Apply compares the pair in reverse, with the new torrent as the source, and the strict CRC rule accepts a CRC tag on the local name. The torrent file check after the download has the final say."),
 			pathDedup:   knownDifference(corpusMatch, 3037, reasonDirectionalCRC),
 		},
 	},
@@ -625,7 +629,6 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S02.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP", "Kaiju.Squad.S02E%02d.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathApply:        knownDifference(corpusNoMatch, 3037, "Apply replays the search decision, and its release prefilter has no branch for the web source relabel class."),
 			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
 			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
 			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
@@ -684,7 +687,9 @@ var corpusRows = []corpusRow{
 		candidate:     "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize,
-		want:          corpusNoMatch,
+		// The new Match verdict has no sizes, so exact size does not admit the source.
+		searchSource: "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
+		want:         corpusNoMatch,
 		differences: map[matchPath]corpusDifference{
 			pathLocalMatches: knownDifference(corpusMatch, 3037, "Local matches rescues a title at an exact size even when the user turned title rescue off."),
 		},
@@ -718,7 +723,7 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: packFromEpisodes(map[matchPath]corpusDifference{
-			pathApply: knownDifference(corpusNoMatch, 3037, "Search rejects a pack against one episode, so apply holds no decision and no Sonarr alternate titles for this pair."),
+			pathApply: allowedDifference(corpusNoMatch, "Missing input: Sonarr alternate titles. Search rejects a pack against one episode, so apply holds no stored verdict and no alternate titles, and the apply hint cannot pair the two titles."),
 		}),
 	},
 	{
@@ -912,9 +917,10 @@ func TestMatchCorpus(t *testing.T) {
 }
 
 const (
-	corpusInstanceID    = 1
-	corpusSourceHash    = "c0a5000000000000000000000000000000000001"
-	corpusCandidateHash = "c0a5000000000000000000000000000000000002"
+	corpusInstanceID       = 1
+	corpusSourceHash       = "c0a5000000000000000000000000000000000001"
+	corpusCandidateHash    = "c0a5000000000000000000000000000000000002"
+	corpusSearchSourceHash = "c0a5000000000000000000000000000000000003"
 )
 
 var corpusInstance = &models.Instance{ID: corpusInstanceID, Name: "main"}
@@ -1004,15 +1010,30 @@ func retryCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusVerdictOf(usable(jackett.SearchResult{Title: row.candidate, Size: row.candidateSize}))
 }
 
-// applyCorpusVerdict replays the search decision when search admitted the pair.
+// applyCorpusVerdict keeps the search verdict when search admitted the pair.
 // For a season pack announce, apply also reports the season pack hint: the
 // library holds an episode of the same show, so qui tries to build the pack.
 func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(false)
+	input := row.searchInput(t, svc)
+	boundHash := corpusSourceHash
+	if row.searchSource != "" {
+		compared := corpusTorrent(corpusSearchSourceHash, "compared", row.searchSource, row.candidateSize)
+		comparedFiles := corpusFiles(row.searchSource, row.candidateSize, row.candidateFiles)
+		svc = manualMatchTestService(corpusInstance, []qbt.Torrent{row.sourceTorrent(), compared}, map[string]qbt.TorrentFiles{
+			corpusSourceHash:       corpusFiles(row.source, row.sourceSize, row.sourceFiles),
+			corpusSearchSourceHash: comparedFiles,
+		})
+		input.Source, _ = svc.readSearchSource(t.Context(), &compared, comparedFiles)
+		input.SourceSize = row.candidateSize
+		boundHash = corpusSearchSourceHash
+	}
 	req := &FindCandidatesRequest{TorrentName: row.candidate, TargetInstanceIDs: []int{corpusInstanceID}}
-	if decision := svc.matcher().classifySearchCandidate(row.searchInput(t, svc)); decision.Accepted {
-		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, corpusSourceHash)
+	decision := svc.matcher().classifySearchCandidate(input)
+	require.True(t, decision.Accepted || row.searchSource == "", "search must admit the search source: %s", decision.RejectReason)
+	if decision.Accepted {
+		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, boundHash)
 	}
 	// Read the target from the downloaded files, as processCrossSeedCandidate does.
 	req.TargetRelease = svc.readApplyTarget(row.candidate,

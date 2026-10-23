@@ -122,6 +122,5 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceHash, captured.SearchDecision.SourceHash)
 	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
-	require.Equal(t, []string{"codec"}, captured.SearchDecision.RelaxedDifferences)
 	require.Equal(t, candidateName, captured.SearchDecision.SearchCandidateName)
 }

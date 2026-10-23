@@ -268,9 +268,12 @@ func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
 				SearchDecision: searchDecisionProvenance{
-					Class:            tt.decisionClass,
-					SourceInstanceID: instanceID,
-					SourceHash:       existingHash,
+					Class: tt.decisionClass,
+					// Search stored a strict verdict for a listing that names the
+					// local group.
+					SearchCandidateName: existingName,
+					SourceInstanceID:    instanceID,
+					SourceHash:          existingHash,
 				},
 			})
 			require.NoError(t, err)
@@ -311,9 +314,9 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
 			Class:                 searchCandidateClassExactSizeFallback,
+			SearchCandidateName:   splitName,
 			SourceInstanceID:      instanceID,
 			SourceHash:            existingHash,
-			RelaxedDifferences:    []string{"group"},
 			Relaxed:               differencesOf(differenceGroup),
 			GroupFallbackIdentity: "kiri",
 		},
@@ -692,7 +695,6 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			decision: searchDecisionProvenance{
 				Class:               searchCandidateClassExactSizeFallback,
 				SearchCandidateName: "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
-				RelaxedDifferences:  []string{"source"},
 				Relaxed:             differencesOf(differenceSource),
 			},
 		},

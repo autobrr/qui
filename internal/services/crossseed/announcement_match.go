@@ -90,7 +90,10 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	decision := s.matcher().classifySearchCandidate(input)
 	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
 		s.matcher().hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
-		relaxed, _ := s.matcher().withRelaxedDifferenceNeutralized(input, "checksum")
+		withSum := *input.Candidate.release
+		withSum.Sum = input.Source.release.Sum
+		relaxed := input
+		relaxed.Candidate.release = &withSum
 		decision = s.matcher().classifySearchCandidate(relaxed)
 	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
