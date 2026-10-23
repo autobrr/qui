@@ -29,7 +29,7 @@ jobs:
           # Disable rename detection so moves out of these paths still trigger tests.
           # Include shared dependencies and non-Go fixtures without a second package list.
           changed=$(git diff --name-only --no-renames "origin/$BASE_REF"...HEAD -- \
-            '.github/workflows/lint.yml' 'go.mod' 'go.sum' \
+            '.github/workflows/lint.yml' '.gitattributes' 'go.mod' 'go.sum' \
             'cmd' 'internal' 'pkg')
           if [ -n "$changed" ]; then
             echo 'required=true' >> "$GITHUB_OUTPUT"
