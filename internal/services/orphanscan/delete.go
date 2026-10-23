@@ -78,6 +78,9 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, protected *pro
 	if info.IsDir {
 		return 0, fmt.Errorf("refusing to delete directory as file: %s", target)
 	}
+	if !info.Mode.IsRegular() {
+		return 0, fmt.Errorf("refusing to delete non-regular file: %s", target)
+	}
 
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -172,7 +175,7 @@ func safeDeleteTarget(ctx context.Context, scanRoot, target string, protected *p
 }
 
 func safeDeleteSymlink(ctx context.Context, target string, protected *protectedPaths, backend fsops.Backend) (deleteDisposition, error) {
-	if protected.torrentFile(target) {
+	if protected.torrentFile(target) || protected.torrentFileIn(target) {
 		return deleteDispositionSkippedInUse, nil
 	}
 	if err := backend.Remove(ctx, target, fsops.RemoveOptions{}); err != nil {

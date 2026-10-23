@@ -30,9 +30,6 @@ const (
 	injectModeReflink  = "reflink"
 	injectModeRegular  = "regular"
 
-	qbitBoolTrue  = "true"
-	qbitBoolFalse = "false"
-
 	qbitContentLayoutOriginal    = "Original"
 	qbitContentLayoutNoSubfolder = "NoSubfolder"
 )
@@ -44,23 +41,17 @@ var errSettleQueueFull = errors.New("recheck and resume queue full, manual inter
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
-	syncManager               TorrentManager
-	settler                   *crossseed.Settler
+	syncManager               TorrentPathAligner
+	adder                     *crossseed.Adder
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
 	backendPool               *fsops.Pool
-	runExternalProgram        func(ctx context.Context, instanceID int, hashes []string)
 }
 
 // JackettDownloader is the interface for downloading torrent files.
 type JackettDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-}
-
-// TorrentAdder adds torrents to qBittorrent.
-type TorrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 }
 
 // TorrentPathAligner renames an injected torrent's internal folder/file names to match the
@@ -69,13 +60,6 @@ type TorrentPathAligner interface {
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-}
-
-// TorrentManager is the combined capability the Injector depends on: adding torrents and aligning
-// their content paths. Callers can depend on the narrower TorrentAdder/TorrentPathAligner instead.
-type TorrentManager interface {
-	TorrentAdder
-	TorrentPathAligner
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -94,36 +78,22 @@ type trackerCustomizationProvider interface {
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
-	syncManager TorrentManager,
-	settler *crossseed.Settler,
+	syncManager TorrentPathAligner,
+	adder *crossseed.Adder,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
 	backendPool *fsops.Pool,
-	runExternalProgram func(ctx context.Context, instanceID int, hashes []string),
 ) *Injector {
 	return &Injector{
 		jackettService:            jackettService,
 		syncManager:               syncManager,
-		settler:                   settler,
+		adder:                     adder,
 		torrentChecker:            torrentChecker,
 		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		backendPool:               backendPool,
-		runExternalProgram:        runExternalProgram,
 	}
-}
-
-// TorrentExists checks if a torrent with the given hash already exists in qBittorrent.
-func (i *Injector) TorrentExists(ctx context.Context, instanceID int, hash string) (bool, error) {
-	if i.torrentChecker == nil {
-		return false, nil
-	}
-	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
-	if err != nil {
-		return false, fmt.Errorf("check torrent exists: %w", err)
-	}
-	return exists, nil
 }
 
 func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes []string) (bool, error) {
@@ -144,6 +114,9 @@ func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes 
 type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.
 	InstanceID int
+
+	// Check is the Pre-add check that cleared the torrent for InstanceID.
+	Check crossseed.PreAddCheck
 
 	// TorrentBytes contains the .torrent file contents.
 	TorrentBytes []byte
@@ -210,7 +183,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	if i.instanceStore == nil {
 		return result, errors.New("instance store is nil")
 	}
-	if i.syncManager == nil {
+	if i.adder == nil {
 		return result, errors.New("torrent adder is nil")
 	}
 
@@ -238,10 +211,8 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
-	addPolicy := addPolicyForInjectRequest(req)
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
-	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
-	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
+	linkTree := isLinkTreeMode(addMode)
 
 	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
 	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
@@ -255,100 +226,73 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.
-	if partialLinkTree && !req.DownloadMissingFiles {
+	if linkTree && hasUnmatchedFiles && !req.DownloadMissingFiles {
 		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
 		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
 			len(req.MatchResult.UnmatchedTorrentFiles))
 	}
 
-	options := i.buildAddOptions(req, savePath)
+	// Keep qBittorrent's on-disk layout aligned with the existing files/hardlink tree, even if the
+	// instance default content layout is "Create subfolder".
+	placement := crossseed.AddPlacement{
+		SavePath:      savePath,
+		Category:      req.Category,
+		Tags:          req.Tags,
+		ContentLayout: qbitContentLayoutOriginal,
+	}
 	// A foldered torrent matched to a loose on-disk file has no folder to rename the root to;
 	// NoSubfolder makes qBittorrent strip the root from every stored path so the (rootless-style)
 	// plan lines up with the file where it actually lives.
 	if regularFullMatch && alignPlan.stripRoot {
-		options["contentLayout"] = qbitContentLayoutNoSubfolder
-	}
-	// Skip the on-add hash check for full matches (the data is already verified by the on-disk
-	// files we matched). Alignment adds MUST keep skip_checking too: qBittorrent blocks file/folder
-	// rename operations while a torrent is being verified, so letting it check the pre-rename paths
-	// would stall the renames. The manual recheck after alignment does the real verification.
-	if !hasUnmatchedFiles {
-		options["skip_checking"] = qbitBoolTrue
+		placement.ContentLayout = qbitContentLayoutNoSubfolder
 	}
 
-	// Force paused for partial link tree injections (recheck before qBit uses the incomplete
-	// tree) and for alignment injections (rename the paths before qBit acts on the wrong ones).
-	if partialLinkTree || alignmentNeeded {
-		options["paused"] = qbitBoolTrue
-		options["stopped"] = qbitBoolTrue
+	var afterAdd func(context.Context, []string) (string, bool)
+	if alignmentNeeded {
+		afterAdd = func(context.Context, []string) (string, bool) {
+			return "", i.alignContentPaths(req, alignPlan)
+		}
 	}
 
-	applyAddPolicy(options, addPolicy)
-
-	// Add the torrent to qBittorrent
-	if _, err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
-		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
-		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
-		return result, fmt.Errorf("add torrent: %w", err)
-	}
-
-	result.TorrentHash = req.ParsedTorrent.InfoHash
+	added := i.adder.Add(ctx, crossseed.AddRequest{
+		Check:   req.Check,
+		Torrent: req.TorrentBytes,
+		Facts: crossseed.AddFacts{
+			LinkTree:       linkTree,
+			PendingFiles:   hasUnmatchedFiles,
+			Align:          alignmentNeeded,
+			DiscMarker:     discMarker(req.ParsedTorrent),
+			LinkedPaths:    linkedTorrentPaths(req, addMode),
+			SkipAutoResume: req.StartPaused,
+			StartRunning:   !req.StartPaused,
+			DirScan:        true,
+		},
+		Placement: placement,
+		AfterAdd:  afterAdd,
+	})
 
 	switch {
-	case partialLinkTree:
-		if err := i.triggerRecheckForPartialLinkTree(req, addMode); err != nil {
-			result.ErrorMessage = "torrent added paused: " + err.Error()
-			return result, fmt.Errorf("partial link tree recheck: %w", err)
-		}
-	case alignmentNeeded:
-		// The torrent was added force-paused. If the paths could not be aligned to the on-disk
-		// files, report failure so the run surfaces it instead of silently stranding a paused,
-		// mismatched torrent that will never recheck to 100%.
-		if !i.alignAndRecheck(ctx, req, alignPlan) {
-			result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
-			return result, nil
-		}
+	case added.Outcome == crossseed.AddRefused:
+		i.rollbackLinkTree(ctx, linkCreated, savePath, backend)
+		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", added.Err)
+		return result, fmt.Errorf("add torrent: %w", added.Err)
+	case added.Outcome == crossseed.AddLeftPaused:
+		// If the paths could not be aligned to the on-disk files, report failure so the run
+		// surfaces it instead of silently stranding a paused, mismatched torrent that will
+		// never recheck to 100%.
+		result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
+	case added.Settled.QueueFull && added.Paused:
+		// Nothing rechecks or resumes the paused torrent. A running add downloads without Settle.
+		result.ErrorMessage = "torrent added paused: " + errSettleQueueFull.Error()
 	default:
-		// A full settle queue strands only an add that the policy force-paused (a disc
-		// layout). Other regular adds run, so the settle module logs it and the injection continues.
-		if err := i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck); err != nil && addPolicy.ForcePaused {
-			result.ErrorMessage = "torrent added paused: " + err.Error()
-			return result, nil
-		}
+		result.Success = true
 	}
-
-	result.Success = true
-	if i.runExternalProgram != nil {
-		hashes := []string{result.TorrentHash}
-		if req.ParsedTorrent.InfoHashV2 != "" {
-			hashes = append(hashes, req.ParsedTorrent.InfoHashV2)
-		}
-		i.runExternalProgram(ctx, req.InstanceID, hashes)
-	}
+	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
 }
 
 func isLinkTreeMode(mode string) bool {
 	return mode == injectModeHardlink || mode == injectModeReflink
-}
-
-// triggerRecheckForPartialLinkTree settles a partial link tree add. The torrent
-// was added force-paused so qBittorrent does not use the incomplete tree before
-// its recheck. Unless the user asked to start paused, it resumes after the
-// recheck. Returns an error when the torrent would stay paused with no
-// automatic recheck or resume.
-func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest, addMode string) error {
-	outcome := i.settler.Settle(context.Background(), crossseed.AddedTorrent{
-		InstanceID:     req.InstanceID,
-		Hashes:         []string{req.ParsedTorrent.InfoHash},
-		LinkedPaths:    linkedTorrentPaths(req, addMode),
-		Gate:           crossseed.GateAfterRecheck,
-		SkipAutoResume: req.StartPaused,
-	})
-	if outcome.QueueFull {
-		return errSettleQueueFull
-	}
-	return nil
 }
 
 // linkedTorrentPaths returns the torrent paths of a hardlink add's matched files.
@@ -363,27 +307,6 @@ func linkedTorrentPaths(req *InjectRequest, addMode string) map[string]struct{} 
 		linked[pair.TorrentFile.Path] = struct{}{}
 	}
 	return linked
-}
-
-// triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
-// full-recheck matches after add. Unless the request asked to stay paused, the
-// torrent resumes once nothing is left. Returns an error when the torrent would
-// stay paused with no automatic recheck or resume, so callers that force-paused
-// the torrent (alignment) can surface the failure instead of leaving it stranded.
-func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) error {
-	if !needsRecheck {
-		return nil
-	}
-	outcome := i.settler.Settle(context.Background(), crossseed.AddedTorrent{
-		InstanceID:     req.InstanceID,
-		Hashes:         []string{req.ParsedTorrent.InfoHash},
-		Gate:           crossseed.GateComplete,
-		SkipAutoResume: req.StartPaused,
-	})
-	if outcome.QueueFull {
-		return errSettleQueueFull
-	}
-	return nil
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {
@@ -539,56 +462,13 @@ func applyPathMapping(savePath, searcheePath, qbitPrefix string) string {
 	return qbitPrefix
 }
 
-// buildAddOptions builds the options map for adding a torrent.
-func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[string]string {
-	options := make(map[string]string)
-
-	// Disable autoTMM to use our explicit save path
-	options["autoTMM"] = qbitBoolFalse
-
-	// Keep qBittorrent's on-disk layout aligned with the existing files/hardlink tree, even if the
-	// instance default content layout is "Create subfolder".
-	options["contentLayout"] = qbitContentLayoutOriginal
-	// Backwards compatibility for older qBittorrent versions (<4.3.2).
-	options["root_folder"] = qbitBoolFalse
-
-	// Set the save path
-	options["savepath"] = savePath
-
-	// Set category if provided
-	if req.Category != "" {
-		options["category"] = req.Category
+// discMarker returns the disc layout folder (BDMV, VIDEO_TS) of the torrent, or empty.
+func discMarker(parsed *ParsedTorrent) string {
+	files := make(qbt.TorrentFiles, 0, len(parsed.Files))
+	for _, f := range parsed.Files {
+		files = append(files, qbt.TorrentFile{Name: f.Path, Size: f.Size})
 	}
-
-	// Set tags if provided
-	if len(req.Tags) > 0 {
-		options["tags"] = strings.Join(req.Tags, ",")
-	}
-
-	// Set paused state
-	if req.StartPaused {
-		options["paused"] = qbitBoolTrue
-		options["stopped"] = qbitBoolTrue
-	}
-
-	crossseed.KeepAtSavePath(options)
-	return options
-}
-
-func addPolicyForInjectRequest(req *InjectRequest) crossseed.AddPolicy {
-	if req == nil || req.ParsedTorrent == nil {
-		return crossseed.AddPolicy{}
-	}
-
-	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
-	for _, f := range req.ParsedTorrent.Files {
-		files = append(files, qbt.TorrentFile{
-			Name: f.Path,
-			Size: f.Size,
-		})
-	}
-
-	return crossseed.PolicyForSourceFiles(files)
+	return crossseed.PolicyForSourceFiles(files).DiscMarker
 }
 
 func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, backend fsops.Backend, req *InjectRequest) (*hardlinktree.TreePlan, string, *fsops.TreeCreateResult, error) {
@@ -827,8 +707,4 @@ func buildLinkPresetDir(d fsops.PathDialect, baseDir string, instance *models.In
 	default: // "flat" or unknown
 		return baseDir
 	}
-}
-
-func applyAddPolicy(options map[string]string, policy crossseed.AddPolicy) {
-	policy.ApplyToAddOptions(options)
 }

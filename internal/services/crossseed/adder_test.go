@@ -317,6 +317,62 @@ func TestAdderAdd(t *testing.T) {
 			wantGate:    settle(GateThreshold),
 		},
 		{
+			name:        "dir scan complete add starts at once",
+			facts:       AddFacts{DirScan: true, StartRunning: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(false, true),
+		},
+		{
+			name:        "dir scan complete add with start paused stays paused",
+			facts:       AddFacts{DirScan: true, SkipAutoResume: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantMessage: " - auto-resume skipped per settings",
+		},
+		{
+			name:        "dir scan pending files are checked on add and resume at 100%",
+			facts:       AddFacts{DirScan: true, PendingFiles: true, StartRunning: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(false, false),
+			wantGate:    settle(GateComplete),
+		},
+		{
+			name:        "dir scan alignment is added paused and resumes at 100%",
+			facts:       AddFacts{DirScan: true, Align: true, StartRunning: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateComplete),
+		},
+		{
+			name:        "dir scan disc layout waits for 100%",
+			facts:       AddFacts{DirScan: true, DiscMarker: "BDMV", StartRunning: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateComplete),
+			wantMessage: " - disc layout detected (BDMV), full recheck required",
+		},
+		{
+			name:        "dir scan complete link tree starts at once",
+			facts:       AddFacts{DirScan: true, LinkTree: true, StartRunning: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(false, true),
+		},
+		{
+			name:        "dir scan link tree with pending files resumes after its recheck",
+			facts:       AddFacts{DirScan: true, LinkTree: true, PendingFiles: true, StartRunning: true, LinkedPaths: map[string]struct{}{"Movie/movie.mkv": {}}},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, false),
+			wantGate:    settle(GateAfterRecheck),
+		},
+		{
+			name:        "dir scan link tree of a disc layout with pending files resumes after its recheck",
+			facts:       AddFacts{DirScan: true, LinkTree: true, PendingFiles: true, DiscMarker: "BDMV", StartRunning: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, false),
+			wantGate:    settle(GateAfterRecheck),
+			wantMessage: " - disc layout detected (BDMV), full recheck required",
+		},
+		{
 			name:          "failed alignment pauses a running add",
 			facts:         AddFacts{StartRunning: true, Align: true},
 			afterAddFails: true,
@@ -357,6 +413,7 @@ func TestAdderAdd(t *testing.T) {
 
 			require.Equal(t, tt.wantMessage, result.Message)
 			require.Equal(t, []map[string]string{tt.wantOptions}, rig.sync.added)
+			require.Equal(t, tt.wantOptions["paused"] == "true", result.Paused)
 			require.Equal(t, tt.wantActions, rig.sync.actions)
 			if tt.wantGate == nil {
 				require.Nil(t, queued)

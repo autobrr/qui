@@ -783,7 +783,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedBlocklistStore, settler, crossSeedService.RunExternalProgram)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
