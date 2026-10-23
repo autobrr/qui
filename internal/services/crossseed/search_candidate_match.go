@@ -51,12 +51,13 @@ type searchCandidateInput struct {
 	// EpisodeMap is the Sonarr triple for the release qui looked up (the search
 	// source or the announce). It equates a seasonless episode with its seasoned
 	// counterpart on the other side; see applyEpisodeMap.
-	EpisodeMap             *models.EpisodeMap
-	SourceSize             int64
-	CandidateSize          int64
-	TolerancePercent       float64
-	FindIndividualEpisodes bool
-	RescueTitleMismatches  bool
+	EpisodeMap                 *models.EpisodeMap
+	SourceSize                 int64
+	CandidateSize              int64
+	TolerancePercent           float64
+	FindIndividualEpisodes     bool
+	RescueTitleMismatches      bool
+	AllowMissingCandidateGroup bool
 }
 
 // searchCandidateDecision records admission provenance, including which strict
@@ -78,9 +79,11 @@ type searchCandidateDecision struct {
 	RejectReason          string
 	StrictMismatchReason  string
 	RelaxedDifferences    []string
-	Score                 float64
-	MatchReason           string
-	SizeRejected          bool
+	// Relaxed is the set of differences that the exact size class accepted.
+	Relaxed      matchDifferences
+	Score        float64
+	MatchReason  string
+	SizeRejected bool
 }
 
 // searchDecisionProvenance is the private, replayable part of a search
@@ -92,11 +95,13 @@ type searchDecisionProvenance struct {
 	// not relax a mismatch and the result keeps strict ranking.
 	StrictChecksumReplay bool
 	// SearchCandidateName lets apply reject new metadata in the downloaded name.
-	SearchCandidateName   string
-	SourceInstanceID      int
-	SourceHash            string
-	StrictMismatchReason  string
-	RelaxedDifferences    []string
+	SearchCandidateName string
+	SourceInstanceID    int
+	SourceHash          string
+	RelaxedDifferences  []string
+	// Relaxed is the set of differences that the exact size class accepted.
+	// Verification reads it.
+	Relaxed               matchDifferences
 	GroupFallbackIdentity string
 	SourceTitles          []string
 	CandidateTitles       []string
@@ -108,8 +113,8 @@ func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 		Class:                 decision.Class,
 		StrictChecksumReplay:  decision.StrictChecksumReplay,
 		SearchCandidateName:   decision.SearchCandidateName,
-		StrictMismatchReason:  decision.StrictMismatchReason,
 		RelaxedDifferences:    slices.Clone(decision.RelaxedDifferences),
+		Relaxed:               decision.Relaxed,
 		GroupFallbackIdentity: decision.GroupFallbackIdentity,
 		SourceTitles:          slices.Clone(decision.SourceTitles),
 		CandidateTitles:       slices.Clone(decision.CandidateTitles),
@@ -137,7 +142,7 @@ func (provenance searchDecisionProvenance) admitted() bool {
 
 func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
 	return decision.Class == searchCandidateClassTitleRescue ||
-		searchRelaxationRequiresVerification(decision.StrictMismatchReason)
+		decision.Relaxed.needsVerification()
 }
 
 // Score bands mirror the explicit sorter: positive size evidence outranks the
@@ -159,9 +164,10 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		CandidateTitles: input.CandidateTitles,
 		EpisodeMap:      input.EpisodeMap,
 	}, matchPolicy{
-		TitleRescue:          input.RescueTitleMismatches,
-		IndividualEpisodes:   input.FindIndividualEpisodes,
-		SizeTolerancePercent: input.TolerancePercent,
+		TitleRescue:                input.RescueTitleMismatches,
+		IndividualEpisodes:         input.FindIndividualEpisodes,
+		SizeTolerancePercent:       input.TolerancePercent,
+		AllowMissingCandidateGroup: input.AllowMissingCandidateGroup,
 	})
 	decision := searchCandidateDecision{
 		Class:                 searchCandidateClassRejected,
@@ -175,6 +181,7 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	}
 	if verdict.Class == searchCandidateClassExactSizeFallback {
 		decision.RelaxedDifferences = verdict.relaxedFields()
+		decision.Relaxed = verdict.Relaxed
 	}
 	if !verdict.Matched {
 		return decision
@@ -329,6 +336,8 @@ func (evidence searchSizeEvidence) matchReason() string {
 
 // validateExactSizeSearchIdentity enforces identity attributes that exact size
 // must never replace. It returns the first hard mismatch for search diagnostics.
+// With AllowMissingCandidateGroup, a candidate that carries no group and no
+// site passes the group check.
 func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bool, string) {
 	source := input.Source.release
 	candidate := input.Candidate.release
@@ -358,8 +367,8 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	case m.dashSuffixGroupSpellsSite(input.Candidate, input.Source):
 		sourceIdentity = normalizer.Normalize(candidate.Site)
 	}
-	if sourceIdentity == "" || candidateIdentity == "" ||
-		(sourceIdentity != candidateIdentity &&
+	if sourceIdentity == "" || (candidateIdentity == "" && !input.AllowMissingCandidateGroup) ||
+		(candidateIdentity != "" && sourceIdentity != candidateIdentity &&
 			!m.spaceJoinedGroupSite(source, candidate) &&
 			!m.crossFieldGroupSiteFallback(input.Source, input.Candidate)) {
 		return false, "group/site mismatch"
@@ -617,11 +626,10 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	return "", false
 }
 
-// searchRelaxedStructure reports whether the strict rejection a search decision
-// overrode was the season or episode number itself. Equal reported sizes cannot
-// confirm which episode a torrent holds, so those pairings must be hashed before
-// they seed. It keys on the causal rejection because that is the field which
-// justified admission and determines the verification policy.
+// searchRelaxedStructure reports whether the strict rejection that apply sees
+// is the season or episode number itself. Equal reported sizes cannot confirm
+// which episode a torrent holds, so those pairings must be hashed before they
+// seed.
 func searchRelaxedStructure(strictMismatchReason string) bool {
 	switch normalizedMismatchReason(strictMismatchReason) {
 	case seasonMismatchReason, episodeMismatchReason:
@@ -630,10 +638,10 @@ func searchRelaxedStructure(strictMismatchReason string) bool {
 	return false
 }
 
-// searchRelaxationRequiresVerification reports whether the strict rejection a
-// search decision overrode was one that equal reported sizes cannot settle: the
-// season or episode number, or a group identity admitted on cross-field
-// evidence. Those pairings must be hashed before they seed.
+// searchRelaxationRequiresVerification reports whether the strict rejection
+// that apply sees is one that equal reported sizes cannot settle: the season or
+// episode number, or a group identity admitted on cross-field evidence. Those
+// pairings must be hashed before they seed.
 func searchRelaxationRequiresVerification(strictMismatchReason string) bool {
 	if searchRelaxedStructure(strictMismatchReason) {
 		return true
@@ -660,7 +668,7 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	}
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
-		searchRelaxationRequiresVerification(req.SearchDecision.StrictMismatchReason)
+		req.SearchDecision.Relaxed.needsVerification()
 }
 
 // searchRelaxationAuthorizesCurrentReason reports whether apply may spend a
@@ -670,10 +678,10 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 // a compatible verification class: a soft rejection must never authorize a
 // hard one without a hash check. A stored hard rejection may authorize a
 // recorded soft difference because that pairing is still forced through the
-// full verification the stored reason requires.
-func searchRelaxationAuthorizesCurrentReason(storedReason, currentReason string) bool {
+// full verification the stored differences require.
+func searchRelaxationAuthorizesCurrentReason(stored matchDifferences, currentReason string) bool {
 	if searchRelaxationRequiresVerification(currentReason) {
-		return searchRelaxationRequiresVerification(storedReason)
+		return stored.needsVerification()
 	}
 	return true
 }

@@ -96,6 +96,13 @@ func differencesOf(differences ...matchDifference) matchDifferences {
 	return set
 }
 
+// needsVerification reports whether the set holds a difference that equal
+// reported sizes cannot settle: the season or episode number, or one group
+// that is split across Group and Site.
+func (set matchDifferences) needsVerification() bool {
+	return set&differencesOf(differenceSeason, differenceEpisode, differenceGroup) != 0
+}
+
 func (set matchDifferences) has(difference matchDifference) bool {
 	return set&(1<<difference) != 0
 }
@@ -168,6 +175,9 @@ type matchPolicy struct {
 	TitleRescue          bool
 	IndividualEpisodes   bool
 	SizeTolerancePercent float64
+	// AllowMissingCandidateGroup lets a group or site that only the source carries
+	// pass. Only the unknown-size preflight of the webhook check sets it.
+	AllowMissingCandidateGroup bool
 }
 
 // matchVerdict is the decision of one Match path on a pair of Read releases
@@ -226,6 +236,9 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 		isTVSeasonPack(source.release) && isTVEpisode(candidate.release)
 
 	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes, false)
+	if policy.AllowMissingCandidateGroup {
+		strict.differences = strict.differences.without(differenceGroupMissing)
+	}
 	verdict.Strict = strict
 	verdict.OneSidedChecksum = exactSize && m.hasOneSidedChecksum(source.release, candidate.release)
 
@@ -256,10 +269,11 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 			verdict.ChecksumOnly = true
 		} else {
 			if ok, reason := m.validateExactSizeSearchIdentity(searchCandidateInput{
-				Source:          source,
-				Candidate:       candidate,
-				SourceTitles:    evidence.SourceTitles,
-				CandidateTitles: evidence.CandidateTitles,
+				Source:                     source,
+				Candidate:                  candidate,
+				SourceTitles:               evidence.SourceTitles,
+				CandidateTitles:            evidence.CandidateTitles,
+				AllowMissingCandidateGroup: policy.AllowMissingCandidateGroup,
 			}); !ok {
 				verdict.RejectReason = reason
 				return verdict
@@ -334,13 +348,16 @@ func (m matcher) exactSizeRelaxes(difference matchDifference, source, candidate 
 	case differenceGroup:
 		return m.normalizedGroupSiteIdentity(source.release) != m.normalizedGroupSiteIdentity(candidate.release) &&
 			m.crossFieldGroupSiteFallback(source, candidate)
-	// validateExactSizeSearchIdentity already rejects two CRC tags that conflict.
-	case differenceChecksumMissing,
-		differenceSource, differenceCollection, differenceCodec, differenceHDR, differenceBitDepth,
-		differenceCut, differenceEdition, differenceLanguage, differenceVersion, differenceDisc,
-		differencePlatform, differenceArchitecture, differenceVariant:
-		return true
 	default:
-		return false
+		return encodeDifferences.has(difference)
 	}
 }
+
+// encodeDifferences describe the encode, not the content, so equal reported
+// sizes may stand in for them. validateExactSizeSearchIdentity already rejects
+// two CRC tags that conflict.
+var encodeDifferences = differencesOf(
+	differenceChecksumMissing, differenceSource, differenceCollection, differenceCodec, differenceHDR,
+	differenceBitDepth, differenceCut, differenceEdition, differenceLanguage, differenceVersion,
+	differenceDisc, differencePlatform, differenceArchitecture, differenceVariant,
+)

@@ -180,6 +180,12 @@ func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
 		{"season", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S02E05.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"episode", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E06.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"missing announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264", false, true},
+		// Without a resolution the pair cannot take the exact size class, so only
+		// a strict match or a web source relabel admits it.
+		{"missing announcement group without resolution", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with web relabel", "Sample.Show.S08E11.WEBRip.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with codec", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.265", false, false},
+		{"missing announcement group with codec and resolution", "Sample.Show.S08E11.1080p.WEB-DL.H.264-NTb", "Sample Show S08E11 1080p WEB-DL H.265", false, true},
 		{"conflicting announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-KIRI", false, false},
 		{"split group", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", false, true},
 		{"split group with skip recheck", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", true, false},
@@ -434,22 +440,22 @@ func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
 		},
 		{
 			name:     "approved descriptive fallback",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"codec", "source", "checksum"}},
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceSource, differenceChecksumMissing)},
 			want:     true,
 		},
 		{
 			name:     "group fallback permits recheck",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"group"}},
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
 			want:     true,
 		},
 		{
 			name:        "group fallback rejects skip recheck",
-			decision:    searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"group"}},
+			decision:    searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
 			skipRecheck: true,
 		},
 		{
-			name:     "future relaxation rejects by default",
-			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, RelaxedDifferences: []string{"future-token"}},
+			name:     "relaxed episode rejects",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceEpisode)},
 		},
 		{
 			name:     "empty fallback rejects by default",

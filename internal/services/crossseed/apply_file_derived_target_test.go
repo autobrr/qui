@@ -313,8 +313,8 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 			Class:                 searchCandidateClassExactSizeFallback,
 			SourceInstanceID:      instanceID,
 			SourceHash:            existingHash,
-			StrictMismatchReason:  groupMismatchReason,
 			RelaxedDifferences:    []string{"group"},
+			Relaxed:               differencesOf(differenceGroup),
 			GroupFallbackIdentity: "kiri",
 		},
 	})
@@ -690,10 +690,10 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			name:      "local copy in a renamed season folder",
 			localRoot: "Season 02 [BD]",
 			decision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SearchCandidateName:  "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
-				StrictMismatchReason: "source mismatch",
-				RelaxedDifferences:   []string{"source"},
+				Class:               searchCandidateClassExactSizeFallback,
+				SearchCandidateName: "Kaiju Squad 100 S02 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+				RelaxedDifferences:  []string{"source"},
+				Relaxed:             differencesOf(differenceSource),
 			},
 		},
 		{
