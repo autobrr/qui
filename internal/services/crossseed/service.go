@@ -5672,7 +5672,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -5693,7 +5693,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Try hardlink mode if enabled - this bypasses the regular reuse+rename alignment
 	if useHardlinkMode {
 		hlResult := s.processHardlinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -5969,10 +5969,10 @@ func (s *Service) processCrossSeedCandidate(
 		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
-	var afterAdd func(context.Context) (string, bool)
+	var afterAdd func(context.Context, []string) (string, bool)
 	// An unvalidated Manual match has no mapping to align.
 	if !manualUnvalidated {
-		afterAdd = func(ctx context.Context) (string, bool) {
+		afterAdd = func(ctx context.Context, _ []string) (string, bool) {
 			// Align the new torrent's naming and file layout with the matched torrent.
 			ok, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan)
 			return activeHash, ok

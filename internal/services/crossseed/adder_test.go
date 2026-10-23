@@ -30,6 +30,7 @@ func withAdder(svc *Service) {
 
 // adderFake is the qBittorrent seam of the Adder.
 type adderFake struct {
+	addedIDs []string
 	existing *qbt.Torrent
 	findErr  error
 	addErr   error
@@ -39,7 +40,7 @@ type adderFake struct {
 
 func (f *adderFake) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	f.added = append(f.added, options)
-	return &qbt.TorrentAddResponse{}, f.addErr
+	return &qbt.TorrentAddResponse{AddedTorrentIds: f.addedIDs}, f.addErr
 }
 
 func (f *adderFake) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
@@ -51,6 +52,19 @@ func (f *adderFake) BulkAction(_ context.Context, _ int, hashes []string, action
 		f.actions = append(f.actions, action+":"+hash)
 	}
 	return nil
+}
+
+// linkCheck is the Pre-add check that the regular add hands to link mode.
+func linkCheck(instanceID int, hashes ...string) PreAddCheck {
+	return PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
+}
+
+// withLinkAdder gives svc the real Adder over the three-method qBittorrent fake.
+// Call it after startSettleScript, which replaces the Settler.
+func withLinkAdder(svc *Service) *adderFake {
+	sync := &adderFake{}
+	svc.adder = NewAdder(sync, nil, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	return sync
 }
 
 type adderRig struct {
@@ -199,6 +213,69 @@ func TestAdderAdd(t *testing.T) {
 			wantOutcome: AddAdded,
 			wantOptions: addOptions(false, true),
 		},
+		{name: "skip recheck refuses link tree with pending files", facts: AddFacts{SkipRecheck: true, LinkTree: true, PendingFiles: true}, wantStatus: "skipped_recheck"},
+		{
+			name:        "complete link tree starts at once",
+			facts:       AddFacts{LinkTree: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(false, true),
+		},
+		{
+			name:        "complete link tree stays paused with auto-resume off",
+			facts:       AddFacts{LinkTree: true, SkipAutoResume: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantMessage: " - auto-resume skipped per settings",
+		},
+		{
+			name:        "hardlink tree with pending files rechecks within the download budget",
+			facts:       AddFacts{LinkTree: true, PendingFiles: true, LinkedPaths: map[string]struct{}{"Movie/movie.mkv": {}}},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateBudget),
+		},
+		{
+			name:        "reflink tree with pending files recovers missing files",
+			facts:       AddFacts{LinkTree: true, PendingFiles: true, RecoverMissingFiles: true},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateBudget),
+		},
+		{
+			name:        "link tree of a relaxed match waits for a verified recheck",
+			facts:       AddFacts{LinkTree: true, Verify: VerifyRelaxed},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateVerify),
+		},
+		{
+			name:        "link tree verification wins over the download budget",
+			facts:       AddFacts{LinkTree: true, PendingFiles: true, Verify: VerifyRelaxed},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateVerify),
+		},
+		{
+			name:        "link tree of a disc layout waits for 100%",
+			facts:       AddFacts{LinkTree: true, DiscMarker: "VIDEO_TS"},
+			wantOutcome: AddSettling,
+			wantOptions: addOptions(true, true),
+			wantGate:    settle(GateComplete),
+			wantMessage: " - disc layout detected (VIDEO_TS), full recheck required",
+		},
+		{
+			name:        "pool member waits paused for its pool",
+			facts:       AddFacts{LinkTree: true, PendingFiles: true, PoolMember: true},
+			wantOutcome: AddPooled,
+			wantOptions: addOptions(true, true),
+		},
+		{
+			name:          "failed pool registration leaves the member paused",
+			facts:         AddFacts{LinkTree: true, PendingFiles: true, PoolMember: true},
+			afterAddFails: true,
+			wantOutcome:   AddLeftPaused,
+			wantOptions:   addOptions(true, true),
+		},
 		{
 			name:          "failed alignment pauses a running add",
 			facts:         AddFacts{StartRunning: true, Align: true},
@@ -222,7 +299,7 @@ func TestAdderAdd(t *testing.T) {
 				Torrent:   []byte("torrent"),
 				Facts:     tt.facts,
 				Placement: AddPlacement{SavePath: "/data"},
-				AfterAdd: func(context.Context) (string, bool) {
+				AfterAdd: func(context.Context, []string) (string, bool) {
 					return "", !tt.afterAddFails
 				},
 			})
@@ -247,6 +324,8 @@ func TestAdderAdd(t *testing.T) {
 				require.NotNil(t, queued)
 				require.Equal(t, *tt.wantGate, queued.gate)
 				require.Equal(t, adderV1, queued.hash)
+				require.Equal(t, tt.facts.LinkedPaths, queued.linkedPaths)
+				require.Equal(t, tt.facts.RecoverMissingFiles, queued.recoverMissingFilesWithResume)
 				if *tt.wantGate == GateBudget {
 					require.Equal(t, adderBudget, *queued.budgetBytes)
 				}

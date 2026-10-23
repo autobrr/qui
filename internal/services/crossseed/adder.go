@@ -83,6 +83,14 @@ type AddFacts struct {
 	LinkFallback bool
 	// LinkFallbackRecheck is set when link mode asked for a full recheck after its fallback.
 	LinkFallbackRecheck bool
+	// LinkTree is set when hardlink or reflink mode built a link tree for the add.
+	LinkTree bool
+	// PoolMember is set when a partial link tree joins a partial pool, which resumes it.
+	PoolMember bool
+	// LinkedPaths are the hardlinked files that Settle checks before the resume.
+	LinkedPaths map[string]struct{}
+	// RecoverMissingFiles lets Settle resume a torrent that reports missing files.
+	RecoverMissingFiles bool
 
 	// The settings of the Trigger.
 	SkipRecheck    bool
@@ -106,7 +114,8 @@ type AddVerdict struct {
 }
 
 // Verdict makes the Add verdict from the facts. A later fact only adds a
-// reason for a recheck, except for the link-fallback rule.
+// reason for a recheck, except for the link-fallback rule and pool membership.
+// A pool member skips Settle, because its partial pool resumes it.
 func (f AddFacts) Verdict() AddVerdict {
 	disc := f.DiscMarker != ""
 	exactInPlace := f.ExactMatch && !f.Align && !f.PendingFiles
@@ -132,6 +141,16 @@ func (f AddFacts) Verdict() AddVerdict {
 		skipChecking: !f.PendingFiles || f.Align,
 		settle:       verify || disc || linkRecheck || alignRecheck,
 		linkRecheck:  linkRecheck,
+	}
+	if f.LinkTree {
+		// Every linked file is in place, so qBittorrent skips its check and Settle
+		// rechecks for the Pending files. A link-mode add ignores Start paused.
+		v.skipChecking = true
+		v.paused = f.SkipAutoResume || v.settle
+	}
+	if f.PoolMember {
+		// The partial pool resumes its members, so a member skips Settle.
+		v.paused, v.settle = true, false
 	}
 	switch {
 	case f.SkipAutoResume && f.Verify == VerifyTitleRescue:
@@ -160,6 +179,8 @@ const (
 	AddRefused AddOutcome = iota
 	AddAdded
 	AddSettling
+	// AddPooled means the torrent waits paused for its partial pool.
+	AddPooled
 	// AddLeftPaused means AfterAdd failed, so the torrent stays paused.
 	AddLeftPaused
 )
@@ -248,9 +269,10 @@ type AddRequest struct {
 	Facts     AddFacts
 	Placement AddPlacement
 	// AfterAdd runs when qBittorrent has the torrent, before the resume or Settle.
-	// It returns the hash that qBittorrent lists the torrent under (empty for the
-	// first checked hash), and false when the torrent must stay paused.
-	AfterAdd func(ctx context.Context) (hash string, ok bool)
+	// It gets the IDs that qBittorrent returned for the add. It returns the hash
+	// that qBittorrent lists the torrent under (empty for the first checked hash),
+	// and false when the torrent must stay paused.
+	AfterAdd func(ctx context.Context, addedIDs []string) (hash string, ok bool)
 }
 
 // Add makes the Add verdict with all the facts, adds the torrent, resumes it,
@@ -270,7 +292,8 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		options["skip_checking"] = "true"
 	}
 
-	if _, err := a.sync.AddTorrent(ctx, instanceID, req.Torrent, options); err != nil {
+	response, err := a.sync.AddTorrent(ctx, instanceID, req.Torrent, options)
+	if err != nil {
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -289,7 +312,11 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 
 	hash := req.Check.hashes[0]
 	if req.AfterAdd != nil {
-		activeHash, ok := req.AfterAdd(ctx)
+		var addedIDs []string
+		if response != nil {
+			addedIDs = response.AddedTorrentIds
+		}
+		activeHash, ok := req.AfterAdd(ctx, addedIDs)
 		hash = cmp.Or(activeHash, hash)
 		if !ok {
 			result := AddResult{Outcome: AddLeftPaused, Message: message}
@@ -306,16 +333,21 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		// qBittorrent does not recheck a torrent that it adds paused, so Settle
 		// sends the recheck and resumes the torrent when its gate passes.
 		added := AddedTorrent{
-			InstanceID:     instanceID,
-			Hashes:         dedupeHashes(append([]string{hash}, req.Check.hashes...)...),
-			Gate:           v.gate,
-			SkipAutoResume: req.Facts.SkipAutoResume,
+			InstanceID:          instanceID,
+			Hashes:              dedupeHashes(append([]string{hash}, req.Check.hashes...)...),
+			LinkedPaths:         req.Facts.LinkedPaths,
+			Gate:                v.gate,
+			SkipAutoResume:      req.Facts.SkipAutoResume,
+			RecoverMissingFiles: req.Facts.RecoverMissingFiles,
 		}
 		if v.gate == GateBudget {
 			added.Budget = a.resumeBudget(ctx)
 		}
 		message += a.settler.Settle(ctx, added).StatusSuffix()
 		outcome = AddSettling
+	case req.Facts.PoolMember:
+		// The caller wakes the pool, which resumes the torrent.
+		outcome = AddPooled
 	case !v.paused:
 	case req.Facts.SkipAutoResume:
 		message += " - auto-resume skipped per settings"

@@ -219,41 +219,6 @@ func TestAddPolicy_ApplyToAddOptions(t *testing.T) {
 	}
 }
 
-func TestAddPolicy_StatusSuffix(t *testing.T) {
-	tests := []struct {
-		name         string
-		policy       AddPolicy
-		wantContains []string
-		wantEmpty    bool
-	}{
-		{
-			name: "disc layout returns suffix",
-			policy: AddPolicy{
-				DiscLayout: true,
-				DiscMarker: "BDMV",
-			},
-			wantContains: []string{"disc layout", "BDMV", "recheck"},
-		},
-		{
-			name:      "non-disc layout returns empty",
-			policy:    AddPolicy{},
-			wantEmpty: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			suffix := tt.policy.StatusSuffix()
-			if tt.wantEmpty {
-				assert.Empty(t, suffix)
-			}
-			for _, want := range tt.wantContains {
-				assert.Contains(t, suffix, want)
-			}
-		})
-	}
-}
-
 // TestPolicyFlow_DiscLayoutForcesPaused tests the shared policy helper that all modes
 // (regular, hardlink, reflink) call: PolicyForSourceFiles -> ApplyToAddOptions.
 // This proves that disc layout torrents cannot be added "running" regardless of mode.

@@ -99,12 +99,3 @@ func KeepAtSavePath(options map[string]string) {
 		options["useDownloadPath"] = "false"
 	}
 }
-
-// StatusSuffix returns a message suffix for result status when policy constraints applied.
-// Returns empty string if no policy constraints are active.
-func (p AddPolicy) StatusSuffix() string {
-	if p.DiscLayout {
-		return " - disc layout detected (" + p.DiscMarker + "), full recheck required"
-	}
-	return ""
-}
