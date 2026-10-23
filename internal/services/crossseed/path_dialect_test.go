@@ -185,10 +185,12 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			s.syncManager = sync
 
 			files := qbt.TorrentFiles{{Name: tt.file, Size: 5}}
+			adds := withLinkAdder(s)
 			result := s.processHardlinkMode(
 				t.Context(),
+				linkCheck(1, "hash123"),
 				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
+				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
 				&qbt.Torrent{Hash: "matched", ContentPath: path.Dir(source)},
 				"exact", files, files,
 				&qbt.TorrentProperties{SavePath: tt.savePath},
@@ -201,7 +203,8 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 				RootDir: tt.wantRoot,
 				Files:   []hardlinktree.FilePlan{{SourcePath: source, TargetPath: tt.wantRoot + "/" + tt.file}},
 			}, backend.plans[0])
-			require.Equal(t, tt.wantRoot, sync.addedOptions["savepath"])
+			require.Len(t, adds.added, 1)
+			require.Equal(t, tt.wantRoot, adds.added[0]["savepath"])
 			if tt.wantCategory != "" {
 				categorySavePath, ok := s.createdCategories.Load("1:category.cross")
 				require.True(t, ok)

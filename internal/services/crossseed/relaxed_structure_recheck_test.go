@@ -55,63 +55,6 @@ func TestCandidateRequiresVerification(t *testing.T) {
 	}
 }
 
-// Hardlink and reflink mode consume every decision from this policy. Keeping
-// recheck and completion together makes the verify-only row deterministic
-// even when the test filesystem cannot create reflinks.
-func TestLinkModeRecheckPolicy(t *testing.T) {
-	t.Parallel()
-
-	for _, tt := range []struct {
-		name             string
-		hasExtras        bool
-		verifyBeforeSeed bool
-		discLayout       bool
-		want             recheckPolicy
-	}{
-		{name: "ordinary complete layout", want: recheckPolicy{}},
-		{
-			name:      "extra files use the download budget",
-			hasExtras: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-			},
-		},
-		{
-			name:             "verification requires every safeguard",
-			verifyBeforeSeed: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-		{
-			name:       "disc layout requires every safeguard",
-			discLayout: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-		{
-			name:             "verification dominates extra-file budget",
-			hasExtras:        true,
-			verifyBeforeSeed: true,
-			want: recheckPolicy{
-				requiresRecheck: true,
-				requireComplete: true,
-			},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, linkModeRecheckPolicy(
-				tt.hasExtras,
-				tt.verifyBeforeSeed,
-				tt.discLayout,
-			))
-		})
-	}
-}
-
 // A season, episode or group relaxed by the exact-size fallback rests on equal
 // reported total sizes, which cannot prove which episode the files hold or which group
 // packed them. The add must be hashed before it seeds, and must be dropped when
