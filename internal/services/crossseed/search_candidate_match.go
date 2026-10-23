@@ -392,6 +392,13 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local
 	if decision.SearchCandidateName == "" {
 		return true
 	}
+	// The listing can drop the CRC tag. A tag on the local torrent and another on
+	// the download still prove different files.
+	localSum := m.normalizer().Normalize(local.release.Sum)
+	downloadSum := m.normalizer().Normalize(download.release.Sum)
+	if localSum != "" && downloadSum != "" && localSum != downloadSum {
+		return false
+	}
 	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
 	listed := decision.listedDifferences()
 	// The download can name the local torrent or another title of the show that
