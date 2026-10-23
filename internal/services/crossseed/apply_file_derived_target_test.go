@@ -215,6 +215,7 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	withAdder(service)
 	resp, err := service.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs:            []int{instanceID},
@@ -368,6 +369,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 	}
 	service.settler = idleSettler(service.syncManager)
 	startPaused := true
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
@@ -456,6 +458,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	require.True(t, isTVSeasonPack(incomingView.release), "fixture must derive the incoming pack from its files")
 
 	startPaused := true
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
@@ -651,6 +654,7 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 			}
 			service.settler = idleSettler(service.syncManager)
 
+			withAdder(service)
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(tt.torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -726,6 +730,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			decision.SourceInstanceID = instanceID
 			decision.SourceHash = sourceHash
 
+			withAdder(service)
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},

@@ -43,6 +43,7 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
+			withAdder(service)
 			response, err := service.CrossSeed(t.Context(), &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes.Bytes()),
 				TargetInstanceIDs:            []int{1},

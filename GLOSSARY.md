@@ -86,6 +86,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
 - **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
+- **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
+- **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
 
 ## Automations
 

@@ -632,6 +632,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 	require.False(t, response.seasonPackEpisodeCandidates,
 		"the derived pack must not trigger the episode-based assembly diversion")
 
+	withAdder(svc)
 	result := svc.processCrossSeedCandidate(
 		context.Background(),
 		response.Candidates[0],

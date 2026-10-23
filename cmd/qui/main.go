@@ -756,6 +756,7 @@ func (app *Application) runServer() {
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
+	crossSeedService.SetAdder(crossseed.NewAdder(syncManager, crossSeedBlocklistStore, settler, crossSeedService.ResumeBudgetBytes, crossSeedService.RunExternalProgram))
 	crossSeedService.SetActivityPublisher(activityHub)
 	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
