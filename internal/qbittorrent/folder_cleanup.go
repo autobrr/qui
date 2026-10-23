@@ -88,7 +88,7 @@ type folderView interface {
 	liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
 	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error)
-	// stopFolderInputs reads the preferences with a request.
+	// stopFolderInputs reads the preferences and the categories with requests.
 	stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error)
 	// categoryNesting refreshes qBittorrent's capabilities with a request,
 	// so the worker keeps its answer for folderCleanupVersionTTL.
@@ -623,7 +623,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 
 	// The usual first check after a delete finds the torrent's own row still
 	// cached. That alone decides it waits, so the scope, a full read of the
-	// cached torrents and a preferences request, is built only for the rest.
+	// cached torrents and two requests, is built only for the rest.
 	hashes := make([]string, len(ready))
 	for i, item := range ready {
 		hashes[i] = item.snap.Hash

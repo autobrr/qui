@@ -193,6 +193,18 @@ func TestFolderCleanupHardlinkTree(t *testing.T) {
 	})
 }
 
+// A category's download path that rests on a download path that is not
+// absolute cannot be protected, so the stop folders fail rather than leave it
+// to be removed.
+func TestStopFoldersFailOnACategoryDownloadPathThatIsNotAbsolute(t *testing.T) {
+	t.Parallel()
+	in := stopInputs{DefaultSavePath: "/data", TempPath: "dl", Categories: map[string]qbt.Category{
+		"tv": {Name: "tv", DownloadPath: &qbt.CategoryDownloadPath{Enabled: true}},
+	}}
+	_, _, err := stopFolders(fsops.SlashPaths, in, CategoryPathRule{Nest: true, InheritsDownloadPath: true}, "")
+	require.Error(t, err)
+}
+
 func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -222,6 +234,31 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 			stop: "torrents/incomplete/movies_hd",
 			edit: func(e *cleanupEnv) {
 				e.view.support = nestingSupport{Nests: true, Always: true, FileName: true, Platform: "windows"}
+			},
+		},
+		{
+			name: "category's own download path",
+			stop: "fast/movies",
+			edit: func(e *cleanupEnv) {
+				e.view.inputs.Categories["movies"] = qbt.Category{Name: "movies", DownloadPath: &qbt.CategoryDownloadPath{Enabled: true, Path: e.p("fast/movies")}}
+			},
+		},
+		{
+			// qBittorrent names the folder under the download path even when
+			// that is turned off.
+			name: "category's own download path with the download path off",
+			stop: "torrents/incomplete/movies",
+			edit: func(e *cleanupEnv) {
+				e.view.inputs.TempPathEnabled = false
+				e.view.inputs.Categories["movies"] = qbt.Category{Name: "movies", DownloadPath: &qbt.CategoryDownloadPath{Enabled: true}}
+			},
+		},
+		{
+			name: "subcategory under its parent's own download path",
+			stop: "fast/tv/anime",
+			edit: func(e *cleanupEnv) {
+				e.view.inputs.Categories["tv"] = qbt.Category{Name: "tv", SavePath: e.p("torrents/tv"), DownloadPath: &qbt.CategoryDownloadPath{Enabled: true, Path: e.p("fast/tv")}}
+				e.view.inputs.Categories["tv/anime"] = qbt.Category{Name: "tv/anime", DownloadPath: &qbt.CategoryDownloadPath{Enabled: true}}
 			},
 		},
 		{
@@ -292,6 +329,15 @@ func TestFolderCleanupKeepsStopFolders(t *testing.T) {
 				e.view.inputs.TempPathEnabled = false
 			},
 			removed: []string{"torrents/incomplete/tv", "torrents/incomplete"},
+		},
+		{
+			// Without nesting a category with no option still gets its own
+			// folder under the download path from 5.0.
+			name: "category under the download path with subcategories off",
+			stop: "torrents/incomplete/movies",
+			edit: func(e *cleanupEnv) {
+				e.view.inputs.UseSubcategories = false
+			},
 		},
 		{
 			name: "subcategory without nesting",
@@ -696,7 +742,7 @@ func TestFolderCleanupWaitsForItsRow(t *testing.T) {
 
 // A torrent's own row decides that it waits, so a check that finds every
 // item waiting builds no scope: no full read of the cached torrents and no
-// preferences request. It still asks for a sync.
+// preferences or categories request. It still asks for a sync.
 func TestFolderCleanupWaitingBuildsNoScope(t *testing.T) {
 	for _, move := range []bool{false, true} {
 		t.Run(fmt.Sprint("move=", move), func(t *testing.T) {

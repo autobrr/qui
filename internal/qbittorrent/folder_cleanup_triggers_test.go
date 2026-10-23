@@ -638,6 +638,36 @@ func TestFolderCleanupMarkContentChecksEachTopLevelEntry(t *testing.T) {
 	}
 }
 
+// Before WebAPI 2.11.10 a partial maindata update never reports a category
+// going back to inherit its download path, so the stop folders read the
+// categories from qBittorrent rather than the cache.
+func TestFolderCleanupStopFolderInputsReadTheCategories(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/archive"))
+	r.stub.SetCategoryDownloadPath("archive", &qbt.CategoryDownloadPath{Enabled: true, Path: r.p("fast/archive")})
+	r.add()
+	r.stub.SetCategoryDownloadPath("archive", nil)
+
+	in, err := r.sm.stopFolderInputs(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.Contains(t, in.Categories, "archive")
+	require.Nil(t, in.Categories["archive"].DownloadPath)
+}
+
+// Without the categories no category folder is a stop folder, so a failed
+// read fails the check.
+func TestFolderCleanupStopFolderInputsFailWhenTheCategoriesCannotBeRead(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	r.stub.AddCategory("archive", r.p("torrents/archive"))
+	r.add()
+	r.stub.CategoriesStatus = http.StatusInternalServerError
+
+	_, err := r.sm.stopFolderInputs(t.Context(), r.instanceID)
+	require.Error(t, err)
+}
+
 // qBittorrent's setDownloadPath moves an incomplete torrent with ATM off from
 // where its content sits into the new path. A complete torrent does not move,
 // and admitting every one of a bulk change over seeding torrents would hold
