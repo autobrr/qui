@@ -4918,10 +4918,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse torrent: %w", err)
 	}
-	torrentHash := meta.HashV1
-	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
-		torrentHash = meta.HashV2
-	}
+	torrentHash := meta.qbitHash()
 	// Cached search decisions replay search's file-derived reading even when the
 	// raw name already parses as TV; ordinary/manual apply keeps its raw TV
 	// identity. Non-TV names still need file-derived structure in either path.
@@ -6254,7 +6251,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Execute external program if configured (async, non-blocking)
-	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	s.RunExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
 	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
@@ -13027,7 +13024,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, torrentHash string) {
+// RunExternalProgram sends the Execution Request for the External Program
+// that After injection selects, if any, for one added cross-seed.
+func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
 	if s.postInjectionHook != nil {
 		s.postInjectionHook(ctx, instanceID, torrentHash)
 		return
@@ -13067,6 +13066,9 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 
 	// Execute in a separate goroutine to avoid blocking the cross-seed operation
 	go func() {
+		// A torrent added a moment ago is not in the sync cache yet.
+		s.waitForTorrentAvailability(ctx, instanceID, []string{torrentHash}, crossSeedRenameWaitTimeout)
+
 		// Get torrent data from sync manager
 		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
 		if err != nil {

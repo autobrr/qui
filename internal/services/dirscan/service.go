@@ -145,6 +145,7 @@ func NewService(
 	backendPool *fsops.Pool,
 	blocklistStore *models.CrossSeedBlocklistStore,
 	settler *crossseed.Settler,
+	runExternalProgram func(ctx context.Context, instanceID int, torrentHash string),
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -160,7 +161,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, settler, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
+	injector := NewInjector(jackettService, syncManager, settler, torrentChecker, instanceStore, trackerCustomizationStore, backendPool, runExternalProgram)
 
 	return &Service{
 		cfg:                       cfg,

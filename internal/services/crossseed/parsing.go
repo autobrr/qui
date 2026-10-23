@@ -283,6 +283,15 @@ type TorrentMetadata struct {
 	Info   *metainfo.Info
 }
 
+// qbitHash is the hash that qBittorrent lists the torrent under: the v1 hash,
+// or the v2 hash for a v2-only torrent.
+func (m TorrentMetadata) qbitHash() string {
+	if m.Info != nil && !m.Info.HasV1() && m.HashV2 != "" {
+		return m.HashV2
+	}
+	return m.HashV1
+}
+
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
 func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {

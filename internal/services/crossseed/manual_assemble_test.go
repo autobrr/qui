@@ -66,6 +66,10 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 					}, nil
 				},
 			}
+			var hookRuns []string
+			svc.postInjectionHook = func(_ context.Context, _ int, torrentHash string) {
+				hookRuns = append(hookRuns, torrentHash)
+			}
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			if mode == "reflink" {
 				// Exercise the same tree on hosts without reflink support.
@@ -85,6 +89,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			require.True(t, os.IsNotExist(err), "check must not create a tree")
 			require.Empty(t, sm.addCalls)
 			require.Empty(t, runs.runs)
+			require.Empty(t, hookRuns, "check must not run the External Program")
 
 			unalignedReq := *req
 			unalignedReq.TorrentData = base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 1024, contents))
@@ -117,6 +122,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
 				require.Equal(t, "e02", applied.Targets[1].Hash)
 				require.Len(t, sm.addCalls, 1)
+				require.Len(t, hookRuns, 1, "apply runs the External Program once")
 				require.Equal(t, "false", sm.addCalls[0].options["skip_checking"])
 				require.Equal(t, "true", sm.addCalls[0].options["paused"])
 				require.Equal(t, "true", sm.addCalls[0].options["stopped"])
