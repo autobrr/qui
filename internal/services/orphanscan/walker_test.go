@@ -334,17 +334,26 @@ func TestWalkScanRoot_NestedScanRootIsNeverADiscUnit(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		nested string // relative to the walked root, "" for none
-		ignore string // relative to the walked root, "" for none
+		nested []string // relative to the walked root
+		ignore string   // relative to the walked root, "" for none
 		want   []string
 	}{
-		{name: "nested scan root", nested: "Movie.2024", want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
-		{name: "nested scan root in another case", nested: "MOVIE.2024", want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
-		{name: "ignored content in the marker", nested: "Movie.2024", ignore: "Movie.2024/BDMV/keep", want: []string{
+		{name: "nested scan root", nested: []string{"Movie.2024"}, want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "nested scan root in another case", nested: []string{"MOVIE.2024"}, want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "ignored content in the marker", nested: []string{"Movie.2024"}, ignore: "Movie.2024/BDMV/keep", want: []string{
 			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
 		}},
-		{name: "marker that is a scan root", nested: "Movie.2024/BDMV", want: []string{
+		{name: "marker that is a scan root below another", nested: []string{"Movie.2024", "Movie.2024/BDMV"}, want: []string{
 			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "marker that is a scan root", nested: []string{"Movie.2024/BDMV"}, want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "scan root inside the marker", nested: []string{"Movie.2024/BDMV/STREAM"}, want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "scan root beside the marker", nested: []string{"Movie.2024/Extras"}, want: []string{
+			"Movie.2024/BDMV", "Movie.2024/Extras/extra.mkv", "Movie.2024/readme.txt",
 		}},
 		{name: "ordinary folder", want: []string{"Movie.2024"}},
 	} {
@@ -353,6 +362,9 @@ func TestWalkScanRoot_NestedScanRootIsNeverADiscUnit(t *testing.T) {
 
 			root := t.TempDir()
 			movieDir := filepath.Join(root, "Movie.2024")
+			if slices.Contains(tc.nested, "Movie.2024/Extras") {
+				writeOldFile(t, filepath.Join(movieDir, "Extras", "extra.mkv"))
+			}
 			writeOldFile(t, filepath.Join(movieDir, "BDMV", "index.bdmv"))
 			writeOldFile(t, filepath.Join(movieDir, "BDMV", "STREAM", "00000.m2ts"))
 			writeOldFile(t, filepath.Join(movieDir, "readme.txt"))
@@ -364,12 +376,8 @@ func TestWalkScanRoot_NestedScanRootIsNeverADiscUnit(t *testing.T) {
 			}
 			protected := newTestProtected(t, fsops.HostPaths, ignore, NewTorrentFileMap(fsops.HostPaths))
 			roots := []string{root}
-			if tc.nested != "" {
-				roots = append(roots, filepath.Join(root, filepath.FromSlash(tc.nested)))
-			}
-			if tc.nested == "Movie.2024/BDMV" {
-				// The marker's parent is a scan root too, so the walk meets both.
-				roots = append(roots, movieDir)
+			for _, nested := range tc.nested {
+				roots = append(roots, filepath.Join(root, filepath.FromSlash(nested)))
 			}
 			protected.setScanRoots(roots)
 			orphans, _, err := walkScanRoot(t.Context(), root, protected, 0, 100, local.NewBackend(), nil)

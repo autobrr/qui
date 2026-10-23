@@ -494,12 +494,11 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, p
 	}
 
 	candidateAbs, markerAbs := buildDiscCandidatePaths(d, root, strings.Split(relDir, d.Separator()), markerIndex, markerSegment)
-	// A scan root is never a disc unit, even one nested in the walked root:
-	// its delete would be refused, and the orphans in it would go unlisted.
-	// The marker is the unit instead, under the checks the nested root's own
-	// walk applies to it.
-	if cachedScanRoot(protected, rootCache, candidateAbs) {
-		if protected.scanRoot(markerAbs) || protected.ignoredOrHoldsIgnored(markerAbs) {
+	// A disc unit never is or holds a nested scan root: the delete would refuse
+	// it, or remove the root with it. The marker is the unit instead, under the
+	// ignore check a walk of that root applies, or else its files one by one.
+	if cachedHoldsScanRoot(protected, rootCache, candidateAbs) {
+		if cachedHoldsScanRoot(protected, rootCache, markerAbs) || protected.ignoredOrHoldsIgnored(markerAbs) {
 			return path, false
 		}
 		return markerAbs, true
@@ -516,13 +515,13 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, p
 	return markerAbs, true
 }
 
-// cachedScanRoot remembers protected.scanRoot per folder: it normalizes the
-// path, and it runs for every file below a disc marker.
-func cachedScanRoot(protected *protectedPaths, cache map[string]bool, dir string) bool {
+// cachedHoldsScanRoot remembers protected.holdsScanRoot per folder: it
+// normalizes the path, and it runs for every file below a disc marker.
+func cachedHoldsScanRoot(protected *protectedPaths, cache map[string]bool, dir string) bool {
 	if is, ok := cache[dir]; ok {
 		return is
 	}
-	is := protected.scanRoot(dir)
+	is := protected.holdsScanRoot(dir)
 	if cache != nil {
 		cache[dir] = is
 	}

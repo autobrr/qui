@@ -24,7 +24,7 @@ type protectedPaths struct {
 	normIgnorePaths []string
 	// scanRoots are the run's roots, folded like the delete's scan root
 	// boundary compares them.
-	scanRoots map[string]struct{}
+	scanRoots []string
 }
 
 // newProtectedPaths validates and normalizes ignorePaths once. files can be nil.
@@ -43,16 +43,22 @@ func newProtectedPaths(d fsops.PathDialect, ignorePaths []string, files *Torrent
 // setScanRoots records the run's scan roots, so a walk from an outer root
 // treats a nested one as it treats its own.
 func (p *protectedPaths) setScanRoots(roots []string) {
-	p.scanRoots = make(map[string]struct{}, len(roots))
-	for _, root := range roots {
-		p.scanRoots[fsops.NormalizePath(p.d, root)] = struct{}{}
+	p.scanRoots = make([]string, len(roots))
+	for i, root := range roots {
+		p.scanRoots[i] = fsops.NormalizePath(p.d, root)
 	}
 }
 
-// scanRoot reports whether path is one of the run's scan roots.
-func (p *protectedPaths) scanRoot(path string) bool {
-	_, ok := p.scanRoots[fsops.NormalizePath(p.d, path)]
-	return ok
+// holdsScanRoot reports whether dir is one of the run's scan roots or holds
+// one.
+func (p *protectedPaths) holdsScanRoot(dir string) bool {
+	n := fsops.NormalizePath(p.d, dir)
+	for _, root := range p.scanRoots {
+		if root == n || isPathUnderNormalized(p.d, root, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // torrentFile reports whether a torrent owns the file at path.
