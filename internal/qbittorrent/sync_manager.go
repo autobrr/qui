@@ -361,6 +361,11 @@ type SyncManager struct {
 	syncDebounceDelay     time.Duration
 	syncDebounceMinJitter time.Duration
 
+	// categoryVersions holds each instance's version answer for
+	// InstanceFolders.
+	categoryVersionsMu sync.Mutex
+	categoryVersions   map[int]categoryVersion
+
 	fileFetchSemMu         sync.Mutex
 	fileFetchSem           map[int]chan struct{}
 	fileFetchMaxConcurrent int
@@ -2473,17 +2478,6 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	}
 
 	return categories, nil
-}
-
-// GetCategoriesFresh reads the categories from qBittorrent rather than the
-// cache: before WebAPI 2.11.10 a partial maindata update never reports a
-// category going back to inherit its download path.
-func (sm *SyncManager) GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
-	if err != nil {
-		return nil, err
-	}
-	return client.GetCategoriesCtx(ctx)
 }
 
 // GetTags gets all tags
@@ -5133,52 +5127,6 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
-// CategoryPathRule reports how an instance names the folder of a category with
-// an empty save path. It nests under the parent category's save path, as
-// Automatic Torrent Management does on qBittorrent 5.0+ with subcategories on.
-// qBittorrent 5.2 dropped use_subcategories, so the preference cannot be read
-// on its own.
-func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (CategoryPathRule, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return CategoryPathRule{}, fmt.Errorf("failed to get client: %w", err)
-	}
-	// A client that keeps syncing skips health checks, so after an in-place
-	// upgrade from 4.6 its cached capabilities would still say "flat".
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		return CategoryPathRule{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
-	}
-	if !client.NestsCategorySavePaths() {
-		return CategoryPathRule{}, nil
-	}
-	if !client.SubcategoriesAlwaysEnabled() {
-		prefs, err := client.GetAppPreferences(ctx)
-		if err != nil {
-			return CategoryPathRule{}, fmt.Errorf("failed to get app preferences: %w", err)
-		}
-		return CategoryPathRule{Nest: prefs.UseSubcategories, InheritsDownloadPath: true}, nil
-	}
-
-	platform, err := categoryFolderPlatform(ctx, client)
-	if err != nil {
-		return CategoryPathRule{}, err
-	}
-	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform, InheritsDownloadPath: true}, nil
-}
-
-// categoryFolderPlatform returns the build platform when it changes the folder
-// name of a category (qBittorrent 5.3+), and "" before that.
-func categoryFolderPlatform(ctx context.Context, client *Client) (string, error) {
-	if !client.CategoryFileNames() {
-		return "", nil
-	}
-	info, err := client.GetAppInfo(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get qBittorrent build info: %w", err)
-	}
-	return info.BuildInfo.Platform, nil
-}
-
 func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
 	if !supports {
 		return false
@@ -5898,20 +5846,6 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	return *prefs, nil
-}
-
-// GetAppPreferencesFresh reads the preferences from qBittorrent rather than
-// their 30 s cache, so a download path changed in its WebUI is seen at once.
-func (sm *SyncManager) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
-	}
-	prefs, err := client.refreshAppPreferences(ctx)
-	if err != nil {
-		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
-	}
 	return *prefs, nil
 }
 

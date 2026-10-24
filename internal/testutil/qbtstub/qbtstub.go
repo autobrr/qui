@@ -87,6 +87,15 @@ type Server struct {
 	// ScanDirs is reported as the scan_dirs preference: each monitored
 	// folder maps to 0 (save there), 1 (the default save path) or a path.
 	ScanDirs map[string]any
+	// DownloadPath, when set, replaces the reported temp_path
+	// <save path>/incomplete. DownloadPathOff turns it off.
+	DownloadPath    string
+	DownloadPathOff bool
+	// SubcategoriesOff reports use_subcategories turned off.
+	SubcategoriesOff bool
+	// Platform, when set, makes app/buildInfo answer with this build
+	// platform. Without it the endpoint answers 404.
+	Platform string
 	// CategoriesStatus, when set, makes torrents/categories answer with it.
 	CategoriesStatus int
 	// WebAPIVersion, when set, replaces the reported 2.11.4 (qBittorrent
@@ -394,10 +403,20 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, s.webAPIVersion())
 	case "app/version":
 		_, _ = io.WriteString(w, "v5.1.0")
+	case "app/buildInfo":
+		if s.Platform == "" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"platform": s.Platform})
 	case "app/preferences":
-		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": filepath.Join(s.savePath, "incomplete"),
-			"temp_path_enabled": true, "use_subcategories": true, "torrent_changed_tmm_enabled": true, "category_changed_tmm_enabled": true,
-			"scan_dirs": s.ScanDirs})
+		downloadPath := s.DownloadPath
+		if downloadPath == "" {
+			downloadPath = filepath.Join(s.savePath, "incomplete")
+		}
+		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
+			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
+			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs})
 	case "sync/maindata":
 		s.syncs++
 		s.rid++

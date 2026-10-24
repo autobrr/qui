@@ -38,9 +38,7 @@ type healthChecker interface {
 type syncReader interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
-	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
+	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
 
 type clientReadiness interface {
@@ -137,24 +135,6 @@ func (s *Service) emitRun(instanceID int, runID int64) {
 		InstanceID: instanceID,
 		ResourceID: strconv.FormatInt(runID, 10),
 	})
-}
-
-// validDefaultSavePath checks the default save path qBittorrent reported so it
-// can serve as a scan root. Files sitting directly in it are invisible to a
-// torrent-derived root set.
-//
-// A path that cannot be used is an error rather than an empty root: silently
-// falling back to torrent-derived roots would report a clean scan over a
-// narrower tree than the user asked for (discussion #2365).
-func validDefaultSavePath(d fsops.PathDialect, reported string) (string, error) {
-	savePath := d.Clean(reported)
-	if savePath == "." {
-		return "", errors.New("qBittorrent reported an empty default save path")
-	}
-	if !d.IsAbs(savePath) {
-		return "", fmt.Errorf("qBittorrent default save path %q is not absolute", savePath)
-	}
-	return savePath, nil
 }
 
 // walkForScope walks one root into the run's keys, collecting directory
