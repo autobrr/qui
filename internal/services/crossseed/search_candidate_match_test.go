@@ -2285,6 +2285,13 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 
+	// Without the aliases the download does not read as the listing.
+	noAliases := request(sourceHash)
+	noAliases.SearchDecision.SourceTitles = nil
+	response, err = service.FindCandidates(context.Background(), noAliases)
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates)
+
 	// Without a matching source hash the aliases attach to nothing.
 	response, err = service.FindCandidates(context.Background(), request("different-hash"))
 	require.NoError(t, err)
