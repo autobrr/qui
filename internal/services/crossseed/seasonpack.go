@@ -1244,6 +1244,10 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			Msg("[CROSSSEED-MATCH] Release filtered")
 	}
 
+	policy := seasonPackPolicy(settings)
+	policy.SkipSizeCheck = true
+	packEpisodeReleases := make(map[int]*rls.Release)
+
 	for i := range cached {
 		view := &cached[i]
 		if view.TorrentView == nil || view.Torrent == nil {
@@ -1314,14 +1318,16 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		if isRange {
 			local = asEpisode(resolved, id.episode)
 		}
+		packEpisode, ok := packEpisodeReleases[id.episode]
+		if !ok {
+			packEpisode = asEpisode(packRelease, id.episode)
+			packEpisodeReleases[id.episode] = packEpisode
+		}
 		evidence := matchEvidence{CandidateTitles: aliasTitles}
 		if origin.file.Size > 0 {
-			evidence.SourceSize = torrent.Size
-			evidence.CandidateFiles = qbt.TorrentFiles{origin.file}
+			evidence.SourceSize, evidence.CandidateSize = torrent.Size, origin.file.Size
 		}
-		policy := seasonPackPolicy(settings)
-		policy.SkipSizeCheck = true
-		verdict := m.matchVerdict(namedRelease{release: local, rawName: torrent.Name}, namedRelease{release: asEpisode(packRelease, id.episode), rawName: packName}, evidence, policy)
+		verdict := m.matchVerdict(namedRelease{release: local, rawName: torrent.Name}, namedRelease{release: packEpisode, rawName: packName}, evidence, policy)
 		if !verdict.Matched {
 			logFiltered(torrent.Name, verdict.RejectReason)
 			continue
