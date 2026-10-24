@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -143,9 +144,22 @@ func (s *Service) readLocalTorrents(ctx context.Context, instanceID int, torrent
 		log.Debug().Err(err).Int("instanceID", instanceID).Int("hashCount", len(hashes)).
 			Msg("crossseed: some local torrents keep their name read, because their file lists could not be read")
 	}
+	// Load the category mapping rules once for the batch, not once per torrent.
+	var rules []models.CategoryMappingRule
+	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
+		rules = settings.CategoryMappingRules
+	}
 	for _, hash := range hashes {
 		if files := filesByHash[hash]; len(files) > 0 {
-			reads[cacheKeyForTorrentFiles(instanceID, hash)], _ = s.readSearchSource(ctx, byHash[hash], files)
+			torrent := byHash[hash]
+			reads[cacheKeyForTorrentFiles(instanceID, hash)], _ = s.readRelease(torrent.Name, files, readPolicy{
+				mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
+					if ruleInfo, ok := categoryRuleContentType(rules, torrent.Category); ok {
+						return ruleInfo
+					}
+					return contentInfo
+				},
+			})
 		}
 	}
 	return reads

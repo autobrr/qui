@@ -434,10 +434,16 @@ func TestReadLocalTorrentsReadsOnlyNamesThatNeedFiles(t *testing.T) {
 	recorder := &fileRequestRecorder{fakeSyncManager: newFakeSyncManager(instance, torrents, files)}
 	svc := manualMatchTestService(instance, nil, nil)
 	svc.syncManager = recorder
+	settingsLoads := 0
+	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settingsLoads++
+		return &models.CrossSeedAutomationSettings{}, nil
+	}
 
 	reads := svc.readLocalTorrents(t.Context(), instance.ID, viewTorrents(buildCrossInstanceViews(instance, torrents)))
 
 	require.ElementsMatch(t, []string{"folder", "batch", "unread"}, recorder.requested)
+	require.Equal(t, 1, settingsLoads, "the batch loads the category mapping rules once")
 	folder := reads.read(svc.matcher(), instance.ID, &torrents[0])
 	require.Equal(t, "Kaiju Squad", folder.release.Title)
 	require.Equal(t, 2, folder.release.Series)
