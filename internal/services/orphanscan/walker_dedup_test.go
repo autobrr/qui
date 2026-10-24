@@ -264,6 +264,58 @@ func TestScanWalker_DiscUnitAliasesKeepUniqueFiles(t *testing.T) {
 	}
 }
 
+// A file reached through two paths counts once toward the bytes found.
+func TestScanWalker_AliasBytesCountOnce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		shared []string // two paths to one 10-byte file
+		want   map[string]int64
+	}{
+		{
+			name:   "both paths in one disc unit",
+			shared: []string{"disc/BDMV/STREAM/00001.m2ts", "disc/BDMV/view/STREAM/00001.m2ts"},
+			want:   map[string]int64{"disc": 11},
+		},
+		{
+			name:   "second path in a unit kept for its own file",
+			shared: []string{"a.m2ts", "disc/BDMV/STREAM/00001.m2ts"},
+			want:   map[string]int64{"a.m2ts": 10, "disc": 1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			own := filepath.Join(root, "disc", "BDMV", "index.bdmv")
+			writeFile(t, own)
+			backdate(t, own)
+			var shared []string
+			for _, rel := range tt.shared {
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o750))
+				require.NoError(t, os.WriteFile(p, make([]byte, 10), 0o600))
+				backdate(t, p)
+				shared = append(shared, p)
+			}
+
+			backend := &aliasWalkBackend{Backend: newTestBackend(), ids: sameFile(shared...)}
+			tfm := NewTorrentFileMap(fsops.HostPaths)
+			orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), time.Minute, 0, backend, nil)
+			require.NoError(t, err)
+			got := make(map[string]int64, len(orphans))
+			for _, o := range orphans {
+				rel, err := filepath.Rel(root, o.Path)
+				require.NoError(t, err)
+				got[filepath.ToSlash(rel)] = o.Size
+			}
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestScanWalker_DirectoryHoldingInUseAliasIsNotACandidate(t *testing.T) {
 	t.Parallel()
 

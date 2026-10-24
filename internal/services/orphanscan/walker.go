@@ -174,9 +174,9 @@ type fileKeys struct {
 }
 
 type aliasRef struct {
-	path   string
-	prev   int  // the key's previous ref, or -1
-	listed bool // counted into an orphan's Size, not just inside one
+	path string
+	prev int   // the key's previous ref, or -1
+	size int64 // bytes counted into an orphan's Size, or -1 when the file only sits inside one
 }
 
 func newFileKeys() *fileKeys {
@@ -188,7 +188,7 @@ func (k *fileKeys) addOther(key fsops.FileKey, path string) int {
 	if !ok {
 		prev = -1
 	}
-	k.refs = append(k.refs, aliasRef{path: path, prev: prev})
+	k.refs = append(k.refs, aliasRef{path: path, prev: prev, size: -1})
 	k.others[key] = len(k.refs) - 1
 	return len(k.refs) - 1
 }
@@ -203,81 +203,117 @@ func (w *scanWalker) fileKey(entry fsops.WalkEntry) (fsops.FileKey, bool) {
 // dropAliasOrphans runs once every root is walked, so walk and root order
 // cannot decide whether a delete reaches a torrent's file through an alias.
 func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys) []OrphanFile {
-	var aliased []int
-	var inUse []string
-	for key, head := range keys.others {
-		if _, ok := keys.inUse[key]; ok {
-			for r := head; r >= 0; r = keys.refs[r].prev {
-				inUse = append(inUse, keys.refs[r].path)
-			}
-		} else if keys.refs[head].prev >= 0 {
-			aliased = append(aliased, head)
-		}
-	}
+	inUse, aliased := keys.inUseAndAliased()
 	if len(aliased) == 0 && len(inUse) == 0 {
 		return orphans
 	}
 
-	units := make(map[string]int, len(orphans))
-	for i := range orphans {
-		units[orphans[i].Path] = i
-	}
-	// The orphan whose delete removes path: the file itself or a disc unit above it.
-	owner := func(path string) (int, bool) {
-		for {
-			if i, ok := units[path]; ok {
-				return i, true
-			}
-			parent := d.Dir(path)
-			if parent == path {
-				return 0, false
-			}
-			path = parent
-		}
-	}
-
+	owners := newOrphanOwners(d, orphans)
 	drop := make([]bool, len(orphans))
 	for _, path := range inUse {
-		if i, ok := owner(path); ok {
+		if i, ok := owners.of(path); ok {
 			drop[i] = true
 		}
 	}
-	dups := make([]int, len(orphans))
-	var listed []int
+	dups := make([]aliasDups, len(orphans))
 	for _, head := range aliased {
-		first, firstUnit := "", -1
-		listed = listed[:0]
-		for r := head; r >= 0; r = keys.refs[r].prev {
-			ref := keys.refs[r]
-			if !ref.listed {
-				continue
-			}
-			i, ok := owner(ref.path)
-			if !ok || drop[i] {
-				continue
-			}
-			listed = append(listed, i)
-			if firstUnit < 0 || ref.path < first {
-				first, firstUnit = ref.path, i
-			}
-		}
-		for _, i := range listed {
-			dups[i]++
-		}
-		if firstUnit >= 0 {
-			dups[firstUnit]--
-		}
+		keys.countDups(head, owners, drop, dups)
 	}
 
 	out := make([]OrphanFile, 0, len(orphans))
 	for i := range orphans {
 		// Of paths to one file, the lexically first is listed, wherever the walk met it.
-		if drop[i] || (orphans[i].files > 0 && dups[i] >= orphans[i].files) {
+		if drop[i] || (orphans[i].files > 0 && dups[i].files >= orphans[i].files) {
 			continue
 		}
-		out = append(out, orphans[i])
+		orphan := orphans[i]
+		orphan.Size -= dups[i].bytes
+		out = append(out, orphan)
 	}
 	return out
+}
+
+// inUseAndAliased returns the paths of keys a torrent owns, and the newest ref
+// of each other key with more than one path.
+func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
+	for key, head := range k.others {
+		if _, ok := k.inUse[key]; ok {
+			for r := head; r >= 0; r = k.refs[r].prev {
+				inUse = append(inUse, k.refs[r].path)
+			}
+		} else if k.refs[head].prev >= 0 {
+			aliased = append(aliased, head)
+		}
+	}
+	return inUse, aliased
+}
+
+// aliasDups counts the files and bytes in one orphan that are a file already
+// listed at another path.
+type aliasDups struct {
+	files int
+	bytes int64
+}
+
+type listedRef struct {
+	orphan int
+	path   string
+	size   int64
+}
+
+// countDups marks every listed path of one key but the lexically first as a
+// duplicate in the orphan whose delete removes it. Dropped orphans do not count.
+func (k *fileKeys) countDups(head int, owners orphanOwners, drop []bool, dups []aliasDups) {
+	var listed []listedRef
+	first := -1
+	for r := head; r >= 0; r = k.refs[r].prev {
+		ref := k.refs[r]
+		if ref.size < 0 {
+			continue
+		}
+		i, ok := owners.of(ref.path)
+		if !ok || drop[i] {
+			continue
+		}
+		listed = append(listed, listedRef{orphan: i, path: ref.path, size: ref.size})
+		if first < 0 || ref.path < listed[first].path {
+			first = len(listed) - 1
+		}
+	}
+	for j, ref := range listed {
+		if j != first {
+			dups[ref.orphan].files++
+			dups[ref.orphan].bytes += ref.size
+		}
+	}
+}
+
+// orphanOwners finds the orphan whose delete removes a path: the file itself
+// or a disc unit above it.
+type orphanOwners struct {
+	d     fsops.PathDialect
+	units map[string]int
+}
+
+func newOrphanOwners(d fsops.PathDialect, orphans []OrphanFile) orphanOwners {
+	units := make(map[string]int, len(orphans))
+	for i := range orphans {
+		units[orphans[i].Path] = i
+	}
+	return orphanOwners{d: d, units: units}
+}
+
+func (o orphanOwners) of(path string) (int, bool) {
+	for {
+		if i, ok := o.units[path]; ok {
+			return i, true
+		}
+		parent := o.d.Dir(path)
+		if parent == path {
+			return 0, false
+		}
+		path = parent
+	}
 }
 
 // outermostDiscUnit returns the outermost disc root that contains normUnit.
@@ -480,7 +516,7 @@ func walkScanRootWithUnitFilter(
 		existing.Size += entry.Size
 		existing.files++
 		if ref >= 0 {
-			w.keys.refs[ref].listed = true
+			w.keys.refs[ref].size = entry.Size
 		}
 		if existing.ModifiedAt.IsZero() || entry.ModTime.After(existing.ModifiedAt) {
 			existing.ModifiedAt = entry.ModTime
