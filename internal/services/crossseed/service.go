@@ -6366,8 +6366,6 @@ func (s *Service) selectBestCandidateAddPlan(
 				continue
 			}
 		} else {
-			// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
-			// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
 			matchResult := s.matcher().getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
 			if matchResult.MatchType == "" && !manualTarget {
 				// Track the rejection reason - prefer more specific reasons
@@ -6377,22 +6375,9 @@ func (s *Service) selectBestCandidateAddPlan(
 				continue
 			}
 
-			// Since we swapped parameters above, swap partial match types to keep caller semantics.
-			actualMatchType = matchResult.MatchType
-			switch actualMatchType {
-			case "":
-				// Pinned Manual match target whose files did not validate: proceed
-				// anyway, verify before seeding, and let the recheck arbitrate.
-				actualMatchType = manualMatchType
-			case "partial-in-pack":
-				actualMatchType = "partial-contains"
-			case "partial-contains":
-				actualMatchType = "partial-in-pack"
-			case "size-partial-in-pack":
-				actualMatchType = "size-partial-contains"
-			case "size-partial-contains":
-				actualMatchType = "size-partial-in-pack"
-			}
+			// A pinned Manual match target whose files did not validate proceeds
+			// anyway: verify before seeding, and let the recheck arbitrate.
+			actualMatchType = cmp.Or(matchResult.MatchType, manualMatchType)
 		}
 
 		score := matchTypePriority(actualMatchType)
