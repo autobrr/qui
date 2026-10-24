@@ -6,6 +6,10 @@ package qbittorrent
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -242,31 +246,93 @@ func TestInstanceFolders(t *testing.T) {
 			categories: map[string]stubCategory{"tv": {download: on("")}},
 			wantErr:    `download path of category "tv" rests on the qBittorrent download path "dl", which is not absolute`},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			stub := newFoldersStub(t, tt.categories)
-			stub.WebAPIVersion = tt.version
-			if tt.setup != nil {
-				tt.setup(stub)
-			}
-			got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).folders(t, 1)
-			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
-				return
-			}
-			require.NoError(t, err)
-
-			want := tt.want
-			if want.DefaultSavePath == "" {
-				want.DefaultSavePath = "/data"
-			}
-			if !stub.DownloadPathOff {
-				want.DownloadPath = "/dl/temp"
-			}
-			require.Equal(t, want, got)
-		})
+	// The rows are written in slash paths. The host run writes each path in
+	// the form of the host, so the Windows CI job checks its path rules.
+	dialects := []struct {
+		name string
+		d    fsops.PathDialect
+		path func(string) string
+	}{
+		{"slash", fsops.SlashPaths, func(p string) string { return p }},
+		{"host", fsops.HostPaths, hostPath},
 	}
+	for _, tt := range tests {
+		for _, dialect := range dialects {
+			t.Run(tt.name+"/"+dialect.name, func(t *testing.T) {
+				t.Parallel()
+				p := dialect.path
+				paths := func(list []string) []string {
+					out := slices.Clone(list)
+					for i, s := range out {
+						out[i] = p(s)
+					}
+					slices.Sort(out)
+					return out
+				}
+
+				categories := make(map[string]stubCategory, len(tt.categories))
+				for name, c := range tt.categories {
+					c.save = p(c.save)
+					if c.download != nil {
+						c.download = &qbt.CategoryDownloadPath{Enabled: c.download.Enabled, Path: p(c.download.Path)}
+					}
+					categories[name] = c
+				}
+				stub := newFoldersStub(t, categories)
+				stub.WebAPIVersion = tt.version
+				if tt.setup != nil {
+					tt.setup(stub)
+				}
+				stub.SetDefaultSavePath(p(stub.DefaultSavePath()))
+				stub.DownloadPath = p(stub.DownloadPath)
+				scanDirs := make(map[string]any, len(stub.ScanDirs))
+				for dir, target := range stub.ScanDirs {
+					if s, ok := target.(string); ok {
+						target = p(s)
+					}
+					scanDirs[p(dir)] = target
+				}
+				stub.ScanDirs = scanDirs
+
+				got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.InstanceFolders(t.Context(), dialect.d, 1)
+				if tt.wantErr != "" {
+					// The text quotes a path as qBittorrent sent it, in
+					// slash form only in the slash run.
+					if dialect.d == fsops.SlashPaths {
+						require.EqualError(t, err, tt.wantErr)
+					} else {
+						require.Error(t, err)
+					}
+					return
+				}
+				require.NoError(t, err)
+
+				want := tt.want
+				if want.DefaultSavePath == "" {
+					want.DefaultSavePath = "/data"
+				}
+				if !stub.DownloadPathOff {
+					want.DownloadPath = "/dl/temp"
+				}
+				require.Equal(t, InstanceFolders{
+					DefaultSavePath:     p(want.DefaultSavePath),
+					DownloadPath:        p(want.DownloadPath),
+					CategorySaveFolders: paths(want.CategorySaveFolders),
+					DownloadFolders:     paths(want.DownloadFolders),
+					MonitoredFolders:    paths(want.MonitoredFolders),
+				}, got)
+			})
+		}
+	}
+}
+
+// hostPath writes a slash fixture path in the form of the host. On Windows an
+// absolute path also gets a drive, because \data is not absolute there.
+func hostPath(p string) string {
+	if strings.HasPrefix(p, "/") {
+		p = filepath.VolumeName(os.TempDir()) + p
+	}
+	return filepath.FromSlash(p)
 }
 
 // The preferences and the categories are read on every call, so a change in

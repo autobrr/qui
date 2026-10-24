@@ -168,6 +168,13 @@ func (s *Server) SetDefaultSavePath(p string) {
 	s.savePath = p
 }
 
+// DefaultSavePath returns the reported default save path.
+func (s *Server) DefaultSavePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.savePath
+}
+
 // Add adds a torrent and writes its files.
 func (s *Server) Add(t Torrent) {
 	s.mu.Lock()
