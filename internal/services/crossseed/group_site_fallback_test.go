@@ -485,6 +485,7 @@ func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
 				Class:                 searchCandidateClassExactSizeFallback,
+				SearchCandidateName:   fansubTaggedPack,
 				SourceInstanceID:      instanceID,
 				SourceHash:            sourceHash,
 				Relaxed:               differencesOf(relaxed...),
@@ -515,7 +516,7 @@ func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 // Search can heal a bracket episode's identity from its selected file without
 // recording a relaxation. Apply must select the same file-derived identity for
 // the bound source even though the raw torrent name already parses as TV.
-func TestFindCandidates_ReplaysFileDerivedStrictEpisodeIdentity(t *testing.T) {
+func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -543,9 +544,10 @@ func TestFindCandidates_ReplaysFileDerivedStrictEpisodeIdentity(t *testing.T) {
 		TorrentName:       taggedEpisode,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassStrict,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: taggedEpisode,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	})
 	require.NoError(t, err)
@@ -621,7 +623,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 		"the fixture must pass plan selection and stop at its unimplemented property lookup")
 }
 
-func TestFindCandidates_ReplaysFileStructureWithoutReplacingExplicitGroup(t *testing.T) {
+func TestFindCandidates_KeepsFileStructureWithoutReplacingExplicitGroup(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -654,16 +656,17 @@ func TestFindCandidates_ReplaysFileStructureWithoutReplacingExplicitGroup(t *tes
 		TorrentName:       incomingName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassStrict,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: incomingName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1)
 }
 
-func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
+func TestFindCandidates_KeepsRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -701,10 +704,11 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		TorrentName:       rawS01,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:            decision.Class,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
-			Relaxed:          decision.Relaxed,
+			Class:               decision.Class,
+			SearchCandidateName: rawS01,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+			Relaxed:             decision.Relaxed,
 		},
 	})
 	require.NoError(t, err)

@@ -221,9 +221,10 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 		TargetInstanceIDs:            []int{instanceID},
 		SkipPieceBoundarySafetyCheck: true,
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassStrict,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	})
 	require.NoError(t, err)
@@ -702,7 +703,10 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 		{
 			name:      "local copy in the original folder",
 			localRoot: name,
-			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict},
+			decision: searchDecisionProvenance{
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: "[GRP] Kaiju Squad 100 S02 [BDRip 1080p HEVC FLAC]",
+			},
 		},
 		{
 			// The listing name has no season, but the download reads one from its files.

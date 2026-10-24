@@ -152,100 +152,81 @@ func TestRejectSeasonPackFromEpisode(t *testing.T) {
 	movie := &rls.Release{Title: "Movie", Year: 2024}
 
 	tests := []struct {
-		name            string
-		newR            *rls.Release
-		existingR       *rls.Release
-		episodeMatching bool
-		expectReject    bool
-		expectReason    string
+		name         string
+		newR         *rls.Release
+		existingR    *rls.Release
+		expectReject bool
+		expectReason string
 	}{
 		{
-			name:            "season pack vs episode with episodeMatching=true (forbidden)",
-			newR:            seasonPack,
-			existingR:       episode,
-			episodeMatching: true,
-			expectReject:    true,
-			expectReason:    rejectReasonSeasonPackFromEpisode,
+			name:         "season pack vs episode (forbidden)",
+			newR:         seasonPack,
+			existingR:    episode,
+			expectReject: true,
+			expectReason: rejectReasonSeasonPackFromEpisode,
 		},
 		{
-			name:            "season pack vs episode with episodeMatching=false (allowed)",
-			newR:            seasonPack,
-			existingR:       episode,
-			episodeMatching: false,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "episode vs season pack (allowed - reverse direction)",
+			newR:         episode,
+			existingR:    seasonPack,
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "episode vs season pack (allowed - reverse direction)",
-			newR:            episode,
-			existingR:       seasonPack,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "episode vs episode (allowed)",
+			newR:         episode,
+			existingR:    &rls.Release{Series: 1, Episode: 3},
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "episode vs episode (allowed)",
-			newR:            episode,
-			existingR:       &rls.Release{Series: 1, Episode: 3},
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "season pack vs season pack (allowed)",
+			newR:         seasonPack,
+			existingR:    &rls.Release{Series: 2, Episode: 0},
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "season pack vs season pack (allowed)",
-			newR:            seasonPack,
-			existingR:       &rls.Release{Series: 2, Episode: 0},
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "nil new release",
+			newR:         nil,
+			existingR:    episode,
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "nil new release",
-			newR:            nil,
-			existingR:       episode,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "nil existing release",
+			newR:         seasonPack,
+			existingR:    nil,
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "nil existing release",
-			newR:            seasonPack,
-			existingR:       nil,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "both nil releases",
+			newR:         nil,
+			existingR:    nil,
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "both nil releases",
-			newR:            nil,
-			existingR:       nil,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "movie vs movie (non-TV content)",
+			newR:         movie,
+			existingR:    &rls.Release{Title: "Other Movie", Year: 2023},
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "movie vs movie (non-TV content)",
-			newR:            movie,
-			existingR:       &rls.Release{Title: "Other Movie", Year: 2023},
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "movie vs episode (non-TV new)",
+			newR:         movie,
+			existingR:    episode,
+			expectReject: false,
+			expectReason: "",
 		},
 		{
-			name:            "movie vs episode (non-TV new)",
-			newR:            movie,
-			existingR:       episode,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
-		},
-		{
-			name:            "season pack vs movie (non-TV existing)",
-			newR:            seasonPack,
-			existingR:       movie,
-			episodeMatching: true,
-			expectReject:    false,
-			expectReason:    "",
+			name:         "season pack vs movie (non-TV existing)",
+			newR:         seasonPack,
+			existingR:    movie,
+			expectReject: false,
+			expectReason: "",
 		},
 	}
 
@@ -253,7 +234,7 @@ func TestRejectSeasonPackFromEpisode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			reject, reason := rejectSeasonPackFromEpisode(tt.newR, tt.existingR, tt.episodeMatching)
+			reject, reason := rejectSeasonPackFromEpisode(tt.newR, tt.existingR)
 			require.Equal(t, tt.expectReject, reject, "reject mismatch")
 			require.Equal(t, tt.expectReason, reason, "reason mismatch")
 		})

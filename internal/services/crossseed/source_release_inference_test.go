@@ -190,7 +190,7 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, 37, *query.Episode)
 }
 
-func TestDeriveSearchSourceRelease_ReplaysCategoryMappedView(t *testing.T) {
+func TestDeriveSearchSourceRelease_KeepsCategoryMappedView(t *testing.T) {
 	const instanceID = 1
 	torrent := qbt.Torrent{
 		Hash:     "category-mapped-source",

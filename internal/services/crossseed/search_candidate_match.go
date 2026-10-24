@@ -389,9 +389,6 @@ func (provenance searchDecisionProvenance) listedDifferences() matchDifferences 
 // that search compared, so the download must not bring a new difference. A CRC
 // tag on one name only does not count, because indexer titles drop it.
 func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local, download namedRelease, findIndividualEpisodes bool) bool {
-	if decision.SearchCandidateName == "" {
-		return true
-	}
 	listed := decision.listedDifferences()
 	// The listing can drop the group, the fansub tag, or the CRC tag. A tag on the
 	// local torrent and another on the download still prove another release.

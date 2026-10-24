@@ -4680,7 +4680,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			// A new season pack never pairs with one local episode here, whatever the
 			// individual episodes setting. Only a Manual match skips this rule.
-			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release, true); reject {
+			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, sourceSide.release); reject {
 				continue
 			}
 
@@ -6351,10 +6351,8 @@ func (s *Service) selectBestCandidateAddPlan(
 			hashKey == normalizeHash(req.ManualTargetHash)
 
 		// Reject forbidden pairing: season pack (new) vs single episode (existing).
-		// Force-on safety guard: always check regardless of user setting since reaching this
-		// code path means we're actually applying a cross-seed (not just searching).
 		// A Manual match target is the user's explicit pick; the recheck arbitrates.
-		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject && !manualTarget {
+		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
 				bestRejectReason = reason
 			}

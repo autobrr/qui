@@ -58,10 +58,11 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassExactSizeFallback,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
-			Relaxed:          differencesOf(differenceSeason),
+			Class:               searchCandidateClassExactSizeFallback,
+			SearchCandidateName: targetName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+			Relaxed:             differencesOf(differenceSeason),
 		},
 	})
 	require.NoError(t, err)
@@ -69,7 +70,7 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 }
 
-func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T) {
+func TestFindCandidatesKeepsReverseOneSidedChecksumWithWebRelabel(t *testing.T) {
 	const (
 		instanceID    = 1
 		sourceHash    = "existing-no-crc"
@@ -161,9 +162,10 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       sourceHash,
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: targetName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
 			},
 		})
 		require.NoError(t, err)
@@ -190,10 +192,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassExactSizeFallback,
-				SourceInstanceID: instanceID,
-				SourceHash:       sourceHash,
-				Relaxed:          differencesOf(differenceCodec, differenceHDR),
+				Class:               searchCandidateClassExactSizeFallback,
+				SearchCandidateName: targetName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          sourceHash,
+				Relaxed:             differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -388,7 +391,7 @@ func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing
 	require.Contains(t, decision.MatchReason, "strict metadata")
 }
 
-func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
+func TestFindCandidatesKeepsSourceChecksumWithoutGroup(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-checksum-without-group"
@@ -479,7 +482,7 @@ func TestFindCandidatesKeepsVerdictWhenDownloadAddsGroup(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 }
 
-func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) {
+func TestFindCandidatesKeepsStrictCandidateOnlyChecksumMetadata(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-without-tags"
@@ -526,7 +529,7 @@ func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) 
 		"apply must preserve the bound strict search match when only the downloaded side adds metadata")
 }
 
-func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testing.T) {
+func TestFindCandidatesStrictChecksumVerdictRejectsAdvertisedGroupDrift(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-with-group"
@@ -566,10 +569,10 @@ func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testin
 	})
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates,
-		"checksum replay must not authorize a downloaded group that differs from the listing")
+		"a stored checksum verdict must not authorize a downloaded group that differs from the listing")
 }
 
-func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+func TestFindCandidatesChecksumVerdictRejectsNewUnrecordedDifference(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-without-checksum"
@@ -744,7 +747,7 @@ func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
 		"the downloaded source title remains valid through the cached ARR alias")
 }
 
-func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+func TestFindCandidatesSourceChecksumVerdictRejectsNewUnrecordedDifference(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-with-checksum"
@@ -940,7 +943,7 @@ func TestSearchRecordsStrictCollectionMismatch(t *testing.T) {
 		"search must record the Collection field that strict matching rejects")
 }
 
-func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
+func TestFindCandidatesKeepsDirectionalVariantMismatch(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-imax"
@@ -986,13 +989,13 @@ func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
-		"apply must replay a recorded variant when the reverse comparison reports its other label")
+		"apply must keep a recorded variant when the reverse comparison reports its other label")
 }
 
 // Search and apply call the asymmetric checksum gate in opposite directions.
 // Exact-size evidence must preserve a one-sided-checksum decision whichever
 // release carries the CRC.
-func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
+func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 	const (
 		instanceID   = 1
 		checksumName = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
@@ -1060,7 +1063,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
 				downloadedRelease, existingRelease, existingFiles,
-			), "the fixture must pass file validation once the release gate is replayed")
+			), "the fixture must pass file validation once apply keeps the stored verdict")
 
 			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 				TorrentName:       tt.downloadedName,
@@ -2054,9 +2057,10 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:            searchCandidateClassTitleRescue,
-			SourceInstanceID: instanceID,
-			SourceHash:       sourceHash,
+			Class:               searchCandidateClassTitleRescue,
+			SearchCandidateName: targetName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
 		},
 	}
 	rescued, err := service.FindCandidates(context.Background(), request)
@@ -2248,15 +2252,18 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	// The listing names the local show, and the download uses the other title.
+	// Only the aliases let the download read as the listing.
 	request := func(hash string) *FindCandidatesRequest {
 		return &FindCandidatesRequest{
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:            searchCandidateClassStrict,
-				SourceInstanceID: instanceID,
-				SourceHash:       hash,
-				SourceTitles:     []string{"Money Heist"},
+				Class:               searchCandidateClassStrict,
+				SearchCandidateName: sourceName,
+				SourceInstanceID:    instanceID,
+				SourceHash:          hash,
+				SourceTitles:        []string{"Money Heist"},
 			},
 		}
 	}
