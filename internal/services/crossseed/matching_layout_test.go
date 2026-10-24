@@ -25,19 +25,19 @@ func TestGetMatchType_EnforcesLayoutCompatibility(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	sourceRelease := rls.Release{Title: "Example", Year: 2024}
-	candidateRelease := rls.Release{Title: "Example", Year: 2024}
+	localRelease := rls.Release{Title: "Example", Year: 2024}
+	newRelease := rls.Release{Title: "Example", Year: 2024}
 
-	sourceFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
+	mkvFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
 	archiveFiles := qbt.TorrentFiles{{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}}
 
-	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles, 0).MatchType
-	require.Empty(t, match, "mkv torrent should not match rar-only candidate")
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, archiveFiles, 0).MatchType
+	require.Empty(t, match, "local mkv torrent should not match a new rar-only torrent")
 
-	archiveMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles, 0).MatchType
+	archiveMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, archiveFiles, archiveFiles, 0).MatchType
 	require.NotEmpty(t, archiveMatch, "identical archive layouts should match")
 
-	fileMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles, 0).MatchType
+	fileMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, mkvFiles, 0).MatchType
 	require.Equal(t, "exact", fileMatch, "identical file layouts should be exact matches")
 }
 
@@ -102,9 +102,10 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t
 		},
 	}
 
-	singleRelease := svc.releaseCache.Parse("Minimal.Payload")
-	singleMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"], 0).MatchType
-	folderMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], 0).MatchType
+	// The candidate torrents are local, and the source is the new torrent.
+	localRelease := svc.releaseCache.Parse("Minimal.Payload")
+	singleMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["single"], sourceFiles, 0).MatchType
+	folderMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], sourceFiles, 0).MatchType
 	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
 	require.Equal(t, "size", singleMatch)
 
@@ -465,17 +466,17 @@ func TestGetMatchType_FileNameFallback(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	sourceRelease := rls.Release{Title: "Example Show"}
-	candidateRelease := rls.Release{Title: "Example Show"}
+	localRelease := rls.Release{Title: "Example Show"}
+	newRelease := rls.Release{Title: "Example Show"}
 
-	sourceFiles := qbt.TorrentFiles{
+	localFiles := qbt.TorrentFiles{
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
-	candidateFiles := qbt.TorrentFiles{
+	newFiles := qbt.TorrentFiles{
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles, 0).MatchType
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, localFiles, newFiles, 0).MatchType
 	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
 }
 

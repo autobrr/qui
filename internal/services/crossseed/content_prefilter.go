@@ -78,6 +78,8 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			continue
 		}
 
+		// The source is the local side. The other local torrent takes the new
+		// side, in place of a search result from its tracker.
 		matchResult := s.matcher().getMatchTypeWithReason(sourceRelease, candidate.release, sourceFiles, candidateFiles, contentPrefilterSizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if !contentPrefilterAcceptsMatchType(matchResult.MatchType) {
