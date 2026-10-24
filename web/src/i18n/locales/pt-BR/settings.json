@@ -453,7 +453,9 @@
         "activeTitle": "Acesso Premium Ativo",
         "activeDescription": "Você tem acesso a todos os temas premium atuais e futuros",
         "activationRequiredTitle": "Ativação de Licença Necessária",
-        "activationRequiredDescription": "Sua licença precisa ser ativada nesta máquina"
+        "activationRequiredDescription": "Sua licença precisa ser ativada nesta máquina",
+        "offlineTitle": "Serviço de licenças inacessível",
+        "offlineDescription": "O qui não conseguiu acessar o serviço de licenças por 7 dias, então os temas premium estão bloqueados. O qui verifica na inicialização e uma vez por dia. Os temas são desbloqueados quando o serviço responder. Você não precisa reativar a licença."
       },
       "portalHelp": {
         "prefix": "Compre no DodoPayments, depois insira sua chave de licença aqui. Se você perder a chave, recupere-a através do",
@@ -475,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Adicionado {{date}}",
-        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Adicionado {{date}}"
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Adicionado {{date}}",
+        "statusLabels": {
+          "invalid": "Inválida",
+          "offline": "Offline",
+          "unknown": "Desconhecido"
+        }
       },
       "invalid": {
         "dodo": "Esta licença não está ativa nesta máquina. Clique em reativar para usá-la aqui. Se você atingir o limite de ativação, acesse <portal>licenses.getqui.com</portal>, cadastre-se ou entre com o e-mail que você usou para comprar a licença e desative uma máquina que você não usa mais em Machine Instances."
