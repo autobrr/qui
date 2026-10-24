@@ -128,10 +128,13 @@ func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate name
 	}
 }
 
+// classifyUnknownSizePreflight asks the Match verdict as if the sizes were
+// equal. Announces often leave out the group, so a group or site that only the
+// local name carries does not count.
 func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipRecheck bool) searchCandidateDecision {
 	input.CandidateSize = input.SourceSize
 	input.RescueTitleMismatches = false
-	input = s.normalizeUnknownSizePreflightIdentity(input)
+	input.AllowMissingCandidateGroup = true
 	decision := s.matcher().classifySearchCandidate(input)
 	if !allowsUnknownSizePreflight(decision, skipRecheck) {
 		decision.Accepted = false
@@ -139,31 +142,6 @@ func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipR
 		decision.RejectReason = "unknown size requires verification"
 	}
 	return decision
-}
-
-// normalizeUnknownSizePreflightIdentity preserves the legacy advisory treatment
-// of an announcement that simply omits a local group/site tag. It is confined
-// to the non-replayable preflight: known-size classification still requires the
-// generic file-aware identity rules, and any populated conflicting tag remains
-// visible to the classifier.
-func (s *Service) normalizeUnknownSizePreflightIdentity(input searchCandidateInput) searchCandidateInput {
-	source := input.Source.release
-	candidate := input.Candidate.release
-	if source == nil || candidate == nil {
-		return input
-	}
-
-	normalizer := normalizerForService(s)
-	if normalizer.Normalize(candidate.Group) != "" || normalizer.Normalize(candidate.Site) != "" ||
-		(normalizer.Normalize(source.Group) == "" && normalizer.Normalize(source.Site) == "") {
-		return input
-	}
-
-	candidateCopy := *candidate
-	candidateCopy.Group = source.Group
-	candidateCopy.Site = source.Site
-	input.Candidate.release = &candidateCopy
-	return input
 }
 
 func allowsUnknownSizePreflight(decision searchCandidateDecision, skipRecheck bool) bool {
@@ -174,21 +152,12 @@ func allowsUnknownSizePreflight(decision searchCandidateDecision, skipRecheck bo
 	case searchCandidateClassStrict, searchCandidateClassWebSourceRelabel:
 		return true
 	case searchCandidateClassExactSizeFallback:
-		if len(decision.RelaxedDifferences) == 0 {
-			return false
+		allowed := encodeDifferences
+		// A split group needs a full recheck, which skip recheck turns off.
+		if !skipRecheck {
+			allowed |= differencesOf(differenceGroup)
 		}
-		for _, difference := range decision.RelaxedDifferences {
-			switch difference {
-			case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum", "variant":
-			case "group":
-				if skipRecheck {
-					return false
-				}
-			default:
-				return false
-			}
-		}
-		return true
+		return decision.Relaxed != 0 && decision.Relaxed&^allowed == 0
 	case searchCandidateClassRejected, searchCandidateClassTitleRescue:
 		return false
 	default:

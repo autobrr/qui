@@ -142,6 +142,28 @@ func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	assert.Equal(t, "no scan roots left: ignore paths cover every scan path", run.ErrorMessage)
 }
 
+// Ignoring "/" keeps the scan roots. The walk then ignores every file, so the
+// run completes with zero orphans instead of failing with "no scan roots left".
+func TestExecuteScan_RootIgnorePathKeepsScanRoots(t *testing.T) {
+	t.Parallel()
+
+	svc, store, presentRoot, missingRoot := newScanTestService(t)
+	if protected, err := newProtectedPaths(fsops.HostPaths, []string{"/"}, nil); err != nil || !protected.ignored(presentRoot) {
+		t.Skip("ignore / does not cover host scan roots")
+	}
+	require.NoError(t, os.MkdirAll(missingRoot, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(presentRoot, "orphan.mkv"), []byte("orphan"), 0o600))
+	setIgnorePaths(t, store, []string{"/"})
+
+	run := runScanForTest(t, svc, store)
+	assert.Equal(t, "completed", run.Status)
+	assert.Empty(t, run.ErrorMessage)
+	assert.False(t, run.Partial)
+	assert.Equal(t, 0, run.FilesFound)
+	assert.Contains(t, run.ScanPaths, filepath.Clean(presentRoot))
+	assert.Contains(t, run.ScanPaths, filepath.Clean(missingRoot))
+}
+
 type scanNotifier struct {
 	events chan notifications.Event
 }

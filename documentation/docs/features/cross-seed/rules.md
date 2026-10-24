@@ -159,6 +159,8 @@ This limit applies to new cross-seed additions from RSS, seeded search, completi
 
 In **After injection**, qui can run an external program after it injects a cross-seed torrent.
 
+If you select a program, each cross-seed add sends one execution request (a request to run the program for one torrent). This includes season-pack adds, manual assemblies, and Dir Scan adds. A Dir Scan full scan sends one execution request for each torrent that it adds. A refused add or a failed add sends no execution request.
+
 ## Category Behavior Details
 
 ### autoTMM (Auto Torrent Management)

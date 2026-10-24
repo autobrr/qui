@@ -58,11 +58,11 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "season mismatch",
-			RelaxedDifferences:   []string{"season"},
+			Class:              searchCandidateClassExactSizeFallback,
+			SourceInstanceID:   instanceID,
+			SourceHash:         sourceHash,
+			RelaxedDifferences: []string{"season"},
+			Relaxed:            differencesOf(differenceSeason),
 		},
 	})
 	require.NoError(t, err)
@@ -191,11 +191,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   instanceID,
+				SourceHash:         sourceHash,
+				RelaxedDifferences: []string{"codec", "hdr"},
+				Relaxed:            differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -218,11 +218,11 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 			TorrentName:       "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassExactSizeFallback,
-				SourceInstanceID:     instanceID,
-				SourceHash:           sourceHash,
-				StrictMismatchReason: "hdr mismatch",
-				RelaxedDifferences:   []string{"codec", "hdr"},
+				Class:              searchCandidateClassExactSizeFallback,
+				SourceInstanceID:   instanceID,
+				SourceHash:         sourceHash,
+				RelaxedDifferences: []string{"codec", "hdr"},
+				Relaxed:            differencesOf(differenceCodec, differenceHDR),
 			},
 		})
 		require.NoError(t, err)
@@ -261,6 +261,53 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 		"only strict rejections become apply-time authority")
 	require.Contains(t, decision.MatchReason, "exact reported size")
 	require.Contains(t, decision.MatchReason, "relaxed hdr")
+}
+
+// A Season numeral is a second season marker. Exact size does not relax a
+// season that the numeral of the candidate confirms, and title rescue does not
+// read the numeral of another title as a season.
+func TestClassifySearchCandidateSeasonNumeral(t *testing.T) {
+	m := matcher{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
+	for _, tt := range []struct {
+		name      string
+		source    string
+		candidate string
+		rescue    bool
+		// reason is "" for an accepted pair.
+		reason string
+	}{
+		{
+			name:      "exact size relaxes the season of two packs",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor S03 1080p BluRay x264-GRP",
+		},
+		{
+			name:      "exact size keeps a season that the numeral confirms",
+			source:    "Cedar Harbor S02 1080p BluRay x264-GRP",
+			candidate: "Cedar Harbor III S03 1080p BluRay x264-GRP",
+			reason:    seasonMismatchReason,
+		},
+		{
+			name:      "title rescue reads no numeral season of another title",
+			source:    "Kaiju Squad Zero S02 1080p WEB H264-GRP",
+			candidate: "Kaiju.Squad.II.1080p.WEB.H264-GRP",
+			rescue:    true,
+			reason:    "candidate not recognized as TV",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := m.classifySearchCandidate(searchCandidateInput{
+				Source:                namedRelease{release: m.parseReleaseName(tt.source), rawName: tt.source},
+				Candidate:             namedRelease{release: m.parseReleaseName(tt.candidate), rawName: tt.candidate},
+				SourceSize:            corpusPackSize,
+				CandidateSize:         corpusPackSize,
+				TolerancePercent:      5,
+				RescueTitleMismatches: tt.rescue,
+			})
+			require.Equal(t, tt.reason == "", decision.Accepted, "reject reason: %s", decision.RejectReason)
+			require.Equal(t, tt.reason, decision.RejectReason)
+		})
+	}
 }
 
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
@@ -861,7 +908,8 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		Candidate: namedRelease{release: &searched},
 	}
 
-	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
 	require.ElementsMatch(t, []string{"collection", "variant"}, observed)
 	used, ok, reason := service.matcher().validateExactSizeFallback(input, "collection mismatch", observed)
 	require.True(t, ok, reason)
@@ -877,7 +925,7 @@ func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T)
 		"apply may spend the variant authority that search independently established")
 }
 
-func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) {
+func TestSearchRecordsStrictCollectionMismatch(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := &rls.Release{
 		Title:      "Example Show",
@@ -900,9 +948,10 @@ func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) 
 	require.False(t, strict)
 	require.Equal(t, "collection mismatch", reason)
 
-	observed := service.matcher().observedReleaseDifferences(input.Source, input.Candidate)
+	input.SourceSize, input.CandidateSize = 1_000, 1_000
+	observed := service.matcher().classifySearchCandidate(input).RelaxedDifferences
 	require.Contains(t, observed, "collection",
-		"the observation key must use the same Collection field as strict matching")
+		"search must record the Collection field that strict matching rejects")
 	used, ok, reason := service.matcher().validateExactSizeFallback(input, reason, observed)
 	require.True(t, ok, reason)
 	require.Equal(t, []string{"collection"}, used)
@@ -1045,7 +1094,7 @@ func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
 }
 
 // The checksum tolerance belongs to the exact-size fallback alone. This fails if
-// it is ever widened into validateGroupSiteAndChecksum, where strict matching
+// it is ever widened into compareGroupSiteAndChecksum, where strict matching
 // would inherit it.
 func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -1140,7 +1189,7 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	}
 }
 
-// validateTVStructure reports a season mismatch before it compares pack against
+// compareTVStructure reports a season mismatch before it compares pack against
 // episode, so a differing season would otherwise skip the shape check. Only a
 // like-for-like shape may retire a season or episode number.
 func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) {
@@ -1249,9 +1298,10 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 
-	ok, reason := service.matcher().validateGroupSiteAndChecksum(input.Source, input.Candidate, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing group")
-	require.Equal(t, "group mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, input.Source, input.Candidate)
+	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing group")
+	require.Equal(t, "group mismatch", comparison.reason())
 }
 
 func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
@@ -1269,9 +1319,10 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, "checksum mismatch", reason)
 
-	ok, reason = service.matcher().validateGroupSiteAndChecksum(namedRelease{release: &source}, namedRelease{release: &bare}, false)
-	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
-	require.Equal(t, "checksum mismatch", reason)
+	var comparison releaseComparison
+	service.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: &source}, namedRelease{release: &bare})
+	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing checksum")
+	require.Equal(t, "checksum mismatch", comparison.reason())
 }
 
 func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {
@@ -1587,33 +1638,29 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
 		Title: "candidate",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "secret mismatch",
-			RelaxedDifferences:   []string{"secret difference"},
-			SourceTitles:         []string{"ARR secret result alias"},
+			Class:              searchCandidateClassTitleRescue,
+			RelaxedDifferences: []string{"secret difference"},
+			SourceTitles:       []string{"ARR secret result alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "title-rescue")
-	require.NotContains(t, string(resultBytes), "secret mismatch")
 	require.NotContains(t, string(resultBytes), "secret difference")
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     12345,
-			SourceHash:           "secret source hash",
-			StrictMismatchReason: "secret request mismatch",
-			RelaxedDifferences:   []string{"secret request difference"},
-			SourceTitles:         []string{"ARR secret request alias"},
+			Class:              searchCandidateClassTitleRescue,
+			SourceInstanceID:   12345,
+			SourceHash:         "secret source hash",
+			RelaxedDifferences: []string{"secret request difference"},
+			SourceTitles:       []string{"ARR secret request alias"},
 		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "title-rescue")
 	require.NotContains(t, string(requestBytes), "12345")
 	require.NotContains(t, string(requestBytes), "secret source hash")
-	require.NotContains(t, string(requestBytes), "secret request mismatch")
 	require.NotContains(t, string(requestBytes), "secret request difference")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 
@@ -1746,8 +1793,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	duplicate := result
@@ -1768,6 +1814,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		DownloadURL: duplicate.DownloadURL,
 	}
 
+	withAdder(service)
 	response, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{duplicateSelection, selection, selection, selection, selection},
 	})
@@ -1792,6 +1839,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 	require.Equal(t, 1, limitErrors)
 	require.Equal(t, 1, existsErrors)
 
+	withAdder(service)
 	repeated, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1831,8 +1879,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		Title:       "candidate",
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			StrictMismatchReason: "title mismatch",
+			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{result})
@@ -1843,6 +1890,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		DownloadURL: result.DownloadURL,
 	}
 
+	withAdder(service)
 	blocked, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection},
 	})
@@ -1855,6 +1903,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	// The block must not consume a rescue slot: with Skip recheck off again,
 	// all three attempts remain available.
 	settings = models.DefaultCrossSeedAutomationSettings()
+	withAdder(service)
 	allowed, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{selection, selection, selection},
 	})
@@ -1945,10 +1994,10 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		DownloadURL: "https://example.invalid/candidate.torrent",
 		Size:        size,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         sourceTitles,
+			Class:              searchCandidateClassExactSizeFallback,
+			RelaxedDifferences: []string{"collection"},
+			Relaxed:            differencesOf(differenceCollection),
+			SourceTitles:       sourceTitles,
 		},
 	}
 
@@ -1966,7 +2015,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, 1, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, "source", captured.SearchDecision.SourceHash)
-	require.Equal(t, "collection mismatch", captured.SearchDecision.StrictMismatchReason)
+	require.Equal(t, differencesOf(differenceCollection), captured.SearchDecision.Relaxed)
 	require.Equal(t, []string{"collection"}, captured.SearchDecision.RelaxedDifferences)
 	require.Equal(t, sourceTitles, captured.SearchDecision.SourceTitles)
 }
@@ -1992,8 +2041,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 			Title:       "candidate",
 			DownloadURL: "https://example.invalid/candidate.torrent",
 			SearchDecision: searchDecisionProvenance{
-				Class:                searchCandidateClassTitleRescue,
-				StrictMismatchReason: "title mismatch",
+				Class: searchCandidateClassTitleRescue,
 			},
 		},
 		time.Now(),
@@ -2036,10 +2084,9 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassTitleRescue,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: "title mismatch",
+			Class:            searchCandidateClassTitleRescue,
+			SourceInstanceID: instanceID,
+			SourceHash:       sourceHash,
 		},
 	}
 	rescued, err := service.FindCandidates(context.Background(), request)
@@ -2070,6 +2117,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: instance.Name, Torrents: []qbt.Torrent{existing}, titleRescue: true},
@@ -2154,11 +2202,11 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
 			SearchDecision: searchDecisionProvenance{
-				Class:                decision.Class,
-				SourceInstanceID:     instanceID,
-				SourceHash:           existingHash,
-				StrictMismatchReason: decision.StrictMismatchReason,
-				RelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+				Class:              decision.Class,
+				SourceInstanceID:   instanceID,
+				SourceHash:         existingHash,
+				Relaxed:            decision.Relaxed,
+				RelaxedDifferences: append([]string(nil), decision.RelaxedDifferences...),
 			},
 		}
 	}
@@ -2317,6 +2365,7 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	}
 
 	apply := func(sourceTitles []string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
@@ -2374,6 +2423,7 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	}
 
 	apply := func(candidateTitles []string, sourceHash string) *CrossSeedResponse {
+		withAdder(service)
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
 			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
 			TargetInstanceIDs: []int{instanceID},
@@ -2504,6 +2554,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	require.Equal(t, aliases, match.SearchDecision.SourceTitles)
 
 	t.Run("manual apply", func(t *testing.T) {
+		withAdder(service)
 		applyResponse, applyErr := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 			Selections: []TorrentSearchSelection{
 				{

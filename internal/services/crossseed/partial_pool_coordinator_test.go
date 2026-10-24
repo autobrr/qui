@@ -17,8 +17,112 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+// recheckResumeSyncManager records bulk actions and answers file and piece
+// reads; the partial pool tests embed it.
+type recheckResumeSyncManager struct {
+	bulkActions             []string
+	resumeFailuresRemaining int
+	filesByHash             map[string]qbt.TorrentFiles
+	filesErr                error
+	filesCalls              int
+	pieceStates             []qbt.PieceState
+	pieceStatesErr          error
+}
+
+func (m *recheckResumeSyncManager) GetTorrentPieceStates(context.Context, int, string) ([]qbt.PieceState, error) {
+	return m.pieceStates, m.pieceStatesErr
+}
+
+func (m *recheckResumeSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	m.filesCalls++
+	if m.filesErr != nil {
+		return nil, m.filesErr
+	}
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := m.filesByHash[normalizeHash(hash)]; ok {
+			out[normalizeHash(hash)] = files
+		}
+	}
+	return out, nil
+}
+
+func (m *recheckResumeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", nil
+}
+
+func (m *recheckResumeSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
+}
+
+func (m *recheckResumeSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{}, nil
+}
+
+func (m *recheckResumeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
+	for _, hash := range hashes {
+		m.bulkActions = append(m.bulkActions, action+":"+hash)
+	}
+	if action == "resume" && m.resumeFailuresRemaining > 0 {
+		m.resumeFailuresRemaining--
+		return errors.New("transient resume failure")
+	}
+	return nil
+}
+
+func (m *recheckResumeSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) ExtractDomainFromURL(string) string {
+	return ""
+}
+
+func (m *recheckResumeSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) RenameTorrent(context.Context, int, string, string) error {
+	return nil
+}
+
+func (m *recheckResumeSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (m *recheckResumeSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (m *recheckResumeSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (m *recheckResumeSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	return nil, nil
+}
+
+func (m *recheckResumeSyncManager) CreateCategory(context.Context, int, string, string) error {
+	return nil
+}
+
+var _ qbittorrentSync = (*recheckResumeSyncManager)(nil)
 
 type partialPoolPollingSyncManager struct {
 	recheckResumeSyncManager

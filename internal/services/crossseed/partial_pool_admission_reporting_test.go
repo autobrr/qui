@@ -240,11 +240,13 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
+			adds := withLinkAdder(service)
+			adds.addedIDs = []string{responseID}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				result = service.processHardlinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			} else {
-				result = service.processReflinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			}
 
 			require.True(t, result.Success, result.Message)
@@ -252,7 +254,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			require.Equal(t, "added_"+mode, result.Status)
 			require.Contains(t, result.Message, "pooled completion pending")
 			require.Equal(t, []string{responseID}, sync.fetchedHashes)
-			require.Empty(t, sync.bulkActions, "admission must leave the initial recheck to the coordinator")
+			require.Empty(t, adds.actions, "admission must leave the initial recheck to the coordinator")
 
 			pool, member, err := store.ResolvePartialPoolMember(t.Context(), instanceID, memberKey)
 			require.NoError(t, err)
@@ -443,7 +445,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 				automationStore: store,
 				syncManager:     sync,
-				postInjectionHook: func(context.Context, int, string) {
+				postInjectionHook: func(context.Context, int, []string) {
 					hookCalls++
 				},
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -476,13 +478,15 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
+			adds := withLinkAdder(service)
+			adds.addedIDs = []string{"accepted-hash"}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				modeResult := service.processHardlinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			} else {
-				modeResult := service.processReflinkMode(t.Context(), candidate, torrentBytes, memberKey, "", "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			}
@@ -494,12 +498,10 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			require.Contains(t, result.Message, "pooled registration failed")
 			require.Contains(t, result.Message, "remains stopped for manual intervention")
 			require.Contains(t, result.Message, fetchErr.Error())
-			require.Equal(t, 1, hookCalls)
-			require.NotNil(t, sync.addedOptions, "qBittorrent add must remain intact")
-			require.Equal(t, "true", sync.addedOptions["stopped"])
-			require.Equal(t, "true", sync.addedOptions["paused"])
-			require.Empty(t, sync.bulkActions, "terminal registration failure must not recheck or resume")
-			_, statErr := os.Stat(filepath.Join(sync.addedOptions["savepath"], descriptors[0].RelativePath))
+			require.Zero(t, hookCalls, "a failed add runs no External Program")
+			require.Len(t, adds.added, 1, "qBittorrent add must remain intact")
+			require.Empty(t, adds.actions, "terminal registration failure must not recheck or resume")
+			_, statErr := os.Stat(filepath.Join(adds.added[0]["savepath"], descriptors[0].RelativePath))
 			require.NoError(t, statErr, "materialized tree must remain intact")
 
 			logText := logs.String()

@@ -177,7 +177,7 @@ func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 			require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
 			require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
 			require.Contains(t, decision.RelaxedDifferences, "group")
-			require.True(t, searchRelaxationRequiresVerification(decision.StrictMismatchReason),
+			require.True(t, decision.Relaxed.needsVerification(),
 				"a relaxed group must be hashed before it seeds")
 		})
 	}
@@ -210,7 +210,7 @@ func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 			sourceSide := namedRelease{release: source, rawName: tt.source}
 			targetSide := namedRelease{release: target, rawName: tt.target}
 			require.False(t, svc.matcher().crossFieldGroupSiteFallback(sourceSide, targetSide))
-			require.NotContains(t, svc.matcher().observedReleaseDifferences(sourceSide, targetSide), "group")
+			require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, sourceSide, targetSide, matchEvidence{}))
 
 			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
 			require.False(t, decision.Accepted, "class: %s", decision.Class)
@@ -288,11 +288,12 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	))
 
 	// Strict matching tolerates the missing candidate tag exactly as before.
-	ok, reason := svc.matcher().validateGroupSiteAndChecksum(namedRelease{release: siteOnly}, namedRelease{release: bare}, false)
-	require.True(t, ok, "unexpected rejection: %s", reason)
+	var comparison releaseComparison
+	svc.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: siteOnly}, namedRelease{release: bare})
+	require.True(t, comparison.matched(), "unexpected rejection: %s", comparison.reason())
 
 	// An empty identity still cannot buy exact-size permission.
-	ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 		Source:        namedRelease{release: siteOnly, rawName: bareFansubEpisode},
 		Candidate:     namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 		SourceSize:    fansubPackSize,
@@ -351,7 +352,7 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	repeatedSide := namedRelease{release: repeated, rawName: fansubRepeatedTag}
 	taggedSide := namedRelease{release: tagged, rawName: fansubTaggedPack}
 	require.False(t, svc.matcher().crossFieldGroupSiteFallback(repeatedSide, taggedSide))
-	require.NotContains(t, svc.matcher().observedReleaseDifferences(repeatedSide, taggedSide), "group")
+	require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, repeatedSide, taggedSide, matchEvidence{}))
 
 	// The pairing still matches, on the codec the two names actually differ by.
 	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)
@@ -385,8 +386,8 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 				Class:                 searchCandidateClassExactSizeFallback,
 				SourceInstanceID:      instanceID,
 				SourceHash:            sourceHash,
-				StrictMismatchReason:  groupMismatchReason,
 				RelaxedDifferences:    []string{"group"},
+				Relaxed:               differencesOf(differenceGroup),
 				GroupFallbackIdentity: "kiri",
 			},
 		}
@@ -426,8 +427,8 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 		{
 			name: "a stored codec rejection cannot authorize a group mismatch",
 			mutate: func(req *FindCandidatesRequest) {
-				req.SearchDecision.StrictMismatchReason = "codec mismatch"
 				req.SearchDecision.RelaxedDifferences = []string{"codec"}
+				req.SearchDecision.Relaxed = differencesOf(differenceCodec)
 			},
 		},
 		{
@@ -449,7 +450,7 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 	}
 }
 
-// Verification is decided from the rejection the search stored. A soft search
+// Verification is decided from the differences the search stored. A soft search
 // cause cannot authorize a hard apply cause, while independently recorded hard
 // causes and hard-to-soft drift can compose behind the same full-check gate.
 func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
@@ -494,8 +495,8 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 				Class:                 searchCandidateClassExactSizeFallback,
 				SourceInstanceID:      instanceID,
 				SourceHash:            sourceHash,
-				StrictMismatchReason:  "codec mismatch",
 				RelaxedDifferences:    differences,
+				Relaxed:               differencesOf(differenceCodec),
 				GroupFallbackIdentity: "kiri",
 			},
 		}
@@ -506,7 +507,7 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 	// reads the real pack name, rejects on the group, and would otherwise spend
 	// that incidental token while verification still reads the stored codec.
 	t.Run("a stored codec rejection cannot spend an incidental group token", func(t *testing.T) {
-		require.False(t, searchRelaxationRequiresVerification("codec mismatch"),
+		require.False(t, differencesOf(differenceCodec).needsVerification(),
 			"the premise: a stored codec rejection seeds without a hash check")
 		require.Empty(t, run(t, fansubBracketPack, newRequest("codec", "group")).Candidates)
 	})
@@ -517,7 +518,7 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 
 	t.Run("a stored group rejection may spend a recorded codec behind verification", func(t *testing.T) {
 		req := newRequest("group", "codec")
-		req.SearchDecision.StrictMismatchReason = groupMismatchReason
+		req.SearchDecision.Relaxed = differencesOf(differenceGroup, differenceCodec)
 		existingName := strings.Replace(fansubTaggedPack, "H.264", "H.265", 1)
 
 		require.Len(t, run(t, existingName, req).Candidates, 1)
@@ -525,7 +526,7 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 
 	t.Run("two independently recorded verification causes may compose", func(t *testing.T) {
 		req := newRequest("season", "group")
-		req.SearchDecision.StrictMismatchReason = seasonMismatchReason
+		req.SearchDecision.Relaxed = differencesOf(differenceSeason, differenceGroup)
 
 		response := run(t, fansubBracketPack, req)
 		require.Len(t, response.Candidates, 1,
@@ -534,7 +535,7 @@ func TestFindCandidatesRelaxationCauseCompatibility(t *testing.T) {
 
 	t.Run("group search cause may replay a recorded season cause", func(t *testing.T) {
 		req := newRequest("group", "season")
-		req.SearchDecision.StrictMismatchReason = groupMismatchReason
+		req.SearchDecision.Relaxed = differencesOf(differenceGroup, differenceSeason)
 
 		response := run(t, otherSeason, req)
 		require.Len(t, response.Candidates, 1,
@@ -632,6 +633,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 	require.False(t, response.seasonPackEpisodeCandidates,
 		"the derived pack must not trigger the episode-based assembly diversion")
 
+	withAdder(svc)
 	result := svc.processCrossSeedCandidate(
 		context.Background(),
 		response.Candidates[0],
@@ -730,11 +732,11 @@ func TestFindCandidates_ReplaysRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 		TorrentName:       rawS01,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision: searchDecisionProvenance{
-			Class:                decision.Class,
-			SourceInstanceID:     instanceID,
-			SourceHash:           sourceHash,
-			StrictMismatchReason: decision.StrictMismatchReason,
-			RelaxedDifferences:   decision.RelaxedDifferences,
+			Class:              decision.Class,
+			SourceInstanceID:   instanceID,
+			SourceHash:         sourceHash,
+			RelaxedDifferences: decision.RelaxedDifferences,
+			Relaxed:            decision.Relaxed,
 		},
 	})
 	require.NoError(t, err)
@@ -995,7 +997,7 @@ func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *te
 				return
 			}
 			require.Equal(t, tt.wantDecision, response.Results[0].SearchDecision.Class)
-			require.Equal(t, groupMismatchReason, response.Results[0].SearchDecision.StrictMismatchReason)
+			require.True(t, response.Results[0].SearchDecision.Relaxed.has(differenceGroup))
 			require.Contains(t, response.Results[0].SearchDecision.RelaxedDifferences, tt.wantRelaxedBy)
 			require.Equal(t, "kiri", response.Results[0].SearchDecision.GroupFallbackIdentity)
 		})
@@ -1059,8 +1061,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
 						SourceHash:            sourceHash,
-						StrictMismatchReason:  groupMismatchReason,
 						RelaxedDifferences:    []string{"group"},
+						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
 				})
@@ -1100,8 +1102,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
 						SourceHash:            sourceHash,
-						StrictMismatchReason:  groupMismatchReason,
 						RelaxedDifferences:    []string{"group"},
+						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
 				})
@@ -1152,8 +1154,8 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
 						SourceHash:            sourceHash,
-						StrictMismatchReason:  groupMismatchReason,
 						RelaxedDifferences:    []string{"group"},
+						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
 				})
@@ -1202,11 +1204,11 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 					TargetRelease:     target,
 					TargetInstanceIDs: []int{instanceID},
 					SearchDecision: searchDecisionProvenance{
-						Class:                searchCandidateClassExactSizeFallback,
-						SourceInstanceID:     instanceID,
-						SourceHash:           sourceHash,
-						StrictMismatchReason: sourceMismatchReason,
-						RelaxedDifferences:   []string{"source"},
+						Class:              searchCandidateClassExactSizeFallback,
+						SourceInstanceID:   instanceID,
+						SourceHash:         sourceHash,
+						RelaxedDifferences: []string{"source"},
+						Relaxed:            differencesOf(differenceSource),
 					},
 				})
 				require.NoError(t, err)

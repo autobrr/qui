@@ -80,7 +80,7 @@ func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {
 		},
 	}
 
-	orphans, _, err := walkScanRoot(t.Context(), root, tfm, nil, 0, 0, backend, nil)
+	orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 0, backend, nil)
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestScanWalker_HardlinkOrphansReportedPerPath(t *testing.T) {
 	// entries, so both paths are reported as orphan units.
 
 	orphans, _, err := walkScanRoot(
-		t.Context(), root, tfm, nil, 0, 100,
+		t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100,
 		newTestBackend(), nil,
 	)
 	if err != nil {

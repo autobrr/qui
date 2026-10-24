@@ -4,6 +4,11 @@
     "description": "Serviços de automação por instância gerenciados pelo qui.",
     "noInstances": "Nenhuma instância configurada ainda. Adicione uma nas Configurações para usar os serviços."
   },
+  "tabs": {
+    "workflows": "Workflows",
+    "reannounce": "Reanúncio Automático",
+    "orphanScan": "Varredura de Órfãos"
+  },
   "queryBuilder": {
     "noConditions": "Sem condições",
     "matchesAllTorrents": "Corresponde a todos os torrents (sujeito à seleção de trackers).",

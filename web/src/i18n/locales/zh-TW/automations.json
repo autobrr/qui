@@ -4,6 +4,11 @@
     "description": "由 qui 管理的實例級自動化服務。",
     "noInstances": "尚未配置任何實例。請在設定中新增一個實例以使用服務。"
   },
+  "tabs": {
+    "workflows": "工作流",
+    "reannounce": "重新通報",
+    "orphanScan": "孤立項目掃描"
+  },
   "queryBuilder": {
     "noConditions": "無條件",
     "matchesAllTorrents": "匹配所有種子（受 Tracker 選擇限制）。",

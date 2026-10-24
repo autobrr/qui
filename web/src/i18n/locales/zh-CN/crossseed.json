@@ -82,14 +82,12 @@
     "cancel": "取消",
     "runNow": "立即运行",
     "saveSettings": "保存 RSS 自动化设置",
-    "reset": "重置",
     "requiresTorznabIndexer": "RSS 自动化运行需要至少一个 Torznab 索引器。",
     "items": "{{count}} 个项目",
     "failedCount": "{{count}} 个失败",
     "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "runDisabledAlreadyRunning": "自动化运行已在进行中。",
     "runDisabledCooldown": "手动运行的间隔限制为 {{minutes}} 分钟。请在 {{remaining}} 后重试。"
   },
   "webhook": {
@@ -190,7 +188,11 @@
       "enabledRedMissingOps": "Gazelle：已启用（已设置 RED 密钥，缺少 OPS）",
       "enabledKeysMissing": "Gazelle：已启用（缺少密钥）"
     },
-    "noMessageProvided": "未提供消息"
+    "noMessageProvided": "未提供消息",
+    "cancelDialog": {
+      "title": "取消做种库扫描？",
+      "description": "这会停止当前的做种库扫描。已添加的交叉做种会保留，但不会再搜索更多种子。"
+    }
   },
   "rules": {
     "hardlinkReflink": "硬链接 / 引用链接模式",
@@ -356,6 +358,9 @@
       "matching": "决定 qui 为所有来源添加哪些候选的规则。",
       "categories": "qui 为每个新交叉做种设置的分类和标签。"
     }
+  },
+  "run": {
+    "starting": "正在启动运行。"
   },
   "seasonPackRuns": {
     "title": "最近的季度包运行",

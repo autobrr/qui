@@ -764,7 +764,7 @@ func pathTemplateData(torrent qbt.Torrent, tracker string, evalCtx *EvalContext)
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
-		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"IsolationFolderName": pathutil.HashedIsolationFolder(torrent.Hash, torrent.Name),
 		"Tracker":             tracker,
 	}
 	// An unknown category, or a map that failed to load, leaves the key unset,

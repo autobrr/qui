@@ -175,12 +175,12 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 		torrentBytes, decErr = decodeBase64Variants(torrentData)
 	}
 	if decErr != nil {
-		return nil, "invalid_torrent", "failed to decode torrent data", nil
+		return nil, "invalid_torrent", "failed to decode torrent data", nil //nolint:nilerr // a torrent that does not decode is a rejected request, not an error
 	}
 
 	meta, parseErr := ParseTorrentMetadataWithInfo(torrentBytes)
 	if parseErr != nil {
-		return nil, "invalid_torrent", "failed to parse torrent metadata", nil
+		return nil, "invalid_torrent", "failed to parse torrent metadata", nil //nolint:nilerr // a torrent that does not parse is a rejected request, not an error
 	}
 
 	packEpisodes := s.matcher().extractPackEpisodes(meta.Files, packRelease)
@@ -373,37 +373,35 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
 	}
 
-	// The exists check runs on blocked instances too, so a blocked copy is never
-	// duplicated elsewhere. Runs before tree creation: by addSeasonPack the tree exists.
+	// The Pre-add check runs on each eligible instance before tree creation: by
+	// addSeasonPack the tree exists. It checks the existing torrents first, so a
+	// blocked copy is never duplicated elsewhere.
 	hashes := collectHashes(prep.meta)
+	checks := make(map[int]PreAddCheck, len(prep.eligible))
 	unblocked := make([]*models.Instance, 0, len(prep.eligible))
 	blockedID := 0
 	for _, inst := range prep.eligible {
-		if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, hashes); err != nil {
-			message := fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, err)
-			s.recordApplyRun(ctx, req.TorrentName, "existing_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
-			return &SeasonPackApplyResponse{
-				Reason:  "existing_check_failed",
-				Message: message,
-			}, nil
-		} else if found {
+		check, refusal := s.adder.Check(ctx, inst.ID, AddFacts{}, hashes...)
+		switch {
+		case refusal == nil:
+			checks[inst.ID] = check
+			unblocked = append(unblocked, inst)
+		case refusal.Status == "blocked":
+			blockedID = cmp.Or(blockedID, inst.ID)
+		case refusal.Status == "exists":
 			s.recordApplyRun(ctx, req.TorrentName, "already_exists", "", inst.ID, 0, prep.totalEpisodes, 0, "")
 			return &SeasonPackApplyResponse{
 				Reason:  "already_exists",
 				Message: fmt.Sprintf("torrent already exists on instance %d", inst.ID),
 			}, nil
-		}
-		if s.blocklistStore != nil {
-			if _, blocked, err := s.blocklistStore.FindBlocked(ctx, inst.ID, hashes); err != nil {
-				message := fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", inst.ID, err)
-				s.recordApplyRun(ctx, req.TorrentName, "blocklist_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
-				return &SeasonPackApplyResponse{Reason: "blocklist_check_failed", Message: message}, nil
-			} else if blocked {
-				blockedID = cmp.Or(blockedID, inst.ID)
-				continue
+		default:
+			reason, message := "existing_check_failed", fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, refusal.Err)
+			if strings.HasPrefix(refusal.Message, blocklistCheckFailed) {
+				reason, message = "blocklist_check_failed", fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", inst.ID, refusal.Err)
 			}
+			s.recordApplyRun(ctx, req.TorrentName, reason, message, inst.ID, 0, prep.totalEpisodes, 0, "")
+			return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
 		}
-		unblocked = append(unblocked, inst)
 	}
 	if len(unblocked) == 0 {
 		s.recordApplyRun(ctx, req.TorrentName, "blocked", "", blockedID, 0, prep.totalEpisodes, 0, "")
@@ -449,25 +447,42 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 	}
 
 	crossCategory := s.resolveSeasonPackCategory(ctx, prep, req.Indexer, episodes)
-	return s.addSeasonPack(ctx, prep, inst, planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, req.TorrentName)
+	return s.addSeasonPack(ctx, prep, inst, checks[inst.ID], planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, req.TorrentName)
 }
 
 func (s *Service) addSeasonPack(
-	ctx context.Context, prep *seasonPackPrep, inst *models.Instance, planBuild *seasonPackPlanBuild,
+	ctx context.Context, prep *seasonPackPrep, inst *models.Instance, check PreAddCheck, planBuild *seasonPackPlanBuild,
 	episodes map[episodeIdentity]episodeMatch, crossCategory string, tags []string, linkMode, torrentName string,
 ) (*SeasonPackApplyResponse, error) {
 	if _, err := s.ensureCrossCategory(ctx, inst.ID, crossCategory, "", false); err != nil {
 		log.Warn().Err(err).Str("torrentName", torrentName).Str("category", crossCategory).Msg("season pack: failed to ensure cross-seed category exists")
 	}
 
-	opts := seasonPackAddOptions(planBuild.plan, crossCategory, planBuild.hasPendingFiles() || prep.manual)
-	if len(tags) > 0 {
-		opts["tags"] = strings.Join(tags, ",")
+	facts := seasonPackFacts(prep, planBuild)
+	if linkMode == "hardlink" {
+		facts.LinkedPaths = planBuild.materializedPaths
+		facts.SeasonPackRun = &models.SeasonPackRun{
+			TorrentName:     torrentName,
+			Phase:           "resume",
+			InstanceID:      &inst.ID,
+			MatchedEpisodes: len(episodes),
+			TotalEpisodes:   prep.totalEpisodes,
+			Coverage:        float64(len(episodes)) / float64(prep.totalEpisodes),
+			LinkMode:        linkMode,
+		}
 	}
-	if prep.manual {
-		opts["skip_checking"] = "false"
-	}
-	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, prep.torrentBytes, opts); err != nil {
+	added := s.adder.Add(ctx, AddRequest{
+		Check:   check,
+		Torrent: prep.torrentBytes,
+		Facts:   facts,
+		Placement: AddPlacement{
+			SavePath:      planBuild.plan.RootDir,
+			Category:      crossCategory,
+			Tags:          tags,
+			ContentLayout: "Original",
+		},
+	})
+	if added.Outcome == AddRefused {
 		// Roll back with the backend that created the tree: a fresh resolve on
 		// the live ctx fails when the run was cancelled, silently skipping
 		// rollback. dirscan's injector resolves one backend up front for the
@@ -475,50 +490,25 @@ func (s *Service) addSeasonPack(
 		if rollbackErr := rollbackSeasonPackTree(ctx, planBuild.backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
 			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
-		s.recordApplyRun(ctx, torrentName, "add_failed", err.Error(), inst.ID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
+		cause := added.Message
+		if added.Err != nil {
+			cause = added.Err.Error()
+		}
+		s.recordApplyRun(ctx, torrentName, "add_failed", cause, inst.ID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil
 	}
 
 	message := ""
-	if planBuild.hasPendingFiles() || prep.manual {
-		// Resume gate = the byte fraction the plan linked, not the episode-count
-		// coverage threshold: the two diverge when episode sizes are uneven
-		// (Hotellet: 14/20 episodes = 0.70 count but 0.63 bytes → stuck paused
-		// forever). A recheck materially below the linked fraction means links
-		// failed, and resuming would download over hardlinked files — those
-		// stay paused.
-		resumeThreshold := float64(planBuild.linkedBytes) / float64(planBuild.totalBytes) * seasonPackResumeSlack
-		var linkedPaths map[string]struct{}
-		var blockedRun *models.SeasonPackRun
-		if linkMode == "hardlink" {
-			linkedPaths = planBuild.materializedPaths
-			blockedRun = &models.SeasonPackRun{
-				TorrentName:     torrentName,
-				Phase:           "resume",
-				InstanceID:      &inst.ID,
-				MatchedEpisodes: len(episodes),
-				TotalEpisodes:   prep.totalEpisodes,
-				Coverage:        float64(len(episodes)) / float64(prep.totalEpisodes),
-				LinkMode:        linkMode,
-			}
-		}
-		recheckHashes := collectHashes(prep.meta)
-		switch {
-		case len(recheckHashes) == 0:
-			message = "torrent added paused; missing files require manual recheck"
-		case s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, recheckHashes, "recheck") != nil:
+	if added.Outcome == AddSettling {
+		switch outcome := added.Settled; {
+		case outcome.QueueFull && outcome.RecheckFailed:
 			message = "torrent added paused; automatic recheck failed"
+		case outcome.QueueFull:
+			message = "torrent added paused; automatic resume queue is full"
+		case outcome.RecheckFailed:
+			message = "torrent added paused; automatic recheck failed, retry queued"
 		default:
-			activeHash := seasonPackActiveHash(prep.meta)
-			if activeHash == "" {
-				message = "torrent added paused; automatic resume could not be queued"
-			} else if s.recheckResumeChan == nil {
-				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths, blockedRun); err != nil {
-				message = "torrent added paused; automatic resume queue is full"
-			} else {
-				message = "torrent added paused; recheck queued"
-			}
+			message = "torrent added paused; recheck queued"
 		}
 	}
 
@@ -537,6 +527,23 @@ func (s *Service) addSeasonPack(
 		Coverage:        coverage,
 		LinkMode:        linkMode,
 	}, nil
+}
+
+// seasonPackFacts are the Add verdict facts of a planned season pack.
+func seasonPackFacts(prep *seasonPackPrep, planBuild *seasonPackPlanBuild) AddFacts {
+	return AddFacts{
+		LinkTree:       true,
+		PendingFiles:   planBuild.hasPendingFiles(),
+		ManualAssembly: prep.manual,
+		// Resume gate = the byte fraction the plan linked, not the episode-count
+		// coverage threshold: the two diverge when episode sizes are uneven
+		// (Hotellet: 14/20 episodes = 0.70 count but 0.63 bytes → stuck paused
+		// forever). A recheck materially below the linked fraction means links
+		// failed, and resuming would download over hardlinked files — those
+		// stay paused.
+		SeasonPackLinked: float64(planBuild.linkedBytes) / float64(planBuild.totalBytes),
+		SkipRecheck:      prep.settings.SkipRecheck,
+	}
 }
 
 // assembleSeasonPack builds the link tree for a season pack apply.
@@ -639,7 +646,7 @@ func (s *Service) planSeasonPack(
 		}
 		return nil, nil
 	}
-	if !prep.manual && planBuild.hasPendingFiles() && prep.settings.SkipRecheck {
+	if seasonPackFacts(prep, planBuild).Verdict().Refused {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
 
@@ -833,27 +840,6 @@ func (s *Service) failApply(
 	}
 	s.recordApplyRun(ctx, torrentName, reason, err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, "")
 	return &SeasonPackApplyResponse{Reason: reason, Message: err.Error()}, nil
-}
-
-// seasonPackAddOptions returns qBittorrent add options for a season pack torrent.
-func seasonPackAddOptions(plan *hardlinktree.TreePlan, category string, paused bool) map[string]string {
-	options := map[string]string{
-		"autoTMM":       "false",
-		"contentLayout": "Original",
-		"savepath":      plan.RootDir,
-		"skip_checking": "true",
-	}
-	if paused {
-		options["paused"] = "true"
-		options["stopped"] = "true"
-	} else {
-		options["paused"] = "false"
-		options["stopped"] = "false"
-	}
-	if category != "" {
-		options["category"] = category
-	}
-	return options
 }
 
 // findInstance returns the instance with the given ID, or nil.
@@ -1797,13 +1783,6 @@ func collectHashes(meta TorrentMetadata) []string {
 		hashes = append(hashes, meta.HashV2)
 	}
 	return hashes
-}
-
-func seasonPackActiveHash(meta TorrentMetadata) string {
-	if meta.HashV1 != "" {
-		return meta.HashV1
-	}
-	return meta.HashV2
 }
 
 // buildCheckResponse constructs the check response from computed matches.

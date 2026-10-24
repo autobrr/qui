@@ -1773,11 +1773,9 @@
       "lastBackup": "Letztes Backup",
       "loading": "Wird geladen...",
       "progress": "{{current}} von {{total}} Torrents ({{percentage}}%)",
-      "status": "Status: {{status}}",
       "noBackupsYet": "Noch keine Backups",
       "nextScheduledBackup": "Nächstes geplantes Backup",
       "loadingSchedule": "Zeitplan wird geladen...",
-      "instance": "Instanz",
       "automaticBackupsOff": "Automatische Backups sind für diese Instanz deaktiviert.",
       "enableCadenceToSchedule": "Aktiviere mindestens einen automatischen Rhythmus, um Backups zu planen.",
       "currentlyRunning": "Backup läuft gerade.",
@@ -1801,6 +1799,7 @@
       "schedule": {
         "title": "Automatische Rhythmen",
         "description": "Stündliche, tägliche, wöchentliche und monatliche Läufe starten, nachdem das vorherige Backup abgeschlossen ist und das jeweilige Intervall verstrichen ist. Lass sie alle aus, wenn du Backups nur manuell auslöst.",
+        "keep": "Behalten",
         "hourly": "Stündlich",
         "hourlyDescription": "Wie viele stündliche Snapshots aufbewahrt werden, bevor ältere entfernt werden.",
         "hourlyTooltip": "Läuft etwa einmal pro Stunde, wenn Backups aktiviert sind und seit dem letzten Lauf mindestens eine Stunde vergangen ist.",
@@ -1819,8 +1818,7 @@
         "saveChanges": "Änderungen speichern",
         "saveAll": "Änderungen für alle Instanzen speichern",
         "requiresCadence": "Wähle vor dem Speichern mindestens einen Rhythmus (stündlich, täglich, wöchentlich oder monatlich).",
-        "waitForCapabilities": "Warte, bis die Instanz-Fähigkeitsprüfungen abgeschlossen sind, bevor du für alle Instanzen speicherst.",
-        "changesApplyImmediately": "Änderungen gelten für zukünftige Backups, sobald du speicherst."
+        "waitForCapabilities": "Warte, bis die Instanz-Fähigkeitsprüfungen abgeschlossen sind, bevor du für alle Instanzen speicherst."
       }
     },
     "restore": {

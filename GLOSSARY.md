@@ -34,12 +34,13 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Orphan scan
 
 - **Disc unit**: The folder that holds `BDMV` or `VIDEO_TS`. Orphan scan keeps it whole or reports it whole. A Disc unit with any file in a torrent hides nothing beside it. _Avoid_: Disc (that is the Blu-ray a BDInfo scan reads).
+- **Protected path**: A path that orphan scan never reports and never deletes: a file in a torrent, a folder that holds a file in a torrent, a path that an ignore path covers, or a folder that holds an ignore path. Folder cleanup uses the ignore path half of this rule. _Avoid_: Owned path, in-use path, safe path.
 - **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
 
 ## Folder cleanup
 
 - **Leftover folder**: A folder that held a torrent's content and is empty after qui deleted or moved that torrent. A folder that holds only junk files counts as empty. _Avoid_: orphan folder. An abandoned directory is a different thing: orphan scan finds it with a scan.
-- **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, or the hardlink base dir. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
+- **Stop folder**: A folder that the folder cleanup never removes and never climbs past: the default save path, the download path, a category folder in either of them, a category's download folder, or the hardlink base dir. A category's download folder is the folder that qBittorrent downloads the category into, and it can be outside both paths. A folder qBittorrent monitors for `.torrent` files, and the save path set for it, is never removed either, but is not a stop folder: it sets no climb limit of its own. _Avoid_: base dir, root, ceiling.
 - **Folder cleanup**: The step that removes leftover folders after qui deletes or moves a torrent. _Avoid_: prune, managed delete cleanup.
 
 ## Release classification
@@ -64,6 +65,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Read release**: What qui knows about one release name after it reads the name once: its Title keys, Numbering scheme, season, and absolute episode. Every Match path compares Read releases, never raw names. _Avoid_: release view, parsed release (that is the raw parser output).
 - **Title key**: One normalized form of a release title that matching compares, such as the main title, an alternate or AKA title, one side of a slash title, or the title without its Season numeral. Two releases share a title when any of their Title keys are equal. _Avoid_: normalized title, match title.
 - **Match path**: One place in qui that decides whether two release names are the same release, such as the webhook check, apply, the season pack check, Local matches, or dedup. Every match path must give the same verdict for a pair unless the corpus lists the difference with a reason. _Avoid_: entry point, matcher (the matcher is the shared rules, not the path).
+- **Match verdict**: The decision of one Match path on a pair of Read releases: no match, or a match class (strict, web source relabel, exact size, title rescue) with the fields that differ. _Avoid_: Verdict (alone), decision.
+- **Match policy**: The switches that a Match path sets on the Match verdict: title rescue, individual episodes, size tolerance, and a missing candidate group. Only the unknown-size preflight of the webhook check allows a missing candidate group: a group or site that only the local name carries does not count as a difference. _Avoid_: Trigger settings.
+- **Match evidence**: What a Match path knows about a pair beyond the two Read releases: sizes, file lists, Sonarr alternate titles, and the episode map. A Match path that lacks one gives the Match verdict less to work with. It does not change the rules. _Avoid_: Evidence (alone), context.
 - **Generic HDR tag**: An `HDR` tag in a release name that does not say `HDR10`, `HDR10+`, or `HLG`. Cross-seed matching reads it as `HDR10`, so `DV HDR` matches `DV HDR10`. It stays distinct from `HDR10+` and `HLG`. Release fields and Season pack status keep the tag as written. _Avoid_: plain HDR.
 
 ## Indexers
@@ -81,8 +85,12 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Cross-seed link tree
 
+- **Isolation folder**: A folder that qui adds in the link directory so that the files of one torrent do not mix with the files of other torrents. _Avoid_: hash folder.
 - **Linked file**: A file in an added torrent that qui materialized from local data (hardlink or reflink) before the add. _Avoid_: Matched file, existing file.
 - **Pending file**: A file in an added torrent that was absent at add time. _Avoid_: Missing file, extra file (when the download is meant).
+- **Settle**: The steps after an add that needs a recheck, from the recheck to the resume or the decision to stay paused. _Avoid_: Post-add flow.
+- **Add verdict**: The decision for one cross-seed add. It is one of these: refuse with a status, add running, or add paused for Settle. _Avoid_: Add plan (the chosen match), add policy.
+- **Pre-add check**: The blocklist check and the check for an existing torrent by v1 and v2 hash. They run before qui builds a link tree for an add. A manual assembly from several episodes skips the blocklist. _Avoid_: Admission (an External Program term).
 
 ## Automations
 
@@ -137,3 +145,9 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Log level**: The server setting, from config, env, or Settings, that decides which lines qui writes to stdout and to the log file. The live log view can only receive lines at or above it. _Avoid_: Log filter, verbosity.
 - **Level filter**: A user's choice in the live log view of which received levels to show. It is remembered across visits and never changes what qui writes. _Avoid_: Log level (for the viewer choice).
+
+## Page layout
+
+- **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
+- **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
+- **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.

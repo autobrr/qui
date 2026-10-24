@@ -6,6 +6,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 
 - `make precommit`: fmt + gofix on changed files, then `make lint`.
 - `make lint`: golangci-lint on Go issues that are new since the `develop` merge-base, then the full `pnpm lint`. A frontend lint error in any file fails it, not only an error in a changed file.
+- `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request.
 - `make lint-json`: write lint output to `lint-report.json`.
 - `make fmt`: gofmt + frontend eslint fix on changed files.
 - `make gofix-changed`: apply `go fix` on changed Go files only.
@@ -30,6 +31,17 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 - Put the violation on its own line. golangci-lint keeps one issue per line, so a hit from another linter on the same line hides the hit that you want.
 - If a forbid pattern must cover each entry point of a package, read the full output of `go doc -short <pkg>`. Do not filter it with a word. A filter misses entry points with other names.
 - Use an inline `//nolint:<linter> // reason` where the line can carry one. A `source:` exclusion in `.golangci.yml` also exempts each exact copy of the line in the same file. Keep `source:` exclusions for lines that cannot carry a nolint.
+
+## Ratchet
+
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The count for a file can only go down:
+
+- A file without an entry must have no problems. A new problem in a listed file makes its count too high, and the check fails.
+- When you fix a problem, lower the count of its file in the same change. Delete the entry at 0. The check fails until the count matches.
+- Do not hide `gocognit` with a `nolint` comment. Split the function.
+- The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
+
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file and opens a pull request with the `ratchet` label. ADR 0020 describes it.
 
 ## Policy
 

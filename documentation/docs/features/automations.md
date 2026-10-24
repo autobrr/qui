@@ -654,7 +654,7 @@ When you save an enabled rule or start a dry run, qui renders the path for a sam
 | `.Name` | Path segment | Torrent display name |
 | `.Hash` | Path segment | Info hash |
 | `.Category` | Path segment | qBittorrent category. A subcategory contains a `/`, so `tv/anime` renders as two folders. |
-| `.IsolationFolderName` | Path segment | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | Path segment | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 | `.CategorySavePath` | Absolute path | The save path qBittorrent uses for the torrent's category with Automatic Torrent Management. See [Category save path](#category-save-path). |
 | `.DefaultSavePath` | Absolute path | qBittorrent's default save path, from its settings |
@@ -792,7 +792,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Name` | Path segment | Torrent display name |
 | `.Hash` | Path segment | Info hash |
 | `.Category` | Path segment | qBittorrent category (on source instance). A subcategory contains a `/`. |
-| `.IsolationFolderName` | Path segment | Filesystem-safe folder name (hash or sanitized name) |
+| `.IsolationFolderName` | Path segment | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
 | `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 | `.CategorySavePath` | Absolute path | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
 | `.DefaultSavePath` | Absolute path | The source instance's default save path |

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/autobrr/rls"
@@ -52,12 +51,13 @@ type searchCandidateInput struct {
 	// EpisodeMap is the Sonarr triple for the release qui looked up (the search
 	// source or the announce). It equates a seasonless episode with its seasoned
 	// counterpart on the other side; see applyEpisodeMap.
-	EpisodeMap             *models.EpisodeMap
-	SourceSize             int64
-	CandidateSize          int64
-	TolerancePercent       float64
-	FindIndividualEpisodes bool
-	RescueTitleMismatches  bool
+	EpisodeMap                 *models.EpisodeMap
+	SourceSize                 int64
+	CandidateSize              int64
+	TolerancePercent           float64
+	FindIndividualEpisodes     bool
+	RescueTitleMismatches      bool
+	AllowMissingCandidateGroup bool
 }
 
 // searchCandidateDecision records admission provenance, including which strict
@@ -79,9 +79,11 @@ type searchCandidateDecision struct {
 	RejectReason          string
 	StrictMismatchReason  string
 	RelaxedDifferences    []string
-	Score                 float64
-	MatchReason           string
-	SizeRejected          bool
+	// Relaxed is the set of differences that the exact size class accepted.
+	Relaxed      matchDifferences
+	Score        float64
+	MatchReason  string
+	SizeRejected bool
 }
 
 // searchDecisionProvenance is the private, replayable part of a search
@@ -93,11 +95,13 @@ type searchDecisionProvenance struct {
 	// not relax a mismatch and the result keeps strict ranking.
 	StrictChecksumReplay bool
 	// SearchCandidateName lets apply reject new metadata in the downloaded name.
-	SearchCandidateName   string
-	SourceInstanceID      int
-	SourceHash            string
-	StrictMismatchReason  string
-	RelaxedDifferences    []string
+	SearchCandidateName string
+	SourceInstanceID    int
+	SourceHash          string
+	RelaxedDifferences  []string
+	// Relaxed is the set of differences that the exact size class accepted.
+	// Verification reads it.
+	Relaxed               matchDifferences
 	GroupFallbackIdentity string
 	SourceTitles          []string
 	CandidateTitles       []string
@@ -109,8 +113,8 @@ func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 		Class:                 decision.Class,
 		StrictChecksumReplay:  decision.StrictChecksumReplay,
 		SearchCandidateName:   decision.SearchCandidateName,
-		StrictMismatchReason:  decision.StrictMismatchReason,
 		RelaxedDifferences:    slices.Clone(decision.RelaxedDifferences),
+		Relaxed:               decision.Relaxed,
 		GroupFallbackIdentity: decision.GroupFallbackIdentity,
 		SourceTitles:          slices.Clone(decision.SourceTitles),
 		CandidateTitles:       slices.Clone(decision.CandidateTitles),
@@ -138,7 +142,7 @@ func (provenance searchDecisionProvenance) admitted() bool {
 
 func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
 	return decision.Class == searchCandidateClassTitleRescue ||
-		searchRelaxationRequiresVerification(decision.StrictMismatchReason)
+		decision.Relaxed.needsVerification()
 }
 
 // Score bands mirror the explicit sorter: positive size evidence outranks the
@@ -150,155 +154,56 @@ const (
 	sizeEvidenceStrictScoreBonus   = 4.0
 )
 
-// classifySearchCandidate applies the shared search-only admission rules.
-// Exact-size fallback requires equal reported sizes plus strict title,
-// resolution, artist, and date identity, non-conflicting checksums, and the TV
-// shape rules around packs and episodes. Group/site identity also stays strict
-// except for the provenance-backed cross-field rescue, which requires a full
-// hash check. Checksum-only replay preserves an ordinary strict decision after
-// equalizing the missing CRC; it also permits the narrow no-group checksum
-// case. The fallback may relax descriptive attributes such as source,
-// collection, HDR, codec, or bit depth, and the season and episode numbers that
-// indexers rewrite.
-// Apply later uses the private decision provenance to replay the release
-// prefilter; normal torrent-file validation remains authoritative.
+// classifySearchCandidate asks the Match verdict about one search result and
+// adds the score and the provenance that apply replays.
 func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
-	input, mappedEpisode := applyEpisodeMap(input)
+	verdict := m.matchVerdict(input.Source, input.Candidate, matchEvidence{
+		SourceSize:      input.SourceSize,
+		CandidateSize:   input.CandidateSize,
+		SourceTitles:    input.SourceTitles,
+		CandidateTitles: input.CandidateTitles,
+		EpisodeMap:      input.EpisodeMap,
+	}, matchPolicy{
+		TitleRescue:                input.RescueTitleMismatches,
+		IndividualEpisodes:         input.FindIndividualEpisodes,
+		SizeTolerancePercent:       input.TolerancePercent,
+		AllowMissingCandidateGroup: input.AllowMissingCandidateGroup,
+	})
 	decision := searchCandidateDecision{
-		Class:               searchCandidateClassRejected,
-		SizeEvidence:        classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
-		SearchCandidateName: input.Candidate.rawName,
+		Class:                 searchCandidateClassRejected,
+		SizeEvidence:          classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
+		StrictChecksumReplay:  verdict.StrictChecksumReplay,
+		SearchCandidateName:   input.Candidate.rawName,
+		GroupFallbackIdentity: verdict.GroupFallbackIdentity,
+		RejectReason:          verdict.RejectReason,
+		StrictMismatchReason:  verdict.Strict.reason(),
+		SizeRejected:          verdict.SizeRejected,
 	}
-	ignoreSizeCheck := input.FindIndividualEpisodes &&
-		isTVSeasonPack(input.Source.release) && isTVEpisode(input.Candidate.release)
-
-	strictMatch, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
-		input.Source,
-		input.Candidate,
-		input.SourceTitles,
-		input.CandidateTitles,
-		input.FindIndividualEpisodes,
-	)
-	// Strict checksum matching is directional: an existing release without a CRC
-	// accepts a candidate that carries one. Keep that result strict, but record a
-	// private replay token because apply normally compares the pair in reverse.
-	// When the source alone carries a CRC, equalizing that missing evidence may
-	// also recover an otherwise strict match. If source relabeling was the real
-	// rejection, keep it as the cause and record checksum separately.
-	exactOneSidedChecksum := decision.SizeEvidence.matches() &&
-		m.hasOneSidedChecksum(input.Source.release, input.Candidate.release)
-	strictOneSidedChecksum := strictMatch && exactOneSidedChecksum
-	strictChecksumReplay := strictOneSidedChecksum &&
-		m.oneSidedChecksumIsOnlyStrictDifference(reverseSearchCandidateInput(input))
-	checksumOnlyFallback := exactOneSidedChecksum && !strictMatch &&
-		m.oneSidedChecksumIsOnlyStrictDifference(input)
-	preferExactSizeFallback := exactOneSidedChecksum && mismatchReason == sourceMismatchReason
-	decision.StrictMismatchReason = mismatchReason
-
-	class := searchCandidateClassStrict
-	switch {
-	case strictMatch:
-		if strictChecksumReplay {
-			decision.StrictChecksumReplay = true
-		}
-	case !preferExactSizeFallback && m.shouldAcceptWebSourceRelabel(
-		input.Source.release,
-		input.Candidate.release,
-		input.Source.rawName,
-		input.Candidate.rawName,
-		input.SourceTitles,
-		input.CandidateTitles,
-		input.FindIndividualEpisodes,
-		ignoreSizeCheck,
-		input.SourceSize,
-		input.CandidateSize,
-		input.TolerancePercent,
-		mismatchReason,
-	):
-		class = searchCandidateClassWebSourceRelabel
-	case input.RescueTitleMismatches &&
-		mismatchReason == titleMismatchReason &&
-		decision.SizeEvidence.matches():
-		if ok, reason := m.releasesMatchExceptTitleWithReason(
-			input.Source,
-			input.Candidate,
-			input.FindIndividualEpisodes,
-		); ok {
-			class = searchCandidateClassTitleRescue
-		} else {
-			decision.RejectReason = reason
-			return decision
-		}
-	case decision.SizeEvidence.matches():
-		// A one-sided CRC is missing evidence in either direction. If equalizing it
-		// makes the ordinary strict matcher pass, preserve that decision without
-		// imposing the fallback-only requirement for a non-empty group identity.
-		var relaxedDifferences []string
-		if checksumOnlyFallback {
-			relaxedDifferences = []string{"checksum"}
-		} else {
-			if ok, reason := m.validateExactSizeSearchIdentity(input); !ok {
-				decision.RejectReason = reason
-				return decision
-			}
-			observedDifferences := m.observedReleaseDifferences(input.Source, input.Candidate)
-			var fallbackAccepted bool
-			var rejectReason string
-			relaxedDifferences, fallbackAccepted, rejectReason = m.replayRelaxedDifferences(
-				input,
-				mismatchReason,
-				observedDifferences,
-			)
-			if !fallbackAccepted {
-				decision.RejectReason = rejectReason
-				return decision
-			}
-		}
-		if exactOneSidedChecksum && !slices.Contains(relaxedDifferences, "checksum") {
-			relaxedDifferences = append(relaxedDifferences, "checksum")
-		}
-		class = searchCandidateClassExactSizeFallback
-		decision.RelaxedDifferences = relaxedDifferences
-		if slices.Contains(relaxedDifferences, "group") {
-			decision.GroupFallbackIdentity, _ = m.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
-		}
-	default:
-		decision.RejectReason = mismatchReason
+	if verdict.Class == searchCandidateClassExactSizeFallback {
+		decision.RelaxedDifferences = verdict.relaxedFields()
+		decision.Relaxed = verdict.Relaxed
+	}
+	if !verdict.Matched {
 		return decision
 	}
 
-	// Search context: candidate is the new torrent, source is the existing torrent.
-	if reject, reason := rejectSeasonPackFromEpisode(
-		input.Candidate.release,
-		input.Source.release,
-		input.FindIndividualEpisodes,
-	); reject {
-		decision.RejectReason = reason
-		return decision
-	}
-
-	if !ignoreSizeCheck && !m.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
-		decision.RejectReason = "size mismatch"
-		decision.SizeRejected = true
-		return decision
-	}
-
+	source, candidate, _ := applyEpisodeMap(input.Source, input.Candidate, input.EpisodeMap)
 	decision.Accepted = true
-	decision.Class = class
+	decision.Class = verdict.Class
 	decision.SourceTitles = slices.Clone(input.SourceTitles)
 	decision.CandidateTitles = slices.Clone(input.CandidateTitles)
 	decision.EpisodeMap = input.EpisodeMap
-	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.Source.release, input.Candidate.release)
+	decision.Score, decision.MatchReason = evaluateReleaseMatch(source.release, candidate.release)
 	if decision.Score <= 0 {
 		decision.Score = 1
 	}
-	switch class {
+	switch decision.Class {
 	case searchCandidateClassTitleRescue:
 		decision.MatchReason = "Title rescue · full check required"
 	case searchCandidateClassExactSizeFallback:
 		decision.Score += sizeEvidenceFallbackScoreBonus
 		strictFields := "; strict title/resolution/group"
-		if checksumOnlyFallback {
+		if verdict.ChecksumOnly {
 			strictFields = "; one-sided checksum only"
 		} else if slices.Contains(decision.RelaxedDifferences, "group") {
 			strictFields = "; strict title/resolution"
@@ -321,8 +226,8 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 		}
 	case searchCandidateClassRejected:
 	}
-	if mappedEpisode != "" {
-		decision.MatchReason = mappedEpisode + "; " + decision.MatchReason
+	if verdict.MappedEpisode != "" {
+		decision.MatchReason = verdict.MappedEpisode + "; " + decision.MatchReason
 	}
 
 	return decision
@@ -335,30 +240,29 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 // is left alone, so same-scheme pairs and a tracker that numbers the episode
 // differently from Sonarr keep today's episode mismatch. The returned reason
 // names the equality for the decision trace.
-func applyEpisodeMap(input searchCandidateInput) (searchCandidateInput, string) {
-	episodeMap := input.EpisodeMap
+func applyEpisodeMap(source, candidate namedRelease, episodeMap *models.EpisodeMap) (mappedSource, mappedCandidate namedRelease, reason string) {
 	// A special maps to season 0, which would let a seasonless episode pose as
 	// the seasoned side; only a positive triple names two distinct schemes.
 	if episodeMap == nil || episodeMap.Season <= 0 || episodeMap.Episode <= 0 || episodeMap.Absolute <= 0 ||
-		input.Source.release == nil || input.Candidate.release == nil {
-		return input, ""
+		source.release == nil || candidate.release == nil {
+		return source, candidate, ""
 	}
 	seasonless := func(r *rls.Release) bool { return r.Series == 0 && r.Episode == episodeMap.Absolute }
 	seasoned := func(r *rls.Release) bool { return r.Series == episodeMap.Season && r.Episode == episodeMap.Episode }
 	var side *namedRelease
 	switch {
-	case seasonless(input.Source.release) && seasoned(input.Candidate.release):
-		side = &input.Source
-	case seasonless(input.Candidate.release) && seasoned(input.Source.release):
-		side = &input.Candidate
+	case seasonless(source.release) && seasoned(candidate.release):
+		side = &source
+	case seasonless(candidate.release) && seasoned(source.release):
+		side = &candidate
 	default:
-		return input, ""
+		return source, candidate, ""
 	}
 	mapped := *side.release
 	mapped.Series = episodeMap.Season
 	mapped.Episode = episodeMap.Episode
 	side.release = &mapped
-	return input, fmt.Sprintf("mapped episode %d = S%02dE%02d", episodeMap.Absolute, episodeMap.Season, episodeMap.Episode)
+	return source, candidate, fmt.Sprintf("mapped episode %d = S%02dE%02d", episodeMap.Absolute, episodeMap.Season, episodeMap.Episode)
 }
 
 func (m matcher) hasOneSidedChecksum(source, candidate *rls.Release) bool {
@@ -369,12 +273,6 @@ func (m matcher) hasOneSidedChecksum(source, candidate *rls.Release) bool {
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
 	return (sourceSum == "") != (candidateSum == "")
-}
-
-func reverseSearchCandidateInput(input searchCandidateInput) searchCandidateInput {
-	input.Source, input.Candidate = input.Candidate, input.Source
-	input.SourceTitles, input.CandidateTitles = input.CandidateTitles, input.SourceTitles
-	return input
 }
 
 // oneSidedChecksumIsOnlyStrictDifference checks the normal matcher again after
@@ -438,6 +336,8 @@ func (evidence searchSizeEvidence) matchReason() string {
 
 // validateExactSizeSearchIdentity enforces identity attributes that exact size
 // must never replace. It returns the first hard mismatch for search diagnostics.
+// With AllowMissingCandidateGroup, a candidate that carries no group and no
+// site passes the group check.
 func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bool, string) {
 	source := input.Source.release
 	candidate := input.Candidate.release
@@ -445,16 +345,11 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 		return false, "missing parsed release"
 	}
 
-	if ok, reason := m.validateTitleArtistAndDates(
-		source,
-		candidate,
-		input.Source.rawName,
-		input.Candidate.rawName,
-		input.SourceTitles,
-		input.CandidateTitles,
-		isTVRelease(source) || isTVRelease(candidate),
-	); !ok {
-		return false, reason
+	var identity releaseComparison
+	m.compareTitles(&identity, source, candidate, input.Source.rawName, input.Candidate.rawName, input.SourceTitles, input.CandidateTitles)
+	m.compareArtistAndDates(&identity, source, candidate, isTVRelease(source) || isTVRelease(candidate))
+	if !identity.matched() {
+		return false, identity.reason()
 	}
 
 	normalizer := m.normalizer()
@@ -472,8 +367,8 @@ func (m matcher) validateExactSizeSearchIdentity(input searchCandidateInput) (bo
 	case m.dashSuffixGroupSpellsSite(input.Candidate, input.Source):
 		sourceIdentity = normalizer.Normalize(candidate.Site)
 	}
-	if sourceIdentity == "" || candidateIdentity == "" ||
-		(sourceIdentity != candidateIdentity &&
+	if sourceIdentity == "" || (candidateIdentity == "" && !input.AllowMissingCandidateGroup) ||
+		(candidateIdentity != "" && sourceIdentity != candidateIdentity &&
 			!m.spaceJoinedGroupSite(source, candidate) &&
 			!m.crossFieldGroupSiteFallback(input.Source, input.Candidate)) {
 		return false, "group/site mismatch"
@@ -609,7 +504,7 @@ func (m matcher) searchCandidateMetadataConsistent(
 		EpisodeMap:             episodeMap,
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
-	input, _ = applyEpisodeMap(input)
+	input.Source, input.Candidate, _ = applyEpisodeMap(input.Source, input.Candidate, episodeMap)
 	matches, mismatchReason := m.namedReleasesMatchWithReasonAndTitles(
 		input.Source,
 		input.Candidate,
@@ -699,7 +594,7 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	// Season and episode are the identity fields indexers rewrite: a tracker with
 	// one entry per cour stamps S01 on every season, and absolute numbering meets
 	// renumbered candidates. Only a like-for-like shape may retire that number.
-	// validateTVStructure reports a season mismatch BEFORE it compares pack
+	// compareTVStructure reports a season mismatch BEFORE it compares pack
 	// against episode, so without these guards a differing season would skip the
 	// shape check entirely.
 	switch difference {
@@ -731,11 +626,10 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	return "", false
 }
 
-// searchRelaxedStructure reports whether the strict rejection a search decision
-// overrode was the season or episode number itself. Equal reported sizes cannot
-// confirm which episode a torrent holds, so those pairings must be hashed before
-// they seed. It keys on the causal rejection because that is the field which
-// justified admission and determines the verification policy.
+// searchRelaxedStructure reports whether the strict rejection that apply sees
+// is the season or episode number itself. Equal reported sizes cannot confirm
+// which episode a torrent holds, so those pairings must be hashed before they
+// seed.
 func searchRelaxedStructure(strictMismatchReason string) bool {
 	switch normalizedMismatchReason(strictMismatchReason) {
 	case seasonMismatchReason, episodeMismatchReason:
@@ -744,10 +638,10 @@ func searchRelaxedStructure(strictMismatchReason string) bool {
 	return false
 }
 
-// searchRelaxationRequiresVerification reports whether the strict rejection a
-// search decision overrode was one that equal reported sizes cannot settle: the
-// season or episode number, or a group identity admitted on cross-field
-// evidence. Those pairings must be hashed before they seed.
+// searchRelaxationRequiresVerification reports whether the strict rejection
+// that apply sees is one that equal reported sizes cannot settle: the season or
+// episode number, or a group identity admitted on cross-field evidence. Those
+// pairings must be hashed before they seed.
 func searchRelaxationRequiresVerification(strictMismatchReason string) bool {
 	if searchRelaxedStructure(strictMismatchReason) {
 		return true
@@ -774,7 +668,7 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	}
 	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
 	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
-		searchRelaxationRequiresVerification(req.SearchDecision.StrictMismatchReason)
+		req.SearchDecision.Relaxed.needsVerification()
 }
 
 // searchRelaxationAuthorizesCurrentReason reports whether apply may spend a
@@ -784,10 +678,10 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 // a compatible verification class: a soft rejection must never authorize a
 // hard one without a hash check. A stored hard rejection may authorize a
 // recorded soft difference because that pairing is still forced through the
-// full verification the stored reason requires.
-func searchRelaxationAuthorizesCurrentReason(storedReason, currentReason string) bool {
+// full verification the stored differences require.
+func searchRelaxationAuthorizesCurrentReason(stored matchDifferences, currentReason string) bool {
 	if searchRelaxationRequiresVerification(currentReason) {
-		return searchRelaxationRequiresVerification(storedReason)
+		return stored.needsVerification()
 	}
 	return true
 }
@@ -1108,52 +1002,16 @@ func (m matcher) normalizedGroupSiteIdentity(release *rls.Release) string {
 	return normalizer.Normalize(release.Site)
 }
 
-// observedReleaseDifferences lists fields whose parsed values differ. It is an
-// upper bound, not an authorization list: validateExactSizeFallback stores only
-// the strict rejections it actually had to remove. This distinction prevents a
-// field omitted by an indexer from authorizing a conflicting value after the
-// torrent is downloaded.
-//
-// Group is the exception, and it is reported only when the two names carry the
-// cross-field evidence of one fansub tag split across Group and Site. A plain
-// disagreement between two groups leaves no entry. If strict matching spends
-// this category, the evidence buys only a hash check, never a seed.
-func (m matcher) observedReleaseDifferences(sourceSide, candidateSide namedRelease) []string {
-	source := sourceSide.release
-	candidate := candidateSide.release
-	if source == nil || candidate == nil {
-		return nil
+// verifyReason is why the selected match must pass a full recheck before it
+// seeds, or VerifyNone.
+func verifyReason(candidate CrossSeedCandidate, selectedHash string, req *CrossSeedRequest) VerifyReason {
+	switch {
+	case candidate.titleRescue:
+		return VerifyTitleRescue
+	case req != nil && req.ManualTargetHash != "":
+		return VerifyManual
+	case candidateRequiresVerification(candidate, selectedHash, req):
+		return VerifyRelaxed
 	}
-
-	normalizer := m.normalizer()
-	var differences []string
-	add := func(name, sourceValue, candidateValue string) {
-		if sourceValue != candidateValue && !slices.Contains(differences, name) {
-			differences = append(differences, name)
-		}
-	}
-
-	add("source", normalizeSource(source.Source), normalizeSource(candidate.Source))
-	add("collection", normalizer.Normalize(source.Collection), normalizer.Normalize(candidate.Collection))
-	add("codec", joinNormalizedCodecSlice(source.Codec), joinNormalizedCodecSlice(candidate.Codec))
-	add("hdr", joinNormalizedHDRSlice(source.HDR), joinNormalizedHDRSlice(candidate.HDR))
-	add("bit-depth", normalizer.Normalize(source.BitDepth), normalizer.Normalize(candidate.BitDepth))
-	add("cut", joinNormalizedSlice(source.Cut), joinNormalizedSlice(candidate.Cut))
-	add("edition", joinNormalizedSlice(source.Edition), joinNormalizedSlice(candidate.Edition))
-	add("language", joinNormalizedSlice(source.Language), joinNormalizedSlice(candidate.Language))
-	add("version", normalizer.Normalize(source.Version), normalizer.Normalize(candidate.Version))
-	add("disc", normalizer.Normalize(source.Disc), normalizer.Normalize(candidate.Disc))
-	add("platform", normalizer.Normalize(source.Platform), normalizer.Normalize(candidate.Platform))
-	add("architecture", normalizer.Normalize(source.Arch), normalizer.Normalize(candidate.Arch))
-	add("checksum", normalizer.Normalize(source.Sum), normalizer.Normalize(candidate.Sum))
-	add("season", strconv.Itoa(source.Series), strconv.Itoa(candidate.Series))
-	add("episode", strconv.Itoa(source.Episode), strconv.Itoa(candidate.Episode))
-	if m.crossFieldGroupSiteFallback(sourceSide, candidateSide) {
-		differences = append(differences, "group")
-	}
-	if compatible, _ := checkVariantsCompatible(source, candidate); !compatible {
-		differences = append(differences, "variant")
-	}
-
-	return differences
+	return VerifyNone
 }

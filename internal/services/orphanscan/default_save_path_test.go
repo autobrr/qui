@@ -123,7 +123,7 @@ func TestPruneNestedScanRoots_PreservesRootsThroughSymlinks(t *testing.T) {
 		}
 		var found []OrphanFile
 		for _, walkRoot := range walkRoots {
-			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(fsops.HostPaths), nil, 0, 0, backend, nil)
+			orphans, _, err := walkScanRoot(t.Context(), walkRoot, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, 0, backend, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -310,7 +310,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	}
 
 	protected := filepath.Join(otherSavePath, "two.mkv")
-	if !result.fileMap.Has(fsops.NormalizePath(fsops.HostPaths, protected)) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(protected) {
 		t.Fatalf("file %q seeded by the other local instance is not protected inside the default save path", protected)
 	}
 }
