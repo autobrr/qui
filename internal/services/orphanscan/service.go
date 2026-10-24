@@ -737,6 +737,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// run on lstat, with no way for the user to exclude it (issue #2483).
 	rootsBeforeIgnore := len(scanRoots)
 	scanRoots = filterCoveredScanRoots(d, scanRoots, settings.IgnorePaths)
+	// Ignoring a symlinked save path is how a user keeps it, so its files must
+	// still protect their twins at the target.
+	ignoredLinks := ignoredSymlinkRoots(ctx, d, result.scanRoots, scanRoots, backend)
 
 	log.Info().
 		Int("files", tfm.Len()).
@@ -834,6 +837,17 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		anyRootScanned = true
 		allOrphans = append(allOrphans, orphans...)
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
+	}
+
+	for _, root := range ignoredLinks {
+		if err := recordInUse(ctx, root, protected, backend, instance, keys); err != nil {
+			if ctx.Err() != nil {
+				s.markCanceled(ctx, instanceID, runID)
+				return
+			}
+			// Ignored paths are often unmounted (#2483), so this is no walk error.
+			log.Debug().Err(err).Str("root", root).Msg("orphanscan: could not read an ignored symlinked save path")
+		}
 	}
 
 	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
@@ -1575,6 +1589,21 @@ func isSameOrDescendantPath(d fsops.PathDialect, path, base string) bool {
 	nPath := fsops.NormalizePath(d, path)
 	nBase := fsops.NormalizePath(d, base)
 	return nPath == nBase || isPathUnderNormalized(d, nPath, nBase)
+}
+
+// ignoredSymlinkRoots returns the scan roots dropped by ignore paths that are
+// symlinks.
+func ignoredSymlinkRoots(ctx context.Context, d fsops.PathDialect, roots, kept []string, backend fsops.Backend) []string {
+	var links []string
+	for _, root := range roots {
+		if slices.Contains(kept, d.Clean(root)) {
+			continue
+		}
+		if info, err := backend.Lstat(ctx, root); err == nil && info.IsSymlink {
+			links = append(links, root)
+		}
+	}
+	return links
 }
 
 func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []string {

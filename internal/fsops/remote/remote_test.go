@@ -715,12 +715,16 @@ func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
 			link := remotePath(dir, "link")
 
 			for _, follow := range []bool{false, true} {
-				ch, err := b.WalkDir(t.Context(), link, fsops.WalkOptions{FollowRoot: follow})
+				ch, err := b.WalkDir(t.Context(), link, fsops.WalkOptions{FollowRoot: follow, WantFileID: true})
 				require.NoError(t, err)
 				var paths []string
 				for entry := range ch {
 					require.NoError(t, entry.Err)
 					paths = append(paths, entry.Path)
+					// Only the exec tier has identities, so this fails if find -H fell back to sftp.
+					if name == "exec" && entry.Mode.IsRegular() {
+						require.False(t, entry.FileID.IsZero(), entry.Path)
+					}
 				}
 				want := []string{link}
 				if follow {

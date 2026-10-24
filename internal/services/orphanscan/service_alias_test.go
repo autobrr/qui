@@ -7,6 +7,9 @@
 package orphanscan
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func (f *orphanOnlyFixture) listedPaths(t *testing.T) []string {
@@ -87,20 +91,23 @@ func TestExecuteScan_ListsOrphanAliasesAcrossRootsOnce(t *testing.T) {
 // link's path, so their twins at the target are not orphans, and nothing is
 // listed through the link.
 func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
+	inside := func(d string) string { return filepath.Join(d, "mydata") }
 	for _, tc := range []struct {
-		name string
-		link func(defaultSavePath string) string
+		name   string
+		link   func(defaultSavePath string) string
+		ignore string // relative to the link
 	}{
-		{name: "link inside the default save path", link: func(d string) string { return filepath.Join(d, "mydata") }},
-		{name: "link outside pointing in", link: func(d string) string { return filepath.Join(filepath.Dir(d), "aa-out") }},
+		// The torrent's file is below an ignore path spelled at the link.
+		{name: "link inside the default save path", link: inside, ignore: "keep"},
+		{name: "link outside pointing in", link: func(d string) string { return filepath.Join(filepath.Dir(d), "aa-out") }, ignore: "keep"},
+		{name: "link itself ignored", link: inside, ignore: "."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var target, junk, stray string
-			// The torrent's file is below an ignore path spelled at the link.
 			opts := orphanOnlyOptions{
 				savePath:        tc.link,
 				torrentFileName: "keep/owned.mkv",
-				ignorePaths:     func(d string) []string { return []string{filepath.Join(tc.link(d), "keep")} },
+				ignorePaths:     func(d string) []string { return []string{filepath.Join(tc.link(d), tc.ignore)} },
 			}
 			f := newOrphanOnlyFixture(t, "orphanscan-symlinked-save-path", opts, func(defaultSavePath string) {
 				link := tc.link(defaultSavePath)
@@ -152,4 +159,44 @@ func TestScanWalker_SymlinkedRootListsNothing(t *testing.T) {
 	require.Empty(t, dirs)
 	require.Len(t, keys.inUse, 1, "the torrent's file is in use at the link's path")
 	require.Empty(t, keys.others)
+}
+
+// The walk of a symlinked root skips a denied subtree but fails on a cut
+// connection, as the scan walk does, so a cut-short tree never reads as whole.
+func TestRecordInUse_Errors(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "real")
+	require.NoError(t, os.MkdirAll(target, 0o750))
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	owned := filepath.Join(link, "owned.mkv")
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(owned)
+	ownedEntry := fsops.WalkEntry{Path: owned, FileID: hardlink.UnixFileID(1, 2), Nlinks: 1}
+	denied := fmt.Errorf("read %s: %w", filepath.Join(link, "locked"), fs.ErrPermission)
+
+	for _, tc := range []struct {
+		name    string
+		err     error
+		wantErr bool
+	}{
+		{name: "denied subtree is skipped", err: denied},
+		{name: "cut connection fails the walk", err: errors.Join(denied, fsops.ErrConnectionLost), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := &fakeWalkBackend{Backend: newTestBackend(), entries: []fsops.WalkEntry{
+				{Path: filepath.Join(link, "locked"), Err: tc.err}, ownedEntry,
+			}}
+			keys := newFileKeys()
+			_, _, _, err := walkScanRootWithUnitFilter(t.Context(), link, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 0, nil, backend, nil, false, keys)
+			if tc.wantErr {
+				require.ErrorIs(t, err, fsops.ErrConnectionLost)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, keys.inUse, 1)
+		})
+	}
 }
