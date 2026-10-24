@@ -265,8 +265,9 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			continue
 		}
 
-		// Skip recently validated licenses (within 1 hour)
-		if time.Since(license.LastValidated) < time.Hour {
+		// Skip active licenses validated within the last hour. Marking a license offline also sets
+		// last_validated, so the skip must not apply to an offline license.
+		if license.Status == models.LicenseStatusActive && time.Since(license.LastValidated) < time.Hour {
 			continue
 		}
 

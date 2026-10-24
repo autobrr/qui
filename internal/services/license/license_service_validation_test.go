@@ -152,6 +152,29 @@ func TestRefreshAllLicenses_RestoresOfflineLicense(t *testing.T) {
 	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
+func TestRefreshAllLicenses_RestoresLicenseRightAfterItWentOffline(t *testing.T) {
+	ctx := t.Context()
+
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+
+	serverUp := false
+	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return serverUp }), t.TempDir())
+
+	_, err := service.ValidateLicenses(ctx)
+	require.NoError(t, err)
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	require.Equal(t, models.LicenseStatusOffline, stored.Status)
+
+	serverUp = true
+	require.NoError(t, service.RefreshAllLicenses(ctx))
+
+	stored, err = repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
+}
+
 // storeLicense stores a Dodo license with the given status that the server last confirmed at lastValidated.
 func storeLicense(t *testing.T, repo *database.LicenseRepo, status string, lastValidated time.Time) *models.ProductLicense {
 	t.Helper()
