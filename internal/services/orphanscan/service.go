@@ -157,16 +157,13 @@ func validDefaultSavePath(d fsops.PathDialect, reported string) (string, error) 
 	return savePath, nil
 }
 
-// walkForScope walks one root, collecting directory candidates only when the
-// run will actually use them.
+// walkForScope walks one root into the run's keys, collecting directory
+// candidates only when the run will actually use them.
 func walkForScope(ctx context.Context, root string, protected *protectedPaths,
-	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool,
+	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	if !collectDirs {
-		orphans, _, err := walkScanRoot(ctx, root, protected, gracePeriod, 0, backend, instance)
-		return orphans, nil, err
-	}
-	return walkScanRootCollectingDirs(ctx, root, protected, gracePeriod, backend, instance)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, collectDirs, keys)
+	return orphans, dirs, err
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -802,6 +799,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	var orphanOnlyDirs []AbandonedDir
 	anyRootScanned := false
+	keys := newFileKeys()
 
 	for _, root := range walkRoots {
 		if ctx.Err() != nil {
@@ -809,7 +807,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, dirs, err := walkForScope(ctx, root, protected, gracePeriod, backend, instance, scope.AbandonedDirs)
+		orphans, dirs, err := walkForScope(ctx, root, protected, gracePeriod, backend, instance, scope.AbandonedDirs, keys)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -832,7 +830,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	allOrphans = dedupeOrphans(d, allOrphans)
+	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
 	maxFiles := settings.MaxFilesPerRun
 	if maxFiles <= 0 {
 		maxFiles = DefaultSettings().MaxFilesPerRun

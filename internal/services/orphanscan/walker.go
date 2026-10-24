@@ -14,7 +14,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
@@ -80,7 +79,7 @@ type discUnitDecision struct {
 // Only files are returned as orphans; directories go through walkScanRootCollectingDirs.
 func walkScanRoot(ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, maxFiles int, backend fsops.Backend, instance *models.Instance) ([]OrphanFile, bool, error) {
-	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, maxFiles, nil, backend, instance, false)
+	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, maxFiles, nil, backend, instance, false, nil)
 	return orphans, truncated, err
 }
 
@@ -92,7 +91,7 @@ type scanWalker struct {
 	maxFiles    int
 	unitFilter  func(unitPath string, isDiscUnit bool) bool
 	backend     fsops.Backend
-	instance    *models.Instance // the row backend was built from; scopes seenFileIDs
+	instance    *models.Instance // the row backend was built from; scopes file keys
 	d           fsops.PathDialect
 
 	// seenDirs records directory mtimes and direct file counts when requested.
@@ -106,7 +105,7 @@ type scanWalker struct {
 	discUnitsWithOrphan map[string]struct{}
 	discUnitCache       map[string]discUnitDecision
 	scanRootCache       map[string]bool
-	seenFileIDs         map[fsops.FileKey]struct{}
+	keys                *fileKeys
 	truncated           bool
 }
 
@@ -114,7 +113,7 @@ func newScanWalker(
 	ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, instance *models.Instance, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) *scanWalker {
 	return &scanWalker{
 		ctx:                 ctx,
@@ -131,7 +130,7 @@ func newScanWalker(
 		discUnitCache:       make(map[string]discUnitDecision),
 		scanRootCache:       make(map[string]bool),
 		discUnitsWithOrphan: make(map[string]struct{}),
-		seenFileIDs:         make(map[fsops.FileKey]struct{}),
+		keys:                keys,
 		collectDirs:         collectDirs,
 		seenDirs:            make(map[string]*AbandonedDir),
 	}
@@ -164,24 +163,157 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 	return dirs
 }
 
-// shouldSkipDuplicate dedups nlink==1 files only: seeing the same FileID twice
-// at nlink==1 means the same file is reachable through a second path (bind
-// mount, mergerfs branch), so the alias must not be treated as an independent
-// orphan (#1212). Hardlinked files (nlink>1) are distinct directory entries and
-// each path is reported.
-func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) bool {
-	if nlinks > 1 {
-		return false
-	}
-	key, ok := fsops.FileKeyOf(fid, w.instance)
+// fileKeys spans every root of a run: a second path to an nlink==1 file is a
+// bind mount or a path through a symlinked folder (#1212), while a hardlink is
+// its own entry.
+type fileKeys struct {
+	inUse map[fsops.FileKey]struct{}
+	// Files no torrent owns, as a chain per key through one slab: one slice per key costs an allocation per orphan.
+	others map[fsops.FileKey]int
+	refs   []aliasRef
+}
+
+type aliasRef struct {
+	path string
+	prev int   // the key's previous ref, or -1
+	size int64 // bytes counted into an orphan's Size, or -1 when the file only sits inside one
+}
+
+func newFileKeys() *fileKeys {
+	return &fileKeys{inUse: make(map[fsops.FileKey]struct{}), others: make(map[fsops.FileKey]int)}
+}
+
+func (k *fileKeys) addOther(key fsops.FileKey, path string) int {
+	prev, ok := k.others[key]
 	if !ok {
-		return false
+		prev = -1
 	}
-	if _, exists := w.seenFileIDs[key]; exists {
-		return true
+	k.refs = append(k.refs, aliasRef{path: path, prev: prev, size: -1})
+	k.others[key] = len(k.refs) - 1
+	return len(k.refs) - 1
+}
+
+func (w *scanWalker) fileKey(entry fsops.WalkEntry) (fsops.FileKey, bool) {
+	if entry.Nlinks > 1 {
+		return fsops.FileKey{}, false
 	}
-	w.seenFileIDs[key] = struct{}{}
-	return false
+	return fsops.FileKeyOf(entry.FileID, w.instance)
+}
+
+// dropAliasOrphans runs once every root is walked, so walk and root order
+// cannot decide whether a delete reaches a torrent's file through an alias.
+func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys) []OrphanFile {
+	inUse, aliased := keys.inUseAndAliased()
+	if len(aliased) == 0 && len(inUse) == 0 {
+		return orphans
+	}
+
+	owners := newOrphanOwners(d, orphans)
+	drop := make([]bool, len(orphans))
+	for _, path := range inUse {
+		if i, ok := owners.of(path); ok {
+			drop[i] = true
+		}
+	}
+	dups := make([]aliasDups, len(orphans))
+	for _, head := range aliased {
+		keys.countDups(head, owners, drop, dups)
+	}
+
+	out := make([]OrphanFile, 0, len(orphans))
+	for i := range orphans {
+		// Of paths to one file, the lexically first is listed, wherever the walk met it.
+		if drop[i] || (orphans[i].files > 0 && dups[i].files >= orphans[i].files) {
+			continue
+		}
+		orphan := orphans[i]
+		orphan.Size -= dups[i].bytes
+		out = append(out, orphan)
+	}
+	return out
+}
+
+// inUseAndAliased returns the paths of keys a torrent owns, and the newest ref
+// of each other key with more than one path.
+func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
+	for key, head := range k.others {
+		if _, ok := k.inUse[key]; ok {
+			for r := head; r >= 0; r = k.refs[r].prev {
+				inUse = append(inUse, k.refs[r].path)
+			}
+		} else if k.refs[head].prev >= 0 {
+			aliased = append(aliased, head)
+		}
+	}
+	return inUse, aliased
+}
+
+// aliasDups counts the files and bytes in one orphan that are a file already
+// listed at another path.
+type aliasDups struct {
+	files int
+	bytes int64
+}
+
+type listedRef struct {
+	orphan int
+	path   string
+	size   int64
+}
+
+// countDups marks every listed path of one key but the lexically first as a
+// duplicate in the orphan whose delete removes it. Dropped orphans do not count.
+func (k *fileKeys) countDups(head int, owners orphanOwners, drop []bool, dups []aliasDups) {
+	var listed []listedRef
+	first := -1
+	for r := head; r >= 0; r = k.refs[r].prev {
+		ref := k.refs[r]
+		if ref.size < 0 {
+			continue
+		}
+		i, ok := owners.of(ref.path)
+		if !ok || drop[i] {
+			continue
+		}
+		listed = append(listed, listedRef{orphan: i, path: ref.path, size: ref.size})
+		if first < 0 || ref.path < listed[first].path {
+			first = len(listed) - 1
+		}
+	}
+	for j, ref := range listed {
+		if j != first {
+			dups[ref.orphan].files++
+			dups[ref.orphan].bytes += ref.size
+		}
+	}
+}
+
+// orphanOwners finds the orphan whose delete removes a path: the file itself
+// or a disc unit above it.
+type orphanOwners struct {
+	d     fsops.PathDialect
+	units map[string]int
+}
+
+func newOrphanOwners(d fsops.PathDialect, orphans []OrphanFile) orphanOwners {
+	units := make(map[string]int, len(orphans))
+	for i := range orphans {
+		units[orphans[i].Path] = i
+	}
+	return orphanOwners{d: d, units: units}
+}
+
+func (o orphanOwners) of(path string) (int, bool) {
+	for {
+		if i, ok := o.units[path]; ok {
+			return i, true
+		}
+		parent := o.d.Dir(path)
+		if parent == path {
+			return 0, false
+		}
+		path = parent
+	}
 }
 
 // outermostDiscUnit returns the outermost disc root that contains normUnit.
@@ -236,6 +368,7 @@ func (w *scanWalker) mergeIntoDiscUnit(unit, discUnitPath string, entry *OrphanF
 	discEntry, ok := w.orphanUnits[discUnitPath]
 	if ok {
 		discEntry.Size += entry.Size
+		discEntry.files += entry.files
 		if entry.ModifiedAt.After(discEntry.ModifiedAt) {
 			discEntry.ModifiedAt = entry.ModifiedAt
 		}
@@ -258,7 +391,7 @@ func (w *scanWalker) orphans() []OrphanFile {
 func walkScanRootCollectingDirs(ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, backend fsops.Backend, instance *models.Instance,
 ) ([]OrphanFile, []AbandonedDir, error) {
-	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, true)
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, protected, gracePeriod, 0, nil, backend, instance, true, nil)
 	return orphans, dirs, err
 }
 
@@ -266,9 +399,14 @@ func walkScanRootWithUnitFilter(
 	ctx context.Context, root string, protected *protectedPaths,
 	gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend, instance *models.Instance, collectDirs bool,
+	backend fsops.Backend, instance *models.Instance, collectDirs bool, keys *fileKeys,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
-	w := newScanWalker(ctx, root, protected, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs)
+	// Without the run's keys this one root is the run, so the walk drops aliases itself.
+	ownKeys := keys == nil
+	if ownKeys {
+		keys = newFileKeys()
+	}
+	w := newScanWalker(ctx, root, protected, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs, keys)
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
@@ -337,11 +475,18 @@ func walkScanRootWithUnitFilter(
 			if isDiscUnit {
 				w.discUnitsInUse[unitPath] = struct{}{}
 			}
-			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
+			if key, ok := w.fileKey(entry); ok {
+				w.keys.inUse[key] = struct{}{}
+			}
 			continue
 		}
 		if entry.StatErr != nil {
 			continue
+		}
+		// Recorded before the grace and name checks: a disc unit's delete removes those files too.
+		ref := -1
+		if key, ok := w.fileKey(entry); ok {
+			ref = w.keys.addOther(key, path)
 		}
 
 		name := w.d.Base(path)
@@ -350,9 +495,6 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if !entry.ModTime.IsZero() && time.Since(entry.ModTime) < w.gracePeriod {
-			continue
-		}
-		if w.shouldSkipDuplicate(entry.FileID, entry.Nlinks) {
 			continue
 		}
 		if isDiscUnit {
@@ -372,12 +514,19 @@ func walkScanRootWithUnitFilter(
 			w.orphanUnits[unitPath] = existing
 		}
 		existing.Size += entry.Size
+		existing.files++
+		if ref >= 0 {
+			w.keys.refs[ref].size = entry.Size
+		}
 		if existing.ModifiedAt.IsZero() || entry.ModTime.After(existing.ModifiedAt) {
 			existing.ModifiedAt = entry.ModTime
 		}
 	}
 
 	orphans := w.orphans()
+	if ownKeys {
+		orphans = dropAliasOrphans(w.d, orphans, keys)
+	}
 	return orphans, w.candidateDirs(orphans), w.truncated, ctx.Err()
 }
 
