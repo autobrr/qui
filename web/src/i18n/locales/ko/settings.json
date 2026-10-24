@@ -451,7 +451,9 @@
         "activeTitle": "프리미엄 접근 활성화됨",
         "activeDescription": "현재 및 향후 모든 프리미엄 테마에 접근할 수 있습니다",
         "activationRequiredTitle": "라이선스 활성화 필요",
-        "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다"
+        "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다",
+        "offlineTitle": "라이선스 서비스에 연결할 수 없음",
+        "offlineDescription": "qui가 7일 동안 라이선스 서비스에 연결하지 못해 프리미엄 테마가 잠겼습니다. qui는 시작할 때와 하루에 한 번 확인합니다. 서비스가 응답하면 테마 잠금이 해제됩니다. 라이선스를 다시 활성화할 필요는 없습니다."
       },
       "portalHelp": {
         "prefix": "DodoPayments에서 구매한 다음, 여기에 라이선스 키를 입력하세요. 키를 분실한 경우",

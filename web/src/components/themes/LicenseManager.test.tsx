@@ -16,6 +16,7 @@ const activation = vi.hoisted(() => ({
 const licenses = vi.hoisted(() => ({
   data: [{ licenseKey: "TEST-KEY-0000", status: "invalid", productName: "premium" }],
 }))
+const invalidLicenses = licenses.data
 const deleteLicense = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }))
 const premiumAccess = vi.hoisted(() => ({ hasPremiumAccess: false, isLoading: false }))
 const formatters = vi.hoisted(() => ({ formatDate: () => "" }))
@@ -43,6 +44,7 @@ afterEach(() => {
   vi.clearAllMocks()
   activation.isPending = false
   activation.isError = false
+  licenses.data = invalidLicenses
 })
 
 describe("LicenseManager", () => {
@@ -62,5 +64,16 @@ describe("LicenseManager", () => {
     fireEvent.click(screen.getByText("themes.license.actions.addLicense"))
 
     expect(activation.reset).toHaveBeenCalledOnce()
+  })
+
+  it("explains an offline license and offers no re-activation", () => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "premium" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.offlineTitle")).not.toBeNull()
+    expect(screen.queryByText("themes.license.status.activationRequiredTitle")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.addLicense")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.getPremium")).toBeNull()
   })
 })

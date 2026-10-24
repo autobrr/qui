@@ -453,7 +453,9 @@
         "activeTitle": "Premium Access Active",
         "activeDescription": "You have access to all current and future premium themes",
         "activationRequiredTitle": "License Activation Required",
-        "activationRequiredDescription": "Your license needs to be activated on this machine"
+        "activationRequiredDescription": "Your license needs to be activated on this machine",
+        "offlineTitle": "License Service Unreachable",
+        "offlineDescription": "qui could not reach the license service for 7 days, so premium themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
       },
       "portalHelp": {
         "prefix": "Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the",

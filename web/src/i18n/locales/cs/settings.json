@@ -455,7 +455,9 @@
         "activeTitle": "Premium přístup aktivní",
         "activeDescription": "Máte přístup ke všem aktuálním a budoucím premium motivům",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
-        "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji"
+        "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji",
+        "offlineTitle": "Licenční služba je nedostupná",
+        "offlineDescription": "qui se 7 dní nemohl spojit s licenční službou, proto jsou premium motivy zamčené. qui ji kontroluje při spuštění a jednou denně. Motivy se odemknou, jakmile služba odpoví. Licenci nemusíte znovu aktivovat."
       },
       "portalHelp": {
         "prefix": "Koupit na DodoPayments, poté sem zadejte svůj licenční klíč. Pokud ztratíte klíč, obnovte ho přes",

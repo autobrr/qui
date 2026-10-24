@@ -451,7 +451,9 @@
         "activeTitle": "進階存取已啟用",
         "activeDescription": "您可以存取所有目前和未來的進階主題",
         "activationRequiredTitle": "需要啟用授權",
-        "activationRequiredDescription": "您的授權需要在此裝置上啟用"
+        "activationRequiredDescription": "您的授權需要在此裝置上啟用",
+        "offlineTitle": "無法連線至授權服務",
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此進階主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",

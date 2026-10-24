@@ -453,7 +453,9 @@
         "activeTitle": "Accesso Premium attivo",
         "activeDescription": "Hai accesso a tutti i temi premium attuali e futuri",
         "activationRequiredTitle": "Attivazione della licenza richiesta",
-        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina"
+        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina",
+        "offlineTitle": "Servizio licenze non raggiungibile",
+        "offlineDescription": "qui non è riuscito a raggiungere il servizio licenze per 7 giorni, quindi i temi Premium sono bloccati. qui controlla all'avvio e una volta al giorno. I temi si sbloccano quando il servizio risponde. Non devi riattivare la licenza."
       },
       "portalHelp": {
         "prefix": "Acquista su DodoPayments, poi inserisci qui la tua chiave di licenza. Se perdi la chiave, recuperala tramite il",

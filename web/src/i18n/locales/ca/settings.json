@@ -453,7 +453,9 @@
         "activeTitle": "Accés premium actiu",
         "activeDescription": "Tens accés a tots els temes premium actuals i futurs",
         "activationRequiredTitle": "Cal activar la llicència",
-        "activationRequiredDescription": "La teva llicència s'ha d'activar en aquesta màquina"
+        "activationRequiredDescription": "La teva llicència s'ha d'activar en aquesta màquina",
+        "offlineTitle": "Servei de llicències inaccessible",
+        "offlineDescription": "qui no ha pogut connectar amb el servei de llicències durant 7 dies, per això els temes premium estan bloquejats. qui ho comprova en iniciar-se i un cop al dia. Els temes es desbloquegen quan el servei respon. No cal que tornis a activar la llicència."
       },
       "portalHelp": {
         "prefix": "Compra-ho a DodoPayments i després introdueix aquí la teva clau de llicència. Si perds la clau, recupera-la mitjançant el",

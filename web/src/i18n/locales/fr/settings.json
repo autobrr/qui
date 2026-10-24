@@ -453,7 +453,9 @@
         "activeTitle": "Accès Premium Actif",
         "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
-        "activationRequiredDescription": "Votre licence doit être activée sur cette machine"
+        "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
+        "offlineTitle": "Service de licences injoignable",
+        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes premium sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
       },
       "portalHelp": {
         "prefix": "Achetez sur DodoPayments, puis saisissez votre clé ici. Si vous la perdez, récupérez-la via",

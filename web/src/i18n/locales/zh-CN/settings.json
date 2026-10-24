@@ -451,7 +451,9 @@
         "activeTitle": "高级访问已激活",
         "activeDescription": "您可以访问所有当前和未来的高级主题",
         "activationRequiredTitle": "需要激活许可证",
-        "activationRequiredDescription": "您的许可证需要在此设备上激活"
+        "activationRequiredDescription": "您的许可证需要在此设备上激活",
+        "offlineTitle": "无法连接许可证服务",
+        "offlineDescription": "qui 已有 7 天无法连接许可证服务，因此高级主题已锁定。qui 会在启动时及每天检查一次。许可证服务响应后，主题会再次解锁。您无需重新激活许可证。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 购买，然后在此输入您的许可证密钥。如果丢失了密钥，可通过",
