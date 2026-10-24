@@ -154,7 +154,7 @@ func (s *Service) collectContentPrefilterCandidates(
 		}
 
 		existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-		if !s.contentPrefilterReleasesMatch(sourceRelease, sourceTorrent.Name, sourceFiles, existingRelease, crossTorrent.Name, crossTorrent.Size) {
+		if !s.contentPrefilterReleasesMatch(sourceRelease, sourceTorrent.Name, sourceFiles, existingRelease, crossTorrent.Name, searchSourceSize(crossTorrent.Torrent)) {
 			continue
 		}
 

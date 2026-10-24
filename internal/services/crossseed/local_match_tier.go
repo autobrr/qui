@@ -144,7 +144,7 @@ func (s *Service) localMatchPrefilter(
 	verdict := s.matcher().matchVerdict(
 		namedRelease{release: sourceRelease, rawName: source.Name},
 		namedRelease{release: s.releaseCache.Parse(candidate.Name), rawName: candidate.Name},
-		matchEvidence{SourceSize: source.Size, CandidateSize: candidate.Size},
+		matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(candidate.Torrent)},
 		policy,
 	)
 	if verdict.Matched {

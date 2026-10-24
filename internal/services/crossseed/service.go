@@ -7483,11 +7483,12 @@ func subtitleTitleQuery(release *rls.Release) string {
 	return release.Title + " " + subtitle
 }
 
-// searchSourceSize returns the source-side size for the search size band.
-// Torznab advertises the full release size, so the comparison must use the
-// torrent's full size: Size only counts wanted files, which misreports every
-// torrent with deselected files while its Progress still reads 1.0. TotalSize
-// can be zero when a client predates the field, so fall back to Size.
+// searchSourceSize returns the full size of a torrent, for the search size
+// band and for the Match verdict on two local torrents. Torznab advertises the
+// full release size, so the comparison must use the torrent's full size: Size
+// only counts wanted files, which misreports every torrent with deselected
+// files while its Progress still reads 1.0. TotalSize can be zero when a
+// client predates the field, so fall back to Size.
 func searchSourceSize(t *qbt.Torrent) int64 {
 	if t.TotalSize > 0 {
 		return t.TotalSize
