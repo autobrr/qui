@@ -477,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Afegida el {{date}}",
-        "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}"
+        "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}",
+        "statusLabels": {
+          "invalid": "No vàlida",
+          "offline": "Fora de línia",
+          "unknown": "Desconegut"
+        }
       },
       "invalid": {
         "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, ves a <portal>licenses.getqui.com</portal>, registra't o inicia la sessió amb el correu que vas fer servir per comprar la llicència i desactiva una màquina que ja no facis servir a Machine Instances."

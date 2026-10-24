@@ -479,7 +479,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Přidáno {{date}}",
-        "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}"
+        "productStatusAndAdded": "{{productName}} • Stav: {{status}} • Přidáno {{date}}",
+        "statusLabels": {
+          "invalid": "Neplatná",
+          "offline": "Offline",
+          "unknown": "Neznámý"
+        }
       },
       "invalid": {
         "dodo": "Tato licence není na tomto stroji aktivní. Klikněte na reaktivaci pro její použití. Pokud dosáhnete limitu aktivací, přejděte na <portal>licenses.getqui.com</portal>, zaregistrujte se nebo se přihlaste e-mailem, který jste použili při nákupu licence, a v Machine Instances deaktivujte stroj, který už nepoužíváte."

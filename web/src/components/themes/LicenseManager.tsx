@@ -99,6 +99,10 @@ export function LicenseManager({
     accessTitle = t("themes.license.status.activationRequiredTitle")
     accessDescription = t("themes.license.status.activationRequiredDescription")
   }
+  const statusLabels: Record<string, string> = {
+    invalid: t("themes.license.details.statusLabels.invalid"),
+    offline: t("themes.license.details.statusLabels.offline"),
+  }
   const canAddLicense = !hasStoredLicense || hasInvalidLicense
   const checkoutUrl = useMemo(() => {
     const returnPath = withBasePath("settings?tab=themes&checkout=success")
@@ -298,7 +302,7 @@ export function LicenseManager({
                 <div className="text-xs text-muted-foreground">
                   {primaryLicense.status !== "active"? t("themes.license.details.productStatusAndAdded", {
                     productName: primaryLicense.productName,
-                    status: primaryLicense.status,
+                    status: statusLabels[primaryLicense.status] ?? t("themes.license.details.statusLabels.unknown"),
                     date: formatDate(new Date(primaryLicense.createdAt)),
                   }): t("themes.license.details.productAdded", {
                     productName: primaryLicense.productName,

@@ -477,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Ajouté le {{date}}",
-        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}"
+        "productStatusAndAdded": "{{productName}} • Statut : {{status}} • Ajouté le {{date}}",
+        "statusLabels": {
+          "invalid": "Non valide",
+          "offline": "Hors ligne",
+          "unknown": "Inconnu"
+        }
       },
       "invalid": {
         "dodo": "Cette licence n'est pas active ici. Cliquez sur ré-activer pour l'utiliser. En cas de limite, allez sur <portal>licenses.getqui.com</portal>, inscrivez-vous ou connectez-vous avec l'e-mail utilisé pour acheter la licence, puis désactivez une machine que vous n'utilisez plus dans Machine Instances."

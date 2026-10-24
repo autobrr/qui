@@ -481,7 +481,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Додано {{date}}",
-        "productStatusAndAdded": "{{productName}} • Статус: {{status}} • Додано {{date}}"
+        "productStatusAndAdded": "{{productName}} • Статус: {{status}} • Додано {{date}}",
+        "statusLabels": {
+          "invalid": "Недійсна",
+          "offline": "Не в мережі",
+          "unknown": "Невідомий"
+        }
       },
       "invalid": {
         "dodo": "Ця ліцензія не активна на цій машині. Натисніть «Повторно активувати», щоб використовувати її тут. Якщо ви досягли ліміту активацій, перейдіть на <portal>licenses.getqui.com</portal>, зареєструйтеся або увійдіть з електронною поштою, яку ви використали для купівлі ліцензії, і деактивуйте в Machine Instances машину, якою більше не користуєтеся."

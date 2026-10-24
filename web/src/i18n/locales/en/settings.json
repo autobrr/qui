@@ -477,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Added {{date}}",
-        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}"
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}",
+        "statusLabels": {
+          "invalid": "Invalid",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
       },
       "invalid": {
         "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit the activation limit, go to <portal>licenses.getqui.com</portal>, sign up or sign in with the email you used to buy the license, and deactivate a machine you no longer use under Machine Instances."

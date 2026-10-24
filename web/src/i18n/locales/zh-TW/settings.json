@@ -475,7 +475,12 @@
       },
       "details": {
         "productAdded": "{{productName}} · 新增於 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}",
+        "statusLabels": {
+          "invalid": "無效",
+          "offline": "離線",
+          "unknown": "未知"
+        }
       },
       "invalid": {
         "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"

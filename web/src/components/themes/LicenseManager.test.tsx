@@ -33,7 +33,9 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { status?: string }) => (options?.status ? `${key} ${options.status}` : key),
+  }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
 
@@ -75,5 +77,16 @@ describe("LicenseManager", () => {
     expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
     expect(screen.queryByText("themes.license.actions.addLicense")).toBeNull()
     expect(screen.queryByText("themes.license.actions.getPremium")).toBeNull()
+  })
+
+  it.each([
+    ["invalid", "themes.license.details.statusLabels.invalid"],
+    ["offline", "themes.license.details.statusLabels.offline"],
+    ["expired", "themes.license.details.statusLabels.unknown"],
+  ])("shows a translated label for the %s status", (status, labelKey) => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status, productName: "premium" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText(`themes.license.details.productStatusAndAdded ${labelKey}`)).not.toBeNull()
   })
 })

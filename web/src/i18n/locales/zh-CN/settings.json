@@ -475,7 +475,12 @@
       },
       "details": {
         "productAdded": "{{productName}} · 添加于 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}",
+        "statusLabels": {
+          "invalid": "无效",
+          "offline": "离线",
+          "unknown": "未知"
+        }
       },
       "invalid": {
         "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录，然后在 Machine Instances 中停用一台不再使用的设备。"

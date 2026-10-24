@@ -477,7 +477,12 @@
       },
       "details": {
         "productAdded": "{{productName}} • Hinzugefügt {{date}}",
-        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}",
+        "statusLabels": {
+          "invalid": "Ungültig",
+          "offline": "Offline",
+          "unknown": "Unbekannt"
+        }
       },
       "invalid": {
         "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du das Aktivierungslimit erreichst, gehe zu <portal>licenses.getqui.com</portal>, registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast, und deaktiviere unter Machine Instances ein Gerät, das du nicht mehr nutzt."
