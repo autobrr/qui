@@ -409,9 +409,9 @@ func TestDescribeDirScanDecisionHints_FlexibleCorroborationFailure(t *testing.T)
 }
 
 // A flexible size-only match of one file needs a second proof. Two names share
-// a title when any of their Title keys (GLOSSARY.md) are equal, as on every
+// a title when they pass the title rule of the Match verdict, as on every
 // cross-seed Match path.
-func TestRefineDirScanMatchDecision_TitleKeysCorroborate(t *testing.T) {
+func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -439,6 +439,12 @@ func TestRefineDirScanMatchDecision_TitleKeysCorroborate(t *testing.T) {
 			wantAccept: true,
 		},
 		{
+			name:       "a title numeral that names the season",
+			searchee:   "Kaiju Squad 100 S02E01",
+			candidate:  "Kaiju Squad 100 II 1080p WEB-DL x264-GRP",
+			wantAccept: true,
+		},
+		{
 			name:       "an apostrophe only on one name",
 			searchee:   "Bob's Burgers S01E01",
 			candidate:  "Bobs.Burgers.S01E01.1080p.WEB-DL.x264-GRP",
@@ -453,6 +459,16 @@ func TestRefineDirScanMatchDecision_TitleKeysCorroborate(t *testing.T) {
 			name:      "no shared title",
 			searchee:  "Kaiju Harbor (2020)",
 			candidate: "Neon Tide 2020 1080p WEB-DL x264-GRP",
+		},
+		{
+			name:      "two yearless sequels",
+			searchee:  "Neon Tide II",
+			candidate: "Neon Tide III 1080p WEB-DL x264-GRP",
+		},
+		{
+			name:      "a title numeral of another season",
+			searchee:  "Kaiju Squad 100 S03E01",
+			candidate: "Kaiju Squad 100 II 1080p WEB-DL x264-GRP",
 		},
 	}
 

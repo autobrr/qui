@@ -7427,10 +7427,14 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	return query, ok
 }
 
-// TitleKeys returns the Title keys of a release name (GLOSSARY.md), each once.
-// Dir Scan has no Service, so it parses through the default parser.
-func TitleKeys(release *rls.Release, releaseName string) []string {
-	return matcher{}.titleKeys(namedRelease{release: release, rawName: releaseName})
+// TitlesMatch reports whether two release names pass the title rule of the
+// Match verdict. A bare title numeral counts as a season only when it names the
+// season of the other name. Dir Scan has no Service, so it parses through the
+// default parser.
+func TitlesMatch(source *rls.Release, sourceName string, candidate *rls.Release, candidateName string) bool {
+	var comparison releaseComparison
+	matcher{}.compareTitles(&comparison, withTitleNumeralSeason(source, candidate), withTitleNumeralSeason(candidate, source), sourceName, candidateName, nil, nil)
+	return comparison.matched()
 }
 
 // alternateTitleQuery reads a Read release. season is the inferred Season

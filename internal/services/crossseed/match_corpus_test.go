@@ -26,8 +26,8 @@ import (
 // test, unless the row lists that difference with a reason.
 //
 // Dir Scan is not in the corpus, because the dirscan package imports this one.
-// Its title check compares Title keys, and
-// TestRefineDirScanMatchDecision_TitleKeysCorroborate pins its pairs.
+// Its title check runs the title rule of the Match verdict, and
+// TestRefineDirScanMatchDecision_TitlesMatch pins its pairs.
 //
 // Every name is built: the tokens that the matcher reads are kept, the titles
 // and the groups are invented.

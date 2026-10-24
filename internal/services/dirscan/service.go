@@ -2715,10 +2715,7 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	searcheeKeys := crossseed.TitleKeys(searcheeMeta.Release, searcheeMeta.CleanedName)
-	return slices.ContainsFunc(crossseed.TitleKeys(candidateMeta.Release, candidateMeta.CleanedName), func(key string) bool {
-		return slices.Contains(searcheeKeys, key)
-	})
+	return crossseed.TitlesMatch(searcheeMeta.Release, searcheeMeta.CleanedName, candidateMeta.Release, candidateMeta.CleanedName)
 }
 
 func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
