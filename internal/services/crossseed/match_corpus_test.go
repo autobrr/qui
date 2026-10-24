@@ -69,6 +69,7 @@ type corpusDifference struct {
 // with its first known difference, and remove it with its last one.
 var corpusTickets = []int{
 	3037, // decide every match through one verdict
+	3430, // read local torrents from files when the name lacks a title
 }
 
 func allowedDifference(verdict corpusVerdict, reason string) corpusDifference {
@@ -165,14 +166,13 @@ func packFromEpisodes(extra map[matchPath]corpusDifference) map[matchPath]corpus
 }
 
 const (
-	reasonNoAlternateTitles = "This path does not look the show up, so it holds no Sonarr alternate titles."
-	reasonNoEpisodeMap      = "This path holds no episode map, because qui looks up no Sonarr data for local names."
+	reasonNoAlternateTitles = "Missing input: Sonarr alternate titles. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
+	reasonNoEpisodeMap      = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
-	reasonNoRelabel         = "The web source relabel is a search rule. This path does not run it."
+	reasonDedupNoRelabel    = "Missing input: sizes. Dedup reads names only, and the web source relabel needs both sizes."
 	reasonDedupNoSizes      = "Dedup reads names only, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
-	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonSeasonlessBatch   = "This path reads TV from the torrent name only. A batch name without a season reads as a movie, so it does not pair with a season pack."
 	reasonSeasonFolderName  = "This path reads the local torrent names without their files. A season folder name has no title, so it pairs with no release."
 )
@@ -213,10 +213,10 @@ var corpusRows = []corpusRow{
 		episodeMap:    &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81},
 		want:          corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoEpisodeMap),
+			pathLocalMatches: allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
+			pathDedup:        allowedDifference(corpusNoMatch, reasonNoEpisodeMap),
 		},
 	},
 	{
@@ -341,11 +341,11 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[GRP] Kaiju Squad 100 II [BD 1080p HEVC FLAC]", "[GRP] Kaiju Squad 100 II - %02d [BD 1080p HEVC FLAC]"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathWebhook:      knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathWebhook:      knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
 		},
 	},
 	{
@@ -366,9 +366,6 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
 		want:           corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
-		},
 	},
 	{
 		name:           "slash title",
@@ -405,9 +402,10 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathPrefilter:  knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathCrossMatch: knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
-			pathDedup:      knownDifference(corpusNoMatch, 3037, reasonNoAlternateTitles),
+			pathLocalMatches: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathDedup:        allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
 		},
 	},
 	{
@@ -556,10 +554,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 720p Ma10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 720p Ma10 FLAC)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
 		},
 	},
 	{
@@ -630,10 +628,7 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju.Squad.S02.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP", "Kaiju.Squad.S02E%02d.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonNoRelabel),
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoRelabel),
 		},
 	},
 	{
@@ -646,10 +641,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]", "[KAIJU] Kaiju Squad - %02d (BDRip 1080p x264)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
 		},
 	},
 	{
@@ -662,10 +657,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[KAIJU] Kaiju Squad (BD 1080p Hi10 FLAC) [Dual-Audio]", "[KAIJU] Kaiju Squad - %02d (BD 1080p Hi10 FLAC)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonlessBatch),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonlessBatch),
 		},
 	},
 	{
@@ -691,9 +686,6 @@ var corpusRows = []corpusRow{
 		// The new Match verdict has no sizes, so exact size does not admit the source.
 		searchSource: "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
 		want:         corpusNoMatch,
-		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusMatch, 3037, "Local matches rescues a title at an exact size even when the user turned title rescue off."),
-		},
 	},
 	{
 		name:          "local season pack against an episode",
@@ -789,10 +781,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
 		},
 	},
 	{
@@ -808,11 +800,11 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackFiles("[smol] Kaiju Squad S02 (BD 1080p HEVC Opus)", "[smol] Kaiju Squad - S02E%02d (BD 1080p HEVC Opus) [DF06DEC0]"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathWebhook:      knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathWebhook:      knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
 		},
 	},
 	{
@@ -827,10 +819,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackWithBonus("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
 		},
 	},
 	{
@@ -845,10 +837,10 @@ var corpusRows = []corpusRow{
 		candidateFiles: corpusPackWithSpecial("Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"),
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathPrefilter:    knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathCrossMatch:   knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
-			pathDedup:        knownDifference(corpusNoMatch, 3037, reasonSeasonFolderName),
+			pathLocalMatches: knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathPrefilter:    knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathCrossMatch:   knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
+			pathDedup:        knownDifference(corpusNoMatch, 3430, reasonSeasonFolderName),
 		},
 	},
 	{
@@ -1103,6 +1095,11 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
+	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		settings := models.DefaultCrossSeedAutomationSettings()
+		settings.RescueTitleMismatches = row.rescue
+		return settings, nil
+	}
 	resp, err := svc.FindLocalMatches(t.Context(), corpusInstanceID, corpusSourceHash, true)
 	require.NoError(t, err)
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match LocalMatch) bool { return match.Hash == corpusCandidateHash }))

@@ -117,6 +117,13 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 	return ""
 }
 
+// localMatchPolicy is the Match policy of the paths that compare two local
+// torrents and then pair their file sizes in localMatchTier. That file check
+// compares exact sizes, so the verdict skips its own size check.
+func localMatchPolicy(titleRescue bool) matchPolicy {
+	return matchPolicy{TitleRescue: titleRescue, SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
+}
+
 // localMatchPrefilter selects the candidates whose file lists are worth a
 // fetch, from the cached torrent fields alone. nameOrRelease is the tier the
 // candidate gets if its file sizes pair with the source. ok is false for a
@@ -127,27 +134,21 @@ func (s *Service) localMatchPrefilter(
 	sourceRelease *rls.Release,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 	normalizedContentPath string,
+	policy matchPolicy,
 ) (nameOrRelease string, ok bool) {
 	sourceName := normalizeLowerTrim(source.Name)
 	if sourceName != "" && sourceName == normalizeLowerTrim(candidate.Name) {
 		return matchTypeName, true
 	}
 
-	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, source.Name, candidate.Name, false)
-	if matched {
+	verdict := s.matcher().matchVerdict(
+		namedRelease{release: sourceRelease, rawName: source.Name},
+		namedRelease{release: s.releaseCache.Parse(candidate.Name), rawName: candidate.Name},
+		matchEvidence{SourceSize: source.Size, CandidateSize: candidate.Size},
+		policy,
+	)
+	if verdict.Matched {
 		return matchTypeRelease, true
-	}
-	// A retitled upload of the same data keeps its own name, so it fails the
-	// release match on the title alone.
-	if mismatchReason == titleMismatchReason {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(
-			namedRelease{release: sourceRelease, rawName: source.Name},
-			namedRelease{release: candidateRelease, rawName: candidate.Name},
-			false,
-		); ok {
-			return matchTypeRelease, true
-		}
 	}
 
 	if !sameInstance {

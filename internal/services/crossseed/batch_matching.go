@@ -723,18 +723,21 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 					continue
 				}
 				evaluated[c] = struct{}{}
-				match, reason := s.matcher().releasesMatchWithReasonAndNames(sourceRead.release, c.read.release, source.Name, c.read.rawName, false)
+				// The pair shares a Title key and the episode number, so no title or
+				// episode relaxation reaches it.
+				verdict := s.matcher().matchVerdict(sourceRead, c.read,
+					matchEvidence{SourceSize: source.Size, CandidateSize: c.view.Size}, localMatchPolicy(false))
 				logReleaseMatchDecision(
 					source.Name,
 					c.read.rawName,
 					false,
 					sourceRead.release,
 					c.read.release,
-					match,
-					reason,
+					verdict.Matched,
+					verdict.RejectReason,
 					"crossseed: release metadata candidate evaluated",
 				)
-				if match {
+				if verdict.Matched {
 					add(c.candidateEntry, matchTypeRelease)
 				}
 			}

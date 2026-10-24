@@ -80,6 +80,7 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 				service.releaseCache.Parse(source.Name),
 				candidate,
 				normalizePathForComparison(source.ContentPath),
+				localMatchPolicy(false),
 			)
 			require.True(t, ok)
 			require.Equal(t, tt.wantInitial, initial)
@@ -94,6 +95,7 @@ func TestMatchTorrentsInInstance_ReflinkCandidates(t *testing.T) {
 				source,
 				service.releaseCache.Parse(source.Name),
 				normalizePathForComparison(source.ContentPath),
+				localMatchPolicy(false),
 				hardlinkTestMatchCtx(service, sourceDir),
 			)
 
@@ -184,6 +186,7 @@ func TestMatchTorrentsInInstance_MetadataLessIsNotACrossSeed(t *testing.T) {
 				source,
 				service.releaseCache.Parse(source.Name),
 				normalizePathForComparison(source.ContentPath),
+				localMatchPolicy(false),
 				matchCtx,
 			)
 

@@ -803,6 +803,12 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	sourceTorrent := sourceTorrents[0]
 
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	policy := localMatchPolicy(settings.RescueTitleMismatches)
+
 	// Parse source release for matching
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
@@ -824,7 +830,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
-	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, policy, matchCtx)
 
 	// Check for any errors during local file relationship verification.
 	overlapErr := matchCtx.sourceFilesErr
@@ -859,6 +865,7 @@ func (s *Service) collectLocalMatches(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	normalizedContentPath string,
+	policy matchPolicy,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
 	var matches []LocalMatch
@@ -876,7 +883,7 @@ func (s *Service) collectLocalMatches(
 		}
 
 		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
-			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, policy, matchCtx)
 	}
 
 	return matches
@@ -904,6 +911,7 @@ func (s *Service) matchTorrentsInInstance(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	normalizedContentPath string,
+	policy matchPolicy,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
 	for i := range cachedTorrents {
@@ -916,7 +924,7 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath, policy)
 		if !ok {
 			continue
 		}
@@ -9496,9 +9504,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
-	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
+	verdictCache := make(map[string]bool) // cache Match verdicts per pair
 
-	// Helper to get cache key for releasesMatch
+	// Helper to get cache key for a pair
 	getMatchCacheKey := func(idx1, idx2 int) string {
 		if idx1 < idx2 {
 			return fmt.Sprintf("%d:%d", idx1, idx2)
@@ -9530,12 +9538,12 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		for _, candidateIdx := range candidateIndices {
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
-			matches, cached := releasesMatchCache[cacheKey]
+			matches, cached := verdictCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches, _ = s.matcher().releasesMatchWithReasonAndNames(current.read.release, candidate.read.release,
-					current.read.rawName, candidate.read.rawName, false)
-				releasesMatchCache[cacheKey] = matches
+				// Dedup reads names only, so the verdict has no sizes.
+				matches = s.matcher().matchVerdict(current.read, candidate.read, matchEvidence{}, matchPolicy{SkipSizeCheck: true}).Matched
+				verdictCache[cacheKey] = matches
 			}
 
 			if matches {

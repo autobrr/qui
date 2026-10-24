@@ -196,9 +196,10 @@ type matchPolicy struct {
 	// pass. Only the season pack check sets it, because a pack name does not
 	// carry the CRC tag of an episode.
 	AllowMissingCandidateChecksum bool
-	// SkipSizeCheck drops the size check after the match classes. Only the
-	// first pass of the season pack check sets it, because the file check after
-	// it compares exact file sizes.
+	// SkipSizeCheck drops the size check after the match classes. The first
+	// pass of the season pack check, Local matches, cross-match sets, and the
+	// content prefilter set it, because the file check after each of them
+	// compares the file sizes. Dedup sets it because it reads names only.
 	SkipSizeCheck bool
 	// SeasonPack holds the season pack matching settings. Only the season pack
 	// check sets it.
@@ -258,7 +259,7 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 	ignoreSizeCheck := policy.IndividualEpisodes &&
 		isTVSeasonPack(source.release) && isTVEpisode(candidate.release)
 
-	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes, false)
+	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes)
 	if policy.AllowMissingCandidateGroup {
 		strict.differences = strict.differences.without(differenceGroupMissing)
 	}
