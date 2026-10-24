@@ -2617,6 +2617,20 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			download: "[KaijuSubs] Kaiju Squad - 81 (1080p) [EF567890]",
 		},
 		{
+			name:     "the listing drops the fansub tag, and the download carries another",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju Squad - 81 (1080p)",
+			local:    "[KaijuSubs] Kaiju Squad - 81 (1080p)",
+			download: "[OtherSubs] Kaiju Squad - 81 (1080p)",
+		},
+		{
+			name:     "the listing drops the group, and the download carries another",
+			class:    searchCandidateClassStrict,
+			listing:  "Kaiju.Squad.S02E06.1080p.WEB.H264",
+			local:    "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
+			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-OTHER",
+		},
+		{
 			name:     "the download names another title of the resolved show",
 			class:    searchCandidateClassStrict,
 			listing:  "Harbor.Lights.S01E05.1080p.WEB.H264-GRP",
