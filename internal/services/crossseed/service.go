@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"maps"
 	"math"
 	"net/url"
@@ -5163,26 +5164,10 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents while planning autobrr apply")
 			continue
 		}
+		sources := s.autobrrApplySources(torrents, settings)
 		// Read the sources as the webhook check reads them, so apply adds what the check accepted.
-		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
-			for torrent := range viewTorrents(torrents) {
-				if torrent.Progress == 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
-					return
-				}
-			}
-		})
-		for _, torrentView := range torrents {
-			if torrentView.Torrent == nil {
-				continue
-			}
-			torrent := torrentView.Torrent
-			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
-				continue
-			}
-			if !matchesWebhookSourceFilters(torrent, settings) {
-				continue
-			}
-
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, sources)
+		for torrent := range sources {
 			sourceSize := searchSourceSize(torrent)
 			if sourceSize <= 0 {
 				continue
@@ -5214,6 +5199,18 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 
 	sortBoundAnnouncementMatches(matches)
 	return matches
+}
+
+// autobrrApplySources yields the local torrents that autobrr apply can use as
+// its source: complete, with no error, and inside the webhook source filters.
+func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
+	return func(yield func(*qbt.Torrent) bool) {
+		for torrent := range viewTorrents(torrents) {
+			if torrent.Progress >= 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+				return
+			}
+		}
+	}
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
