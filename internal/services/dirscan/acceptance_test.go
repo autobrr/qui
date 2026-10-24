@@ -461,6 +461,11 @@ func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
 			candidate: "Neon Tide 2020 1080p WEB-DL x264-GRP",
 		},
 		{
+			name:      "names without a parsed title",
+			searchee:  "Season 2 {imdb-tt1234567}",
+			candidate: "Season 2 [tvdb-123]",
+		},
+		{
 			name:      "two yearless sequels",
 			searchee:  "Neon Tide II",
 			candidate: "Neon Tide III 1080p WEB-DL x264-GRP",
@@ -484,7 +489,7 @@ func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
 				Name:        tt.candidate,
 				InfoHash:    "deadbeef",
 				PieceLength: 4,
-				Files:       []TorrentFile{{Path: tt.candidate + ".mkv", Size: 1000}},
+				Files:       []TorrentFile{{Path: "candidate.mkv", Size: 1000}},
 				TotalSize:   1000,
 			}
 			match := &MatchResult{
