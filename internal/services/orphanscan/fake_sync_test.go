@@ -93,7 +93,7 @@ func (f *fakeSync) GetLastCompletedRun(ctx context.Context, instanceID int) (*mo
 	return f.getLastCompletedRun(ctx, instanceID)
 }
 
-func (f *fakeSync) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+func (f *fakeSync) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
 	if f.getAppPreferences == nil {
 		return qbt.AppPreferences{}, errNotStubbed
 	}

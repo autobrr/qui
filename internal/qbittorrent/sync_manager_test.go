@@ -3608,3 +3608,20 @@ func TestGetCategoriesFreshReadsQBittorrent(t *testing.T) {
 	require.Contains(t, fresh, "archive")
 	require.Nil(t, fresh["archive"].DownloadPath)
 }
+
+// The cached preferences can name a download path qBittorrent no longer uses,
+// so GetAppPreferencesFresh asks qBittorrent.
+func TestGetAppPreferencesFreshReadsQBittorrent(t *testing.T) {
+	t.Parallel()
+	r := newTriggerRig(t)
+	cached, err := r.sm.GetAppPreferences(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	r.stub.SetDefaultSavePath(r.p("torrents/new"))
+
+	again, err := r.sm.GetAppPreferences(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.Equal(t, cached.SavePath, again.SavePath, "the cache should still hold the old path")
+	fresh, err := r.sm.GetAppPreferencesFresh(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.Equal(t, r.p("torrents/new"), fresh.SavePath)
+}

@@ -38,7 +38,7 @@ type healthChecker interface {
 type syncReader interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
+	GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
 }

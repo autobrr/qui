@@ -5901,6 +5901,20 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 	return *prefs, nil
 }
 
+// GetAppPreferencesFresh reads the preferences from qBittorrent rather than
+// their 30 s cache, so a download path changed in its WebUI is seen at once.
+func (sm *SyncManager) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
+	}
+	prefs, err := client.refreshAppPreferences(ctx)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+	return *prefs, nil
+}
+
 // GetPreferenceView returns the preference catalog view of the instance preferences.
 func (sm *SyncManager) GetPreferenceView(ctx context.Context, instanceID int) ([]prefcatalog.Field, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)

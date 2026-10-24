@@ -72,7 +72,7 @@ func (s *Service) declaredScanRoots(ctx context.Context, d fsops.PathDialect, in
 
 	// Categories inherit from the default save path, so it is needed whenever
 	// they are. One preferences read covers both.
-	prefs, err := s.sync.GetAppPreferences(ctx, instanceID)
+	prefs, err := s.sync.GetAppPreferencesFresh(ctx, instanceID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
 	}
