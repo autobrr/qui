@@ -170,6 +170,7 @@ const (
 	reasonNoEpisodeMap      = "Missing input: the episode map. This path compares two local torrents, and qui looks up no Sonarr data for local names (ADR 0002)."
 	reasonNoTitleRescue     = "Title rescue needs the recheck after the add. This path adds nothing, so it does not rescue a title, and the worst result is one more search."
 	reasonDedupNoRelabel    = "Missing input: sizes. Dedup reads names only, and the web source relabel needs both sizes."
+	reasonRetitledSameSizes = "Local matches pair a retitled upload whose file sizes pair one to one with the source. The corpus gives every episode the same size, so two shows pair here. Real files of two shows do not have the same byte size."
 	reasonDedupNoSizes      = "Dedup reads names only, and a yearless \"Title III\" reads like the \"Title S03\" pack, so dedup keeps one of the two and does not search the other. A library seldom holds both."
 	reasonNumeralSameSize   = "This path has no file list for the candidate, and a movie of the same size reads like the pack. Apply compares the files and has the final say."
 	reasonDirectionalCRC    = "Dedup compares the pair in list order, and the strict CRC rule accepts a CRC tag only on the second name."
@@ -366,6 +367,9 @@ var corpusRows = []corpusRow{
 		candidateSize:  corpusEpisodeSize + corpusNFOSize,
 		candidateFiles: corpusEpisodeWithNFO("Alpha.Show.S01E01.1080p.WEB.H264-GRP"),
 		want:           corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
 	},
 	{
 		name:           "slash title",
@@ -402,10 +406,9 @@ var corpusRows = []corpusRow{
 		titles:         []string{"Kaiju Squad", "Kaiju Kyoutai"},
 		want:           corpusMatch,
 		differences: map[matchPath]corpusDifference{
-			pathLocalMatches: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
-			pathPrefilter:    allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
-			pathCrossMatch:   allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
-			pathDedup:        allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathPrefilter:  allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathCrossMatch: allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
+			pathDedup:      allowedDifference(corpusNoMatch, reasonNoAlternateTitles),
 		},
 	},
 	{
@@ -686,6 +689,9 @@ var corpusRows = []corpusRow{
 		// The new Match verdict has no sizes, so exact size does not admit the source.
 		searchSource: "Harbor.Lights.S02E05.1080p.WEB.H264-GRP",
 		want:         corpusNoMatch,
+		differences: map[matchPath]corpusDifference{
+			pathLocalMatches: allowedDifference(corpusMatch, reasonRetitledSameSizes),
+		},
 	},
 	{
 		name:          "local season pack against an episode",
@@ -1095,11 +1101,6 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
-	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-		settings := models.DefaultCrossSeedAutomationSettings()
-		settings.RescueTitleMismatches = row.rescue
-		return settings, nil
-	}
 	resp, err := svc.FindLocalMatches(t.Context(), corpusInstanceID, corpusSourceHash, true)
 	require.NoError(t, err)
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match LocalMatch) bool { return match.Hash == corpusCandidateHash }))

@@ -803,12 +803,6 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	sourceTorrent := sourceTorrents[0]
 
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	policy := localMatchPolicy(settings.RescueTitleMismatches)
-
 	// Parse source release for matching
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
@@ -830,7 +824,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
-	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, policy, matchCtx)
+	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 
 	// Check for any errors during local file relationship verification.
 	overlapErr := matchCtx.sourceFilesErr
@@ -865,7 +859,6 @@ func (s *Service) collectLocalMatches(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	normalizedContentPath string,
-	policy matchPolicy,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
 	var matches []LocalMatch
@@ -883,7 +876,7 @@ func (s *Service) collectLocalMatches(
 		}
 
 		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
-			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, policy, matchCtx)
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 	}
 
 	return matches
@@ -911,7 +904,6 @@ func (s *Service) matchTorrentsInInstance(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	normalizedContentPath string,
-	policy matchPolicy,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
 	for i := range cachedTorrents {
@@ -924,7 +916,7 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath, policy)
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
 		if !ok {
 			continue
 		}

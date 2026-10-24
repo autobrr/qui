@@ -726,7 +726,7 @@ func (s *Service) selectCandidates(source *qbt.Torrent, idx *matchIndex, sameIns
 				// The pair shares a Title key and the episode number, so no title or
 				// episode relaxation reaches it.
 				verdict := s.matcher().matchVerdict(sourceRead, c.read,
-					matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy(false))
+					matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(c.view.Torrent)}, localMatchPolicy)
 				logReleaseMatchDecision(
 					source.Name,
 					c.read.rawName,

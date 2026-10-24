@@ -65,16 +65,6 @@ func tierCandidate(instanceID int, name, savePath, contentPath string) qbittorre
 	}
 }
 
-func sized(torrent qbt.Torrent, size int64) qbt.Torrent {
-	torrent.Size = size
-	return torrent
-}
-
-func sizedCandidate(candidate qbittorrent.CrossInstanceTorrentView, size int64) qbittorrent.CrossInstanceTorrentView {
-	candidate.Size = size
-	return candidate
-}
-
 // tierService builds a service over two remote instances without filesystem
 // access, so only the file lists decide the tier.
 func tierService(sm *tierSyncManager) *Service {
@@ -127,9 +117,7 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 		sourceFiles    qbt.TorrentFiles
 		candidate      qbittorrent.CrossInstanceTorrentView
 		candidateFiles qbt.TorrentFiles
-		// rescue turns on title rescue. A retitled upload then needs equal torrent sizes.
-		rescue bool
-		want   string
+		want           string
 	}{
 		{
 			name:        "same folder with an nfo and no subfolder shares the mkv",
@@ -225,50 +213,40 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 		},
 		{
 			name:           "retitled upload with paired sizes is a Release copy",
-			source:         sized(tierSingleFileSource(), 1000),
+			source:         tierSingleFileSource(),
 			sourceFiles:    sourceFiles,
-			candidate:      sizedCandidate(tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"), 1000),
+			candidate:      tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"),
 			candidateFiles: qbt.TorrentFiles{{Name: "cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 1000}},
-			rescue:         true,
 			want:           matchTypeRelease,
 		},
 		{
-			name:           "retitled upload with title rescue off is not a cross-seed",
-			source:         sized(tierSingleFileSource(), 1000),
-			sourceFiles:    sourceFiles,
-			candidate:      sizedCandidate(tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"), 1000),
-			candidateFiles: qbt.TorrentFiles{{Name: "cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 1000}},
-			want:           "",
-		},
-		{
 			name:           "retitled upload with a size off by one is not a cross-seed",
-			source:         sized(tierSingleFileSource(), 1000),
+			source:         tierSingleFileSource(),
 			sourceFiles:    sourceFiles,
-			candidate:      sizedCandidate(tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"), 999),
+			candidate:      tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"),
 			candidateFiles: qbt.TorrentFiles{{Name: "cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 999}},
-			rescue:         true,
 			want:           "",
 		},
 		{
 			// qBittorrent counts only the wanted files in Size, so the deselected
-			// .nfo makes the two Size values differ. The full sizes are equal.
-			name:   "retitled upload with a deselected nfo pairs by the full torrent size",
+			// .nfo makes the two Size values differ. The full sizes are equal, so
+			// the exact size class admits the other codec tag.
+			name:   "copy with another codec tag and a deselected nfo pairs by the full torrent size",
 			source: qbt.Torrent{Hash: tierSourceHash, Name: tierSourceName, SavePath: "/data/movies", ContentPath: "/data/movies/" + tierSourceName, Size: 1001, TotalSize: 1001},
 			sourceFiles: qbt.TorrentFiles{
 				{Name: tierSourceName + "/" + tierMovieFile, Size: 1000},
 				{Name: tierSourceName + "/a.nfo", Size: 1},
 			},
 			candidate: func() qbittorrent.CrossInstanceTorrentView {
-				candidate := sizedCandidate(tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264"), 1000)
-				candidate.TotalSize = 1001
+				candidate := tierCandidate(1, "Lantern.Bay.2023.1080p.BluRay.x265-GRP", "/data/cross", "/data/cross/Lantern.Bay.2023.1080p.BluRay.x265-GRP")
+				candidate.Size, candidate.TotalSize = 1000, 1001
 				return candidate
 			}(),
 			candidateFiles: qbt.TorrentFiles{
-				{Name: "cdn-lanternbay.2023.1080p.bluray.x264/cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 1000},
-				{Name: "cdn-lanternbay.2023.1080p.bluray.x264/a.nfo", Size: 1},
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/Lantern.Bay.2023.1080p.BluRay.x265-GRP.mkv", Size: 1000},
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/a.nfo", Size: 1},
 			},
-			rescue: true,
-			want:   matchTypeRelease,
+			want: matchTypeRelease,
 		},
 		{
 			name:        "unrelated torrent in an ambiguous shared folder is not a cross-seed",
@@ -293,15 +271,7 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 				source:     tc.source,
 				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{tc.candidate.InstanceID: {tc.candidate}},
 			}
-			svc := tierService(sm)
-			svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-				settings := models.DefaultCrossSeedAutomationSettings()
-				settings.RescueTitleMismatches = tc.rescue
-				return settings, nil
-			}
-			response, err := svc.FindLocalMatches(t.Context(), 1, tierSourceHash, true)
-			require.NoError(t, err)
-			requireTier(t, response.Matches, tc.want)
+			requireTier(t, findTier(t, sm), tc.want)
 		})
 	}
 }
