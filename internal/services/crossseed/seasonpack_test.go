@@ -710,6 +710,28 @@ func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
 	require.True(t, ok, "complete episode must count")
 }
 
+// TestMatchEpisodeCandidates_IgnoresTorrentSizeOfNameMatch pins that the check
+// counts a local episode that matches by name, whatever the size of its torrent.
+// Extras can make the torrent larger than the pack file. The file check at apply
+// compares the exact file sizes.
+func TestMatchEpisodeCandidates_IgnoresTorrentSizeOfNameMatch(t *testing.T) {
+	parsedPack := rls.ParseString("Cool.Show.S03.1080p.WEB.x264-GRP")
+	packEpisodes := map[episodeIdentity]packEpisodeOrigin{
+		{series: 3, episode: 1}: {seasoned: true, file: qbt.TorrentFile{Name: "Cool.Show.S03.1080p.WEB.x264-GRP/Cool.Show.S03E01.1080p.WEB.x264-GRP.mkv", Size: 1000}},
+	}
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	cached := buildCrossInstanceViews(inst, []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Size: 2000, Progress: 1.0},
+	})
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, packEpisodes, settings, nil)
+	require.Len(t, got, 1)
+}
+
 // TestMatchEpisodeCandidates_FilterLogLevels pins the level split for filtered episode
 // candidates. The loop reads every cached episode, so a reason that means "belongs to
 // another show or another pack" must stay off the default level.
@@ -2867,10 +2889,9 @@ func TestCheckSeasonPackWebhook_KeepsAliasesWhenSeasonTotalUnavailable(t *testin
 }
 
 // TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles extends the alias
-// end-to-end coverage through the apply pipeline: the per-file re-matches in
-// resolveSeasonPackLocalFilesForCandidates and buildSeasonPackPlan must receive the
-// alias titles too, or a pack that checks ready fails every apply with a release
-// mismatch.
+// end-to-end coverage through the apply pipeline: the per-file match in
+// resolveSeasonPackLocalFilesForCandidates must receive the alias titles too, or a
+// pack that checks ready fails every apply with a release mismatch.
 func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.T) {
 	mediaDir := t.TempDir()
 	packName := "Jidou.Hanbaiki.S01.1080p.WEB.x264-GRP"
@@ -2990,4 +3011,26 @@ func TestMatchEpisodeCandidates_MultiEpisodeLocalStaysAnEpisodeSource(t *testing
 	require.True(t, ok, "range local must be identified by its first episode")
 	require.Len(t, matches, 1)
 	require.Equal(t, "e2526", matches[0].torrentHash)
+}
+
+// TestMatchEpisodeCandidates_RangeKeepsRepackRule pins that a seeded episode range
+// meets the REPACK rule when the user turns off "Ignore REPACK/PROPER differences".
+// The parser reads a range such as S03E01E02 as a pack, and the variant rule skips
+// REPACK and PROPER for a pack.
+func TestMatchEpisodeCandidates_RangeKeepsRepackRule(t *testing.T) {
+	parsedPack := rls.ParseString("Cool.Show.S03.1080p.WEB.x264-GRP")
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	cached := buildCrossInstanceViews(inst, []qbt.Torrent{
+		{Hash: "range", Name: "Cool.Show.S03E01E02.REPACK.1080p.WEB.x264-GRP", Progress: 1.0},
+	})
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
+	require.Empty(t, got, "a REPACK range must not count toward a pack without REPACK")
+
+	settings.SeasonPackSkipRepackCompare = true
+	got = svc.matchEpisodeCandidatesDetailed(cached, "Cool.Show.S03.1080p.WEB.x264-GRP", &parsedPack, nil, settings, nil)
+	require.Len(t, got, 1, "with the setting on, the range counts")
 }

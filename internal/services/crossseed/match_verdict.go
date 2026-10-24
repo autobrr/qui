@@ -4,7 +4,10 @@
 package crossseed
 
 import (
+	"cmp"
 	"math/bits"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -159,14 +162,24 @@ func (c releaseComparison) reasonOf(difference matchDifference) string {
 // matchEvidence is what a Match path knows about a pair beyond the two Read
 // releases (GLOSSARY.md). A path that lacks a field leaves it empty.
 type matchEvidence struct {
-	SourceSize      int64
-	CandidateSize   int64
+	SourceSize    int64
+	CandidateSize int64
+	// SourceFiles and CandidateFiles are the files of the pair. The verdict reads
+	// them only as sizes: a side with no size takes the total size of its files.
+	SourceFiles     qbt.TorrentFiles
+	CandidateFiles  qbt.TorrentFiles
 	SourceTitles    []string
 	CandidateTitles []string
 	// EpisodeMap is the Sonarr triple for the release qui looked up. It equates
 	// a seasonless episode with its seasoned counterpart on the other side, see
 	// applyEpisodeMap.
 	EpisodeMap *models.EpisodeMap
+}
+
+// sizes gives the size of each side, from the files when the side has no size.
+func (evidence matchEvidence) sizes() (source, candidate int64) {
+	return cmp.Or(evidence.SourceSize, sourceFilesTotalSize(evidence.SourceFiles)),
+		cmp.Or(evidence.CandidateSize, sourceFilesTotalSize(evidence.CandidateFiles))
 }
 
 // matchPolicy is the switches that a Match path sets on the Match verdict
@@ -176,8 +189,20 @@ type matchPolicy struct {
 	IndividualEpisodes   bool
 	SizeTolerancePercent float64
 	// AllowMissingCandidateGroup lets a group or site that only the source carries
-	// pass. Only the unknown-size preflight of the webhook check sets it.
+	// pass. The unknown-size preflight of the webhook check and the season pack
+	// check set it.
 	AllowMissingCandidateGroup bool
+	// AllowMissingCandidateChecksum lets a CRC tag that only the source carries
+	// pass. Only the season pack check sets it, because a pack name does not
+	// carry the CRC tag of an episode.
+	AllowMissingCandidateChecksum bool
+	// SkipSizeCheck drops the size check after the match classes. Only the
+	// first pass of the season pack check sets it, because the file check after
+	// it compares exact file sizes.
+	SkipSizeCheck bool
+	// SeasonPack holds the season pack matching settings. Only the season pack
+	// check sets it.
+	SeasonPack seasonPackMatchOptions
 }
 
 // matchVerdict is the decision of one Match path on a pair of Read releases
@@ -226,15 +251,19 @@ func (verdict matchVerdict) relaxedFields() []string {
 // between two packs or two episodes. A group differs only when one fansub tag
 // is split across Group and Site, and that pair needs a full hash check.
 func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvidence, policy matchPolicy) matchVerdict {
-	source, candidate, mappedEpisode := applyEpisodeMap(source, candidate, evidence.EpisodeMap)
+	source, candidate, mappedEpisode := applyEpisodeMap(policy.SeasonPack.apply(source), policy.SeasonPack.apply(candidate), evidence.EpisodeMap)
 	verdict := matchVerdict{Class: searchCandidateClassRejected, MappedEpisode: mappedEpisode}
-	exactSize := positiveExactSize(evidence.SourceSize, evidence.CandidateSize)
+	sourceSize, candidateSize := evidence.sizes()
+	exactSize := positiveExactSize(sourceSize, candidateSize)
 	ignoreSizeCheck := policy.IndividualEpisodes &&
 		isTVSeasonPack(source.release) && isTVEpisode(candidate.release)
 
 	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes, false)
 	if policy.AllowMissingCandidateGroup {
 		strict.differences = strict.differences.without(differenceGroupMissing)
+	}
+	if policy.AllowMissingCandidateChecksum {
+		strict.differences = strict.differences.without(differenceChecksumMissing)
 	}
 	verdict.Strict = strict
 	verdict.OneSidedChecksum = exactSize && m.hasOneSidedChecksum(source.release, candidate.release)
@@ -247,8 +276,8 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 	// such as apply for another local torrent, keeps the strict compare.
 	case (!verdict.OneSidedChecksum || strict.differences.first() != differenceSource) &&
 		isWebSourceRelabel(source, candidate, strict) &&
-		evidence.SourceSize > 0 && evidence.CandidateSize > 0 &&
-		(ignoreSizeCheck || m.isSizeWithinTolerance(evidence.SourceSize, evidence.CandidateSize, policy.SizeTolerancePercent)):
+		sourceSize > 0 && candidateSize > 0 &&
+		(ignoreSizeCheck || m.isSizeWithinTolerance(sourceSize, candidateSize, policy.SizeTolerancePercent)):
 		class = searchCandidateClassWebSourceRelabel
 	case policy.TitleRescue && strict.differences.first() == differenceTitle && exactSize:
 		// The titles differ, so a Season numeral in one title says nothing about
@@ -296,7 +325,7 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 		return verdict
 	}
 
-	if !ignoreSizeCheck && !m.isSizeWithinTolerance(evidence.SourceSize, evidence.CandidateSize, policy.SizeTolerancePercent) {
+	if !ignoreSizeCheck && !policy.SkipSizeCheck && !m.isSizeWithinTolerance(sourceSize, candidateSize, policy.SizeTolerancePercent) {
 		verdict.RejectReason = "size mismatch"
 		verdict.SizeRejected = true
 		return verdict
