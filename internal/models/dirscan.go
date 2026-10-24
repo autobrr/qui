@@ -1353,7 +1353,7 @@ func marshalSearchedIndexerIDs(ids []int) any {
 	if ids == nil {
 		return nil
 	}
-	raw, _ := json.Marshal(ids)
+	raw, _ := json.Marshal(ids) //nolint:errchkjson // json.Marshal cannot fail for a plain int slice
 	return string(raw)
 }
 
