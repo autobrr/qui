@@ -194,7 +194,7 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 				require.Equal(t, tt.wantSeasonPack, match)
 			}
 			if tt.checkGeneric {
-				require.Equal(t, tt.wantGeneric, matcher.releasesMatch(pack, episode, tt.strict))
+				require.Equal(t, tt.wantGeneric, matcher.strictCompare(pack, episode, tt.strict).matched())
 			}
 		})
 	}

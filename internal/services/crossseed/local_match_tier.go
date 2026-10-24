@@ -117,6 +117,11 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 	return ""
 }
 
+// localMatchPolicy is the Match policy of the paths that compare two local
+// torrents and then pair their file sizes in localMatchTier. That file check
+// compares exact sizes, so the verdict skips its own size check.
+var localMatchPolicy = matchPolicy{SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}
+
 // localMatchPrefilter selects the candidates whose file lists are worth a
 // fetch, from the cached torrent fields alone. nameOrRelease is the tier the
 // candidate gets if its file sizes pair with the source. ok is false for a
@@ -133,19 +138,21 @@ func (s *Service) localMatchPrefilter(
 		return matchTypeName, true
 	}
 
-	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, source.Name, candidate.Name, false)
-	if matched {
+	sourceRead := namedRelease{release: sourceRelease, rawName: source.Name}
+	candidateRead := namedRelease{release: s.releaseCache.Parse(candidate.Name), rawName: candidate.Name}
+	verdict := s.matcher().matchVerdict(sourceRead, candidateRead,
+		matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: searchSourceSize(candidate.Torrent)},
+		localMatchPolicy,
+	)
+	if verdict.Matched {
 		return matchTypeRelease, true
 	}
 	// A retitled upload of the same data keeps its own name, so it fails the
-	// release match on the title alone.
-	if mismatchReason == titleMismatchReason {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(
-			namedRelease{release: sourceRelease, rawName: source.Name},
-			namedRelease{release: candidateRelease, rawName: candidate.Name},
-			false,
-		); ok {
+	// release match on the title alone. Local matches adds no torrent, so it
+	// rescues the title at any setting and torrent size, and the file sizes
+	// decide.
+	if !verdict.Strict.matched() && verdict.Strict.differences.first() == differenceTitle {
+		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(sourceRead, candidateRead, false); ok {
 			return matchTypeRelease, true
 		}
 	}

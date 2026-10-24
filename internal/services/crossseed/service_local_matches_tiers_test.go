@@ -228,6 +228,27 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 			want:           "",
 		},
 		{
+			// qBittorrent counts only the wanted files in Size, so the deselected
+			// .nfo makes the two Size values differ. The full sizes are equal, so
+			// the exact size class admits the other codec tag.
+			name:   "copy with another codec tag and a deselected nfo pairs by the full torrent size",
+			source: qbt.Torrent{Hash: tierSourceHash, Name: tierSourceName, SavePath: "/data/movies", ContentPath: "/data/movies/" + tierSourceName, Size: 1001, TotalSize: 1001},
+			sourceFiles: qbt.TorrentFiles{
+				{Name: tierSourceName + "/" + tierMovieFile, Size: 1000},
+				{Name: tierSourceName + "/a.nfo", Size: 1},
+			},
+			candidate: func() qbittorrent.CrossInstanceTorrentView {
+				candidate := tierCandidate(1, "Lantern.Bay.2023.1080p.BluRay.x265-GRP", "/data/cross", "/data/cross/Lantern.Bay.2023.1080p.BluRay.x265-GRP")
+				candidate.Size, candidate.TotalSize = 1000, 1001
+				return candidate
+			}(),
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/Lantern.Bay.2023.1080p.BluRay.x265-GRP.mkv", Size: 1000},
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/a.nfo", Size: 1},
+			},
+			want: matchTypeRelease,
+		},
+		{
 			name:        "unrelated torrent in an ambiguous shared folder is not a cross-seed",
 			source:      qbt.Torrent{Hash: tierSourceHash, Name: tierSourceName, SavePath: "/data/flat", ContentPath: "/data/flat"},
 			sourceFiles: qbt.TorrentFiles{{Name: tierMovieFile, Size: 1000}, {Name: "a.nfo", Size: 1}},

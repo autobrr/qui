@@ -167,36 +167,6 @@ func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
 }
 
-// releasesMatch checks if two releases are related using fuzzy matching.
-// This allows matching similar content that isn't exactly the same.
-func (m matcher) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	match, _ := m.releasesMatchWithReason(source, candidate, findIndividualEpisodes)
-	return match
-}
-
-func (m matcher) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
-	return m.releasesMatchWithReasonAndNames(source, candidate, "", "", findIndividualEpisodes)
-}
-
-func (m matcher) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
-	return m.releasesMatchWithReasonAndNamesAndTitles(source, candidate, sourceName, candidateName, nil, nil, findIndividualEpisodes)
-}
-
-func (m matcher) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
-	return m.namedReleasesMatchWithReasonAndTitles(
-		namedRelease{release: source, rawName: sourceName},
-		namedRelease{release: candidate, rawName: candidateName},
-		sourceTitles, candidateTitles, findIndividualEpisodes,
-	)
-}
-
-// namedReleasesMatchWithReasonAndTitles is the strict match on full identity
-// views, so the group check can read the selected-file tags too.
-func (m matcher) namedReleasesMatchWithReasonAndTitles(sourceSide, candidateSide namedRelease, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
-	comparison := m.compareReleases(sourceSide, candidateSide, sourceTitles, candidateTitles, findIndividualEpisodes, true)
-	return comparison.matched(), comparison.reason()
-}
-
 // compareReleases runs the release rules on a pair and records each field
 // that differs. It returns after a title difference, because no rule relaxes
 // one over the rest of the set: title rescue runs its own compare. With
@@ -335,12 +305,11 @@ func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, ca
 // releasesMatchExceptTitleWithReason keeps every normal release rule except title.
 // Retitled listings are usually bare-file re-uploads that also drop the -GROUP
 // and [CRC] tags, so absent candidate tags are tolerated here; conflicting tags
-// still reject. Every caller must pair this with an exact-size gate, because
+// still reject. The Match verdict pairs this with an exact-size gate, because
 // with the title ignored a sparsely parsed name can leave nothing else to
-// reject on. Callers that add data (search rescue) additionally get the
-// paused-add full recheck as the final authority; callers that only report
-// existing pairings (local match detection) do not, so their false positives
-// must stay confined to display.
+// reject on. A path that adds data gets the paused-add full recheck as the
+// final authority; Local matches only reports existing pairings, so its false
+// positives stay confined to display.
 func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
 	comparison := m.compareExceptTitle(releaseComparison{}, sourceSide, candidateSide, findIndividualEpisodes, true, true)
 	return comparison.matched(), comparison.reason()
@@ -1007,7 +976,7 @@ func (m matcher) getMatchTypeFromTitle(targetRelease, candidateRelease *rls.Rele
 			}
 
 			// For content without usable file-level metadata (games, apps, scene releases
-			// with RAR files), trust the torrent-level releasesMatch check that got us here
+			// with RAR files), trust the torrent-level Match verdict that got us here
 			// when neither name has an episode. A batch such as "Show - 01 - 03" has no
 			// single episode, so two batches must name the same episodes.
 			// A year alone does not block: the torrent-level match compared it.

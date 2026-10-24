@@ -241,9 +241,8 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, strictReason := service.matcher().releasesMatchWithReasonAndNamesAndTitles(
-		&source, &candidate, sourceName, candidateName, nil, nil, false,
-	)
+	strictComparison := service.matcher().compareReleases(namedRelease{release: &source, rawName: sourceName}, namedRelease{release: &candidate, rawName: candidateName}, nil, nil, false, true)
+	strict, strictReason := strictComparison.matched(), strictComparison.reason()
 	require.False(t, strict)
 	require.NotEmpty(t, strictReason)
 
@@ -371,9 +370,8 @@ func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	strict, reason := service.matcher().releasesMatchWithReasonAndNames(
-		&source, &candidate, sourceName, candidateName, false,
-	)
+	strictComparison := service.matcher().compareReleases(namedRelease{release: &source, rawName: sourceName}, namedRelease{release: &candidate, rawName: candidateName}, nil, nil, false, true)
+	strict, reason := strictComparison.matched(), strictComparison.reason()
 	require.True(t, strict, "candidate-only metadata already passes strict search matching: %s", reason)
 
 	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
@@ -607,15 +605,13 @@ func TestFindCandidatesChecksumVerdictRejectsNewUnrecordedDifference(t *testing.
 	require.Empty(t, decision.RelaxedDifferences)
 
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	reverseMatch, reverseReason := service.matcher().releasesMatchWithReasonAndNames(
-		downloadedRelease, existingRelease, downloadedName, existingName, false,
-	)
+	reverseMatchComparison := service.matcher().compareReleases(namedRelease{release: downloadedRelease, rawName: downloadedName}, namedRelease{release: existingRelease, rawName: existingName}, nil, nil, false, true)
+	reverseMatch, reverseReason := reverseMatchComparison.matched(), reverseMatchComparison.reason()
 	require.False(t, reverseMatch)
 	require.Equal(t, checksumMismatchReason, reverseReason,
 		"the reverse comparison would hide the new codec difference behind the checksum")
-	originalMatch, originalReason := service.matcher().releasesMatchWithReasonAndNames(
-		existingRelease, downloadedRelease, existingName, downloadedName, false,
-	)
+	originalMatchComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: existingName}, namedRelease{release: downloadedRelease, rawName: downloadedName}, nil, nil, false, true)
+	originalMatch, originalReason := originalMatchComparison.matched(), originalMatchComparison.reason()
 	require.False(t, originalMatch)
 	require.Equal(t, "codec mismatch", originalReason)
 
@@ -781,15 +777,13 @@ func TestFindCandidatesSourceChecksumVerdictRejectsNewUnrecordedDifference(t *te
 	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
 
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	originalMatch, originalReason := service.matcher().releasesMatchWithReasonAndNames(
-		existingRelease, downloadedRelease, existingName, downloadedName, false,
-	)
+	originalMatchComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: existingName}, namedRelease{release: downloadedRelease, rawName: downloadedName}, nil, nil, false, true)
+	originalMatch, originalReason := originalMatchComparison.matched(), originalMatchComparison.reason()
 	require.False(t, originalMatch)
 	require.Equal(t, checksumMismatchReason, originalReason,
 		"the search-orientation comparison would hide the new codec difference behind the checksum")
-	reverseMatch, reverseReason := service.matcher().releasesMatchWithReasonAndNames(
-		downloadedRelease, existingRelease, downloadedName, existingName, false,
-	)
+	reverseMatchComparison := service.matcher().compareReleases(namedRelease{release: downloadedRelease, rawName: downloadedName}, namedRelease{release: existingRelease, rawName: existingName}, nil, nil, false, true)
+	reverseMatch, reverseReason := reverseMatchComparison.matched(), reverseMatchComparison.reason()
 	require.False(t, reverseMatch)
 	require.Equal(t, "codec mismatch", reverseReason)
 
@@ -933,7 +927,8 @@ func TestSearchRecordsStrictCollectionMismatch(t *testing.T) {
 		Candidate: namedRelease{release: &candidate},
 	}
 
-	strict, reason := service.matcher().releasesMatchWithReason(source, &candidate, false)
+	strictComparison := service.matcher().strictCompare(source, &candidate, false)
+	strict, reason := strictComparison.matched(), strictComparison.reason()
 	require.False(t, strict)
 	require.Equal(t, "collection mismatch", reason)
 
@@ -966,10 +961,12 @@ func TestFindCandidatesKeepsDirectionalVariantMismatch(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	searchMatch, searchReason := service.matcher().releasesMatchWithReason(existingRelease, downloadedRelease, false)
+	searchMatchComparison := service.matcher().strictCompare(existingRelease, downloadedRelease, false)
+	searchMatch, searchReason := searchMatchComparison.matched(), searchMatchComparison.reason()
 	require.False(t, searchMatch)
 	require.Equal(t, "IMAX", searchReason)
-	applyMatch, applyReason := service.matcher().releasesMatchWithReason(downloadedRelease, existingRelease, false)
+	applyMatchComparison := service.matcher().strictCompare(downloadedRelease, existingRelease, false)
+	applyMatch, applyReason := applyMatchComparison.matched(), applyMatchComparison.reason()
 	require.False(t, applyMatch)
 	require.Equal(t, "HYBRID", applyReason)
 
@@ -1036,9 +1033,8 @@ func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 			downloadedRelease := service.releaseCache.Parse(tt.downloadedName)
 			require.NotEqual(t, existingRelease.Sum == "", downloadedRelease.Sum == "")
 
-			strict, reason := service.matcher().releasesMatchWithReasonAndNames(
-				existingRelease, downloadedRelease, tt.existingName, tt.downloadedName, false,
-			)
+			strictComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: tt.existingName}, namedRelease{release: downloadedRelease, rawName: tt.downloadedName}, nil, nil, false, true)
+			strict, reason := strictComparison.matched(), strictComparison.reason()
 			require.Equal(t, tt.searchStrict, strict, reason)
 			if !strict {
 				require.Equal(t, checksumMismatchReason, reason)

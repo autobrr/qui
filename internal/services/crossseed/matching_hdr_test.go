@@ -278,8 +278,9 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceRelease := svc.releaseCache.Parse(tt.sourceName)
 			candidateRelease := svc.releaseCache.Parse(tt.candidateName)
 
-			// First check releasesMatch (metadata comparison)
-			metadataMatch, reason := svc.releasesMatchWithReason(sourceRelease, candidateRelease, false)
+			// First run the strict compare (metadata comparison)
+			comparison := svc.strictCompare(sourceRelease, candidateRelease, false)
+			metadataMatch, reason := comparison.matched(), comparison.reason()
 
 			if tt.wantMatch {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)

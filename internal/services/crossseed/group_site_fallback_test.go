@@ -164,13 +164,13 @@ func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
 		{name: "tagged source", source: fansubTaggedPack, target: fansubBracketPack},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			strict, reason := svc.matcher().releasesMatchWithReasonAndNamesAndTitles(
-				svc.releaseCache.Parse(tt.source),
-				svc.releaseCache.Parse(tt.target),
-				tt.source, tt.target, nil, nil, false,
+			strict := svc.matcher().compareReleases(
+				namedRelease{release: svc.releaseCache.Parse(tt.source), rawName: tt.source},
+				namedRelease{release: svc.releaseCache.Parse(tt.target), rawName: tt.target},
+				nil, nil, false, true,
 			)
-			require.False(t, strict, "strict matching must still reject this pairing")
-			require.Equal(t, groupMismatchReason, reason)
+			require.False(t, strict.matched(), "strict matching must still reject this pairing")
+			require.Equal(t, groupMismatchReason, strict.reason())
 
 			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
 			require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
@@ -320,14 +320,14 @@ func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
 	require.Equal(t, "Kyo Mura", spaceJoinedRelease.Group, "fixture must join group and collective")
 	require.Empty(t, spaceJoinedRelease.Site)
 
-	ok, reason := svc.matcher().releasesMatchWithReasonAndNames(bracketRelease, spaceJoinedRelease, bracket, spaceJoined, false)
-	require.False(t, ok)
-	require.Equal(t, sourceMismatchReason, reason)
-
 	bracketSide := namedRelease{release: bracketRelease, rawName: bracket}
 	spaceJoinedSide := namedRelease{release: spaceJoinedRelease, rawName: spaceJoined}
+	strict := svc.matcher().compareReleases(bracketSide, spaceJoinedSide, nil, nil, false, true)
+	require.False(t, strict.matched())
+	require.Equal(t, sourceMismatchReason, strict.reason())
+
 	for _, pair := range [][2]namedRelease{{bracketSide, spaceJoinedSide}, {spaceJoinedSide, bracketSide}} {
-		ok, reason = svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+		ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
 			Source:        pair[0],
 			Candidate:     pair[1],
 			SourceSize:    fansubPackSize,
@@ -1170,12 +1170,13 @@ func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
 
 	for _, pair := range [][2]string{{bracket, suffix}, {suffix, bracket}} {
 		pairInput := input(pair[0], pair[1])
-		ok, reason := svc.matcher().releasesMatchWithReasonAndNames(
-			pairInput.Source.release, pairInput.Candidate.release, pair[0], pair[1], false)
-		require.False(t, ok)
-		require.Equal(t, sourceMismatchReason, reason)
+		strict := svc.matcher().compareReleases(
+			namedRelease{release: pairInput.Source.release, rawName: pair[0]},
+			namedRelease{release: pairInput.Candidate.release, rawName: pair[1]}, nil, nil, false, true)
+		require.False(t, strict.matched())
+		require.Equal(t, sourceMismatchReason, strict.reason())
 
-		ok, reason = svc.matcher().validateExactSizeSearchIdentity(pairInput)
+		ok, reason := svc.matcher().validateExactSizeSearchIdentity(pairInput)
 		require.True(t, ok, "%s against %s: %s", pair[0], pair[1], reason)
 	}
 
@@ -1198,9 +1199,11 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	svc := newGroupFallbackService()
 	m := svc.matcher()
 	sited := namedRelease{release: svc.releaseCache.Parse(bracket), rawName: bracket}
-	strict := func(grouped namedRelease) (bool, string) {
-		return m.namedReleasesMatchWithReasonAndTitles(grouped, sited, nil, nil, false)
+	strictPair := func(source, candidate namedRelease) (bool, string) {
+		comparison := m.compareReleases(source, candidate, nil, nil, false, true)
+		return comparison.matched(), comparison.reason()
 	}
+	strict := func(grouped namedRelease) (bool, string) { return strictPair(grouped, sited) }
 
 	// The view carries the group, but only the selected file spells it.
 	fileGroup := *svc.releaseCache.Parse(bare)
@@ -1244,7 +1247,7 @@ func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) 
 	ok, reason = strict(grouped)
 	require.False(t, ok)
 	require.Equal(t, groupMismatchReason, reason)
-	ok, reason = m.namedReleasesMatchWithReasonAndTitles(sited, grouped, nil, nil, false)
+	ok, reason = strictPair(sited, grouped)
 	require.False(t, ok)
 	require.Equal(t, "site mismatch", reason)
 	sited.tagOrigin = svc.releaseCache.Parse(suffix + ".mkv")

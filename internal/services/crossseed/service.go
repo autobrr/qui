@@ -7475,11 +7475,12 @@ func subtitleTitleQuery(release *rls.Release) string {
 	return release.Title + " " + subtitle
 }
 
-// searchSourceSize returns the source-side size for the search size band.
-// Torznab advertises the full release size, so the comparison must use the
-// torrent's full size: Size only counts wanted files, which misreports every
-// torrent with deselected files while its Progress still reads 1.0. TotalSize
-// can be zero when a client predates the field, so fall back to Size.
+// searchSourceSize returns the full size of a torrent, for the search size
+// band and for the Match verdict on two local torrents. Torznab advertises the
+// full release size, so the comparison must use the torrent's full size: Size
+// only counts wanted files, which misreports every torrent with deselected
+// files while its Progress still reads 1.0. TotalSize can be zero when a
+// client predates the field, so fall back to Size.
 func searchSourceSize(t *qbt.Torrent) int64 {
 	if t.TotalSize > 0 {
 		return t.TotalSize
@@ -9496,9 +9497,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
-	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
+	verdictCache := make(map[string]bool) // cache Match verdicts per pair
 
-	// Helper to get cache key for releasesMatch
+	// Helper to get cache key for a pair
 	getMatchCacheKey := func(idx1, idx2 int) string {
 		if idx1 < idx2 {
 			return fmt.Sprintf("%d:%d", idx1, idx2)
@@ -9530,12 +9531,12 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		for _, candidateIdx := range candidateIndices {
 			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
-			matches, cached := releasesMatchCache[cacheKey]
+			matches, cached := verdictCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				matches, _ = s.matcher().releasesMatchWithReasonAndNames(current.read.release, candidate.read.release,
-					current.read.rawName, candidate.read.rawName, false)
-				releasesMatchCache[cacheKey] = matches
+				// Dedup reads names only, so the verdict has no sizes.
+				matches = s.matcher().matchVerdict(current.read, candidate.read, matchEvidence{}, matchPolicy{SkipSizeCheck: true}).Matched
+				verdictCache[cacheKey] = matches
 			}
 
 			if matches {
