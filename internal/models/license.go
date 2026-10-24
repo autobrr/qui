@@ -45,7 +45,7 @@ const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
 	// LicenseStatusOffline marks a license that the server has not confirmed within the offline grace period.
-	// It gives no premium access, and the background check makes it active again when the server confirms it.
+	// It gives no premium access. The background check and the manual refresh make it active again when the server confirms it.
 	LicenseStatusOffline = "offline"
 )
 

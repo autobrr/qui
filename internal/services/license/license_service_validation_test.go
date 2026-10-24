@@ -65,46 +65,50 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
-func TestValidateLicenses_OfflineBeyondGraceRevokesPremium(t *testing.T) {
-	ctx := t.Context()
+func TestValidateLicenses_OfflineGrace(t *testing.T) {
+	tests := []struct {
+		name          string
+		lastValidated time.Duration
+		wantErr       error
+		wantValid     bool
+		wantStatus    string
+	}{
+		{
+			name:          "beyond grace revokes premium",
+			lastValidated: offlineGracePeriod + time.Hour,
+			wantStatus:    models.LicenseStatusOffline,
+		},
+		{
+			name:          "within grace keeps status",
+			lastValidated: offlineGracePeriod - time.Hour,
+			wantErr:       context.DeadlineExceeded,
+			wantValid:     true,
+			wantStatus:    models.LicenseStatusActive,
+		},
+	}
 
-	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
-	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
 
-	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
+			repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+			license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-tt.lastValidated))
 
-	valid, err := service.ValidateLicenses(ctx)
-	require.NoError(t, err)
-	assert.False(t, valid, "a license that the server has not confirmed for more than the grace period must not stay valid")
+			service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
 
-	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
-	require.NoError(t, err)
-	assert.Equal(t, models.LicenseStatusOffline, stored.Status)
+			valid, err := service.ValidateLicenses(ctx)
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, tt.wantValid, valid)
 
-	hasPremium, err := service.HasPremiumAccess(ctx)
-	require.NoError(t, err)
-	assert.False(t, hasPremium)
-}
+			stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, stored.Status)
 
-func TestValidateLicenses_OfflineWithinGraceKeepsStatus(t *testing.T) {
-	ctx := t.Context()
-
-	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
-	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod - time.Hour)))
-
-	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
-
-	valid, err := service.ValidateLicenses(ctx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.True(t, valid)
-
-	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
-	require.NoError(t, err)
-	assert.Equal(t, models.LicenseStatusActive, stored.Status)
-
-	hasPremium, err := service.HasPremiumAccess(ctx)
-	require.NoError(t, err)
-	assert.True(t, hasPremium)
+			hasPremium, err := service.HasPremiumAccess(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantValid, hasPremium)
+		})
+	}
 }
 
 func TestValidateLicenses_OfflineLicenseRecoversWhenServerAnswers(t *testing.T) {
