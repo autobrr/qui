@@ -1013,14 +1013,13 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 
 // seasonPackPolicy is the Match policy of the season pack check. It asks the
 // Match verdict about one episode of the new pack, the candidate, against a
-// local episode, the source. Pack names do not carry the group or the CRC tag
-// of each episode, so a tag that only the local name carries passes.
+// local episode, the source. Pack names do not carry the group of each
+// episode, so a group that only the local name carries passes.
 func seasonPackPolicy(settings *models.CrossSeedAutomationSettings) matchPolicy {
 	return matchPolicy{
-		SizeTolerancePercent:          defaultSizeMismatchTolerancePercent,
-		AllowMissingCandidateGroup:    true,
-		AllowMissingCandidateChecksum: true,
-		SeasonPack:                    seasonPackMatchOptionsFromSettings(settings),
+		SizeTolerancePercent:       defaultSizeMismatchTolerancePercent,
+		AllowMissingCandidateGroup: true,
+		SeasonPack:                 seasonPackMatchOptionsFromSettings(settings),
 	}
 }
 

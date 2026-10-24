@@ -12,8 +12,8 @@ import (
 )
 
 // A verdict without sizes stops the compare at the first group of rules that
-// differs. A missing tag that the policy allows must not hide a difference in
-// a later group.
+// differs. A missing group that the policy allows, or a CRC tag on one name,
+// must not hide a difference in a later group.
 func TestMatchVerdict_AllowedMissingTagWithoutSizes(t *testing.T) {
 	m := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
 	for _, tt := range []struct {
@@ -37,10 +37,9 @@ func TestMatchVerdict_AllowedMissingTagWithoutSizes(t *testing.T) {
 			policy:    matchPolicy{AllowMissingCandidateGroup: true},
 		},
 		{
-			name:      "missing CRC tag and another codec",
+			name:      "CRC tag on one name and another codec",
 			source:    "[KaijuSubs] Kaiju Squad - 05 (1080p HEVC) [ABCD1234]",
 			candidate: "[KaijuSubs] Kaiju Squad - 05 (1080p AVC)",
-			policy:    matchPolicy{AllowMissingCandidateChecksum: true},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

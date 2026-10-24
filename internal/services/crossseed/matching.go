@@ -202,7 +202,7 @@ func (m matcher) compareExceptTitle(comparison releaseComparison, sourceSide, ca
 	}
 	m.compareGroupSiteAndChecksum(&comparison, sourceSide, candidateSide)
 	if tolerateMissingCandidateTags {
-		comparison.differences = comparison.differences.without(differenceGroupMissing, differenceChecksumMissing)
+		comparison.differences = comparison.differences.without(differenceGroupMissing)
 	}
 	if stop() {
 		return comparison
@@ -304,8 +304,8 @@ func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, ca
 
 // releasesMatchExceptTitleWithReason keeps every normal release rule except title.
 // Retitled listings are usually bare-file re-uploads that also drop the -GROUP
-// and [CRC] tags, so absent candidate tags are tolerated here; conflicting tags
-// still reject. The Match verdict pairs this with an exact-size gate, because
+// tag, so an absent candidate group is tolerated here; conflicting tags still
+// reject. The Match verdict pairs this with an exact-size gate, because
 // with the title ignored a sparsely parsed name can leave nothing else to
 // reject on. A path that adds data gets the paused-add full recheck as the
 // final authority; Local matches only reports existing pairings, so its false
@@ -572,16 +572,13 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 	}
 
 	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
-	// Different checksums mean different files with 100% certainty.
+	// Different checksums mean different files with 100% certainty. Indexer
+	// titles and announces often drop the tag, so a tag on one name only is
+	// no difference.
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
-	if sourceSum != "" {
-		switch {
-		case candidateSum == "":
-			comparison.add(differenceChecksumMissing)
-		case sourceSum != candidateSum:
-			comparison.add(differenceChecksum)
-		}
+	if sourceSum != "" && candidateSum != "" && sourceSum != candidateSum {
+		comparison.add(differenceChecksum)
 	}
 }
 

@@ -34,8 +34,6 @@ const (
 	differenceGroupMissing
 	differenceSite
 	differenceChecksum
-	// differenceChecksumMissing is a source CRC tag that the candidate does not carry.
-	differenceChecksumMissing
 	differenceSource
 	differenceResolution
 	differenceCollection
@@ -71,7 +69,6 @@ var matchDifferenceText = [...]struct{ field, reason string }{
 	differenceGroupMissing:      {"group", groupMismatchReason},
 	differenceSite:              {"site", "site mismatch"},
 	differenceChecksum:          {"checksum", checksumMismatchReason},
-	differenceChecksumMissing:   {"checksum", checksumMismatchReason},
 	differenceSource:            {"source", sourceMismatchReason},
 	differenceResolution:        {"resolution", "resolution mismatch"},
 	differenceCollection:        {"collection", "collection mismatch"},
@@ -192,10 +189,6 @@ type matchPolicy struct {
 	// pass. The unknown-size preflight of the webhook check and the season pack
 	// check set it.
 	AllowMissingCandidateGroup bool
-	// AllowMissingCandidateChecksum lets a CRC tag that only the source carries
-	// pass. Only the season pack check sets it, because a pack name does not
-	// carry the CRC tag of an episode.
-	AllowMissingCandidateChecksum bool
 	// SkipSizeCheck drops the size check after the match classes. The first
 	// pass of the season pack check, Local matches, cross-match sets, and the
 	// content prefilter set it, because the file check after each of them
@@ -218,11 +211,7 @@ type matchVerdict struct {
 	// after a title difference.
 	Strict releaseComparison
 	// Relaxed is the set of differences that the exact size class accepted.
-	Relaxed matchDifferences
-	// OneSidedChecksum is a CRC tag on one name only, with exact sizes.
-	OneSidedChecksum bool
-	// ChecksumOnly means that the one-sided CRC tag is the only difference.
-	ChecksumOnly          bool
+	Relaxed               matchDifferences
 	GroupFallbackIdentity string
 	// MappedEpisode names the episode map equality that the verdict used.
 	MappedEpisode string
@@ -230,15 +219,11 @@ type matchVerdict struct {
 	SizeRejected  bool
 }
 
-// relaxedFields lists the fields of the exact size class in check order. A
-// CRC tag on the candidate only is not a strict difference, so it comes last.
+// relaxedFields lists the fields of the exact size class in check order.
 func (verdict matchVerdict) relaxedFields() []string {
 	var fields []string
 	for difference := range verdict.Relaxed.each {
 		fields = append(fields, matchDifferenceText[difference].field)
-	}
-	if verdict.OneSidedChecksum && !verdict.Relaxed.has(differenceChecksumMissing) {
-		fields = append(fields, "checksum")
 	}
 	return fields
 }
@@ -261,28 +246,21 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 
 	// Only the relabel and the exact size class read past the first difference,
 	// and both need two sizes. A path without them, such as dedup, stops at the
-	// first group of rules that differs. A missing tag that the policy allows
+	// first group of rules that differs. A missing group that the policy allows
 	// is removed after the compare, so it must not stop the compare early.
-	stopAtFirst := (sourceSize <= 0 || candidateSize <= 0) &&
-		!policy.AllowMissingCandidateGroup && !policy.AllowMissingCandidateChecksum
+	stopAtFirst := (sourceSize <= 0 || candidateSize <= 0) && !policy.AllowMissingCandidateGroup
 	strict := m.compareReleases(source, candidate, evidence.SourceTitles, evidence.CandidateTitles, policy.IndividualEpisodes, stopAtFirst)
 	if policy.AllowMissingCandidateGroup {
 		strict.differences = strict.differences.without(differenceGroupMissing)
 	}
-	if policy.AllowMissingCandidateChecksum {
-		strict.differences = strict.differences.without(differenceChecksumMissing)
-	}
 	verdict.Strict = strict
-	verdict.OneSidedChecksum = exactSize && m.hasOneSidedChecksum(source.release, candidate.release)
 
 	class := searchCandidateClassStrict
 	switch {
 	case strict.matched():
-	// A one-sided CRC tag with a source difference goes to exact size, which
-	// records the checksum. The relabel needs both sizes: a path without them,
-	// such as apply for another local torrent, keeps the strict compare.
-	case (!verdict.OneSidedChecksum || strict.differences.first() != differenceSource) &&
-		isWebSourceRelabel(source, candidate, strict) &&
+	// The relabel needs both sizes: a path without them, such as apply for
+	// another local torrent, keeps the strict compare.
+	case isWebSourceRelabel(source, candidate, strict) &&
 		sourceSize > 0 && candidateSize > 0 &&
 		(ignoreSizeCheck || m.isSizeWithinTolerance(sourceSize, candidateSize, policy.SizeTolerancePercent)):
 		class = searchCandidateClassWebSourceRelabel
@@ -295,24 +273,20 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 		}
 		class = searchCandidateClassTitleRescue
 	case exactSize:
-		if verdict.OneSidedChecksum && strict.differences == differencesOf(differenceChecksumMissing) {
-			verdict.ChecksumOnly = true
-		} else {
-			if ok, reason := m.validateExactSizeSearchIdentity(searchCandidateInput{
-				Source:                     source,
-				Candidate:                  candidate,
-				SourceTitles:               evidence.SourceTitles,
-				CandidateTitles:            evidence.CandidateTitles,
-				AllowMissingCandidateGroup: policy.AllowMissingCandidateGroup,
-			}); !ok {
-				verdict.RejectReason = reason
+		if ok, reason := m.validateExactSizeSearchIdentity(searchCandidateInput{
+			Source:                     source,
+			Candidate:                  candidate,
+			SourceTitles:               evidence.SourceTitles,
+			CandidateTitles:            evidence.CandidateTitles,
+			AllowMissingCandidateGroup: policy.AllowMissingCandidateGroup,
+		}); !ok {
+			verdict.RejectReason = reason
+			return verdict
+		}
+		for difference := range strict.differences.each {
+			if !m.exactSizeRelaxes(difference, source, candidate, evidence) {
+				verdict.RejectReason = strict.reasonOf(difference)
 				return verdict
-			}
-			for difference := range strict.differences.each {
-				if !m.exactSizeRelaxes(difference, source, candidate, evidence) {
-					verdict.RejectReason = strict.reasonOf(difference)
-					return verdict
-				}
 			}
 		}
 		class = searchCandidateClassExactSizeFallback
@@ -387,7 +361,7 @@ func (m matcher) exactSizeRelaxes(difference matchDifference, source, candidate 
 // sizes may stand in for them. validateExactSizeSearchIdentity already rejects
 // two CRC tags that conflict.
 var encodeDifferences = differencesOf(
-	differenceChecksumMissing, differenceSource, differenceCollection, differenceCodec, differenceHDR,
+	differenceSource, differenceCollection, differenceCodec, differenceHDR,
 	differenceBitDepth, differenceCut, differenceEdition, differenceLanguage, differenceVersion,
 	differenceDisc, differencePlatform, differenceArchitecture, differenceVariant,
 )

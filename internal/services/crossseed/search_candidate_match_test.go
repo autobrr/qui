@@ -70,7 +70,9 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 }
 
-func TestFindCandidatesKeepsReverseOneSidedChecksumWithWebRelabel(t *testing.T) {
+// A CRC tag on one name is no difference, so the web source relabel stays the
+// only one, and apply keeps that verdict.
+func TestFindCandidatesKeepsOneSidedChecksumWithWebRelabel(t *testing.T) {
 	const (
 		instanceID    = 1
 		sourceHash    = "existing-no-crc"
@@ -102,18 +104,18 @@ func TestFindCandidatesKeepsReverseOneSidedChecksumWithWebRelabel(t *testing.T) 
 		TolerancePercent: 5,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, searchCandidateClassWebSourceRelabel, decision.Class)
 	require.Equal(t, sourceMismatchReason, decision.StrictMismatchReason)
-	require.ElementsMatch(t, []string{"source", "checksum"}, decision.RelaxedDifferences)
+	require.Empty(t, decision.RelaxedDifferences)
 
-	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+	response, err := service.FindCandidates(t.Context(), &FindCandidatesRequest{
 		TorrentName:       candidateName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
-		"the exact-size checksum decision must survive the apply direction reversal")
+		"apply must keep the web source relabel when the download carries a CRC tag")
 }
 
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
@@ -335,7 +337,7 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 }
 
 // Anime torrent names carry a CRC32 tag that indexer titles routinely drop, so
-// one side alone holding a checksum is absence of evidence. Two checksums that
+// one side alone holding a checksum is no difference. Two checksums that
 // disagree stay fatal; TestClassifySearchCandidateExactSizeHardIdentity pins that.
 func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -355,9 +357,9 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 		TolerancePercent: 5,
 	})
 
-	require.True(t, decision.Accepted)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Contains(t, decision.RelaxedDifferences, "checksum")
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.StrictMismatchReason)
 }
 
 func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing.T) {
@@ -421,8 +423,8 @@ func TestFindCandidatesKeepsSourceChecksumWithoutGroup(t *testing.T) {
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -468,8 +470,8 @@ func TestFindCandidatesKeepsVerdictWhenDownloadAddsGroup(t *testing.T) {
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -604,24 +606,13 @@ func TestFindCandidatesChecksumVerdictRejectsNewUnrecordedDifference(t *testing.
 	require.Equal(t, searchCandidateClassStrict, decision.Class)
 	require.Empty(t, decision.RelaxedDifferences)
 
-	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	reverseMatchComparison := service.matcher().compareReleases(namedRelease{release: downloadedRelease, rawName: downloadedName}, namedRelease{release: existingRelease, rawName: existingName}, nil, nil, false, true)
-	reverseMatch, reverseReason := reverseMatchComparison.matched(), reverseMatchComparison.reason()
-	require.False(t, reverseMatch)
-	require.Equal(t, checksumMismatchReason, reverseReason,
-		"the reverse comparison would hide the new codec difference behind the checksum")
-	originalMatchComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: existingName}, namedRelease{release: downloadedRelease, rawName: downloadedName}, nil, nil, false, true)
-	originalMatch, originalReason := originalMatchComparison.matched(), originalMatchComparison.reason()
-	require.False(t, originalMatch)
-	require.Equal(t, "codec mismatch", originalReason)
-
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
 		TargetInstanceIDs: []int{instanceID},
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+	require.Empty(t, response.Candidates, "a CRC tag on one name cannot authorize a new codec difference")
 }
 
 func TestFindCandidatesRejectsAdvertisedCodecDrift(t *testing.T) {
@@ -774,18 +765,8 @@ func TestFindCandidatesSourceChecksumVerdictRejectsNewUnrecordedDifference(t *te
 		CandidateSize: size,
 	})
 	require.True(t, decision.Accepted, decision.RejectReason)
-	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
-
-	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	originalMatchComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: existingName}, namedRelease{release: downloadedRelease, rawName: downloadedName}, nil, nil, false, true)
-	originalMatch, originalReason := originalMatchComparison.matched(), originalMatchComparison.reason()
-	require.False(t, originalMatch)
-	require.Equal(t, checksumMismatchReason, originalReason,
-		"the search-orientation comparison would hide the new codec difference behind the checksum")
-	reverseMatchComparison := service.matcher().compareReleases(namedRelease{release: downloadedRelease, rawName: downloadedName}, namedRelease{release: existingRelease, rawName: existingName}, nil, nil, false, true)
-	reverseMatch, reverseReason := reverseMatchComparison.matched(), reverseMatchComparison.reason()
-	require.False(t, reverseMatch)
-	require.Equal(t, "codec mismatch", reverseReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Empty(t, decision.RelaxedDifferences)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -793,7 +774,7 @@ func TestFindCandidatesSourceChecksumVerdictRejectsNewUnrecordedDifference(t *te
 		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
 	})
 	require.NoError(t, err)
-	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+	require.Empty(t, response.Candidates, "a CRC tag on one name cannot authorize a new codec difference")
 }
 
 func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
@@ -989,9 +970,8 @@ func TestFindCandidatesKeepsDirectionalVariantMismatch(t *testing.T) {
 		"apply must keep a recorded variant when the reverse comparison reports its other label")
 }
 
-// Search and apply call the asymmetric checksum gate in opposite directions.
-// Exact-size evidence must preserve a one-sided-checksum decision whichever
-// release carries the CRC.
+// A CRC tag on one name is no difference, whichever release carries it, so
+// search gives a strict verdict and apply keeps it.
 func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -1004,9 +984,8 @@ func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 		name           string
 		existingName   string
 		downloadedName string
-		searchStrict   bool
 	}{
-		{name: "downloaded torrent carries checksum", existingName: plainName, downloadedName: checksumName, searchStrict: true},
+		{name: "downloaded torrent carries checksum", existingName: plainName, downloadedName: checksumName},
 		{name: "existing torrent carries checksum", existingName: checksumName, downloadedName: plainName},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1033,29 +1012,16 @@ func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 			downloadedRelease := service.releaseCache.Parse(tt.downloadedName)
 			require.NotEqual(t, existingRelease.Sum == "", downloadedRelease.Sum == "")
 
-			strictComparison := service.matcher().compareReleases(namedRelease{release: existingRelease, rawName: tt.existingName}, namedRelease{release: downloadedRelease, rawName: tt.downloadedName}, nil, nil, false, true)
-			strict, reason := strictComparison.matched(), strictComparison.reason()
-			require.Equal(t, tt.searchStrict, strict, reason)
-			if !strict {
-				require.Equal(t, checksumMismatchReason, reason)
-			}
-
 			decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
 				Candidate:     namedRelease{release: downloadedRelease, rawName: tt.downloadedName},
 				SourceSize:    size,
 				CandidateSize: size,
 			})
-			require.True(t, decision.Accepted)
-			if tt.searchStrict {
-				require.Equal(t, searchCandidateClassStrict, decision.Class)
-				require.Empty(t, decision.StrictMismatchReason)
-				require.Empty(t, decision.RelaxedDifferences)
-			} else {
-				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-				require.Equal(t, checksumMismatchReason, decision.StrictMismatchReason)
-				require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
-			}
+			require.True(t, decision.Accepted, decision.RejectReason)
+			require.Equal(t, searchCandidateClassStrict, decision.Class)
+			require.Empty(t, decision.StrictMismatchReason)
+			require.Empty(t, decision.RelaxedDifferences)
 			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 			require.NotEmpty(t, service.matcher().getMatchTypeFromTitle(
 				downloadedRelease, existingRelease, existingFiles,
@@ -1068,15 +1034,14 @@ func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Len(t, response.Candidates, 1,
-				"apply must preserve search's exact-size one-sided-checksum decision")
+				"apply must keep the strict verdict of a CRC tag on one name")
 		})
 	}
 }
 
-// The checksum tolerance belongs to the exact-size fallback alone. This fails if
-// it is ever widened into compareGroupSiteAndChecksum, where strict matching
-// would inherit it.
-func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) {
+// A CRC tag on one name decides nothing in either direction, also without exact
+// sizes. The file check after the download decides.
+func TestClassifySearchCandidateIgnoresOneSidedChecksumWithoutExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
 		sourceName    = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
@@ -1089,7 +1054,6 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 		name      string
 		source    namedRelease
 		candidate namedRelease
-		accepted  bool
 	}{
 		{
 			name:      "source carries checksum",
@@ -1100,7 +1064,6 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 			name:      "candidate carries checksum",
 			source:    namedRelease{release: &candidate, rawName: candidateName},
 			candidate: namedRelease{release: &source, rawName: sourceName},
-			accepted:  true,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1112,12 +1075,8 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 				TolerancePercent: 5,
 			})
 
-			require.Equal(t, tt.accepted, decision.Accepted)
-			if tt.accepted {
-				require.Equal(t, searchCandidateClassStrict, decision.Class)
-				return
-			}
-			require.Equal(t, "checksum mismatch", decision.RejectReason)
+			require.True(t, decision.Accepted, decision.RejectReason)
+			require.Equal(t, searchCandidateClassStrict, decision.Class)
 		})
 	}
 }
@@ -1301,8 +1260,7 @@ func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
 
 	var comparison releaseComparison
 	service.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: &source}, namedRelease{release: &bare})
-	require.False(t, comparison.matched(), "strict matcher must keep rejecting the missing checksum")
-	require.Equal(t, "checksum mismatch", comparison.reason())
+	require.False(t, comparison.differences.has(differenceChecksum), "the strict compare ignores a CRC tag on one name")
 }
 
 func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {

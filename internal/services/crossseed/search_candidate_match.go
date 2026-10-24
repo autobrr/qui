@@ -192,9 +192,7 @@ func (m matcher) classifySearchCandidate(input searchCandidateInput) searchCandi
 	case searchCandidateClassExactSizeFallback:
 		decision.Score += sizeEvidenceFallbackScoreBonus
 		strictFields := "; strict title/resolution/group"
-		if verdict.ChecksumOnly {
-			strictFields = "; one-sided checksum only"
-		} else if slices.Contains(decision.RelaxedDifferences, "group") {
+		if slices.Contains(decision.RelaxedDifferences, "group") {
 			strictFields = "; strict title/resolution"
 		}
 		decision.MatchReason = decision.SizeEvidence.matchReason() + strictFields
@@ -252,16 +250,6 @@ func applyEpisodeMap(source, candidate namedRelease, episodeMap *models.EpisodeM
 	mapped.Episode = episodeMap.Episode
 	side.release = &mapped
 	return source, candidate, fmt.Sprintf("mapped episode %d = S%02dE%02d", episodeMap.Absolute, episodeMap.Season, episodeMap.Episode)
-}
-
-func (m matcher) hasOneSidedChecksum(source, candidate *rls.Release) bool {
-	if source == nil || candidate == nil {
-		return false
-	}
-	normalizer := m.normalizer()
-	sourceSum := normalizer.Normalize(source.Sum)
-	candidateSum := normalizer.Normalize(candidate.Sum)
-	return (sourceSum == "") != (candidateSum == "")
 }
 
 // positiveExactSize requires both search APIs to report the same non-zero byte
@@ -386,15 +374,14 @@ func (provenance searchDecisionProvenance) listedDifferences() matchDifferences 
 // downloadReadsAsListing reports whether the downloaded torrent reads the same
 // as the listing that search judged, apart from the fields that the stored
 // verdict lists as different. Apply keeps that verdict for the local torrent
-// that search compared, so the download must not bring a new difference. A CRC
-// tag on one name only does not count, because indexer titles drop it.
+// that search compared, so the download must not bring a new difference.
 func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local, download namedRelease, findIndividualEpisodes bool) bool {
 	listed := decision.listedDifferences()
 	// The listing can drop the group, the fansub tag, or the CRC tag. A tag on the
 	// local torrent and another on the download still prove another release.
 	var tags releaseComparison
 	m.compareGroupSiteAndChecksum(&tags, local, download)
-	if tags.differences.without(differenceGroupMissing, differenceChecksumMissing)&^listed != 0 {
+	if tags.differences.without(differenceGroupMissing)&^listed != 0 {
 		return false
 	}
 	listing, download, _ := applyEpisodeMap(m.readName(decision.SearchCandidateName), download, decision.EpisodeMap)
@@ -406,7 +393,7 @@ func (m matcher) downloadReadsAsListing(decision searchDecisionProvenance, local
 	if comparison.differences == differencesOf(differenceTitle) && listed.has(differenceTitle) {
 		comparison = m.compareExceptTitle(comparison, listing, download, findIndividualEpisodes, false, false)
 	}
-	if comparison.differences.without(differenceChecksumMissing)&^listed != 0 {
+	if comparison.differences&^listed != 0 {
 		return false
 	}
 	// A relaxed verdict rests on the group of the listing, so a selected file
