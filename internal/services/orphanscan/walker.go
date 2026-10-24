@@ -407,14 +407,26 @@ func walkScanRootWithUnitFilter(
 		keys = newFileKeys()
 	}
 	w := newScanWalker(ctx, root, protected, gracePeriod, maxFiles, unitFilter, backend, instance, collectDirs, keys)
+	// A save path that is itself a symlink is walked only to learn which files
+	// are in use there, so their twins at the target count as aliases. Ignore
+	// paths, other roots and other torrents are spelled at the target, so
+	// nothing is listed through the link, and an ignore path would only hide
+	// files in use.
+	info, err := backend.Lstat(ctx, root)
+	inUseOnly := err == nil && info.IsSymlink
+	ignorePaths := protected.ignorePaths
+	if inUseOnly {
+		ignorePaths = nil
+	}
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
 		IgnoreDirNames:        ignoredOrphanDirNames,
 		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
-		IgnorePaths:           protected.ignorePaths,
+		IgnorePaths:           ignorePaths,
 		WantFileID:            true,
 		EmitStatErrors:        true,
+		FollowRoot:            inUseOnly,
 	})
 	if err != nil {
 		cancelWalk()
@@ -443,6 +455,14 @@ func walkScanRootWithUnitFilter(
 
 		// Junctions are ModeIrregular on Windows, not symlinks or directories.
 		if entry.IsSymlink || (!entry.IsDir && !entry.Mode.IsRegular()) {
+			continue
+		}
+		if inUseOnly {
+			if !entry.IsDir && w.protected.torrentFile(entry.Path) {
+				if key, ok := w.fileKey(entry); ok {
+					w.keys.inUse[key] = struct{}{}
+				}
+			}
 			continue
 		}
 

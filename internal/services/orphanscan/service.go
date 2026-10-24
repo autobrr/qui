@@ -233,32 +233,17 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 
 	pruned := make([]string, 0, len(roots))
 	for i, root := range roots {
+		// A walk skips a symlink below its root, so one that is a root of its
+		// own is walked on its own.
+		if info, err := backend.Lstat(ctx, cleaned[i]); err == nil && info.IsSymlink {
+			pruned = append(pruned, root)
+			continue
+		}
 		covered := false
 		for j := range roots {
 			// Keep case-distinct trees: a folded match does not prove walk coverage.
-			if !isPathUnderNormalized(d, cleaned[i], cleaned[j]) {
-				continue
-			}
-			covered = true
-			// WalkDir skips symlinks, including a root that is itself a symlink.
-			for dir := d.Dir(cleaned[i]); ; dir = d.Dir(dir) {
-				info, err := backend.Lstat(ctx, dir)
-				if err != nil || !info.IsDir || info.IsSymlink {
-					covered = false
-					break
-				}
-				// Dir of \\host\share\x is \\host\share\, but a root given as
-				// \\host\share keeps no separator through Clean.
-				if dir == cleaned[j] || dir == cleaned[j]+d.Separator() {
-					break
-				}
-				// Dir of \\host\share never reaches a share-less \\host\.
-				if d.Dir(dir) == dir {
-					covered = false
-					break
-				}
-			}
-			if covered {
+			if isPathUnderNormalized(d, cleaned[i], cleaned[j]) && walkReaches(ctx, backend, cleaned[j], cleaned[i]) {
+				covered = true
 				break
 			}
 		}
@@ -267,6 +252,27 @@ func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Bac
 		}
 	}
 	return pruned
+}
+
+// walkReaches reports whether the walk of cover reaches below, a path under it.
+// WalkDir skips symlinks, so every directory on the way must be a real one.
+func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string) bool {
+	d := backend.Paths()
+	for dir := d.Dir(below); ; dir = d.Dir(dir) {
+		info, err := backend.Lstat(ctx, dir)
+		if err != nil || !info.IsDir || info.IsSymlink {
+			return false
+		}
+		// Dir of \\host\share\x is \\host\share\, but a root given as
+		// \\host\share keeps no separator through Clean.
+		if dir == cover || dir == cover+d.Separator() {
+			return true
+		}
+		// Dir of \\host\share never reaches a share-less \\host\.
+		if d.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
