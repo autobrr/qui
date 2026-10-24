@@ -129,7 +129,7 @@ type EvalContext struct {
 	SameInstanceCrossSeedTagsByHash map[string][]string
 	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
 	// instance that share at least one file on disk with it (self excluded).
-	// Built when a delete, move, or category action groups cross-seeds;
+	// Built when a delete, move, category, or tag action groups cross-seeds;
 	// buildCrossSeedGroups reads it.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
