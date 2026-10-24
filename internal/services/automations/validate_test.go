@@ -1037,6 +1037,8 @@ func TestValidateRule_MovePath(t *testing.T) {
 		{path: "{{ if .Category }}/data/{{ .Category }}{{ end }}", enabled: true},
 		{path: `{{ if eq .Category "tv" }}/data/tv{{ end }}`, enabled: true},
 		{path: `{{ printf "/data/%s" .Category }}`, enabled: true},
+		{path: "{{ .CategorySavePath }}/done", enabled: true},
+		{path: "{{ .DefaultSavePath }}/archive", enabled: true},
 		{path: "archive", enabled: false},
 		{path: "{{ .Category }}/done", enabled: false},
 		{path: "", enabled: false},
