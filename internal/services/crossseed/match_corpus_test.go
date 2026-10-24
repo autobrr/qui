@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -714,6 +715,16 @@ var corpusRows = []corpusRow{
 		differences:    packFromEpisodes(nil),
 	},
 	{
+		name:           "announced WEBRip season pack against a local WEB-DL episode",
+		source:         "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP",
+		candidate:      "Kaiju.Squad.S02.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusPackSize,
+		candidateFiles: corpusPackFiles("Kaiju.Squad.S02.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP", "Kaiju.Squad.S02E%02d.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP"),
+		want:           corpusMatch,
+		differences:    packFromEpisodes(nil),
+	},
+	{
 		name:           "announced season pack with a Sonarr alternate title",
 		source:         "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju.Kyoutai.S02.1080p.WEB.H264-GRP",
@@ -1053,7 +1064,8 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 
 // seasonPackCorpusVerdict runs the season pack check of an announced pack
 // against the local episode. A row with candidate files sends them as the
-// torrent data, and the other rows run the light check. The check reads only
+// torrent data, and the check then compares the local episode file with its
+// pack file, as apply does. The other rows run the light check. The check reads only
 // local episodes, so it skips a row whose source is not an episode, and a row
 // whose candidate is an episode.
 func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
@@ -1075,7 +1087,14 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
-	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
+	matched := svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)
+	if len(matched) == 0 || row.candidateFiles == nil {
+		return corpusVerdictOf(len(matched) > 0)
+	}
+	selected, _, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, corpusInstanceID,
+		matched, row.candidateFiles, pack, row.candidate, settings, row.titles, nil)
+	require.NoError(t, err)
+	return corpusVerdictOf(len(selected) > 0)
 }
 
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
