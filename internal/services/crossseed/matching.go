@@ -90,11 +90,10 @@ const rejectReasonSeasonPackFromEpisode = "Season packs cannot be cross-seeded a
 // Parameters:
 //   - newR: the incoming/source release (the torrent being added)
 //   - existingR: the candidate/matched release (the existing torrent with files)
-//   - episodeMatching: whether episode-aware matching mode is enabled
 //
 // Returns (reject=true, reason) if the pairing should be rejected, (false, "") otherwise.
-func rejectSeasonPackFromEpisode(newR, existingR *rls.Release, episodeMatching bool) (reject bool, reason string) {
-	if episodeMatching && isTVSeasonPack(newR) && isTVEpisode(existingR) {
+func rejectSeasonPackFromEpisode(newR, existingR *rls.Release) (reject bool, reason string) {
+	if isTVSeasonPack(newR) && isTVEpisode(existingR) {
 		return true, rejectReasonSeasonPackFromEpisode
 	}
 	return false, ""

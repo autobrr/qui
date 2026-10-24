@@ -183,10 +183,11 @@ func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 				TargetInstanceIDs:      []int{instanceID},
 				FindIndividualEpisodes: true,
 				SearchDecision: searchDecisionProvenance{
-					Class:            searchCandidateClassStrict,
-					SourceInstanceID: instanceID,
-					SourceHash:       sourceHash,
-					EpisodeMap:       episodeMapS04E15,
+					Class:               searchCandidateClassStrict,
+					SearchCandidateName: tt.targetName,
+					SourceInstanceID:    instanceID,
+					SourceHash:          sourceHash,
+					EpisodeMap:          episodeMapS04E15,
 				},
 			})
 			require.NoError(t, err)

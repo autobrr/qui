@@ -291,7 +291,7 @@ func (m matcher) matchVerdict(source, candidate namedRelease, evidence matchEvid
 	verdict.Class = class
 
 	// Only a Manual match skips this rule, and it does not ask the verdict.
-	if reject, reason := rejectSeasonPackFromEpisode(candidate.release, source.release, true); reject {
+	if reject, reason := rejectSeasonPackFromEpisode(candidate.release, source.release); reject {
 		verdict.RejectReason = reason
 		return verdict
 	}
