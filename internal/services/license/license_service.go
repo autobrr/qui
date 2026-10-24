@@ -261,9 +261,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	}
 
 	for _, license := range licenses {
-		// Only refresh active licenses. Invalid licenses require an explicit user
-		// action (re-activate) and should not be auto-activated in the background.
-		if license.Status != models.LicenseStatusActive {
+		if !revalidates(license.Status) {
 			continue
 		}
 
@@ -338,6 +336,12 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	return refreshErr
 }
 
+// revalidates reports whether the background check and the manual refresh validate a license with this status.
+// An invalid license needs an explicit re-activation by the user, so they skip it.
+func revalidates(status string) bool {
+	return status == models.LicenseStatusActive || status == models.LicenseStatusOffline
+}
+
 // ValidateLicenses validates all stored licenses against the Dodo API
 func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
@@ -382,10 +386,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	}
 
 	for _, license := range licenses {
-		// Only validate active and offline licenses in the background. Invalid
-		// licenses require an explicit user action (re-activate) and should not
-		// be auto-activated in the checker.
-		if license.Status != models.LicenseStatusActive && license.Status != models.LicenseStatusOffline {
+		if !revalidates(license.Status) {
 			allValid = false
 			continue
 		}

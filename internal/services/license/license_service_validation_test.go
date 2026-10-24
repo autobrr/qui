@@ -69,7 +69,7 @@ func TestValidateLicenses_OfflineBeyondGraceRevokesPremium(t *testing.T) {
 	ctx := t.Context()
 
 	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
-	license := storeActiveLicense(t, repo, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
 
 	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
 
@@ -90,7 +90,7 @@ func TestValidateLicenses_OfflineWithinGraceKeepsStatus(t *testing.T) {
 	ctx := t.Context()
 
 	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
-	license := storeActiveLicense(t, repo, time.Now().Add(-(offlineGracePeriod - time.Hour)))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod - time.Hour)))
 
 	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return false }), t.TempDir())
 
@@ -111,7 +111,7 @@ func TestValidateLicenses_OfflineLicenseRecoversWhenServerAnswers(t *testing.T) 
 	ctx := t.Context()
 
 	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
-	license := storeActiveLicense(t, repo, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+	license := storeLicense(t, repo, models.LicenseStatusActive, time.Now().Add(-(offlineGracePeriod + time.Hour)))
 
 	serverUp := false
 	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return serverUp }), t.TempDir())
@@ -137,15 +137,30 @@ func TestValidateLicenses_OfflineLicenseRecoversWhenServerAnswers(t *testing.T) 
 	assert.True(t, hasPremium)
 }
 
-// storeActiveLicense stores an active Dodo license that the server last confirmed at lastValidated.
-func storeActiveLicense(t *testing.T, repo *database.LicenseRepo, lastValidated time.Time) *models.ProductLicense {
+func TestRefreshAllLicenses_RestoresOfflineLicense(t *testing.T) {
+	ctx := t.Context()
+
+	repo := database.NewLicenseRepo(testdb.NewMigratedSQLite(t, "license-validation"))
+	license := storeLicense(t, repo, models.LicenseStatusOffline, time.Now().Add(-(offlineGracePeriod + time.Hour)))
+
+	service := NewLicenseService(repo, newFakeDodoClient(func() bool { return true }), t.TempDir())
+
+	require.NoError(t, service.RefreshAllLicenses(ctx))
+
+	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
+}
+
+// storeLicense stores a Dodo license with the given status that the server last confirmed at lastValidated.
+func storeLicense(t *testing.T, repo *database.LicenseRepo, status string, lastValidated time.Time) *models.ProductLicense {
 	t.Helper()
 
 	now := time.Now()
 	license := &models.ProductLicense{
 		LicenseKey:     "QUI-TEST-KEY",
 		ProductName:    ProductNamePremium,
-		Status:         models.LicenseStatusActive,
+		Status:         status,
 		ActivatedAt:    lastValidated,
 		LastValidated:  lastValidated,
 		Provider:       models.LicenseProviderDodo,
