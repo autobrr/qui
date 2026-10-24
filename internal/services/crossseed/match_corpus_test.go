@@ -1087,14 +1087,17 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
-	matched := svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)
-	if len(matched) == 0 || row.candidateFiles == nil {
-		return corpusVerdictOf(len(matched) > 0)
+	if row.candidateFiles != nil {
+		matched := svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)
+		if len(matched) == 0 {
+			return corpusNoMatch
+		}
+		selected, _, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, corpusInstanceID,
+			matched, row.candidateFiles, pack, row.candidate, settings, row.titles, nil)
+		require.NoError(t, err)
+		return corpusVerdictOf(len(selected) > 0)
 	}
-	selected, _, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, corpusInstanceID,
-		matched, row.candidateFiles, pack, row.candidate, settings, row.titles, nil)
-	require.NoError(t, err)
-	return corpusVerdictOf(len(selected) > 0)
+	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
 }
 
 func localMatchesCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
