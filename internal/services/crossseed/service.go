@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"maps"
 	"math"
 	"net/url"
@@ -803,8 +804,8 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	sourceTorrent := sourceTorrents[0]
 
-	// Parse source release for matching
-	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+	reads := s.readLocalTorrents(ctx, sourceInstanceID, func(yield func(*qbt.Torrent) bool) { yield(&sourceTorrent) })
+	sourceRead := reads.read(s.matcher(), sourceInstanceID, &sourceTorrent)
 
 	// Normalize content path for comparison (case-insensitive, cleaned)
 	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
@@ -824,7 +825,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	}
 	matchCtx.sourceHasFileIdentity = instanceHas(instances, sourceInstanceID, matchCtx.identity())
 
-	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
 
 	// Check for any errors during local file relationship verification.
 	overlapErr := matchCtx.sourceFilesErr
@@ -857,7 +858,7 @@ func (s *Service) collectLocalMatches(
 	instances []*models.Instance,
 	sourceInstanceID int,
 	sourceTorrent *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	normalizedContentPath string,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
@@ -876,7 +877,7 @@ func (s *Service) collectLocalMatches(
 		}
 
 		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
-			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRead, normalizedContentPath, matchCtx)
 	}
 
 	return matches
@@ -902,10 +903,11 @@ func (s *Service) matchTorrentsInInstance(
 	sourceInstanceID int,
 	normalizedSourceHash string,
 	sourceTorrent *qbt.Torrent,
-	sourceRelease *rls.Release,
+	sourceRead namedRelease,
 	normalizedContentPath string,
 	matchCtx *localMatchContext,
 ) []LocalMatch {
+	reads := s.readLocalTorrents(ctx, instance.ID, viewTorrents(cachedTorrents))
 	for i := range cachedTorrents {
 		if ctx.Err() != nil {
 			return matches
@@ -916,7 +918,8 @@ func (s *Service) matchTorrentsInInstance(
 			continue
 		}
 
-		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRelease, cached, normalizedContentPath)
+		candidateRead := reads.read(s.matcher(), instance.ID, cached.Torrent)
+		nameOrRelease, ok := s.localMatchPrefilter(instance.ID == sourceInstanceID, sourceTorrent, sourceRead, cached, candidateRead, normalizedContentPath)
 		if !ok {
 			continue
 		}
@@ -5161,18 +5164,10 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents while planning autobrr apply")
 			continue
 		}
-		for _, torrentView := range torrents {
-			if torrentView.Torrent == nil {
-				continue
-			}
-			torrent := torrentView.Torrent
-			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
-				continue
-			}
-			if !matchesWebhookSourceFilters(torrent, settings) {
-				continue
-			}
-
+		sources := s.autobrrApplySources(torrents, settings)
+		// Read the sources as the webhook check reads them, so apply adds what the check accepted.
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, sources)
+		for torrent := range sources {
 			sourceSize := searchSourceSize(torrent)
 			if sourceSize <= 0 {
 				continue
@@ -5184,6 +5179,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
 				episodeMap:             episodeMap,
+				sourceReads:            sourceReads,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -5203,6 +5199,18 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 
 	sortBoundAnnouncementMatches(matches)
 	return matches
+}
+
+// autobrrApplySources yields the local torrents that autobrr apply can use as
+// its source: complete, with no error, and inside the webhook source filters.
+func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
+	return func(yield func(*qbt.Torrent) bool) {
+		for torrent := range viewTorrents(torrents) {
+			if torrent.Progress >= 1 && !s.shouldSkipErroredTorrent(torrent.State) && matchesWebhookSourceFilters(torrent, settings) && !yield(torrent) {
+				return
+			}
+		}
+	}
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -9470,9 +9478,16 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		titleKeys []string
 	}
 
+	reads := s.readLocalTorrents(ctx, instanceID, func(yield func(*qbt.Torrent) bool) {
+		for i := range torrents {
+			if !yield(&torrents[i]) {
+				return
+			}
+		}
+	})
 	parsed := make([]torrentWithRelease, 0, len(torrents))
-	for _, torrent := range torrents {
-		read := s.matcher().readName(torrent.Name)
+	for i, torrent := range torrents {
+		read := reads.read(s.matcher(), instanceID, &torrents[i])
 		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
@@ -9534,7 +9549,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			matches, cached := verdictCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				// Dedup reads names only, so the verdict has no sizes.
+				// Dedup has no sizes in its verdict.
 				matches = s.matcher().matchVerdict(current.read, candidate.read, matchEvidence{}, matchPolicy{SkipSizeCheck: true}).Matched
 				verdictCache[cacheKey] = matches
 			}
@@ -12551,6 +12566,14 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
+		sourceReads := s.readLocalTorrents(ctx, instance.ID, func(yield func(*qbt.Torrent) bool) {
+			for torrent := range viewTorrents(torrentsView) {
+				if (!hasWebhookSourceFilters || matchesWebhookSourceFilters(torrent, settings)) && !yield(torrent) {
+					return
+				}
+			}
+		})
+
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
 			// Guard against nil torrentView or nil torrentView.Torrent
@@ -12577,6 +12600,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				skipRecheck:            settings.SkipRecheck,
 				candidateTitles:        aliasTitles,
 				episodeMap:             episodeMap,
+				sourceReads:            sourceReads,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
 				continue

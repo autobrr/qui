@@ -5,12 +5,16 @@ package crossseed
 
 import (
 	"context"
+	"iter"
 	"path"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
+	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -88,6 +92,88 @@ func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int,
 	}
 	read, _ := s.readSearchSource(ctx, torrent, files)
 	return read
+}
+
+// nameNeedsFiles reports whether a local torrent name reads too little to pair
+// with a release: a season without a title ("Season 2"), or a movie without a
+// year or a season, as a bracket batch reads. The Match paths that cover the
+// whole library read only these torrents from their files, because a file list
+// costs a qBittorrent call for each torrent.
+func nameNeedsFiles(release *rls.Release) bool {
+	if release.Episode != 0 {
+		return false
+	}
+	seasonFolder := release.Title == "" && release.Series > 0
+	seasonlessBatch := release.Type == rls.Movie && release.Series == 0 && release.Year == 0
+	return seasonFolder || seasonlessBatch
+}
+
+// localReads holds the Read releases that readLocalTorrents took from files,
+// keyed by cacheKeyForTorrentFiles.
+type localReads map[string]namedRelease
+
+// read returns the Read release of a local torrent: from its files when
+// readLocalTorrents read them, else from its name.
+func (r localReads) read(m matcher, instanceID int, torrent *qbt.Torrent) namedRelease {
+	if read, ok := r[cacheKeyForTorrentFiles(instanceID, torrent.Hash)]; ok {
+		return read
+	}
+	return m.readName(torrent.Name)
+}
+
+// readLocalTorrents reads the torrents of one instance whose names need their
+// files (nameNeedsFiles), as search reads them. Their file lists load in one
+// batch. A torrent whose files do not load keeps its name read.
+func (s *Service) readLocalTorrents(ctx context.Context, instanceID int, torrents iter.Seq[*qbt.Torrent]) localReads {
+	reads := make(localReads)
+	byHash := make(map[string]*qbt.Torrent)
+	var hashes []string
+	for torrent := range torrents {
+		hash := normalizeHash(torrent.Hash)
+		if _, seen := byHash[hash]; seen || hash == "" || !nameNeedsFiles(s.matcher().readName(torrent.Name).release) {
+			continue
+		}
+		byHash[hash] = torrent
+		hashes = append(hashes, hash)
+	}
+	if len(hashes) == 0 || s.syncManager == nil {
+		return reads
+	}
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Int("hashCount", len(hashes)).
+			Msg("crossseed: some local torrents keep their name read, because their file lists could not be read")
+	}
+	// Load the category mapping rules once for the batch, not once per torrent.
+	var rules []models.CategoryMappingRule
+	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
+		rules = settings.CategoryMappingRules
+	}
+	for _, hash := range hashes {
+		if files := filesByHash[hash]; len(files) > 0 {
+			torrent := byHash[hash]
+			reads[cacheKeyForTorrentFiles(instanceID, hash)], _ = s.readRelease(torrent.Name, files, readPolicy{
+				mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
+					if ruleInfo, ok := categoryRuleContentType(rules, torrent.Category); ok {
+						return ruleInfo
+					}
+					return contentInfo
+				},
+			})
+		}
+	}
+	return reads
+}
+
+// viewTorrents yields the torrents of cached views.
+func viewTorrents(views []qbittorrent.CrossInstanceTorrentView) iter.Seq[*qbt.Torrent] {
+	return func(yield func(*qbt.Torrent) bool) {
+		for i := range views {
+			if views[i].Torrent != nil && !yield(views[i].Torrent) {
+				return
+			}
+		}
+	}
 }
 
 // readSearchSource reads the torrent that search looks up. Category routing is
