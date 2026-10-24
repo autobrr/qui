@@ -38,8 +38,8 @@ type healthChecker interface {
 type syncReader interface {
 	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
+	GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	CategoryPathRule(ctx context.Context, instanceID int) (qbittorrent.CategoryPathRule, error)
 }
 
@@ -1343,7 +1343,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 		if isCategoryDestinationNormalized(d, normDir, normCategoryPaths) {
-			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category destination")
+			s.updateFileStatus(ctx, dir.ID, "skipped", "directory is now a category or download destination")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save

@@ -93,14 +93,14 @@ func (f *fakeSync) GetLastCompletedRun(ctx context.Context, instanceID int) (*mo
 	return f.getLastCompletedRun(ctx, instanceID)
 }
 
-func (f *fakeSync) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+func (f *fakeSync) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
 	if f.getAppPreferences == nil {
 		return qbt.AppPreferences{}, errNotStubbed
 	}
 	return f.getAppPreferences(ctx, instanceID)
 }
 
-func (f *fakeSync) GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
+func (f *fakeSync) GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
 	if f.getCategories == nil {
 		return nil, errNotStubbed
 	}

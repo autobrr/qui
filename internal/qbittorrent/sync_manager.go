@@ -2475,6 +2475,17 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	return categories, nil
 }
 
+// GetCategoriesFresh reads the categories from qBittorrent rather than the
+// cache: before WebAPI 2.11.10 a partial maindata update never reports a
+// category going back to inherit its download path.
+func (sm *SyncManager) GetCategoriesFresh(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return client.GetCategoriesCtx(ctx)
+}
+
 // GetTags gets all tags
 func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, error) {
 	// Get client and sync manager
@@ -5145,14 +5156,14 @@ func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (Ca
 		if err != nil {
 			return CategoryPathRule{}, fmt.Errorf("failed to get app preferences: %w", err)
 		}
-		return CategoryPathRule{Nest: prefs.UseSubcategories}, nil
+		return CategoryPathRule{Nest: prefs.UseSubcategories, InheritsDownloadPath: true}, nil
 	}
 
 	platform, err := categoryFolderPlatform(ctx, client)
 	if err != nil {
 		return CategoryPathRule{}, err
 	}
-	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform}, nil
+	return CategoryPathRule{Nest: true, FileName: client.CategoryFileNames(), Platform: platform, InheritsDownloadPath: true}, nil
 }
 
 // categoryFolderPlatform returns the build platform when it changes the folder
@@ -5887,6 +5898,20 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
+	return *prefs, nil
+}
+
+// GetAppPreferencesFresh reads the preferences from qBittorrent rather than
+// their 30 s cache, so a download path changed in its WebUI is seen at once.
+func (sm *SyncManager) GetAppPreferencesFresh(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
+	}
+	prefs, err := client.refreshAppPreferences(ctx)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
+	}
 	return *prefs, nil
 }
 

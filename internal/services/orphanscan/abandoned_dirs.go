@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
@@ -17,19 +18,36 @@ import (
 )
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
-// resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, rule qbittorrent.CategoryPathRule) ([]string, error) {
-	categories, err := s.sync.GetCategories(ctx, instanceID)
+// and the folders qBittorrent downloads into: the download path while it is on,
+// and each category's download folder. Both are resolved the way qBittorrent
+// resolves them.
+func (s *Service) categoryPaths(ctx context.Context, d fsops.PathDialect, instanceID int, defaultSavePath string, prefs qbt.AppPreferences, rule qbittorrent.CategoryPathRule) (savePaths, downloadPaths []string, err error) {
+	categories, err := s.sync.GetCategoriesFresh(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
+		return nil, nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
 	}
 
-	seen := make(map[string]struct{}, len(categories))
+	saves := make(map[string]struct{}, len(categories))
+	downloads := make(map[string]struct{}, len(categories)+1)
+	if prefs.TempPathEnabled {
+		if !d.IsAbs(d.Clean(prefs.TempPath)) {
+			return nil, nil, fmt.Errorf("qBittorrent download path %q is not absolute", prefs.TempPath)
+		}
+		addAbsoluteScanRoot(d, downloads, prefs.TempPath)
+	}
 	for name := range categories {
-		addAbsoluteScanRoot(d, seen, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, rule))
+		addAbsoluteScanRoot(d, saves, qbittorrent.CategorySavePath(d, name, categories, defaultSavePath, rule))
+		p, ok := qbittorrent.CategoryDownloadPath(d, name, categories, prefs.TempPath, prefs.TempPathEnabled, rule)
+		if !ok {
+			continue
+		}
+		if p == "" {
+			return nil, nil, fmt.Errorf("download path of category %q rests on the qBittorrent download path %q, which is not absolute", name, prefs.TempPath)
+		}
+		addAbsoluteScanRoot(d, downloads, p)
 	}
 
-	return sortedRoots(seen), nil
+	return sortedRoots(saves), sortedRoots(downloads), nil
 }
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,

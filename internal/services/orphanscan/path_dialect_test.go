@@ -607,7 +607,7 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 		"/srv/data/Movie":       "skipped: file is now in use by a torrent",
 		"/srv/data/skip/x.mkv":  "skipped: path is protected by ignore paths",
 		"/srv/data/skip":        "skipped: path is protected by ignore paths",
-		"/srv/data/cat":         "skipped: directory is now a category destination",
+		"/srv/data/cat":         "skipped: directory is now a category or download destination",
 	}, got)
 	require.Equal(t, map[string]int64{
 		"/srv/data/owned.mkv":                    1,

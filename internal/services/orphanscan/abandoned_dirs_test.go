@@ -494,7 +494,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 				return tt.categories, nil
 			}
 
-			got, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, qbittorrent.CategoryPathRule{Nest: tt.useSubcategories})
+			got, _, err := svc.categoryPaths(context.Background(), fsops.HostPaths, 1, defaultSavePath, qbt.AppPreferences{}, qbittorrent.CategoryPathRule{Nest: tt.useSubcategories})
 			if err != nil {
 				t.Fatalf("categoryPaths: %v", err)
 			}
@@ -581,6 +581,104 @@ func TestDeclaredScanRoots_ProtectsTheQBittorrent53CategoryFolder(t *testing.T) 
 	}
 	if want := []string{filepath.Join(defaultSavePath, "tv_uhd")}; !slices.Equal(protected, want) {
 		t.Fatalf("protected = %v, want %v", protected, want)
+	}
+}
+
+// qBittorrent downloads into the download path and each category's download
+// folder again, so the abandoned-directory pass protects them, but they are not
+// scan roots.
+func TestDeclaredScanRoots_ProtectsTheDownloadFolders(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	defaultSavePath := filepath.Join(base, "torrents")
+	tempPath := filepath.Join(base, "incomplete")
+	fast := filepath.Join(base, "fast", "tv")
+	on := func(p string) *qbt.CategoryDownloadPath { return &qbt.CategoryDownloadPath{Enabled: true, Path: p} }
+
+	for _, tc := range []struct {
+		name       string
+		tempPath   string
+		enabled    bool
+		categories map[string]qbt.Category
+		want       []string
+		notWant    []string
+		fails      bool
+	}{
+		{
+			name: "the download path and a category's folder in it", tempPath: tempPath, enabled: true,
+			categories: map[string]qbt.Category{"tv": {Name: "tv"}},
+			want:       []string{tempPath, filepath.Join(tempPath, "tv")},
+		},
+		{
+			name: "a category's own download path with the download path off", tempPath: tempPath,
+			categories: map[string]qbt.Category{"tv": {Name: "tv", DownloadPath: on(fast)}},
+			want:       []string{fast},
+			notWant:    []string{tempPath},
+		},
+		{
+			name: "a category's empty download path under the download path while it is off", tempPath: tempPath,
+			categories: map[string]qbt.Category{"tv": {Name: "tv", DownloadPath: on("")}},
+			want:       []string{filepath.Join(tempPath, "tv")},
+			notWant:    []string{tempPath},
+		},
+		{
+			name: "a category with its download path turned off", tempPath: tempPath, enabled: true,
+			categories: map[string]qbt.Category{"tv": {Name: "tv", DownloadPath: &qbt.CategoryDownloadPath{}}},
+			want:       []string{tempPath},
+			notWant:    []string{filepath.Join(tempPath, "tv")},
+		},
+		{
+			name: "a category with no option while the download path is off", tempPath: tempPath,
+			categories: map[string]qbt.Category{"tv": {Name: "tv"}},
+			notWant:    []string{tempPath, filepath.Join(tempPath, "tv")},
+		},
+		{
+			name: "a download path that is not absolute", tempPath: "incomplete", enabled: true,
+			categories: map[string]qbt.Category{},
+			fails:      true,
+		},
+		{
+			name: "a category folder that rests on a download path that is not absolute", tempPath: "incomplete",
+			categories: map[string]qbt.Category{"tv": {Name: "tv", DownloadPath: on("")}},
+			fails:      true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			stubSync(svc).categoryPathRule = func(context.Context, int) (qbittorrent.CategoryPathRule, error) {
+				return qbittorrent.CategoryPathRule{Nest: true, InheritsDownloadPath: true}, nil
+			}
+			stubSync(svc).getAppPreferences = func(context.Context, int) (qbt.AppPreferences, error) {
+				return qbt.AppPreferences{SavePath: defaultSavePath, TempPath: tc.tempPath, TempPathEnabled: tc.enabled}, nil
+			}
+			stubSync(svc).getCategories = func(context.Context, int) (map[string]qbt.Category, error) {
+				return tc.categories, nil
+			}
+
+			roots, protected, err := svc.declaredScanRoots(t.Context(), fsops.HostPaths, 1, scanScope{CategoryPaths: true, AbandonedDirs: true})
+			if tc.fails {
+				if err == nil {
+					t.Fatalf("declaredScanRoots succeeded with protected = %v", protected)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("declaredScanRoots: %v", err)
+			}
+			for _, p := range tc.want {
+				if !slices.Contains(protected, p) || slices.Contains(roots, p) {
+					t.Fatalf("want %q protected and not a root: protected = %v, roots = %v", p, protected, roots)
+				}
+			}
+			for _, p := range tc.notWant {
+				if slices.Contains(protected, p) {
+					t.Fatalf("%q must not be protected: %v", p, protected)
+				}
+			}
+		})
 	}
 }
 
